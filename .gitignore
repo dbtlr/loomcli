@@ -1,0 +1,12 @@
+node_modules
+.atlas.toml
+
+*.local.md
+*.local.json
+
+.env
+.env.*
+!.env.example
+
+build
+
