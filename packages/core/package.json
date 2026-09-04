@@ -1,0 +1,10 @@
+{
+  "name": "@loom/core",
+  "description": "The Loom CLI core package. Provides the scaffolding for creating new Loom CLI applications.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dbtlr/loomcli.git"
+  },
+  "type": "module"
+}
