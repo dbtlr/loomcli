@@ -1,0 +1,7 @@
+{
+  "extends": "@dbtlr/tooling/tsconfig/monorepo.json",
+  "include": ["vite.config.ts"],
+  "compilerOptions": {
+    "types": ["bun"]
+  }
+}
