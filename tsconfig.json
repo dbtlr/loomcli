@@ -1,7 +1,23 @@
 {
-  "extends": "@dbtlr/tooling/tsconfig/monorepo.json",
-  "include": ["vite.config.ts"],
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "exactOptionalPropertyTypes": true,
     "types": ["bun"]
-  }
+  },
+  "include": ["vite.config.ts"]
 }

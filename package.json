@@ -20,7 +20,6 @@
     "verify": "bun run check && bun run test"
   },
   "devDependencies": {
-    "@dbtlr/tooling": "0.6.0",
     "@types/bun": "latest",
     "typescript": "^7.0.2",
     "vite-plus": "0.3.0"
