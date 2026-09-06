@@ -1,5 +1,5 @@
 ---
-description: Public SDK, invocation phases, host capture, output, and failure behavior for root commands with local options and passthrough.
+description: Public SDK, invocation phases, host capture, output, and failure behavior for root commands with local options, Standard Schema validation, and passthrough.
 ---
 
 # Core reference
@@ -67,7 +67,7 @@ The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `d
 
 A separately consumed value cannot start with a hyphen. A long assignment can contain any string, including hyphens and additional `=` characters. Short-only string options cannot receive a hyphen-prefixed value in this increment.
 
-The parser preserves empty values. It does not validate string domains or apply declared defaults. Standard Schema validation and declared defaults are outside this increment.
+The parser preserves empty values. After parsing, value inputs pass through their declared validation schemas. A declared default fills only an omitted optional value.
 
 ### Short groups
 
@@ -99,6 +99,68 @@ The first bare `--` ends core parsing. Every following token reaches the action 
 
 Passthrough is always available and is empty when no tail exists. It does not satisfy required positional arguments. Core does not parse it as options or arguments, validate it, or transform it. Parsing leaves `host.argv` intact.
 
+## Standard Schema validation
+
+Value options and the required variadic argument accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
+
+```ts
+import { Application } from '@loom/core';
+import { z } from 'zod';
+
+const app = new Application('sizes')
+  .option('minimum', {
+    type: 'string',
+    validate: z
+      .string()
+      .regex(/^[0-9]+$/)
+      .transform(Number),
+    default: '0',
+  })
+  .action(({ options, out }) => {
+    const minimum: number = options.minimum;
+    return out.print(String(minimum));
+  });
+
+await app.run();
+```
+
+`type: 'string'` controls token consumption. The schema receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a schema, supplied values remain strings.
+
+A variadic argument's schema receives the entire `string[]`. It can validate individual elements, enforce collection rules, or transform the collection into a different shape. For example, `z.array(z.string()).transform(files => files.length)` produces a numeric argument value. Passthrough never enters this pipeline.
+
+`ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase schema details; `satisfies` preserves inference.
+
+### Absence and defaults
+
+| Declaration and input                       | Action value or failure                           |
+| ------------------------------------------- | ------------------------------------------------- |
+| Optional value omitted, no declared default | `undefined`; schema is not called                 |
+| Optional value omitted, declared default    | The validated default output                      |
+| Supplied value, including an empty string   | Its validated output or input issues              |
+| `required: true` value option omitted       | Input error; no dispatch                          |
+| Required input with a declared default      | Developer declaration error                       |
+| Invalid declared default                    | Developer declaration error, even when overridden |
+
+Defaults use the schema's input type, not its output type. In the example, `default: '0'` is valid and `default: 0` is a type error. Without a schema, a value default must be a string.
+
+Omission does not invoke schema-internal defaults. An explicitly declared `default: undefined` does enter the schema when its input type accepts `undefined`. Successful schema outputs retain their type, including `undefined`; core does not replace them or validate them a second time.
+
+Every `run()` checks the complete declarations, then validates all declared defaults before parsing invocation tokens. It awaits asynchronous defaults and reuses their transformed outputs for that invocation. Invalid defaults report the affected declaration, the schema explanation, and a correction with exit code 1. Default results are not cached across invocations.
+
+Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. Schema objects and default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
+
+### Issues and validator failures
+
+Returned schema issues prevent dispatch and produce exit code 2. Core collects them across supplied inputs in authoring order, preserving each schema's own issue order. Async completion timing does not change diagnostic order. Each message identifies the argument or option and includes the schema explanation and any issue path. An empty issues array still denotes failure.
+
+CLI structure errors, such as unknown options, repeated single-value options, or missing required positional values, occur before schema validation. They retain their existing diagnostics.
+
+A validator that throws, rejects its promise, or returns a malformed result produces a developer error with exit code 1. Its diagnostic identifies the affected input and asks the author to fix the validator. Validation stops immediately and the action does not run. This failure is distinct from returned operator-input issues.
+
+### Example coverage
+
+[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes files at or above the byte threshold and totals only retained files. No retained files produces no file rows and a zero total when requested.
+
 ## Invocation
 
 `run(options?)` returns `Promise<ExitCode>` and sets the same `process.exitCode`. It resolves execution failures through the output path.
@@ -112,7 +174,7 @@ Passthrough is always available and is empty when no tail exists. It does not sa
 Each invocation follows this order:
 
 1. Capture host facts and apply overrides.
-2. Build and validate the Command graph.
+2. Build and validate the Command graph, including every declared default.
 3. Copy invocation tokens for input processing.
 4. Route to the selected Command.
 5. Validate its inputs.
@@ -165,4 +227,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Schemas, named commands, global options, stdin selection, custom renderers, and plugins are outside this increment.
+Named commands, global options, optional scalar arguments, repeated options, stdin selection, custom renderers, and plugins are outside this increment.

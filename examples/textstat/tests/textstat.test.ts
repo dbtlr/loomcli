@@ -92,8 +92,48 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
     'missing-fixture.txt',
   ]);
   expect(result).toEqual({
-    status: 1,
-    stderr: `Unsupported metric "${metric}". Use bytes, words, or lines.\n`,
+    status: 2,
+    stderr: 'Invalid input: Option "--metric": Use bytes, words, or lines.\n',
     stdout: '',
   });
 });
+
+test.each([
+  ['0', '0\tempty.txt\n2\tsmall.txt\n5\tlarge.txt\n7\ttotal\n'],
+  ['0002', '2\tsmall.txt\n5\tlarge.txt\n7\ttotal\n'],
+  ['3', '5\tlarge.txt\n5\ttotal\n'],
+  ['6', '0\ttotal\n'],
+])(
+  'textstat uses transformed minimum %s with inclusive byte filtering and retained totals',
+  (minimum, stdout) => {
+    const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-schema-'));
+    try {
+      writeFileSync(join(directory, 'empty.txt'), '');
+      writeFileSync(join(directory, 'small.txt'), 'é');
+      writeFileSync(join(directory, 'large.txt'), 'hello');
+      expect(
+        invoke(
+          new URL('../dist/main.js', import.meta.url),
+          ['empty.txt', 'small.txt', 'large.txt', '--min-bytes', minimum, '--total'],
+          { cwd: directory },
+        ),
+      ).toEqual({ status: 0, stderr: '', stdout });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  },
+);
+
+test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
+  'textstat rejects minimum %j before file access',
+  (minimum) => {
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [
+      `--min-bytes=${minimum}`,
+      'missing-fixture.txt',
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Option "--min-bytes":');
+    expect(result.stderr).not.toContain('Cannot read file');
+  },
+);

@@ -1,6 +1,8 @@
 /// <reference types="node" preserve="true" />
 import type { Readable, Writable } from 'node:stream';
 
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
 type LowercaseLetter =
   | 'a'
   | 'b'
@@ -32,6 +34,14 @@ type ShortAlias = LowercaseLetter | Uppercase<LowercaseLetter>;
 type OptionSpelling =
   | { short?: ShortAlias; shortOnly?: false }
   | { short: ShortAlias; shortOnly: true };
+
+type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
+type SchemaOutput<Schema, Raw> = Schema extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<Schema>
+  : Raw;
+type SchemaInput<Schema> = Schema extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<Schema>
+  : string;
 
 /** A required record key excludes open strings; distribution rejects each union member. */
 export type NameConstraint<Name extends string, Whole extends string = Name> =
@@ -71,13 +81,45 @@ export interface Out {
   error(message: string): Promise<void>;
   fatal(message: string): never;
 }
-export type StringOption = OptionSpelling & { type: 'string'; polarity?: never };
+export type StringOption = OptionSpelling &
+  Presence & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+export interface ArgumentConfig {
+  variadic: true;
+  required: true;
+  validate?: StandardSchemaV1;
+  default?: never;
+}
+export type ValidatedValue<Config, Raw> = 'validate' extends keyof Config
+  ? SchemaOutput<Config['validate'], Raw>
+  : Raw;
+export type DefaultConstraint<Config> = Config extends { default: infer Default }
+  ? [Default] extends ['validate' extends keyof Config ? SchemaInput<Config['validate']> : string]
+    ? unknown
+    : never
+  : unknown;
+export type ArgumentValue<Config extends ArgumentConfig> = ValidatedValue<Config, string[]>;
 export type BooleanOption =
-  | (OptionSpelling & { type: 'boolean'; polarity?: 'positive' | 'negative' })
-  | { type: 'boolean'; polarity: 'both'; short?: ShortAlias; shortOnly?: false };
+  | (OptionSpelling & {
+      type: 'boolean';
+      validate?: never;
+      default?: never;
+      required?: never;
+      polarity?: 'positive' | 'negative';
+    })
+  | {
+      type: 'boolean';
+      validate?: never;
+      default?: never;
+      required?: never;
+      polarity: 'both';
+      short?: ShortAlias;
+      shortOnly?: false;
+    };
 export type OptionConfig = StringOption | BooleanOption;
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
-  ? string | undefined
+  ?
+      | ValidatedValue<Config, string>
+      | (Config extends { required: true } | { default: unknown } ? never : undefined)
   : boolean;
 
 export interface ActionContext<Args, Options = {}> {
