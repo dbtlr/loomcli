@@ -46,6 +46,10 @@ function build() {
     case 'foreign-globals-value': {
       return new Application('graph', {}).action(dispatch);
     }
+    case 'null-globals': {
+      // Only an omitted argument means no globals; null is a value, and not a declaration.
+      return new Application('graph', null).action(dispatch);
+    }
     case 'missing-globals': {
       return app.command(new Command('get').action(dispatch)).action(dispatch);
     }

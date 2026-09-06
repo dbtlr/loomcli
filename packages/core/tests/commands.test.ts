@@ -277,6 +277,10 @@ test.each([
     'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
   ],
   [
+    'null-globals',
+    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
+  ],
+  [
     'foreign-globals',
     'Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
   ],
