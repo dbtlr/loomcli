@@ -1,13 +1,74 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { DeclarationError, InputError } from './errors.js';
-import type { OptionDeclaration, OptionValues } from './options.js';
-import type { ArgumentConfig } from './types.js';
+import type { OptionValues } from './options.js';
+import type { ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
 
-export type InputDeclaration =
-  | { kind: 'argument'; name: string; config: ArgumentConfig }
-  | ({ kind: 'option' } & OptionDeclaration);
-export type ValidatedInputs = ReadonlyMap<InputDeclaration, unknown>;
+/**
+ * One declared input, typed by its literal name and its own config. The value type is derived from
+ * the config, never claimed apart from it, so a declaration cannot be written under a value type
+ * that its config does not produce. Untyped readers use the defaults.
+ */
+export interface ArgumentInput<
+  Name extends string = string,
+  Config extends ArgumentConfig = ArgumentConfig,
+> {
+  readonly kind: 'argument';
+  readonly name: Name;
+  readonly config: Config;
+}
+export interface OptionInput<
+  Name extends string = string,
+  Config extends OptionConfig = OptionConfig,
+> {
+  readonly kind: 'option';
+  readonly name: Name;
+  readonly config: Config;
+}
+export type InputDeclaration<Name extends string = string> =
+  | ArgumentInput<Name>
+  | OptionInput<Name>;
+
+/** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
+export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
+
+/**
+ * The validated values of one invocation, keyed by declaration. Only `validateValues` constructs
+ * one, and its two readers are the only places where a validated value takes its declared type, so
+ * every binder reads through them and none asserts on its own.
+ */
+class ValidatedInputs {
+  readonly #values: ReadonlyMap<InputDeclaration, unknown>;
+
+  constructor(values: ReadonlyMap<InputDeclaration, unknown>) {
+    this.#values = values;
+  }
+
+  /** The one-key record this argument contributes to `args`, typed by its own config. */
+  argument<Name extends string, Config extends ArgumentConfig>(
+    input: ArgumentInput<Name, Config>,
+  ): Record<Name, ArgumentValue<Config>> {
+    return this.#field(input);
+  }
+
+  /** The one-key record this option contributes to `options`, typed by its own config. */
+  option<Name extends string, Config extends OptionConfig>(
+    input: OptionInput<Name, Config>,
+  ): Record<Name, OptionValue<Config>> {
+    return this.#field(input);
+  }
+
+  #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
+    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
+    // An object literal with a generic computed key does not type as `Record<Name, _>` either.
+    // So neither the value nor the key can reach `Record<Name, Value>` without this assertion.
+    // It holds because validation stores the output the config declares under this declaration.
+    // The two callers above derive `Value` from that same config.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
+  }
+}
+export type { ValidatedInputs };
 
 function identity(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
@@ -124,7 +185,7 @@ function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Iss
   });
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<ValidatedInputs> {
+export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
   for (const input of inputs) {
     checkDeclaration(input);
   }
@@ -149,7 +210,7 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
 export async function validateValues(
   inputs: readonly InputDeclaration[],
   supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
-  defaults: ValidatedInputs,
+  defaults: DefaultValues,
 ): Promise<ValidatedInputs> {
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
@@ -183,5 +244,5 @@ export async function validateValues(
   if (issues.length > 0) {
     throw new InputError(issues.join('\n'));
   }
-  return values;
+  return new ValidatedInputs(values);
 }

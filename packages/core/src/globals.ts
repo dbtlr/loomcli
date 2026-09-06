@@ -1,7 +1,7 @@
 import { DeclarationError } from './errors.js';
 import { compileOptions } from './options.js';
 import type { DefaultConstraint, NameConstraint, OptionConfig, OptionValue } from './types.js';
-import type { InputDeclaration, ValidatedInputs } from './validation.js';
+import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
 
@@ -52,15 +52,12 @@ class GlobalOptionsBuilder<Options> {
     name: Name,
     config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): GlobalOptions<Options & Record<Name, OptionValue<Config>>> {
-    const declared: OptionConfig = { ...config };
-    const input: InputDeclaration = { config: declared, kind: 'option', name };
+    const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
     const previous = this.#bind;
-    return new GlobalOptionsBuilder([...this.#inputs, input], (values) => {
-      // Validation supplies the declared output, and the computed key is exactly Name.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const value = { [name]: values.get(input) } as Record<Name, OptionValue<Config>>;
-      return { ...previous(values), ...value };
-    });
+    return new GlobalOptionsBuilder([...this.#inputs, input], (values) => ({
+      ...previous(values),
+      ...values.option(input),
+    }));
   }
 }
 
@@ -74,15 +71,6 @@ type GlobalOptions<Options = {}> = Pick<
   typeof declaredTypes | 'option'
 >;
 
-/** Declarations without globals share this value, so their identity checks still agree. */
-const emptyGlobals = new GlobalOptionsBuilder<{}>([], () => ({}));
-
-function defaultGlobals<Globals>(globals: GlobalOptions<Globals> | undefined) {
-  // The shared value declares no options, so it binds an empty record for any omitted Globals.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return globals ?? (emptyGlobals as unknown as GlobalOptions<Globals>);
-}
-
 /** Reads the declarations behind an authored value; anything else is a declaration error. */
 function nodeOf(globals: object): GlobalsNode {
   const node = nodes.get(globals);
@@ -94,14 +82,23 @@ function nodeOf(globals: object): GlobalsNode {
   return node;
 }
 
-function buildGlobals(globals: object): BuiltGlobals {
-  return nodeOf(globals).build();
+/** Absent globals compile to an empty table whose source is `undefined`, like the declarations. */
+function buildGlobals(globals: object | undefined): BuiltGlobals {
+  return globals === undefined ? compileTable([], undefined) : nodeOf(globals).build();
 }
 
-function bindGlobals<Options>(globals: GlobalOptions<Options>, values: ValidatedInputs): Options {
-  // The registered binder belongs to this value, so it produces exactly this value's Options.
+function bindGlobals<Options>(
+  globals: GlobalOptions<Options> | undefined,
+  values: ValidatedInputs,
+): Options {
+  const bound: unknown = globals === undefined ? {} : nodeOf(globals).bind(values);
+  // Last resort: no typed path exists. The public GlobalOptions type hides its declarations.
+  // The registry is the only bridge from a value to its binder, and a WeakMap cannot carry the
+  // Options type of its key. It holds because the registered binder belongs to this value alone.
+  // Its record composes exactly the declarations that its Options type records.
+  // A declaration without globals publishes `Options = {}`, and the empty record is exactly that.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return nodeOf(globals).bind(values) as Options;
+  return bound as Options;
 }
 
 const GlobalOptions: new () => GlobalOptions = class extends GlobalOptionsBuilder<{}> {
@@ -111,4 +108,4 @@ const GlobalOptions: new () => GlobalOptions = class extends GlobalOptionsBuilde
 };
 
 export type { BuiltGlobals };
-export { bindGlobals, buildGlobals, defaultGlobals, GlobalOptions };
+export { bindGlobals, buildGlobals, GlobalOptions };
