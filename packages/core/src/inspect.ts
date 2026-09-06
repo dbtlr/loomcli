@@ -60,19 +60,14 @@ interface Spellings {
 
 /**
  * Reads the spellings out of the compiled table the parser uses, so inspection cannot report a
- * form the parser does not accept. One option owns `--name`, `--no-name`, and one short letter.
+ * form the parser does not accept. Each entry carries its own role, so the naming convention has
+ * one owner: the table that writes it.
  */
 function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Spellings {
   const spellings: Spellings = { long: null, negative: null, short: null };
   for (const [spelling, option] of table) {
     if (option.name === name) {
-      if (spelling === `--${name}`) {
-        spellings.long = spelling;
-      } else if (spelling === `--no-${name}`) {
-        spellings.negative = spelling;
-      } else {
-        spellings.short = spelling;
-      }
+      spellings[option.role] = spelling;
     }
   }
   return spellings;

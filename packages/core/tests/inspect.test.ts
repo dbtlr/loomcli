@@ -148,6 +148,29 @@ test('reports the accepted spellings of each polarity and of a short-only option
   ]);
 });
 
+test('reads each spelling role from the table, including a name that begins with "no-"', () => {
+  expect(invokeInspect('roles').root.options).toEqual([
+    {
+      long: '--no-color',
+      name: 'no-color',
+      negative: '--no-no-color',
+      polarity: 'both',
+      short: '-n',
+      type: 'boolean',
+    },
+    {
+      default: none,
+      long: null,
+      multiple: true,
+      name: 'field',
+      required: false,
+      short: '-F',
+      type: 'string',
+      validated: false,
+    },
+  ]);
+});
+
 test('wraps a declared default and leaves an undeclared one undefined', () => {
   const root = invokeInspect('defaults').root;
   expect(root.options).toEqual([

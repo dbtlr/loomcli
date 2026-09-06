@@ -17,9 +17,14 @@ function emptyValues(): OptionValues {
   return { booleans: new Map(), lists: new Map(), strings: new Map() };
 }
 
-type OptionSpelling =
+/** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
+type SpellingRole = 'long' | 'negative' | 'short';
+
+type OptionForm =
   | { type: 'string'; name: string; multiple: boolean }
   | { type: 'boolean'; name: string; value: boolean };
+
+type OptionSpelling = OptionForm & { role: SpellingRole };
 
 function validateDeclaration({ name, config }: OptionDeclaration) {
   if (typeof name !== 'string') {
@@ -97,23 +102,28 @@ export function compileOptions(declarations: readonly OptionDeclaration[], subje
       );
     }
     names.add(name);
-    const positive: OptionSpelling =
+    const positive: OptionForm =
       config.type === 'string'
         ? { multiple: config.multiple === true, name, type: 'string' }
         : { name, type: 'boolean', value: config.polarity !== 'negative' };
     if (!config.shortOnly) {
       if (config.type === 'string' || config.polarity !== 'negative') {
-        addSpelling(spellings, `--${name}`, positive);
+        addSpelling(spellings, `--${name}`, { ...positive, role: 'long' });
       }
       if (
         config.type === 'boolean' &&
         (config.polarity === 'both' || config.polarity === 'negative')
       ) {
-        addSpelling(spellings, `--no-${name}`, { name, type: 'boolean', value: false });
+        addSpelling(spellings, `--no-${name}`, {
+          name,
+          role: 'negative',
+          type: 'boolean',
+          value: false,
+        });
       }
     }
     if (config.short !== undefined) {
-      addSpelling(spellings, `-${config.short}`, positive);
+      addSpelling(spellings, `-${config.short}`, { ...positive, role: 'short' });
     }
   }
   return spellings;

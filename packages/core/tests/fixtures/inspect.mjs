@@ -50,6 +50,15 @@ function polarity() {
     .action(dispatch);
 }
 
+// A name that begins with "no-" gives the negative form a doubled prefix, so the roles the table
+// Records are the only reliable reading of each spelling.
+function roles() {
+  return new Application('roles')
+    .option('no-color', { polarity: 'both', short: 'n', type: 'boolean' })
+    .option('field', { multiple: true, short: 'F', shortOnly: true, type: 'string' })
+    .action(dispatch);
+}
+
 function defaults() {
   return new Application('defaults')
     .option('depth', { default: '1', type: 'string' })
@@ -64,7 +73,7 @@ function invalid() {
   return new Application('invalid', globals).command(new Command('get', globals)).action(dispatch);
 }
 
-const graphs = { defaults, invalid, jsonkit, nested, polarity };
+const graphs = { defaults, invalid, jsonkit, nested, polarity, roles };
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 
