@@ -1,11 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 
 import { Application } from '@loom/core';
-
-import { textstat } from '../../examples/textstat/dist/application.js';
 
 const scenario = process.argv[2];
 if (scenario === 'capture') {
@@ -141,12 +136,4 @@ if (scenario === 'capture') {
     .action(({ args, out }) => out.print(args.values.join(',')));
   await app.run({ host: { argv: ['one'] } });
   await app.run({ host: { argv: ['two'] } });
-} else if (scenario === 'textstat') {
-  const directory = mkdtempSync(join(tmpdir(), 'loom-host-'));
-  try {
-    writeFileSync(join(directory, '-notes.txt'), 'three');
-    await textstat.run({ host: { argv: ['./-notes.txt'], cwd: directory } });
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
 }

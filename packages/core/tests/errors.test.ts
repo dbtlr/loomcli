@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from './process.js';
+import { invoke } from '../../../scripts/test-process.js';
 
 test.each([
   [
@@ -58,7 +58,7 @@ test.each([
 ] satisfies [string, string[], number, string][])(
   '%s completes without rejecting or dispatching after a failure',
   (scenario, args, status, stderr) => {
-    expect(invoke('tests/fixtures/errors.mjs', [scenario, ...args])).toEqual({
+    expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), [scenario, ...args])).toEqual({
       status,
       stderr,
       stdout: `assembled\nresolved:${status}\n`,
@@ -67,17 +67,9 @@ test.each([
 );
 
 test('catching FatalError prevents failure and eager printing', () => {
-  expect(invoke('tests/fixtures/errors.mjs', ['caught-fatal'])).toEqual({
+  expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), ['caught-fatal'])).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ndispatched\nresolved:0\n',
-  });
-});
-
-test('textstat reports a file-read failure through expected error output', () => {
-  expect(invoke('examples/textstat/dist/main.js', ['missing-fixture.txt'])).toEqual({
-    status: 1,
-    stderr: 'Cannot read file: missing-fixture.txt\n',
-    stdout: '',
   });
 });

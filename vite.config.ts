@@ -26,7 +26,13 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ['packages/core/src/**', 'examples/textstat/src/**', 'tests/**', 'scripts/**'],
+        files: [
+          'packages/core/src/**',
+          'examples/textstat/src/**',
+          'packages/*/tests/**',
+          'examples/*/tests/**',
+          'scripts/**',
+        ],
         rules: {
           // Command contracts use named exports, Node streams, and ordered async calls.
           'eslint/func-style': ['error', 'declaration', { allowArrowFunctions: true }],
@@ -68,7 +74,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['tests/**', 'scripts/**'],
+        files: ['packages/*/tests/**', 'examples/*/tests/**', 'scripts/**'],
         rules: {
           // Fixtures use literal expectations, stream sentinels, and callback failures.
           'eslint/max-params': 'off',
@@ -79,7 +85,11 @@ export default defineConfig({
         },
       },
       {
-        files: ['tests/fixtures/**', 'tests/type-consumer/**'],
+        files: [
+          'packages/*/tests/fixtures/**',
+          'packages/*/tests/type-consumer/**',
+          'examples/*/tests/fixtures/**',
+        ],
         rules: {
           // These consumers exercise ignored promises, values, and rejected SDK calls.
           'eslint/no-new': 'off',
@@ -90,8 +100,8 @@ export default defineConfig({
       },
       {
         files: [
-          'tests/**/*.ts',
-          'tests/**/*.tsx',
+          '**/tests/**/*.ts',
+          '**/tests/**/*.tsx',
           '**/*.test.ts',
           '**/*.test.tsx',
           '**/*.spec.ts',
@@ -162,6 +172,6 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
   },
 });

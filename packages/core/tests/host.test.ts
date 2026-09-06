@@ -1,9 +1,9 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from './process.js';
+import { invoke } from '../../../scripts/test-process.js';
 
 test('capture reads each override once and shares stderr with fallback reporting', () => {
-  const result = invoke('tests/fixtures/host.mjs', ['capture-once']);
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['capture-once']);
   expect(result.status).toBe(1);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
@@ -18,7 +18,7 @@ test('capture reads each override once and shares stderr with fallback reporting
 });
 
 test('automatic capture occurs at run entry and preserves argv and environment snapshots', () => {
-  const result = invoke('tests/fixtures/host.mjs', ['capture']);
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['capture']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
@@ -32,7 +32,7 @@ test('automatic capture occurs at run entry and preserves argv and environment s
 });
 
 test('host overrides replace fields, copy values, and never consume stdin', () => {
-  const result = invoke('tests/fixtures/host.mjs', ['overrides']);
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['overrides']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
@@ -51,7 +51,7 @@ test('host overrides replace fields, copy values, and never consume stdin', () =
 });
 
 test('build diagnostics use the captured output override', () => {
-  expect(invoke('tests/fixtures/host.mjs', ['build-output'])).toEqual({
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['build-output'])).toEqual({
     status: 1,
     stderr: '',
     stdout: `${JSON.stringify({
@@ -62,17 +62,9 @@ test('build diagnostics use the captured output override', () => {
 });
 
 test('an application can run again with new invocation inputs', () => {
-  expect(invoke('tests/fixtures/host.mjs', ['reuse'])).toEqual({
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['reuse'])).toEqual({
     status: 0,
     stderr: '',
     stdout: 'one\ntwo\n',
-  });
-});
-
-test('textstat uses the supplied cwd and supports an explicit hyphenated relative path', () => {
-  expect(invoke('tests/fixtures/host.mjs', ['textstat'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: '5\t./-notes.txt\n',
   });
 });

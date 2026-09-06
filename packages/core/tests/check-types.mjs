@@ -7,7 +7,7 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('../../../', import.meta.url));
 const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = typescript;
@@ -36,7 +36,7 @@ function compile(cwd) {
   return run(process.execPath, [compiler, '-p', 'tsconfig.json', '--pretty', 'false'], cwd);
 }
 
-const source = join(root, 'tests/type-consumer');
+const source = fileURLToPath(new URL('type-consumer', import.meta.url));
 const workspace = compile(source);
 assert.equal(workspace.status, 0, workspace.output);
 

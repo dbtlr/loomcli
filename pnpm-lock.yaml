@@ -109,9 +109,6 @@ importers:
 
   .:
     devDependencies:
-      '@loom/core':
-        specifier: workspace:*
-        version: link:packages/core
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
