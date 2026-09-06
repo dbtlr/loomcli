@@ -1,10 +1,10 @@
 import type { ActionHandler } from '@loom/core';
 
-import type { root } from '../commands/root.js';
+import type { jsonkit } from '../application.js';
 import { describeKind, isRecord } from '../kinds.js';
 import { readJson } from '../read-json.js';
 
-export const summarize: ActionHandler<typeof root> = async ({ options, host, out }) => {
+export const summarize: ActionHandler<typeof jsonkit> = async ({ options, host, out }) => {
   const document = await readJson(options.file, host, out);
   await out.print(describeKind(document));
   if (isRecord(document)) {

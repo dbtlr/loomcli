@@ -91,12 +91,22 @@ test.each(['missing', 'nested.missing', 'tags.2', 'name.length', 'tags.first'])(
   },
 );
 
-test('jsonkit lists the keys of an object in document order', () => {
+test('jsonkit lists the keys of an object in JavaScript property order', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['keys', '--file', 'doc.json'], { cwd })).toEqual({
       status: 0,
       stderr: '',
       stdout: 'name\ntags\nnested\ncount\nok\nnone\n',
+    });
+  });
+});
+
+test('jsonkit lists integer-like keys first, as JavaScript orders them', () => {
+  withDocuments({ 'doc.json': '{"b": 1, "2": 2, "a": 3}' }, (cwd) => {
+    expect(invoke(main, ['keys', '--file', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '2\nb\na\n',
     });
   });
 });

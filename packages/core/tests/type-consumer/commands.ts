@@ -2,6 +2,7 @@ import { Application, Command, GlobalOptions } from '@loom/core';
 import { z } from 'zod';
 
 import { getValue } from './get-value.js';
+import { summary } from './summary.js';
 
 export const globals = new GlobalOptions()
   .option('file', { required: true, short: 'f', type: 'string' })
@@ -27,10 +28,6 @@ export const keys = new Command('keys', globals).action(({ args, options, passth
 
 export const jsonkit = new Application('jsonkit', globals)
   .option('pretty', { short: 'p', type: 'boolean' })
-  .action(({ options }) => {
-    const file: string = options.file;
-    const pretty: boolean = options.pretty;
-    return { file, pretty };
-  })
   .command(get)
-  .command(keys);
+  .command(keys)
+  .action(summary);

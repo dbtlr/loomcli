@@ -127,24 +127,34 @@ The action `options` object is the intersection of the global values and the sel
 
 Globals are a value, so a Command in its own module knows the global types without importing the application. Module dependencies flow one way: globals, then commands, then the application. The `jsonkit` example uses this layout.
 
-| Module                                        | Contents                                                |
-| --------------------------------------------- | ------------------------------------------------------- |
-| `src/globals.ts`                              | the shared `GlobalOptions` value                        |
-| `src/commands/root.ts`                        | `new Application('jsonkit', globals).action(summarize)` |
-| `src/commands/get.ts`, `src/commands/keys.ts` | one `Command` each                                      |
-| `src/actions/*.ts`                            | one `ActionHandler<typeof declaration>` each            |
-| `src/application.ts`                          | `root.command(get).command(keys)`                       |
-| `src/main.ts`                                 | `await jsonkit.run()`                                   |
+| Module                                        | Contents                                                                                     |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/globals.ts`                              | the shared `GlobalOptions` value                                                             |
+| `src/commands/get.ts`, `src/commands/keys.ts` | one `Command` each                                                                           |
+| `src/actions/*.ts`                            | one `ActionHandler<typeof declaration>` each                                                 |
+| `src/application.ts`                          | the root: `new Application('jsonkit', globals).command(get).command(keys).action(summarize)` |
+| `src/main.ts`                                 | `await jsonkit.run()`                                                                        |
 
-An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types.
+The application module is the root's authoring file. It declares the root action and attaches the children, and it is the declaration the root action type-imports. One Application value exists, so there is no separate root value to run by mistake.
+
+An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types. Register that action with the last call in the chain. TypeScript resolves the declared type of a variable from its outermost call without checking that call's arguments, but it checks the arguments of every inner call, so a type-imported handler passed to an inner call reports a circular reference. For the root, attach children first and call `action()` last.
 
 ```ts
 // src/commands/get.ts
+import { Command } from '@loom/core';
+
+import { getValue } from '../actions/get-value.js';
+import { globals } from '../globals.js';
+
 export const get = new Command('get', globals)
   .argument('path', { required: true })
   .action(getValue);
 
 // src/actions/get-value.ts
+import type { ActionHandler } from '@loom/core';
+
+import type { get } from '../commands/get.js';
+
 export const getValue: ActionHandler<typeof get> = async ({ args, options, out }) => {
   const path: string = args.path;
   const file: string = options.file;
@@ -332,4 +342,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Repeated options, optional scalar arguments, nested and actionless command groups, help output, stdin selection, custom renderers, and plugins are outside this increment.
+Options that collect repeated values, optional scalar arguments, nested and actionless command groups, help output, stdin selection, custom renderers, and plugins are outside this increment.
