@@ -138,13 +138,15 @@ export class Output {
 }
 
 export async function reportOutputFailure(stderr: Writable): Promise<void> {
-  const destination = new Destination(stderr);
   try {
-    await destination.write('Internal error: Could not write invocation output.\n');
+    const destination = new Destination(stderr);
+    try {
+      await destination.write('Internal error: Could not write invocation output.\n');
+    } finally {
+      await setImmediate();
+      destination.dispose();
+    }
   } catch {
     // A failed fallback ends reporting; it never re-enters rendering.
-  } finally {
-    await setImmediate();
-    destination.dispose();
   }
 }

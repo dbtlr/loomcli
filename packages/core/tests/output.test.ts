@@ -59,3 +59,11 @@ test('a failure while rendering an exception uses plain fallback output', () => 
     stdout: '{"code":1,"events":[],"listeners":0}\n',
   });
 });
+
+test('an unusable fallback destination still resolves the failure status', () => {
+  expect(invoke(new URL('fixtures/reporting.mjs', import.meta.url))).toEqual({
+    status: 1,
+    stderr: '',
+    stdout: 'resolved:1\n',
+  });
+});

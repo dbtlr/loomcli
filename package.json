@@ -18,7 +18,7 @@
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && vp test --run",
-    "verify": "pnpm run check && pnpm run test",
+    "verify": "pnpm run check && vp test --run",
     "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/textstat/tsconfig.json",
     "check:types": "node packages/core/tests/check-types.mjs"
   },

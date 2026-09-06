@@ -68,3 +68,25 @@ test('an application can run again with new invocation inputs', () => {
     stdout: 'one\ntwo\n',
   });
 });
+
+test('automatic terminal capture treats zero dimensions as unavailable and retains positive sizes', () => {
+  const result = invoke(new URL('fixtures/terminal.mjs', import.meta.url));
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toEqual({
+    stderr: { columns: 100, isTTY: true },
+    stdin: { isTTY: false },
+    stdout: { isTTY: true, rows: 24 },
+  });
+});
+
+test('environment snapshots preserve key spelling and use case-sensitive lookup on every OS', () => {
+  const result = invoke(new URL('fixtures/environment.mjs', import.meta.url));
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toEqual({
+    captured: 'captured',
+    capturedUppercase: null,
+    nativeUppercase: process.platform === 'win32' ? 'captured' : null,
+  });
+});

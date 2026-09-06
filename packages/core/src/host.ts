@@ -7,6 +7,10 @@ function isTerminal(stream: { isTTY?: boolean }): boolean {
   return stream.isTTY === true;
 }
 
+function dimension(value: number | undefined): number | undefined {
+  return value === 0 ? undefined : value;
+}
+
 export function captureHost(overrides: RunOptions['host'], stderr: Writable): Host {
   const { argv, cwd, env, stdin, stdout, terminal } = overrides ?? {};
   return {
@@ -24,15 +28,15 @@ export function captureHost(overrides: RunOptions['host'], stderr: Writable): Ho
         }
       : {
           stderr: {
-            columns: process.stderr.columns,
+            columns: dimension(process.stderr.columns),
             isTTY: isTerminal(process.stderr),
-            rows: process.stderr.rows,
+            rows: dimension(process.stderr.rows),
           },
           stdin: { isTTY: isTerminal(process.stdin) },
           stdout: {
-            columns: process.stdout.columns,
+            columns: dimension(process.stdout.columns),
             isTTY: isTerminal(process.stdout),
-            rows: process.stdout.rows,
+            rows: dimension(process.stdout.rows),
           },
         },
   };

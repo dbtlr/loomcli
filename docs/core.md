@@ -63,7 +63,9 @@ The application can run again. Each call captures host facts and builds from its
 | `stdout`, `stderr` | Node `Writable` connections                                   |
 | `terminal`         | Each stream's `isTTY` value, plus output `columns` and `rows` |
 
-An override replaces its whole field. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Missing output dimensions are `undefined`.
+An override replaces its whole field. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
+
+The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
 
 Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads.
 
@@ -88,6 +90,6 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 `out.fatal()` synchronously throws the exported `FatalError` without an eager write. An uncaught `FatalError` prints its message once and returns code 1. A caught fatal error does not itself change success. Other exceptions use an internal-error diagnostic.
 
-If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If that write also fails, reporting stops.
+If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
 Options, schemas, named commands, stdin selection, custom renderers, and plugins are outside this increment.

@@ -24,12 +24,15 @@ test('textstat counts file bytes through the built public package', () => {
   }
 });
 
-test('textstat reports a file-read failure through expected error output', () => {
-  expect(invoke(new URL('../dist/main.js', import.meta.url), ['missing-fixture.txt'])).toEqual({
-    status: 1,
-    stderr: 'Cannot read file: missing-fixture.txt\n',
-    stdout: '',
-  });
+test.each([
+  ['missing-fixture.txt', 'ENOENT'],
+  ['.', 'EISDIR'],
+])('textstat preserves the file-read reason for %s', (file, reason) => {
+  const result = invoke(new URL('../dist/main.js', import.meta.url), [file]);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(`Cannot read file: ${file}: `);
+  expect(result.stderr).toContain(reason);
 });
 
 test('textstat uses the supplied cwd and supports an explicit hyphenated relative path', () => {
