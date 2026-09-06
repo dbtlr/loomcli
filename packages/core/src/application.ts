@@ -2,7 +2,7 @@ import type { Writable } from 'node:stream';
 
 import {
   attachChild,
-  CommandBuilder,
+  buildGraph,
   collectInputs,
   declareAction,
   declareArgument,
@@ -78,7 +78,7 @@ class ApplicationBuilder<
     Globals,
     AfterArgument<State>
   > {
-    const input: ArgumentInput<Name, ArgumentValue<Config>> = {
+    const input: ArgumentInput<Name, Config> = {
       config: { ...config },
       kind: 'argument',
       name,
@@ -93,7 +93,7 @@ class ApplicationBuilder<
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    const input: OptionInput<Name, OptionValue<Config>> = {
+    const input: OptionInput<Name, Config> = {
       config: { ...config },
       kind: 'option',
       name,
@@ -134,8 +134,7 @@ class ApplicationBuilder<
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      // The root builds like any Command, so the graph starts from a builder over its state.
-      const graph = new CommandBuilder(this.#root).buildGraph();
+      const graph = buildGraph(this.#root);
       const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
       const selected = await selectCommand(graph, [...host.argv], defaults);
       await selected.command.dispatch({
@@ -201,9 +200,9 @@ interface ApplicationConstructor {
 }
 
 /**
- * The runtime class behind the public constructor. `Globals` defaults to `{}`, so the name-only
- * constructor signature instantiates it without a cast, and the globals signature infers it from
- * the supplied value.
+ * The runtime class behind the public constructor. It is generic so that an instance's `Globals`
+ * is the type of the value it holds, with `{}` standing in when there is none, which is what each
+ * signature of the constructor interface publishes.
  */
 class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
   constructor(name: string, globals?: GlobalOptions<Globals>) {

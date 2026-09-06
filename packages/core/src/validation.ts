@@ -2,56 +2,73 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { DeclarationError, InputError } from './errors.js';
 import type { OptionValues } from './options.js';
-import type { ArgumentConfig, OptionConfig } from './types.js';
-
-/** Phantom key. It records the value type a declaration produces and holds no runtime value. */
-declare const declaredValue: unique symbol;
+import type { ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
 
 /**
- * One declared input. `Name` is its literal name and `Value` the type validation produces for it.
- * Both are fixed where the declaration is authored, so a validated value can take its declared type
- * in exactly one place: `ValidatedInputs.field()`. Untyped readers use the defaults.
+ * One declared input, typed by its literal name and its own config. The value type is derived from
+ * the config, never claimed apart from it, so a declaration cannot be written under a value type
+ * that its config does not produce. Untyped readers use the defaults.
  */
-export interface ArgumentInput<Name extends string = string, Value = unknown> {
-  readonly [declaredValue]?: Value;
-  kind: 'argument';
-  name: Name;
-  config: ArgumentConfig;
+export interface ArgumentInput<
+  Name extends string = string,
+  Config extends ArgumentConfig = ArgumentConfig,
+> {
+  readonly kind: 'argument';
+  readonly name: Name;
+  readonly config: Config;
 }
-export interface OptionInput<Name extends string = string, Value = unknown> {
-  readonly [declaredValue]?: Value;
-  kind: 'option';
-  name: Name;
-  config: OptionConfig;
+export interface OptionInput<
+  Name extends string = string,
+  Config extends OptionConfig = OptionConfig,
+> {
+  readonly kind: 'option';
+  readonly name: Name;
+  readonly config: Config;
 }
-export type InputDeclaration<Name extends string = string, Value = unknown> =
-  | ArgumentInput<Name, Value>
-  | OptionInput<Name, Value>;
+export type InputDeclaration<Name extends string = string> =
+  | ArgumentInput<Name>
+  | OptionInput<Name>;
 
 /** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
 export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
 
 /**
- * The validated values of one invocation, keyed by declaration. `field()` is the only place where a
- * validated value takes its declared type, so every binder reads through it and none asserts alone.
+ * The validated values of one invocation, keyed by declaration. Only `validateValues` constructs
+ * one, and its two readers are the only places where a validated value takes its declared type, so
+ * every binder reads through them and none asserts on its own.
  */
-export class ValidatedInputs {
+class ValidatedInputs {
   readonly #values: ReadonlyMap<InputDeclaration, unknown>;
 
   constructor(values: ReadonlyMap<InputDeclaration, unknown>) {
     this.#values = values;
   }
 
-  /** The one-key record this declaration contributes to an args or options object. */
-  field<Name extends string, Value>(input: InputDeclaration<Name, Value>): Record<Name, Value> {
+  /** The one-key record this argument contributes to `args`, typed by its own config. */
+  argument<Name extends string, Config extends ArgumentConfig>(
+    input: ArgumentInput<Name, Config>,
+  ): Record<Name, ArgumentValue<Config>> {
+    return this.#field(input);
+  }
+
+  /** The one-key record this option contributes to `options`, typed by its own config. */
+  option<Name extends string, Config extends OptionConfig>(
+    input: OptionInput<Name, Config>,
+  ): Record<Name, OptionValue<Config>> {
+    return this.#field(input);
+  }
+
+  #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
     // Last resort: no typed path exists. The map stores every validated value as `unknown`.
-    // An object literal with a generic computed key types as a string index, not `Record<Name, _>`.
-    // Neither the value nor the key can reach `Record<Name, Value>` without this assertion.
-    // It holds because validation stores the declared output under this exact declaration.
+    // An object literal with a generic computed key does not type as `Record<Name, _>` either.
+    // So neither the value nor the key can reach `Record<Name, Value>` without this assertion.
+    // It holds because validation stores the output the config declares under this declaration.
+    // The two callers above derive `Value` from that same config.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
   }
 }
+export type { ValidatedInputs };
 
 function identity(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;

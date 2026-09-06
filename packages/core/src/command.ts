@@ -1,6 +1,6 @@
 import { DeclarationError, InputError } from './errors.js';
 import type { BuiltGlobals, GlobalOptions } from './globals.js';
-import { bindGlobals, buildGlobals, defaultGlobals } from './globals.js';
+import { bindGlobals, buildGlobals } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type {
   Action,
@@ -110,12 +110,13 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
 /**
  * Everything one Command declaration holds. The transitions below copy it with fields replaced, and
  * the Command and Application builders share them, so one declaration call has one implementation.
+ * Absent globals stay `undefined`, so every declaration without globals agrees on identity.
  */
 export interface CommandState<Args, Options, Globals> {
   actions: readonly Action<Args, Globals & Options>[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
-  globals: GlobalOptions<Globals>;
+  globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
   name: string | null;
@@ -130,7 +131,7 @@ export function freshState<Globals>(
     actions: [],
     bind: () => ({ args: {}, options: {} }),
     children: [],
-    globals: defaultGlobals(globals),
+    globals,
     inputs: [],
     late: [],
     name,
@@ -145,34 +146,46 @@ function recordLate<Args, Options, Globals>(
   return state.actions.length > 0 ? [...state.late, declaration] : state.late;
 }
 
-/** The declared value joins `args` under its literal name, typed by the validation seam. */
-export function declareArgument<Args, Options, Globals, Name extends string, Value>(
+/** The declared value joins `args` under its literal name, typed by its own config. */
+export function declareArgument<
+  Args,
+  Options,
+  Globals,
+  Name extends string,
+  Config extends ArgumentConfig,
+>(
   state: CommandState<Args, Options, Globals>,
-  input: ArgumentInput<Name, Value>,
-): CommandState<Args & Record<Name, Value>, Options, Globals> {
+  input: ArgumentInput<Name, Config>,
+): CommandState<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
   const previous = state.bind;
   return {
     ...state,
     bind: (values) => {
       const bound = previous(values);
-      return { ...bound, args: { ...bound.args, ...values.field(input) } };
+      return { ...bound, args: { ...bound.args, ...values.argument(input) } };
     },
     inputs: [...state.inputs, input],
     late: recordLate(state, { input, kind: 'input' }),
   };
 }
 
-/** The declared value joins `options` under its literal name, typed by the validation seam. */
-export function declareOption<Args, Options, Globals, Name extends string, Value>(
+/** The declared value joins `options` under its literal name, typed by its own config. */
+export function declareOption<
+  Args,
+  Options,
+  Globals,
+  Name extends string,
+  Config extends OptionConfig,
+>(
   state: CommandState<Args, Options, Globals>,
-  input: OptionInput<Name, Value>,
-): CommandState<Args, Options & Record<Name, Value>, Globals> {
+  input: OptionInput<Name, Config>,
+): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   const previous = state.bind;
   return {
     ...state,
     bind: (values) => {
       const bound = previous(values);
-      return { ...bound, options: { ...bound.options, ...values.field(input) } };
+      return { ...bound, options: { ...bound.options, ...values.option(input) } };
     },
     inputs: [...state.inputs, input],
     late: recordLate(state, { input, kind: 'input' }),
@@ -198,6 +211,151 @@ export function attachChild<Args, Options, Globals>(
   };
 }
 
+/** The untyped part of a declaration, which every build check reads regardless of its generics. */
+type Declared = Pick<
+  CommandState<unknown, unknown, unknown>,
+  'children' | 'inputs' | 'late' | 'name'
+>;
+
+/** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
+function checkDeclarationOrder(state: Declared): void {
+  const { name } = state;
+  const late = state.late[0];
+  if (!late) {
+    return;
+  }
+  if (late.kind === 'input') {
+    throw new DeclarationError(
+      `${sentenceOf(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
+    );
+  }
+  // Child identity and names are settled before this call, so the node and its name are valid.
+  throw new DeclarationError(
+    `${sentenceOf(name)} attaches child "${String(nodeOf(name, late.child).name)}" after its action. Attach children before action().`,
+  );
+}
+
+/** Child names are checked before any child builds, so parent diagnostics come first. */
+function collectChildren(state: Declared): [string, CommandNode][] {
+  const attached: [string, CommandNode][] = [];
+  const seen = new Set<string>();
+  for (const child of state.children) {
+    const node = nodeOf(state.name, child);
+    const name = node.name;
+    checkChildName(state.name, name);
+    if (seen.has(name)) {
+      throw new DeclarationError(
+        `${sentenceOf(state.name)} attaches two children named "${name}". Rename or remove one.`,
+      );
+    }
+    seen.add(name);
+    attached.push([name, node]);
+  }
+  return attached;
+}
+
+function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
+  const slots: ArgumentSlot[] = [];
+  const seen = new Set<string>();
+  for (const input of state.inputs.filter((entry) => entry.kind === 'argument')) {
+    if (seen.has(input.name)) {
+      throw new DeclarationError(
+        `Argument "${input.name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
+      );
+    }
+    seen.add(input.name);
+    slots.push({ input, variadic: input.config.variadic === true });
+  }
+  for (let index = 0; index + 1 < slots.length; index += 1) {
+    const slot = slots[index];
+    const next = slots[index + 1];
+    if (slot?.variadic && next) {
+      throw new DeclarationError(
+        `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
+      );
+    }
+  }
+  return slots;
+}
+
+function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: string) {
+  const declarations = state.inputs.filter((input) => input.kind === 'option');
+  for (const declaration of declarations) {
+    if (globals.names.has(declaration.name)) {
+      throw new DeclarationError(
+        `Option "${declaration.name}" is declared as a global option and as a local option on ${subject}. Rename the local option.`,
+      );
+    }
+  }
+  const options = compileOptions(declarations, subject);
+  for (const [spelling, option] of options) {
+    const global = globals.options.get(spelling);
+    if (global) {
+      throw new DeclarationError(
+        `Option spelling "${spelling}" is used by the global option "${global.name}" and the local option "${option.name}" on ${subject}. Change one declaration.`,
+      );
+    }
+  }
+  return options;
+}
+
+/** Validates one declaration against the shared globals table and compiles it for dispatch. */
+export function buildCommand<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  globals: BuiltGlobals,
+): BuiltCommand {
+  const { actions, name } = state;
+  const subject = subjectOf(name);
+  if (state.globals !== globals.source) {
+    throw new DeclarationError(
+      `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
+    );
+  }
+  const attached = collectChildren(state);
+  checkDeclarationOrder(state);
+  const slots = collectArguments(state, subject);
+  const first = slots[0];
+  const child = attached[0];
+  if (first && child) {
+    throw new DeclarationError(
+      `${sentenceOf(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
+    );
+  }
+  if (actions.length > 1) {
+    throw new DeclarationError(`${sentenceOf(name)} has multiple actions. Register one action.`);
+  }
+  const action = actions[0];
+  if (!action) {
+    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+  }
+  const options = compileLocalOptions(state, globals, subject);
+  return {
+    arguments: slots,
+    children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
+    dispatch: ({ host, out, passthrough, values }) => {
+      const bound = state.bind(values);
+      return action({
+        args: bound.args,
+        host,
+        options: { ...bindGlobals(state.globals, values), ...bound.options },
+        out,
+        passthrough,
+      });
+    },
+    inputs: state.inputs,
+    name,
+    options,
+  };
+}
+
+/** The globals table compiles once per invocation and every Command in the graph shares it. */
+export function buildGraph<Args, Options, Globals>(
+  root: CommandState<Args, Options, Globals>,
+): { globals: BuiltGlobals; root: BuiltCommand } {
+  const globals = buildGlobals(root.globals);
+  return { globals, root: buildCommand(root, globals) };
+}
+
 export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
   declare readonly [commandValue]: true;
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
@@ -217,11 +375,7 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     name: Name,
     config: Config & NameConstraint<Name>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
-    const input: ArgumentInput<Name, ArgumentValue<Config>> = {
-      config: { ...config },
-      kind: 'argument',
-      name,
-    };
+    const input: ArgumentInput<Name, Config> = { config: { ...config }, kind: 'argument', name };
     return new CommandBuilder(declareArgument(this.#state, input));
   }
 
@@ -232,11 +386,7 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    const input: OptionInput<Name, OptionValue<Config>> = {
-      config: { ...config },
-      kind: 'option',
-      name,
-    };
+    const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
     return new CommandBuilder(declareOption(this.#state, input));
   }
 
@@ -245,137 +395,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     return new CommandBuilder(declareAction(this.#state, handler));
   }
 
-  /** The globals table compiles once per invocation and every Command in the graph shares it. */
-  buildGraph(): { globals: BuiltGlobals; root: BuiltCommand } {
-    const globals = buildGlobals(this.#state.globals);
-    return { globals, root: this.build(globals) };
-  }
-
   build(globals: BuiltGlobals): BuiltCommand {
-    const { actions, name } = this.#state;
-    const subject = subjectOf(name);
-    if (this.#state.globals !== globals.source) {
-      throw new DeclarationError(
-        `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
-      );
-    }
-    const attached = this.collectChildren();
-    this.checkDeclarationOrder(name);
-    const slots = this.collectArguments(subject);
-    const first = slots[0];
-    const child = attached[0];
-    if (first && child) {
-      throw new DeclarationError(
-        `${sentenceOf(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
-      );
-    }
-    if (actions.length > 1) {
-      throw new DeclarationError(`${sentenceOf(name)} has multiple actions. Register one action.`);
-    }
-    const action = actions[0];
-    if (!action) {
-      throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
-    }
-    const options = this.compileLocalOptions(globals, subject);
-    const state = this.#state;
-    return {
-      arguments: slots,
-      children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
-      dispatch: ({ host, out, passthrough, values }) => {
-        const bound = state.bind(values);
-        return action({
-          args: bound.args,
-          host,
-          options: { ...bindGlobals(state.globals, values), ...bound.options },
-          out,
-          passthrough,
-        });
-      },
-      inputs: state.inputs,
-      name,
-      options,
-    };
-  }
-
-  /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
-  private checkDeclarationOrder(name: string | null): void {
-    const late = this.#state.late[0];
-    if (!late) {
-      return;
-    }
-    if (late.kind === 'input') {
-      throw new DeclarationError(
-        `${sentenceOf(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
-      );
-    }
-    // Child identity and names are settled before this call, so the node and its name are valid.
-    throw new DeclarationError(
-      `${sentenceOf(name)} attaches child "${String(nodeOf(name, late.child).name)}" after its action. Attach children before action().`,
-    );
-  }
-
-  /** Child names are checked before any child builds, so parent diagnostics come first. */
-  private collectChildren(): [string, CommandNode][] {
-    const attached: [string, CommandNode][] = [];
-    const seen = new Set<string>();
-    for (const child of this.#state.children) {
-      const node = nodeOf(this.#state.name, child);
-      const name = node.name;
-      checkChildName(this.#state.name, name);
-      if (seen.has(name)) {
-        throw new DeclarationError(
-          `${sentenceOf(this.#state.name)} attaches two children named "${name}". Rename or remove one.`,
-        );
-      }
-      seen.add(name);
-      attached.push([name, node]);
-    }
-    return attached;
-  }
-
-  private collectArguments(subject: string): ArgumentSlot[] {
-    const slots: ArgumentSlot[] = [];
-    const seen = new Set<string>();
-    for (const input of this.#state.inputs.filter((entry) => entry.kind === 'argument')) {
-      if (seen.has(input.name)) {
-        throw new DeclarationError(
-          `Argument "${input.name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
-        );
-      }
-      seen.add(input.name);
-      slots.push({ input, variadic: input.config.variadic === true });
-    }
-    for (let index = 0; index + 1 < slots.length; index += 1) {
-      const slot = slots[index];
-      const next = slots[index + 1];
-      if (slot?.variadic && next) {
-        throw new DeclarationError(
-          `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
-        );
-      }
-    }
-    return slots;
-  }
-
-  private compileLocalOptions(globals: BuiltGlobals, subject: string) {
-    const declarations = this.#state.inputs.filter((input) => input.kind === 'option');
-    for (const declaration of declarations) {
-      if (globals.names.has(declaration.name)) {
-        throw new DeclarationError(
-          `Option "${declaration.name}" is declared as a global option and as a local option on ${subject}. Rename the local option.`,
-        );
-      }
-    }
-    const options = compileOptions(declarations, subject);
-    for (const [spelling, option] of options) {
-      const global = globals.options.get(spelling);
-      if (global) {
-        throw new DeclarationError(
-          `Option spelling "${spelling}" is used by the global option "${global.name}" and the local option "${option.name}" on ${subject}. Change one declaration.`,
-        );
-      }
-    }
-    return options;
+    return buildCommand(this.#state, globals);
   }
 }
 
@@ -405,9 +426,9 @@ interface CommandConstructor {
 }
 
 /**
- * The runtime class behind the public constructor. `Globals` defaults to `{}`, so the name-only
- * constructor signature instantiates it without a cast, and the globals signature infers it from
- * the supplied value.
+ * The runtime class behind the public constructor. It is generic so that an instance's `Globals`
+ * is the type of the value it holds, with `{}` standing in when there is none, which is what each
+ * signature of the constructor interface publishes.
  */
 class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
   constructor(name: string, globals?: GlobalOptions<Globals>) {
