@@ -33,7 +33,7 @@ import { prepareInputs } from './validation.js';
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
  */
-type ApplicationMethod = CommandMethod | 'command';
+export type ApplicationMethod = CommandMethod | 'command';
 
 class ApplicationBuilder<
   Args,
@@ -101,8 +101,6 @@ class ApplicationBuilder<
     // A declaration call always returns a CommandBuilder; the public type only hides its state.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const derived = root as CommandBuilder<DerivedArgs, DerivedOptions, Globals>;
-    // The state is a view of one runtime value, so the caller's next state is asserted here alone.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return new ApplicationBuilder(this.#name, derived);
   }
 

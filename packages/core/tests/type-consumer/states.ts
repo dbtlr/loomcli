@@ -7,6 +7,7 @@ const globals = new GlobalOptions().option('file', { required: true, type: 'stri
 const freshCommand = new Command('fresh', globals);
 const freshApplication = new Application('fresh', globals);
 const partial = new Command('partial', globals).argument('path', { required: true });
+const partialOption = new Command('partial-option', globals).option('raw', { type: 'boolean' });
 const finished = new Command('get', globals)
   .argument('path', { required: true })
   .option('raw', { type: 'boolean' })
@@ -100,3 +101,7 @@ void anyStateApplication;
 void usedFresh;
 void usedPartial;
 void usedFinished;
+
+// Declaration emit must name a fresh builder's CommandMethod/ApplicationMethod state.
+// Each export below forces one such state through the packed declaration compile.
+export { freshApplication, partialOption, group, openAfterChild };
