@@ -1,10 +1,9 @@
 import type { ActionHandler, Out } from '@loom/core';
 
 import type { select } from '../commands/select.js';
+import { formatJson } from '../json.js';
 import { describeKind, isRecord } from '../kinds.js';
 import { readJson } from '../read-json.js';
-
-const INDENT = 2;
 
 /**
  * Fields are top-level keys, so a repeated field keeps its first position and reports once. A
@@ -31,5 +30,5 @@ export const selectFields: ActionHandler<typeof select> = async ({ options, host
   const record = isRecord(document)
     ? document
     : out.fatal(`Expected an object at the root; found ${describeKind(document)}`);
-  await out.print(JSON.stringify(await collect(record, options.field, out), undefined, INDENT));
+  await out.print(formatJson(await collect(record, options.field, out)));
 };

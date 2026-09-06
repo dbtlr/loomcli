@@ -65,7 +65,7 @@ test('jsonkit rejects an empty field name through the field schema', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json', 'select', '--field='], { cwd })).toEqual({
       status: 2,
-      stderr: 'Invalid input: Option "--field" at 0: Field names cannot be empty.\n',
+      stderr: 'Invalid input: Option "--field" at 0: Supply a nonempty field name.\n',
       stdout: '',
     });
   });
