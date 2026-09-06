@@ -1,6 +1,12 @@
 import { DeclarationError } from './errors.js';
 import { compileOptions } from './options.js';
-import type { DefaultConstraint, NameConstraint, OptionConfig, OptionValue } from './types.js';
+import type {
+  DefaultConstraint,
+  MultipleConstraint,
+  NameConstraint,
+  OptionConfig,
+  OptionValue,
+} from './types.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
@@ -50,7 +56,10 @@ class GlobalOptionsBuilder<Options> {
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<MultipleConstraint<Config>>,
   ): GlobalOptions<Options & Record<Name, OptionValue<Config>>> {
     const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
     const previous = this.#bind;

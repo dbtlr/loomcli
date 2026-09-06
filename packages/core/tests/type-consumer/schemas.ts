@@ -42,7 +42,7 @@ new Application('bad').option('size', wrongSchemaDefault);
 new Application('bad').option('size', { default: '10', required: true, type: 'string' });
 // @ts-expect-error TS2345: Boolean options do not accept schemas
 new Application('bad').option('flag', { type: 'boolean', validate: z.boolean() });
-// @ts-expect-error TS2322: required variadic arguments cannot declare defaults
+// @ts-expect-error TS2345: required variadic arguments cannot declare defaults
 new Application('bad').argument('files', { default: [], required: true, variadic: true });
 const wrongRawDefault = { default: 10, type: 'string' } satisfies StringOption;
 // @ts-expect-error TS2345: raw value defaults must be strings

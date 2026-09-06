@@ -30,6 +30,7 @@ import type {
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
+  MultipleConstraint,
   NameConstraint,
   ExitCode,
   OptionConfig,
@@ -72,7 +73,7 @@ class ApplicationBuilder<
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name>,
+    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Application<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,
@@ -92,7 +93,8 @@ class ApplicationBuilder<
     config: Config &
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
-      NoInfer<DefaultConstraint<Config>>,
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<MultipleConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
       config: { ...config },
