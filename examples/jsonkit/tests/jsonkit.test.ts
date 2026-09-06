@@ -13,7 +13,7 @@ const summary = [
   'object with 6 keys',
   'name\tstring',
   'tags\tarray with 2 items',
-  'nested\tobject with 1 keys',
+  'nested\tobject with 1 key',
   'count\tnumber',
   'ok\tboolean',
   'none\tnull',
@@ -45,6 +45,7 @@ test('jsonkit summarizes an object with one kind line per key', () => {
 
 test.each([
   ['[1,2,3]', 'array with 3 items\n'],
+  ['[1]', 'array with 1 item\n'],
   ['{}', 'object with 0 keys\n'],
   ['"text"', 'string\n'],
   ['42', 'number\n'],

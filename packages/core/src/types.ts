@@ -43,6 +43,11 @@ type SchemaInput<Schema> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<Schema>
   : string;
 
+/** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
+interface LiteralNameFault {
+  'Declaration names must be one literal string': never;
+}
+
 type ActionArgument<Declaration> =
   ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
 
@@ -54,12 +59,12 @@ export type GlobalNameConstraint<Name extends string, Globals> = Name extends ke
 /** A required record key excludes open strings; distribution rejects each union member. */
 export type NameConstraint<Name extends string, Whole extends string = Name> =
   {} extends Record<Name, unknown>
-    ? never
+    ? LiteralNameFault
     : Name extends Whole
       ? [Whole] extends [Name]
         ? unknown
-        : never
-      : never;
+        : LiteralNameFault
+      : LiteralNameFault;
 
 export type ExitCode = 0 | 1 | 2;
 export interface InputTerminal {

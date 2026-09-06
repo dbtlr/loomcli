@@ -55,7 +55,7 @@ The second example reports the shape of one JSON document:
 node examples/jsonkit/dist/main.js --file package.json
 ```
 
-The first line names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. For an object, one `key<TAB>kind` line per top-level key follows in document order.
+The first line names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. One member reads as `1 key` or `1 item`. For an object, one `key<TAB>kind` line per top-level key follows in document order.
 
 `--file` is a required global option, so it accepts a value before, between, or after the command name:
 

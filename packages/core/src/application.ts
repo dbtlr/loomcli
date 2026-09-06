@@ -21,23 +21,25 @@ import type {
 } from './types.js';
 import { prepareInputs } from './validation.js';
 
-export type Application<Args = {}, Options = {}, Globals = {}> = ApplicationBuilder<
-  Args,
-  Options,
-  Globals
->;
-
 class ApplicationBuilder<Args, Options, Globals> {
-  constructor(
-    readonly name: string,
-    private readonly root: CommandBuilder<Args, Options, Globals>,
-  ) {}
+  readonly #name: string;
+  readonly #root: CommandBuilder<Args, Options, Globals>;
 
+  constructor(name: string, root: CommandBuilder<Args, Options, Globals>) {
+    this.#name = name;
+    this.#root = root;
+  }
+
+  get name(): string {
+    return this.#name;
+  }
+
+  /** Each call delegates to the root Command declaration and wraps the value it returns. */
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
   ): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
-    return new ApplicationBuilder(this.name, this.root.argument<Name, Config>(name, config));
+    return this.derive(this.#root.argument<Name, Config>(name, config));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
@@ -47,17 +49,27 @@ class ApplicationBuilder<Args, Options, Globals> {
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
-    return new ApplicationBuilder(this.name, this.root.option<Name, Config>(name, config));
+    return this.derive(this.#root.option<Name, Config>(name, config));
   }
 
-  action(handler: Action<Args, Globals & Options>): this {
-    this.root.actions.push(handler);
-    return this;
+  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals> {
+    return this.derive(this.#root.action(handler));
   }
 
-  command<ChildArgs, ChildOptions>(child: Command<ChildArgs, ChildOptions, Globals>): this {
-    this.root.children.push(child);
-    return this;
+  command<ChildArgs, ChildOptions>(
+    child: Command<ChildArgs, ChildOptions, Globals>,
+  ): Application<Args, Options, Globals> {
+    return this.derive(this.#root.attach(child));
+  }
+
+  /** One wrapper for every declaration call, so the Application keeps its name and its root. */
+  private derive<DerivedArgs, DerivedOptions>(
+    root: Command<DerivedArgs, DerivedOptions, Globals>,
+  ): Application<DerivedArgs, DerivedOptions, Globals> {
+    // A declaration call always returns a CommandBuilder; the public type only hides its state.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const derived = root as CommandBuilder<DerivedArgs, DerivedOptions, Globals>;
+    return new ApplicationBuilder(this.#name, derived);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -70,9 +82,8 @@ class ApplicationBuilder<Args, Options, Globals> {
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      const globals = this.root.globals.build();
-      const graph = { globals, root: this.root.build(globals) };
-      const defaults = await prepareInputs([...globals.inputs, ...collectInputs(graph.root)]);
+      const graph = this.#root.buildGraph();
+      const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
       const selected = await selectCommand(graph, [...host.argv], defaults);
       await selected.command.dispatch({
         host,
@@ -109,6 +120,15 @@ class ApplicationBuilder<Args, Options, Globals> {
     return code;
   }
 }
+
+/**
+ * The authoring surface of an Application: the root Command's calls, `command()`, and `run()`.
+ * Every authoring call returns a new declaration value and leaves its receiver unchanged.
+ */
+export type Application<Args = {}, Options = {}, Globals = {}> = Pick<
+  ApplicationBuilder<Args, Options, Globals>,
+  'action' | 'argument' | 'command' | 'name' | 'option' | 'run'
+>;
 
 interface ApplicationConstructor {
   new (name: string): Application;

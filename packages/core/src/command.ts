@@ -1,6 +1,6 @@
 import { DeclarationError, InputError } from './errors.js';
 import type { BuiltGlobals, GlobalOptions } from './globals.js';
-import { defaultGlobals } from './globals.js';
+import { bindGlobals, buildGlobals, defaultGlobals } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type {
   Action,
@@ -39,11 +39,24 @@ export interface BuiltCommand {
   options: ReturnType<typeof compileOptions>;
 }
 
+/** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
+export declare const declaredTypes: unique symbol;
+
+/** The three inferred types one declaration carries. The phantom member keeps them exact. */
+export interface DeclaredTypes<Args, Options, Globals> {
+  args: Args;
+  globals: Globals;
+  options: Options;
+}
+
 /** The attachable shape of a Command, without its inferred declaration types. */
-export interface CommandNode {
+interface CommandNode {
   readonly name: string | null;
   build(globals: BuiltGlobals): BuiltCommand;
 }
+
+/** Authored values register here, so the public type publishes no state to reach or replace. */
+const nodes = new WeakMap<object, CommandNode>();
 
 function subjectOf(name: string | null) {
   return name === null ? 'the root Command' : `Command "${name}"`;
@@ -52,6 +65,17 @@ function subjectOf(name: string | null) {
 function sentenceOf(name: string | null) {
   const subject = subjectOf(name);
   return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
+}
+
+/** Reads the declarations behind an attached value; anything else is a declaration error. */
+function nodeOf(parent: string | null, child: object): CommandNode {
+  const node = nodes.get(child);
+  if (!node) {
+    throw new DeclarationError(
+      `${sentenceOf(parent)} attaches a value that is not a Command. Attach the value returned by new Command(name).`,
+    );
+  }
+  return node;
 }
 
 function checkChildName(parent: string | null, name: unknown): asserts name is string {
@@ -64,29 +88,26 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
 
 /** Everything one Command declaration holds. Builder calls copy it with one field replaced. */
 export interface CommandState<Args, Options, Globals> {
-  actions: Action<Args, Globals & Options>[];
+  actions: readonly Action<Args, Globals & Options>[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
-  children: CommandNode[];
+  children: readonly object[];
   globals: GlobalOptions<Globals>;
   inputs: readonly InputDeclaration[];
   name: string | null;
 }
 
-export class CommandBuilder<Args, Options, Globals> implements CommandNode {
-  readonly actions: Action<Args, Globals & Options>[];
-  readonly bind: (values: ValidatedInputs) => { args: Args; options: Options };
-  readonly children: CommandNode[];
-  readonly globals: GlobalOptions<Globals>;
-  readonly inputs: readonly InputDeclaration[];
-  readonly name: string | null;
+export class CommandBuilder<Args, Options, Globals> {
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
+
+  readonly #state: CommandState<Args, Options, Globals>;
 
   constructor(state: CommandState<Args, Options, Globals>) {
-    this.actions = state.actions;
-    this.bind = state.bind;
-    this.children = state.children;
-    this.globals = state.globals;
-    this.inputs = state.inputs;
-    this.name = state.name;
+    this.#state = state;
+    nodes.set(this, this);
+  }
+
+  get name(): string | null {
+    return this.#state.name;
   }
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
@@ -95,16 +116,17 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
     const declared: ArgumentConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'argument', name };
+    const previous = this.#state.bind;
     return new CommandBuilder({
-      ...this.copy(),
+      ...this.#state,
       bind: (values) => {
-        const previous = this.bind(values);
+        const bound = previous(values);
         // Validation supplies the schema output, and the computed key is exactly Name.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         const value = { [name]: values.get(input) } as Record<Name, ArgumentValue<Config>>;
-        return { ...previous, args: { ...previous.args, ...value } };
+        return { ...bound, args: { ...bound.args, ...value } };
       },
-      inputs: [...this.inputs, input],
+      inputs: [...this.#state.inputs, input],
     });
   }
 
@@ -117,41 +139,47 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
     const declared: OptionConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'option', name };
+    const previous = this.#state.bind;
     return new CommandBuilder({
-      ...this.copy(),
+      ...this.#state,
       bind: (values) => {
-        const previous = this.bind(values);
+        const bound = previous(values);
         // Validation supplies the declared output, and the computed key is exactly Name.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         const value = { [name]: values.get(input) } as Record<Name, OptionValue<Config>>;
-        return { ...previous, options: { ...previous.options, ...value } };
+        return { ...bound, options: { ...bound.options, ...value } };
       },
-      inputs: [...this.inputs, input],
+      inputs: [...this.#state.inputs, input],
     });
   }
 
-  /** A builder call keeps the declarations it already holds and replaces one field. */
-  private copy(): CommandState<Args, Options, Globals> {
-    return {
-      actions: [...this.actions],
-      bind: this.bind,
-      children: [...this.children],
-      globals: this.globals,
-      inputs: this.inputs,
-      name: this.name,
-    };
+  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
+    return new CommandBuilder({
+      ...this.#state,
+      actions: [...this.#state.actions, handler],
+    });
   }
 
-  action(handler: Action<Args, Globals & Options>): this {
-    this.actions.push(handler);
-    return this;
+  /** Attaching is a declaration call too, so the receiver keeps the children it already had. */
+  attach(child: object): CommandBuilder<Args, Options, Globals> {
+    return new CommandBuilder({
+      ...this.#state,
+      children: [...this.#state.children, child],
+    });
+  }
+
+  /** The globals table compiles once per invocation and every Command in the graph shares it. */
+  buildGraph(): { globals: BuiltGlobals; root: BuiltCommand } {
+    const globals = buildGlobals(this.#state.globals);
+    return { globals, root: this.build(globals) };
   }
 
   build(globals: BuiltGlobals): BuiltCommand {
-    const subject = subjectOf(this.name);
-    if (this.globals !== globals.source) {
+    const { actions, name } = this.#state;
+    const subject = subjectOf(name);
+    if (this.#state.globals !== globals.source) {
       throw new DeclarationError(
-        `${sentenceOf(this.name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
+        `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
       );
     }
     const attached = this.collectChildren();
@@ -160,34 +188,33 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
     const child = attached[0];
     if (first && child) {
       throw new DeclarationError(
-        `${sentenceOf(this.name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
+        `${sentenceOf(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
       );
     }
-    if (this.actions.length > 1) {
-      throw new DeclarationError(
-        `${sentenceOf(this.name)} has multiple actions. Register one action.`,
-      );
+    if (actions.length > 1) {
+      throw new DeclarationError(`${sentenceOf(name)} has multiple actions. Register one action.`);
     }
-    const action = this.actions[0];
+    const action = actions[0];
     if (!action) {
-      throw new DeclarationError(`${sentenceOf(this.name)} has no action. Register an action.`);
+      throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
     }
     const options = this.compileLocalOptions(globals, subject);
+    const state = this.#state;
     return {
       arguments: slots,
-      children: new Map(attached.map(([name, node]) => [name, node.build(globals)])),
+      children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
       dispatch: ({ host, out, passthrough, values }) => {
-        const bound = this.bind(values);
+        const bound = state.bind(values);
         return action({
           args: bound.args,
           host,
-          options: { ...this.globals.bind(values), ...bound.options },
+          options: { ...bindGlobals(state.globals, values), ...bound.options },
           out,
           passthrough,
         });
       },
-      inputs: this.inputs,
-      name: this.name,
+      inputs: state.inputs,
+      name,
       options,
     };
   }
@@ -196,16 +223,17 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   private collectChildren(): [string, CommandNode][] {
     const attached: [string, CommandNode][] = [];
     const seen = new Set<string>();
-    for (const child of this.children) {
-      const name = child.name;
-      checkChildName(this.name, name);
+    for (const child of this.#state.children) {
+      const node = nodeOf(this.#state.name, child);
+      const name = node.name;
+      checkChildName(this.#state.name, name);
       if (seen.has(name)) {
         throw new DeclarationError(
-          `${sentenceOf(this.name)} attaches two children named "${name}". Rename or remove one.`,
+          `${sentenceOf(this.#state.name)} attaches two children named "${name}". Rename or remove one.`,
         );
       }
       seen.add(name);
-      attached.push([name, child]);
+      attached.push([name, node]);
     }
     return attached;
   }
@@ -213,7 +241,7 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   private collectArguments(subject: string): ArgumentSlot[] {
     const slots: ArgumentSlot[] = [];
     const seen = new Set<string>();
-    for (const input of this.inputs.filter((entry) => entry.kind === 'argument')) {
+    for (const input of this.#state.inputs.filter((entry) => entry.kind === 'argument')) {
       if (seen.has(input.name)) {
         throw new DeclarationError(
           `Argument "${input.name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
@@ -235,7 +263,7 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   }
 
   private compileLocalOptions(globals: BuiltGlobals, subject: string) {
-    const declarations = this.inputs.filter((input) => input.kind === 'option');
+    const declarations = this.#state.inputs.filter((input) => input.kind === 'option');
     for (const declaration of declarations) {
       if (globals.names.has(declaration.name)) {
         throw new DeclarationError(
@@ -256,7 +284,14 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   }
 }
 
-export type Command<Args = {}, Options = {}, Globals = {}> = CommandBuilder<Args, Options, Globals>;
+/**
+ * The authoring surface of a Command. Every call returns a new declaration value and leaves its
+ * receiver unchanged. The declarations themselves stay private, so no consumer can reach them.
+ */
+export type Command<Args = {}, Options = {}, Globals = {}> = Pick<
+  CommandBuilder<Args, Options, Globals>,
+  typeof declaredTypes | 'action' | 'argument' | 'option'
+>;
 
 interface CommandConstructor {
   new (name: string): Command;

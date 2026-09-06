@@ -2,8 +2,7 @@ import { Application, Command, GlobalOptions } from '@loom/core';
 import type { ActionArgs, ActionHandler, ActionOptions } from '@loom/core';
 import { z } from 'zod';
 
-import type { get, jsonkit } from './commands.js';
-import { globals } from './commands.js';
+import { get, globals, jsonkit } from './commands.js';
 
 const named = (args: ActionArgs<typeof get>, options: ActionOptions<typeof get>) => {
   const path: string = args.path;
@@ -17,6 +16,20 @@ const rootOptions = (options: ActionOptions<typeof jsonkit>) => options.pretty;
 void named;
 void summary;
 void rootOptions;
+
+// @ts-expect-error TS2339: A Command publishes no children to reach, replace, or extend.
+get.children;
+// @ts-expect-error TS2551: A Command publishes no action list, only the action() call.
+get.actions;
+// @ts-expect-error TS2339: A Command does not publish its build step.
+get.build;
+// @ts-expect-error TS2339: GlobalOptions publishes no declaration list.
+globals.inputs;
+// @ts-expect-error TS2339: An Application publishes no root Command.
+jsonkit.root;
+
+// @ts-expect-error TS2322: An optional scalar argument is outside this increment.
+new Command('optional').argument('path', { required: false });
 
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
 new Command('collision', globals).option('file', { type: 'boolean' });

@@ -67,6 +67,15 @@ test('consumes an all-global short group and leaves local letters to the Command
   });
 });
 
+test('a local option on a root with children commits to the root action', () => {
+  expect(report(['--file', 'data.json', '--pretty'])).toEqual({
+    args: {},
+    command: 'root',
+    options: { file: 'data.json', pretty: true, quiet: false },
+    passthrough: [],
+  });
+});
+
 test('a global value wins over a token that also names a child', () => {
   expect(report(['--file', 'keys', 'get', 'name'])).toEqual({
     args: { path: 'name' },
@@ -119,7 +128,15 @@ test.each([
   ],
   [
     ['-qp', '--file', 'data.json', 'get', 'a.b'],
-    'Short group "-qp" mixes the global option "-q" with the local option "-p". Supply them as separate tokens.',
+    'Short group "-qp" mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+  ],
+  [
+    ['-qZ', '--file', 'data.json', 'get', 'a.b'],
+    'Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+  ],
+  [
+    ['--file', 'data.json', 'get', '--pretty', 'a.b'],
+    'Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file'], 'Option "--file" requires a value. Supply a value after "--file".'],
   [['get', 'a.b'], 'Option "--file" is required. Supply a value.'],
@@ -138,6 +155,89 @@ test.each([
   [['--file', 'data.json', '--limit', 'abc', 'keys'], 'Option "--limit": Use decimal digits.'],
 ] satisfies [string[], string][])('rejects %j without dispatch', (argv, reason) => {
   const result = invokeCommands(argv);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+});
+
+function invokeAuthoring(scenario: string, argv: string[] = []) {
+  return invoke(new URL('fixtures/authoring.mjs', import.meta.url), [scenario, ...argv]);
+}
+
+function authoringReport(scenario: string, argv: string[] = []) {
+  const result = invokeAuthoring(scenario, argv);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  return JSON.parse(result.stdout);
+}
+
+function invokeOrder(argv: string[]) {
+  return invoke(new URL('fixtures/order.mjs', import.meta.url), argv);
+}
+
+test.each([
+  ['root', ['--quiet'], { args: {}, command: 'root', options: { quiet: true } }],
+  [
+    'forked',
+    ['--verbose'],
+    { args: {}, command: 'root', options: { quiet: false, verbose: true } },
+  ],
+  ['composed', ['get', 'a.b'], { args: { path: 'a.b' }, command: 'get', options: {} }],
+  ['composed', ['--quiet'], { args: {}, command: 'root', options: { quiet: true } }],
+  ['shared', [], { args: {}, command: 'root', options: {} }],
+  ['shared', ['leaf'], { args: {}, command: 'leaf', options: {} }],
+] satisfies [string, string[], Record<string, unknown>][])(
+  'runs the %s declaration with %j',
+  (scenario, argv, expected) => {
+    expect(authoringReport(scenario, argv)).toEqual(expected);
+  },
+);
+
+test.each([
+  ['root', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
+  ['forked', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
+  [
+    'composed',
+    ['--verbose'],
+    'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+  ],
+] satisfies [string, string[], string][])(
+  'leaves the %s receiver without the later declaration for %j',
+  (scenario, argv, reason) => {
+    const result = invokeAuthoring(scenario, argv);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  },
+);
+
+test('validation reports the globals in authoring order, then the Command declarations', () => {
+  const result = invokeOrder(['order', '--alpha', 'a', '--beta', 'b', '--local', 'l', 'x']);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toBe(
+    [
+      'Invalid input: Option "--alpha": alpha rejected.',
+      'Option "--beta": beta rejected.',
+      'Option "--local": local rejected.',
+      'Argument "path": path rejected.',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('scalar arguments bind the positional tokens in declaration order', () => {
+  const result = invokeOrder(['pair', 'a', 'b']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('{"one":"a","two":"b"}\n');
+});
+
+test.each([
+  [['pair', 'a'], 'Argument "two" requires a value. Supply a value for "two".'],
+  [['pair', 'a', 'b', 'd'], 'Command "pair" accepts 2 arguments. Remove the extra values.'],
+] satisfies [string[], string][])('rejects the scalar invocation %j', (argv, reason) => {
+  const result = invokeOrder(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
@@ -167,6 +267,14 @@ test.each([
   [
     'equals-child-name',
     'The root Command attaches a child named "get=value". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
+    'foreign-child',
+    'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
+  ],
+  [
+    'foreign-globals-value',
+    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
   ],
   [
     'foreign-globals',

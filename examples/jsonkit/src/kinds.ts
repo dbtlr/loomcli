@@ -1,3 +1,10 @@
+const SINGULAR = 1;
+
+/** Member counts read as English, so one member never reports "1 items". */
+function count(amount: number, noun: string): string {
+  return `${amount} ${noun}${amount === SINGULAR ? '' : 's'}`;
+}
+
 /** JSON objects are the only values with named members, so every command tests them the same way. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -9,10 +16,10 @@ export function describeKind(value: unknown): string {
     return 'null';
   }
   if (Array.isArray(value)) {
-    return `array with ${value.length} items`;
+    return `array with ${count(value.length, 'item')}`;
   }
   if (isRecord(value)) {
-    return `object with ${Object.keys(value).length} keys`;
+    return `object with ${count(Object.keys(value).length, 'key')}`;
   }
   return typeof value;
 }

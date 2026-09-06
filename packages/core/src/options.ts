@@ -184,7 +184,10 @@ function parseOption(
   return false;
 }
 
-/** A hyphen token belongs to the globals when its long spelling or every short letter does. */
+/**
+ * A hyphen token belongs to the globals when its long spelling or every short letter does. The
+ * pre-scan reads the globals alone, so a letter it does not own is only "not a global option".
+ */
 function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: string) {
   if (token.startsWith('--')) {
     const equals = token.indexOf('=');
@@ -192,23 +195,21 @@ function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: st
   }
   const group = token.slice(1).split('=')[0] ?? '';
   let global = '';
-  let local = '';
+  let other = '';
   for (let index = 0; index < group.length; index += 1) {
     const letter = group.charAt(index);
-    const owner = spellings.has(`-${letter}`) ? 'global' : 'local';
-    if (owner === 'global' && global === '') {
-      global = letter;
-    }
-    if (owner === 'local' && local === '') {
-      local = letter;
+    if (spellings.has(`-${letter}`)) {
+      global = global === '' ? letter : global;
+    } else {
+      other = other === '' ? letter : other;
     }
   }
   if (global === '') {
     return false;
   }
-  if (local !== '') {
+  if (other !== '') {
     throw new InputError(
-      `Short group "${token}" mixes the global option "-${global}" with the local option "-${local}". Supply them as separate tokens.`,
+      `Short group "${token}" mixes the global option "-${global}" with "-${other}", which is not a global option. Supply global options as separate tokens, and local options after their command name.`,
     );
   }
   return true;

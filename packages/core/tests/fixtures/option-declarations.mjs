@@ -60,7 +60,7 @@ switch (scenario) {
     break;
   }
 }
-app.action(({ out }) => out.print('dispatched'));
+app = app.action(({ out }) => out.print('dispatched'));
 process.stdout.write('assembled\n');
 const code = await app.run({ host: { argv: ['--unknown'] } });
 process.stdout.write(`resolved:${code}\n`);

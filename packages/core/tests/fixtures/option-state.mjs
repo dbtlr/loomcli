@@ -16,10 +16,10 @@ function report({ options, passthrough, out }) {
   options.enabled = false;
   passthrough.push('action mutation');
 }
-left.action(report);
-right.action(report);
-await left.run({
+const first = left.action(report);
+const second = right.action(report);
+await first.run({
   host: { argv: ['-nl', '--__proto__=safe', '--dryRun', '--', '--', '', 'two words'] },
 });
-await left.run({ host: { argv: [] } });
-await right.run({ host: { argv: ['-l'] } });
+await first.run({ host: { argv: [] } });
+await second.run({ host: { argv: ['-l'] } });

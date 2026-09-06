@@ -40,6 +40,12 @@ function build() {
       const other = new GlobalOptions().option('file', { type: 'string' });
       return app.action(dispatch).command(new Command('get', other).action(dispatch));
     }
+    case 'foreign-child': {
+      return app.action(dispatch).command({ name: 'get' });
+    }
+    case 'foreign-globals-value': {
+      return new Application('graph', {}).action(dispatch);
+    }
     case 'missing-globals': {
       return app.action(dispatch).command(new Command('get').action(dispatch));
     }
