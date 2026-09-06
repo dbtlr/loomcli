@@ -1,5 +1,6 @@
 {
   "name": "loomcli",
+  "private": true,
   "description": "The Loom CLI application framework. Designed to make developing beautiful command-line tools for humans and agents intuitive.",
   "license": "MIT",
   "repository": {
@@ -13,14 +14,17 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "vp check",
+    "check": "pnpm run build && vp check && pnpm run check:types",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
-    "test": "vp test",
-    "verify": "bun run check && bun run test"
+    "test": "pnpm run build && vp test --run",
+    "verify": "pnpm run check && pnpm run test",
+    "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/textstat/tsconfig.json",
+    "check:types": "node scripts/check-types.mjs"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@loom/core": "workspace:*",
+    "@types/node": "22.20.1",
     "typescript": "^7.0.2",
     "vite-plus": "0.3.0"
   },

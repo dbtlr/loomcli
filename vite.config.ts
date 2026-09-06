@@ -26,6 +26,69 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ['packages/core/src/**', 'examples/textstat/src/**', 'tests/**', 'scripts/**'],
+        rules: {
+          // Command contracts use named exports, Node streams, and ordered async calls.
+          'eslint/func-style': ['error', 'declaration', { allowArrowFunctions: true }],
+          'eslint/no-await-in-loop': 'off',
+          'eslint/no-ternary': 'off',
+          'eslint/one-var': ['error', 'never'],
+          'eslint/prefer-destructuring': 'off',
+          'eslint/sort-imports': 'off',
+          'import/group-exports': 'off',
+          'import/no-named-export': 'off',
+          'import/no-nodejs-modules': 'off',
+          'import/prefer-default-export': 'off',
+          'promise/avoid-new': 'off',
+          'promise/prefer-await-to-callbacks': 'off',
+          'promise/prefer-await-to-then': 'off',
+          'typescript/method-signature-style': 'off',
+        },
+      },
+      {
+        files: ['packages/core/src/**'],
+        rules: {
+          // Exit codes and argv offsets are explicit parts of the invocation contract.
+          // oxlint-disable-next-line eslint/no-magic-numbers
+          'eslint/no-magic-numbers': ['warn', { ignore: [0, 1, 2] }],
+        },
+      },
+      {
+        files: [
+          'packages/core/src/application.ts',
+          'packages/core/src/output.ts',
+          'packages/core/src/command.ts',
+        ],
+        rules: {
+          // Keep each ordered lifecycle and write-completion boundary in one method.
+          'eslint/max-statements': 'off',
+          'import/exports-last': 'off',
+          'typescript/parameter-properties': 'off',
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
+        files: ['tests/**', 'scripts/**'],
+        rules: {
+          // Fixtures use literal expectations, stream sentinels, and callback failures.
+          'eslint/max-params': 'off',
+          'eslint/max-statements': 'off',
+          'eslint/no-magic-numbers': 'off',
+          'node/callback-return': 'off',
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
+        files: ['tests/fixtures/**', 'tests/type-consumer/**'],
+        rules: {
+          // These consumers exercise ignored promises, values, and rejected SDK calls.
+          'eslint/no-new': 'off',
+          'eslint/no-unused-expressions': 'off',
+          'typescript/consistent-return': 'off',
+          'typescript/no-floating-promises': 'off',
+        },
+      },
+      {
         files: [
           'tests/**/*.ts',
           'tests/**/*.tsx',
@@ -85,8 +148,6 @@ export default defineConfig({
     ],
     plugins: ['typescript', 'import', 'eslint', 'unicorn', 'oxc', 'promise', 'node'],
     rules: {
-      // We're explicitly using synchronous fs methods in some places, like validation
-      // Rules, where we want to avoid async calls
       'node/no-sync': 'off',
       'vite-plus/prefer-vite-plus-imports': 'error',
 
@@ -101,6 +162,6 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
-    passWithNoTests: true,
+    include: ['tests/**/*.test.ts'],
   },
 });
