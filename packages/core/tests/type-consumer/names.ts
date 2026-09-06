@@ -37,8 +37,10 @@ new Application('numeric-argument').argument(numericPattern, { required: true, v
 new Application('explicit-union-option').option<'left' | 'right', { type: 'boolean' }>('left', {
   type: 'boolean',
 });
+interface RequiredFiles {
+  required: true;
+  variadic: true;
+}
+const explicit = new Application('explicit-union-argument');
 // @ts-expect-error TS2345: Explicit type parameters cannot claim two argument keys.
-new Application('explicit-union-argument').argument<'left' | 'right'>('left', {
-  required: true,
-  variadic: true,
-});
+explicit.argument<'left' | 'right', RequiredFiles>('left', { required: true, variadic: true });

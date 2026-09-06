@@ -25,7 +25,8 @@
   "devDependencies": {
     "@types/node": "22.20.1",
     "typescript": "^7.0.2",
-    "vite-plus": "0.3.0"
+    "vite-plus": "0.3.0",
+    "zod": "^4.5.4"
   },
   "devEngines": {
     "packageManager": {

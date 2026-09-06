@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = typescript;
+const zod = require('zod/package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:types.');
 
@@ -48,7 +49,7 @@ try {
   await writeFile(
     join(temporary, 'package.json'),
     JSON.stringify({
-      dependencies: { '@loom/core': 'file:./core.tgz' },
+      dependencies: { '@loom/core': 'file:./core.tgz', zod: zod.version },
       private: true,
       type: 'module',
     }),

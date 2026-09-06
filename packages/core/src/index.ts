@@ -4,6 +4,7 @@ export type {
   Action,
   ActionContext,
   ActionHandler,
+  ArgumentConfig,
   BooleanOption,
   ExitCode,
   Host,

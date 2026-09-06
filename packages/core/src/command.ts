@@ -1,52 +1,37 @@
 import { DeclarationError, InputError } from './errors.js';
 import { compileOptions, parseInputs } from './options.js';
-import type { OptionDeclaration, OptionValues } from './options.js';
-import type { Action, OptionConfig, OptionValue } from './types.js';
+import type { Action, ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
+import { validateValues } from './validation.js';
+import type { InputDeclaration, ValidatedInputs } from './validation.js';
 
 export interface BuiltCommand<Args, Options> {
   name: null;
   arguments: readonly string[];
+  inputs: readonly InputDeclaration[];
   action: Action<Args, Options>;
-  bind: (tokens: string[]) => Args;
+  bind: (values: ValidatedInputs) => { args: Args; options: Options };
   options: ReturnType<typeof compileOptions>;
-  bindOptions: (values: OptionValues) => Options;
 }
 
 export class Command<Args, Options> {
   readonly name = null;
-  readonly arguments: string[];
-  readonly actions: Action<Args, Options>[];
-  readonly bind: (tokens: string[]) => Args;
+  constructor(
+    readonly inputs: readonly InputDeclaration[],
+    readonly actions: Action<Args, Options>[],
+    readonly bind: (values: ValidatedInputs) => { args: Args; options: Options },
+  ) {}
 
-  readonly options: readonly OptionDeclaration[];
-  readonly bindOptions: (values: OptionValues) => Options;
-
-  constructor(declaration: {
-    arguments: string[];
-    actions: Action<Args, Options>[];
-    bind: (tokens: string[]) => Args;
-    options: readonly OptionDeclaration[];
-    bindOptions: (values: OptionValues) => Options;
-  }) {
-    this.arguments = declaration.arguments;
-    this.actions = declaration.actions;
-    this.bind = declaration.bind;
-    this.options = declaration.options;
-    this.bindOptions = declaration.bindOptions;
-  }
-
-  argument<const Name extends string>(name: Name): Command<Args & Record<Name, string[]>, Options> {
-    return new Command({
-      actions: [...this.actions],
-      arguments: [...this.arguments, name],
-      bind: (tokens) => {
-        // The computed property contains exactly the declared key and validated string values.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        const value = { [name]: tokens } as Record<Name, string[]>;
-        return { ...this.bind(tokens), ...value };
-      },
-      bindOptions: this.bindOptions,
-      options: this.options,
+  argument<const Name extends string, const Config extends ArgumentConfig>(
+    name: Name,
+    config: Config,
+  ): Command<Args & Record<Name, ArgumentValue<Config>>, Options> {
+    const input: InputDeclaration = { config: { ...config }, kind: 'argument', name };
+    return new Command([...this.inputs, input], [...this.actions], (values) => {
+      const previous = this.bind(values);
+      // Validation supplies the schema output, and the computed key is exactly Name.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const value = { [name]: values.get(input) } as Record<Name, ArgumentValue<Config>>;
+      return { ...previous, args: { ...previous.args, ...value } };
     });
   }
 
@@ -54,28 +39,23 @@ export class Command<Args, Options> {
     name: Name,
     config: Config,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>> {
-    const snapshot = { ...config };
-    return new Command({
-      actions: [...this.actions],
-      arguments: this.arguments,
-      bind: this.bind,
-      bindOptions: (values) => {
-        const rawValue =
-          snapshot.type === 'string'
-            ? values.strings.get(name)
-            : (values.booleans.get(name) ?? snapshot.polarity === 'negative');
-        // The discriminator selects the parsed value type; the computed key is exactly Name.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        const value = { [name]: rawValue } as Record<Name, OptionValue<Config>>;
-        return { ...this.bindOptions(values), ...value };
-      },
-      options: [...this.options, { config: snapshot, name }],
+    const input: InputDeclaration = { config: { ...config }, kind: 'option', name };
+    return new Command([...this.inputs, input], [...this.actions], (values) => {
+      const previous = this.bind(values);
+      // Validation supplies the declared output, and the computed key is exactly Name.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const value = { [name]: values.get(input) } as Record<Name, OptionValue<Config>>;
+      return { ...previous, options: { ...previous.options, ...value } };
     });
   }
 
   build(): BuiltCommand<Args, Options> {
+    const argumentNames = this.inputs
+      .filter((input) => input.kind === 'argument')
+      .map((input) => input.name);
+    const options = this.inputs.filter((input) => input.kind === 'option');
     const seen = new Set<string>();
-    for (const name of this.arguments) {
+    for (const name of argumentNames) {
       if (seen.has(name)) {
         throw new DeclarationError(
           `Argument "${name}" is declared more than once on the root Command. Remove or rename the duplicate.`,
@@ -83,9 +63,9 @@ export class Command<Args, Options> {
       }
       seen.add(name);
     }
-    if (this.arguments.length > 1) {
+    if (argumentNames.length > 1) {
       throw new DeclarationError(
-        `Arguments ${this.arguments.map((name) => `"${name}"`).join(', ')} compete for variadic values on the root Command. Keep one variadic argument.`,
+        `Arguments ${argumentNames.map((name) => `"${name}"`).join(', ')} compete for variadic values on the root Command. Keep one variadic argument.`,
       );
     }
     if (this.actions.length > 1) {
@@ -97,11 +77,11 @@ export class Command<Args, Options> {
     }
     return {
       action,
-      arguments: [...this.arguments],
+      arguments: argumentNames,
       bind: this.bind,
-      bindOptions: this.bindOptions,
+      inputs: this.inputs,
       name: this.name,
-      options: compileOptions(this.options),
+      options: compileOptions(options),
     };
   }
 }
@@ -110,9 +90,10 @@ export function route<Args, Options>(root: BuiltCommand<Args, Options>, tokens: 
   return { command: root, tokens };
 }
 
-export function validateInputs<Args, Options>(
+export async function validateInputs<Args, Options>(
   command: BuiltCommand<Args, Options>,
   tokens: string[],
+  defaults: ValidatedInputs,
 ) {
   const parsed = parseInputs(command.options, tokens);
   const name = command.arguments[0];
@@ -125,8 +106,7 @@ export function validateInputs<Args, Options>(
     throw new InputError('The root Command accepts no arguments. Remove the supplied values.');
   }
   return {
-    args: command.bind(parsed.positionals),
-    options: command.bindOptions(parsed.options),
+    ...command.bind(await validateValues(command.inputs, parsed, defaults)),
     passthrough: parsed.passthrough,
   };
 }

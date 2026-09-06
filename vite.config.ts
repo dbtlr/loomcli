@@ -65,6 +65,7 @@ export default defineConfig({
           'packages/core/src/output.ts',
           'packages/core/src/command.ts',
           'packages/core/src/options.ts',
+          'packages/core/src/validation.ts',
         ],
         rules: {
           // Keep each ordered lifecycle and write-completion boundary in one method.

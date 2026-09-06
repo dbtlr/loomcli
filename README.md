@@ -1,10 +1,10 @@
 ---
-description: Build and run textstat with local options and verify the public Loom CLI package.
+description: Build and run textstat with typed schema validation and verify the public Loom CLI package.
 ---
 
 # Loom CLI
 
-Loom CLI is a TypeScript framework for command applications. The current increment runs an unnamed Command with required file arguments, local options, and passthrough.
+Loom CLI is a TypeScript framework for command applications. The current increment runs an unnamed Command with required file arguments, local options, Standard Schema validation, and passthrough.
 
 ## Run textstat
 
@@ -29,6 +29,14 @@ node examples/textstat/dist/main.js -tm words README.md docs/core.md
 
 `--total` or `-t` appends a `count<TAB>total` row, including for one file. Unsupported metrics fail before file access. A read error retains earlier output and prevents the final total.
 
+To keep only files with at least 100 bytes:
+
+```sh
+node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/core.md
+```
+
+`--min-bytes` uses a schema to transform decimal digits into a non-negative safe integer. Its declared default is `'0'`, which becomes numeric `0`. Filtered files do not contribute to the total. Invalid inputs report all schema issues before the action reads any files.
+
 The first bare `--` starts a separate passthrough tail. `textstat` ignores that tail; it does not treat tail tokens as file paths.
 
 The same built application runs with Bun:
@@ -37,7 +45,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration.
 
 ## Verify the package
 
