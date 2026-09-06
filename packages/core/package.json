@@ -1,10 +1,27 @@
 {
   "name": "@loom/core",
+  "version": "0.0.0",
   "description": "The Loom CLI core package. Provides the scaffolding for creating new Loom CLI applications.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
-  "type": "module"
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@types/node": "22.20.1"
+  },
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=22.23.2"
+  }
 }

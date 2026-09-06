@@ -17,7 +17,8 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "exactOptionalPropertyTypes": true,
-    "types": ["bun"]
+    "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "packages/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["**/dist/**", "node_modules"]
 }
