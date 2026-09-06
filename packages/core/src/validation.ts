@@ -74,6 +74,24 @@ function identity(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
 }
 
+/** A multiple option collects its occurrences, so its raw value is the whole `string[]`. */
+function collects(input: InputDeclaration) {
+  return input.kind === 'option' && input.config.multiple === true;
+}
+
+/** One accessor for a supplied option value, so the collected and single shapes read alike. */
+function suppliedOption(options: OptionValues, name: string, collected: boolean) {
+  return collected ? options.lists.get(name) : options.strings.get(name);
+}
+
+/** Without a schema the raw shape is the declared default's only contract. */
+function holdsRawDefault(input: InputDeclaration) {
+  const value = input.config.default;
+  return collects(input)
+    ? Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string')
+    : typeof value === 'string';
+}
+
 function checkDeclaration(input: InputDeclaration) {
   const { config } = input;
   if (input.kind === 'option' && input.config.type === 'boolean') {
@@ -191,9 +209,11 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
   }
   const defaults = new Map<InputDeclaration, unknown>();
   for (const input of inputs.filter((entry) => Object.hasOwn(entry.config, 'default'))) {
-    if (input.config.validate === undefined && typeof input.config.default !== 'string') {
+    if (input.config.validate === undefined && !holdsRawDefault(input)) {
       throw new DeclarationError(
-        `${identity(input)} default must be a string without a schema. Supply a string default.`,
+        collects(input)
+          ? `${identity(input)} default must be an array of strings without a schema. Supply a string array default.`
+          : `${identity(input)} default must be a string without a schema. Supply a string default.`,
       );
     }
     const result = await validate(input, input.config.default);
@@ -221,13 +241,20 @@ export async function validateValues(
         supplied.options.booleans.get(input.name) ?? input.config.polarity === 'negative',
       );
     } else {
+      const collected = collects(input);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)
-          : supplied.options.strings.get(input.name);
+          : suppliedOption(supplied.options, input.name, collected);
       if (raw === undefined) {
         if (input.config.required) {
-          issues.push(`${identity(input)} is required. Supply a value.`);
+          issues.push(
+            collected
+              ? `${identity(input)} is required. Supply at least one value.`
+              : `${identity(input)} is required. Supply a value.`,
+          );
+        } else if (collected && !defaults.has(input)) {
+          values.set(input, []);
         } else {
           values.set(input, defaults.get(input));
         }

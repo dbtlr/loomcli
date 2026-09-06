@@ -11,6 +11,7 @@ import type {
   DefaultConstraint,
   GlobalNameConstraint,
   Host,
+  MultipleConstraint,
   NameConstraint,
   OptionConfig,
   OptionValue,
@@ -384,7 +385,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     config: Config &
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
-      NoInfer<DefaultConstraint<Config>>,
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<MultipleConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
     return new CommandBuilder(declareOption(this.#state, input));

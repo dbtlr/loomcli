@@ -36,6 +36,10 @@ type OptionSpelling =
   | { short: ShortAlias; shortOnly: true };
 
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
+/** The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does. */
+type Multiplicity = { multiple: true } | { multiple?: false };
+/** The tokens one declaration collects before validation: one string, or every occurrence. */
+type RawOptionValue<Config> = Config extends { multiple: true } ? string[] : string;
 type SchemaOutput<Schema, Raw> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<Schema>
   : Raw;
@@ -95,7 +99,8 @@ export interface Out {
   fatal(message: string): never;
 }
 export type StringOption = OptionSpelling &
-  Presence & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+  Presence &
+  Multiplicity & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
 export interface VariadicArgument {
   variadic: true;
   required: true;
@@ -117,9 +122,23 @@ export type ValidatedValue<Config, Raw> = Config extends unknown
 /** Keep each conditional declaration paired with its own schema input type. */
 export type DefaultConstraint<Config> = Config extends unknown
   ? Config & {
-      default?: 'validate' extends keyof Config ? SchemaInput<Config['validate']> : string;
+      default?: 'validate' extends keyof Config
+        ? SchemaInput<Config['validate']>
+        : RawOptionValue<Config>;
     }
   : never;
+
+/**
+ * A multiple option hands its whole collection to one schema, so the declared schema must accept a
+ * `string[]` input. The key names the fault, the way the other declaration constraints do.
+ */
+export type MultipleConstraint<Config> = Config extends { multiple: true }
+  ? 'validate' extends keyof Config
+    ? string[] extends SchemaInput<Config['validate']>
+      ? unknown
+      : { 'A multiple option schema must accept a string[] input': Config['validate'] }
+    : unknown
+  : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   : ValidatedValue<Config, string>;
@@ -128,6 +147,7 @@ export type BooleanOption =
       type: 'boolean';
       validate?: never;
       default?: never;
+      multiple?: never;
       required?: never;
       polarity?: 'positive' | 'negative';
     })
@@ -135,6 +155,7 @@ export type BooleanOption =
       type: 'boolean';
       validate?: never;
       default?: never;
+      multiple?: never;
       required?: never;
       polarity: 'both';
       short?: ShortAlias;
@@ -142,9 +163,11 @@ export type BooleanOption =
     };
 export type OptionConfig = StringOption | BooleanOption;
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
-  ?
-      | ValidatedValue<Config, string>
-      | (Config extends { required: true } | { default: unknown } ? never : undefined)
+  ? Config extends { multiple: true }
+    ? ValidatedValue<Config, string[]>
+    :
+        | ValidatedValue<Config, string>
+        | (Config extends { required: true } | { default: unknown } ? never : undefined)
   : boolean;
 
 export interface ActionContext<Args, Options = {}> {
