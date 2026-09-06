@@ -40,7 +40,7 @@ import type {
   RunOptions,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
-import { prepareInputs } from './validation.js';
+import { captureConfig, prepareInputs } from './validation.js';
 
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
@@ -83,7 +83,7 @@ class ApplicationBuilder<
     AfterArgument<State>
   > {
     const input: ArgumentInput<Name, Config> = {
-      config: { ...config },
+      config: captureConfig(config),
       kind: 'argument',
       name,
     };
@@ -99,7 +99,7 @@ class ApplicationBuilder<
       NoInfer<MultipleConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
-      config: { ...config },
+      config: captureConfig(config),
       kind: 'option',
       name,
     };

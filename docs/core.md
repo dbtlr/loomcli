@@ -345,7 +345,7 @@ Omission does not invoke schema-internal defaults. An explicitly declared `defau
 
 Every `run()` checks the complete declarations, then validates all declared defaults before parsing invocation tokens. It awaits asynchronous defaults and reuses their transformed outputs for that invocation. Invalid defaults report the affected declaration, the schema explanation, and a correction with exit code 1. Default results are not cached across invocations.
 
-Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. Schema objects and default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
+Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. An array default is copied at authoring, and each invocation receives its own copy when no schema replaces it, so a later change to the declared array, and an action that mutates its collection, reach neither the declaration nor the next invocation. Schema objects and other default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
 
 ### Issues and validator failures
 
@@ -408,7 +408,7 @@ type OptionNode =
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
-- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all.
+- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
 
 ```ts

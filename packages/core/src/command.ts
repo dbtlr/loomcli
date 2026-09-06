@@ -17,7 +17,7 @@ import type {
   OptionValue,
   Out,
 } from './types.js';
-import { validateValues } from './validation.js';
+import { captureConfig, validateValues } from './validation.js';
 import type {
   ArgumentInput,
   DefaultValues,
@@ -433,7 +433,11 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     name: Name,
     config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
-    const input: ArgumentInput<Name, Config> = { config: { ...config }, kind: 'argument', name };
+    const input: ArgumentInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'argument',
+      name,
+    };
     return new CommandBuilder(declareArgument(this.#state, input));
   }
 
@@ -445,7 +449,11 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
+    const input: OptionInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'option',
+      name,
+    };
     return new CommandBuilder(declareOption(this.#state, input));
   }
 

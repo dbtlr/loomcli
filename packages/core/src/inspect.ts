@@ -73,9 +73,35 @@ function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Sp
   return spellings;
 }
 
+/** A structural value core can copy faithfully. Anything else is a library object it leaves alone. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * A snapshot of one declared value. Arrays and plain objects are copied and frozen to any depth, so
+ * a consumer cannot reach the declaration through the graph, and a later call reports the declared
+ * value again. Primitives and library objects are reported as they are.
+ */
+function snapshot(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map((entry: unknown) => snapshot(entry)));
+  }
+  if (isPlainObject(value)) {
+    return Object.freeze(
+      Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, snapshot(entry)])),
+    );
+  }
+  return value;
+}
+
 /** A declared default is wrapped, so `default: undefined` reads apart from no default at all. */
 function declaredDefault(config: ArgumentConfig | OptionConfig) {
-  return 'default' in config ? Object.freeze({ value: config.default }) : undefined;
+  return 'default' in config ? Object.freeze({ value: snapshot(config.default) }) : undefined;
 }
 
 function optionNode(input: OptionInput, table: ReturnType<typeof compileOptions>): OptionNode {

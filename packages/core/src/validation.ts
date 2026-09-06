@@ -71,6 +71,18 @@ class ValidatedInputs {
 export type { ValidatedInputs };
 
 /**
+ * Authoring's snapshot of one config. An array default is the one declared value core hands to an
+ * action as its own value, so the declaration keeps a copy and the caller keeps its array. Every
+ * other property is captured as declared, because core clones no library object.
+ */
+export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
+  config: Config,
+): Config {
+  const value = config.default;
+  return Array.isArray(value) ? { ...config, default: [...value] } : { ...config };
+}
+
+/**
  * A declaration error names the declaration, because the author reads the declaration to fix it.
  * An argument declares and reads under one name, so the two namings differ for options alone.
  */
@@ -246,6 +258,15 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
   return defaults;
 }
 
+/**
+ * Without a schema the declared array reaches the action itself, so each invocation takes a copy
+ * and an action that mutates its collection cannot rewrite the declaration. A schema output is the
+ * author's own value, produced anew for this invocation, so it passes through unchanged.
+ */
+function freshDefault(input: InputDeclaration, value: unknown) {
+  return input.config.validate === undefined && Array.isArray(value) ? [...value] : value;
+}
+
 export async function validateValues(
   inputs: readonly InputDeclaration[],
   supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
@@ -276,7 +297,7 @@ export async function validateValues(
         } else if (collected && !defaults.has(input)) {
           values.set(input, []);
         } else {
-          values.set(input, defaults.get(input));
+          values.set(input, freshDefault(input, defaults.get(input)));
         }
       } else {
         const result = await validate(input, raw);

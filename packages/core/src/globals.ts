@@ -8,6 +8,7 @@ import type {
   OptionValue,
 } from './types.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
+import { captureConfig } from './validation.js';
 
 const globalSubject = 'the global options';
 
@@ -61,7 +62,11 @@ class GlobalOptionsBuilder<Options> {
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>>,
   ): GlobalOptions<Options & Record<Name, OptionValue<Config>>> {
-    const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
+    const input: OptionInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'option',
+      name,
+    };
     const previous = this.#bind;
     return new GlobalOptionsBuilder([...this.#inputs, input], (values) => ({
       ...previous(values),
