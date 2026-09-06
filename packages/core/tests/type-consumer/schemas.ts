@@ -35,16 +35,18 @@ const handler: ActionHandler<typeof app> = ({ args, options }) => {
 };
 app.action(handler);
 
+const wrongSchemaDefault = { default: 10, type: 'string', validate: number } satisfies StringOption;
 // @ts-expect-error TS2345: a transforming schema default uses its input type
-new Application('bad').option('size', { default: 10, type: 'string', validate: number });
+new Application('bad').option('size', wrongSchemaDefault);
 // @ts-expect-error TS2345: required values cannot declare defaults
 new Application('bad').option('size', { default: '10', required: true, type: 'string' });
 // @ts-expect-error TS2345: Boolean options do not accept schemas
 new Application('bad').option('flag', { type: 'boolean', validate: z.boolean() });
 // @ts-expect-error TS2322: required variadic arguments cannot declare defaults
 new Application('bad').argument('files', { default: [], required: true, variadic: true });
+const wrongRawDefault = { default: 10, type: 'string' } satisfies StringOption;
 // @ts-expect-error TS2345: raw value defaults must be strings
-new Application('bad').option('size', { default: 10, type: 'string' });
+new Application('bad').option('size', wrongRawDefault);
 // @ts-expect-error TS2322: validate takes a Standard Schema object, not a callback
 new Application('bad').option('size', { type: 'string', validate: (value: string) => value });
 
@@ -54,3 +56,57 @@ new Application('widened').option('size', widened).action(({ options }) => {
   const unsafe: string | undefined = options.size;
   return unsafe;
 });
+
+const rawArgument = { mode: 'raw', required: true, variadic: true } satisfies {
+  mode: 'raw';
+  required: true;
+  variadic: true;
+};
+const transformedArgument = {
+  mode: 'schema',
+  required: true,
+  validate: z.array(z.string()).transform((files) => files.length),
+  variadic: true,
+} satisfies { mode: 'schema'; required: true; variadic: true; validate: unknown };
+const conditionalArgument = Math.random() > 0.5 ? rawArgument : transformedArgument;
+new Application('conditional').argument('files', conditionalArgument).action(({ args }) => {
+  const either: string[] | number = args.files;
+  // @ts-expect-error TS2322: a conditional schema can transform the array into a number
+  const unsafe: string[] = args.files;
+  return { either, unsafe };
+});
+
+const arrayInput = z
+  .union([z.string(), z.array(z.string())])
+  .transform((value) => (typeof value === 'string' ? value : value.join(',')));
+new Application('array-default')
+  .option('tags', { default: ['a', 'b'], type: 'string', validate: arrayInput })
+  .action(({ options }) => {
+    const text: string = options.tags;
+    return text;
+  });
+const nestedInput = z
+  .union([z.string(), z.object({ tags: z.array(z.string()) })])
+  .transform((value) => (typeof value === 'string' ? value : value.tags.length));
+new Application('nested-default')
+  .option('tags', { default: { tags: ['a', 'b'] }, type: 'string', validate: nestedInput })
+  .action(({ options }) => {
+    const value: string | number = options.tags;
+    return value;
+  });
+new Application('async-types')
+  .option('value', {
+    required: true,
+    type: 'string',
+    validate: z.string().transform(async (text) => text.length),
+  })
+  .action(({ options }) => {
+    const value: number = options.value;
+    return value;
+  });
+new Application('element-types')
+  .argument('values', { required: true, validate: z.array(number), variadic: true })
+  .action(({ args }) => {
+    const values: number[] = args.values;
+    return values;
+  });

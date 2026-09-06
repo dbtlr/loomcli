@@ -164,3 +164,16 @@ test('captured declarations and prepared default outputs stay isolated across co
     { ['__proto__']: { call: 4, size: 10 } },
   ]);
 });
+
+test.each(['missing', 'number', 'null', 'path', 'key', 'nonarray'])(
+  'malformed issue %s stops validation as a developer error',
+  (shape) => {
+    const result = schema('malformed-issue', [shape, '--size', 'x', '--later', 'y']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(
+      'Invalid declaration: Option "--size" validator failed unexpectedly:',
+    );
+    expect(result.stderr).toContain('Fix the validator.');
+  },
+);

@@ -120,6 +120,26 @@ switch (scenario) {
     app = app.option('size', { type: 'string', validate: schema(() => ({ issues: [] })) });
     break;
   }
+  case 'malformed-issue': {
+    const malformed = {
+      key: { message: 'Bad.', path: [{ key: {} }] },
+      missing: {},
+      nonarray: { message: 'Bad.', path: 'x' },
+      null: null,
+      number: { message: 42 },
+      path: { message: 'Bad.', path: [null] },
+    }[argv.shift()];
+    app = app
+      .option('size', { type: 'string', validate: schema(() => ({ issues: [malformed] })) })
+      .option('later', {
+        type: 'string',
+        validate: schema(() => {
+          process.stdout.write('later ran\n');
+          return { value: 'later' };
+        }),
+      });
+    break;
+  }
   case 'malformed-result': {
     app = app.option('size', { type: 'string', validate: schema(() => ({})) });
     break;

@@ -89,14 +89,14 @@ export interface ArgumentConfig {
   validate?: StandardSchemaV1;
   default?: never;
 }
-export type ValidatedValue<Config, Raw> = 'validate' extends keyof Config
-  ? SchemaOutput<Config['validate'], Raw>
-  : Raw;
-export type DefaultConstraint<Config> = Config extends { default: infer Default }
-  ? [Default] extends ['validate' extends keyof Config ? SchemaInput<Config['validate']> : string]
-    ? unknown
-    : never
-  : unknown;
+export type ValidatedValue<Config, Raw> = Config extends unknown
+  ? 'validate' extends keyof Config
+    ? SchemaOutput<Config['validate'], Raw>
+    : Raw
+  : never;
+export interface DefaultConstraint<Config> {
+  default?: 'validate' extends keyof Config ? SchemaInput<Config['validate']> : string;
+}
 export type ArgumentValue<Config extends ArgumentConfig> = ValidatedValue<Config, string[]>;
 export type BooleanOption =
   | (OptionSpelling & {

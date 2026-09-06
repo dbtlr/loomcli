@@ -55,6 +55,32 @@ function checkDeclaration(input: InputDeclaration) {
   }
 }
 
+function readIssue(issue: unknown): StandardSchemaV1.Issue {
+  if (issue === null || typeof issue !== 'object' || !('message' in issue)) {
+    throw new Error('The validator returned an invalid Standard Schema issue.');
+  }
+  const message = issue.message;
+  if (typeof message !== 'string') {
+    throw new Error('The validator returned an invalid Standard Schema issue message.');
+  }
+  const suppliedPath = 'path' in issue ? issue.path : undefined;
+  if (suppliedPath === undefined) {
+    return { message };
+  }
+  if (!Array.isArray(suppliedPath)) {
+    throw new Error('The validator returned an invalid Standard Schema issue path.');
+  }
+  const path = Array.from(suppliedPath, (segment: unknown) => {
+    const key =
+      segment !== null && typeof segment === 'object' && 'key' in segment ? segment.key : segment;
+    if (typeof key !== 'string' && typeof key !== 'number' && typeof key !== 'symbol') {
+      throw new Error('The validator returned an invalid Standard Schema path key.');
+    }
+    return key;
+  });
+  return { message, path };
+}
+
 async function validate(
   input: InputDeclaration,
   raw: unknown,
@@ -64,15 +90,18 @@ async function validate(
     return { value: raw };
   }
   try {
-    const result = await schema['~standard'].validate(raw);
-    if (
-      result === null ||
-      typeof result !== 'object' ||
-      (result.issues === undefined ? !('value' in result) : !Array.isArray(result.issues))
-    ) {
+    const result: unknown = await schema['~standard'].validate(raw);
+    if (result === null || typeof result !== 'object') {
       throw new Error('The validator returned an invalid Standard Schema result.');
     }
-    return result;
+    const issues = 'issues' in result ? result.issues : undefined;
+    if (issues === undefined && 'value' in result) {
+      return { value: result.value };
+    }
+    if (!Array.isArray(issues)) {
+      throw new Error('The validator returned an invalid Standard Schema result.');
+    }
+    return { issues: Array.from(issues, readIssue) };
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown validator failure.';
     throw new DeclarationError(
