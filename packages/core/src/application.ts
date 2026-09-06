@@ -4,31 +4,49 @@ import { Command, route, validateInputs } from './command.js';
 import { describeFailure } from './errors.js';
 import { captureHost } from './host.js';
 import { Output, reportOutputFailure } from './output.js';
-import type { Action, ExitCode, RunOptions } from './types.js';
+import type {
+  Action,
+  NameConstraint,
+  ExitCode,
+  OptionConfig,
+  OptionValue,
+  RunOptions,
+} from './types.js';
 
-export interface Application<Args = {}> {
+export interface Application<Args = {}, Options = {}> {
   argument<const Name extends string>(
     name: Name,
-    config: { variadic: true; required: true },
-  ): Application<Args & Record<Name, string[]>>;
-  action(handler: Action<Args>): this;
+    config: { variadic: true; required: true } & NameConstraint<Name>,
+  ): Application<Args & Record<Name, string[]>, Options>;
+  option<const Name extends string, const Config extends OptionConfig>(
+    name: Name,
+    config: Config & NameConstraint<Name>,
+  ): Application<Args, Options & Record<Name, OptionValue<Config>>>;
+  action(handler: Action<Args, Options>): this;
   run(options?: RunOptions): Promise<ExitCode>;
 }
 
-class ApplicationBuilder<Args> implements Application<Args> {
+class ApplicationBuilder<Args, Options> implements Application<Args, Options> {
   constructor(
     readonly name: string,
-    readonly root: Command<Args>,
+    readonly root: Command<Args, Options>,
   ) {}
 
   argument<const Name extends string>(
     name: Name,
-    _config: { variadic: true; required: true },
-  ): Application<Args & Record<Name, string[]>> {
-    return new ApplicationBuilder(this.name, this.root.argument(name));
+    _config: { variadic: true; required: true } & NameConstraint<Name>,
+  ): Application<Args & Record<Name, string[]>, Options> {
+    return new ApplicationBuilder(this.name, this.root.argument<Name>(name));
   }
 
-  action(handler: Action<Args>): this {
+  option<const Name extends string, const Config extends OptionConfig>(
+    name: Name,
+    config: Config & NameConstraint<Name>,
+  ): Application<Args, Options & Record<Name, OptionValue<Config>>> {
+    return new ApplicationBuilder(this.name, this.root.option<Name, Config>(name, config));
+  }
+
+  action(handler: Action<Args, Options>): this {
     this.root.actions.push(handler);
     return this;
   }
@@ -46,8 +64,8 @@ class ApplicationBuilder<Args> implements Application<Args> {
       const graph = { root: this.root.build() };
       const tokens = [...host.argv];
       const selected = route(graph.root, tokens);
-      const args = validateInputs(selected.command, selected.tokens);
-      await selected.command.action({ args, host, out: output.out });
+      const inputs = validateInputs(selected.command, selected.tokens);
+      await selected.command.action({ ...inputs, host, out: output.out });
     } catch (error) {
       try {
         const failure = describeFailure(error);
@@ -78,8 +96,20 @@ class ApplicationBuilder<Args> implements Application<Args> {
   }
 }
 
-export const Application: new (name: string) => Application = class extends ApplicationBuilder<{}> {
+export const Application: new (name: string) => Application = class extends ApplicationBuilder<
+  {},
+  {}
+> {
   constructor(name: string) {
-    super(name, new Command([], [], () => ({})));
+    super(
+      name,
+      new Command({
+        actions: [],
+        arguments: [],
+        bind: () => ({}),
+        bindOptions: () => ({}),
+        options: [],
+      }),
+    );
   }
 };

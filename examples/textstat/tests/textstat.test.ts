@@ -42,3 +42,58 @@ test('textstat uses the supplied cwd and supports an explicit hyphenated relativ
     stdout: '5\t./-notes.txt\n',
   });
 });
+
+test.each([
+  [['--metric', 'bytes', '--total'], '12\tone.txt\n14\ttwo.txt\n26\ttotal\n'],
+  [['-tm', 'words'], '2\tone.txt\n3\ttwo.txt\n5\ttotal\n'],
+  [['--metric=lines', '-t'], '1\tone.txt\n1\ttwo.txt\n2\ttotal\n'],
+] satisfies [string[], string][])(
+  'textstat counts the selected metric and total for %j',
+  (options, stdout) => {
+    const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-metrics-'));
+    try {
+      writeFileSync(join(directory, 'one.txt'), 'hello world\n');
+      writeFileSync(join(directory, 'two.txt'), 'é\tthree\r\nlast');
+      expect(
+        invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', ...options, 'two.txt'], {
+          cwd: directory,
+        }),
+      ).toEqual({ status: 0, stderr: '', stdout });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  },
+);
+
+test.each(['words', 'lines'])('textstat counts empty content as zero for %s', (metric) => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-empty-'));
+  try {
+    writeFileSync(join(directory, 'empty.txt'), '');
+    expect(
+      invoke(
+        new URL('../dist/main.js', import.meta.url),
+        ['--metric', metric, 'empty.txt', '--total'],
+        { cwd: directory },
+      ),
+    ).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '0\tempty.txt\n0\ttotal\n',
+    });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test.each(['unsupported', ''])('textstat rejects metric %j before file access', (metric) => {
+  const result = invoke(new URL('../dist/main.js', import.meta.url), [
+    '--metric',
+    metric,
+    'missing-fixture.txt',
+  ]);
+  expect(result).toEqual({
+    status: 1,
+    stderr: `Unsupported metric "${metric}". Use bytes, words, or lines.\n`,
+    stdout: '',
+  });
+});

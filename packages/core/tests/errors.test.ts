@@ -13,13 +13,13 @@ test.each([
     'required',
     ['--'],
     2,
-    'Invalid input: Unsupported token "--". Supply a positional value; prefix a hyphenated path with "./".\n',
+    'Invalid input: Argument "files" requires at least one value. Supply a value for "files".\n',
   ],
   [
     'required',
     ['-file'],
     2,
-    'Invalid input: Unsupported token "-file". Supply a positional value; prefix a hyphenated path with "./".\n',
+    'Invalid input: Unknown option "-f". Supply a declared option; prefix a hyphenated path with "./".\n',
   ],
   [
     'duplicate',

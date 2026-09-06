@@ -54,9 +54,9 @@ export default defineConfig({
       {
         files: ['packages/core/src/**'],
         rules: {
-          // Exit codes and argv offsets are explicit parts of the invocation contract.
+          // Exit codes, argv offsets, and the missing-index sentinel have fixed meanings.
           // oxlint-disable-next-line eslint/no-magic-numbers
-          'eslint/no-magic-numbers': ['warn', { ignore: [0, 1, 2] }],
+          'eslint/no-magic-numbers': ['warn', { ignore: [-1, 0, 1, 2] }],
         },
       },
       {
@@ -64,6 +64,7 @@ export default defineConfig({
           'packages/core/src/application.ts',
           'packages/core/src/output.ts',
           'packages/core/src/command.ts',
+          'packages/core/src/options.ts',
         ],
         rules: {
           // Keep each ordered lifecycle and write-completion boundary in one method.
@@ -158,6 +159,7 @@ export default defineConfig({
     ],
     plugins: ['typescript', 'import', 'eslint', 'unicorn', 'oxc', 'promise', 'node'],
     rules: {
+      'eslint/no-duplicate-imports': ['warn', { allowSeparateTypeImports: true }],
       'node/no-sync': 'off',
       'vite-plus/prefer-vite-plus-imports': 'error',
 

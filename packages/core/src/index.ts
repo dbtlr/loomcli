@@ -4,10 +4,13 @@ export type {
   Action,
   ActionContext,
   ActionHandler,
+  BooleanOption,
   ExitCode,
   Host,
   InputTerminal,
   Out,
+  OptionConfig,
   OutputTerminal,
   RunOptions,
+  StringOption,
 } from './types.js';
