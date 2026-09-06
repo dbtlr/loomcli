@@ -13,6 +13,6 @@ export const select = new Command('select', globals)
     required: true,
     short: 'F',
     type: 'string',
-    validate: z.array(z.string().min(NAMED)),
+    validate: z.array(z.string().min(NAMED, 'Field names cannot be empty.')),
   })
   .action(selectFields);
