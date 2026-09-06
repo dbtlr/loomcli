@@ -26,11 +26,35 @@ test('a multiple string alias still has to end its short group', () => {
   expect(result.stderr).toContain('Value option "-F" must be last in its short group.');
 });
 
-test('an omitted multiple option is an empty array and never reaches its schema', () => {
+test('an omitted multiple option validates its empty collection exactly once', () => {
   expect(multiple('schema')).toEqual({
     status: 0,
     stderr: '',
-    stdout: '{"calls":0,"options":{"field":[]}}\n',
+    stdout: '{"calls":1,"options":{"field":[]}}\n',
+  });
+});
+
+test('the action receives the schema output of the empty collection, not the collection', () => {
+  expect(multiple('counted')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"options":{"field":0},"passthrough":[]}\n',
+  });
+});
+
+test('a schema that rejects the empty collection reports its issue on omission', () => {
+  expect(multiple('nonempty')).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Option "--field": Supply at least one field.\n',
+    stdout: '',
+  });
+});
+
+test('required is checked before the schema, so it answers an omission first', () => {
+  expect(multiple('nonempty-required')).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Option "--field" is required. Supply at least one value.\n',
+    stdout: '',
   });
 });
 

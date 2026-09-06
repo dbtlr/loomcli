@@ -113,12 +113,12 @@ The raw value is the whole `string[]`, and the declared schema receives that arr
 
 | Declaration and input               | Action value or failure              |
 | ----------------------------------- | ------------------------------------ |
-| Omitted, no declared default        | `[]`; the schema is not called       |
+| Omitted, no declared default        | The validated output of `[]`         |
 | Omitted, declared default           | The validated default output         |
 | One or more occurrences             | The validated array, or input issues |
 | `required: true` with no occurrence | Input error; no dispatch             |
 
-`required: true` means at least one occurrence. A multiple option's action value is never `undefined`: no occurrence is an accurate empty collection. A default is a `string[]`, or the schema's input type when the declaration validates, and it passes through the schema like any other default.
+`required: true` means at least one occurrence. A multiple option's action value is never `undefined`: no occurrence is an accurate empty collection. That empty collection enters the schema like a supplied one, so the action always receives the schema output, and `z.array(z.string()).transform(fields => fields.length)` gives `0` for an omitted option. A schema that rejects `[]`, such as `z.array(z.string()).min(1)`, reports its issue on omission with code 2. `required: true` is the structural at-least-one check, and it is read before validation, so a required option with no occurrence reports the required message instead. A default is a `string[]`, or the schema's input type when the declaration validates, and it passes through the schema like any other default.
 
 Global options declare `multiple` under the same rules. The pre-scan consumes each occurrence at any placement before the passthrough delimiter, so a repeated global is collected rather than rejected.
 
@@ -333,6 +333,7 @@ A scalar argument's schema receives its one token. A variadic argument's schema,
 | Declaration and input                          | Action value or failure                           |
 | ---------------------------------------------- | ------------------------------------------------- |
 | Optional value or argument omitted, no default | `undefined`; schema is not called                 |
+| Optional multiple option omitted, no default   | The validated output of `[]`                      |
 | Optional value omitted, declared default       | The validated default output                      |
 | Supplied value, including an empty string      | Its validated output or input issues              |
 | `required: true` value option omitted          | Input error; no dispatch                          |

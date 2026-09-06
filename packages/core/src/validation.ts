@@ -291,6 +291,15 @@ export async function validateValues(
 ): Promise<ValidatedInputs> {
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
+  /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
+  const accept = async (input: InputDeclaration, raw: unknown, subject: string) => {
+    const result = await validate(input, raw);
+    if (result.issues === undefined) {
+      values.set(input, result.value);
+    } else {
+      issues.push(...messages(subject, result.issues));
+    }
+  };
   for (const input of inputs) {
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(
@@ -312,17 +321,13 @@ export async function validateValues(
               : `${subject} is required. Supply a value.`,
           );
         } else if (collected && !defaults.has(input)) {
-          values.set(input, []);
+          // No occurrence is an accurate empty collection, so it reads like a supplied value.
+          await accept(input, [], subject);
         } else {
           values.set(input, freshDefault(input, defaults.get(input)));
         }
       } else {
-        const result = await validate(input, raw);
-        if (result.issues !== undefined) {
-          issues.push(...messages(subject, result.issues));
-        } else {
-          values.set(input, result.value);
-        }
+        await accept(input, raw, subject);
       }
     }
   }

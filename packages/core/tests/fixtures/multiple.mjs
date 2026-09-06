@@ -54,6 +54,43 @@ switch (scenario) {
       .action(({ options, out }) => out.print(JSON.stringify({ calls, options })));
     break;
   }
+  case 'counted': {
+    app = new Application('multiple')
+      .option('field', {
+        multiple: true,
+        type: 'string',
+        validate: {
+          '~standard': {
+            validate: (value) => ({ value: value.length }),
+            vendor: 'fixture',
+            version: 1,
+          },
+        },
+      })
+      .action(report);
+    break;
+  }
+  case 'nonempty': {
+    app = new Application('multiple')
+      .option('field', {
+        multiple: true,
+        type: 'string',
+        validate: z.array(z.string()).min(1, 'Supply at least one field.'),
+      })
+      .action(report);
+    break;
+  }
+  case 'nonempty-required': {
+    app = new Application('multiple')
+      .option('field', {
+        multiple: true,
+        required: true,
+        type: 'string',
+        validate: z.array(z.string()).min(1, 'Supply at least one field.'),
+      })
+      .action(report);
+    break;
+  }
   case 'required': {
     app = new Application('multiple')
       .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
