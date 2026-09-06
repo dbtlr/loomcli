@@ -103,8 +103,13 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
   return node;
 }
 
+/** One name rule for every declared name in the graph, so a child and an argument read alike. */
+function isDeclaredName(name: unknown): name is string {
+  return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
+}
+
 function checkChildName(parent: string | null, name: unknown): asserts name is string {
-  if (typeof name !== 'string' || !name || name.startsWith('-') || /[\s=]/u.test(name)) {
+  if (!isDeclaredName(name)) {
     throw new DeclarationError(
       `${sentenceOf(parent)} attaches a child named "${String(name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
     );
@@ -278,6 +283,11 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
   const slots: ArgumentSlot[] = [];
   const seen = new Set<string>();
   for (const input of state.inputs.filter((entry) => entry.kind === 'argument')) {
+    if (!isDeclaredName(input.name)) {
+      throw new DeclarationError(
+        `${sentenceOf(state.name)} declares an argument named "${String(input.name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      );
+    }
     if (seen.has(input.name)) {
       throw new DeclarationError(
         `Argument "${input.name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
