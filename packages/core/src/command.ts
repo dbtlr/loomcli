@@ -306,9 +306,9 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
  * children. A group with no children receives an invocation no handler can answer, and a local
  * option on a group reaches no handler either, because locals never inherit.
  */
-function checkGroup(state: Declared, hasChildren: boolean): void {
+function checkGroup(state: Declared, children: readonly [string, CommandNode][]): void {
   const { name } = state;
-  if (!hasChildren) {
+  if (children.length === 0) {
     throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
   }
   const option = state.inputs.find((input) => input.kind === 'option');
@@ -363,13 +363,13 @@ export function buildCommand<Args, Options, Globals>(
   }
   const action = actions[0];
   if (!action) {
-    checkGroup(state, attached.length > 0);
+    checkGroup(state, attached);
   }
   const options = compileLocalOptions(state, globals, subject);
   return {
     arguments: slots,
     children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
-    dispatch: action && bindDispatch(state, action),
+    dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
     options,
