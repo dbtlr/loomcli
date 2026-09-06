@@ -1,7 +1,7 @@
 import type { Writable } from 'node:stream';
 
 import { CommandBuilder, collectInputs, selectCommand } from './command.js';
-import type { Command } from './command.js';
+import type { Command, CommandMethod } from './command.js';
 import { describeFailure } from './errors.js';
 import type { GlobalOptions } from './globals.js';
 import { defaultGlobals } from './globals.js';
@@ -11,6 +11,8 @@ import type {
   Action,
   ArgumentConfig,
   ArgumentValue,
+  declaredTypes,
+  DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
   NameConstraint,
@@ -21,7 +23,20 @@ import type {
 } from './types.js';
 import { prepareInputs } from './validation.js';
 
-class ApplicationBuilder<Args, Options, Globals> {
+/**
+ * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
+ * An Application's type state is a subset of these, and each call removes the names it invalidates.
+ */
+type ApplicationMethod = CommandMethod | 'command';
+
+class ApplicationBuilder<
+  Args,
+  Options,
+  Globals,
+  State extends ApplicationMethod = ApplicationMethod,
+> {
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
+
   readonly #name: string;
   readonly #root: CommandBuilder<Args, Options, Globals>;
 
@@ -38,7 +53,12 @@ class ApplicationBuilder<Args, Options, Globals> {
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
-  ): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
+  ): Application<
+    Args & Record<Name, ArgumentValue<Config>>,
+    Options,
+    Globals,
+    Exclude<State, 'command'>
+  > {
     return this.derive(this.#root.argument<Name, Config>(name, config));
   }
 
@@ -48,24 +68,26 @@ class ApplicationBuilder<Args, Options, Globals> {
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
-  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
+  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     return this.derive(this.#root.option<Name, Config>(name, config));
   }
 
-  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals> {
+  /** The action is the last declaration call; only `run()` and `name` remain after it. */
+  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals, never> {
     return this.derive(this.#root.action(handler));
   }
 
-  command<ChildArgs, ChildOptions>(
-    child: Command<ChildArgs, ChildOptions, Globals>,
-  ): Application<Args, Options, Globals> {
+  /** A child arrives in any type state, because its own action is the call that finished it. */
+  command(
+    child: Command<unknown, unknown, Globals, never>,
+  ): Application<Args, Options, Globals, Exclude<State, 'argument'>> {
     return this.derive(this.#root.attach(child));
   }
 
   /** One wrapper for every declaration call, so the Application keeps its name and its root. */
   private derive<DerivedArgs, DerivedOptions>(
-    root: Command<DerivedArgs, DerivedOptions, Globals>,
-  ): Application<DerivedArgs, DerivedOptions, Globals> {
+    root: Command<DerivedArgs, DerivedOptions, Globals, never>,
+  ): ApplicationBuilder<DerivedArgs, DerivedOptions, Globals> {
     // A declaration call always returns a CommandBuilder; the public type only hides its state.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const derived = root as CommandBuilder<DerivedArgs, DerivedOptions, Globals>;
@@ -122,12 +144,19 @@ class ApplicationBuilder<Args, Options, Globals> {
 }
 
 /**
- * The authoring surface of an Application: the root Command's calls, `command()`, and `run()`.
- * Every authoring call returns a new declaration value and leaves its receiver unchanged.
+ * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
+ * `run()`, and `name`. Every authoring call returns a new declaration value, leaves its receiver
+ * unchanged, and publishes only the calls that are still valid after it. `run()` and `name` survive
+ * every call, so `Application<A, O, G, never>` is the finished application and can still run.
  */
-export type Application<Args = {}, Options = {}, Globals = {}> = Pick<
-  ApplicationBuilder<Args, Options, Globals>,
-  'action' | 'argument' | 'command' | 'name' | 'option' | 'run'
+export type Application<
+  Args = {},
+  Options = {},
+  Globals = {},
+  State extends ApplicationMethod = ApplicationMethod,
+> = Pick<
+  ApplicationBuilder<Args, Options, Globals, State>,
+  typeof declaredTypes | 'name' | 'run' | State
 >;
 
 interface ApplicationConstructor {
@@ -145,6 +174,7 @@ class ApplicationDeclaration extends ApplicationBuilder<{}, {}, {}> {
         children: [],
         globals: defaultGlobals(globals),
         inputs: [],
+        late: [],
         name: null,
       }),
     );

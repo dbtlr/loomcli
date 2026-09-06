@@ -19,7 +19,7 @@ void rootOptions;
 
 // @ts-expect-error TS2339: A Command publishes no children to reach, replace, or extend.
 get.children;
-// @ts-expect-error TS2551: A Command publishes no action list, only the action() call.
+// @ts-expect-error TS2339: A Command publishes no action list, and `get` registered its action.
 get.actions;
 // @ts-expect-error TS2339: A Command does not publish its build step.
 get.build;

@@ -155,10 +155,25 @@ export interface ActionContext<Args, Options = {}> {
   host: Host;
 }
 export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>) => unknown;
-export type ActionHandler<Declaration> = Declaration extends {
-  action(handler: infer Handler): unknown;
+
+/** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
+export declare const declaredTypes: unique symbol;
+
+/** The three inferred types one declaration carries. The phantom member keeps them exact. */
+export interface DeclaredTypes<Args, Options, Globals> {
+  args: Args;
+  globals: Globals;
+  options: Options;
 }
-  ? Handler
+
+/**
+ * The handler one declaration accepts. It reads the phantom types, not the `action()` call, so it
+ * holds on a fresh declaration, on a partly declared one, and on one that registered its action.
+ */
+export type ActionHandler<Declaration> = Declaration extends {
+  [declaredTypes]: DeclaredTypes<infer Args, infer Options, infer Globals>;
+}
+  ? Action<Args, Globals & Options>
   : never;
 /** The args object an extracted handler receives for this declaration. */
 export type ActionArgs<Declaration> =

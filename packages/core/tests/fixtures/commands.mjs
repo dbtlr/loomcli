@@ -30,8 +30,8 @@ const keys = new Command('keys', globals).action(report('keys'));
 
 const app = new Application('jsonkit', globals)
   .option('pretty', { short: 'p', type: 'boolean' })
-  .action(report('root'))
   .command(get)
-  .command(keys);
+  .command(keys)
+  .action(report('root'));
 
 await app.run({ host: { argv: process.argv.slice(3) } });

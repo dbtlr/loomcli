@@ -310,6 +310,26 @@ test.each([
     'child-variadic-not-last',
     'Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.',
   ],
+  [
+    'late-argument',
+    'Command "get" declares argument "path" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'late-option',
+    'Command "get" declares option "raw" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'late-root-argument',
+    'The root Command declares argument "files" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'late-root-option',
+    'The root Command declares option "pretty" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'late-root-child',
+    'The root Command attaches child "get" after its action. Attach children before action().',
+  ],
 ] satisfies [string, string][])(
   'rejects the %s graph before reading tokens',
   (scenario, reason) => {

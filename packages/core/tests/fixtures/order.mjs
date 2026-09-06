@@ -24,7 +24,7 @@ const pair = new Command('pair', globals)
   .action(({ args, out }) => out.print(JSON.stringify(args)));
 
 await new Application('order', globals)
-  .action(({ out }) => out.print('root'))
   .command(order)
   .command(pair)
+  .action(({ out }) => out.print('root'))
   .run({ host: { argv: process.argv.slice(2) } });

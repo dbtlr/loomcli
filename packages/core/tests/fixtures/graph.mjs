@@ -18,98 +18,117 @@ function build() {
     case 'arguments-and-children': {
       return app
         .argument('files', { required: true, variadic: true })
-        .action(dispatch)
-        .command(child('get'));
+        .command(child('get'))
+        .action(dispatch);
     }
     case 'duplicate-children': {
-      return app.action(dispatch).command(child('get')).command(child('get'));
+      return app.command(child('get')).command(child('get')).action(dispatch);
     }
     case 'invalid-child-name': {
-      return app.action(dispatch).command(child('bad name'));
+      return app.command(child('bad name')).action(dispatch);
     }
     case 'empty-child-name': {
-      return app.action(dispatch).command(child(''));
+      return app.command(child('')).action(dispatch);
     }
     case 'hyphen-child-name': {
-      return app.action(dispatch).command(child('-get'));
+      return app.command(child('-get')).action(dispatch);
     }
     case 'equals-child-name': {
-      return app.action(dispatch).command(child('get=value'));
+      return app.command(child('get=value')).action(dispatch);
     }
     case 'foreign-globals': {
       const other = new GlobalOptions().option('file', { type: 'string' });
-      return app.action(dispatch).command(new Command('get', other).action(dispatch));
+      return app.command(new Command('get', other).action(dispatch)).action(dispatch);
     }
     case 'foreign-child': {
-      return app.action(dispatch).command({ name: 'get' });
+      return app.command({ name: 'get' }).action(dispatch);
     }
     case 'foreign-globals-value': {
       return new Application('graph', {}).action(dispatch);
     }
     case 'missing-globals': {
-      return app.action(dispatch).command(new Command('get').action(dispatch));
+      return app.command(new Command('get').action(dispatch)).action(dispatch);
     }
     case 'shared-option-key': {
       return app
-        .action(dispatch)
-        .command(new Command('get', globals).option('file', { type: 'boolean' }).action(dispatch));
+        .command(new Command('get', globals).option('file', { type: 'boolean' }).action(dispatch))
+        .action(dispatch);
     }
     case 'shared-short-spelling': {
       return app
-        .action(dispatch)
         .command(
           new Command('get', globals)
             .option('force', { short: 'f', type: 'boolean' })
             .action(dispatch),
-        );
+        )
+        .action(dispatch);
     }
     case 'shared-negative-spelling': {
       return app
-        .action(dispatch)
         .command(
           new Command('get', globals).option('no-total', { type: 'string' }).action(dispatch),
-        );
+        )
+        .action(dispatch);
     }
     case 'root-option-collides': {
-      return app.option('file', { type: 'boolean' }).action(dispatch).command(child('get'));
+      return app.option('file', { type: 'boolean' }).command(child('get')).action(dispatch);
     }
     case 'child-actionless': {
-      return app.action(dispatch).command(new Command('get', globals));
+      return app.command(new Command('get', globals)).action(dispatch);
     }
     case 'child-multiple-actions': {
-      return app.action(dispatch).command(child('get').action(dispatch));
+      return app.command(child('get').action(dispatch)).action(dispatch);
     }
     case 'child-duplicate-argument': {
       return app
-        .action(dispatch)
         .command(
           new Command('get', globals)
             .argument('path', { required: true })
             .argument('path', { required: true })
             .action(dispatch),
-        );
+        )
+        .action(dispatch);
     }
     case 'child-variadic-not-last': {
       return app
-        .action(dispatch)
         .command(
           new Command('get', globals)
             .argument('paths', { required: true, variadic: true })
             .argument('path', { required: true })
             .action(dispatch),
-        );
+        )
+        .action(dispatch);
     }
     case 'child-invalid-default': {
       return app
-        .action(dispatch)
         .command(
           new Command('get', globals)
             .option('depth', { default: 'deep', type: 'string', validate: digits() })
             .action(dispatch),
-        );
+        )
+        .action(dispatch);
+    }
+    case 'late-argument': {
+      return app
+        .command(new Command('get', globals).action(dispatch).argument('path', { required: true }))
+        .action(dispatch);
+    }
+    case 'late-option': {
+      return app
+        .command(new Command('get', globals).action(dispatch).option('raw', { type: 'boolean' }))
+        .action(dispatch);
+    }
+    case 'late-root-argument': {
+      return app.action(dispatch).argument('files', { required: true, variadic: true });
+    }
+    case 'late-root-option': {
+      return app.action(dispatch).option('pretty', { type: 'boolean' });
+    }
+    case 'late-root-child': {
+      return app.action(dispatch).command(child('get'));
     }
     default: {
-      return app.action(dispatch).command(child('get')).command(child('keys'));
+      return app.command(child('get')).command(child('keys')).action(dispatch);
     }
   }
 }

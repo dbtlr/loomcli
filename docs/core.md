@@ -18,9 +18,22 @@ const app = new Application('paths')
 await app.run();
 ```
 
-Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `action()`, and `command()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration.
+Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `action()`, and `command()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
 
-A declaration value publishes its authoring calls alone. `Command` publishes `argument()`, `option()`, and `action()`; `GlobalOptions` publishes `option()`; an `Application` adds `command()`, `run()`, and its `name`. The collected declarations stay private, so no consumer can read or replace them.
+A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, and `action()`; `GlobalOptions` publishes `option()`; a fresh `Application` adds `command()`. An `Application` keeps `run()` and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
+
+Declare arguments and options, attach the children, then register the action last. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
+
+| Call         | Removed from the value it returns                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `argument()` | `command()`, because one Command declares arguments or attaches children, never both                         |
+| `command()`  | `argument()`, the same rule read from the other side                                                         |
+| `option()`   | nothing                                                                                                      |
+| `action()`   | every declaration call; a Command keeps only its inferred types, and an Application keeps `run()` and `name` |
+
+Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and still runs. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
+
+JavaScript authors reach the same rules at graph build, which reports a declaration made after the action, and arguments declared beside children. Both are listed in [Graph build errors](#graph-build-errors).
 
 TypeScript requires one statically known name for each `argument()` and `option()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. A rejected name reports the missing property `'Declaration names must be one literal string'`. JavaScript declarations still undergo graph validation during `run()`.
 
@@ -30,7 +43,7 @@ Bare tokens before `--` retain their order as positional inputs. Local options c
 
 Application methods use the internal Command declaration implementation. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
-Graph build rejects duplicate argument names, a variadic argument that is not last, multiple actions, and a Command with no action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
+Graph build rejects duplicate argument names, a variadic argument that is not last, multiple actions, a Command with no action, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 
 ## Local options
 
@@ -137,7 +150,7 @@ Globals are a value, so a Command in its own module knows the global types witho
 
 The application module is the root's authoring file. It declares the root action and attaches the children, and it is the declaration the root action type-imports. One Application value exists, so there is no separate root value to run by mistake.
 
-An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types. Register that action with the last call in the chain. TypeScript resolves the declared type of a variable from its outermost call without checking that call's arguments, but it checks the arguments of every inner call, so a type-imported handler passed to an inner call reports a circular reference. For the root, attach children first and call `action()` last.
+An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types. The types register that action with the last call in the chain: `action()` returns a value with no declaration call left, so a later `argument()`, `option()`, or `command()` does not compile. The rule also keeps a type-imported handler resolvable. TypeScript resolves the declared type of a variable from its outermost call without checking that call's arguments, but it checks the arguments of every inner call, so a type-imported handler passed to an inner call reports a circular reference.
 
 ```ts
 // src/commands/get.ts
@@ -189,7 +202,7 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, and every declared default. Each rule below returns code 1 and names both sides with a correction.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. The last two rules reach JavaScript authors alone, because the types remove the call.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -203,6 +216,8 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                    |
 | A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                    |
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                             |
+| An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                        |
+| A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                    |
 
 Local options on separate Commands can reuse names and spellings. Core holds one globals table and never copies it into a Command.
 

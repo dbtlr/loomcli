@@ -6,6 +6,8 @@ import type {
   Action,
   ArgumentConfig,
   ArgumentValue,
+  declaredTypes,
+  DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
   Host,
@@ -39,15 +41,19 @@ export interface BuiltCommand {
   options: ReturnType<typeof compileOptions>;
 }
 
-/** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
-export declare const declaredTypes: unique symbol;
+/** Phantom key. It marks a Command value, so only a Command can be attached as a child. */
+export declare const commandValue: unique symbol;
 
-/** The three inferred types one declaration carries. The phantom member keeps them exact. */
-export interface DeclaredTypes<Args, Options, Globals> {
-  args: Args;
-  globals: Globals;
-  options: Options;
-}
+/**
+ * Every authoring call a Command can publish. A Command's type state is a subset of these names,
+ * and each call removes the names it invalidates. Adding `command()` to a Command adds it here.
+ */
+export type CommandMethod = 'action' | 'argument' | 'option';
+
+/** A declaration made after the action, kept in authoring order so build reports the first. */
+type LateDeclaration =
+  | { child: object; kind: 'child' }
+  | { input: InputDeclaration; kind: 'input' };
 
 /** The attachable shape of a Command, without its inferred declaration types. */
 interface CommandNode {
@@ -93,10 +99,12 @@ export interface CommandState<Args, Options, Globals> {
   children: readonly object[];
   globals: GlobalOptions<Globals>;
   inputs: readonly InputDeclaration[];
+  late: readonly LateDeclaration[];
   name: string | null;
 }
 
-export class CommandBuilder<Args, Options, Globals> {
+export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
+  declare readonly [commandValue]: true;
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
 
   readonly #state: CommandState<Args, Options, Globals>;
@@ -113,7 +121,12 @@ export class CommandBuilder<Args, Options, Globals> {
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
-  ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
+  ): Command<
+    Args & Record<Name, ArgumentValue<Config>>,
+    Options,
+    Globals,
+    Exclude<State, 'command'>
+  > {
     const declared: ArgumentConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'argument', name };
     const previous = this.#state.bind;
@@ -127,6 +140,7 @@ export class CommandBuilder<Args, Options, Globals> {
         return { ...bound, args: { ...bound.args, ...value } };
       },
       inputs: [...this.#state.inputs, input],
+      late: this.recordLate({ input, kind: 'input' }),
     });
   }
 
@@ -136,7 +150,7 @@ export class CommandBuilder<Args, Options, Globals> {
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
-  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
+  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const declared: OptionConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'option', name };
     const previous = this.#state.bind;
@@ -150,10 +164,12 @@ export class CommandBuilder<Args, Options, Globals> {
         return { ...bound, options: { ...bound.options, ...value } };
       },
       inputs: [...this.#state.inputs, input],
+      late: this.recordLate({ input, kind: 'input' }),
     });
   }
 
-  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
+  /** The action is the last declaration call, so the value it returns publishes no other. */
+  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals, never> {
     return new CommandBuilder({
       ...this.#state,
       actions: [...this.#state.actions, handler],
@@ -165,6 +181,7 @@ export class CommandBuilder<Args, Options, Globals> {
     return new CommandBuilder({
       ...this.#state,
       children: [...this.#state.children, child],
+      late: this.recordLate({ child, kind: 'child' }),
     });
   }
 
@@ -182,6 +199,7 @@ export class CommandBuilder<Args, Options, Globals> {
         `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
       );
     }
+    this.checkDeclarationOrder(name);
     const attached = this.collectChildren();
     const slots = this.collectArguments(subject);
     const first = slots[0];
@@ -217,6 +235,28 @@ export class CommandBuilder<Args, Options, Globals> {
       name,
       options,
     };
+  }
+
+  /** A declaration after the action is an order fault; build reports the first one recorded. */
+  private recordLate(declaration: LateDeclaration): readonly LateDeclaration[] {
+    const { actions, late } = this.#state;
+    return actions.length > 0 ? [...late, declaration] : late;
+  }
+
+  /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
+  private checkDeclarationOrder(name: string | null): void {
+    const late = this.#state.late[0];
+    if (!late) {
+      return;
+    }
+    if (late.kind === 'input') {
+      throw new DeclarationError(
+        `${sentenceOf(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
+      );
+    }
+    throw new DeclarationError(
+      `${sentenceOf(name)} attaches child "${nodeOf(name, late.child).name}" after its action. Attach children before action().`,
+    );
   }
 
   /** Child names are checked before any child builds, so parent diagnostics come first. */
@@ -285,12 +325,19 @@ export class CommandBuilder<Args, Options, Globals> {
 }
 
 /**
- * The authoring surface of a Command. Every call returns a new declaration value and leaves its
- * receiver unchanged. The declarations themselves stay private, so no consumer can reach them.
+ * The authoring surface of a Command in one type state. Every call returns a new declaration value,
+ * leaves its receiver unchanged, and publishes only the calls that are still valid after it. The
+ * declarations themselves stay private, so no consumer can reach them. `Command<A, O, G, never>` is
+ * a Command that registered its action: it is finished, and its only use is `command()`.
  */
-export type Command<Args = {}, Options = {}, Globals = {}> = Pick<
-  CommandBuilder<Args, Options, Globals>,
-  typeof declaredTypes | 'action' | 'argument' | 'option'
+export type Command<
+  Args = {},
+  Options = {},
+  Globals = {},
+  State extends CommandMethod = CommandMethod,
+> = Pick<
+  CommandBuilder<Args, Options, Globals, State>,
+  typeof commandValue | typeof declaredTypes | State
 >;
 
 interface CommandConstructor {
@@ -306,6 +353,7 @@ class CommandDeclaration extends CommandBuilder<{}, {}, {}> {
       children: [],
       globals: defaultGlobals(globals),
       inputs: [],
+      late: [],
       name,
     });
   }
