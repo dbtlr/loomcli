@@ -107,7 +107,7 @@ test.each([
   ['nonboolean-multiple', 'Option "field" multiple must be Boolean. Use true or false.'],
   [
     'string-default',
-    'Option "--field" default must be an array of strings without a schema. Supply a string array default.',
+    'Option "field" default must be an array of strings without a schema. Supply a string array default.',
   ],
 ])('%s fails declaration checking before token parsing', (scenario, diagnostic) => {
   const result = multiple(scenario, ['--unknown']);

@@ -91,7 +91,7 @@ test.each(['throw', 'reject'])(
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(
-      'Invalid declaration: Option "--size" validator failed unexpectedly: Broken validator.',
+      'Invalid declaration: Option "size" validator failed unexpectedly: Broken validator.',
     );
   },
 );
@@ -172,7 +172,7 @@ test.each(['missing', 'number', 'null', 'path', 'key', 'nonarray'])(
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(
-      'Invalid declaration: Option "--size" validator failed unexpectedly:',
+      'Invalid declaration: Option "size" validator failed unexpectedly:',
     );
     expect(result.stderr).toContain('Fix the validator.');
   },

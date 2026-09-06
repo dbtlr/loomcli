@@ -70,7 +70,16 @@ class ValidatedInputs {
 }
 export type { ValidatedInputs };
 
-function identity(input: InputDeclaration) {
+/**
+ * A declaration error names the declaration, because the author reads the declaration to fix it.
+ * An argument declares and reads under one name, so the two namings differ for options alone.
+ */
+function declaredName(input: InputDeclaration) {
+  return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
+}
+
+/** An input error names the spelling the operator supplied, because that is the token to change. */
+function suppliedName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
 }
 
@@ -97,27 +106,31 @@ function checkDeclaration(input: InputDeclaration) {
   if (input.kind === 'option' && input.config.type === 'boolean') {
     if ('validate' in config || 'default' in config || 'required' in config) {
       throw new DeclarationError(
-        `${identity(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
+        `${declaredName(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
       );
     }
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
-    throw new DeclarationError(`${identity(input)} required must be Boolean. Use true or false.`);
+    throw new DeclarationError(
+      `${declaredName(input)} required must be Boolean. Use true or false.`,
+    );
   }
   if (input.kind === 'argument') {
     if (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean') {
-      throw new DeclarationError(`${identity(input)} variadic must be Boolean. Use true or false.`);
+      throw new DeclarationError(
+        `${declaredName(input)} variadic must be Boolean. Use true or false.`,
+      );
     }
     if (input.config.variadic === true && !input.config.required) {
       throw new DeclarationError(
-        `${identity(input)} is variadic and optional. Declare required: true or remove variadic.`,
+        `${declaredName(input)} is variadic and optional. Declare required: true or remove variadic.`,
       );
     }
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
-      `${identity(input)} is required and declares a default. Remove the default or make the input optional.`,
+      `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
     );
   }
   const schema = config.validate;
@@ -131,7 +144,7 @@ function checkDeclaration(input: InputDeclaration) {
       typeof schema['~standard'].validate !== 'function')
   ) {
     throw new DeclarationError(
-      `${identity(input)} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
+      `${declaredName(input)} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
     );
   }
 }
@@ -162,6 +175,10 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
   return { message, path };
 }
 
+/**
+ * A broken validator is a fault in the declaration, whichever value reached it, so its diagnostic
+ * names the declaration. Returned issues belong to the value, so the caller names those.
+ */
 async function validate(
   input: InputDeclaration,
   raw: unknown,
@@ -186,12 +203,12 @@ async function validate(
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown validator failure.';
     throw new DeclarationError(
-      `${identity(input)} validator failed unexpectedly: ${reason} Fix the validator.`,
+      `${declaredName(input)} validator failed unexpectedly: ${reason} Fix the validator.`,
     );
   }
 }
 
-function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Issue[]) {
+function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   return (
     issues.length === 0
       ? [{ message: 'The schema rejected this value without an explanation.' }]
@@ -200,7 +217,7 @@ function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Iss
     const path = issue.path
       ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
       .join('.');
-    return `${identity(input)}${path ? ` at ${path}` : ''}: ${issue.message}`;
+    return `${subject}${path ? ` at ${path}` : ''}: ${issue.message}`;
   });
 }
 
@@ -210,17 +227,18 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
   }
   const defaults = new Map<InputDeclaration, unknown>();
   for (const input of inputs.filter((entry) => Object.hasOwn(entry.config, 'default'))) {
+    const subject = declaredName(input);
     if (input.config.validate === undefined && !holdsRawDefault(input)) {
       throw new DeclarationError(
         collects(input)
-          ? `${identity(input)} default must be an array of strings without a schema. Supply a string array default.`
-          : `${identity(input)} default must be a string without a schema. Supply a string default.`,
+          ? `${subject} default must be an array of strings without a schema. Supply a string array default.`
+          : `${subject} default must be a string without a schema. Supply a string default.`,
       );
     }
     const result = await validate(input, input.config.default);
     if (result.issues !== undefined) {
       throw new DeclarationError(
-        `${identity(input)} has an invalid default. Fix the default or its schema.\n${messages(input, result.issues).join('\n')}`,
+        `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, result.issues).join('\n')}`,
       );
     }
     defaults.set(input, result.value);
@@ -243,6 +261,7 @@ export async function validateValues(
       );
     } else {
       const collected = collects(input);
+      const subject = suppliedName(input);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)
@@ -251,8 +270,8 @@ export async function validateValues(
         if (input.config.required) {
           issues.push(
             collected
-              ? `${identity(input)} is required. Supply at least one value.`
-              : `${identity(input)} is required. Supply a value.`,
+              ? `${subject} is required. Supply at least one value.`
+              : `${subject} is required. Supply a value.`,
           );
         } else if (collected && !defaults.has(input)) {
           values.set(input, []);
@@ -262,7 +281,7 @@ export async function validateValues(
       } else {
         const result = await validate(input, raw);
         if (result.issues !== undefined) {
-          issues.push(...messages(input, result.issues));
+          issues.push(...messages(subject, result.issues));
         } else {
           values.set(input, result.value);
         }
