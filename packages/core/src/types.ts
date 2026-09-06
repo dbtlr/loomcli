@@ -43,15 +43,28 @@ type SchemaInput<Schema> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<Schema>
   : string;
 
+/** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
+interface LiteralNameFault {
+  'Declaration names must be one literal string': never;
+}
+
+type ActionArgument<Declaration> =
+  ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
+
+/** A local option name cannot repeat a key the globals already own; the key names the fault. */
+export type GlobalNameConstraint<Name extends string, Globals> = Name extends keyof Globals
+  ? { 'This option name is already declared as a global option': Name }
+  : unknown;
+
 /** A required record key excludes open strings; distribution rejects each union member. */
 export type NameConstraint<Name extends string, Whole extends string = Name> =
   {} extends Record<Name, unknown>
-    ? never
+    ? LiteralNameFault
     : Name extends Whole
       ? [Whole] extends [Name]
         ? unknown
-        : never
-      : never;
+        : LiteralNameFault
+      : LiteralNameFault;
 
 export type ExitCode = 0 | 1 | 2;
 export interface InputTerminal {
@@ -83,12 +96,19 @@ export interface Out {
 }
 export type StringOption = OptionSpelling &
   Presence & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
-export interface ArgumentConfig {
+export interface VariadicArgument {
   variadic: true;
   required: true;
   validate?: StandardSchemaV1;
   default?: never;
 }
+export interface ScalarArgument {
+  variadic?: false;
+  required: true;
+  validate?: StandardSchemaV1;
+  default?: never;
+}
+export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
     ? SchemaOutput<Config['validate'], Raw>
@@ -100,7 +120,9 @@ export type DefaultConstraint<Config> = Config extends unknown
       default?: 'validate' extends keyof Config ? SchemaInput<Config['validate']> : string;
     }
   : never;
-export type ArgumentValue<Config extends ArgumentConfig> = ValidatedValue<Config, string[]>;
+export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
+  ? ValidatedValue<Config, string[]>
+  : ValidatedValue<Config, string>;
 export type BooleanOption =
   | (OptionSpelling & {
       type: 'boolean';
@@ -133,8 +155,34 @@ export interface ActionContext<Args, Options = {}> {
   host: Host;
 }
 export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>) => unknown;
-export type ActionHandler<Declaration> = Declaration extends {
-  action(handler: infer Handler): unknown;
+
+/** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
+export declare const declaredTypes: unique symbol;
+
+/**
+ * The three inferred types one declaration carries. The phantom member keeps them exact. Args and
+ * options widen, so a child can satisfy a looser reader. The globals appear in both a parameter and
+ * a return position, which makes them invariant: a child's globals must be the parent's own type,
+ * not a subset and not a superset, because one table serves every Command in the graph.
+ */
+export interface DeclaredTypes<Args, Options, Globals> {
+  args: Args;
+  globals: (value: Globals) => Globals;
+  options: Options;
 }
-  ? Handler
+
+/**
+ * The handler one declaration accepts. It reads the phantom types, not the `action()` call, so it
+ * holds on a fresh declaration, on a partly declared one, and on one that registered its action.
+ */
+export type ActionHandler<Declaration> = Declaration extends {
+  [declaredTypes]: DeclaredTypes<infer Args, infer Options, infer Globals>;
+}
+  ? Action<Args, Globals & Options>
   : never;
+/** The args object an extracted handler receives for this declaration. */
+export type ActionArgs<Declaration> =
+  ActionArgument<Declaration> extends { args: infer Args } ? Args : never;
+/** The options object an extracted handler receives, global values included. */
+export type ActionOptions<Declaration> =
+  ActionArgument<Declaration> extends { options: infer Options } ? Options : never;

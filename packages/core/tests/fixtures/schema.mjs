@@ -38,7 +38,7 @@ switch (scenario) {
         .default('internal')
         .transform(() => ++calls),
     });
-    app.action(({ options, out }) =>
+    app = app.action(({ options, out }) =>
       out.print(
         JSON.stringify({
           absent: options.size === undefined,
@@ -59,7 +59,7 @@ switch (scenario) {
         return numberSchema['~standard'].validate(raw);
       }),
     });
-    app.action(({ options, out }) => out.print(JSON.stringify({ ...options, calls })));
+    app = app.action(({ options, out }) => out.print(JSON.stringify({ ...options, calls })));
     break;
   }
   case 'issues': {
@@ -90,7 +90,7 @@ switch (scenario) {
         .transform((files) => ({ count: files.length, joined: files.join(':') })),
       variadic: true,
     });
-    app.action(({ args, passthrough, host, out }) =>
+    app = app.action(({ args, passthrough, host, out }) =>
       out.print(JSON.stringify({ args, argv: host.argv, passthrough })),
     );
     break;
@@ -190,7 +190,7 @@ switch (scenario) {
         return undefined;
       }),
     });
-    app.action(({ options, out }) =>
+    app = app.action(({ options, out }) =>
       out.print(JSON.stringify({ absent: options.size === undefined, calls })),
     );
     break;
@@ -204,7 +204,7 @@ switch (scenario) {
     app = app.option('__proto__', config);
     config.default = '99';
     config.validate = numberSchema;
-    app.action(({ options, out }) => {
+    app = app.action(({ options, out }) => {
       out.print(JSON.stringify(options));
       options.__proto__.size = 55;
     });
@@ -220,7 +220,7 @@ switch (scenario) {
   }
 }
 if (!['absence', 'async', 'collection', 'undefined-output', 'rerun'].includes(scenario)) {
-  app.action(({ options, out }) => out.print(JSON.stringify(options)));
+  app = app.action(({ options, out }) => out.print(JSON.stringify(options)));
 }
 if (scenario !== 'rerun') {
   await app.run({ host: { argv } });

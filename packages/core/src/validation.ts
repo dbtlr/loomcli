@@ -28,10 +28,11 @@ function checkDeclaration(input: InputDeclaration) {
   }
   if (
     input.kind === 'argument' &&
-    (!input.config.required || typeof input.config.variadic !== 'boolean' || !input.config.variadic)
+    (!input.config.required ||
+      (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean'))
   ) {
     throw new DeclarationError(
-      `${identity(input)} must declare required: true and variadic: true.`,
+      `${identity(input)} must declare required: true, with variadic true, false, or absent.`,
     );
   }
   if (config.required && Object.hasOwn(config, 'default')) {
@@ -147,7 +148,7 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
 
 export async function validateValues(
   inputs: readonly InputDeclaration[],
-  parsed: { positionals: string[]; options: OptionValues },
+  supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
   defaults: ValidatedInputs,
 ): Promise<ValidatedInputs> {
   const values = new Map<InputDeclaration, unknown>();
@@ -156,11 +157,13 @@ export async function validateValues(
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(
         input,
-        parsed.options.booleans.get(input.name) ?? input.config.polarity === 'negative',
+        supplied.options.booleans.get(input.name) ?? input.config.polarity === 'negative',
       );
     } else {
       const raw =
-        input.kind === 'argument' ? parsed.positionals : parsed.options.strings.get(input.name);
+        input.kind === 'argument'
+          ? supplied.args.get(input)
+          : supplied.options.strings.get(input.name);
       if (raw === undefined) {
         if (input.config.required) {
           issues.push(`${identity(input)} is required. Supply a value.`);

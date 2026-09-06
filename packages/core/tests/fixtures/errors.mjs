@@ -16,7 +16,7 @@ switch (scenario) {
     break;
   }
   case 'multiple-actions': {
-    app.action(() => {
+    app = app.action(() => {
       throw new Error('Dispatched the first action.');
     });
     break;
@@ -27,7 +27,7 @@ switch (scenario) {
   }
 }
 if (scenario !== 'actionless') {
-  app.action(({ out }) => {
+  app = app.action(({ out }) => {
     if (scenario === 'fatal') {
       out.fatal('Expected failure.');
     }

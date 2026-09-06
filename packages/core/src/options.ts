@@ -72,14 +72,14 @@ function addSpelling(
   spellings.set(spelling, option);
 }
 
-export function compileOptions(declarations: readonly OptionDeclaration[]) {
+export function compileOptions(declarations: readonly OptionDeclaration[], subject: string) {
   const spellings = new Map<string, OptionSpelling>();
   const names = new Set<string>();
   for (const { name, config } of declarations) {
     validateDeclaration({ config, name });
     if (names.has(name)) {
       throw new DeclarationError(
-        `Option "${name}" is declared more than once on the root Command. Remove or rename the duplicate.`,
+        `Option "${name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
       );
     }
     names.add(name);
@@ -184,7 +184,74 @@ function parseOption(
   return false;
 }
 
-export function parseInputs(spellings: ReadonlyMap<string, OptionSpelling>, tokens: string[]) {
+/**
+ * A hyphen token belongs to the globals when its long spelling or every short letter does. The
+ * pre-scan reads the globals alone, so a letter it does not own is only "not a global option".
+ */
+function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: string) {
+  if (token.startsWith('--')) {
+    const equals = token.indexOf('=');
+    return spellings.has(equals === -1 ? token : token.slice(0, equals));
+  }
+  const group = token.slice(1).split('=')[0] ?? '';
+  let global = '';
+  let other = '';
+  for (let index = 0; index < group.length; index += 1) {
+    const letter = group.charAt(index);
+    if (spellings.has(`-${letter}`)) {
+      global = global === '' ? letter : global;
+    } else {
+      other = other === '' ? letter : other;
+    }
+  }
+  if (global === '') {
+    return false;
+  }
+  if (other !== '') {
+    throw new InputError(
+      `Short group "${token}" mixes the global option "-${global}" with "-${other}", which is not a global option. Supply global options as separate tokens, and local options after their command name.`,
+    );
+  }
+  return true;
+}
+
+/** Consumes global options anywhere before the passthrough delimiter and leaves the rest routable. */
+export function extractGlobals(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  tokens: readonly string[],
+) {
+  const values: OptionValues = { booleans: new Map(), strings: new Map() };
+  const rest: string[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === undefined) {
+      break;
+    }
+    if (token === '--') {
+      rest.push(...tokens.slice(index));
+      return { rest, values };
+    }
+    if (!token.startsWith('-') || !isGlobalToken(spellings, token)) {
+      rest.push(token);
+    } else if (parseOption(spellings, { next: tokens[index + 1], token }, values)) {
+      index += 1;
+    }
+  }
+  return { rest, values };
+}
+
+/** Global and local keys never overlap, so one merged view feeds a single validation pass. */
+export function mergeValues(globals: OptionValues, locals: OptionValues): OptionValues {
+  return {
+    booleans: new Map([...globals.booleans, ...locals.booleans]),
+    strings: new Map([...globals.strings, ...locals.strings]),
+  };
+}
+
+export function parseInputs(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  tokens: readonly string[],
+) {
   const options: OptionValues = { booleans: new Map(), strings: new Map() };
   const positionals: string[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
