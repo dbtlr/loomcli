@@ -33,12 +33,15 @@ function pnpm(args, cwd) {
   assert.equal(result.status, 0, result.output);
 }
 
-function compile(cwd) {
-  return run(process.execPath, [compiler, '-p', 'tsconfig.json', '--pretty', 'false'], cwd);
+// Declaration emit proves a consumer can publish its own types for exported declarations.
+async function compile(cwd) {
+  const result = run(process.execPath, [compiler, '-p', 'tsconfig.json', '--pretty', 'false'], cwd);
+  await rm(join(cwd, 'dist'), { force: true, recursive: true });
+  return result;
 }
 
 const source = fileURLToPath(new URL('type-consumer', import.meta.url));
-const workspace = compile(source);
+const workspace = await compile(source);
 assert.equal(workspace.status, 0, workspace.output);
 
 const temporary = await mkdtemp(join(tmpdir(), 'loom-type-consumer-'));
@@ -55,7 +58,7 @@ try {
     }),
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
-  const packed = compile(temporary);
+  const packed = await compile(temporary);
   assert.equal(packed.status, 0, packed.output);
 
   const expected = [];
@@ -75,7 +78,7 @@ try {
     await writeFile(path, lines.join('\n'));
   }
   assert.ok(expected.length > 0, 'No negative declaration assertions found.');
-  const negative = compile(temporary);
+  const negative = await compile(temporary);
   assert.notEqual(negative.status, 0, 'Invalid SDK uses unexpectedly compiled.');
   const actual = [
     ...negative.output.matchAll(/(?<file>[^\n]+)\((?<line>\d+),\d+\): error TS(?<code>\d+):/g),

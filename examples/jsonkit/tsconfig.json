@@ -7,7 +7,7 @@
     "moduleResolution": "NodeNext",
     "noEmit": false,
     "allowImportingTsExtensions": false,
-    "declaration": false,
+    "declaration": true,
     "skipLibCheck": false,
     "rootDir": "src",
     "outDir": "dist"

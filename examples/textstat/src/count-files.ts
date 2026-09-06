@@ -1,12 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import type { ActionHandler } from '@loom/core';
+import type { ActionHandler, ActionOptions } from '@loom/core';
 
 import type { textstat } from './application.js';
 
-// oxlint-disable-next-line eslint/no-magic-numbers
-type Metric = Parameters<ActionHandler<typeof textstat>>[0]['options']['metric'];
+type Metric = ActionOptions<typeof textstat>['metric'];
 
 function countContent(bytes: Buffer, metric: Metric) {
   switch (metric) {

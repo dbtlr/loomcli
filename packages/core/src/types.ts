@@ -46,9 +46,9 @@ type SchemaInput<Schema> = Schema extends StandardSchemaV1
 type ActionArgument<Declaration> =
   ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
 
-/** A local option name cannot repeat a key the globals already own. */
+/** A local option name cannot repeat a key the globals already own; the key names the fault. */
 export type GlobalNameConstraint<Name extends string, Globals> = Name extends keyof Globals
-  ? never
+  ? { 'This option name is already declared as a global option': Name }
   : unknown;
 
 /** A required record key excludes open strings; distribution rejects each union member. */

@@ -92,7 +92,7 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
-  ): CommandBuilder<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
+  ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
     const declared: ArgumentConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'argument', name };
     return new CommandBuilder({
@@ -114,7 +114,7 @@ export class CommandBuilder<Args, Options, Globals> implements CommandNode {
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
-  ): CommandBuilder<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
+  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
     const declared: OptionConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'option', name };
     return new CommandBuilder({
