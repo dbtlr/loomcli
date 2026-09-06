@@ -290,7 +290,7 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                        |
 | A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                    |
 
-Local options on separate Commands can reuse names and spellings. Core holds one globals table and never copies it into a Command.
+Local options on separate Commands can reuse names and spellings, with a different value shape on each one, so `--field` and `-F` can collect strings on one Command, read as a Boolean with `--no-field` on a sibling, and carry a validated scalar on a nested leaf. Each action sees only its own Command's declarations. Core holds one globals table and never copies it into a Command.
 
 ### Example coverage
 
