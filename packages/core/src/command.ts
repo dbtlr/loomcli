@@ -17,7 +17,13 @@ import type {
   Out,
 } from './types.js';
 import { validateValues } from './validation.js';
-import type { InputDeclaration, ValidatedInputs } from './validation.js';
+import type {
+  ArgumentInput,
+  DefaultValues,
+  InputDeclaration,
+  OptionInput,
+  ValidatedInputs,
+} from './validation.js';
 
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {
@@ -101,7 +107,10 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
   }
 }
 
-/** Everything one Command declaration holds. Builder calls copy it with one field replaced. */
+/**
+ * Everything one Command declaration holds. The transitions below copy it with fields replaced, and
+ * the Command and Application builders share them, so one declaration call has one implementation.
+ */
 export interface CommandState<Args, Options, Globals> {
   actions: readonly Action<Args, Globals & Options>[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
@@ -110,6 +119,83 @@ export interface CommandState<Args, Options, Globals> {
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
   name: string | null;
+}
+
+/** The state every declaration starts from. The unnamed root and each named Command share it. */
+export function freshState<Globals>(
+  name: string | null,
+  globals: GlobalOptions<Globals> | undefined,
+): CommandState<{}, {}, Globals> {
+  return {
+    actions: [],
+    bind: () => ({ args: {}, options: {} }),
+    children: [],
+    globals: defaultGlobals(globals),
+    inputs: [],
+    late: [],
+    name,
+  };
+}
+
+/** A declaration after the action is an order fault; build reports the first one recorded. */
+function recordLate<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  declaration: LateDeclaration,
+): readonly LateDeclaration[] {
+  return state.actions.length > 0 ? [...state.late, declaration] : state.late;
+}
+
+/** The declared value joins `args` under its literal name, typed by the validation seam. */
+export function declareArgument<Args, Options, Globals, Name extends string, Value>(
+  state: CommandState<Args, Options, Globals>,
+  input: ArgumentInput<Name, Value>,
+): CommandState<Args & Record<Name, Value>, Options, Globals> {
+  const previous = state.bind;
+  return {
+    ...state,
+    bind: (values) => {
+      const bound = previous(values);
+      return { ...bound, args: { ...bound.args, ...values.field(input) } };
+    },
+    inputs: [...state.inputs, input],
+    late: recordLate(state, { input, kind: 'input' }),
+  };
+}
+
+/** The declared value joins `options` under its literal name, typed by the validation seam. */
+export function declareOption<Args, Options, Globals, Name extends string, Value>(
+  state: CommandState<Args, Options, Globals>,
+  input: OptionInput<Name, Value>,
+): CommandState<Args, Options & Record<Name, Value>, Globals> {
+  const previous = state.bind;
+  return {
+    ...state,
+    bind: (values) => {
+      const bound = previous(values);
+      return { ...bound, options: { ...bound.options, ...values.field(input) } };
+    },
+    inputs: [...state.inputs, input],
+    late: recordLate(state, { input, kind: 'input' }),
+  };
+}
+
+export function declareAction<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  handler: Action<Args, Globals & Options>,
+): CommandState<Args, Options, Globals> {
+  return { ...state, actions: [...state.actions, handler] };
+}
+
+/** Attaching is a declaration call too, so the receiver keeps the children it already had. */
+export function attachChild<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  child: object,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    children: [...state.children, child],
+    late: recordLate(state, { child, kind: 'child' }),
+  };
 }
 
 export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
@@ -131,21 +217,12 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     name: Name,
     config: Config & NameConstraint<Name>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
-    const declared: ArgumentConfig = { ...config };
-    const input: InputDeclaration = { config: declared, kind: 'argument', name };
-    const previous = this.#state.bind;
-    return new CommandBuilder({
-      ...this.#state,
-      bind: (values) => {
-        const bound = previous(values);
-        // Validation supplies the schema output, and the computed key is exactly Name.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        const value = { [name]: values.get(input) } as Record<Name, ArgumentValue<Config>>;
-        return { ...bound, args: { ...bound.args, ...value } };
-      },
-      inputs: [...this.#state.inputs, input],
-      late: this.recordLate({ input, kind: 'input' }),
-    });
+    const input: ArgumentInput<Name, ArgumentValue<Config>> = {
+      config: { ...config },
+      kind: 'argument',
+      name,
+    };
+    return new CommandBuilder(declareArgument(this.#state, input));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
@@ -155,38 +232,17 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    const declared: OptionConfig = { ...config };
-    const input: InputDeclaration = { config: declared, kind: 'option', name };
-    const previous = this.#state.bind;
-    return new CommandBuilder({
-      ...this.#state,
-      bind: (values) => {
-        const bound = previous(values);
-        // Validation supplies the declared output, and the computed key is exactly Name.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        const value = { [name]: values.get(input) } as Record<Name, OptionValue<Config>>;
-        return { ...bound, options: { ...bound.options, ...value } };
-      },
-      inputs: [...this.#state.inputs, input],
-      late: this.recordLate({ input, kind: 'input' }),
-    });
+    const input: OptionInput<Name, OptionValue<Config>> = {
+      config: { ...config },
+      kind: 'option',
+      name,
+    };
+    return new CommandBuilder(declareOption(this.#state, input));
   }
 
   /** The action is the last declaration call, so the value it returns publishes `AfterAction`. */
   action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
-    return new CommandBuilder({
-      ...this.#state,
-      actions: [...this.#state.actions, handler],
-    });
-  }
-
-  /** Attaching is a declaration call too, so the receiver keeps the children it already had. */
-  attach(child: object): CommandBuilder<Args, Options, Globals> {
-    return new CommandBuilder({
-      ...this.#state,
-      children: [...this.#state.children, child],
-      late: this.recordLate({ child, kind: 'child' }),
-    });
+    return new CommandBuilder(declareAction(this.#state, handler));
   }
 
   /** The globals table compiles once per invocation and every Command in the graph shares it. */
@@ -239,12 +295,6 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       name,
       options,
     };
-  }
-
-  /** A declaration after the action is an order fault; build reports the first one recorded. */
-  private recordLate(declaration: LateDeclaration): readonly LateDeclaration[] {
-    const { actions, late } = this.#state;
-    return actions.length > 0 ? [...late, declaration] : late;
   }
 
   /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
@@ -354,23 +404,19 @@ interface CommandConstructor {
   ): Command<{}, {}, Globals, CommandMethod>;
 }
 
-class CommandDeclaration extends CommandBuilder<{}, {}, {}> {
-  constructor(name: string, globals?: GlobalOptions) {
-    super({
-      actions: [],
-      bind: () => ({ args: {}, options: {} }),
-      children: [],
-      globals: defaultGlobals(globals),
-      inputs: [],
-      late: [],
-      name,
-    });
+/**
+ * The runtime class behind the public constructor. `Globals` defaults to `{}`, so the name-only
+ * constructor signature instantiates it without a cast, and the globals signature infers it from
+ * the supplied value.
+ */
+class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
+  constructor(name: string, globals?: GlobalOptions<Globals>) {
+    super(freshState(name, globals));
   }
 }
 
 /** The public constructor requires a name and narrows the globals type to the supplied value. */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-export const Command = CommandDeclaration as unknown as CommandConstructor;
+export const Command: CommandConstructor = CommandDeclaration;
 
 /** Every declaration in the graph, so defaults are validated before any token is read. */
 export function collectInputs(command: BuiltCommand): InputDeclaration[] {
@@ -439,7 +485,7 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
 export async function selectCommand(
   graph: { globals: BuiltGlobals; root: BuiltCommand },
   tokens: readonly string[],
-  defaults: ValidatedInputs,
+  defaults: DefaultValues,
 ) {
   const scan = extractGlobals(graph.globals.options, tokens);
   const selected = route(graph.root, scan.rest);

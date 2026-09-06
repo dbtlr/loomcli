@@ -43,7 +43,7 @@ A Command accepts required arguments in declaration order. A scalar argument, `{
 
 Bare tokens before `--` retain their order as positional inputs. Local options can appear before, between, or after these inputs. A hyphenated file path uses an explicit relative path such as `./-notes.txt`.
 
-Application methods use the internal Command declaration implementation. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
+Application methods apply the same declaration transitions as a Command to the unnamed root's state. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
 Graph build rejects duplicate argument names, a variadic argument that is not last, multiple actions, a Command with no action, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 

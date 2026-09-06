@@ -1,16 +1,25 @@
 import type { Writable } from 'node:stream';
 
-import { CommandBuilder, collectInputs, selectCommand } from './command.js';
+import {
+  attachChild,
+  CommandBuilder,
+  collectInputs,
+  declareAction,
+  declareArgument,
+  declareOption,
+  freshState,
+  selectCommand,
+} from './command.js';
 import type {
   AfterAction,
   AfterArgument,
   AfterCommand,
   Command,
   CommandMethod,
+  CommandState,
 } from './command.js';
 import { describeFailure } from './errors.js';
 import type { GlobalOptions } from './globals.js';
-import { defaultGlobals } from './globals.js';
 import { captureHost } from './host.js';
 import { Output, reportOutputFailure } from './output.js';
 import type {
@@ -27,6 +36,7 @@ import type {
   OptionValue,
   RunOptions,
 } from './types.js';
+import type { ArgumentInput, OptionInput } from './validation.js';
 import { prepareInputs } from './validation.js';
 
 /**
@@ -35,6 +45,10 @@ import { prepareInputs } from './validation.js';
  */
 export type ApplicationMethod = CommandMethod | 'command';
 
+/**
+ * The Application holds the unnamed root's declaration state and applies the same transitions a
+ * Command does, so each declaration call has one typed implementation and no builder to recover.
+ */
 class ApplicationBuilder<
   Args,
   Options,
@@ -44,9 +58,9 @@ class ApplicationBuilder<
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
 
   readonly #name: string;
-  readonly #root: CommandBuilder<Args, Options, Globals>;
+  readonly #root: CommandState<Args, Options, Globals>;
 
-  constructor(name: string, root: CommandBuilder<Args, Options, Globals>) {
+  constructor(name: string, root: CommandState<Args, Options, Globals>) {
     this.#name = name;
     this.#root = root;
   }
@@ -55,7 +69,6 @@ class ApplicationBuilder<
     return this.#name;
   }
 
-  /** Each call delegates to the root Command declaration and wraps the value it returns. */
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
@@ -65,7 +78,12 @@ class ApplicationBuilder<
     Globals,
     AfterArgument<State>
   > {
-    return this.derive(this.#root.argument<Name, Config>(name, config));
+    const input: ArgumentInput<Name, ArgumentValue<Config>> = {
+      config: { ...config },
+      kind: 'argument',
+      name,
+    };
+    return this.derive(declareArgument(this.#root, input));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
@@ -75,33 +93,35 @@ class ApplicationBuilder<
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    return this.derive(this.#root.option<Name, Config>(name, config));
+    const input: OptionInput<Name, OptionValue<Config>> = {
+      config: { ...config },
+      kind: 'option',
+      name,
+    };
+    return this.derive(declareOption(this.#root, input));
   }
 
   /** The action is the last call, so it returns `AfterAction`: only `run()` and `name` remain. */
   action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals> {
-    return this.derive(this.#root.action(handler));
+    return this.derive(declareAction(this.#root, handler));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command(
     child: Command<unknown, unknown, Globals>,
   ): Application<Args, Options, Globals, AfterCommand<State>> {
-    return this.derive(this.#root.attach(child));
+    return this.derive(attachChild(this.#root, child));
   }
 
   /**
-   * One wrapper for every declaration call, so the Application keeps its name and its root. The
-   * next state travels through this call: each method names its transition in its return type, and
-   * the wrapper publishes the same runtime value in exactly that state.
+   * One wrapper for every declaration call, so the Application keeps its name. The next state
+   * travels through this call: each method names its transition in its return type, and the
+   * wrapper publishes the same runtime value in exactly that state.
    */
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
-    root: Command<DerivedArgs, DerivedOptions, Globals>,
+    root: CommandState<DerivedArgs, DerivedOptions, Globals>,
   ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
-    // A declaration call always returns a CommandBuilder; the public type only hides its state.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const derived = root as CommandBuilder<DerivedArgs, DerivedOptions, Globals>;
-    return new ApplicationBuilder(this.#name, derived);
+    return new ApplicationBuilder(this.#name, root);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -114,7 +134,8 @@ class ApplicationBuilder<
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      const graph = this.#root.buildGraph();
+      // The root builds like any Command, so the graph starts from a builder over its state.
+      const graph = new CommandBuilder(this.#root).buildGraph();
       const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
       const selected = await selectCommand(graph, [...host.argv], defaults);
       await selected.command.dispatch({
@@ -179,23 +200,16 @@ interface ApplicationConstructor {
   ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
-class ApplicationDeclaration extends ApplicationBuilder<{}, {}, {}> {
-  constructor(name: string, globals?: GlobalOptions) {
-    super(
-      name,
-      new CommandBuilder({
-        actions: [],
-        bind: () => ({ args: {}, options: {} }),
-        children: [],
-        globals: defaultGlobals(globals),
-        inputs: [],
-        late: [],
-        name: null,
-      }),
-    );
+/**
+ * The runtime class behind the public constructor. `Globals` defaults to `{}`, so the name-only
+ * constructor signature instantiates it without a cast, and the globals signature infers it from
+ * the supplied value.
+ */
+class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
+  constructor(name: string, globals?: GlobalOptions<Globals>) {
+    super(name, freshState(null, globals));
   }
 }
 
 /** The public constructor takes a name and narrows the globals type to the supplied value. */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-export const Application = ApplicationDeclaration as unknown as ApplicationConstructor;
+export const Application: ApplicationConstructor = ApplicationDeclaration;

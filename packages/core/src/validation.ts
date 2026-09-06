@@ -1,13 +1,57 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { DeclarationError, InputError } from './errors.js';
-import type { OptionDeclaration, OptionValues } from './options.js';
-import type { ArgumentConfig } from './types.js';
+import type { OptionValues } from './options.js';
+import type { ArgumentConfig, OptionConfig } from './types.js';
 
-export type InputDeclaration =
-  | { kind: 'argument'; name: string; config: ArgumentConfig }
-  | ({ kind: 'option' } & OptionDeclaration);
-export type ValidatedInputs = ReadonlyMap<InputDeclaration, unknown>;
+/** Phantom key. It records the value type a declaration produces and holds no runtime value. */
+declare const declaredValue: unique symbol;
+
+/**
+ * One declared input. `Name` is its literal name and `Value` the type validation produces for it.
+ * Both are fixed where the declaration is authored, so a validated value can take its declared type
+ * in exactly one place: `ValidatedInputs.field()`. Untyped readers use the defaults.
+ */
+export interface ArgumentInput<Name extends string = string, Value = unknown> {
+  readonly [declaredValue]?: Value;
+  kind: 'argument';
+  name: Name;
+  config: ArgumentConfig;
+}
+export interface OptionInput<Name extends string = string, Value = unknown> {
+  readonly [declaredValue]?: Value;
+  kind: 'option';
+  name: Name;
+  config: OptionConfig;
+}
+export type InputDeclaration<Name extends string = string, Value = unknown> =
+  | ArgumentInput<Name, Value>
+  | OptionInput<Name, Value>;
+
+/** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
+export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
+
+/**
+ * The validated values of one invocation, keyed by declaration. `field()` is the only place where a
+ * validated value takes its declared type, so every binder reads through it and none asserts alone.
+ */
+export class ValidatedInputs {
+  readonly #values: ReadonlyMap<InputDeclaration, unknown>;
+
+  constructor(values: ReadonlyMap<InputDeclaration, unknown>) {
+    this.#values = values;
+  }
+
+  /** The one-key record this declaration contributes to an args or options object. */
+  field<Name extends string, Value>(input: InputDeclaration<Name, Value>): Record<Name, Value> {
+    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
+    // An object literal with a generic computed key types as a string index, not `Record<Name, _>`.
+    // Neither the value nor the key can reach `Record<Name, Value>` without this assertion.
+    // It holds because validation stores the declared output under this exact declaration.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
+  }
+}
 
 function identity(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
@@ -124,7 +168,7 @@ function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Iss
   });
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<ValidatedInputs> {
+export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
   for (const input of inputs) {
     checkDeclaration(input);
   }
@@ -149,7 +193,7 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
 export async function validateValues(
   inputs: readonly InputDeclaration[],
   supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
-  defaults: ValidatedInputs,
+  defaults: DefaultValues,
 ): Promise<ValidatedInputs> {
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
@@ -183,5 +227,5 @@ export async function validateValues(
   if (issues.length > 0) {
     throw new InputError(issues.join('\n'));
   }
-  return values;
+  return new ValidatedInputs(values);
 }
