@@ -268,7 +268,7 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -361,7 +361,20 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 ## Graph inspection
 
-`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It runs the build and the structural checks that `run()` runs, so an invalid declaration throws the exported `DeclarationError`, which a consumer catches by class. It does not validate declared defaults, because a default awaits its schema; `run()` still does that work. It reads no host facts, and it caches nothing: each call builds the graph anew.
+`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default through its schema, because that call can be asynchronous. So it applies the build and structural checks, every rule a single declaration carries, such as a Boolean option with `validate`, `required: true` beside a default, and a non-Boolean `required` or `variadic`, and the raw shape of a default declared without a schema. A rejected declaration throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1, and it alone reports a default its schema rejects. `inspect()` reads no host facts, and it caches nothing: each call builds the graph anew.
+
+```ts
+import { DeclarationError } from '@loom/core';
+
+try {
+  const graph = app.inspect();
+  process.stdout.write(`${graph.root.children.length} commands\n`);
+} catch (error) {
+  if (error instanceof DeclarationError) {
+    process.stderr.write(`${error.message}\n`);
+  }
+}
+```
 
 ```ts
 interface CommandGraph {

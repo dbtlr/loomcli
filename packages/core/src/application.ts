@@ -40,7 +40,7 @@ import type {
   RunOptions,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
-import { captureConfig, prepareInputs } from './validation.js';
+import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
 
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
@@ -130,12 +130,15 @@ class ApplicationBuilder<
   }
 
   /**
-   * The built graph as plain, frozen data. It runs the build and structural checks `run()` runs,
-   * and throws `DeclarationError` when one fails. Declared defaults await their schemas, so it
-   * leaves them to `run()`. Nothing is cached: each call builds the graph anew.
+   * The built graph as plain, frozen data. It applies every rule `run()` applies without a schema,
+   * in the order `run()` applies them, and throws `DeclarationError` when one fails. Validating a
+   * declared default through its schema can be asynchronous, so that one rule stays in `run()`.
+   * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    return inspectGraph(this.#name, buildGraph(this.#root));
+    const graph = buildGraph(this.#root);
+    checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
+    return inspectGraph(this.#name, graph);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {

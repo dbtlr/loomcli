@@ -50,8 +50,8 @@ function polarity() {
     .action(dispatch);
 }
 
-// A name that begins with "no-" gives the negative form a doubled prefix, so the roles the table
-// Records are the only reliable reading of each spelling.
+// A name that begins with "no-" gives the negative form a doubled prefix.
+// The role each entry records is the only reliable reading of a spelling.
 function roles() {
   return new Application('roles')
     .option('no-color', { polarity: 'both', short: 'n', type: 'boolean' })
@@ -73,7 +73,40 @@ function invalid() {
   return new Application('invalid', globals).command(new Command('get', globals)).action(dispatch);
 }
 
-const graphs = { defaults, invalid, jsonkit, nested, polarity, roles };
+// Each of these builds cleanly, so only the declaration checks can reject it.
+// A default that its schema rejects is the one fault inspection leaves to run().
+const faults = {
+  'boolean-default': () =>
+    new Application('faults').option('total', { default: 'x', type: 'boolean' }).action(dispatch),
+  'boolean-validate': () =>
+    new Application('faults')
+      .option('total', { type: 'boolean', validate: digits })
+      .action(dispatch),
+  'foreign-schema': () =>
+    new Application('faults')
+      .option('size', { type: 'string', validate: { parse: () => 1 } })
+      .action(dispatch),
+  'multiple-default': () =>
+    new Application('faults')
+      .option('field', { default: 'a', multiple: true, type: 'string' })
+      .action(dispatch),
+  'nonboolean-required': () =>
+    new Application('faults').option('size', { required: 'yes', type: 'string' }).action(dispatch),
+  'nonboolean-variadic': () =>
+    new Application('faults').argument('files', { variadic: 'yes' }).action(dispatch),
+  'optional-variadic': () =>
+    new Application('faults').argument('files', { variadic: true }).action(dispatch),
+  'required-default': () =>
+    new Application('faults')
+      .option('depth', { default: '1', required: true, type: 'string' })
+      .action(dispatch),
+  'schema-default': () =>
+    new Application('faults')
+      .option('depth', { default: 'deep', type: 'string', validate: digits })
+      .action(dispatch),
+};
+
+const graphs = { defaults, invalid, jsonkit, nested, polarity, roles, ...faults };
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 

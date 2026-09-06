@@ -224,6 +224,59 @@ test('throws a DeclarationError a consumer catches by class, without run()', () 
   });
 });
 
+test.each([
+  [
+    'optional-variadic',
+    'Argument "files" is variadic and optional. Declare required: true or remove variadic.',
+  ],
+  ['nonboolean-variadic', 'Argument "files" variadic must be Boolean. Use true or false.'],
+  ['nonboolean-required', 'Option "size" required must be Boolean. Use true or false.'],
+  [
+    'required-default',
+    'Option "depth" is required and declares a default. Remove the default or make the input optional.',
+  ],
+  [
+    'boolean-validate',
+    'Option "total" is Boolean. Remove validate, default, and required; use polarity to control its absent value.',
+  ],
+  [
+    'boolean-default',
+    'Option "total" is Boolean. Remove validate, default, and required; use polarity to control its absent value.',
+  ],
+  [
+    'foreign-schema',
+    'Option "size" validate must be a Standard Schema v1 object. Supply a compatible schema.',
+  ],
+  [
+    'multiple-default',
+    'Option "field" default must be an array of strings without a schema. Supply a string array default.',
+  ],
+] satisfies [string, string][])(
+  'inspect() rejects the %s declaration, as run() does',
+  (graph, message) => {
+    expect(invokeInspect(graph, 'catch')).toEqual({
+      caught: true,
+      message,
+      name: 'DeclarationError',
+    });
+    const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, 'run']);
+    expect(result.stderr).toBe(`Invalid declaration: ${message}\n`);
+    expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
+  },
+);
+
+test('inspect() leaves a default that only its schema rejects to run()', () => {
+  expect(invokeInspect('schema-default', 'catch')).toEqual({ caught: false });
+  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [
+    'schema-default',
+    'run',
+  ]);
+  expect(result.stderr).toBe(
+    'Invalid declaration: Option "depth" has an invalid default. Fix the default or its schema.\nOption "depth": Use decimal digits.\n',
+  );
+  expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
+});
+
 test('run() still reports the invalid graph as a diagnostic with code 1', () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), ['invalid', 'run']);
   expect(result.stderr).toBe(

@@ -233,20 +233,37 @@ function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   });
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
+/** A declared `default: undefined` is a default, so presence is the key, never the value. */
+function hasDefault(input: InputDeclaration) {
+  return Object.hasOwn(input.config, 'default');
+}
+
+/**
+ * Every declaration rule that reads the declaration alone. It is synchronous, so `inspect()` and
+ * `run()` apply exactly the same rules, and only validating a default through its schema, which
+ * can be asynchronous, is left to `run()`.
+ */
+export function checkDeclarations(inputs: readonly InputDeclaration[]): void {
   for (const input of inputs) {
     checkDeclaration(input);
   }
-  const defaults = new Map<InputDeclaration, unknown>();
-  for (const input of inputs.filter((entry) => Object.hasOwn(entry.config, 'default'))) {
-    const subject = declaredName(input);
+  for (const input of inputs.filter((entry) => hasDefault(entry))) {
     if (input.config.validate === undefined && !holdsRawDefault(input)) {
+      const subject = declaredName(input);
       throw new DeclarationError(
         collects(input)
           ? `${subject} default must be an array of strings without a schema. Supply a string array default.`
           : `${subject} default must be a string without a schema. Supply a string default.`,
       );
     }
+  }
+}
+
+export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
+  checkDeclarations(inputs);
+  const defaults = new Map<InputDeclaration, unknown>();
+  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+    const subject = declaredName(input);
     const result = await validate(input, input.config.default);
     if (result.issues !== undefined) {
       throw new DeclarationError(
