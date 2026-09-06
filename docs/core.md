@@ -31,7 +31,7 @@ Declare arguments and options, attach the children, then register the action las
 | `option()`   | nothing                                                                                                     |
 | `action()`   | every declaration call; an Application keeps `inspect()`, `run()`, and `name`, a Command its inferred types |
 
-Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and publishes `run()`. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
+Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available. Only an `Application` publishes `inspect()`, `run()`, and `name`, in every state; a named `Command` publishes its authoring calls alone. The type states do not read what a group holds, so build rejects an option declared on a Command that registers no action: a local option never reaches a child's action. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
 
 `Command` and `Application` take a fourth type parameter that lists the authoring calls a value still offers. It defaults to `never`, so `Command<Args, Options, Globals>` and `Application<Args, Options, Globals>` accept a declaration in any state, one that registered its action included. Write the parameter only to require a state. The fresh states are the exported `CommandMethod` and `ApplicationMethod` unions, which also let a consumer emit declarations for a value that has not registered its action. An explicit `any` in that position removes the lock, as `any` does anywhere else.
 
@@ -42,6 +42,13 @@ TypeScript requires one statically known name for each `argument()` and `option(
 A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ required: true, variadic: true }`, must be last and takes the remaining tokens.
 
 A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind. A variadic argument stays required.
+
+```ts
+const keys = new Command('keys', globals).argument('path', {}).action(({ args, out }) => {
+  const path: string | undefined = args.path;
+  return out.print(path ?? 'the root');
+});
+```
 
 Bare tokens before `--` retain their order as positional inputs. Local options can appear before, between, or after these inputs. A hyphenated file path uses an explicit relative path such as `./-notes.txt`.
 
@@ -109,7 +116,7 @@ const app = new Application('select')
 
 The collected value keeps supplied token order across every accepted spelling, so `--field a -F b --field=c` gives `['a', 'b', 'c']`. Each occurrence follows the ordinary value rules of its spelling. A multiple string alias is a string alias in a short group: it must be last and consumes the next token.
 
-The raw value is the whole `string[]`, and the declared schema receives that array once. Per-item rules compose inside it, so `z.array(z.string().min(1))` rejects an empty item and reports its position, as in `Option "--field" at 1: Supply a field name.`. The action receives the schema output.
+The raw value is the whole `string[]`, and the declared schema receives that array once. Per-item rules compose inside it, so `z.array(z.string().nonempty('Supply a field name.'))` rejects an empty item and reports its position, counted from 0: `--field a -F ''` fails with `Option "--field" at 1: Supply a field name.`. The action receives the schema output.
 
 | Declaration and input               | Action value or failure              |
 | ----------------------------------- | ------------------------------------ |
@@ -173,7 +180,7 @@ export const globals = new GlobalOptions().option('file', {
 
 Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
 
-`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. Both constructors omit the second argument when the application declares no globals.
+`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. Both constructors omit the second argument when the application declares no globals.
 
 The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own, both at compile time and during graph build.
 
@@ -204,13 +211,13 @@ An invocation that commits to a group fails before local parsing, with code 2. T
 
 Globals are a value, so a Command in its own module knows the global types without importing the application. Module dependencies flow one way: globals, then commands, then the application. The `jsonkit` example uses this layout.
 
-| Module                                        | Contents                                                                                     |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `src/globals.ts`                              | the shared `GlobalOptions` value                                                             |
-| `src/commands/get.ts`, `src/commands/keys.ts` | one `Command` each                                                                           |
-| `src/actions/*.ts`                            | one `ActionHandler<typeof declaration>` each                                                 |
-| `src/application.ts`                          | the root: `new Application('jsonkit', globals).command(get).command(keys).action(summarize)` |
-| `src/main.ts`                                 | `await jsonkit.run()`                                                                        |
+| Module                                                                  | Contents                                                                                                     |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `src/globals.ts`                                                        | the shared `GlobalOptions` value                                                                             |
+| `src/commands/get.ts`, `src/commands/keys.ts`, `src/commands/select.ts` | one `Command` each                                                                                           |
+| `src/actions/*.ts`                                                      | one `ActionHandler<typeof declaration>` each                                                                 |
+| `src/application.ts`                                                    | the root: `new Application('jsonkit', globals).command(get).command(keys).command(select).action(summarize)` |
+| `src/main.ts`                                                           | `await jsonkit.run()`                                                                                        |
 
 The application module is the root's authoring file. It declares the root action and attaches the children, and it is the declaration the root action type-imports. One Application value exists, so there is no separate root value to run by mistake.
 
@@ -379,43 +386,43 @@ try {
 
 ```ts
 interface CommandGraph {
-  name: string;
-  globals: readonly OptionNode[];
-  root: CommandNode;
+  readonly name: string;
+  readonly globals: readonly OptionNode[];
+  readonly root: CommandNode;
 }
 interface CommandNode {
-  name: string | null;
-  path: readonly string[];
-  hasAction: boolean;
-  arguments: readonly ArgumentNode[];
-  options: readonly OptionNode[];
-  children: readonly CommandNode[];
+  readonly name: string | null;
+  readonly path: readonly string[];
+  readonly hasAction: boolean;
+  readonly arguments: readonly ArgumentNode[];
+  readonly options: readonly OptionNode[];
+  readonly children: readonly CommandNode[];
 }
 interface ArgumentNode {
-  name: string;
-  required: boolean;
-  variadic: boolean;
-  validated: boolean;
-  default: { value: unknown } | undefined;
+  readonly name: string;
+  readonly required: boolean;
+  readonly variadic: boolean;
+  readonly validated: boolean;
+  readonly default: { readonly value: unknown } | undefined;
 }
 type OptionNode =
   | {
-      type: 'string';
-      name: string;
-      long: string | null;
-      short: string | null;
-      required: boolean;
-      multiple: boolean;
-      validated: boolean;
-      default: { value: unknown } | undefined;
+      readonly type: 'string';
+      readonly name: string;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly required: boolean;
+      readonly multiple: boolean;
+      readonly validated: boolean;
+      readonly default: { readonly value: unknown } | undefined;
     }
   | {
-      type: 'boolean';
-      name: string;
-      long: string | null;
-      short: string | null;
-      negative: string | null;
-      polarity: 'positive' | 'negative' | 'both';
+      readonly type: 'boolean';
+      readonly name: string;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly negative: string | null;
+      readonly polarity: 'positive' | 'negative' | 'both';
     };
 ```
 
