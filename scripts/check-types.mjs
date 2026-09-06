@@ -53,7 +53,7 @@ try {
       type: 'module',
     }),
   );
-  pnpm(['install', '--offline', '--ignore-scripts', '--lockfile=false'], temporary);
+  pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
   const packed = compile(temporary);
   assert.equal(packed.status, 0, packed.output);
 
