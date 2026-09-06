@@ -36,6 +36,17 @@ function build() {
     case 'equals-child-name': {
       return app.command(child('get=value')).action(dispatch);
     }
+    case 'empty-argument-name': {
+      return app.argument('', { required: true }).action(dispatch);
+    }
+    case 'hyphen-argument-name': {
+      return app.argument('--file', { required: true }).action(dispatch);
+    }
+    case 'nonstring-argument-name': {
+      return app
+        .command(new Command('get', globals).argument(1, {}).action(dispatch))
+        .action(dispatch);
+    }
     case 'foreign-globals': {
       const other = new GlobalOptions().option('file', { type: 'string' });
       return app.command(new Command('get', other).action(dispatch)).action(dispatch);

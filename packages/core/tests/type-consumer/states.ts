@@ -34,7 +34,7 @@ application.option;
 application.command;
 
 // A group keeps `option()` and `command()` open and publishes `run()`.
-// Running a group without an action is still a build error, so this reads the member alone.
+// A root group builds; selecting no child is an input error, so this reads the member alone.
 const groupRun: () => Promise<number> = group.run;
 const applicationName: string = application.name;
 const applicationRun: Promise<number> = application.run();

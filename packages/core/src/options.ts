@@ -8,12 +8,23 @@ export interface OptionDeclaration {
 
 export interface OptionValues {
   strings: Map<string, string>;
+  lists: Map<string, string[]>;
   booleans: Map<string, boolean>;
 }
 
-type OptionSpelling =
-  | { type: 'string'; name: string }
+/** Every parsed value lands in one of these maps; `lists` holds the repeated string options. */
+function emptyValues(): OptionValues {
+  return { booleans: new Map(), lists: new Map(), strings: new Map() };
+}
+
+/** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
+type SpellingRole = 'long' | 'negative' | 'short';
+
+type OptionForm =
+  | { type: 'string'; name: string; multiple: boolean }
   | { type: 'boolean'; name: string; value: boolean };
+
+type OptionSpelling = OptionForm & { role: SpellingRole };
 
 function validateDeclaration({ name, config }: OptionDeclaration) {
   if (typeof name !== 'string') {
@@ -38,6 +49,14 @@ function validateDeclaration({ name, config }: OptionDeclaration) {
   }
   if (config.shortOnly && config.short === undefined) {
     throw new DeclarationError(`Option "${name}" with shortOnly requires a short alias.`);
+  }
+  if (config.type === 'boolean' && config.multiple !== undefined) {
+    throw new DeclarationError(
+      `Option "${name}" is a boolean option and declares multiple. Remove multiple or declare a string option.`,
+    );
+  }
+  if (config.multiple !== undefined && typeof config.multiple !== 'boolean') {
+    throw new DeclarationError(`Option "${name}" multiple must be Boolean. Use true or false.`);
   }
   if (config.polarity !== undefined) {
     if (config.type !== 'boolean') {
@@ -83,23 +102,28 @@ export function compileOptions(declarations: readonly OptionDeclaration[], subje
       );
     }
     names.add(name);
-    const positive: OptionSpelling =
+    const positive: OptionForm =
       config.type === 'string'
-        ? { name, type: 'string' }
+        ? { multiple: config.multiple === true, name, type: 'string' }
         : { name, type: 'boolean', value: config.polarity !== 'negative' };
     if (!config.shortOnly) {
       if (config.type === 'string' || config.polarity !== 'negative') {
-        addSpelling(spellings, `--${name}`, positive);
+        addSpelling(spellings, `--${name}`, { ...positive, role: 'long' });
       }
       if (
         config.type === 'boolean' &&
         (config.polarity === 'both' || config.polarity === 'negative')
       ) {
-        addSpelling(spellings, `--no-${name}`, { name, type: 'boolean', value: false });
+        addSpelling(spellings, `--no-${name}`, {
+          name,
+          role: 'negative',
+          type: 'boolean',
+          value: false,
+        });
       }
     }
     if (config.short !== undefined) {
-      addSpelling(spellings, `-${config.short}`, positive);
+      addSpelling(spellings, `-${config.short}`, { ...positive, role: 'short' });
     }
   }
   return spellings;
@@ -128,7 +152,8 @@ function acceptValue({
   next: string | undefined;
   inline: string | undefined;
 }) {
-  if (values.strings.has(option.name) || values.booleans.has(option.name)) {
+  const repeatable = option.type === 'string' && option.multiple;
+  if (!repeatable && (values.strings.has(option.name) || values.booleans.has(option.name))) {
     throw new InputError(
       `Option "${spelling}" can be supplied only once. Remove the repeated option.`,
     );
@@ -148,7 +173,13 @@ function acceptValue({
       `Option "${spelling}" requires a value. Supply a value after "${spelling}".`,
     );
   }
-  values.strings.set(option.name, value);
+  if (repeatable) {
+    const collected = values.lists.get(option.name) ?? [];
+    collected.push(value);
+    values.lists.set(option.name, collected);
+  } else {
+    values.strings.set(option.name, value);
+  }
   return inline === undefined;
 }
 
@@ -220,7 +251,7 @@ export function extractGlobals(
   spellings: ReadonlyMap<string, OptionSpelling>,
   tokens: readonly string[],
 ) {
-  const values: OptionValues = { booleans: new Map(), strings: new Map() };
+  const values = emptyValues();
   const rest: string[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -244,6 +275,7 @@ export function extractGlobals(
 export function mergeValues(globals: OptionValues, locals: OptionValues): OptionValues {
   return {
     booleans: new Map([...globals.booleans, ...locals.booleans]),
+    lists: new Map([...globals.lists, ...locals.lists]),
     strings: new Map([...globals.strings, ...locals.strings]),
   };
 }
@@ -252,7 +284,7 @@ export function parseInputs(
   spellings: ReadonlyMap<string, OptionSpelling>,
   tokens: readonly string[],
 ) {
-  const options: OptionValues = { booleans: new Map(), strings: new Map() };
+  const options = emptyValues();
   const positionals: string[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];

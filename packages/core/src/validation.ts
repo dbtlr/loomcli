@@ -70,8 +70,47 @@ class ValidatedInputs {
 }
 export type { ValidatedInputs };
 
-function identity(input: InputDeclaration) {
+/**
+ * Authoring's snapshot of one config. An array default is the one declared value core hands to an
+ * action as its own value, so the declaration keeps a copy and the caller keeps its array. Every
+ * other property is captured as declared, because core clones no library object.
+ */
+export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
+  config: Config,
+): Config {
+  const value = config.default;
+  return Array.isArray(value) ? { ...config, default: [...value] } : { ...config };
+}
+
+/**
+ * A declaration error names the declaration, because the author reads the declaration to fix it.
+ * An argument declares and reads under one name, so the two namings differ for options alone.
+ */
+function declaredName(input: InputDeclaration) {
+  return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
+}
+
+/** An input error names the spelling the operator supplied, because that is the token to change. */
+function suppliedName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
+}
+
+/** A multiple option collects its occurrences, so its raw value is the whole `string[]`. */
+function collects(input: InputDeclaration) {
+  return input.kind === 'option' && input.config.multiple === true;
+}
+
+/** One accessor for a supplied option value, so the collected and single shapes read alike. */
+function suppliedOption(options: OptionValues, name: string, collected: boolean) {
+  return collected ? options.lists.get(name) : options.strings.get(name);
+}
+
+/** Without a schema the raw shape is the declared default's only contract. */
+function holdsRawDefault(input: InputDeclaration) {
+  const value = input.config.default;
+  return collects(input)
+    ? Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string')
+    : typeof value === 'string';
 }
 
 function checkDeclaration(input: InputDeclaration) {
@@ -79,26 +118,31 @@ function checkDeclaration(input: InputDeclaration) {
   if (input.kind === 'option' && input.config.type === 'boolean') {
     if ('validate' in config || 'default' in config || 'required' in config) {
       throw new DeclarationError(
-        `${identity(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
+        `${declaredName(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
       );
     }
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
-    throw new DeclarationError(`${identity(input)} required must be Boolean. Use true or false.`);
-  }
-  if (
-    input.kind === 'argument' &&
-    (!input.config.required ||
-      (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean'))
-  ) {
     throw new DeclarationError(
-      `${identity(input)} must declare required: true, with variadic true, false, or absent.`,
+      `${declaredName(input)} required must be Boolean. Use true or false.`,
     );
+  }
+  if (input.kind === 'argument') {
+    if (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean') {
+      throw new DeclarationError(
+        `${declaredName(input)} variadic must be Boolean. Use true or false.`,
+      );
+    }
+    if (input.config.variadic === true && !input.config.required) {
+      throw new DeclarationError(
+        `${declaredName(input)} is variadic and optional. Declare required: true or remove variadic.`,
+      );
+    }
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
-      `${identity(input)} is required and declares a default. Remove the default or make the input optional.`,
+      `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
     );
   }
   const schema = config.validate;
@@ -112,7 +156,7 @@ function checkDeclaration(input: InputDeclaration) {
       typeof schema['~standard'].validate !== 'function')
   ) {
     throw new DeclarationError(
-      `${identity(input)} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
+      `${declaredName(input)} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
     );
   }
 }
@@ -143,6 +187,10 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
   return { message, path };
 }
 
+/**
+ * A broken validator is a fault in the declaration, whichever value reached it, so its diagnostic
+ * names the declaration. Returned issues belong to the value, so the caller names those.
+ */
 async function validate(
   input: InputDeclaration,
   raw: unknown,
@@ -167,12 +215,12 @@ async function validate(
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown validator failure.';
     throw new DeclarationError(
-      `${identity(input)} validator failed unexpectedly: ${reason} Fix the validator.`,
+      `${declaredName(input)} validator failed unexpectedly: ${reason} Fix the validator.`,
     );
   }
 }
 
-function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Issue[]) {
+function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   return (
     issues.length === 0
       ? [{ message: 'The schema rejected this value without an explanation.' }]
@@ -181,30 +229,59 @@ function messages(input: InputDeclaration, issues: readonly StandardSchemaV1.Iss
     const path = issue.path
       ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
       .join('.');
-    return `${identity(input)}${path ? ` at ${path}` : ''}: ${issue.message}`;
+    return `${subject}${path ? ` at ${path}` : ''}: ${issue.message}`;
   });
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
+/** A declared `default: undefined` is a default, so presence is the key, never the value. */
+function hasDefault(input: InputDeclaration) {
+  return Object.hasOwn(input.config, 'default');
+}
+
+/**
+ * Every declaration rule that reads the declaration alone. It is synchronous, so `inspect()` and
+ * `run()` apply exactly the same rules, and only validating a default through its schema, which
+ * can be asynchronous, is left to `run()`.
+ */
+export function checkDeclarations(inputs: readonly InputDeclaration[]): void {
   for (const input of inputs) {
     checkDeclaration(input);
   }
-  const defaults = new Map<InputDeclaration, unknown>();
-  for (const input of inputs.filter((entry) => Object.hasOwn(entry.config, 'default'))) {
-    if (input.config.validate === undefined && typeof input.config.default !== 'string') {
+  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+    if (input.config.validate === undefined && !holdsRawDefault(input)) {
+      const subject = declaredName(input);
       throw new DeclarationError(
-        `${identity(input)} default must be a string without a schema. Supply a string default.`,
+        collects(input)
+          ? `${subject} default must be an array of strings without a schema. Supply a string array default.`
+          : `${subject} default must be a string without a schema. Supply a string default.`,
       );
     }
+  }
+}
+
+export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
+  checkDeclarations(inputs);
+  const defaults = new Map<InputDeclaration, unknown>();
+  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+    const subject = declaredName(input);
     const result = await validate(input, input.config.default);
     if (result.issues !== undefined) {
       throw new DeclarationError(
-        `${identity(input)} has an invalid default. Fix the default or its schema.\n${messages(input, result.issues).join('\n')}`,
+        `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, result.issues).join('\n')}`,
       );
     }
     defaults.set(input, result.value);
   }
   return defaults;
+}
+
+/**
+ * Without a schema the declared array reaches the action itself, so each invocation takes a copy
+ * and an action that mutates its collection cannot rewrite the declaration. A schema output is the
+ * author's own value, produced anew for this invocation, so it passes through unchanged.
+ */
+function freshDefault(input: InputDeclaration, value: unknown) {
+  return input.config.validate === undefined && Array.isArray(value) ? [...value] : value;
 }
 
 export async function validateValues(
@@ -214,6 +291,15 @@ export async function validateValues(
 ): Promise<ValidatedInputs> {
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
+  /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
+  const accept = async (input: InputDeclaration, raw: unknown, subject: string) => {
+    const result = await validate(input, raw);
+    if (result.issues === undefined) {
+      values.set(input, result.value);
+    } else {
+      issues.push(...messages(subject, result.issues));
+    }
+  };
   for (const input of inputs) {
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(
@@ -221,23 +307,27 @@ export async function validateValues(
         supplied.options.booleans.get(input.name) ?? input.config.polarity === 'negative',
       );
     } else {
+      const collected = collects(input);
+      const subject = suppliedName(input);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)
-          : supplied.options.strings.get(input.name);
+          : suppliedOption(supplied.options, input.name, collected);
       if (raw === undefined) {
         if (input.config.required) {
-          issues.push(`${identity(input)} is required. Supply a value.`);
+          issues.push(
+            collected
+              ? `${subject} is required. Supply at least one value.`
+              : `${subject} is required. Supply a value.`,
+          );
+        } else if (collected && !defaults.has(input)) {
+          // No occurrence is an accurate empty collection, so it reads like a supplied value.
+          await accept(input, [], subject);
         } else {
-          values.set(input, defaults.get(input));
+          values.set(input, freshDefault(input, defaults.get(input)));
         }
       } else {
-        const result = await validate(input, raw);
-        if (result.issues !== undefined) {
-          issues.push(...messages(input, result.issues));
-        } else {
-          values.set(input, result.value);
-        }
+        await accept(input, raw, subject);
       }
     }
   }

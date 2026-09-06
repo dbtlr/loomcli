@@ -11,12 +11,13 @@ import type {
   DefaultConstraint,
   GlobalNameConstraint,
   Host,
+  MultipleConstraint,
   NameConstraint,
   OptionConfig,
   OptionValue,
   Out,
 } from './types.js';
-import { validateValues } from './validation.js';
+import { captureConfig, validateValues } from './validation.js';
 import type {
   ArgumentInput,
   DefaultValues,
@@ -28,6 +29,7 @@ import type {
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {
   input: InputDeclaration;
+  required: boolean;
   variadic: boolean;
 }
 
@@ -38,10 +40,11 @@ export interface DispatchInput {
   values: ValidatedInputs;
 }
 
+/** A group registers no action, so its `dispatch` is `undefined` and selection rejects it. */
 export interface BuiltCommand {
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
-  dispatch: (input: DispatchInput) => unknown;
+  dispatch: ((input: DispatchInput) => unknown) | undefined;
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
@@ -52,9 +55,10 @@ export declare const commandValue: unique symbol;
 
 /**
  * Every authoring call a Command can publish. A Command's type state is a subset of these names,
- * and each call removes the names it invalidates. Adding `command()` to a Command adds it here.
+ * and each call removes the names it invalidates. A Command attaches children at any depth, so
+ * `command()` belongs to every Command and to the unnamed root alike.
  */
-export type CommandMethod = 'action' | 'argument' | 'option';
+export type CommandMethod = 'action' | 'argument' | 'command' | 'option';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
 export type AfterArgument<State> = Exclude<State, 'command'>;
@@ -71,13 +75,13 @@ type LateDeclaration =
   | { input: InputDeclaration; kind: 'input' };
 
 /** The attachable shape of a Command, without its inferred declaration types. */
-interface CommandNode {
+interface AttachedCommand {
   readonly name: string | null;
   build(globals: BuiltGlobals): BuiltCommand;
 }
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
-const nodes = new WeakMap<object, CommandNode>();
+const nodes = new WeakMap<object, AttachedCommand>();
 
 function subjectOf(name: string | null) {
   return name === null ? 'the root Command' : `Command "${name}"`;
@@ -89,7 +93,7 @@ function sentenceOf(name: string | null) {
 }
 
 /** Reads the declarations behind an attached value; anything else is a declaration error. */
-function nodeOf(parent: string | null, child: object): CommandNode {
+function nodeOf(parent: string | null, child: object): AttachedCommand {
   const node = nodes.get(child);
   if (!node) {
     throw new DeclarationError(
@@ -99,8 +103,13 @@ function nodeOf(parent: string | null, child: object): CommandNode {
   return node;
 }
 
+/** One name rule for every declared name in the graph, so a child and an argument read alike. */
+function isDeclaredName(name: unknown): name is string {
+  return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
+}
+
 function checkChildName(parent: string | null, name: unknown): asserts name is string {
-  if (typeof name !== 'string' || !name || name.startsWith('-') || /[\s=]/u.test(name)) {
+  if (!isDeclaredName(name)) {
     throw new DeclarationError(
       `${sentenceOf(parent)} attaches a child named "${String(name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
     );
@@ -236,8 +245,8 @@ function checkDeclarationOrder(state: Declared): void {
 }
 
 /** Child names are checked before any child builds, so parent diagnostics come first. */
-function collectChildren(state: Declared): [string, CommandNode][] {
-  const attached: [string, CommandNode][] = [];
+function collectChildren(state: Declared): [string, AttachedCommand][] {
+  const attached: [string, AttachedCommand][] = [];
   const seen = new Set<string>();
   for (const child of state.children) {
     const node = nodeOf(state.name, child);
@@ -254,25 +263,48 @@ function collectChildren(state: Declared): [string, CommandNode][] {
   return attached;
 }
 
+/** A variadic or optional slot ends the positional list, so nothing may follow either one. */
+function checkSlotOrder(slot: ArgumentSlot, next: ArgumentSlot, subject: string) {
+  if (slot.variadic) {
+    throw new DeclarationError(
+      `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
+    );
+  }
+  if (!slot.required) {
+    throw new DeclarationError(
+      next.required
+        ? `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}. Declare optional arguments after required ones.`
+        : `Argument "${next.input.name}" follows optional argument "${slot.input.name}" on ${subject}. Declare an optional argument last.`,
+    );
+  }
+}
+
 function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
   const slots: ArgumentSlot[] = [];
   const seen = new Set<string>();
   for (const input of state.inputs.filter((entry) => entry.kind === 'argument')) {
+    if (!isDeclaredName(input.name)) {
+      throw new DeclarationError(
+        `${sentenceOf(state.name)} declares an argument named "${String(input.name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      );
+    }
     if (seen.has(input.name)) {
       throw new DeclarationError(
         `Argument "${input.name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
       );
     }
     seen.add(input.name);
-    slots.push({ input, variadic: input.config.variadic === true });
+    slots.push({
+      input,
+      required: input.config.required === true,
+      variadic: input.config.variadic === true,
+    });
   }
   for (let index = 0; index + 1 < slots.length; index += 1) {
     const slot = slots[index];
     const next = slots[index + 1];
-    if (slot?.variadic && next) {
-      throw new DeclarationError(
-        `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
-      );
+    if (slot && next) {
+      checkSlotOrder(slot, next, subject);
     }
   }
   return slots;
@@ -297,6 +329,41 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
     }
   }
   return options;
+}
+
+/**
+ * A Command without an action is a group, and routing sends an invocation on to one of its
+ * children. A group with no children receives an invocation no handler can answer, and a local
+ * option on a group reaches no handler either, because locals never inherit.
+ */
+function checkGroup(state: Declared, children: readonly [string, AttachedCommand][]): void {
+  const { name } = state;
+  if (children.length === 0) {
+    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+  }
+  const option = state.inputs.find((input) => input.kind === 'option');
+  if (option) {
+    throw new DeclarationError(
+      `${sentenceOf(name)} declares option "${option.name}" but registers no action to receive it. Register an action or remove the option.`,
+    );
+  }
+}
+
+/** Binds one Command's declarations to its action, so an action reads only validated values. */
+function bindDispatch<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  action: Action<Args, Globals & Options>,
+) {
+  return ({ host, out, passthrough, values }: DispatchInput) => {
+    const bound = state.bind(values);
+    return action({
+      args: bound.args,
+      host,
+      options: { ...bindGlobals(state.globals, values), ...bound.options },
+      out,
+      passthrough,
+    });
+  };
 }
 
 /** Validates one declaration against the shared globals table and compiles it for dispatch. */
@@ -326,22 +393,13 @@ export function buildCommand<Args, Options, Globals>(
   }
   const action = actions[0];
   if (!action) {
-    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+    checkGroup(state, attached);
   }
   const options = compileLocalOptions(state, globals, subject);
   return {
     arguments: slots,
     children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
-    dispatch: ({ host, out, passthrough, values }) => {
-      const bound = state.bind(values);
-      return action({
-        args: bound.args,
-        host,
-        options: { ...bindGlobals(state.globals, values), ...bound.options },
-        out,
-        passthrough,
-      });
-    },
+    dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
     options,
@@ -373,9 +431,13 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name>,
+    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
-    const input: ArgumentInput<Name, Config> = { config: { ...config }, kind: 'argument', name };
+    const input: ArgumentInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'argument',
+      name,
+    };
     return new CommandBuilder(declareArgument(this.#state, input));
   }
 
@@ -384,10 +446,22 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     config: Config &
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
-      NoInfer<DefaultConstraint<Config>>,
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<MultipleConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
-    const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
+    const input: OptionInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'option',
+      name,
+    };
     return new CommandBuilder(declareOption(this.#state, input));
+  }
+
+  /** A child arrives in any type state, because its own action is the call that finished it. */
+  command(
+    child: Command<unknown, unknown, Globals>,
+  ): Command<Args, Options, Globals, AfterCommand<State>> {
+    return new CommandBuilder(attachChild(this.#state, child));
   }
 
   /** The action is the last declaration call, so the value it returns publishes `AfterAction`. */
@@ -485,10 +559,15 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
     } else {
       const value = positionals[index];
       if (value === undefined) {
-        throw new InputError(`Argument "${name}" requires a value. Supply a value for "${name}".`);
+        if (slot.required) {
+          throw new InputError(
+            `Argument "${name}" requires a value. Supply a value for "${name}".`,
+          );
+        }
+      } else {
+        values.set(slot.input, value);
+        index += 1;
       }
-      values.set(slot.input, value);
-      index += 1;
     }
   }
   if (index < positionals.length) {
@@ -509,13 +588,20 @@ export async function selectCommand(
   defaults: DefaultValues,
 ) {
   const scan = extractGlobals(graph.globals.options, tokens);
-  const selected = route(graph.root, scan.rest);
-  const parsed = parseInputs(selected.command.options, selected.tokens);
-  const args = bindArguments(selected.command, parsed.positionals);
+  const { command, tokens: rest } = route(graph.root, scan.rest);
+  const { dispatch } = command;
+  // A group answers no invocation of its own, so it fails with the routing errors above it.
+  if (!dispatch) {
+    throw new InputError(
+      `${sentenceOf(command.name)} requires a subcommand. Use one of: ${[...command.children.keys()].join(', ')}.`,
+    );
+  }
+  const parsed = parseInputs(command.options, rest);
+  const args = bindArguments(command, parsed.positionals);
   const values = await validateValues(
-    [...graph.globals.inputs, ...selected.command.inputs],
+    [...graph.globals.inputs, ...command.inputs],
     { args, options: mergeValues(scan.values, parsed.options) },
     defaults,
   );
-  return { command: selected.command, passthrough: parsed.passthrough, values };
+  return { dispatch, passthrough: parsed.passthrough, values };
 }

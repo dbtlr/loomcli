@@ -28,7 +28,6 @@ globals.inputs;
 // @ts-expect-error TS2339: An Application publishes no root Command.
 jsonkit.root;
 
-// @ts-expect-error TS2322: An optional scalar argument is outside this increment.
 new Command('optional').argument('path', { required: false });
 
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.

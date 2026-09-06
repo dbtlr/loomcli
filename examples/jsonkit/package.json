@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@loom/core": "workspace:*"
+    "@loom/core": "workspace:*",
+    "zod": "^4.5.4"
   }
 }

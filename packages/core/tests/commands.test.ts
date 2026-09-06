@@ -269,6 +269,18 @@ test.each([
     'The root Command attaches a child named "get=value". Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
+    'empty-argument-name',
+    'The root Command declares an argument named "". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
+    'hyphen-argument-name',
+    'The root Command declares an argument named "--file". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
+    'nonstring-argument-name',
+    'Command "get" declares an argument named "1". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
     'foreign-child',
     'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
   ],
@@ -363,7 +375,7 @@ test.each([
 test('a declared default on a child Command is validated before any token is parsed', () => {
   expect(invokeGraph('child-invalid-default')).toEqual({
     chunks: [
-      'Invalid declaration: Option "--depth" has an invalid default. Fix the default or its schema.\nOption "--depth": Use decimal digits.\n',
+      'Invalid declaration: Option "depth" has an invalid default. Fix the default or its schema.\nOption "depth": Use decimal digits.\n',
     ],
     code: 1,
   });
