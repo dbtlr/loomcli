@@ -21,6 +21,8 @@ import type {
 import { describeFailure } from './errors.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
+import { inspectGraph } from './inspect.js';
+import type { CommandGraph } from './inspect.js';
 import { Output, reportOutputFailure } from './output.js';
 import type {
   Action,
@@ -43,8 +45,9 @@ import { prepareInputs } from './validation.js';
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
+ * The unnamed root declares what a named Command declares, so the two unions hold the same names.
  */
-export type ApplicationMethod = CommandMethod | 'command';
+export type ApplicationMethod = CommandMethod;
 
 /**
  * The Application holds the unnamed root's declaration state and applies the same transitions a
@@ -126,6 +129,15 @@ class ApplicationBuilder<
     return new ApplicationBuilder(this.#name, root);
   }
 
+  /**
+   * The built graph as plain, frozen data. It runs the build and structural checks `run()` runs,
+   * and throws `DeclarationError` when one fails. Declared defaults await their schemas, so it
+   * leaves them to `run()`. Nothing is cached: each call builds the graph anew.
+   */
+  inspect(): CommandGraph {
+    return inspectGraph(this.#name, buildGraph(this.#root));
+  }
+
   async run(options?: RunOptions): Promise<ExitCode> {
     let stderr: Writable = process.stderr;
     let output: Output | undefined = undefined;
@@ -139,7 +151,7 @@ class ApplicationBuilder<
       const graph = buildGraph(this.#root);
       const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
       const selected = await selectCommand(graph, [...host.argv], defaults);
-      await selected.command.dispatch({
+      await selected.dispatch({
         host,
         out: output.out,
         passthrough: selected.passthrough,
@@ -177,11 +189,11 @@ class ApplicationBuilder<
 
 /**
  * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
- * `run()`, and `name`. Every authoring call returns a new declaration value, leaves its receiver
- * unchanged, and publishes only the calls that are still valid after it. `run()` and `name` survive
- * every call. `State` lists the authoring calls a value still offers. It defaults to the state
- * after `action()`, which publishes the fewest calls, so `Application<A, O, G>` accepts an
- * application in any state, a finished one included.
+ * `inspect()`, `run()`, and `name`. Every authoring call returns a new declaration value, leaves
+ * its receiver unchanged, and publishes only the calls that are still valid after it. `inspect()`,
+ * `run()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
+ * It defaults to the state after `action()`, which publishes the fewest calls, so
+ * `Application<A, O, G>` accepts an application in any state, a finished one included.
  */
 export type Application<
   Args = {},
@@ -190,7 +202,7 @@ export type Application<
   State extends ApplicationMethod = AfterAction,
 > = Pick<
   ApplicationBuilder<Args, Options, Globals, State>,
-  typeof declaredTypes | 'name' | 'run' | State
+  typeof declaredTypes | 'inspect' | 'name' | 'run' | State
 >;
 
 interface ApplicationConstructor {

@@ -20,18 +20,18 @@ await app.run();
 
 Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `action()`, and `command()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
 
-A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, and `action()`; `GlobalOptions` publishes `option()`; a fresh `Application` adds `command()`. An `Application` keeps `run()` and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
+A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, `command()`, and `action()`; a fresh `Application` publishes the same four calls for the unnamed root; `GlobalOptions` publishes `option()`. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
 
 Declare arguments and options, attach the children, then register the action last. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
 
-| Call         | Removed from the value it returns                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------ |
-| `argument()` | `command()`, because one Command declares arguments or attaches children, never both                         |
-| `command()`  | `argument()`, the same rule read from the other side                                                         |
-| `option()`   | nothing                                                                                                      |
-| `action()`   | every declaration call; a Command keeps only its inferred types, and an Application keeps `run()` and `name` |
+| Call         | Removed from the value it returns                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `argument()` | `command()`, because one Command declares arguments or attaches children, never both                        |
+| `command()`  | `argument()`, the same rule read from the other side                                                        |
+| `option()`   | nothing                                                                                                     |
+| `action()`   | every declaration call; an Application keeps `inspect()`, `run()`, and `name`, a Command its inferred types |
 
-Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and publishes `run()`. Running it is still a build error in this increment, because every Command, the root included, needs an action. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
+Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and publishes `run()`. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
 
 `Command` and `Application` take a fourth type parameter that lists the authoring calls a value still offers. It defaults to `never`, so `Command<Args, Options, Globals>` and `Application<Args, Options, Globals>` accept a declaration in any state, one that registered its action included. Write the parameter only to require a state. The fresh states are the exported `CommandMethod` and `ApplicationMethod` unions, which also let a consumer emit declarations for a value that has not registered its action. An explicit `any` in that position removes the lock, as `any` does anywhere else.
 
@@ -47,7 +47,7 @@ Bare tokens before `--` retain their order as positional inputs. Local options c
 
 Application methods apply the same declaration transitions as a Command to the unnamed root's state. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
-Graph build rejects duplicate argument names, a variadic argument that is not last, an argument that follows an optional one, an optional argument that precedes a required one, an optional variadic argument, multiple actions, a Command with no action, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
+Graph build rejects duplicate argument names, a variadic argument that is not last, an argument that follows an optional one, an optional argument that precedes a required one, an optional variadic argument, multiple actions, a Command with neither children nor an action, a local option on a group, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 
 ## Local options
 
@@ -173,9 +173,32 @@ export const globals = new GlobalOptions().option('file', {
 
 Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
 
-`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root. Both constructors omit the second argument when the application declares no globals. Attaching a child to a named Command is outside this increment.
+`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. Both constructors omit the second argument when the application declares no globals.
 
 The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own, both at compile time and during graph build.
+
+### Nested Commands and groups
+
+`command()` belongs to a named Command and to the unnamed root alike, so children attach at any depth. A child holds the same `GlobalOptions` value as its Application wherever it sits, and build walks the whole tree: it checks that value, the child names of each parent, and every per-Command rule at every level. A diagnostic that names a parent names the Command that holds the fault, so a nested parent reads as `Command "cache"`.
+
+A Command with children and no action is a group. The unnamed root may be a group too. A group holds children alone: a local option on it reaches no handler, because locals never inherit, so build rejects the declaration. A Command with children and an action keeps its options for that action and runs it when routing selects no child. A Command with neither children nor an action keeps the no-action build error.
+
+```ts
+import { Application, Command } from '@loom/core';
+
+import { clearCache, listCache, summarize } from './actions.js';
+import { globals } from './globals.js';
+
+const clear = new Command('clear', globals).option('force', { type: 'boolean' }).action(clearCache);
+const list = new Command('list', globals).action(listCache);
+const cache = new Command('cache', globals).command(clear).command(list);
+
+export const store = new Application('store', globals).command(cache).action(summarize);
+```
+
+Routing reads a nested graph the way it reads a flat one. Bare tokens descend from the root, and the first hyphen token commits to the Command they reach, so `store cache clear --force` dispatches `clear` with the global values and its own locals. An unknown child lists the children of the Command that holds it, at every depth.
+
+An invocation that commits to a group fails before local parsing, with code 2. The diagnostic ranks with the routing errors, so `store cache --verbose` reports the missing subcommand rather than the unknown option.
 
 ### Modular authoring
 
@@ -222,7 +245,7 @@ export const getValue: ActionHandler<typeof get> = async ({ args, options, out }
 
 Core reads invocation tokens in phases. The pre-scan walks the tokens up to the first bare `--`. A hyphen token whose spelling, the part before any `=`, is a global spelling is consumed with the ordinary value rules: a long spelling accepts its value inline after `=` or in the next token, and a short spelling accepts its value in the next token alone, because `-f=x` is an attached short value. A separately consumed value cannot start with a hyphen. Consumed tokens leave the router stream. A short group is all or nothing. A group of global letters is consumed, and a group with no global letters stays in the stream. A group that mixes a global letter with a letter the globals do not own is an input error: the pre-scan reads the globals alone, so it cannot tell a local option from an undeclared one, and its diagnostic classifies only the global letter. Tokens at and after `--` are never inspected, so a `--file` in the passthrough tail stays in the tail.
 
-Routing then reads the remaining bare tokens from the root downward. A bare token that matches no child, while the current Command has children, is an unknown-command error that lists the choices. The first hyphen token commits to the current Command. Later bare tokens are positional inputs for that Command, so a root with children reports that it accepts no arguments.
+Routing then reads the remaining bare tokens from the root downward. A bare token that matches no child, while the current Command has children, is an unknown-command error that lists the choices. The first hyphen token commits to the current Command. Later bare tokens are positional inputs for that Command, so a root with children reports that it accepts no arguments. A commit to a group is an input error, because a group registers no action of its own. That error ranks with the routing errors above, before any local parsing.
 
 Values win over route names. In `jsonkit --file keys get name`, the value of `--file` is `keys`, and routing sees `get name`. A global supplied more than once fails as a repeated option at any placement.
 
@@ -240,10 +263,12 @@ A missing required option is a validation-phase issue, so it loses to routing an
 | `-qp --file data.json get a.b`           | `Short group "-qp" mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.` |
 | `--file one.json get a.b -f two.json`    | `Option "-f" can be supplied only once. Remove the repeated option.`                                                                                                            |
 | `get a.b` with a required `--file`       | `Option "--file" is required. Supply a value.`                                                                                                                                  |
+| no tokens with an actionless root        | `The root Command requires a subcommand. Use one of: get, keys.`                                                                                                                |
+| `cache --verbose` for a `cache` group    | `Command "cache" requires a subcommand. Use one of: clear, list.`                                                                                                               |
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with no action, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -253,7 +278,8 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.` A child whose globals type differs is also a compile error at `command()`. |
 | A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                                                                                               |
 | A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`                                                                             |
-| A Command with no action                                | `Command "get" has no action. Register an action.`                                                                                                                                                            |
+| A Command with neither children nor an action           | `Command "get" has no action. Register an action.`                                                                                                                                                            |
+| A group that declares a local option                    | `Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.` The root form reads `The root Command declares option "verbose" ...`.             |
 | A Command with several actions                          | `Command "get" has multiple actions. Register one action.`                                                                                                                                                    |
 | An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                    |
 | A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                    |
@@ -332,6 +358,63 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 [textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes files at or above the byte threshold and totals only retained files. No retained files produces no file rows and a zero total when requested.
 
+## Graph inspection
+
+`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It runs the build and the structural checks that `run()` runs, so an invalid declaration throws the exported `DeclarationError`, which a consumer catches by class. It does not validate declared defaults, because a default awaits its schema; `run()` still does that work. It reads no host facts, and it caches nothing: each call builds the graph anew.
+
+```ts
+interface CommandGraph {
+  name: string;
+  globals: readonly OptionNode[];
+  root: CommandNode;
+}
+interface CommandNode {
+  name: string | null;
+  path: readonly string[];
+  hasAction: boolean;
+  arguments: readonly ArgumentNode[];
+  options: readonly OptionNode[];
+  children: readonly CommandNode[];
+}
+interface ArgumentNode {
+  name: string;
+  required: boolean;
+  variadic: boolean;
+  validated: boolean;
+  default: { value: unknown } | undefined;
+}
+type OptionNode =
+  | {
+      type: 'string';
+      name: string;
+      long: string | null;
+      short: string | null;
+      required: boolean;
+      multiple: boolean;
+      validated: boolean;
+      default: { value: unknown } | undefined;
+    }
+  | {
+      type: 'boolean';
+      name: string;
+      long: string | null;
+      short: string | null;
+      negative: string | null;
+      polarity: 'positive' | 'negative' | 'both';
+    };
+```
+
+- `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
+- The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
+- Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
+- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all.
+- The result is frozen, and its types are read-only, so a consumer reads it without copying it.
+
+```ts
+const graph = app.inspect();
+const names = graph.root.children.map((child) => child.path.join(' '));
+```
+
 ## Invocation
 
 `run(options?)` returns `Promise<ExitCode>` and sets the same `process.exitCode`. It resolves execution failures through the output path.
@@ -402,4 +485,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Nested and actionless command groups, help output, stdin selection, custom renderers, and plugins are outside this increment.
+Help output, stdin selection, custom renderers, and plugins are outside this increment.
