@@ -92,6 +92,43 @@ The parser preserves empty values. After parsing, value inputs pass through thei
 
 Boolean aliases can form a group. A string alias must be last and consumes the next token. `-tm words` sets `total` to `true` and `metric` to `"words"`. `-mt words` fails because `m` is not last. Attached short values are never inferred from the remainder of a group.
 
+### Repeated string values
+
+A string option declares `multiple: true` to collect every occurrence instead of rejecting the second one. Boolean options cannot declare `multiple`.
+
+```ts
+const app = new Application('select')
+  .option('field', { multiple: true, short: 'F', type: 'string' })
+  .action(({ options, out }) => {
+    const fields: string[] = options.field;
+    return out.print(fields.join('\n'));
+  });
+```
+
+The collected value keeps supplied token order across every accepted spelling, so `--field a -F b --field=c` gives `['a', 'b', 'c']`. Each occurrence follows the ordinary value rules of its spelling. A multiple string alias is a string alias in a short group: it must be last and consumes the next token.
+
+The raw value is the whole `string[]`, and the declared schema receives that array once. Per-item rules compose inside it, so `z.array(z.string().min(1))` rejects an empty item and reports its position, as in `Option "--field" at 1: Supply a field name.`. The action receives the schema output.
+
+| Declaration and input               | Action value or failure              |
+| ----------------------------------- | ------------------------------------ |
+| Omitted, no declared default        | `[]`; the schema is not called       |
+| Omitted, declared default           | The validated default output         |
+| One or more occurrences             | The validated array, or input issues |
+| `required: true` with no occurrence | Input error; no dispatch             |
+
+`required: true` means at least one occurrence. A multiple option's action value is never `undefined`: no occurrence is an accurate empty collection. A default is a `string[]`, or the schema's input type when the declaration validates, and it passes through the schema like any other default.
+
+Global options declare `multiple` under the same rules. The pre-scan consumes each occurrence at any placement before the passthrough delimiter, so a repeated global is collected rather than rejected.
+
+| Rejected declaration or input                              | Diagnostic                                                                                                |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A required multiple option with no occurrence              | `Option "--field" is required. Supply at least one value.`                                                |
+| `multiple` on a Boolean option                             | `Option "verbose" is a boolean option and declares multiple. Remove multiple or declare a string option.` |
+| A `multiple` value that is not Boolean                     | `Option "field" multiple must be Boolean. Use true or false.`                                             |
+| A multiple default that is not a string array, unvalidated | `Option "--field" default must be an array of strings without a schema. Supply a string array default.`   |
+
+The first diagnostic is a validation-phase issue with exit code 2 and ranks with the other required inputs. The rest are declaration errors with exit code 1. TypeScript rejects `multiple` on a Boolean option, a default of the wrong shape, and a schema whose input type does not accept `string[]`, at the `option()` call.
+
 ### Boolean polarity
 
 Boolean options accept `polarity: 'positive' | 'both' | 'negative'`. The default polarity is `positive`.
@@ -110,7 +147,7 @@ Boolean options consume no value token. Assignments such as `--total=false` and 
 
 Graph construction rejects duplicate option keys and spelling collisions, including generated negative forms and short aliases. It also rejects invalid names, aliases, types, polarity, and short-only combinations. These errors occur during `run()`, before input parsing or dispatch. Authoring calls capture configuration values, so later changes to the original configuration object do not change the declaration.
 
-Each option can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, and `--total --no-total`. An unknown option, missing value, or invalid token form also prevents dispatch. Diagnostics identify the affected option and give a correction. Declaration errors return code 1; invocation errors return code 2. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](#commands-and-global-options).
+Each option without `multiple` can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, and `--total --no-total`. A `multiple` option collects its repetitions instead, as [Repeated string values](#repeated-string-values) describes. An unknown option, missing value, or invalid token form also prevents dispatch. Diagnostics identify the affected option and give a correction. Declaration errors return code 1; invocation errors return code 2. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](#commands-and-global-options).
 
 ### Passthrough
 
@@ -255,7 +292,7 @@ await app.run();
 
 `type: 'string'` controls token consumption. The schema receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a schema, supplied values remain strings.
 
-A scalar argument's schema receives its one token. A variadic argument's schema receives the entire `string[]`. It can validate individual elements, enforce collection rules, or transform the collection into a different shape. For example, `z.array(z.string()).transform(files => files.length)` produces a numeric argument value. Passthrough never enters this pipeline.
+A scalar argument's schema receives its one token. A variadic argument's schema, and a multiple option's schema, receive the entire `string[]`. It can validate individual elements, enforce collection rules, or transform the collection into a different shape. For example, `z.array(z.string()).transform(files => files.length)` produces a numeric argument value. Passthrough never enters this pipeline.
 
 `ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase schema details; `satisfies` preserves inference.
 
