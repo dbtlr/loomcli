@@ -105,14 +105,15 @@ function checkDeclaration(input: InputDeclaration) {
   if (config.required !== undefined && typeof config.required !== 'boolean') {
     throw new DeclarationError(`${identity(input)} required must be Boolean. Use true or false.`);
   }
-  if (
-    input.kind === 'argument' &&
-    (!input.config.required ||
-      (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean'))
-  ) {
-    throw new DeclarationError(
-      `${identity(input)} must declare required: true, with variadic true, false, or absent.`,
-    );
+  if (input.kind === 'argument') {
+    if (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean') {
+      throw new DeclarationError(`${identity(input)} variadic must be Boolean. Use true or false.`);
+    }
+    if (input.config.variadic === true && !input.config.required) {
+      throw new DeclarationError(
+        `${identity(input)} is variadic and optional. Declare required: true or remove variadic.`,
+      );
+    }
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(

@@ -29,6 +29,7 @@ import type {
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {
   input: InputDeclaration;
+  required: boolean;
   variadic: boolean;
 }
 
@@ -255,6 +256,22 @@ function collectChildren(state: Declared): [string, CommandNode][] {
   return attached;
 }
 
+/** A variadic or optional slot ends the positional list, so nothing may follow either one. */
+function checkSlotOrder(slot: ArgumentSlot, next: ArgumentSlot, subject: string) {
+  if (slot.variadic) {
+    throw new DeclarationError(
+      `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
+    );
+  }
+  if (!slot.required) {
+    throw new DeclarationError(
+      next.required
+        ? `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}. Declare optional arguments after required ones.`
+        : `Argument "${next.input.name}" follows optional argument "${slot.input.name}" on ${subject}. Declare an optional argument last.`,
+    );
+  }
+}
+
 function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
   const slots: ArgumentSlot[] = [];
   const seen = new Set<string>();
@@ -265,15 +282,17 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
       );
     }
     seen.add(input.name);
-    slots.push({ input, variadic: input.config.variadic === true });
+    slots.push({
+      input,
+      required: input.config.required === true,
+      variadic: input.config.variadic === true,
+    });
   }
   for (let index = 0; index + 1 < slots.length; index += 1) {
     const slot = slots[index];
     const next = slots[index + 1];
-    if (slot?.variadic && next) {
-      throw new DeclarationError(
-        `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}. Declare the variadic argument last.`,
-      );
+    if (slot && next) {
+      checkSlotOrder(slot, next, subject);
     }
   }
   return slots;
@@ -374,7 +393,7 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name>,
+    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
     const input: ArgumentInput<Name, Config> = { config: { ...config }, kind: 'argument', name };
     return new CommandBuilder(declareArgument(this.#state, input));
@@ -487,10 +506,15 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
     } else {
       const value = positionals[index];
       if (value === undefined) {
-        throw new InputError(`Argument "${name}" requires a value. Supply a value for "${name}".`);
+        if (slot.required) {
+          throw new InputError(
+            `Argument "${name}" requires a value. Supply a value for "${name}".`,
+          );
+        }
+      } else {
+        values.set(slot.input, value);
+        index += 1;
       }
-      values.set(slot.input, value);
-      index += 1;
     }
   }
   if (index < positionals.length) {

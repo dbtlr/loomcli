@@ -72,7 +72,7 @@ class ApplicationBuilder<
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name>,
+    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Application<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,

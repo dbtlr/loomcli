@@ -107,12 +107,7 @@ export interface VariadicArgument {
   validate?: StandardSchemaV1;
   default?: never;
 }
-export interface ScalarArgument {
-  variadic?: false;
-  required: true;
-  validate?: StandardSchemaV1;
-  default?: never;
-}
+export type ScalarArgument = Presence & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
@@ -141,7 +136,9 @@ export type MultipleConstraint<Config> = Config extends { multiple: true }
   : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
-  : ValidatedValue<Config, string>;
+  :
+      | ValidatedValue<Config, string>
+      | (Config extends { required: true } | { default: unknown } ? never : undefined);
 export type BooleanOption =
   | (OptionSpelling & {
       type: 'boolean';
