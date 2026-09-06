@@ -39,13 +39,15 @@ JavaScript authors reach the same rules at graph build, which reports a declarat
 
 TypeScript requires one statically known name for each `argument()` and `option()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. A rejected name reports the missing property `'Declaration names must be one literal string'`. JavaScript declarations still undergo graph validation during `run()`.
 
-A Command accepts required arguments in declaration order. A scalar argument, `{ required: true }` with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ required: true, variadic: true }`, must be last and takes the remaining tokens. Optional scalar arguments are outside this increment.
+A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ required: true, variadic: true }`, must be last and takes the remaining tokens.
+
+A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind. A variadic argument stays required.
 
 Bare tokens before `--` retain their order as positional inputs. Local options can appear before, between, or after these inputs. A hyphenated file path uses an explicit relative path such as `./-notes.txt`.
 
 Application methods apply the same declaration transitions as a Command to the unnamed root's state. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
-Graph build rejects duplicate argument names, a variadic argument that is not last, multiple actions, a Command with no action, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
+Graph build rejects duplicate argument names, a variadic argument that is not last, an argument that follows an optional one, an optional argument that precedes a required one, an optional variadic argument, multiple actions, a Command with no action, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 
 ## Local options
 
@@ -241,7 +243,7 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with no action, and a variadic argument that is not last.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with no action, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -256,6 +258,9 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                    |
 | A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                    |
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                             |
+| An optional argument before a required one              | `Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.`                                                                        |
+| An argument after an optional one                       | `Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.`                                                                                                   |
+| An optional variadic argument                           | `Argument "files" is variadic and optional. Declare required: true or remove variadic.`                                                                                                                       |
 | An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                        |
 | A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                    |
 
@@ -267,7 +272,7 @@ Local options on separate Commands can reuse names and spellings. Core holds one
 
 ## Standard Schema validation
 
-Value options and required arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
+Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
 
 ```ts
 import { Application } from '@loom/core';
@@ -298,14 +303,14 @@ A scalar argument's schema receives its one token. A variadic argument's schema,
 
 ### Absence and defaults
 
-| Declaration and input                       | Action value or failure                           |
-| ------------------------------------------- | ------------------------------------------------- |
-| Optional value omitted, no declared default | `undefined`; schema is not called                 |
-| Optional value omitted, declared default    | The validated default output                      |
-| Supplied value, including an empty string   | Its validated output or input issues              |
-| `required: true` value option omitted       | Input error; no dispatch                          |
-| Required input with a declared default      | Developer declaration error                       |
-| Invalid declared default                    | Developer declaration error, even when overridden |
+| Declaration and input                          | Action value or failure                           |
+| ---------------------------------------------- | ------------------------------------------------- |
+| Optional value or argument omitted, no default | `undefined`; schema is not called                 |
+| Optional value omitted, declared default       | The validated default output                      |
+| Supplied value, including an empty string      | Its validated output or input issues              |
+| `required: true` value option omitted          | Input error; no dispatch                          |
+| Required input with a declared default         | Developer declaration error                       |
+| Invalid declared default                       | Developer declaration error, even when overridden |
 
 Defaults use the schema's input type, not its output type. In the example, `default: '0'` is valid and `default: 0` is a type error. Without a schema, a value default must be a string.
 
@@ -397,4 +402,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Options that collect repeated values, optional scalar arguments, nested and actionless command groups, help output, stdin selection, custom renderers, and plugins are outside this increment.
+Nested and actionless command groups, help output, stdin selection, custom renderers, and plugins are outside this increment.
