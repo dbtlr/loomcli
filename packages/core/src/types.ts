@@ -94,9 +94,12 @@ export type ValidatedValue<Config, Raw> = Config extends unknown
     ? SchemaOutput<Config['validate'], Raw>
     : Raw
   : never;
-export interface DefaultConstraint<Config> {
-  default?: 'validate' extends keyof Config ? SchemaInput<Config['validate']> : string;
-}
+/** Keep each conditional declaration paired with its own schema input type. */
+export type DefaultConstraint<Config> = Config extends unknown
+  ? Config & {
+      default?: 'validate' extends keyof Config ? SchemaInput<Config['validate']> : string;
+    }
+  : never;
 export type ArgumentValue<Config extends ArgumentConfig> = ValidatedValue<Config, string[]>;
 export type BooleanOption =
   | (OptionSpelling & {

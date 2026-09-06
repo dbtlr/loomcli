@@ -110,3 +110,38 @@ new Application('element-types')
     const values: number[] = args.values;
     return values;
   });
+
+const plainDefault = { default: 'a', mode: 'raw', type: 'string' } satisfies StringOption & {
+  mode: 'raw';
+};
+const arrayDefault = {
+  default: ['a'],
+  mode: 'schema',
+  type: 'string',
+  validate: arrayInput,
+} satisfies StringOption & { mode: 'schema' };
+const mixedDefault = Math.random() > 0.5 ? plainDefault : arrayDefault;
+new Application('mixed-default').option('tags', mixedDefault).action(({ options }) => {
+  const value: string = options.tags;
+  return value;
+});
+const badPlainDefault = { default: ['a'], mode: 'raw', type: 'string' } satisfies StringOption & {
+  mode: 'raw';
+};
+const mixedBadDefault = Math.random() > 0.5 ? badPlainDefault : arrayDefault;
+// @ts-expect-error TS2345: a valid schema branch cannot hide an invalid raw default branch
+new Application('mixed-bad-default').option('tags', mixedBadDefault);
+
+const invalidSchemaBranch = {
+  default: 5,
+  type: 'string',
+  validate: z.string(),
+} satisfies StringOption;
+const validSchemaBranch = {
+  default: 5,
+  type: 'string',
+  validate: z.union([z.string(), z.number()]),
+} satisfies StringOption;
+const mixedSchemas = Math.random() > 0.5 ? invalidSchemaBranch : validSchemaBranch;
+// @ts-expect-error TS2345: schema inputs remain correlated with each branch's default
+new Application('mixed-schemas').option('value', mixedSchemas);

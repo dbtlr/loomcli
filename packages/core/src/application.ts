@@ -34,7 +34,7 @@ class ApplicationBuilder<Args, Options> {
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & DefaultConstraint<NoInfer<Config>>,
+    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>> {
     return new ApplicationBuilder(this.name, this.root.option<Name, Config>(name, config));
   }
