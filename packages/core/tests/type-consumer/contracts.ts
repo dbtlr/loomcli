@@ -39,7 +39,7 @@ new Application('files')
 new Application('sync-return').action(() => ({ ignored: true }));
 new Application('async-return').action(async () => Promise.resolve('ignored'));
 
-// @ts-expect-error TS2558: Constructor type arguments cannot forge parsed arguments.
+// @ts-expect-error TS2554: A globals type argument still requires its GlobalOptions value.
 new Application<{ forged: number }>('forged');
 
 void new Application('host-override').run({

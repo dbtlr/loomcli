@@ -31,7 +31,7 @@ test.each([
     'competing',
     ['x'],
     1,
-    'Invalid declaration: Arguments "files", "extras" compete for variadic values on the root Command. Keep one variadic argument.\n',
+    'Invalid declaration: Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.\n',
   ],
   [
     'multiple-actions',

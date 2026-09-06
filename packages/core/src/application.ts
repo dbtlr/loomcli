@@ -1,7 +1,10 @@
 import type { Writable } from 'node:stream';
 
-import { Command, route, validateInputs } from './command.js';
+import { CommandBuilder, collectInputs, selectCommand } from './command.js';
+import type { Command } from './command.js';
 import { describeFailure } from './errors.js';
+import type { GlobalOptions } from './globals.js';
+import { defaultGlobals } from './globals.js';
 import { captureHost } from './host.js';
 import { Output, reportOutputFailure } from './output.js';
 import type {
@@ -9,6 +12,7 @@ import type {
   ArgumentConfig,
   ArgumentValue,
   DefaultConstraint,
+  GlobalNameConstraint,
   NameConstraint,
   ExitCode,
   OptionConfig,
@@ -17,30 +21,42 @@ import type {
 } from './types.js';
 import { prepareInputs } from './validation.js';
 
-export type Application<Args = {}, Options = {}> = ApplicationBuilder<Args, Options>;
+export type Application<Args = {}, Options = {}, Globals = {}> = ApplicationBuilder<
+  Args,
+  Options,
+  Globals
+>;
 
-class ApplicationBuilder<Args, Options> {
+class ApplicationBuilder<Args, Options, Globals> {
   constructor(
     readonly name: string,
-    private readonly root: Command<Args, Options>,
+    private readonly root: CommandBuilder<Args, Options, Globals>,
   ) {}
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
-  ): Application<Args & Record<Name, ArgumentValue<Config>>, Options> {
+  ): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
     return new ApplicationBuilder(this.name, this.root.argument<Name, Config>(name, config));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
-  ): Application<Args, Options & Record<Name, OptionValue<Config>>> {
+    config: Config &
+      NameConstraint<Name> &
+      GlobalNameConstraint<Name, Globals> &
+      NoInfer<DefaultConstraint<Config>>,
+  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
     return new ApplicationBuilder(this.name, this.root.option<Name, Config>(name, config));
   }
 
-  action(handler: Action<Args, Options>): this {
+  action(handler: Action<Args, Globals & Options>): this {
     this.root.actions.push(handler);
+    return this;
+  }
+
+  command<ChildArgs, ChildOptions>(child: Command<ChildArgs, ChildOptions, Globals>): this {
+    this.root.children.push(child);
     return this;
   }
 
@@ -54,12 +70,16 @@ class ApplicationBuilder<Args, Options> {
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      const graph = { root: this.root.build() };
-      const defaults = await prepareInputs(graph.root.inputs);
-      const tokens = [...host.argv];
-      const selected = route(graph.root, tokens);
-      const inputs = await validateInputs(selected.command, selected.tokens, defaults);
-      await selected.command.action({ ...inputs, host, out: output.out });
+      const globals = this.root.globals.build();
+      const graph = { globals, root: this.root.build(globals) };
+      const defaults = await prepareInputs([...globals.inputs, ...collectInputs(graph.root)]);
+      const selected = await selectCommand(graph, [...host.argv], defaults);
+      await selected.command.dispatch({
+        host,
+        out: output.out,
+        passthrough: selected.passthrough,
+        values: selected.values,
+      });
     } catch (error) {
       try {
         const failure = describeFailure(error);
@@ -90,11 +110,27 @@ class ApplicationBuilder<Args, Options> {
   }
 }
 
-export const Application: new (name: string) => Application = class extends ApplicationBuilder<
-  {},
-  {}
-> {
-  constructor(name: string) {
-    super(name, new Command([], [], () => ({ args: {}, options: {} })));
+interface ApplicationConstructor {
+  new (name: string): Application;
+  new <Globals>(name: string, globals: GlobalOptions<Globals>): Application<{}, {}, Globals>;
+}
+
+class ApplicationDeclaration extends ApplicationBuilder<{}, {}, {}> {
+  constructor(name: string, globals?: GlobalOptions) {
+    super(
+      name,
+      new CommandBuilder({
+        actions: [],
+        bind: () => ({ args: {}, options: {} }),
+        children: [],
+        globals: defaultGlobals(globals),
+        inputs: [],
+        name: null,
+      }),
+    );
   }
-};
+}
+
+/** The public constructor takes a name and narrows the globals type to the supplied value. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+export const Application = ApplicationDeclaration as unknown as ApplicationConstructor;
