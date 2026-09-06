@@ -159,10 +159,15 @@ export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>)
 /** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
 export declare const declaredTypes: unique symbol;
 
-/** The three inferred types one declaration carries. The phantom member keeps them exact. */
+/**
+ * The three inferred types one declaration carries. The phantom member keeps them exact. Args and
+ * options widen, so a child can satisfy a looser reader. The globals appear in both a parameter and
+ * a return position, which makes them invariant: a child's globals must be the parent's own type,
+ * not a subset and not a superset, because one table serves every Command in the graph.
+ */
 export interface DeclaredTypes<Args, Options, Globals> {
   args: Args;
-  globals: Globals;
+  globals: (value: Globals) => Globals;
   options: Options;
 }
 

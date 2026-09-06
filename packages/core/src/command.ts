@@ -50,6 +50,15 @@ export declare const commandValue: unique symbol;
  */
 export type CommandMethod = 'action' | 'argument' | 'option';
 
+/** One Command declares arguments or attaches children, so the first call removes the other. */
+export type AfterArgument<State> = Exclude<State, 'command'>;
+
+/** The same rule read from the other side. */
+export type AfterCommand<State> = Exclude<State, 'argument'>;
+
+/** The action is the last declaration call, so no declaration call survives it. */
+export type AfterAction = never;
+
 /** A declaration made after the action, kept in authoring order so build reports the first. */
 type LateDeclaration =
   | { child: object; kind: 'child' }
@@ -121,12 +130,7 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config & NameConstraint<Name>,
-  ): Command<
-    Args & Record<Name, ArgumentValue<Config>>,
-    Options,
-    Globals,
-    Exclude<State, 'command'>
-  > {
+  ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
     const declared: ArgumentConfig = { ...config };
     const input: InputDeclaration = { config: declared, kind: 'argument', name };
     const previous = this.#state.bind;
@@ -168,8 +172,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     });
   }
 
-  /** The action is the last declaration call, so the value it returns publishes no other. */
-  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals, never> {
+  /** The action is the last declaration call, so the value it returns publishes `AfterAction`. */
+  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
     return new CommandBuilder({
       ...this.#state,
       actions: [...this.#state.actions, handler],
@@ -199,8 +203,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
         `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
       );
     }
-    this.checkDeclarationOrder(name);
     const attached = this.collectChildren();
+    this.checkDeclarationOrder(name);
     const slots = this.collectArguments(subject);
     const first = slots[0];
     const child = attached[0];
@@ -254,8 +258,9 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
         `${sentenceOf(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
       );
     }
+    // Child identity and names are settled before this call, so the node and its name are valid.
     throw new DeclarationError(
-      `${sentenceOf(name)} attaches child "${nodeOf(name, late.child).name}" after its action. Attach children before action().`,
+      `${sentenceOf(name)} attaches child "${String(nodeOf(name, late.child).name)}" after its action. Attach children before action().`,
     );
   }
 
@@ -327,22 +332,26 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 /**
  * The authoring surface of a Command in one type state. Every call returns a new declaration value,
  * leaves its receiver unchanged, and publishes only the calls that are still valid after it. The
- * declarations themselves stay private, so no consumer can reach them. `Command<A, O, G, never>` is
- * a Command that registered its action: it is finished, and its only use is `command()`.
+ * declarations themselves stay private, so no consumer can reach them. `State` lists the authoring
+ * calls a value still offers. It defaults to the state after `action()`, which publishes the fewest
+ * calls, so `Command<A, O, G>` accepts a Command in any state, a finished one included.
  */
 export type Command<
   Args = {},
   Options = {},
   Globals = {},
-  State extends CommandMethod = CommandMethod,
+  State extends CommandMethod = AfterAction,
 > = Pick<
   CommandBuilder<Args, Options, Globals, State>,
   typeof commandValue | typeof declaredTypes | State
 >;
 
 interface CommandConstructor {
-  new (name: string): Command;
-  new <Globals>(name: string, globals: GlobalOptions<Globals>): Command<{}, {}, Globals>;
+  new (name: string): Command<{}, {}, {}, CommandMethod>;
+  new <Globals>(
+    name: string,
+    globals: GlobalOptions<Globals>,
+  ): Command<{}, {}, Globals, CommandMethod>;
 }
 
 class CommandDeclaration extends CommandBuilder<{}, {}, {}> {

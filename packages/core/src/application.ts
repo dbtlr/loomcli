@@ -1,7 +1,13 @@
 import type { Writable } from 'node:stream';
 
 import { CommandBuilder, collectInputs, selectCommand } from './command.js';
-import type { Command, CommandMethod } from './command.js';
+import type {
+  AfterAction,
+  AfterArgument,
+  AfterCommand,
+  Command,
+  CommandMethod,
+} from './command.js';
 import { describeFailure } from './errors.js';
 import type { GlobalOptions } from './globals.js';
 import { defaultGlobals } from './globals.js';
@@ -57,7 +63,7 @@ class ApplicationBuilder<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,
     Globals,
-    Exclude<State, 'command'>
+    AfterArgument<State>
   > {
     return this.derive(this.#root.argument<Name, Config>(name, config));
   }
@@ -72,25 +78,31 @@ class ApplicationBuilder<
     return this.derive(this.#root.option<Name, Config>(name, config));
   }
 
-  /** The action is the last declaration call; only `run()` and `name` remain after it. */
-  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals, never> {
+  /** The action is the last call, so it returns `AfterAction`: only `run()` and `name` remain. */
+  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals> {
     return this.derive(this.#root.action(handler));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command(
-    child: Command<unknown, unknown, Globals, never>,
-  ): Application<Args, Options, Globals, Exclude<State, 'argument'>> {
+    child: Command<unknown, unknown, Globals>,
+  ): Application<Args, Options, Globals, AfterCommand<State>> {
     return this.derive(this.#root.attach(child));
   }
 
-  /** One wrapper for every declaration call, so the Application keeps its name and its root. */
-  private derive<DerivedArgs, DerivedOptions>(
-    root: Command<DerivedArgs, DerivedOptions, Globals, never>,
-  ): ApplicationBuilder<DerivedArgs, DerivedOptions, Globals> {
+  /**
+   * One wrapper for every declaration call, so the Application keeps its name and its root. The
+   * next state travels through this call: each method names its transition in its return type, and
+   * the wrapper publishes the same runtime value in exactly that state.
+   */
+  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
+    root: Command<DerivedArgs, DerivedOptions, Globals>,
+  ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
     // A declaration call always returns a CommandBuilder; the public type only hides its state.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const derived = root as CommandBuilder<DerivedArgs, DerivedOptions, Globals>;
+    // The state is a view of one runtime value, so the caller's next state is asserted here alone.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return new ApplicationBuilder(this.#name, derived);
   }
 
@@ -147,21 +159,26 @@ class ApplicationBuilder<
  * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
  * `run()`, and `name`. Every authoring call returns a new declaration value, leaves its receiver
  * unchanged, and publishes only the calls that are still valid after it. `run()` and `name` survive
- * every call, so `Application<A, O, G, never>` is the finished application and can still run.
+ * every call. `State` lists the authoring calls a value still offers. It defaults to the state
+ * after `action()`, which publishes the fewest calls, so `Application<A, O, G>` accepts an
+ * application in any state, a finished one included.
  */
 export type Application<
   Args = {},
   Options = {},
   Globals = {},
-  State extends ApplicationMethod = ApplicationMethod,
+  State extends ApplicationMethod = AfterAction,
 > = Pick<
   ApplicationBuilder<Args, Options, Globals, State>,
   typeof declaredTypes | 'name' | 'run' | State
 >;
 
 interface ApplicationConstructor {
-  new (name: string): Application;
-  new <Globals>(name: string, globals: GlobalOptions<Globals>): Application<{}, {}, Globals>;
+  new (name: string): Application<{}, {}, {}, ApplicationMethod>;
+  new <Globals>(
+    name: string,
+    globals: GlobalOptions<Globals>,
+  ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
 class ApplicationDeclaration extends ApplicationBuilder<{}, {}, {}> {

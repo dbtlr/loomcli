@@ -330,6 +330,22 @@ test.each([
     'late-root-child',
     'The root Command attaches child "get" after its action. Attach children before action().',
   ],
+  [
+    'late-two-options',
+    'Command "get" declares option "raw" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'late-child-beside-argument',
+    'The root Command attaches child "get" after its action. Attach children before action().',
+  ],
+  [
+    'late-child-invalid-name',
+    'The root Command attaches a child named "-get". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
+    'late-child-foreign',
+    'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
+  ],
 ] satisfies [string, string][])(
   'rejects the %s graph before reading tokens',
   (scenario, reason) => {

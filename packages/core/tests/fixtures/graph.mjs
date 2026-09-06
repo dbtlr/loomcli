@@ -124,8 +124,32 @@ function build() {
     case 'late-root-option': {
       return app.action(dispatch).option('pretty', { type: 'boolean' });
     }
+    case 'late-two-options': {
+      return app
+        .command(
+          new Command('get', globals)
+            .action(dispatch)
+            .option('raw', { type: 'boolean' })
+            .option('deep', { type: 'boolean' }),
+        )
+        .action(dispatch);
+    }
     case 'late-root-child': {
       return app.action(dispatch).command(child('get'));
+    }
+    // The order fault outranks the argument-and-child rule, which the same graph also breaks.
+    case 'late-child-beside-argument': {
+      return app
+        .argument('files', { required: true, variadic: true })
+        .action(dispatch)
+        .command(child('get'));
+    }
+    // A child's identity and name are settled before the order fault is reported.
+    case 'late-child-invalid-name': {
+      return app.action(dispatch).command(child('-get'));
+    }
+    case 'late-child-foreign': {
+      return app.action(dispatch).command({ name: 'get' });
     }
     default: {
       return app.command(child('get')).command(child('keys')).action(dispatch);

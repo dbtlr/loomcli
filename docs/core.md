@@ -31,7 +31,9 @@ Declare arguments and options, attach the children, then register the action las
 | `option()`   | nothing                                                                                                      |
 | `action()`   | every declaration call; a Command keeps only its inferred types, and an Application keeps `run()` and `name` |
 
-Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and still runs. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
+Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and publishes `run()`. Running it is still a build error in this increment, because every Command, the root included, needs an action. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
+
+`Command` and `Application` take a fourth type parameter that lists the authoring calls a value still offers. It defaults to `never`, so `Command<Args, Options, Globals>` and `Application<Args, Options, Globals>` accept a declaration in any state, one that registered its action included. Write the parameter only to require a state; the call names themselves stay internal. An explicit `any` in that position removes the lock, as `any` does anywhere else.
 
 JavaScript authors reach the same rules at graph build, which reports a declaration made after the action, and arguments declared beside children. Both are listed in [Graph build errors](#graph-build-errors).
 
@@ -202,7 +204,7 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. The last two rules reach JavaScript authors alone, because the types remove the call.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Four of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children, a second action, an argument or option declared after the action, and a child attached after the action.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -212,7 +214,8 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.` A child whose globals type differs is also a compile error at `command()`. |
 | A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                                                                                               |
 | A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`                                                                             |
-| A Command with no action, or with several               | `Command "get" has no action. Register an action.`                                                                                                                                                            |
+| A Command with no action                                | `Command "get" has no action. Register an action.`                                                                                                                                                            |
+| A Command with several actions                          | `Command "get" has multiple actions. Register one action.`                                                                                                                                                    |
 | An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                    |
 | A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                    |
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                             |

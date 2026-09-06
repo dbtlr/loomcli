@@ -32,8 +32,9 @@ application.option;
 // @ts-expect-error TS2339: An Application that registered its action attaches no more children.
 application.command;
 
-// A group keeps its children open and still runs, and the finished Application keeps both members.
-const groupRun: Promise<number> = group.run();
+// A group keeps `option()` and `command()` open and publishes `run()`.
+// Running a group without an action is still a build error, so this reads the member alone.
+const groupRun: () => Promise<number> = group.run;
 const applicationName: string = application.name;
 const applicationRun: Promise<number> = application.run();
 
@@ -58,6 +59,30 @@ const finishedPath = (args: ActionArgs<typeof finished>) => args.path;
 const finishedRaw = (options: ActionOptions<typeof finished>) => options.raw;
 const finishedApplicationFile = (options: ActionOptions<typeof application>) => options.file;
 
+// The state parameter defaults to `never`, so three type arguments accept any state.
+type Globals = Record<'file', string>;
+const anyStateFresh: Command<{}, {}, Globals> = freshCommand;
+const anyStateFinished: Command<Record<'path', string>, Record<'raw', boolean>, Globals> = finished;
+const anyStateApplication = application satisfies Application<{}, {}, Globals>;
+
+function useCommand<CommandArgs, CommandOptions>(
+  value: Command<CommandArgs, CommandOptions, Globals>,
+) {
+  return value;
+}
+const usedFresh = useCommand(freshCommand);
+const usedPartial = useCommand(partial);
+const usedFinished = useCommand(finished);
+
+// One graph holds one globals table, so a child's globals are the Application's own type.
+const wider = new GlobalOptions()
+  .option('file', { required: true, type: 'string' })
+  .option('depth', { type: 'string' });
+// @ts-expect-error TS2345: A child cannot declare globals its Application does not declare.
+new Application('subset', globals).command(new Command('wide', wider).action(() => {}));
+// @ts-expect-error TS2345: A child cannot drop globals its Application declares.
+new Application('superset', wider).command(new Command('narrow', globals).action(() => {}));
+
 void groupRun;
 void applicationName;
 void applicationRun;
@@ -69,3 +94,9 @@ void partialPath;
 void finishedPath;
 void finishedRaw;
 void finishedApplicationFile;
+void anyStateFresh;
+void anyStateFinished;
+void anyStateApplication;
+void usedFresh;
+void usedPartial;
+void usedFinished;
