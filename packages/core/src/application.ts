@@ -42,8 +42,9 @@ import { prepareInputs } from './validation.js';
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
+ * The unnamed root declares what a named Command declares, so the two unions hold the same names.
  */
-export type ApplicationMethod = CommandMethod | 'command';
+export type ApplicationMethod = CommandMethod;
 
 /**
  * The Application holds the unnamed root's declaration state and applies the same transitions a
@@ -137,7 +138,7 @@ class ApplicationBuilder<
       const graph = buildGraph(this.#root);
       const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
       const selected = await selectCommand(graph, [...host.argv], defaults);
-      await selected.command.dispatch({
+      await selected.dispatch({
         host,
         out: output.out,
         passthrough: selected.passthrough,

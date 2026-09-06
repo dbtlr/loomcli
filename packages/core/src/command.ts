@@ -38,10 +38,11 @@ export interface DispatchInput {
   values: ValidatedInputs;
 }
 
+/** A group registers no action, so its `dispatch` is `undefined` and selection rejects it. */
 export interface BuiltCommand {
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
-  dispatch: (input: DispatchInput) => unknown;
+  dispatch: ((input: DispatchInput) => unknown) | undefined;
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
@@ -52,9 +53,10 @@ export declare const commandValue: unique symbol;
 
 /**
  * Every authoring call a Command can publish. A Command's type state is a subset of these names,
- * and each call removes the names it invalidates. Adding `command()` to a Command adds it here.
+ * and each call removes the names it invalidates. A Command attaches children at any depth, so
+ * `command()` belongs to every Command and to the unnamed root alike.
  */
-export type CommandMethod = 'action' | 'argument' | 'option';
+export type CommandMethod = 'action' | 'argument' | 'command' | 'option';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
 export type AfterArgument<State> = Exclude<State, 'command'>;
@@ -299,6 +301,41 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
   return options;
 }
 
+/**
+ * A Command without an action is a group, and routing sends an invocation on to one of its
+ * children. A group with no children receives an invocation no handler can answer, and a local
+ * option on a group reaches no handler either, because locals never inherit.
+ */
+function checkGroup(state: Declared, hasChildren: boolean): void {
+  const { name } = state;
+  if (!hasChildren) {
+    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+  }
+  const option = state.inputs.find((input) => input.kind === 'option');
+  if (option) {
+    throw new DeclarationError(
+      `${sentenceOf(name)} declares option "${option.name}" but registers no action to receive it. Register an action or remove the option.`,
+    );
+  }
+}
+
+/** Binds one Command's declarations to its action, so an action reads only validated values. */
+function bindDispatch<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  action: Action<Args, Globals & Options>,
+) {
+  return ({ host, out, passthrough, values }: DispatchInput) => {
+    const bound = state.bind(values);
+    return action({
+      args: bound.args,
+      host,
+      options: { ...bindGlobals(state.globals, values), ...bound.options },
+      out,
+      passthrough,
+    });
+  };
+}
+
 /** Validates one declaration against the shared globals table and compiles it for dispatch. */
 export function buildCommand<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
@@ -326,22 +363,13 @@ export function buildCommand<Args, Options, Globals>(
   }
   const action = actions[0];
   if (!action) {
-    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+    checkGroup(state, attached.length > 0);
   }
   const options = compileLocalOptions(state, globals, subject);
   return {
     arguments: slots,
     children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
-    dispatch: ({ host, out, passthrough, values }) => {
-      const bound = state.bind(values);
-      return action({
-        args: bound.args,
-        host,
-        options: { ...bindGlobals(state.globals, values), ...bound.options },
-        out,
-        passthrough,
-      });
-    },
+    dispatch: action && bindDispatch(state, action),
     inputs: state.inputs,
     name,
     options,
@@ -388,6 +416,13 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = { config: { ...config }, kind: 'option', name };
     return new CommandBuilder(declareOption(this.#state, input));
+  }
+
+  /** A child arrives in any type state, because its own action is the call that finished it. */
+  command(
+    child: Command<unknown, unknown, Globals>,
+  ): Command<Args, Options, Globals, AfterCommand<State>> {
+    return new CommandBuilder(attachChild(this.#state, child));
   }
 
   /** The action is the last declaration call, so the value it returns publishes `AfterAction`. */
@@ -509,13 +544,20 @@ export async function selectCommand(
   defaults: DefaultValues,
 ) {
   const scan = extractGlobals(graph.globals.options, tokens);
-  const selected = route(graph.root, scan.rest);
-  const parsed = parseInputs(selected.command.options, selected.tokens);
-  const args = bindArguments(selected.command, parsed.positionals);
+  const { command, tokens: rest } = route(graph.root, scan.rest);
+  const { dispatch } = command;
+  // A group answers no invocation of its own, so it fails with the routing errors above it.
+  if (!dispatch) {
+    throw new InputError(
+      `${sentenceOf(command.name)} requires a subcommand. Use one of: ${[...command.children.keys()].join(', ')}.`,
+    );
+  }
+  const parsed = parseInputs(command.options, rest);
+  const args = bindArguments(command, parsed.positionals);
   const values = await validateValues(
-    [...graph.globals.inputs, ...selected.command.inputs],
+    [...graph.globals.inputs, ...command.inputs],
     { args, options: mergeValues(scan.values, parsed.options) },
     defaults,
   );
-  return { command: selected.command, passthrough: parsed.passthrough, values };
+  return { dispatch, passthrough: parsed.passthrough, values };
 }
