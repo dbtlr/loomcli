@@ -75,13 +75,13 @@ type LateDeclaration =
   | { input: InputDeclaration; kind: 'input' };
 
 /** The attachable shape of a Command, without its inferred declaration types. */
-interface CommandNode {
+interface AttachedCommand {
   readonly name: string | null;
   build(globals: BuiltGlobals): BuiltCommand;
 }
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
-const nodes = new WeakMap<object, CommandNode>();
+const nodes = new WeakMap<object, AttachedCommand>();
 
 function subjectOf(name: string | null) {
   return name === null ? 'the root Command' : `Command "${name}"`;
@@ -93,7 +93,7 @@ function sentenceOf(name: string | null) {
 }
 
 /** Reads the declarations behind an attached value; anything else is a declaration error. */
-function nodeOf(parent: string | null, child: object): CommandNode {
+function nodeOf(parent: string | null, child: object): AttachedCommand {
   const node = nodes.get(child);
   if (!node) {
     throw new DeclarationError(
@@ -240,8 +240,8 @@ function checkDeclarationOrder(state: Declared): void {
 }
 
 /** Child names are checked before any child builds, so parent diagnostics come first. */
-function collectChildren(state: Declared): [string, CommandNode][] {
-  const attached: [string, CommandNode][] = [];
+function collectChildren(state: Declared): [string, AttachedCommand][] {
+  const attached: [string, AttachedCommand][] = [];
   const seen = new Set<string>();
   for (const child of state.children) {
     const node = nodeOf(state.name, child);
@@ -326,7 +326,7 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
  * children. A group with no children receives an invocation no handler can answer, and a local
  * option on a group reaches no handler either, because locals never inherit.
  */
-function checkGroup(state: Declared, children: readonly [string, CommandNode][]): void {
+function checkGroup(state: Declared, children: readonly [string, AttachedCommand][]): void {
   const { name } = state;
   if (children.length === 0) {
     throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);

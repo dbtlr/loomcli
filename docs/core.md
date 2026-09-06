@@ -20,16 +20,16 @@ await app.run();
 
 Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `action()`, and `command()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
 
-A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, `command()`, and `action()`; a fresh `Application` publishes the same four calls for the unnamed root; `GlobalOptions` publishes `option()`. An `Application` keeps `run()` and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
+A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, `command()`, and `action()`; a fresh `Application` publishes the same four calls for the unnamed root; `GlobalOptions` publishes `option()`. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
 
 Declare arguments and options, attach the children, then register the action last. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
 
-| Call         | Removed from the value it returns                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------ |
-| `argument()` | `command()`, because one Command declares arguments or attaches children, never both                         |
-| `command()`  | `argument()`, the same rule read from the other side                                                         |
-| `option()`   | nothing                                                                                                      |
-| `action()`   | every declaration call; a Command keeps only its inferred types, and an Application keeps `run()` and `name` |
+| Call         | Removed from the value it returns                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `argument()` | `command()`, because one Command declares arguments or attaches children, never both                        |
+| `command()`  | `argument()`, the same rule read from the other side                                                        |
+| `option()`   | nothing                                                                                                     |
+| `action()`   | every declaration call; an Application keeps `inspect()`, `run()`, and `name`, a Command its inferred types |
 
 Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available and publishes `run()`. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
 
@@ -357,6 +357,63 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 ### Example coverage
 
 [textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes files at or above the byte threshold and totals only retained files. No retained files produces no file rows and a zero total when requested.
+
+## Graph inspection
+
+`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It runs the build and the structural checks that `run()` runs, so an invalid declaration throws the exported `DeclarationError`, which a consumer catches by class. It does not validate declared defaults, because a default awaits its schema; `run()` still does that work. It reads no host facts, and it caches nothing: each call builds the graph anew.
+
+```ts
+interface CommandGraph {
+  name: string;
+  globals: readonly OptionNode[];
+  root: CommandNode;
+}
+interface CommandNode {
+  name: string | null;
+  path: readonly string[];
+  hasAction: boolean;
+  arguments: readonly ArgumentNode[];
+  options: readonly OptionNode[];
+  children: readonly CommandNode[];
+}
+interface ArgumentNode {
+  name: string;
+  required: boolean;
+  variadic: boolean;
+  validated: boolean;
+  default: { value: unknown } | undefined;
+}
+type OptionNode =
+  | {
+      type: 'string';
+      name: string;
+      long: string | null;
+      short: string | null;
+      required: boolean;
+      multiple: boolean;
+      validated: boolean;
+      default: { value: unknown } | undefined;
+    }
+  | {
+      type: 'boolean';
+      name: string;
+      long: string | null;
+      short: string | null;
+      negative: string | null;
+      polarity: 'positive' | 'negative' | 'both';
+    };
+```
+
+- `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
+- The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
+- Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
+- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all.
+- The result is frozen, and its types are read-only, so a consumer reads it without copying it.
+
+```ts
+const graph = app.inspect();
+const names = graph.root.children.map((child) => child.path.join(' '));
+```
 
 ## Invocation
 

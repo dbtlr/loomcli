@@ -60,6 +60,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/inspect.ts'],
+        rules: {
+          // An inspected graph reports an absent spelling as `null`, as its public types state.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: [
           'packages/core/src/application.ts',
           'packages/core/src/output.ts',
