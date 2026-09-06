@@ -1,10 +1,10 @@
 ---
-description: Build and run textstat with typed schema validation and verify the public Loom CLI package.
+description: Build and run the textstat and jsonkit examples with typed schema validation and named commands, then verify the public Loom CLI package.
 ---
 
 # Loom CLI
 
-Loom CLI is a TypeScript framework for command applications. The current increment runs an unnamed Command with required file arguments, local options, Standard Schema validation, and passthrough.
+Loom CLI is a TypeScript framework for command applications. The current increment runs named Commands under application-global options, with required scalar and variadic arguments, local options, Standard Schema validation, and passthrough.
 
 ## Run textstat
 
@@ -46,6 +46,34 @@ bun examples/textstat/dist/main.js README.md
 ```
 
 The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration.
+
+## Run jsonkit
+
+The second example reports the shape of one JSON document:
+
+```sh
+node examples/jsonkit/dist/main.js --file package.json
+```
+
+The first line names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. For an object, one `key<TAB>kind` line per top-level key follows in document order.
+
+`--file` is a required global option, so it accepts a value before, between, or after the command name:
+
+```sh
+node examples/jsonkit/dist/main.js get name --file package.json
+node examples/jsonkit/dist/main.js keys --file package.json
+```
+
+`get` takes one required dot-separated path. A segment of digits indexes an array; on an object every segment is a key.
+
+```sh
+node examples/jsonkit/dist/main.js --file package.json get repository.url
+node examples/jsonkit/dist/main.js --file package.json get workspaces.1
+```
+
+The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path, an unreadable file, and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name lists `get, keys` and exits 2.
+
+The [command modules](examples/jsonkit/src/commands) share one [globals value](examples/jsonkit/src/globals.ts), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration.
 
 ## Verify the package
 

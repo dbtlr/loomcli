@@ -1,12 +1,12 @@
 ---
-description: Public SDK, invocation phases, host capture, output, and failure behavior for root commands with local options, Standard Schema validation, and passthrough.
+description: Public SDK, invocation phases, host capture, output, and failure behavior for named commands with global and local options, Standard Schema validation, and passthrough.
 ---
 
 # Core reference
 
 ## Application declarations
 
-`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter.
+`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, globals)` shares one `GlobalOptions` value with the root and every attached Command.
 
 ```ts
 import { Application } from '@loom/core';
@@ -22,11 +22,13 @@ await app.run();
 
 TypeScript requires one statically known name for each `argument()` and `option()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. JavaScript declarations still undergo graph validation during `run()`.
 
-A root Command accepts one required variadic string argument. Bare tokens before `--` retain their order as positional inputs. Local options can appear before, between, or after these inputs. A hyphenated file path uses an explicit relative path such as `./-notes.txt`.
+A Command accepts required arguments in declaration order. A scalar argument, `{ required: true }` with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ required: true, variadic: true }`, must be last and takes the remaining tokens. Optional scalar arguments are outside this increment.
+
+Bare tokens before `--` retain their order as positional inputs. Local options can appear before, between, or after these inputs. A hyphenated file path uses an explicit relative path such as `./-notes.txt`.
 
 Application methods use the internal Command declaration implementation. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
-Graph build rejects duplicate argument names, competing variadic arguments, multiple actions, and a root with no action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
+Graph build rejects duplicate argument names, a variadic argument that is not last, multiple actions, and a Command with no action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 
 ## Local options
 
@@ -91,7 +93,7 @@ Boolean options consume no value token. Assignments such as `--total=false` and 
 
 Graph construction rejects duplicate option keys and spelling collisions, including generated negative forms and short aliases. It also rejects invalid names, aliases, types, polarity, and short-only combinations. These errors occur during `run()`, before input parsing or dispatch. Authoring calls capture configuration values, so later changes to the original configuration object do not change the declaration.
 
-Each option can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, and `--total --no-total`. An unknown option, missing value, or invalid token form also prevents dispatch. Diagnostics identify the affected option and give a correction. Declaration errors return code 1; invocation errors return code 2.
+Each option can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, and `--total --no-total`. An unknown option, missing value, or invalid token form also prevents dispatch. Diagnostics identify the affected option and give a correction. Declaration errors return code 1; invocation errors return code 2. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](#commands-and-global-options).
 
 ### Passthrough
 
@@ -99,9 +101,102 @@ The first bare `--` ends core parsing. Every following token reaches the action 
 
 Passthrough is always available and is empty when no tail exists. It does not satisfy required positional arguments. Core does not parse it as options or arguments, validate it, or transform it. Parsing leaves `host.argv` intact.
 
+## Commands and global options
+
+`new GlobalOptions()` declares the options that every Command in one application shares. It has `option()` alone; it declares no arguments and no action. Each call returns a new value, and the value the declarations receive is the application's globals. An empty `GlobalOptions` value is legal.
+
+```ts
+import { GlobalOptions } from '@loom/core';
+
+export const globals = new GlobalOptions().option('file', {
+  required: true,
+  short: 'f',
+  type: 'string',
+});
+```
+
+Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
+
+`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root. Both constructors omit the second argument when the application declares no globals. Attaching a child to a named Command is outside this increment.
+
+The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own, both at compile time and during graph build.
+
+### Modular authoring
+
+Globals are a value, so a Command in its own module knows the global types without importing the application. Module dependencies flow one way: globals, then commands, then the application. The `jsonkit` example uses this layout.
+
+| Module                                        | Contents                                                |
+| --------------------------------------------- | ------------------------------------------------------- |
+| `src/globals.ts`                              | the shared `GlobalOptions` value                        |
+| `src/commands/root.ts`                        | `new Application('jsonkit', globals).action(summarize)` |
+| `src/commands/get.ts`, `src/commands/keys.ts` | one `Command` each                                      |
+| `src/actions/*.ts`                            | one `ActionHandler<typeof declaration>` each            |
+| `src/application.ts`                          | `root.command(get).command(keys)`                       |
+| `src/main.ts`                                 | `await jsonkit.run()`                                   |
+
+An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types.
+
+```ts
+// src/commands/get.ts
+export const get = new Command('get', globals)
+  .argument('path', { required: true })
+  .action(getValue);
+
+// src/actions/get-value.ts
+export const getValue: ActionHandler<typeof get> = async ({ args, options, host, out }) => {
+  const path: string = args.path;
+  const file: string = options.file;
+  return out.print(`${file}:${path}`);
+};
+```
+
+`ActionHandler<typeof declaration>` works for a Command and for the root alike. `ActionArgs<typeof declaration>` and `ActionOptions<typeof declaration>` derive the same two objects for authors who want to name them separately. Ordinary authoring needs neither helper.
+
+### Global consumption and routing
+
+Core reads invocation tokens in phases. The pre-scan walks the tokens up to the first bare `--`. A hyphen token whose spelling, the part before any `=`, is a global spelling is consumed with the ordinary value rules: inline after `=`, or the next token when that token does not start with a hyphen. Consumed tokens leave the router stream. A short group is all or nothing. A group of global letters is consumed, a group that mixes global and local letters is an input error, and a group with no global letters stays in the stream. Tokens at and after `--` are never inspected, so a `--file` in the passthrough tail stays in the tail.
+
+Routing then reads the remaining bare tokens from the root downward. A bare token that matches no child, while the current Command has children, is an unknown-command error that lists the choices. The first hyphen token commits to the current Command. Later bare tokens are positional inputs for that Command, so a root with children reports that it accepts no arguments.
+
+Values win over route names. In `jsonkit --file keys get name`, the value of `--file` is `keys`, and routing sees `get name`. A global supplied more than once fails as a repeated option at any placement.
+
+The selected Command then parses the remaining tokens with its own spellings and the existing passthrough rule. One validation pass checks the globals in authoring order, then that Command's declarations in authoring order.
+
+| Invocation for a `get` and `keys` graph  | Diagnostic                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--file data.json nope`                  | `Unknown command "nope". Use one of: get, keys.`                                                             |
+| `--file data.json get`                   | `Argument "path" requires a value. Supply a value for "path".`                                               |
+| `--file data.json keys extra`            | `Command "keys" accepts no arguments. Remove the supplied values.`                                           |
+| `-r get a.b` with `-r` local to `get`    | `Unknown option "-r". Supply a declared option; prefix a hyphenated path with "./".`                         |
+| `-p get a.b` with `-p` local to the root | `The root Command accepts no arguments. Remove the supplied values.`                                         |
+| `-qp --file data.json get a.b`           | `Short group "-qp" mixes the global option "-q" with the local option "-p". Supply them as separate tokens.` |
+| `--file one.json get a.b -f two.json`    | `Option "-f" can be supplied only once. Remove the repeated option.`                                         |
+| `get a.b` with a required `--file`       | `Option "--file" is required. Supply a value.`                                                               |
+
+### Graph build errors
+
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, and every declared default. Each rule below returns code 1 and names both sides with a correction.
+
+| Rejected declaration                                    | Diagnostic                                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| A Command that declares arguments and attaches children | `The root Command declares argument "files" and attaches child "get". Move the argument into a child Command or remove the children.` |
+| Two children with one name                              | `The root Command attaches two children named "get". Rename or remove one.`                                                           |
+| An invalid child name                                   | `The root Command attaches a child named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`               |
+| A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`    |
+| A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                       |
+| A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`     |
+| A Command with no action, or with several               | `Command "get" has no action. Register an action.`                                                                                    |
+| A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                     |
+
+Local options on separate Commands can reuse names and spellings. Core holds one globals table and never copies it into a Command.
+
+### Example coverage
+
+[jsonkit](../examples/jsonkit/src/application.ts) declares one required global `--file`, a root summary action, a `get` Command with a required scalar `path`, and a `keys` Command. Each action is a separate module typed with `ActionHandler`, and all three read their document through one shared helper.
+
 ## Standard Schema validation
 
-Value options and the required variadic argument accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
+Value options and required arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
 
 ```ts
 import { Application } from '@loom/core';
@@ -126,7 +221,7 @@ await app.run();
 
 `type: 'string'` controls token consumption. The schema receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a schema, supplied values remain strings.
 
-A variadic argument's schema receives the entire `string[]`. It can validate individual elements, enforce collection rules, or transform the collection into a different shape. For example, `z.array(z.string()).transform(files => files.length)` produces a numeric argument value. Passthrough never enters this pipeline.
+A scalar argument's schema receives its one token. A variadic argument's schema receives the entire `string[]`. It can validate individual elements, enforce collection rules, or transform the collection into a different shape. For example, `z.array(z.string()).transform(files => files.length)` produces a numeric argument value. Passthrough never enters this pipeline.
 
 `ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase schema details; `satisfies` preserves inference.
 
@@ -174,12 +269,16 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 Each invocation follows this order:
 
 1. Capture host facts and apply overrides.
-2. Build and validate the Command graph, including every declared default.
+2. Build and validate the whole Command graph, including the globals table, every command name and spelling, and every declared default.
 3. Copy invocation tokens for input processing.
-4. Route to the selected Command.
-5. Validate its inputs.
-6. Await its action.
-7. Finish pending core output and set the exit status.
+4. Consume global options in a pre-scan that stops at the first bare `--`.
+5. Route the remaining bare tokens to the selected Command.
+6. Parse the remaining tokens with that Command's own spellings.
+7. Validate the globals in authoring order, then that Command's inputs in authoring order.
+8. Await its action.
+9. Finish pending core output and set the exit status.
+
+Error precedence follows these phases. A global structure error comes before a routing error, a routing error comes before a local structure error, and a local structure error comes before a schema issue. Unknown-command, missing-value, repetition, and unexpected-argument diagnostics return code 2.
 
 An action receives `{ args, options, passthrough, out, host }`. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value.
 
@@ -227,4 +326,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Named commands, global options, optional scalar arguments, repeated options, stdin selection, custom renderers, and plugins are outside this increment.
+Repeated options, optional scalar arguments, nested and actionless command groups, stdin selection, custom renderers, and plugins are outside this increment.

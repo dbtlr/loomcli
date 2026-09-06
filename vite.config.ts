@@ -28,7 +28,7 @@ export default defineConfig({
       {
         files: [
           'packages/core/src/**',
-          'examples/textstat/src/**',
+          'examples/*/src/**',
           'packages/*/tests/**',
           'examples/*/tests/**',
           'scripts/**',
