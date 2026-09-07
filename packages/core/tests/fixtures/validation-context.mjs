@@ -94,6 +94,7 @@ switch (scenario) {
       '~standard': {
         validate: (value, options) => {
           const context = validationContext(options);
+          context.command.push('written');
           context.passthrough.push('written');
           context.supplied.args.files.push('written');
           context.supplied.options.multi.push('written');
@@ -109,6 +110,7 @@ switch (scenario) {
         validate: (value, options) => {
           const context = validationContext(options);
           seen.push({
+            command: context.command,
             files: context.supplied.args.files,
             multi: context.supplied.options.multi,
             passthrough: context.passthrough,

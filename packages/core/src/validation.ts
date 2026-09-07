@@ -441,7 +441,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
    * nor the tail the action receives, nor the next schema of this invocation.
    */
   const facts = () => ({
-    command: invocation.command,
+    command: [...invocation.command],
     host: invocation.host,
     passthrough: [...invocation.passthrough],
     supplied: suppliedInputs(

@@ -161,7 +161,7 @@ test('the context is a snapshot, so a schema that writes to it changes nothing',
     args: { files: ['a', 'b'] },
     options: { multi: ['x'] },
     passthrough: ['tail'],
-    seen: [{ files: ['a', 'b'], multi: ['x'], passthrough: ['tail'], value: ['x'] }],
+    seen: [{ command: [], files: ['a', 'b'], multi: ['x'], passthrough: ['tail'], value: ['x'] }],
   });
 });
 
@@ -173,5 +173,6 @@ test('a Zod schema validates as it does without the context', () => {
     'bad',
   ]);
   expect(failed.status).toBe(2);
+  expect(failed.stdout).toBe('');
   expect(failed.stderr).toBe('Invalid input: Option "--size": Use decimal digits.\n');
 });
