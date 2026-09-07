@@ -1,5 +1,6 @@
 export { Application } from './application.js';
 export { Command } from './command.js';
+export { validationContext, validationContextKey } from './context.js';
 export { DeclarationError, FatalError } from './errors.js';
 export { GlobalOptions } from './globals.js';
 export type { ApplicationMethod } from './application.js';
@@ -15,6 +16,7 @@ export type {
   BooleanOption,
   ExitCode,
   Host,
+  InputIdentity,
   InputTerminal,
   Out,
   OptionConfig,
@@ -22,5 +24,7 @@ export type {
   RunOptions,
   ScalarArgument,
   StringOption,
+  SuppliedInputs,
+  ValidationContext,
   VariadicArgument,
 } from './types.js';

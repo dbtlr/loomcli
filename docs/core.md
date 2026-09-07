@@ -336,6 +336,53 @@ A scalar argument's schema receives its one token. A variadic argument's schema,
 
 `ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase schema details; `satisfies` preserves inference.
 
+### Validation context
+
+Core calls every schema through the Standard Schema options argument, under the `libraryOptions` key `validationContextKey`. `validationContext(options)` reads that channel and returns the `ValidationContext` core attached, or `undefined` when another caller ran the same schema. A schema library that ignores the argument, such as Zod, is unaffected: the extra argument changes nothing for a schema that does not read it.
+
+```ts
+import { validationContext } from '@loom/core';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
+const upper = {
+  '~standard': {
+    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
+      const name = validationContext(options)?.input.name ?? 'the value';
+      return typeof value === 'string'
+        ? { value: value.toUpperCase() }
+        : { issues: [{ message: `Supply a string for ${name}.` }] };
+    },
+    vendor: 'example',
+    version: 1,
+  },
+};
+```
+
+The accessor answers for the contexts core produced alone. A value another caller writes under the same key reads as `undefined`.
+
+| Field         | `phase: 'default'`       | `phase: 'invocation'`                                      |
+| ------------- | ------------------------ | ---------------------------------------------------------- |
+| `host`        | The captured `Host`      | The captured `Host`, the object the action receives        |
+| `input`       | `{ kind, name, global }` | The same identity for the declaration under validation     |
+| `command`     | absent                   | The routed path of names; `[]` for the unnamed root        |
+| `passthrough` | absent                   | The tail after the first bare `--`                         |
+| `supplied`    | absent                   | The raw tokens of every declared input, before any default |
+
+A default validates before any token is parsed, so its phase reports the host and the declaration alone. Every schema call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs.
+
+`supplied` holds the tokens as the parser read them, before any schema runs and before any default applies. Every declared name of the routed Command, and every global name, is a key.
+
+| Declared input and invocation                  | `supplied` value               |
+| ---------------------------------------------- | ------------------------------ |
+| Scalar argument or single option, supplied     | The one string                 |
+| Variadic argument or multiple option, supplied | Every token, in supplied order |
+| Scalar argument or single option, omitted      | `undefined`                    |
+| Variadic argument or multiple option, omitted  | `[]`                           |
+| Boolean option, supplied                       | The value of its spelling      |
+| Boolean option, omitted                        | `undefined`                    |
+
+An omitted Boolean reads as `undefined` here, because the polarity value is the absent value, not a supplied token. Absence rules do not change: an omitted optional value with no default never reaches its schema, so no context is produced for it.
+
 ### Absence and defaults
 
 | Declaration and input                          | Action value or failure                           |

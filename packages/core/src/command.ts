@@ -524,6 +524,7 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
 /** Bare tokens select children until a Command has none; the first hyphen token commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
+  const path: string[] = [];
   let index = 0;
   while (command.children.size > 0) {
     const token = tokens[index];
@@ -537,9 +538,10 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
       );
     }
     command = child;
+    path.push(token);
     index += 1;
   }
-  return { command, tokens: tokens.slice(index) };
+  return { command, path, tokens: tokens.slice(index) };
 }
 
 function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
@@ -587,11 +589,11 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
 /** Consumes globals, routes to a Command, then validates globals and locals in one pass. */
 export async function selectCommand(
   graph: { globals: BuiltGlobals; root: BuiltCommand },
-  tokens: readonly string[],
-  defaults: DefaultValues,
+  invocation: { defaults: DefaultValues; host: Host },
 ) {
-  const scan = extractGlobals(graph.globals.options, tokens);
-  const { command, tokens: rest } = route(graph.root, scan.rest);
+  const { host } = invocation;
+  const scan = extractGlobals(graph.globals.options, [...host.argv]);
+  const { command, path, tokens: rest } = route(graph.root, scan.rest);
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
   if (!dispatch) {
@@ -601,10 +603,13 @@ export async function selectCommand(
   }
   const parsed = parseInputs(command.options, rest);
   const args = bindArguments(command, parsed.positionals);
-  const values = await validateValues(
-    [...graph.globals.inputs, ...command.inputs],
-    { args, options: mergeValues(scan.values, parsed.options) },
-    defaults,
-  );
+  const values = await validateValues({
+    command: path,
+    defaults: invocation.defaults,
+    host,
+    inputs: { globals: graph.globals.inputs, locals: command.inputs },
+    passthrough: parsed.passthrough,
+    supplied: { args, options: mergeValues(scan.values, parsed.options) },
+  });
   return { dispatch, passthrough: parsed.passthrough, values };
 }

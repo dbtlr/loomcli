@@ -152,8 +152,9 @@ class ApplicationBuilder<
       const host = captureHost(overrides, stderr);
       output = new Output(host);
       const graph = buildGraph(this.#root);
-      const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
-      const selected = await selectCommand(graph, [...host.argv], defaults);
+      const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
+      const defaults = await prepareInputs(inputs, host);
+      const selected = await selectCommand(graph, { defaults, host });
       await selected.dispatch({
         host,
         out: output.out,

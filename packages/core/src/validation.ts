@@ -1,8 +1,18 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { schemaOptions } from './context.js';
 import { DeclarationError, InputError } from './errors.js';
 import type { OptionValues } from './options.js';
-import type { ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
+import type {
+  ArgumentConfig,
+  ArgumentValue,
+  Host,
+  InputIdentity,
+  OptionConfig,
+  OptionValue,
+  SuppliedInputs,
+  ValidationContext,
+} from './types.js';
 
 /**
  * One declared input, typed by its literal name and its own config. The value type is derived from
@@ -31,6 +41,46 @@ export type InputDeclaration<Name extends string = string> =
 
 /** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
 export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
+
+/** The declarations one pass reads, by the scope that holds them: the graph's, then a Command's. */
+export interface ScopedInputs {
+  globals: readonly InputDeclaration[];
+  locals: readonly InputDeclaration[];
+}
+
+/** One declaration under its scope, which the context reports as part of its identity. */
+interface ScopedInput {
+  global: boolean;
+  input: InputDeclaration;
+}
+
+/** The raw tokens one invocation collected, keyed by declaration and by option name. */
+interface SuppliedValues {
+  args: ReadonlyMap<InputDeclaration, string | string[]>;
+  options: OptionValues;
+}
+
+/** Everything one invocation validates: its declarations, its tokens, and where they were read. */
+export interface Invocation {
+  command: readonly string[];
+  defaults: DefaultValues;
+  host: Host;
+  inputs: ScopedInputs;
+  passthrough: readonly string[];
+  supplied: SuppliedValues;
+}
+
+/** Every declaration in validation order: the globals first, then the reading Command's own. */
+function scoped(inputs: ScopedInputs): ScopedInput[] {
+  return [
+    ...inputs.globals.map((input) => ({ global: true, input })),
+    ...inputs.locals.map((input) => ({ global: false, input })),
+  ];
+}
+
+function identityOf({ global, input }: ScopedInput): InputIdentity {
+  return { global, kind: input.kind, name: input.name };
+}
 
 /**
  * The validated values of one invocation, keyed by declaration. Only `validateValues` constructs
@@ -194,13 +244,14 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
 async function validate(
   input: InputDeclaration,
   raw: unknown,
+  context: ValidationContext,
 ): Promise<StandardSchemaV1.Result<unknown>> {
   const schema = input.config.validate;
   if (schema === undefined) {
     return { value: raw };
   }
   try {
-    const result: unknown = await schema['~standard'].validate(raw);
+    const result: unknown = await schema['~standard'].validate(raw, schemaOptions(context));
     if (result === null || typeof result !== 'object') {
       throw new Error('The validator returned an invalid Standard Schema result.');
     }
@@ -259,12 +310,22 @@ export function checkDeclarations(inputs: readonly InputDeclaration[]): void {
   }
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
-  checkDeclarations(inputs);
+/**
+ * Every declared default, validated before any token is read. The host is captured by then, so a
+ * default's schema reads the same Host its action will, under the `default` phase.
+ */
+export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<DefaultValues> {
+  const declarations = scoped(inputs);
+  checkDeclarations(declarations.map((entry) => entry.input));
   const defaults = new Map<InputDeclaration, unknown>();
-  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+  for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
+    const { input } = entry;
     const subject = declaredName(input);
-    const result = await validate(input, input.config.default);
+    const result = await validate(input, input.config.default, {
+      host,
+      input: identityOf(entry),
+      phase: 'default',
+    });
     if (result.issues !== undefined) {
       throw new DeclarationError(
         `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, result.issues).join('\n')}`,
@@ -284,23 +345,60 @@ function freshDefault(input: InputDeclaration, value: unknown) {
   return input.config.validate === undefined && Array.isArray(value) ? [...value] : value;
 }
 
-export async function validateValues(
-  inputs: readonly InputDeclaration[],
-  supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
-  defaults: DefaultValues,
-): Promise<ValidatedInputs> {
+/**
+ * The raw tokens of one invocation, keyed by declared name. Every declared input of the routed
+ * Command and every global appears, so absence reads as the shape its declaration collects.
+ */
+function suppliedInputs(
+  declarations: readonly InputDeclaration[],
+  supplied: SuppliedValues,
+): SuppliedInputs {
+  const args: Record<string, string | string[] | undefined> = {};
+  const options: Record<string, string | string[] | boolean | undefined> = {};
+  for (const input of declarations) {
+    const collected = collects(input);
+    if (input.kind === 'argument') {
+      args[input.name] = supplied.args.get(input) ?? (collected ? [] : undefined);
+    } else if (input.config.type === 'boolean') {
+      options[input.name] = supplied.options.booleans.get(input.name);
+    } else {
+      options[input.name] =
+        suppliedOption(supplied.options, input.name, collected) ?? (collected ? [] : undefined);
+    }
+  }
+  return { args, options };
+}
+
+export async function validateValues(invocation: Invocation): Promise<ValidatedInputs> {
+  const { defaults, supplied } = invocation;
+  const declarations = scoped(invocation.inputs);
+  /** Every schema call of this invocation shares one reading of the tokens and the route. */
+  const shared = {
+    command: invocation.command,
+    host: invocation.host,
+    passthrough: invocation.passthrough,
+    supplied: suppliedInputs(
+      declarations.map((entry) => entry.input),
+      supplied,
+    ),
+  };
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
   /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
-  const accept = async (input: InputDeclaration, raw: unknown, subject: string) => {
-    const result = await validate(input, raw);
+  const accept = async (entry: ScopedInput, raw: unknown, subject: string) => {
+    const result = await validate(entry.input, raw, {
+      ...shared,
+      input: identityOf(entry),
+      phase: 'invocation',
+    });
     if (result.issues === undefined) {
-      values.set(input, result.value);
+      values.set(entry.input, result.value);
     } else {
       issues.push(...messages(subject, result.issues));
     }
   };
-  for (const input of inputs) {
+  for (const entry of declarations) {
+    const { input } = entry;
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(
         input,
@@ -322,12 +420,12 @@ export async function validateValues(
           );
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
-          await accept(input, [], subject);
+          await accept(entry, [], subject);
         } else {
           values.set(input, freshDefault(input, defaults.get(input)));
         }
       } else {
-        await accept(input, raw, subject);
+        await accept(entry, raw, subject);
       }
     }
   }

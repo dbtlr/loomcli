@@ -93,6 +93,37 @@ export interface Host {
 export interface RunOptions {
   host?: Partial<Host>;
 }
+
+/** The declaration one schema call validates, under the name and the scope it was declared in. */
+export interface InputIdentity {
+  kind: 'argument' | 'option';
+  name: string;
+  global: boolean;
+}
+
+/** The raw tokens of one invocation, keyed by declared name, before any schema or default runs. */
+export interface SuppliedInputs {
+  /** Raw positional values of the routed Command: one string, or `string[]` for a variadic. */
+  args: Readonly<Record<string, string | string[] | undefined>>;
+  /** Raw option values, globals and locals: a string, every occurrence, or a Boolean presence. */
+  options: Readonly<Record<string, string | string[] | boolean | undefined>>;
+}
+
+/**
+ * What core knows when it calls one schema. A default validates before any token is read, so its
+ * phase carries the host and the declaration alone. An invocation call adds the routed path, the
+ * passthrough tail, and the tokens every declared input received.
+ */
+export type ValidationContext =
+  | { phase: 'default'; host: Host; input: InputIdentity }
+  | {
+      phase: 'invocation';
+      host: Host;
+      input: InputIdentity;
+      command: readonly string[];
+      passthrough: readonly string[];
+      supplied: SuppliedInputs;
+    };
 export interface Out {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
