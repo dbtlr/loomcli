@@ -36,10 +36,48 @@ test.each([
 });
 
 test('textstat uses the supplied cwd and supports an explicit hyphenated relative path', () => {
-  expect(invoke(new URL('fixtures/host.mjs', import.meta.url))).toEqual({
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['cwd'])).toEqual({
     status: 0,
     stderr: '',
     stdout: '5\t./-notes.txt\n',
+  });
+});
+
+test.each([
+  [['words-across-chunks'], '2\tstdin\n'],
+  [['character-across-chunks', 'words'], '2\tstdin\n'],
+  [['character-across-chunks', 'bytes'], '12\tstdin\n'],
+] satisfies [string[], string][])(
+  'textstat counts the split stdin stream %j once',
+  (args, stdout) => {
+    expect(invoke(new URL('fixtures/host.mjs', import.meta.url), args)).toEqual({
+      status: 0,
+      stderr: '',
+      stdout,
+    });
+  },
+);
+
+test('textstat asks for files or piped text when stdin is a terminal', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Argument "files": Supply file arguments or pipe text to stdin.\n',
+    stdout: '',
+  });
+});
+
+test('textstat reports the reason a stdin read failed', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['unreadable']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toBe('Cannot read stdin: The connection failed.\n');
+});
+
+test('textstat never reads stdin when files are supplied', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['files-only'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '5\tnotes.txt\n0\treads\n',
   });
 });
 
