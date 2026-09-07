@@ -280,7 +280,7 @@ export function attachChild<Args, Options, Globals>(
 /** The untyped part of a declaration, which every build check reads regardless of its generics. */
 type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'aliases' | 'children' | 'inputs' | 'late' | 'name'
+  'children' | 'inputs' | 'late' | 'name'
 >;
 
 /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
