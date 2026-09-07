@@ -4,13 +4,15 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 # Changelog compiler
 
-The changelog compiler prepares release files. It is separate from `pnpm build`, which compiles the library and examples.
+The changelog compiler is a private Loom application, `@loomcli/changelog`, in `apps/changelog`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. It is not published or included in library version bumps.
+
+`pnpm build` compiles the library, examples, and local changelog application. Running the changelog application prepares release files.
 
 An agent release skill coordinates preparation and reviews the result. GitHub Actions can build and publish the approved release. Those release orchestration and publication tools are separate work.
 
 ## Commands
 
-Run commands from the repository root after installing dependencies. The compiler runs directly with Node 22.23.2 or Bun 1.4.0.
+Run `pnpm build` after installing dependencies or changing the application source. Run the following commands from the repository root. The compiled application runs with Node 22.23.2 or Bun 1.4.0. The root command preserves the repository as the working directory.
 
 ```sh
 pnpm changelog check
@@ -33,7 +35,7 @@ Both preparation modes accept these options:
 | `--since REF`       | Ancestor commit or tag used for the material-change report. The default is `v<current-manifest-version>`. The first release marks all libraries changed. |
 | `--narrative FILE`  | Copy Markdown prose before the entries. The file cannot be empty or contain level-one or level-two headings.                                             |
 
-Without `--initial`, an empty fragment set fails preparation. Success exits with status 0. Invalid input or an operational failure exits with status 1 and writes a diagnostic to stderr.
+Without `--initial`, an empty fragment set fails preparation. Success exits with status 0. Loom command and option errors exit with status 2. Invalid release content or an operational failure exits with status 1. Diagnostics go to stderr. Release options belong to `preview` and `write`; `check` accepts no options.
 
 ## Version calculation
 

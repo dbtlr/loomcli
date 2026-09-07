@@ -14,9 +14,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../test-process.ts';
+import { invoke } from '../../../scripts/test-process.js';
 
-const cli = new URL('../changelog.ts', import.meta.url);
+const cli = new URL('../dist/main.js', import.meta.url);
 const roots: string[] = [];
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-changelog-')));
@@ -559,4 +559,12 @@ test('an existing release lock stays intact and gives recovery guidance', () => 
     'existing writer',
   );
   expect(git(root, ['status', '--porcelain'])).toBe('');
+});
+
+test('check rejects release-only options through Loom before reading files', () => {
+  const root = fixture();
+  const result = run(root, 'check', '--initial');
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('--initial');
 });

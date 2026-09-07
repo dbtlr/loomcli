@@ -1,7 +1,7 @@
 import { posix } from 'node:path';
 
-import type { readLibraries } from './repository.ts';
-import { git } from './repository.ts';
+import type { readLibraries } from './repository.js';
+import { git } from './repository.js';
 
 function dependencyName(
   directory: string,

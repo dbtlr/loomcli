@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { requireClosedBlocks } from './markdown.ts';
+import { requireClosedBlocks } from './markdown.js';
 
 function validateBody(name: string, body: string) {
   requireClosedBlocks(body, `.changes/${name}`);

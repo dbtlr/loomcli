@@ -16,10 +16,10 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { parseAllDocuments } from 'yaml';
 import { z } from 'zod';
 
-import { headingText, requireClosedBlocks } from './markdown.ts';
-import type { prepareRelease } from './release.ts';
-import { blankLine } from './release.ts';
-import { git, readRegularFile } from './repository.ts';
+import { headingText, requireClosedBlocks } from './markdown.js';
+import type { prepareRelease } from './release.js';
+import { blankLine } from './release.js';
+import { git, readRegularFile } from './repository.js';
 
 function insertSection(changelog: string, section: string, version: string) {
   const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog)?.[0] ?? '';

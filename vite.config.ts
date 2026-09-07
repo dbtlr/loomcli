@@ -26,11 +26,23 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ['apps/changelog/src/**'],
+        // Preserve compiler operation boundaries and Markdown/version constants.
+        rules: {
+          'eslint/max-params': 'off',
+          'eslint/max-statements': 'off',
+          'eslint/no-magic-numbers': 'off',
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: [
           'packages/core/src/**',
           'examples/*/src/**',
+          'apps/*/src/**',
           'packages/*/tests/**',
           'examples/*/tests/**',
+          'apps/*/tests/**',
           'scripts/**',
         ],
         rules: {
@@ -78,7 +90,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/*/tests/**', 'examples/*/tests/**', 'scripts/**'],
+        files: ['packages/*/tests/**', 'examples/*/tests/**', 'apps/*/tests/**', 'scripts/**'],
         rules: {
           // Fixtures use literal expectations, stream sentinels, and callback failures.
           'eslint/max-params': 'off',
@@ -180,7 +192,7 @@ export default defineConfig({
     include: [
       'packages/*/tests/**/*.test.ts',
       'examples/*/tests/**/*.test.ts',
-      'scripts/tests/**/*.test.ts',
+      'apps/*/tests/**/*.test.ts',
     ],
   },
 });

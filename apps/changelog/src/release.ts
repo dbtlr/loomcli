@@ -1,9 +1,9 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { readFragments } from './fragments.ts';
-import { requireClosedBlocks } from './markdown.ts';
-import { unchangedLibraries } from './material.ts';
-import { currentVersion, git, readLibraries } from './repository.ts';
+import { readFragments } from './fragments.js';
+import { requireClosedBlocks } from './markdown.js';
+import { unchangedLibraries } from './material.js';
+import { currentVersion, git, readLibraries } from './repository.js';
 
 function compareNames(left: string, right: string) {
   if (left < right) {
