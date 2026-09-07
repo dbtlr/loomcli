@@ -14,7 +14,7 @@ interface Table {
 }
 
 /** The example renders its whole table through one application-owned renderer. */
-const table: Renderer<Table> = {
+const tableRenderer: Renderer<Table> = {
   render: ({ metric, rows, total }) =>
     [
       metric ?? 'bytes',
@@ -34,6 +34,6 @@ export const countFiles: ActionHandler<typeof textstat> = async ({
   const total: boolean = options.total;
   const tail: string[] = passthrough;
   const rows: Row[] = files.map((source) => ({ count: source.length, source }));
-  await out.render({ metric, rows, total: total ? rows.length : undefined }, table);
+  await out.render({ metric, rows, total: total ? rows.length : undefined }, tableRenderer);
   return { files, metric, tail, total };
 };

@@ -240,9 +240,27 @@ test('a value that is not a registration is a declaration error', () => {
   );
 });
 
+test('a schema that rejects without an explanation reports the placeholder issue', () => {
+  expect(failures('empty-issues', ['--tag', 'x'])).toEqual({
+    status: 2,
+    stderr: 'issue: The schema rejected this value without an explanation.\n',
+    stdout: 'resolved:2\n',
+  });
+});
+
+test('a broken renderer on a usage class writes the default text and returns 1', () => {
+  expect(failures('broken-usage', ['-f', 'x', 'nope'])).toEqual({
+    status: 1,
+    stderr:
+      'Invalid input: Unknown command "nope". Use one of: get, cache.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+    stdout: 'resolved:1\n',
+  });
+});
+
 test.each([
   ['broken', 'Cannot render the failure.'],
   ['broken-nonstring', 'The renderer returned number instead of a string.'],
+  ['broken-rejecting', 'The renderer returned object instead of a string.'],
 ])(
   'a failure renderer that %s falls back to the default text and a diagnostic',
   (scenario, reason) => {

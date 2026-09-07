@@ -39,6 +39,17 @@ const breaks = {
   },
 };
 const counted = { render: (failure) => failure.exitCode };
+// A renderer is synchronous, so a returned promise is a non-string return.
+// Core observes its rejection, which would otherwise end the process before `run()` resolves.
+const rejects = { render: () => Promise.reject(new Error('Cannot render the failure.')) };
+/** Every issue the reported problems carry, so a test reads the list a renderer receives. */
+const issueMessages = {
+  render: (failure) =>
+    `${failure.problems
+      .flatMap((problem) => (problem.reason === 'invalid' ? problem.issues : []))
+      .map((issue) => `issue: ${issue.message}`)
+      .join('\n')}\n`,
+};
 
 /** An application's own fatal type, so registering it implies the renderer for it. */
 class ConfigError extends FatalError {
@@ -61,6 +72,15 @@ const digits = {
 const speed = {
   '~standard': {
     validate: () => ({ issues: [{ message: 'Use fast or slow.' }] }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/** A schema that rejects a value and explains nothing, so core supplies the placeholder issue. */
+const silent = {
+  '~standard': {
+    validate: () => ({ issues: [] }),
     vendor: 'fixture',
     version: 1,
   },
@@ -153,6 +173,13 @@ function build() {
         .argument('extras', { required: true, variadic: true })
         .action(dispatch);
     }
+    case 'empty-issues': {
+      return new Application('failures', {
+        failures: [renderFailure(InputError, issueMessages)],
+      })
+        .option('tag', { type: 'string', validate: silent })
+        .action(dispatch);
+    }
     case 'broken':
     case 'broken-fallback': {
       return ending([renderFailure(FatalError, breaks)], ({ out }) =>
@@ -163,6 +190,15 @@ function build() {
       return ending([renderFailure(FatalError, counted)], ({ out }) =>
         out.fatal('Expected failure.'),
       );
+    }
+    case 'broken-rejecting': {
+      return ending([renderFailure(FatalError, rejects)], ({ out }) =>
+        out.fatal('Expected failure.'),
+      );
+    }
+    // A broken renderer on a usage class: the default text of the failure, then the diagnostic.
+    case 'broken-usage': {
+      return routed([renderFailure(UsageError, breaks)]);
     }
     default: {
       throw new Error(`Unknown scenario: ${scenario}`);

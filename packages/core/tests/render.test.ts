@@ -57,6 +57,23 @@ test('a renderer that returns a non-string fails the call with a stated reason',
   });
 });
 
+test('a renderer that returns a rejecting promise fails the call without ending the process', () => {
+  expect(render('rejecting')).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: Rendering output failed: The renderer returned object instead of a string.\n',
+    stdout: 'after\nresolved:1\n',
+  });
+});
+
+test('a render failure raised after the action returned still ends the invocation', () => {
+  expect(render('late')).toEqual({
+    status: 1,
+    stderr: internal,
+    stdout: 'late\nresolved:1\n',
+  });
+});
+
 test('two failing renderers report the first failure once', () => {
   expect(render('twice')).toEqual({
     status: 1,

@@ -356,16 +356,33 @@ async function validate(
   }
 }
 
+/**
+ * The dotted path an issue names inside a value, or `undefined` when the issue names the value
+ * itself. Core's default text and an application's own renderer read a position through this one
+ * helper, so a rejected item reads alike wherever its diagnostic is written.
+ */
+export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
+  const path = issue.path
+    ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
+    .join('.');
+  return path === undefined || path === '' ? undefined : path;
+}
+
+/**
+ * The issues one rejection reports. A schema that returned none still rejected the value, so the
+ * placeholder stands in for its silence. Reporting takes this list once: the reported problem
+ * carries it and the default text is derived from it, so a renderer and core read the same issues.
+ */
+function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
+  return issues.length === 0
+    ? [{ message: 'The schema rejected this value without an explanation.' }]
+    : issues;
+}
+
 function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
-  return (
-    issues.length === 0
-      ? [{ message: 'The schema rejected this value without an explanation.' }]
-      : issues
-  ).map((issue) => {
-    const path = issue.path
-      ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
-      .join('.');
-    return `${subject}${path ? ` at ${path}` : ''}: ${issue.message}`;
+  return issues.map((issue) => {
+    const path = issuePath(issue);
+    return `${subject}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`;
   });
 }
 
@@ -413,7 +430,7 @@ export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<D
     });
     if (result.issues !== undefined) {
       throw new DeclarationError(
-        `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, result.issues).join('\n')}`,
+        `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, reported(result.issues)).join('\n')}`,
       );
     }
     defaults.set(input, result.value);
@@ -489,7 +506,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
       values.set(entry.input, result.value);
       return;
     }
-    const issues = result.issues;
+    const issues = reported(result.issues);
     problems.push({ input: identityOf(entry), issues, reason: 'invalid', spelling });
     lines.push(...messages(suppliedName(entry.input, spelling), issues));
   };
@@ -509,16 +526,16 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
           : suppliedOption(supplied.options, input.name, collected);
       if (raw === undefined) {
         if (input.config.required) {
-          // An omitted required argument arrives here too, so omission has one class and one
-          // Aggregated diagnostic whether the operator left out an argument or an option.
+          // An omitted required argument arrives here too, so omission has one class.
+          // One aggregated diagnostic covers an omitted argument and an omitted option alike.
           problems.push({ input: identityOf(entry), reason: 'missing', spelling });
           lines.push(missingMessage(input, spelling, collected));
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
           await accept(entry, [], spelling);
         } else if (validatesOmission(input)) {
-          // The flag sends the omission itself to the schema, so an absence rule reads the same
-          // Invocation context a supplied value reads, and its issues read as input issues.
+          // The flag sends the omission itself to the schema.
+          // An absence rule reads the context a supplied value reads, and reports input issues.
           await accept(entry, undefined, spelling);
         } else {
           values.set(input, freshDefault(defaults.get(input)));

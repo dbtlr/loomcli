@@ -1,7 +1,7 @@
 import type { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
-import { FatalError } from './errors.js';
+import { FatalError, notTextReason } from './errors.js';
 import type { Host, Out, Renderer } from './types.js';
 
 type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
@@ -78,9 +78,7 @@ class Destination {
 function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
   try {
     const text: unknown = produce();
-    return typeof text === 'string'
-      ? { text }
-      : { failed: new Error(`The renderer returned ${typeof text} instead of a string.`) };
+    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason(text)) };
   } catch (error) {
     return { failed: error };
   }

@@ -1,34 +1,25 @@
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-test('textstat counts file bytes through the built public package', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-'));
-  try {
-    writeFileSync(join(directory, 'one.txt'), 'hello\n');
-    writeFileSync(join(directory, 'two words.txt'), 'é');
-    const stdout = execFileSync(
-      process.env.LOOM_TEST_RUNTIME ?? 'node',
-      [fileURLToPath(new URL('../dist/main.js', import.meta.url)), 'one.txt', 'two words.txt'],
-      { cwd: directory, encoding: 'utf8' },
-    );
-    expect(stdout).toBe('BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n');
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-});
-
-test('textstat prints one table for the counted files and their total', () => {
+test('textstat prints one table for the counted files, with the total only when asked', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-total-'));
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     writeFileSync(join(directory, 'two words.txt'), 'é');
+    expect(
+      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt'], {
+        cwd: directory,
+      }),
+    ).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n',
+    });
     expect(
       invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt', '--total'], {
         cwd: directory,
@@ -38,6 +29,23 @@ test('textstat prints one table for the counted files and their total', () => {
       stderr: '',
       stdout: 'BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n    8  total\n',
     });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('textstat prints the header alone when the byte threshold filters every source', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-filtered-'));
+  try {
+    writeFileSync(join(directory, 'small.txt'), 'é');
+    writeFileSync(join(directory, 'large.txt'), 'hello');
+    expect(
+      invoke(
+        new URL('../dist/main.js', import.meta.url),
+        ['small.txt', 'large.txt', '--min-bytes', '6'],
+        { cwd: directory },
+      ),
+    ).toEqual({ status: 0, stderr: '', stdout: 'BYTES  SOURCE\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

@@ -6,7 +6,7 @@ import type { ActionHandler, Host } from '@loom/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
-import { table } from './table.js';
+import { tableRenderer } from './table.js';
 import type { Row } from './table.js';
 
 /**
@@ -56,6 +56,6 @@ export const countFiles: ActionHandler<typeof textstat> = async ({ args, options
   }
   await out.render(
     { metric: options.metric, rows, total: options.total ? total : undefined },
-    table,
+    tableRenderer,
   );
 };

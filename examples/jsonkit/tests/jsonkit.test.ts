@@ -192,7 +192,7 @@ test('jsonkit ignores a passthrough tail that repeats the file global', () => {
   });
 });
 
-test.each(['summary', 'gets', 'Get'])(
+test.each(['summary', 'gets', 'Get', 'typo'])(
   'jsonkit rejects the unknown command %s and lists the choices',
   (name) => {
     withDocuments({ 'doc.json': document }, (cwd) => {

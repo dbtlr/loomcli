@@ -19,6 +19,7 @@ export {
   renderFailure,
 } from './errors.js';
 export { GlobalOptions } from './globals.js';
+export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { FailureRenderer, InputProblem } from './errors.js';

@@ -3,6 +3,7 @@ import {
   FatalError,
   GlobalOptions,
   InputError,
+  issuePath,
   renderFailure,
   UnknownCommandError,
   UsageError,
@@ -56,7 +57,12 @@ const anyFailure: Renderer<LoomError> = {
 function describe(problem: InputProblem): string {
   return problem.reason === 'missing'
     ? `${problem.spelling}: required`
-    : problem.issues.map((issue) => `${problem.spelling}: ${issue.message}`).join('\n');
+    : problem.issues
+        .map((issue) => {
+          const path: string | undefined = issuePath(issue);
+          return `${problem.spelling}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`;
+        })
+        .join('\n');
 }
 
 const failures: readonly FailureRenderer[] = [

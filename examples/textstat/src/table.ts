@@ -24,7 +24,7 @@ export interface Table {
  * and the total, when the invocation asked for one, is the last row. The header prints even for an
  * empty selection, so a filtered run still reports the metric it counted.
  */
-export const table: Renderer<Table> = {
+export const tableRenderer: Renderer<Table> = {
   render: ({ metric, rows, total }) => {
     const heading = metric.toUpperCase();
     const printed = total === undefined ? rows : [...rows, { count: total, source: 'total' }];

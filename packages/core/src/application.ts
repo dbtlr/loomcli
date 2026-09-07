@@ -18,8 +18,16 @@ import type {
   CommandMethod,
   CommandState,
 } from './command.js';
-import { buildFailures, describeFailure, InternalError, reasonOf, toFailure } from './errors.js';
+import {
+  buildFailures,
+  DeclarationError,
+  describeFailure,
+  InternalError,
+  reasonOf,
+  toFailure,
+} from './errors.js';
 import type { FailureRegistry, FailureRenderer } from './errors.js';
+import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
@@ -78,14 +86,17 @@ class ApplicationBuilder<
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
+  // The constructor's raw options argument, unexamined until build, so the options-slot rules answer at the same point every other authoring fault does: `inspect()` and `run()`.
+  readonly #options: unknown;
 
   constructor(
     name: string,
     root: CommandState<Args, Options, Globals>,
-    failures: readonly FailureRenderer[],
+    config: { failures: readonly FailureRenderer[]; options?: unknown },
   ) {
-    this.#failures = failures;
+    this.#failures = config.failures;
     this.#name = name;
+    this.#options = config.options;
     this.#root = root;
   }
 
@@ -150,7 +161,10 @@ class ApplicationBuilder<
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
   ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
-    return new ApplicationBuilder(this.#name, root, this.#failures);
+    return new ApplicationBuilder(this.#name, root, {
+      failures: this.#failures,
+      options: this.#options,
+    });
   }
 
   /**
@@ -160,6 +174,7 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
+    checkOptions(this.#options);
     buildFailures(this.#failures);
     const graph = buildGraph(this.#root);
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
@@ -178,6 +193,7 @@ class ApplicationBuilder<
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
+      checkOptions(this.#options);
       registry = buildFailures(this.#failures);
       const graph = buildGraph(this.#root);
       const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
@@ -189,6 +205,9 @@ class ApplicationBuilder<
         passthrough: selected.passthrough,
         values: selected.values,
       });
+      // The fault check covers the same window the write accounting covers.
+      // A render failure an unawaited helper raised is still this invocation's failure.
+      await output.settle();
       const fault = output.fault;
       if (fault) {
         // The action returned, so the renderer failure is this invocation's own failure.
@@ -261,6 +280,33 @@ interface ApplicationConstructor {
   ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
+/** The options slot holds one object literal, so a declaration that carries state is not one. */
+function isPlainObject(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * The second argument, read where it is supplied. The retired positional form declares its globals
+ * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
+ * operator, not the author, meets the consequence as an unknown-option error.
+ */
+function checkOptions(options: unknown): void {
+  if (isGlobalOptions(options)) {
+    throw new DeclarationError(
+      'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
+    );
+  }
+  if (options !== undefined && !isPlainObject(options)) {
+    throw new DeclarationError(
+      'The Application options must be an object. Supply { globals, failures }.',
+    );
+  }
+}
+
 /**
  * The runtime class behind the public constructor. It is generic so that an instance's `Globals`
  * is the type of the value it holds, with `{}` standing in when there is none, which is what each
@@ -268,7 +314,9 @@ interface ApplicationConstructor {
  */
 class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
   constructor(name: string, options?: ApplicationOptions<Globals>) {
-    super(name, freshState(null, options?.globals), options?.failures ?? []);
+    // The options slot is read defensively, never inspected: an invalid value still yields
+    // `globals` and `failures` of some kind, and `checkOptions` reports it at build instead.
+    super(name, freshState(null, options?.globals), { failures: options?.failures ?? [], options });
   }
 }
 

@@ -1,10 +1,5 @@
-import type {
-  InputError,
-  InputProblem,
-  Renderer,
-  StandardSchemaV1,
-  UnknownCommandError,
-} from '@loom/core';
+import { issuePath } from '@loom/core';
+import type { InputError, InputProblem, Renderer, UnknownCommandError } from '@loom/core';
 
 /** Every diagnostic this application writes names the application first. */
 const NAME = 'jsonkit';
@@ -13,24 +8,21 @@ function branded(text: string): string {
   return `${NAME}: ${text}`;
 }
 
-/** An issue path names a position inside a collected value, so a rejected field reads "at 0". */
-function located(issue: StandardSchemaV1.Issue): string {
-  const path = issue.path
-    ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
-    .join('.');
-  return path ? ` at ${path}` : '';
-}
-
 /**
  * One line per rejected input. Both readings name the token an operator would type, so an omission
  * and a rejected value read alike, and neither line parses the sentence core would have written.
  */
 function describe(problem: InputProblem): string[] {
-  return problem.reason === 'missing'
-    ? [branded(`${problem.spelling}: required`)]
-    : problem.issues.map((issue) =>
-        branded(`${problem.spelling}${located(issue)}: ${issue.message}`),
-      );
+  if (problem.reason === 'missing') {
+    return [branded(`${problem.spelling}: required`)];
+  }
+  // A path names a position inside a collected value, so a rejected field reads "at 0".
+  return problem.issues.map((issue) => {
+    const path = issuePath(issue);
+    return branded(
+      `${problem.spelling}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`,
+    );
+  });
 }
 
 /**

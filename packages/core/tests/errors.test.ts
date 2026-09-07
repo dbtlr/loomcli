@@ -73,3 +73,57 @@ test('catching FatalError prevents failure and eager printing', () => {
     stdout: 'assembled\ndispatched\nresolved:0\n',
   });
 });
+
+/** Both build entry points read the options slot, so the fixture is invoked through each. */
+function withOptions(scenario: string, mode: 'inspect' | 'run') {
+  return invoke(new URL('fixtures/application-options.mjs', import.meta.url), [scenario, mode]);
+}
+
+test.each(['positional-globals', 'empty-globals'])(
+  'the retired positional globals form %s is a declaration error at build, not construction',
+  (scenario) => {
+    expect(withOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout:
+        'assembled\ndeclaration:1: The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+    });
+    expect(withOptions(scenario, 'run')).toEqual({
+      status: 1,
+      stderr:
+        'Invalid declaration: The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
+
+test.each(['string-options', 'array-options'])(
+  'options that are not an object (%s) are a declaration error at build, not construction',
+  (scenario) => {
+    expect(withOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout:
+        'assembled\ndeclaration:1: The Application options must be an object. Supply { globals, failures }.\n',
+    });
+    expect(withOptions(scenario, 'run')).toEqual({
+      status: 1,
+      stderr:
+        'Invalid declaration: The Application options must be an object. Supply { globals, failures }.\n',
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
+
+test('an options object with globals constructs, inspects, and runs the Application', () => {
+  expect(withOptions('options-object', 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'assembled\ninspected\n',
+  });
+  expect(withOptions('options-object', 'run')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'assembled\ndispatched\nresolved:0\n',
+  });
+});

@@ -277,6 +277,16 @@ export function reasonOf(thrown: unknown): string {
   return thrown instanceof Error ? thrown.message : 'An unknown error occurred.';
 }
 
+/**
+ * Why a returned value is not the text a renderer owes. A renderer is synchronous, so a returned
+ * promise is a non-string return like any other, and its rejection is adopted and swallowed here:
+ * an unobserved rejection would end the process before the invocation could report anything.
+ */
+export function notTextReason(value: unknown): string {
+  void Promise.resolve(value).catch(() => undefined);
+  return `The renderer returned ${typeof value} instead of a string.`;
+}
+
 /** Every thrown value reaches reporting as a failure class; anything else is internal. */
 export function toFailure(thrown: unknown): LoomError {
   return thrown instanceof LoomError ? thrown : new InternalError(reasonOf(thrown), thrown);
@@ -345,11 +355,7 @@ export function describeFailure(registry: FailureRegistry, failure: LoomError): 
     const text = registration.render(failure);
     return typeof text === 'string'
       ? { kind: 'rendered', text }
-      : {
-          kind: 'unrendered',
-          reason: `The renderer returned ${typeof text} instead of a string.`,
-          text: defaultText(failure),
-        };
+      : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };
   } catch (error) {
     return { kind: 'unrendered', reason: reasonOf(error), text: defaultText(failure) };
   }
