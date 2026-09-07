@@ -196,6 +196,8 @@ test.each([
   ['composed', ['--quiet'], { args: {}, command: 'root', options: { quiet: true } }],
   ['shared', [], { args: {}, command: 'root', options: {} }],
   ['shared', ['leaf'], { args: {}, command: 'leaf', options: {} }],
+  ['aliased', ['ls'], { args: {}, command: 'keys', options: {} }],
+  ['plain', ['keys'], { args: {}, command: 'keys', options: {} }],
 ] satisfies [string, string[], Record<string, unknown>][])(
   'runs the %s declaration with %j',
   (scenario, argv, expected) => {
@@ -211,6 +213,7 @@ test.each([
     ['--verbose'],
     'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
   ],
+  ['plain', ['ls'], 'Unknown command "ls". Use one of: keys.'],
 ] satisfies [string, string[], string][])(
   'leaves the %s receiver without the later declaration for %j',
   (scenario, argv, reason) => {
