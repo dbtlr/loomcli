@@ -92,7 +92,8 @@ interface AttachedCommand {
  * One graph build's shared state. `globals` compiles once and every Command reads it. `owners`
  * records the name of the parent the build walk reached first for each node, so a second parent
  * holding the same value is building a graph with more than one path to that node, not a tree.
- * The walk claims a parent's children before it descends, so a shallower parent counts as first.
+ * The walk is pre-order over attachment order: it claims a parent's children, then finishes each
+ * child's subtree before the next sibling, so the first owner is the parent it reaches first.
  */
 interface BuildContext {
   globals: BuiltGlobals;
