@@ -48,7 +48,11 @@ export interface DispatchInput {
   values: ValidatedInputs;
 }
 
-/** One child a bare token reaches, under its canonical name or one of its hidden aliases. */
+/**
+ * One child a bare token reaches, under its canonical name or one of its hidden aliases.
+ * `name` repeats the key `children` holds, because `BuiltCommand.name` is `string | null` for the
+ * root and the routed path a child extends holds strings alone.
+ */
 export interface RoutedChild {
   command: BuiltCommand;
   name: string;
@@ -103,7 +107,6 @@ type AliasDeclaration = readonly string[];
 
 /** The attachable shape of a Command, without its inferred declaration types. */
 interface AttachedCommand {
-  readonly aliases: readonly AliasDeclaration[];
   readonly name: string | null;
   build(context: BuildContext): BuiltCommand;
 }
@@ -148,7 +151,7 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
 }
 
 /** An alias is a bare token the way a child name is, so it answers to the same name rule. */
-function checkAliasName(command: string, alias: unknown): void {
+function checkAliasName(command: string | null, alias: unknown): void {
   if (!isDeclaredName(alias)) {
     throw new DeclarationError(
       `${commandSentence(command)} declares an alias named "${String(alias)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
@@ -280,7 +283,7 @@ export function attachChild<Args, Options, Globals>(
 /** The untyped part of a declaration, which every build check reads regardless of its generics. */
 type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'children' | 'inputs' | 'late' | 'name'
+  'aliases' | 'children' | 'inputs' | 'late' | 'name'
 >;
 
 /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
@@ -326,50 +329,59 @@ function collectChildren(state: Declared): [string, AttachedCommand][] {
 }
 
 /**
- * Every canonical name and alias under one parent shares one namespace, so this pass reads the
- * children's aliases in attachment order once their names are settled.
- * A Command's own rules read here too, because one namespace is one reading: an alias meets its own
- * Command's name and its own earlier aliases before it meets a sibling's.
+ * A Command's own alias rules, and the flat list in declaration order that routing and inspection
+ * read. Each call keeps its own group, so a call that names none reports as the call it is.
  */
-function checkAliases(parent: string | null, attached: readonly [string, AttachedCommand][]): void {
-  const names = new Set(attached.map(([name]) => name));
-  const owners = new Map<string, string>();
-  for (const [name, node] of attached) {
-    const own = new Set<string>();
-    for (const declaration of node.aliases) {
-      if (declaration.length === 0) {
+function collectAliases(state: Declared): string[] {
+  const { name } = state;
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const declaration of state.aliases) {
+    if (declaration.length === 0) {
+      throw new DeclarationError(
+        `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
+      );
+    }
+    for (const alias of declaration) {
+      checkAliasName(name, alias);
+      if (alias === name) {
         throw new DeclarationError(
-          `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
+          `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
         );
       }
-      for (const alias of declaration) {
-        checkAliasName(name, alias);
-        if (alias === name) {
-          throw new DeclarationError(
-            `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
-          );
-        }
-        if (own.has(alias)) {
-          throw new DeclarationError(
-            `${commandSentence(name)} declares alias "${alias}" twice. Remove the repeated alias.`,
-          );
-        }
-        if (names.has(alias)) {
-          throw new DeclarationError(
-            `${commandSentence(parent)} attaches child "${name}" with alias "${alias}", which is also the name of child "${alias}". Rename or remove one.`,
-          );
-        }
-        const owner = owners.get(alias);
-        if (owner !== undefined) {
-          throw new DeclarationError(
-            `${commandSentence(parent)} attaches child "${name}" with alias "${alias}", which is also an alias of child "${owner}". Rename or remove one.`,
-          );
-        }
-        own.add(alias);
-        owners.set(alias, name);
+      if (seen.has(alias)) {
+        throw new DeclarationError(
+          `${commandSentence(name)} declares alias "${alias}" twice. Remove the repeated alias.`,
+        );
       }
+      seen.add(alias);
+      aliases.push(alias);
     }
   }
+  return aliases;
+}
+
+/**
+ * One parent's namespace, which every canonical name and alias under it shares. Each child settled
+ * its own alias rules while it built, so what is left is the collision with a sibling. The names are
+ * read before the walk, so the rule reads the same whichever sibling the author declared first.
+ */
+function aliasNamespace(parent: string | null, names: ReadonlySet<string>) {
+  const owners = new Map<string, string>();
+  return function claim(child: string, alias: string): void {
+    if (names.has(alias)) {
+      throw new DeclarationError(
+        `${commandSentence(parent)} attaches child "${child}" with alias "${alias}", which is also the name of child "${alias}". Rename or remove one.`,
+      );
+    }
+    const owner = owners.get(alias);
+    if (owner !== undefined) {
+      throw new DeclarationError(
+        `${commandSentence(parent)} attaches child "${child}" with alias "${alias}", which is also an alias of child "${owner}". Rename or remove one.`,
+      );
+    }
+    owners.set(alias, child);
+  };
 }
 
 /**
@@ -510,7 +522,7 @@ export function buildCommand<Args, Options, Globals>(
     );
   }
   const attached = collectChildren(state);
-  checkAliases(name, attached);
+  const aliases = collectAliases(state);
   checkDeclarationOrder(state);
   const slots = collectArguments(state, subject);
   const first = slots[0];
@@ -532,15 +544,19 @@ export function buildCommand<Args, Options, Globals>(
   const options = compileLocalOptions(state, globals, subject);
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
+  const claim = aliasNamespace(name, new Set(attached.map((entry) => entry[0])));
   for (const entry of attached) {
+    // The subtree builds before its aliases are claimed, so the tree rule keeps its precedence.
     const routed: RoutedChild = { command: buildChild(name, entry, context), name: entry[0] };
     children.set(routed.name, routed.command);
-    for (const spelling of [routed.name, ...routed.command.aliases]) {
-      routes.set(spelling, routed);
+    routes.set(routed.name, routed);
+    for (const alias of routed.command.aliases) {
+      claim(routed.name, alias);
+      routes.set(alias, routed);
     }
   }
   return {
-    aliases: state.aliases.flat(),
+    aliases,
     arguments: slots,
     children,
     dispatch: action ? bindDispatch(state, action) : undefined,
@@ -572,10 +588,6 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 
   get name(): string | null {
     return this.#state.name;
-  }
-
-  get aliases(): readonly AliasDeclaration[] {
-    return this.#state.aliases;
   }
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
