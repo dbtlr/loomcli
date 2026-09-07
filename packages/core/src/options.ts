@@ -1,4 +1,11 @@
-import { DeclarationError, InputError } from './errors.js';
+import {
+  DeclarationError,
+  MissingValueError,
+  RepeatedOptionError,
+  ShortGroupError,
+  UnexpectedValueError,
+  UnknownOptionError,
+} from './errors.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -132,9 +139,7 @@ export function compileOptions(declarations: readonly OptionDeclaration[], subje
 function lookup(spellings: ReadonlyMap<string, OptionSpelling>, spelling: string) {
   const option = spellings.get(spelling);
   if (!option) {
-    throw new InputError(
-      `Unknown option "${spelling}". Supply a declared option; prefix a hyphenated path with "./".`,
-    );
+    throw new UnknownOptionError(spelling);
   }
   return option;
 }
@@ -154,24 +159,18 @@ function acceptValue({
 }) {
   const repeatable = option.type === 'string' && option.multiple;
   if (!repeatable && (values.strings.has(option.name) || values.booleans.has(option.name))) {
-    throw new InputError(
-      `Option "${spelling}" can be supplied only once. Remove the repeated option.`,
-    );
+    throw new RepeatedOptionError(spelling);
   }
   if (option.type === 'boolean') {
     if (inline !== undefined) {
-      throw new InputError(
-        `Boolean option "${spelling}" does not accept a value. Supply the flag alone.`,
-      );
+      throw new UnexpectedValueError(spelling, inline);
     }
     values.booleans.set(option.name, option.value);
     return false;
   }
   const value = inline ?? next;
   if (value === undefined || (inline === undefined && value.startsWith('-'))) {
-    throw new InputError(
-      `Option "${spelling}" requires a value. Supply a value after "${spelling}".`,
-    );
+    throw new MissingValueError(spelling);
   }
   if (repeatable) {
     const collected = values.lists.get(option.name) ?? [];
@@ -203,9 +202,7 @@ function parseOption(
     const option = lookup(spellings, spelling);
     const suffix = token.slice(index + 1);
     if (option.type === 'string' && suffix !== '') {
-      throw new InputError(
-        `Value option "${spelling}" must be last in its short group. Supply its value in the next token.`,
-      );
+      throw new ShortGroupError({ reason: 'value-position', token: spelling });
     }
     const inline = suffix.startsWith('=') ? suffix.slice(1) : undefined;
     if (acceptValue({ inline, next, option, spelling, values })) {
@@ -239,9 +236,7 @@ function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: st
     return false;
   }
   if (other !== '') {
-    throw new InputError(
-      `Short group "${token}" mixes the global option "-${global}" with "-${other}", which is not a global option. Supply global options as separate tokens, and local options after their command name.`,
-    );
+    throw new ShortGroupError({ global, other, reason: 'mixed-scope', token });
   }
   return true;
 }

@@ -13,7 +13,7 @@ function child(name) {
 }
 
 function build() {
-  const app = new Application('graph', globals);
+  const app = new Application('graph', { globals });
   switch (scenario) {
     case 'arguments-and-children': {
       return app
@@ -55,11 +55,11 @@ function build() {
       return app.command({ name: 'get' }).action(dispatch);
     }
     case 'foreign-globals-value': {
-      return new Application('graph', {}).action(dispatch);
+      return new Application('graph', { globals: {} }).action(dispatch);
     }
     case 'null-globals': {
       // Only an omitted argument means no globals; null is a value, and not a declaration.
-      return new Application('graph', null).action(dispatch);
+      return new Application('graph', { globals: null }).action(dispatch);
     }
     case 'missing-globals': {
       return app.command(new Command('get').action(dispatch)).action(dispatch);

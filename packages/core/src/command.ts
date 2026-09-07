@@ -1,4 +1,11 @@
-import { DeclarationError, InputError } from './errors.js';
+import {
+  commandSentence,
+  commandSubject,
+  DeclarationError,
+  NonCallableCommandError,
+  UnexpectedArgumentError,
+  UnknownCommandError,
+} from './errors.js';
 import type { BuiltGlobals, GlobalOptions } from './globals.js';
 import { bindGlobals, buildGlobals } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
@@ -84,21 +91,12 @@ interface AttachedCommand {
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, AttachedCommand>();
 
-function subjectOf(name: string | null) {
-  return name === null ? 'the root Command' : `Command "${name}"`;
-}
-
-function sentenceOf(name: string | null) {
-  const subject = subjectOf(name);
-  return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
-}
-
 /** Reads the declarations behind an attached value; anything else is a declaration error. */
 function nodeOf(parent: string | null, child: object): AttachedCommand {
   const node = nodes.get(child);
   if (!node) {
     throw new DeclarationError(
-      `${sentenceOf(parent)} attaches a value that is not a Command. Attach the value returned by new Command(name).`,
+      `${commandSentence(parent)} attaches a value that is not a Command. Attach the value returned by new Command(name).`,
     );
   }
   return node;
@@ -112,7 +110,7 @@ function isDeclaredName(name: unknown): name is string {
 function checkChildName(parent: string | null, name: unknown): asserts name is string {
   if (!isDeclaredName(name)) {
     throw new DeclarationError(
-      `${sentenceOf(parent)} attaches a child named "${String(name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `${commandSentence(parent)} attaches a child named "${String(name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
     );
   }
 }
@@ -236,12 +234,12 @@ function checkDeclarationOrder(state: Declared): void {
   }
   if (late.kind === 'input') {
     throw new DeclarationError(
-      `${sentenceOf(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
+      `${commandSentence(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
     );
   }
   // Child identity and names are settled before this call, so the node and its name are valid.
   throw new DeclarationError(
-    `${sentenceOf(name)} attaches child "${String(nodeOf(name, late.child).name)}" after its action. Attach children before action().`,
+    `${commandSentence(name)} attaches child "${String(nodeOf(name, late.child).name)}" after its action. Attach children before action().`,
   );
 }
 
@@ -255,7 +253,7 @@ function collectChildren(state: Declared): [string, AttachedCommand][] {
     checkChildName(state.name, name);
     if (seen.has(name)) {
       throw new DeclarationError(
-        `${sentenceOf(state.name)} attaches two children named "${name}". Rename or remove one.`,
+        `${commandSentence(state.name)} attaches two children named "${name}". Rename or remove one.`,
       );
     }
     seen.add(name);
@@ -286,7 +284,7 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
   for (const input of state.inputs.filter((entry) => entry.kind === 'argument')) {
     if (!isDeclaredName(input.name)) {
       throw new DeclarationError(
-        `${sentenceOf(state.name)} declares an argument named "${String(input.name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+        `${commandSentence(state.name)} declares an argument named "${String(input.name)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
       );
     }
     if (seen.has(input.name)) {
@@ -340,12 +338,12 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
 function checkGroup(state: Declared, children: readonly [string, AttachedCommand][]): void {
   const { name } = state;
   if (children.length === 0) {
-    throw new DeclarationError(`${sentenceOf(name)} has no action. Register an action.`);
+    throw new DeclarationError(`${commandSentence(name)} has no action. Register an action.`);
   }
   const option = state.inputs.find((input) => input.kind === 'option');
   if (option) {
     throw new DeclarationError(
-      `${sentenceOf(name)} declares option "${option.name}" but registers no action to receive it. Register an action or remove the option.`,
+      `${commandSentence(name)} declares option "${option.name}" but registers no action to receive it. Register an action or remove the option.`,
     );
   }
 }
@@ -373,10 +371,10 @@ export function buildCommand<Args, Options, Globals>(
   globals: BuiltGlobals,
 ): BuiltCommand {
   const { actions, name } = state;
-  const subject = subjectOf(name);
+  const subject = commandSubject(name);
   if (state.globals !== globals.source) {
     throw new DeclarationError(
-      `${sentenceOf(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
+      `${commandSentence(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
     );
   }
   const attached = collectChildren(state);
@@ -386,11 +384,13 @@ export function buildCommand<Args, Options, Globals>(
   const child = attached[0];
   if (first && child) {
     throw new DeclarationError(
-      `${sentenceOf(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
+      `${commandSentence(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
     );
   }
   if (actions.length > 1) {
-    throw new DeclarationError(`${sentenceOf(name)} has multiple actions. Register one action.`);
+    throw new DeclarationError(
+      `${commandSentence(name)} has multiple actions. Register one action.`,
+    );
   }
   const action = actions[0];
   if (!action) {
@@ -538,9 +538,7 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
     }
     const child = command.children.get(token);
     if (!child) {
-      throw new InputError(
-        `Unknown command "${token}". Use one of: ${[...command.children.keys()].join(', ')}.`,
-      );
+      throw new UnknownCommandError(token, [...command.children.keys()]);
     }
     command = child;
     path.push(token);
@@ -549,44 +547,36 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
   return { command, path, tokens: tokens.slice(index) };
 }
 
-function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
+/**
+ * The tokens each positional slot received. An omitted required argument binds nothing here and
+ * reports as a missing input in the validation phase, so omission has one class whether the input
+ * is an argument or an option. Extra tokens are a token fault, so this phase still reports them.
+ */
+function bindArguments(
+  command: BuiltCommand,
+  path: readonly string[],
+  positionals: readonly string[],
+) {
   const values = new Map<InputDeclaration, string | string[]>();
   let index = 0;
   for (const slot of command.arguments) {
-    const { name } = slot.input;
     if (slot.variadic) {
       const rest = positionals.slice(index);
-      if (rest.length === 0 && slot.required) {
-        throw new InputError(
-          `Argument "${name}" requires at least one value. Supply a value for "${name}".`,
-        );
-      }
-      // An optional variadic binds nothing on an empty tail, so validation reads it as `[]`.
+      // An empty tail binds nothing, so validation reads it as `[]` or reports the omission.
       if (rest.length > 0) {
         values.set(slot.input, rest);
       }
       index = positionals.length;
     } else {
       const value = positionals[index];
-      if (value === undefined) {
-        if (slot.required) {
-          throw new InputError(
-            `Argument "${name}" requires a value. Supply a value for "${name}".`,
-          );
-        }
-      } else {
+      if (value !== undefined) {
         values.set(slot.input, value);
         index += 1;
       }
     }
   }
   if (index < positionals.length) {
-    const count = command.arguments.length;
-    throw new InputError(
-      count === 0
-        ? `${sentenceOf(command.name)} accepts no arguments. Remove the supplied values.`
-        : `${sentenceOf(command.name)} accepts ${count} ${count === 1 ? 'argument' : 'arguments'}. Remove the extra values.`,
-    );
+    throw new UnexpectedArgumentError(path, command.arguments.length, positionals.slice(index));
   }
   return values;
 }
@@ -602,12 +592,10 @@ export async function selectCommand(
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
   if (!dispatch) {
-    throw new InputError(
-      `${sentenceOf(command.name)} requires a subcommand. Use one of: ${[...command.children.keys()].join(', ')}.`,
-    );
+    throw new NonCallableCommandError(path, [...command.children.keys()]);
   }
   const parsed = parseInputs(command.options, rest);
-  const args = bindArguments(command, parsed.positionals);
+  const args = bindArguments(command, path, parsed.positionals);
   const values = await validateValues({
     command: path,
     defaults: invocation.defaults,

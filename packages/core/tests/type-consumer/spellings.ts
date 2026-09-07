@@ -29,7 +29,7 @@ export const set = new Command('set', spellingGlobals)
 
 export const cache = new Command('cache', spellingGlobals).command(set);
 
-export const spellings = new Application('spellings', spellingGlobals)
+export const spellings = new Application('spellings', { globals: spellingGlobals })
   .command(select)
   .command(count)
   .command(cache)

@@ -5,11 +5,12 @@ import type { ActionOptions } from '@loom/core';
 
 import type { textstat } from './application.js';
 
-type Metric = ActionOptions<typeof textstat>['metric'];
-
 const NEWLINE = /\n/gu;
 /** Whitespace separates words, so each whitespace character closes the word it was reading. */
 const SPACE = /\s/u;
+
+/** The metric one invocation counts. The declaration's schema is the one place it is named. */
+export type Metric = ActionOptions<typeof textstat>['metric'];
 
 /** The counts one pass produces: the byte size the threshold reads, and the selected metric. */
 export interface SourceCounts {

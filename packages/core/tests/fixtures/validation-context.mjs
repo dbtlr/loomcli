@@ -47,7 +47,7 @@ switch (scenario) {
       type: 'string',
       validate: echo('mode'),
     });
-    app = new Application('context', globals)
+    app = new Application('context', { globals })
       .argument('name', { required: true, validate: echo('name') })
       .argument('files', { validate: echo('files'), variadic: true })
       .option('single', { type: 'string', validate: echo('single') })
@@ -66,7 +66,7 @@ switch (scenario) {
       .option('force', { type: 'string', validate: echo('force') })
       .action(print);
     const cache = new Command('cache', globals).command(clear);
-    app = new Application('context', globals).command(cache).action(print);
+    app = new Application('context', { globals }).command(cache).action(print);
     break;
   }
   case 'default': {

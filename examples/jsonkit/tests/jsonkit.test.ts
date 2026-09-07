@@ -198,12 +198,33 @@ test.each(['summary', 'gets', 'Get'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `Invalid input: Unknown command "${name}". Use one of: get, keys, select.\n`,
+        stderr: `jsonkit: unknown command "${name}"; try get, keys, select.\n`,
         stdout: '',
       });
     });
   },
 );
+
+test('jsonkit names the omitted path argument by its own spelling', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['get', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 2,
+      stderr: 'jsonkit: path: required\n',
+      stdout: '',
+    });
+  });
+});
+
+test('jsonkit keeps the default text for a failure class it registers no renderer for', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
+      status: 2,
+      stderr:
+        'Invalid input: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\n',
+      stdout: '',
+    });
+  });
+});
 
 test.each(['cwd', 'stdin'])(
   'jsonkit runs through a supplied host for the %s scenario',
@@ -219,7 +240,7 @@ test.each(['cwd', 'stdin'])(
 test('jsonkit asks for a file or piped JSON when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--file": Supply a file or pipe JSON to stdin.\n',
+    stderr: 'jsonkit: --file: Supply a file or pipe JSON to stdin.\n',
     stdout: '',
   });
 });

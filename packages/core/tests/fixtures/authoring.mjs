@@ -14,7 +14,7 @@ const forked = base.option('verbose', { type: 'boolean' }).action(report('root')
 const composed = base.command(get).action(report('root'));
 
 const empty = new GlobalOptions();
-const shared = new Application('empty', empty)
+const shared = new Application('empty', { globals: empty })
   .command(new Command('leaf', empty).action(report('leaf')))
   .action(report('root'));
 

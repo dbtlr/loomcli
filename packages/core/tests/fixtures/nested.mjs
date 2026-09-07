@@ -24,6 +24,9 @@ const store = new Command('store', globals)
   .command(put)
   .action(report('store'));
 
-const app = new Application('nested', globals).command(cache).command(store).action(report('root'));
+const app = new Application('nested', { globals })
+  .command(cache)
+  .command(store)
+  .action(report('root'));
 
 await app.run({ host: { argv: process.argv.slice(3) } });

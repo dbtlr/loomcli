@@ -104,5 +104,5 @@ if (scenario === 'cwd') {
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
-  process.stdout.write(`${reads}\treads\n`);
+  process.stdout.write(`reads: ${reads}\n`);
 }

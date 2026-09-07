@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { schemaOptions } from './context.js';
 import { DeclarationError, InputError } from './errors.js';
+import type { InputProblem } from './errors.js';
 import type { OptionValues } from './options.js';
 import type {
   ArgumentConfig,
@@ -141,11 +142,35 @@ function declaredName(input: InputDeclaration) {
 }
 
 /**
- * An input error names an option by its long form and an argument by its name, so a rule that
- * reads an omission, where no token was supplied, names the declaration the same way.
+ * The token an operator would type for one declaration: `--file` for an option, `-F` when the
+ * option declares `shortOnly`, and the declared name for an argument. Every input diagnostic and
+ * every reported problem names the declaration this way, so an omission and a rejected value read
+ * alike and a `shortOnly` option is never named by a long form it does not accept.
  */
-function suppliedName(input: InputDeclaration) {
-  return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
+function spellingOf(input: InputDeclaration): string {
+  if (input.kind === 'argument') {
+    return input.name;
+  }
+  const { config } = input;
+  return config.shortOnly === true && config.short !== undefined
+    ? `-${config.short}`
+    : `--${input.name}`;
+}
+
+/** An input diagnostic names the declaration by kind and by the spelling that reaches it. */
+function suppliedName(input: InputDeclaration, spelling: string) {
+  return input.kind === 'argument' ? `Argument "${spelling}"` : `Option "${spelling}"`;
+}
+
+/**
+ * The default sentence for an omitted required input. An argument and an option keep the wording
+ * each phase used before omission became one problem, and a collected input asks for one value
+ * more than a scalar does.
+ */
+function missingMessage(input: InputDeclaration, spelling: string, collected: boolean) {
+  return input.kind === 'argument'
+    ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}. Supply a value for "${spelling}".`
+    : `Option "${spelling}" is required. Supply ${collected ? 'at least one value' : 'a value'}.`;
 }
 
 /**
@@ -451,9 +476,10 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
     ),
   });
   const values = new Map<InputDeclaration, unknown>();
-  const issues: string[] = [];
+  const lines: string[] = [];
+  const problems: InputProblem[] = [];
   /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
-  const accept = async (entry: ScopedInput, raw: unknown, subject: string) => {
+  const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
     const result = await validate(entry.input, raw, {
       ...facts(),
       input: identityOf(entry),
@@ -461,9 +487,11 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
     });
     if (result.issues === undefined) {
       values.set(entry.input, result.value);
-    } else {
-      issues.push(...messages(subject, result.issues));
+      return;
     }
+    const issues = result.issues;
+    problems.push({ input: identityOf(entry), issues, reason: 'invalid', spelling });
+    lines.push(...messages(suppliedName(entry.input, spelling), issues));
   };
   for (const entry of declarations) {
     const { input } = entry;
@@ -474,35 +502,34 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
       );
     } else {
       const collected = collects(input);
-      const subject = suppliedName(input);
+      const spelling = spellingOf(input);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)
           : suppliedOption(supplied.options, input.name, collected);
       if (raw === undefined) {
         if (input.config.required) {
-          issues.push(
-            collected
-              ? `${subject} is required. Supply at least one value.`
-              : `${subject} is required. Supply a value.`,
-          );
+          // An omitted required argument arrives here too, so omission has one class and one
+          // Aggregated diagnostic whether the operator left out an argument or an option.
+          problems.push({ input: identityOf(entry), reason: 'missing', spelling });
+          lines.push(missingMessage(input, spelling, collected));
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
-          await accept(entry, [], subject);
+          await accept(entry, [], spelling);
         } else if (validatesOmission(input)) {
           // The flag sends the omission itself to the schema, so an absence rule reads the same
           // Invocation context a supplied value reads, and its issues read as input issues.
-          await accept(entry, undefined, subject);
+          await accept(entry, undefined, spelling);
         } else {
           values.set(input, freshDefault(defaults.get(input)));
         }
       } else {
-        await accept(entry, raw, subject);
+        await accept(entry, raw, spelling);
       }
     }
   }
-  if (issues.length > 0) {
-    throw new InputError(issues.join('\n'));
+  if (problems.length > 0) {
+    throw new InputError(lines.join('\n'), problems);
   }
   return new ValidatedInputs(values);
 }

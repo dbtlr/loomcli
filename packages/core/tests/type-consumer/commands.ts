@@ -26,7 +26,7 @@ export const keys = new Command('keys', globals).action(({ args, options, passth
   return { file, limit, quiet, tail };
 });
 
-export const jsonkit = new Application('jsonkit', globals)
+export const jsonkit = new Application('jsonkit', { globals })
   .option('pretty', { short: 'p', type: 'boolean' })
   .command(get)
   .command(keys)

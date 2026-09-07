@@ -6,6 +6,8 @@ import type { ActionHandler, Host } from '@loom/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
+import { table } from './table.js';
+import type { Row } from './table.js';
 
 /**
  * One counted source: the subject each failure names, the name its row prints, and the
@@ -35,7 +37,12 @@ function sources(files: readonly string[], host: Host): Source[] {
   }));
 }
 
+/**
+ * Rows are collected while the sources are counted and rendered once at the end, so a read failure
+ * on any source ends the invocation before a partial table reaches stdout.
+ */
 export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
+  const rows: Row[] = [];
   let total = 0;
   for (const source of sources(args.files, host)) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
@@ -44,10 +51,11 @@ export const countFiles: ActionHandler<typeof textstat> = async ({ args, options
     });
     if (counts.bytes >= options['min-bytes']) {
       total += counts.counted;
-      await out.print(`${counts.counted}\t${source.name}`);
+      rows.push({ count: counts.counted, source: source.name });
     }
   }
-  if (options.total) {
-    await out.print(`${total}\ttotal`);
-  }
+  await out.render(
+    { metric: options.metric, rows, total: options.total ? total : undefined },
+    table,
+  );
 };

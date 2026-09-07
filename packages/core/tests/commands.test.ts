@@ -148,9 +148,10 @@ test.each([
     ['--file', 'data.json', '--limit', 'abc', 'nope'],
     'Unknown command "nope". Use one of: get, keys.',
   ],
+  // Omission is a validation problem, so an omitted argument aggregates with a rejected value.
   [
     ['--file', 'data.json', '--limit', 'abc', 'get'],
-    'Argument "path" requires a value. Supply a value for "path".',
+    'Option "--limit": Use decimal digits.\nArgument "path" requires a value. Supply a value for "path".',
   ],
   [['--file', 'data.json', '--limit', 'abc', 'keys'], 'Option "--limit": Use decimal digits.'],
 ] satisfies [string[], string][])('rejects %j without dispatch', (argv, reason) => {
