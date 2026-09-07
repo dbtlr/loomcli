@@ -38,6 +38,7 @@ import type {
   OptionConfig,
   OptionValue,
   RunOptions,
+  ValidateOmittedConstraint,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
 import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
@@ -75,7 +76,10 @@ class ApplicationBuilder<
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,
@@ -96,7 +100,8 @@ class ApplicationBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>>,
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
@@ -152,8 +157,9 @@ class ApplicationBuilder<
       const host = captureHost(overrides, stderr);
       output = new Output(host);
       const graph = buildGraph(this.#root);
-      const defaults = await prepareInputs([...graph.globals.inputs, ...collectInputs(graph.root)]);
-      const selected = await selectCommand(graph, [...host.argv], defaults);
+      const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
+      const defaults = await prepareInputs(inputs, host);
+      const selected = await selectCommand(graph, { defaults, host });
       await selected.dispatch({
         host,
         out: output.out,

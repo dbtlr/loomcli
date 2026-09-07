@@ -38,8 +38,16 @@ type OptionSpelling =
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
 /** The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does. */
 type Multiplicity = { multiple: true } | { multiple?: false };
-/** The tokens one declaration collects before validation: one string, or every occurrence. */
-type RawOptionValue<Config> = Config extends { multiple: true } ? string[] : string;
+/**
+ * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member
+ * keeps the flag exact under contextual typing, as `Multiplicity` does.
+ */
+type Omission = { validateOmitted: true } | { validateOmitted?: false };
+/**
+ * The tokens one declaration collects before validation: one string, or the whole collection. A
+ * multiple option and a variadic argument collect alike, so they share this raw shape.
+ */
+type RawValue<Config> = Config extends { multiple: true } | { variadic: true } ? string[] : string;
 type SchemaOutput<Schema, Raw> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<Schema>
   : Raw;
@@ -90,6 +98,41 @@ export interface Host {
 export interface RunOptions {
   host?: Partial<Host>;
 }
+
+/** The declaration one schema call validates, under the name and the scope it was declared in. */
+export interface InputIdentity {
+  kind: 'argument' | 'option';
+  name: string;
+  global: boolean;
+}
+
+/**
+ * The raw tokens of one invocation, keyed by declared name, before any schema or default runs.
+ * Each schema call reads its own snapshot, so a collected value is read-only and writing to one
+ * changes nothing the parser, a later schema, or the action reads.
+ */
+export interface SuppliedInputs {
+  /** Raw positional values of the routed Command: one string, or the tokens of a variadic. */
+  args: Readonly<Record<string, string | readonly string[] | undefined>>;
+  /** Raw option values, globals and locals: a string, every occurrence, or a Boolean presence. */
+  options: Readonly<Record<string, string | readonly string[] | boolean | undefined>>;
+}
+
+/**
+ * What core knows when it calls one schema. A default validates before any token is read, so its
+ * phase carries the host and the declaration alone. An invocation call adds the routed path, the
+ * passthrough tail, and the tokens every declared input received.
+ */
+export type ValidationContext =
+  | { phase: 'default'; host: Host; input: InputIdentity }
+  | {
+      phase: 'invocation';
+      host: Host;
+      input: InputIdentity;
+      command: readonly string[];
+      passthrough: readonly string[];
+      supplied: SuppliedInputs;
+    };
 export interface Out {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
@@ -100,14 +143,12 @@ export interface Out {
 }
 export type StringOption = OptionSpelling &
   Presence &
-  Multiplicity & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
-export interface VariadicArgument {
-  variadic: true;
-  required: true;
-  validate?: StandardSchemaV1;
-  default?: never;
-}
-export type ScalarArgument = Presence & { variadic?: false; validate?: StandardSchemaV1 };
+  Multiplicity &
+  Omission & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+/** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
+export type VariadicArgument = Presence & { variadic: true; validate?: StandardSchemaV1 };
+export type ScalarArgument = Presence &
+  Omission & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
@@ -119,7 +160,7 @@ export type DefaultConstraint<Config> = Config extends unknown
   ? Config & {
       default?: 'validate' extends keyof Config
         ? SchemaInput<Config['validate']>
-        : RawOptionValue<Config>;
+        : RawValue<Config>;
     }
   : never;
 
@@ -134,11 +175,33 @@ export type MultipleConstraint<Config> = Config extends { multiple: true }
       : { 'A multiple option schema must accept a string[] input': Config['validate'] }
     : unknown
   : unknown;
+/**
+ * The declaration rules `validateOmitted: true` needs: a schema that accepts `undefined`, an
+ * omission the schema can answer, and no other rule that already decides absence. Each key names
+ * its fault, the way the other declaration constraints do.
+ */
+export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted: true }
+  ? Config extends { type: 'boolean' }
+    ? { 'A Boolean option declares no validateOmitted': never }
+    : Config extends { required: true }
+      ? { 'A required input rejects validateOmitted': never }
+      : Config extends { default: unknown }
+        ? { 'A declared default rejects validateOmitted': never }
+        : Config extends { multiple: true } | { variadic: true }
+          ? { 'A collected input validates its omission as an empty array': never }
+          : 'validate' extends keyof Config
+            ? undefined extends SchemaInput<Config['validate']>
+              ? unknown
+              : { 'A validateOmitted schema must accept an undefined input': Config['validate'] }
+            : { 'validateOmitted needs a validate schema to receive the omission': never }
+  : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   :
       | ValidatedValue<Config, string>
-      | (Config extends { required: true } | { default: unknown } ? never : undefined);
+      | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+          ? never
+          : undefined);
 export type BooleanOption =
   | (OptionSpelling & {
       type: 'boolean';
@@ -146,6 +209,7 @@ export type BooleanOption =
       default?: never;
       multiple?: never;
       required?: never;
+      validateOmitted?: never;
       polarity?: 'positive' | 'negative';
     })
   | {
@@ -154,6 +218,7 @@ export type BooleanOption =
       default?: never;
       multiple?: never;
       required?: never;
+      validateOmitted?: never;
       polarity: 'both';
       short?: ShortAlias;
       shortOnly?: false;
@@ -164,7 +229,9 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     ? ValidatedValue<Config, string[]>
     :
         | ValidatedValue<Config, string>
-        | (Config extends { required: true } | { default: unknown } ? never : undefined)
+        | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+            ? never
+            : undefined)
   : boolean;
 
 export interface ActionContext<Args, Options = {}> {

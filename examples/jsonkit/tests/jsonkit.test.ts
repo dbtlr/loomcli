@@ -143,14 +143,22 @@ test.each([
   });
 });
 
-test.each([[[]], [['get', 'name']], [['keys']]])(
-  'jsonkit requires the file global for %j before any file access',
-  (args) => {
-    expect(invoke(main, args)).toEqual({
-      status: 2,
-      stderr: 'Invalid input: Option "--file" is required. Supply a value.\n',
-      stdout: '',
-    });
+test.each([
+  [[], summary],
+  [['get', 'name'], '"loom"\n'],
+  [['keys'], 'name\ntags\nnested\ncount\nok\nnone\n'],
+  [['select', '--field', 'name'], '{\n  "name": "loom"\n}\n'],
+] satisfies [string[], string][])('jsonkit reads the piped document for %j', (args, stdout) => {
+  expect(invoke(main, args, { input: document })).toEqual({ status: 0, stderr: '', stdout });
+});
+
+test.each(['', '{"name":', 'not json at all'])(
+  'jsonkit reports a parse failure for the piped text %j',
+  (input) => {
+    const result = invoke(main, [], { input });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Cannot parse JSON in stdin: ');
   },
 );
 
@@ -197,10 +205,51 @@ test.each(['summary', 'gets', 'Get'])(
   },
 );
 
-test('jsonkit runs through a supplied host with its own argv and cwd', () => {
-  expect(invoke(new URL('fixtures/host.mjs', import.meta.url))).toEqual({
+test.each(['cwd', 'stdin'])(
+  'jsonkit runs through a supplied host for the %s scenario',
+  (scenario) => {
+    expect(invoke(new URL('fixtures/host.mjs', import.meta.url), [scenario])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '"loom"\n',
+    });
+  },
+);
+
+test('jsonkit asks for a file or piped JSON when stdin is a terminal', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Option "--file": Supply a file or pipe JSON to stdin.\n',
+    stdout: '',
+  });
+});
+
+test('jsonkit reads a supplied file at a terminal, because the file answers the rule', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-file'])).toEqual({
     status: 0,
     stderr: '',
     stdout: '"loom"\n',
+  });
+});
+
+test('jsonkit reports the reason a stdin read failed', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['unreadable']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toBe('Cannot read stdin: The connection failed.\n');
+});
+
+test('jsonkit reports a stdin connection that closed before it ended', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['closed-early']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toMatch(/^Cannot read stdin: .+\n$/u);
+});
+
+test('jsonkit never reads stdin when the file global is supplied', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['file-only'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '"loom"\n0\treads\n',
   });
 });

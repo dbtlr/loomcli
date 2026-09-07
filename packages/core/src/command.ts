@@ -16,6 +16,7 @@ import type {
   OptionConfig,
   OptionValue,
   Out,
+  ValidateOmittedConstraint,
 } from './types.js';
 import { captureConfig, validateValues } from './validation.js';
 import type {
@@ -431,7 +432,10 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
@@ -447,7 +451,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>>,
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
@@ -524,6 +529,7 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
 /** Bare tokens select children until a Command has none; the first hyphen token commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
+  const path: string[] = [];
   let index = 0;
   while (command.children.size > 0) {
     const token = tokens[index];
@@ -537,9 +543,10 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
       );
     }
     command = child;
+    path.push(token);
     index += 1;
   }
-  return { command, tokens: tokens.slice(index) };
+  return { command, path, tokens: tokens.slice(index) };
 }
 
 function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
@@ -549,12 +556,15 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
     const { name } = slot.input;
     if (slot.variadic) {
       const rest = positionals.slice(index);
-      if (rest.length === 0) {
+      if (rest.length === 0 && slot.required) {
         throw new InputError(
           `Argument "${name}" requires at least one value. Supply a value for "${name}".`,
         );
       }
-      values.set(slot.input, rest);
+      // An optional variadic binds nothing on an empty tail, so validation reads it as `[]`.
+      if (rest.length > 0) {
+        values.set(slot.input, rest);
+      }
       index = positionals.length;
     } else {
       const value = positionals[index];
@@ -584,11 +594,11 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
 /** Consumes globals, routes to a Command, then validates globals and locals in one pass. */
 export async function selectCommand(
   graph: { globals: BuiltGlobals; root: BuiltCommand },
-  tokens: readonly string[],
-  defaults: DefaultValues,
+  invocation: { defaults: DefaultValues; host: Host },
 ) {
-  const scan = extractGlobals(graph.globals.options, tokens);
-  const { command, tokens: rest } = route(graph.root, scan.rest);
+  const { host } = invocation;
+  const scan = extractGlobals(graph.globals.options, [...host.argv]);
+  const { command, path, tokens: rest } = route(graph.root, scan.rest);
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
   if (!dispatch) {
@@ -598,10 +608,13 @@ export async function selectCommand(
   }
   const parsed = parseInputs(command.options, rest);
   const args = bindArguments(command, parsed.positionals);
-  const values = await validateValues(
-    [...graph.globals.inputs, ...command.inputs],
-    { args, options: mergeValues(scan.values, parsed.options) },
-    defaults,
-  );
+  const values = await validateValues({
+    command: path,
+    defaults: invocation.defaults,
+    host,
+    inputs: { globals: graph.globals.inputs, locals: command.inputs },
+    passthrough: parsed.passthrough,
+    supplied: { args, options: mergeValues(scan.values, parsed.options) },
+  });
   return { dispatch, passthrough: parsed.passthrough, values };
 }

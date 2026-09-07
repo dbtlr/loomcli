@@ -68,6 +68,20 @@ function defaults() {
     .action(dispatch);
 }
 
+function tails() {
+  return new Application('tails')
+    .argument('files', { default: ['a'], variadic: true })
+    .action(dispatch);
+}
+
+function omission() {
+  return new Application('omission')
+    .option('file', { type: 'string', validate: digits, validateOmitted: true })
+    .option('size', { type: 'string', validate: digits, validateOmitted: false })
+    .argument('path', { validate: digits, validateOmitted: true })
+    .action(dispatch);
+}
+
 function invalid() {
   const globals = new GlobalOptions();
   return new Application('invalid', globals).command(new Command('get', globals)).action(dispatch);
@@ -90,12 +104,22 @@ const faults = {
     new Application('faults')
       .option('field', { default: 'a', multiple: true, type: 'string' })
       .action(dispatch),
+  'nonboolean-omitted': () =>
+    new Application('faults')
+      .option('file', { type: 'string', validate: digits, validateOmitted: 'yes' })
+      .action(dispatch),
   'nonboolean-required': () =>
     new Application('faults').option('size', { required: 'yes', type: 'string' }).action(dispatch),
   'nonboolean-variadic': () =>
     new Application('faults').argument('files', { variadic: 'yes' }).action(dispatch),
-  'optional-variadic': () =>
-    new Application('faults').argument('files', { variadic: true }).action(dispatch),
+  'null-omitted': () =>
+    new Application('faults')
+      .option('file', { type: 'string', validate: digits, validateOmitted: null })
+      .action(dispatch),
+  'numeric-omitted': () =>
+    new Application('faults')
+      .option('file', { type: 'string', validate: digits, validateOmitted: 0 })
+      .action(dispatch),
   'required-default': () =>
     new Application('faults')
       .option('depth', { default: '1', required: true, type: 'string' })
@@ -104,9 +128,13 @@ const faults = {
     new Application('faults')
       .option('depth', { default: 'deep', type: 'string', validate: digits })
       .action(dispatch),
+  'undefined-omitted': () =>
+    new Application('faults')
+      .option('file', { type: 'string', validate: digits, validateOmitted: undefined })
+      .action(dispatch),
 };
 
-const graphs = { defaults, invalid, jsonkit, nested, polarity, roles, ...faults };
+const graphs = { defaults, invalid, jsonkit, nested, omission, polarity, roles, tails, ...faults };
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 

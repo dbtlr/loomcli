@@ -9,6 +9,8 @@ const anyValue = {
 
 const tags = ['one'];
 const fields = ['a', 'b'];
+const marks = ['m'];
+const paths = ['a'];
 const shape = { list: ['a'], nested: { key: 'value' } };
 
 const globals = new GlobalOptions().option('tag', {
@@ -18,12 +20,24 @@ const globals = new GlobalOptions().option('tag', {
 });
 
 const app = new Application('copies', globals)
+  // The schema returns the declared array itself, so only a copy keeps the next invocation clean.
+  .argument('files', { default: paths, validate: anyValue, variadic: true })
   .option('field', { default: fields, multiple: true, type: 'string' })
   .option('shape', { default: shape, type: 'string', validate: anyValue })
-  .action(({ options, out }) => {
+  .option('mark', { default: marks, multiple: true, type: 'string', validate: anyValue })
+  .action(({ args, options, out }) => {
+    args.files.push('extra');
     options.field.push('x');
+    options.mark.push('z');
     options.tag.push('y');
-    return out.print(JSON.stringify({ field: options.field, tag: options.tag }));
+    return out.print(
+      JSON.stringify({
+        field: options.field,
+        files: args.files,
+        mark: options.mark,
+        tag: options.tag,
+      }),
+    );
   });
 
 // Authoring copied both arrays, so these later changes belong to the caller alone.
@@ -33,6 +47,14 @@ tags.push('two');
 if (mode === 'runs') {
   await app.run({ host: { argv: [] } });
   await app.run({ host: { argv: [] } });
+  // Two mutating invocations later, the declaration still reports the values it was written with.
+  const graph = app.inspect();
+  process.stdout.write(
+    `${JSON.stringify({
+      files: graph.root.arguments[0].default.value,
+      mark: graph.root.options[2].default.value,
+    })}\n`,
+  );
 } else {
   const graph = app.inspect();
   const attempts = [];

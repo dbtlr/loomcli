@@ -39,9 +39,11 @@ JavaScript authors reach the same rules at graph build, which reports a declarat
 
 TypeScript requires one statically known name for each `argument()` and `option()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. A rejected name reports the missing property `'Declaration names must be one literal string'`. JavaScript declarations still undergo graph validation during `run()`.
 
-A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ required: true, variadic: true }`, must be last and takes the remaining tokens.
+A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ variadic: true }`, must be last and takes the remaining tokens.
 
-A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind. A variadic argument stays required.
+A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. A validated optional argument can declare `validateOmitted: true` to send its omission to its own schema, as [Absence and defaults](#absence-and-defaults) describes. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind.
+
+A variadic argument follows the presence rules of a [multiple option](#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the schema output, and never `undefined`: an empty tail is an accurate empty collection, so it enters the schema like a supplied one. A default is a `string[]`, or the schema's input type when the declaration validates, and it reaches each invocation as its own copy.
 
 ```ts
 const keys = new Command('keys', globals).argument('path', {}).action(({ args, out }) => {
@@ -54,7 +56,7 @@ Bare tokens before `--` retain their order as positional inputs. Local options c
 
 Application methods apply the same declaration transitions as a Command to the unnamed root's state. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner.
 
-Graph build rejects invalid and duplicate argument names, a variadic argument that is not last, an argument that follows an optional one, an optional argument that precedes a required one, an optional variadic argument, multiple actions, a Command with neither children nor an action, a local option on a group, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
+Graph build rejects invalid and duplicate argument names, a variadic argument that is not last, an argument that follows an optional one, an optional argument that precedes a required one, multiple actions, a Command with neither children nor an action, a local option on a group, and a declaration made after the action. Authoring calls collect declarations before this validation. No action runs after a build or input failure.
 
 ## Local options
 
@@ -78,7 +80,7 @@ const app = new Application('textstat')
 
 Declarations infer types through fluent calls and `ActionHandler<typeof app>`. The constructor accepts no caller-supplied input types. `StringOption`, `BooleanOption`, and their union `OptionConfig` support extracted configuration with `satisfies`.
 
-The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive.
+The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive. A hyphenated name is not a JavaScript identifier, so its action value reads with bracket access: `options['dry-run']`, the way textstat reads `options['min-bytes']`.
 
 `shortOnly: true` requires `short` and suppresses every long spelling. For example, `.option('metric', { short: 'm', shortOnly: true, type: 'string' })` accepts `-m words` and rejects `--metric`.
 
@@ -95,7 +97,7 @@ The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `d
 
 A separately consumed value cannot start with a hyphen. A long assignment can contain any string, including hyphens and additional `=` characters. Short-only string options cannot receive a hyphen-prefixed value in this increment.
 
-The parser preserves empty values. After parsing, value inputs pass through their declared validation schemas. A declared default fills only an omitted optional value.
+The parser preserves empty values. After parsing, value inputs pass through their declared validation schemas. A declared default fills only an omitted optional value. A validated optional value can declare `validateOmitted: true` instead, which sends its omission to its schema, as [Absence and defaults](#absence-and-defaults) describes.
 
 ### Short groups
 
@@ -258,7 +260,7 @@ Values win over route names. In `jsonkit --file keys get name`, the value of `--
 
 The selected Command then parses the remaining tokens with its own spellings and the existing passthrough rule. One validation pass checks the globals in authoring order, then that Command's declarations in authoring order.
 
-A missing required option is a validation-phase issue, so it loses to routing and to local structure errors. `jsonkit get` reports the missing `path` argument, not the missing `--file`, and `jsonkit nope` reports the unknown command.
+A missing required option is a validation-phase issue, so it loses to routing and to local structure errors. `jsonkit get` reports the missing `path` argument, not the `--file` omission issue, and `jsonkit nope` reports the unknown command.
 
 | Invocation for a `get` and `keys` graph  | Diagnostic                                                                                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -275,7 +277,7 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. An optional variadic argument is a compile error and a build error alike. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -294,7 +296,6 @@ Core builds and validates the whole graph before it reads any invocation token. 
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                             |
 | An optional argument before a required one              | `Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.`                                                                        |
 | An argument after an optional one                       | `Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.`                                                                                                   |
-| An optional variadic argument                           | `Argument "files" is variadic and optional. Declare required: true or remove variadic.`                                                                                                                       |
 | An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                        |
 | A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                    |
 
@@ -302,11 +303,11 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ### Example coverage
 
-[jsonkit](../examples/jsonkit/src/application.ts) declares one required global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path`, and a `select` Command. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared helper.
+[jsonkit](../examples/jsonkit/src/application.ts) declares one optional global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path`, and a `select` Command. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. A read failure names the file or `stdin`, and a parse failure names the document the same way. The rule that one of the two sources must exist belongs to the `--file` declaration, not to the reader, and the [schema example coverage](#example-coverage-1) describes it.
 
 ## Standard Schema validation
 
-Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
+Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, `required`, or `validateOmitted`; their polarity controls their absent value.
 
 ```ts
 import { Application } from '@loom/core';
@@ -335,17 +336,99 @@ A scalar argument's schema receives its one token. A variadic argument's schema,
 
 `ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase schema details; `satisfies` preserves inference.
 
+### Validation context
+
+Core calls every schema through the Standard Schema options argument, under the `libraryOptions` key `validationContextKey`. `validationContext(options)` reads that channel and returns the `ValidationContext` core attached, or `undefined` when another caller ran the same schema. A schema library that ignores the argument, such as Zod, is unaffected: the extra argument changes nothing for a schema that does not read it.
+
+```ts
+import { validationContext } from '@loom/core';
+import type { StandardSchemaV1 } from '@loom/core';
+
+const upper: StandardSchemaV1<string, string> = {
+  '~standard': {
+    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
+      const name = validationContext(options)?.input.name ?? 'the value';
+      return typeof value === 'string'
+        ? { value: value.toUpperCase() }
+        : { issues: [{ message: `Supply a string for ${name}.` }] };
+    },
+    vendor: 'example',
+    version: 1,
+  },
+};
+```
+
+Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loom/core` alone. The annotation is what fixes the schema's input and output types; an unannotated object literal widens `version: 1` to `number` and resolves the output to `unknown`. The accessor answers for the contexts core produced alone. A value core did not produce reads as `undefined`.
+
+| Field         | `phase: 'default'`       | `phase: 'invocation'`                                      |
+| ------------- | ------------------------ | ---------------------------------------------------------- |
+| `host`        | The captured `Host`      | The captured `Host`, the object the action receives        |
+| `input`       | `{ kind, name, global }` | The same identity for the declaration under validation     |
+| `command`     | absent                   | The routed path of names; `[]` for the unnamed root        |
+| `passthrough` | absent                   | The tail after the first bare `--`                         |
+| `supplied`    | absent                   | The raw tokens of every declared input, before any default |
+
+A default validates before any token is parsed, so its phase reports the host and the declaration alone. Every schema call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs. The route, the passthrough tail, and every collected value are copies made for each call, so a schema that writes to them changes nothing that a later schema or the action reads. `host` is the captured object itself, shared with the action, as the table states.
+
+`supplied` holds the tokens as the parser read them, before any schema runs and before any default applies. Every declared name of the routed Command, and every global name, is a key.
+
+| Declared input and invocation                  | `supplied` value               |
+| ---------------------------------------------- | ------------------------------ |
+| Scalar argument or single option, supplied     | The one string                 |
+| Variadic argument or multiple option, supplied | Every token, in supplied order |
+| Scalar argument or single option, omitted      | `undefined`                    |
+| Variadic argument or multiple option, omitted  | `[]`                           |
+| Boolean option, supplied                       | The value of its spelling      |
+| Boolean option, omitted                        | `undefined`                    |
+
+An omitted Boolean reads as `undefined` here, because the polarity value is the absent value, not a supplied token. Absence rules do not change: an omitted optional value with no default never reaches its schema, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.
+
 ### Absence and defaults
 
-| Declaration and input                          | Action value or failure                           |
-| ---------------------------------------------- | ------------------------------------------------- |
-| Optional value or argument omitted, no default | `undefined`; schema is not called                 |
-| Optional multiple option omitted, no default   | The validated output of `[]`                      |
-| Optional value omitted, declared default       | The validated default output                      |
-| Supplied value, including an empty string      | Its validated output or input issues              |
-| `required: true` value option omitted          | Input error; no dispatch                          |
-| Required input with a declared default         | Developer declaration error                       |
-| Invalid declared default                       | Developer declaration error, even when overridden |
+| Declaration and input                           | Action value or failure                           |
+| ----------------------------------------------- | ------------------------------------------------- |
+| Optional value or argument omitted, no default  | `undefined`; schema is not called                 |
+| Optional value omitted, `validateOmitted: true` | The validated output of `undefined`               |
+| Optional multiple option omitted, no default    | The validated output of `[]`                      |
+| Optional variadic argument omitted, no default  | The validated output of `[]`                      |
+| Optional value omitted, declared default        | The validated default output                      |
+| Supplied value, including an empty string       | Its validated output or input issues              |
+| `required: true` value option omitted           | Input error; no dispatch                          |
+| Required input with a declared default          | Developer declaration error                       |
+| Invalid declared default                        | Developer declaration error, even when overridden |
+
+A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration itself: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, and an argument under its name. The action value is the schema output alone, because the schema always runs.
+
+```ts
+import { GlobalOptions, validationContext } from '@loom/core';
+import type { StandardSchemaV1 } from '@loom/core';
+
+/** The rule answers omission too, so the schema's input type accepts `undefined`. */
+const fileOrStdin: StandardSchemaV1<string | undefined, string | undefined> = {
+  '~standard': {
+    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
+      if (typeof value === 'string') {
+        return { value };
+      }
+      const context = validationContext(options);
+      return context?.phase === 'invocation' && !context.host.terminal.stdin.isTTY
+        ? { value: undefined }
+        : { issues: [{ message: 'Supply a file or pipe JSON to stdin.' }] };
+    },
+    vendor: 'jsonkit',
+    version: 1,
+  },
+};
+
+const globals = new GlobalOptions().option('file', {
+  short: 'f',
+  type: 'string',
+  validate: fileOrStdin,
+  validateOmitted: true,
+});
+```
+
+The flag belongs to an optional scalar string option or scalar argument that declares a schema and no default. Every other declaration already decides its own absence, so the flag beside `required: true`, beside a `default`, beside `multiple: true` or `variadic: true`, on a Boolean option, or without `validate` is a compile error at the declaration call and a declaration error at build. The schema's input type must accept `undefined`, the way a declared default must satisfy that same input type. The flag is Boolean, the way `required` and `variadic` are: any other declared value, an explicit `undefined` included, is the declaration error `Option "file" validateOmitted must be Boolean. Use true or false.`
 
 Defaults use the schema's input type, not its output type. In the example, `default: '0'` is valid and `default: 0` is a type error. Without a schema, a value default must be a string.
 
@@ -353,7 +436,7 @@ Omission does not invoke schema-internal defaults. An explicitly declared `defau
 
 Every `run()` checks the complete declarations, then validates all declared defaults before parsing invocation tokens. It awaits asynchronous defaults and reuses their transformed outputs for that invocation. Invalid defaults report the affected declaration, the schema explanation, and a correction with exit code 1. Default results are not cached across invocations.
 
-Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. An array default is copied at authoring, and each invocation receives its own copy when no schema replaces it, so a later change to the declared array, and an action that mutates its collection, reach neither the declaration nor the next invocation. Schema objects and other default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
+Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. An array default is copied at authoring, and the copy, not the declared array, reaches each invocation, so a later change to the declared array, and an action that mutates the collection it receives, reach neither the declaration nor the next invocation. The copy is shallow: a value nested inside the array, an object or an array of its own, is the same reference the declaration holds, so an action that mutates a nested value corrupts the declaration. A schema replaces the default with the value it returns, and an array it returns is copied for that invocation the same way, with the same shallow limit. Schema objects and other default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
 
 ### Issues and validator failures
 
@@ -365,11 +448,15 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 ### Example coverage
 
-[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes files at or above the byte threshold and totals only retained files. No retained files produces no file rows and a zero total when requested.
+[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes sources at or above the byte threshold and totals only retained sources. No retained source produces no rows and a zero total when requested.
+
+`files` is an optional variadic argument with a custom Standard Schema. Its validator reads the validation context: a nonempty list passes, and an empty list passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false. Otherwise it returns the issue `Supply file arguments or pipe text to stdin.`, which core reports as an input error. The action never reads the terminal. It counts each supplied file, or `host.stdin` when no file is supplied, and prints the row name `stdin` for the piped text. Every source is counted incrementally over its chunks, so a word or a multibyte character that a chunk boundary splits is counted once.
+
+[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` and code 2, before any action runs. The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
 
 ## Graph inspection
 
-`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default through its schema, because that call can be asynchronous. So it applies the build and structural checks, every rule a single declaration carries, such as a Boolean option with `validate`, `required: true` beside a default, and a non-Boolean `required` or `variadic`, and the raw shape of a default declared without a schema. A rejected declaration throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1, and it alone reports a default its schema rejects. `inspect()` reads no host facts, and it caches nothing: each call builds the graph anew.
+`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default through its schema, because that call can be asynchronous. So it applies the build and structural checks, every rule a single declaration carries, such as a Boolean option with `validate`, `required: true` beside a default, and a non-Boolean `required`, `variadic`, or `validateOmitted`, and the raw shape of a default declared without a schema. A rejected declaration throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1, and it alone reports a default its schema rejects. `inspect()` reads no host facts, and it caches nothing: each call builds the graph anew.
 
 ```ts
 import { DeclarationError } from '@loom/core';
@@ -403,6 +490,7 @@ interface ArgumentNode {
   readonly required: boolean;
   readonly variadic: boolean;
   readonly validated: boolean;
+  readonly validateOmitted: boolean;
   readonly default: { readonly value: unknown } | undefined;
 }
 type OptionNode =
@@ -414,6 +502,7 @@ type OptionNode =
       readonly required: boolean;
       readonly multiple: boolean;
       readonly validated: boolean;
+      readonly validateOmitted: boolean;
       readonly default: { readonly value: unknown } | undefined;
     }
   | {
@@ -429,7 +518,7 @@ type OptionNode =
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
-- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
+- Schema objects stay private. `validated` says whether a schema exists, and `validateOmitted` says whether the declaration sends its omission to that schema. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
 
 ```ts
@@ -484,7 +573,7 @@ The environment snapshot is a plain, case-sensitive map on every operating syste
 
 Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads.
 
-The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference.
+The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference. Core exports the `Host` and `Out` types, so a helper extracted out of an action, such as a reader that opens a file or `host.stdin`, states its own parameters without reading them back off the action context.
 
 ## Output and failures
 
@@ -507,4 +596,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Help output, stdin selection, custom renderers, and plugins are outside this increment.
+Help output, custom renderers, and plugins are outside this increment.

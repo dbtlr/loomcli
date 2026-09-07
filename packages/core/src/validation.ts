@@ -1,8 +1,18 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { schemaOptions } from './context.js';
 import { DeclarationError, InputError } from './errors.js';
 import type { OptionValues } from './options.js';
-import type { ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
+import type {
+  ArgumentConfig,
+  ArgumentValue,
+  Host,
+  InputIdentity,
+  OptionConfig,
+  OptionValue,
+  SuppliedInputs,
+  ValidationContext,
+} from './types.js';
 
 /**
  * One declared input, typed by its literal name and its own config. The value type is derived from
@@ -31,6 +41,46 @@ export type InputDeclaration<Name extends string = string> =
 
 /** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
 export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
+
+/** The declarations one pass reads, by the scope that holds them: the graph's, then a Command's. */
+export interface ScopedInputs {
+  globals: readonly InputDeclaration[];
+  locals: readonly InputDeclaration[];
+}
+
+/** One declaration under its scope, which the context reports as part of its identity. */
+interface ScopedInput {
+  global: boolean;
+  input: InputDeclaration;
+}
+
+/** The raw tokens one invocation collected, keyed by declaration and by option name. */
+interface SuppliedValues {
+  args: ReadonlyMap<InputDeclaration, string | string[]>;
+  options: OptionValues;
+}
+
+/** Everything one invocation validates: its declarations, its tokens, and where they were read. */
+export interface Invocation {
+  command: readonly string[];
+  defaults: DefaultValues;
+  host: Host;
+  inputs: ScopedInputs;
+  passthrough: readonly string[];
+  supplied: SuppliedValues;
+}
+
+/** Every declaration in validation order: the globals first, then the reading Command's own. */
+function scoped(inputs: ScopedInputs): ScopedInput[] {
+  return [
+    ...inputs.globals.map((input) => ({ global: true, input })),
+    ...inputs.locals.map((input) => ({ global: false, input })),
+  ];
+}
+
+function identityOf({ global, input }: ScopedInput): InputIdentity {
+  return { global, kind: input.kind, name: input.name };
+}
 
 /**
  * The validated values of one invocation, keyed by declaration. Only `validateValues` constructs
@@ -90,19 +140,39 @@ function declaredName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
 }
 
-/** An input error names the spelling the operator supplied, because that is the token to change. */
+/**
+ * An input error names an option by its long form and an argument by its name, so a rule that
+ * reads an omission, where no token was supplied, names the declaration the same way.
+ */
 function suppliedName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
 }
 
-/** A multiple option collects its occurrences, so its raw value is the whole `string[]`. */
+/**
+ * A multiple option collects its occurrences and a variadic argument collects the remaining
+ * tokens, so either one carries the whole `string[]` as its raw value.
+ */
 function collects(input: InputDeclaration) {
-  return input.kind === 'option' && input.config.multiple === true;
+  return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
+}
+
+/**
+ * The declaration flag that sends an omitted value to its own schema. Every declaration reads it
+ * here, and the declaration rules below reject it wherever another rule already decides absence.
+ */
+export function validatesOmission(input: InputDeclaration) {
+  const { config } = input;
+  return 'validateOmitted' in config && config.validateOmitted;
 }
 
 /** One accessor for a supplied option value, so the collected and single shapes read alike. */
 function suppliedOption(options: OptionValues, name: string, collected: boolean) {
   return collected ? options.lists.get(name) : options.strings.get(name);
+}
+
+/** The copy a collected value is handed out as, because the parser's array is the action's. */
+function copied(value: string | string[] | undefined) {
+  return Array.isArray(value) ? [...value] : value;
 }
 
 /** Without a schema the raw shape is the declared default's only contract. */
@@ -113,12 +183,46 @@ function holdsRawDefault(input: InputDeclaration) {
     : typeof value === 'string';
 }
 
+/**
+ * `validateOmitted: true` is the one way an omitted scalar reaches its schema, so every other rule
+ * that already decides absence rejects it, and the flag needs a schema to receive the omission.
+ */
+function checkOmissionValidation(input: InputDeclaration) {
+  const { config } = input;
+  const subject = declaredName(input);
+  if (config.required) {
+    throw new DeclarationError(
+      `${subject} is required and declares validateOmitted. Remove validateOmitted or make the input optional.`,
+    );
+  }
+  if (hasDefault(input)) {
+    throw new DeclarationError(
+      `${subject} declares a default and validateOmitted. Remove one; the default already fills an omitted value.`,
+    );
+  }
+  if (collects(input)) {
+    throw new DeclarationError(
+      `${subject} collects its values and declares validateOmitted. Remove validateOmitted; an omitted collection reaches the schema as an empty array.`,
+    );
+  }
+  if (config.validate === undefined) {
+    throw new DeclarationError(
+      `${subject} declares validateOmitted without a schema. Add validate or remove validateOmitted.`,
+    );
+  }
+}
+
 function checkDeclaration(input: InputDeclaration) {
   const { config } = input;
   if (input.kind === 'option' && input.config.type === 'boolean') {
-    if ('validate' in config || 'default' in config || 'required' in config) {
+    if (
+      'validate' in config ||
+      'default' in config ||
+      'required' in config ||
+      'validateOmitted' in config
+    ) {
       throw new DeclarationError(
-        `${declaredName(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
+        `${declaredName(input)} is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.`,
       );
     }
     return;
@@ -128,22 +232,28 @@ function checkDeclaration(input: InputDeclaration) {
       `${declaredName(input)} required must be Boolean. Use true or false.`,
     );
   }
-  if (input.kind === 'argument') {
-    if (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean') {
-      throw new DeclarationError(
-        `${declaredName(input)} variadic must be Boolean. Use true or false.`,
-      );
-    }
-    if (input.config.variadic === true && !input.config.required) {
-      throw new DeclarationError(
-        `${declaredName(input)} is variadic and optional. Declare required: true or remove variadic.`,
-      );
-    }
+  if (
+    input.kind === 'argument' &&
+    input.config.variadic !== undefined &&
+    typeof input.config.variadic !== 'boolean'
+  ) {
+    throw new DeclarationError(
+      `${declaredName(input)} variadic must be Boolean. Use true or false.`,
+    );
+  }
+  // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
+  if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
+    throw new DeclarationError(
+      `${declaredName(input)} validateOmitted must be Boolean. Use true or false.`,
+    );
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
       `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
     );
+  }
+  if (validatesOmission(input)) {
+    checkOmissionValidation(input);
   }
   const schema = config.validate;
   if (
@@ -194,13 +304,14 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
 async function validate(
   input: InputDeclaration,
   raw: unknown,
+  context: ValidationContext,
 ): Promise<StandardSchemaV1.Result<unknown>> {
   const schema = input.config.validate;
   if (schema === undefined) {
     return { value: raw };
   }
   try {
-    const result: unknown = await schema['~standard'].validate(raw);
+    const result: unknown = await schema['~standard'].validate(raw, schemaOptions(context));
     if (result === null || typeof result !== 'object') {
       throw new Error('The validator returned an invalid Standard Schema result.');
     }
@@ -259,12 +370,22 @@ export function checkDeclarations(inputs: readonly InputDeclaration[]): void {
   }
 }
 
-export async function prepareInputs(inputs: readonly InputDeclaration[]): Promise<DefaultValues> {
-  checkDeclarations(inputs);
+/**
+ * Every declared default, validated before any token is read. The host is captured by then, so a
+ * default's schema reads the same Host its action will, under the `default` phase.
+ */
+export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<DefaultValues> {
+  const declarations = scoped(inputs);
+  checkDeclarations(declarations.map((entry) => entry.input));
   const defaults = new Map<InputDeclaration, unknown>();
-  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+  for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
+    const { input } = entry;
     const subject = declaredName(input);
-    const result = await validate(input, input.config.default);
+    const result = await validate(input, input.config.default, {
+      host,
+      input: identityOf(entry),
+      phase: 'default',
+    });
     if (result.issues !== undefined) {
       throw new DeclarationError(
         `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, result.issues).join('\n')}`,
@@ -276,31 +397,76 @@ export async function prepareInputs(inputs: readonly InputDeclaration[]): Promis
 }
 
 /**
- * Without a schema the declared array reaches the action itself, so each invocation takes a copy
- * and an action that mutates its collection cannot rewrite the declaration. A schema output is the
- * author's own value, produced anew for this invocation, so it passes through unchanged.
+ * An array default reaches the action as its own copy, so an action that mutates its collection
+ * rewrites neither the declaration nor the next invocation. A schema that returns a new array is
+ * copied too, because a pass-through schema returns the declared array itself and cannot be told
+ * apart from one that built its own. Every other output passes through unchanged.
  */
-function freshDefault(input: InputDeclaration, value: unknown) {
-  return input.config.validate === undefined && Array.isArray(value) ? [...value] : value;
+function freshDefault(value: unknown) {
+  return Array.isArray(value) ? [...value] : value;
 }
 
-export async function validateValues(
-  inputs: readonly InputDeclaration[],
-  supplied: { args: ReadonlyMap<InputDeclaration, string | string[]>; options: OptionValues },
-  defaults: DefaultValues,
-): Promise<ValidatedInputs> {
+/**
+ * The raw tokens of one invocation, keyed by declared name. Every declared input of the routed
+ * Command and every global appears, so absence reads as the shape its declaration collects. Each
+ * collected value is copied, because the parser's own array is what the action reads.
+ */
+function suppliedInputs(
+  declarations: readonly InputDeclaration[],
+  supplied: SuppliedValues,
+): SuppliedInputs {
+  const args: Record<string, string | readonly string[] | undefined> = {};
+  const options: Record<string, string | readonly string[] | boolean | undefined> = {};
+  for (const input of declarations) {
+    const collected = collects(input);
+    if (input.kind === 'argument') {
+      args[input.name] = copied(supplied.args.get(input)) ?? (collected ? [] : undefined);
+    } else if (input.config.type === 'boolean') {
+      options[input.name] = supplied.options.booleans.get(input.name);
+    } else {
+      options[input.name] =
+        copied(suppliedOption(supplied.options, input.name, collected)) ??
+        (collected ? [] : undefined);
+    }
+  }
+  return { args, options };
+}
+
+export async function validateValues(invocation: Invocation): Promise<ValidatedInputs> {
+  const { defaults, supplied } = invocation;
+  const declarations = scoped(invocation.inputs);
+  /**
+   * One reading of the tokens and the route, built anew for each schema call. The route, the
+   * tail, and every collected value are copies, so a schema that writes to them reaches neither
+   * the parser's collections, nor the tail the action receives, nor the next schema of this
+   * invocation. The host is the captured object itself, the one the action receives.
+   */
+  const facts = () => ({
+    command: [...invocation.command],
+    host: invocation.host,
+    passthrough: [...invocation.passthrough],
+    supplied: suppliedInputs(
+      declarations.map((entry) => entry.input),
+      supplied,
+    ),
+  });
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
   /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
-  const accept = async (input: InputDeclaration, raw: unknown, subject: string) => {
-    const result = await validate(input, raw);
+  const accept = async (entry: ScopedInput, raw: unknown, subject: string) => {
+    const result = await validate(entry.input, raw, {
+      ...facts(),
+      input: identityOf(entry),
+      phase: 'invocation',
+    });
     if (result.issues === undefined) {
-      values.set(input, result.value);
+      values.set(entry.input, result.value);
     } else {
       issues.push(...messages(subject, result.issues));
     }
   };
-  for (const input of inputs) {
+  for (const entry of declarations) {
+    const { input } = entry;
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(
         input,
@@ -322,12 +488,16 @@ export async function validateValues(
           );
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
-          await accept(input, [], subject);
+          await accept(entry, [], subject);
+        } else if (validatesOmission(input)) {
+          // The flag sends the omission itself to the schema, so an absence rule reads the same
+          // Invocation context a supplied value reads, and its issues read as input issues.
+          await accept(entry, undefined, subject);
         } else {
-          values.set(input, freshDefault(input, defaults.get(input)));
+          values.set(input, freshDefault(defaults.get(input)));
         }
       } else {
-        await accept(input, raw, subject);
+        await accept(entry, raw, subject);
       }
     }
   }

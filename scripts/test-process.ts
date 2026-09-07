@@ -1,7 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export function invoke(file: URL, args: string[] = [], options: { cwd?: string } = {}) {
+export function invoke(
+  file: URL,
+  args: string[] = [],
+  options: { cwd?: string; input?: string } = {},
+) {
   const result = spawnSync(
     process.env.LOOM_TEST_RUNTIME ?? 'node',
     [fileURLToPath(file), ...args],

@@ -25,6 +25,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         required: true,
         short: '-f',
         type: 'string',
+        validateOmitted: false,
         validated: false,
       },
       {
@@ -43,7 +44,14 @@ test('inspects a graph of globals, a root action, and three children', () => {
         {
           ...leaf,
           arguments: [
-            { default: none, name: 'path', required: true, validated: false, variadic: false },
+            {
+              default: none,
+              name: 'path',
+              required: true,
+              validateOmitted: false,
+              validated: false,
+              variadic: false,
+            },
           ],
           name: 'get',
           path: ['get'],
@@ -51,7 +59,14 @@ test('inspects a graph of globals, a root action, and three children', () => {
         {
           ...leaf,
           arguments: [
-            { default: none, name: 'path', required: false, validated: false, variadic: false },
+            {
+              default: none,
+              name: 'path',
+              required: false,
+              validateOmitted: false,
+              validated: false,
+              variadic: false,
+            },
           ],
           name: 'keys',
           path: ['keys'],
@@ -68,6 +83,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
               required: true,
               short: '-F',
               type: 'string',
+              validateOmitted: false,
               validated: false,
             },
           ],
@@ -143,6 +159,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       required: false,
       short: '-m',
       type: 'string',
+      validateOmitted: false,
       validated: false,
     },
   ]);
@@ -166,6 +183,7 @@ test('reads each spelling role from the table, including a name that begins with
       required: false,
       short: '-F',
       type: 'string',
+      validateOmitted: false,
       validated: false,
     },
   ]);
@@ -182,6 +200,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       required: false,
       short: null,
       type: 'string',
+      validateOmitted: false,
       validated: false,
     },
     {
@@ -192,6 +211,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       required: false,
       short: null,
       type: 'string',
+      validateOmitted: false,
       validated: true,
     },
     {
@@ -202,6 +222,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       required: false,
       short: null,
       type: 'string',
+      validateOmitted: false,
       validated: false,
     },
   ]);
@@ -210,7 +231,46 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       default: { value: 'root' },
       name: 'path',
       required: false,
+      validateOmitted: false,
       validated: false,
+      variadic: false,
+    },
+  ]);
+});
+
+test('reports the option and the argument that validate their own omission', () => {
+  const root = invokeInspect('omission').root;
+  expect(root.options).toEqual([
+    {
+      default: none,
+      long: '--file',
+      multiple: false,
+      name: 'file',
+      required: false,
+      short: null,
+      type: 'string',
+      validateOmitted: true,
+      validated: true,
+    },
+    {
+      default: none,
+      long: '--size',
+      multiple: false,
+      name: 'size',
+      required: false,
+      short: null,
+      type: 'string',
+      validateOmitted: false,
+      validated: true,
+    },
+  ]);
+  expect(root.arguments).toEqual([
+    {
+      default: none,
+      name: 'path',
+      required: false,
+      validateOmitted: true,
+      validated: true,
       variadic: false,
     },
   ]);
@@ -224,24 +284,37 @@ test('throws a DeclarationError a consumer catches by class, without run()', () 
   });
 });
 
+test('reports an optional variadic argument with its declared default', () => {
+  expect(invokeInspect('tails').root.arguments).toEqual([
+    {
+      default: { value: ['a'] },
+      name: 'files',
+      required: false,
+      validateOmitted: false,
+      validated: false,
+      variadic: true,
+    },
+  ]);
+});
+
 test.each([
-  [
-    'optional-variadic',
-    'Argument "files" is variadic and optional. Declare required: true or remove variadic.',
-  ],
   ['nonboolean-variadic', 'Argument "files" variadic must be Boolean. Use true or false.'],
   ['nonboolean-required', 'Option "size" required must be Boolean. Use true or false.'],
+  ['nonboolean-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
+  ['numeric-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
+  ['null-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
+  ['undefined-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
   [
     'required-default',
     'Option "depth" is required and declares a default. Remove the default or make the input optional.',
   ],
   [
     'boolean-validate',
-    'Option "total" is Boolean. Remove validate, default, and required; use polarity to control its absent value.',
+    'Option "total" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
   ],
   [
     'boolean-default',
-    'Option "total" is Boolean. Remove validate, default, and required; use polarity to control its absent value.',
+    'Option "total" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
   ],
   [
     'foreign-schema',

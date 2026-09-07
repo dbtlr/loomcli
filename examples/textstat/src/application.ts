@@ -2,9 +2,10 @@ import { Application } from '@loom/core';
 import { z } from 'zod';
 
 import { countFiles } from './count-files.js';
+import { filesOrStdin } from './files-or-stdin.js';
 
 export const textstat = new Application('textstat')
-  .argument('files', { required: true, variadic: true })
+  .argument('files', { validate: filesOrStdin, variadic: true })
   .option('metric', {
     default: 'bytes',
     short: 'm',

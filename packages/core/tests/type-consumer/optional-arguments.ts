@@ -36,5 +36,22 @@ new Command('bad').argument('path', { default: '10', required: true });
 new Command('ok').argument('path', { default: 'a' });
 // @ts-expect-error TS2322: An unvalidated argument default is a string.
 new Command('bad').argument('path', { default: 0 });
-// @ts-expect-error TS2345: A variadic argument stays required.
-new Command('bad').argument('files', { required: false, variadic: true });
+
+new Command('tail').argument('files', { required: false, variadic: true }).action(({ args }) => {
+  const files: string[] = args.files;
+  return files;
+});
+
+new Command('validated-tail')
+  .argument('files', {
+    validate: z.array(z.string()).transform((files) => files.length),
+    variadic: true,
+  })
+  .action(({ args }) => {
+    const count: number = args.files;
+    return count;
+  });
+
+new Command('defaulted-tail').argument('files', { default: ['a'], variadic: true });
+// @ts-expect-error TS2322: An unvalidated variadic default is a string array.
+new Command('bad').argument('files', { default: 'a', variadic: true });
