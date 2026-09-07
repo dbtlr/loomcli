@@ -36,8 +36,8 @@ function jsonkit() {
 function nested() {
   const globals = new GlobalOptions();
   const clear = new Command('clear', globals).action(dispatch);
-  const list = new Command('list', globals).action(dispatch);
-  const cache = new Command('cache', globals).command(clear).command(list);
+  const list = new Command('list', globals).alias('ls').alias('l').action(dispatch);
+  const cache = new Command('cache', globals).alias('c').command(clear).command(list);
   return new Application('store', { globals }).command(cache).action(dispatch);
 }
 
@@ -184,6 +184,9 @@ if (mode === 'catch') {
   });
   record('argument', () => {
     graph.root.children[0].arguments[0].required = false;
+  });
+  record('aliases', () => {
+    graph.root.children[0].aliases.push('other');
   });
   process.stdout.write(`${encode({ attempts, repeats: build().inspect().name })}\n`);
 } else {

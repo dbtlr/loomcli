@@ -12,7 +12,7 @@ function invokeInspect(graph: string, mode = 'json') {
   return JSON.parse(result.stdout);
 }
 
-const leaf = { arguments: [], children: [], hasAction: true, options: [] };
+const leaf = { aliases: [], arguments: [], children: [], hasAction: true, options: [] };
 
 test('inspects a graph of globals, a root action, and three children', () => {
   expect(invokeInspect('jsonkit')).toEqual({
@@ -39,6 +39,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
     ],
     name: 'jsonkit',
     root: {
+      aliases: [],
       arguments: [],
       children: [
         {
@@ -103,13 +104,15 @@ test('inspects a group at two named levels below the root', () => {
     globals: [],
     name: 'store',
     root: {
+      aliases: [],
       arguments: [],
       children: [
         {
+          aliases: ['c'],
           arguments: [],
           children: [
             { ...leaf, name: 'clear', path: ['cache', 'clear'] },
-            { ...leaf, name: 'list', path: ['cache', 'list'] },
+            { ...leaf, aliases: ['ls', 'l'], name: 'list', path: ['cache', 'list'] },
           ],
           hasAction: false,
           name: 'cache',
@@ -367,6 +370,7 @@ test('returns frozen data and builds a new graph on each call', () => {
       { label: 'root', rejected: true },
       { label: 'children', rejected: true },
       { label: 'argument', rejected: true },
+      { label: 'aliases', rejected: true },
     ],
     repeats: 'jsonkit',
   });

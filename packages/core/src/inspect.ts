@@ -37,9 +37,14 @@ type OptionNode =
       readonly polarity: 'positive' | 'negative' | 'both';
     };
 
-/** One Command in the graph. `name` is `null` for the root, and `path` is its route from it. */
+/**
+ * One Command in the graph. `name` is `null` for the root, and `path` is its route from it.
+ * `aliases` holds the hidden aliases in declaration order, so a Command appears once, under its
+ * canonical name, and `path` never holds an alias.
+ */
 interface CommandNode {
   readonly name: string | null;
+  readonly aliases: readonly string[];
   readonly path: readonly string[];
   readonly hasAction: boolean;
   readonly arguments: readonly ArgumentNode[];
@@ -153,6 +158,7 @@ function optionNodes(
 
 function commandNode(command: BuiltCommand, path: readonly string[]): CommandNode {
   const node: CommandNode = {
+    aliases: Object.freeze([...command.aliases]),
     arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot))),
     children: Object.freeze(
       [...command.children].map(([name, child]) =>
