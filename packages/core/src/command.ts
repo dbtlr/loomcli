@@ -253,7 +253,7 @@ export function declareAlias<Args, Options, Globals>(
     aliases: [...state.aliases, names],
     late: recordLate(
       state,
-      names.map((alias) => ({ alias, kind: 'alias' as const })),
+      names.map((alias): LateDeclaration => ({ alias, kind: 'alias' })),
     ),
   };
 }
