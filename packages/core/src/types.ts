@@ -209,6 +209,7 @@ export type BooleanOption =
       default?: never;
       multiple?: never;
       required?: never;
+      validateOmitted?: never;
       polarity?: 'positive' | 'negative';
     })
   | {
@@ -217,6 +218,7 @@ export type BooleanOption =
       default?: never;
       multiple?: never;
       required?: never;
+      validateOmitted?: never;
       polarity: 'both';
       short?: ShortAlias;
       shortOnly?: false;
