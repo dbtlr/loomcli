@@ -8,14 +8,6 @@ import { readFragments } from './fragments.js';
 import { prepareRelease } from './release.js';
 import { writeRelease } from './write.js';
 
-function releaseOptions(name: string) {
-  return new Command(name)
-    .option('date', { type: 'string' })
-    .option('initial', { type: 'boolean' })
-    .option('since', { type: 'string' })
-    .option('narrative', { type: 'string' });
-}
-
 function prepare(
   root: string,
   options: {
@@ -67,16 +59,26 @@ export const changelog = new Command('changelog')
     }),
   )
   .command(
-    releaseOptions('preview').action(async ({ host, options, out, passthrough }) => {
-      await output(out, passthrough, () => prepare(host.cwd, options).section);
-    }),
+    new Command('preview')
+      .option('date', { type: 'string' })
+      .option('initial', { type: 'boolean' })
+      .option('since', { type: 'string' })
+      .option('narrative', { type: 'string' })
+      .action(async ({ host, options, out, passthrough }) => {
+        await output(out, passthrough, () => prepare(host.cwd, options).section);
+      }),
   )
   .command(
-    releaseOptions('write').action(async ({ host, options, out, passthrough }) => {
-      await output(out, passthrough, () => {
-        const release = prepare(host.cwd, options);
-        writeRelease(host.cwd, release);
-        return release.section;
-      });
-    }),
+    new Command('write')
+      .option('date', { type: 'string' })
+      .option('initial', { type: 'boolean' })
+      .option('since', { type: 'string' })
+      .option('narrative', { type: 'string' })
+      .action(async ({ host, options, out, passthrough }) => {
+        await output(out, passthrough, () => {
+          const release = prepare(host.cwd, options);
+          writeRelease(host.cwd, release);
+          return release.section;
+        });
+      }),
   );
