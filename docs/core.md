@@ -36,7 +36,7 @@ Declare arguments and options, attach the children, then register the action las
 | `argument()` | `command()`, because one Command declares arguments or attaches children, never both                        |
 | `command()`  | `argument()`, the same rule read from the other side                                                        |
 | `option()`   | nothing                                                                                                     |
-| `alias()`    | nothing; an Application never publishes it, because the unnamed root has no name to alias                   |
+| `alias()`    | nothing                                                                                                     |
 | `action()`   | every declaration call; an Application keeps `inspect()`, `run()`, and `name`, a Command its inferred types |
 
 Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available. Only an `Application` publishes `inspect()`, `run()`, and `name`, in every state; a named `Command` publishes its authoring calls alone. The type states do not read what a group holds, so build rejects an option declared on a Command that registers no action: a local option never reaches a child's action. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
