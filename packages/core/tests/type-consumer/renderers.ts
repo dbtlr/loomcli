@@ -76,6 +76,13 @@ const failures: readonly FailureRenderer[] = [
 renderFailure(Error, anyFailure);
 // @ts-expect-error TS2345: A renderer for another class cannot answer this one.
 renderFailure(UnknownCommandError, problems);
+// @ts-expect-error TS2345: A renderer for one subclass cannot answer every UsageError.
+renderFailure(UsageError, problems);
+
+const usageFailure: Renderer<UsageError> = {
+  render: (failure) => `${String(failure.exitCode)}: ${failure.message}`,
+};
+renderFailure(InputError, usageFailure);
 
 const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
 const configured: ApplicationOptions<{ file: string }> = { failures, globals };

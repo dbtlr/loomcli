@@ -14,8 +14,8 @@ const supplied = {
   'string-options': 'globals',
 };
 
-// Construction never inspects the options slot, so every scenario reaches this line, and the
-// Fault (when there is one) surfaces only at `inspect()` or `run()`, below.
+// Construction never inspects the options slot, so every scenario reaches this line.
+// The fault, when there is one, surfaces only at `inspect()` or `run()`, below.
 const app = new Application('fixture', supplied[scenario]).action(({ out }) =>
   out.print('dispatched'),
 );

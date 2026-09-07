@@ -86,7 +86,9 @@ class ApplicationBuilder<
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
-  // The constructor's raw options argument, unexamined until build, so the options-slot rules answer at the same point every other authoring fault does: `inspect()` and `run()`.
+  // The constructor's raw options argument stays unexamined until build.
+  // The options-slot rules answer at the same point every other authoring fault does:
+  // `inspect()` and `run()`.
   readonly #options: unknown;
 
   constructor(

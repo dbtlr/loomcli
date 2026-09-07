@@ -139,7 +139,7 @@ export type ValidationContext =
  * holds no output handle. A throw or a non-string return is a renderer failure.
  */
 export interface Renderer<Data> {
-  render(data: Readonly<Data>): string;
+  render: (data: Readonly<Data>) => string;
 }
 export interface Out {
   print(message: string): Promise<void>;

@@ -67,6 +67,15 @@ test('consumes an all-global short group and leaves local letters to the Command
   });
 });
 
+test('accepts a local option strictly after its own argument', () => {
+  expect(report(['-qf', 'data.json', 'get', 'a.b', '-r'])).toEqual({
+    args: { path: 'a.b' },
+    command: 'get',
+    options: { file: 'data.json', quiet: true, raw: true },
+    passthrough: [],
+  });
+});
+
 test('a local option on a root with children commits to the root action', () => {
   expect(report(['--file', 'data.json', '--pretty'])).toEqual({
     args: {},
