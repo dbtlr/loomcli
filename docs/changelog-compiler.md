@@ -4,9 +4,9 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 # Changelog compiler
 
-The changelog compiler is a private Loom application, `@loomcli/changelog`, in `apps/changelog`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. It is not published or included in library version bumps.
+The changelog compiler is the first command group in the private Loom CLI, `@loomcli/loom`, in `apps/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. It is not published or included in library version bumps.
 
-`pnpm build` compiles the library, examples, and local changelog application. Running the changelog application prepares release files.
+`pnpm build` compiles the library, examples, and local Loom CLI. Running its changelog command group prepares release files.
 
 An agent release skill coordinates preparation and reviews the result. GitHub Actions can build and publish the approved release. Those release orchestration and publication tools are separate work.
 
@@ -15,9 +15,9 @@ An agent release skill coordinates preparation and reviews the result. GitHub Ac
 Run `pnpm build` after installing dependencies or changing the application source. Run the following commands from the repository root. The compiled application runs with Node 22.23.2 or Bun 1.4.0. The root command preserves the repository as the working directory.
 
 ```sh
-pnpm changelog check
-pnpm changelog preview --date 2026-09-07
-pnpm changelog write --date 2026-09-07
+pnpm loom changelog check
+pnpm loom changelog preview --date 2026-09-07
+pnpm loom changelog write --date 2026-09-07
 ```
 
 `check` validates every file in `.changes/`, except the regular file `README.md`. It accepts an empty set and does not require Git history. The [fragment guide](../.changes/README.md) defines the Markdown grammar. Leading verbs, consumer relevance, and migration accuracy remain review judgments. Fragments and narratives cannot leave Markdown blocks open across generated release headings.

@@ -14,14 +14,14 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "pnpm run build && vp check && pnpm run check:types && pnpm run changelog check",
+    "check": "pnpm run build && vp check && pnpm run check:types && pnpm run loom changelog check",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && vp test --run",
     "verify": "pnpm run check && vp test --run",
-    "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/textstat/tsconfig.json && tsc -p examples/jsonkit/tsconfig.json && tsc -p apps/changelog/tsconfig.json",
+    "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/textstat/tsconfig.json && tsc -p examples/jsonkit/tsconfig.json && tsc -p apps/loom/tsconfig.json",
     "check:types": "node packages/core/tests/check-types.mjs",
-    "changelog": "node apps/changelog/dist/main.js"
+    "loom": "node apps/loom/dist/main.js"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

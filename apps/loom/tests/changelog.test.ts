@@ -26,7 +26,7 @@ function fixture() {
   return root;
 }
 function run(root: string, ...args: string[]) {
-  return invoke(cli, args, { cwd: root });
+  return invoke(cli, ['changelog', ...args], { cwd: root });
 }
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -338,7 +338,15 @@ syncBuiltinESMExports();
   commit(root);
   const result = spawnSync(
     'node',
-    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'write', '--date', '2026-09-07'],
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      fileURLToPath(cli),
+      'changelog',
+      'write',
+      '--date',
+      '2026-09-07',
+    ],
     {
       cwd: root,
       encoding: 'utf8',
@@ -474,7 +482,7 @@ syncBuiltinESMExports();
   commit(root);
   const result = spawnSync(
     'node',
-    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'write'],
+    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'changelog', 'write'],
     {
       cwd: root,
       encoding: 'utf8',

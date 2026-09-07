@@ -26,7 +26,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ['apps/changelog/src/**'],
+        files: ['apps/loom/src/**'],
         // Preserve compiler operation boundaries and Markdown/version constants.
         rules: {
           'eslint/max-params': 'off',

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Application, Command } from '@loom/core';
+import { Command } from '@loom/core';
 import type { Out } from '@loom/core';
 
 import { readFragments } from './fragments.js';
@@ -57,7 +57,7 @@ async function output(out: Out, passthrough: string[], produce: () => string) {
   }
 }
 
-export const changelog = new Application('changelog')
+export const changelog = new Command('changelog')
   .command(
     new Command('check').action(async ({ host, out, passthrough }) => {
       await output(out, passthrough, () => {

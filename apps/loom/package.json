@@ -1,5 +1,5 @@
 {
-  "name": "@loomcli/changelog",
+  "name": "@loomcli/loom",
   "private": true,
   "type": "module",
   "dependencies": {
