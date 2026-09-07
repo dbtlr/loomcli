@@ -46,7 +46,7 @@ test('a supplied value still reaches the same schema as its own string', () => {
   });
 });
 
-test('an issue from the omitted call is an input error naming the supplied spelling', () => {
+test("an issue from the omitted call is an input error naming the option's long form", () => {
   expect(omitted('option-issue')).toEqual({
     status: 2,
     stderr: 'Invalid input: Option "--file": Supply a file or pipe JSON to stdin.\n',
