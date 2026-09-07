@@ -38,8 +38,11 @@ type OptionSpelling =
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
 /** The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does. */
 type Multiplicity = { multiple: true } | { multiple?: false };
-/** The tokens one declaration collects before validation: one string, or every occurrence. */
-type RawOptionValue<Config> = Config extends { multiple: true } ? string[] : string;
+/**
+ * The tokens one declaration collects before validation: one string, or the whole collection. A
+ * multiple option and a variadic argument collect alike, so they share this raw shape.
+ */
+type RawValue<Config> = Config extends { multiple: true } | { variadic: true } ? string[] : string;
 type SchemaOutput<Schema, Raw> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<Schema>
   : Raw;
@@ -101,12 +104,8 @@ export interface Out {
 export type StringOption = OptionSpelling &
   Presence &
   Multiplicity & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
-export interface VariadicArgument {
-  variadic: true;
-  required: true;
-  validate?: StandardSchemaV1;
-  default?: never;
-}
+/** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
+export type VariadicArgument = Presence & { variadic: true; validate?: StandardSchemaV1 };
 export type ScalarArgument = Presence & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
@@ -119,7 +118,7 @@ export type DefaultConstraint<Config> = Config extends unknown
   ? Config & {
       default?: 'validate' extends keyof Config
         ? SchemaInput<Config['validate']>
-        : RawOptionValue<Config>;
+        : RawValue<Config>;
     }
   : never;
 

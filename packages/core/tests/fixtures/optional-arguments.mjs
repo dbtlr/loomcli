@@ -15,6 +15,7 @@ const counting = (inner) => ({
   },
 });
 const report = ({ args, passthrough, out }) => out.print(JSON.stringify({ args, passthrough }));
+const strings = z.array(z.string());
 
 let app = undefined;
 switch (scenario) {
@@ -58,9 +59,36 @@ switch (scenario) {
     app = new Application('optional').argument('path', {}).argument('extra', {}).action(report);
     break;
   }
-  case 'optional-variadic': {
+  case 'tail': {
     app = new Application('optional')
-      .argument('files', { required: false, variadic: true })
+      .argument('files', { validate: counting(strings), variadic: true })
+      .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
+    break;
+  }
+  case 'tail-default': {
+    app = new Application('optional')
+      .argument('files', { default: ['a'], variadic: true })
+      .action(({ args, out }) => {
+        args.files.push('x');
+        return out.print(JSON.stringify({ args }));
+      });
+    break;
+  }
+  case 'tail-required': {
+    app = new Application('optional')
+      .argument('files', { required: true, variadic: true })
+      .action(report);
+    break;
+  }
+  case 'tail-raw-default': {
+    app = new Application('optional')
+      .argument('files', { default: 'a', variadic: true })
+      .action(report);
+    break;
+  }
+  case 'tail-invalid-default': {
+    app = new Application('optional')
+      .argument('files', { default: ['bad'], validate: z.array(digits), variadic: true })
       .action(report);
     break;
   }
@@ -69,3 +97,7 @@ switch (scenario) {
   }
 }
 await app.run({ host: { argv } });
+// A second run proves each invocation receives its own copy of a declared array default.
+if (scenario === 'tail-default') {
+  await app.run({ host: { argv } });
+}

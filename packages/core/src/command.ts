@@ -549,12 +549,15 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
     const { name } = slot.input;
     if (slot.variadic) {
       const rest = positionals.slice(index);
-      if (rest.length === 0) {
+      if (rest.length === 0 && slot.required) {
         throw new InputError(
           `Argument "${name}" requires at least one value. Supply a value for "${name}".`,
         );
       }
-      values.set(slot.input, rest);
+      // An optional variadic binds nothing on an empty tail, so validation reads it as `[]`.
+      if (rest.length > 0) {
+        values.set(slot.input, rest);
+      }
       index = positionals.length;
     } else {
       const value = positionals[index];

@@ -84,12 +84,58 @@ test.each([
     'after-optional',
     'Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.',
   ],
-  [
-    'optional-variadic',
-    'Argument "files" is variadic and optional. Declare required: true or remove variadic.',
-  ],
 ])('%s fails graph build before token parsing', (scenario, diagnostic) => {
   const result = optional(scenario, ['one', 'two']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+});
+
+test('an omitted optional variadic argument reaches its schema as an empty collection', () => {
+  expect(optional('tail')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{"files":[]},"calls":1}\n',
+  });
+  expect(optional('tail', ['one', 'two'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{"files":["one","two"]},"calls":1}\n',
+  });
+});
+
+test('a variadic default fills an omitted tail and each invocation receives its own copy', () => {
+  const line = '{"args":{"files":["a","x"]}}\n';
+  expect(optional('tail-default')).toEqual({ status: 0, stderr: '', stdout: `${line}${line}` });
+  const supplied = '{"args":{"files":["one","x"]}}\n';
+  expect(optional('tail-default', ['one'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${supplied}${supplied}`,
+  });
+});
+
+test('a required variadic argument still rejects an empty tail', () => {
+  const missing = optional('tail-required');
+  expect(missing.status).toBe(2);
+  expect(missing.stderr).toBe(
+    'Invalid input: Argument "files" requires at least one value. Supply a value for "files".\n',
+  );
+  expect(optional('tail-required', ['one'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{"files":["one"]},"passthrough":[]}\n',
+  });
+});
+
+test.each([
+  [
+    'tail-raw-default',
+    'Argument "files" default must be an array of strings without a schema. Supply a string array default.',
+  ],
+  ['tail-invalid-default', 'Argument "files" has an invalid default.'],
+])('%s is a declaration error', (scenario, diagnostic) => {
+  const result = optional(scenario, ['one']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);

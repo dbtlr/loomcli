@@ -224,11 +224,19 @@ test('throws a DeclarationError a consumer catches by class, without run()', () 
   });
 });
 
+test('reports an optional variadic argument with its declared default', () => {
+  expect(invokeInspect('tails').root.arguments).toEqual([
+    {
+      default: { value: ['a'] },
+      name: 'files',
+      required: false,
+      validated: false,
+      variadic: true,
+    },
+  ]);
+});
+
 test.each([
-  [
-    'optional-variadic',
-    'Argument "files" is variadic and optional. Declare required: true or remove variadic.',
-  ],
   ['nonboolean-variadic', 'Argument "files" variadic must be Boolean. Use true or false.'],
   ['nonboolean-required', 'Option "size" required must be Boolean. Use true or false.'],
   [

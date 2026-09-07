@@ -95,9 +95,12 @@ function suppliedName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
 }
 
-/** A multiple option collects its occurrences, so its raw value is the whole `string[]`. */
+/**
+ * A multiple option collects its occurrences and a variadic argument collects the remaining
+ * tokens, so either one carries the whole `string[]` as its raw value.
+ */
 function collects(input: InputDeclaration) {
-  return input.kind === 'option' && input.config.multiple === true;
+  return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
 }
 
 /** One accessor for a supplied option value, so the collected and single shapes read alike. */
@@ -128,17 +131,14 @@ function checkDeclaration(input: InputDeclaration) {
       `${declaredName(input)} required must be Boolean. Use true or false.`,
     );
   }
-  if (input.kind === 'argument') {
-    if (input.config.variadic !== undefined && typeof input.config.variadic !== 'boolean') {
-      throw new DeclarationError(
-        `${declaredName(input)} variadic must be Boolean. Use true or false.`,
-      );
-    }
-    if (input.config.variadic === true && !input.config.required) {
-      throw new DeclarationError(
-        `${declaredName(input)} is variadic and optional. Declare required: true or remove variadic.`,
-      );
-    }
+  if (
+    input.kind === 'argument' &&
+    input.config.variadic !== undefined &&
+    typeof input.config.variadic !== 'boolean'
+  ) {
+    throw new DeclarationError(
+      `${declaredName(input)} variadic must be Boolean. Use true or false.`,
+    );
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
