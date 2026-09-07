@@ -342,7 +342,7 @@ Core calls every schema through the Standard Schema options argument, under the 
 
 ```ts
 import { validationContext } from '@loom/core';
-import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { StandardSchemaV1 } from '@loom/core';
 
 const upper = {
   '~standard': {
@@ -358,7 +358,7 @@ const upper = {
 };
 ```
 
-The accessor answers for the contexts core produced alone. A value another caller writes under the same key reads as `undefined`.
+Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loom/core` alone. The accessor answers for the contexts core produced alone. A value another caller writes under the same key reads as `undefined`.
 
 | Field         | `phase: 'default'`       | `phase: 'invocation'`                                      |
 | ------------- | ------------------------ | ---------------------------------------------------------- |

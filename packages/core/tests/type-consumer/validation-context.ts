@@ -1,8 +1,10 @@
 import { Application, validationContext, validationContextKey } from '@loom/core';
-import type { InputIdentity, SuppliedInputs, ValidationContext } from '@loom/core';
-
-/** The accessor publishes the options shape a schema receives, so a schema reads it from there. */
-type SchemaOptions = Parameters<typeof validationContext>[0];
+import type {
+  InputIdentity,
+  StandardSchemaV1,
+  SuppliedInputs,
+  ValidationContext,
+} from '@loom/core';
 
 const key: string = validationContextKey;
 const identity: InputIdentity = { global: true, kind: 'option', name: 'mode' };
@@ -33,7 +35,7 @@ new Application('context-types')
     validate: {
       '~standard': {
         types,
-        validate: (value: unknown, options?: SchemaOptions) => {
+        validate: (value: unknown, options?: StandardSchemaV1.Options) => {
           const context = validationContext(options);
           if (context) {
             reports.push(describe(context));
