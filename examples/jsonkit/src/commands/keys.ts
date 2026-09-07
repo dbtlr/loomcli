@@ -3,4 +3,5 @@ import { Command } from '@loom/core';
 import { listKeys } from '../actions/list-keys.js';
 import { globals } from '../globals.js';
 
-export const keys = new Command('keys', globals).argument('path', {}).action(listKeys);
+// `ls` is a hidden alias: it routes to this Command, and no projection advertises it.
+export const keys = new Command('keys', globals).alias('ls').argument('path', {}).action(listKeys);
