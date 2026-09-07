@@ -63,6 +63,23 @@ function build() {
         )
         .action(dispatch);
     }
+    case 'shared-child': {
+      const clear = leaf('clear');
+      return app
+        .command(new Command('cache', globals).command(clear))
+        .command(clear)
+        .action(dispatch);
+    }
+    case 'shared-child-same-parent-name': {
+      // Two distinct parents named "cache" at different depths attach one "clear" value.
+      const clear = leaf('clear');
+      return app
+        .command(new Command('cache', globals).command(clear))
+        .command(
+          new Command('other', globals).command(new Command('cache', globals).command(clear)),
+        )
+        .action(dispatch);
+    }
     default: {
       return app.command(new Command('cache', globals).command(leaf('clear'))).action(dispatch);
     }

@@ -84,6 +84,14 @@ test.each([
     'nested-shared-option-key',
     'Option "file" is declared as a global option and as a local option on Command "clear". Rename the local option.',
   ],
+  [
+    'shared-child',
+    'Command "cache" attaches child "clear", which the root Command also attaches. Attach a Command value at one point; create a new Command for each placement.',
+  ],
+  [
+    'shared-child-same-parent-name',
+    'Command "cache" attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
+  ],
 ] satisfies [string, string][])(
   'rejects the %s graph at its depth before reading tokens',
   (scenario, reason) => {
