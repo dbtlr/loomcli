@@ -522,8 +522,8 @@ export function buildCommand<Args, Options, Globals>(
     );
   }
   const attached = collectChildren(state);
-  const aliases = collectAliases(state);
   checkDeclarationOrder(state);
+  const aliases = collectAliases(state);
   const slots = collectArguments(state, subject);
   const first = slots[0];
   const child = attached[0];
