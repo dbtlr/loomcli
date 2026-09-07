@@ -118,6 +118,32 @@ test.each([
     'Option "file" is declared as a global option and as a local option on Command "clear". Rename the local option.',
   ],
   [
+    'alias-sibling-name',
+    'The root Command attaches child "keys" with alias "get", which is also the name of child "get". Rename or remove one.',
+  ],
+  [
+    'alias-sibling-alias',
+    'The root Command attaches child "keys" with alias "ls", which is also an alias of child "select". Rename or remove one.',
+  ],
+  [
+    'alias-own-name',
+    'Command "keys" declares alias "keys", which is its own name. Remove the alias.',
+  ],
+  ['repeated-alias', 'Command "keys" declares alias "ls" twice. Remove the repeated alias.'],
+  [
+    'invalid-alias-name',
+    'Command "keys" declares an alias named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
+  [
+    'late-alias',
+    'Command "keys" declares alias "ls" after its action. Declare arguments and options before action().',
+  ],
+  [
+    'nested-alias-sibling-name',
+    'Command "cache" attaches child "list" with alias "clear", which is also the name of child "clear". Rename or remove one.',
+  ],
+  [
     'shared-child',
     'The root Command attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
   ],
