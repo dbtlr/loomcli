@@ -436,9 +436,10 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   const { defaults, supplied } = invocation;
   const declarations = scoped(invocation.inputs);
   /**
-   * One reading of the tokens and the route, built anew for each schema call. Every array in it
-   * is a copy, so a schema that writes to its context reaches neither the parser's collections,
-   * nor the tail the action receives, nor the next schema of this invocation.
+   * One reading of the tokens and the route, built anew for each schema call. The route, the
+   * tail, and every collected value are copies, so a schema that writes to them reaches neither
+   * the parser's collections, nor the tail the action receives, nor the next schema of this
+   * invocation. The host is the captured object itself, the one the action receives.
    */
   const facts = () => ({
     command: [...invocation.command],
