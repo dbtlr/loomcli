@@ -46,6 +46,17 @@ if (scenario === 'cwd') {
       terminal: { ...piped, stdin: { isTTY: true } },
     },
   });
+} else if (scenario === 'terminal-file') {
+  await withDocument('data.json', (cwd) =>
+    jsonkit.run({
+      host: {
+        argv: ['get', 'name', '--file', 'data.json'],
+        cwd,
+        stdin: documentStream(),
+        terminal: { ...piped, stdin: { isTTY: true } },
+      },
+    }),
+  );
 } else if (scenario === 'unreadable') {
   const stdin = new Readable({
     read() {

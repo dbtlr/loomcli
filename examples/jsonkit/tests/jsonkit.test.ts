@@ -218,9 +218,17 @@ test.each(['cwd', 'stdin'])(
 
 test('jsonkit asks for a file or piped JSON when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
-    status: 1,
-    stderr: 'Supply a file or pipe JSON to stdin.\n',
+    status: 2,
+    stderr: 'Invalid input: Option "--file": Supply a file or pipe JSON to stdin.\n',
     stdout: '',
+  });
+});
+
+test('jsonkit reads a supplied file at a terminal, because the file answers the rule', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-file'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '"loom"\n',
   });
 });
 

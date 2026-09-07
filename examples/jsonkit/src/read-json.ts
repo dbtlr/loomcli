@@ -20,13 +20,10 @@ function explain(error: unknown, fallback: string) {
 
 /**
  * The source of one invocation. A supplied file is the selection; without one the piped text is.
- * A terminal has no piped text, so the rule reads there instead of leaving the run waiting.
+ * The `--file` schema decides whether omission is allowed, so no host fact is read here.
  */
-function select(file: string | undefined, host: Host, out: Out): Source {
+function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {
-    if (host.terminal.stdin.isTTY) {
-      out.fatal('Supply a file or pipe JSON to stdin.');
-    }
     return { failure: 'stdin', name: 'stdin', stream: host.stdin };
   }
   return {
@@ -38,7 +35,7 @@ function select(file: string | undefined, host: Host, out: Out): Source {
 
 /** Every action reads its document here, so read and parse failures read the same everywhere. */
 export async function readJson(file: string | undefined, host: Host, out: Out): Promise<unknown> {
-  const source = select(file, host, out);
+  const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) =>
     out.fatal(`Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`),
   );
