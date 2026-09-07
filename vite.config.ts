@@ -177,6 +177,10 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
-    include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
+    include: [
+      'packages/*/tests/**/*.test.ts',
+      'examples/*/tests/**/*.test.ts',
+      'scripts/tests/**/*.test.ts',
+    ],
   },
 });

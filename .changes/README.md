@@ -4,7 +4,7 @@ description: Pull request rules and examples for ordinary and breaking library c
 
 # Change fragments
 
-This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Fragment checks and release compilation are not yet automated. Review the rules below manually.
+This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes preview and release-file preparation. PR fragment admission and version guards remain manual.
 
 ## Choose a fragment or a skip label
 
@@ -84,9 +84,9 @@ When a later PR changes or removes a result described by an earlier fragment, am
 
 ## Keep release versions separate from feature PRs
 
-All publishable first-party libraries share one exact version. During `0.x`, a breaking fragment advances the minor and resets the patch. Compatible additions and fixes advance the patch. The first release is `0.1.0`; manifests remain at `0.0.0` until that cut.
+All publishable first-party libraries share one exact version. The compiler increments from that current `package.json` version, and rejects mismatched library versions. During `0.x`, a breaking fragment advances the minor and resets the patch. Compatible additions and fixes advance the patch. The first release is `0.1.0`; manifests remain at `0.0.0` until that cut.
 
-Keep library manifest versions unchanged in ordinary PRs. Leave fragments pending for the release cut instead of editing release history or adding an Unreleased section. Release compilation belongs to separate release tooling.
+Keep library manifest versions unchanged in ordinary PRs. Leave fragments pending for the release cut instead of editing release history or adding an Unreleased section. Only release preparation uses `pnpm changelog write`.
 
 ## Finish the PR
 
