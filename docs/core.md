@@ -303,7 +303,7 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ### Example coverage
 
-[jsonkit](../examples/jsonkit/src/application.ts) declares one required global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path`, and a `select` Command. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared helper.
+[jsonkit](../examples/jsonkit/src/application.ts) declares one optional global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path`, and a `select` Command. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. A read failure names the file or `stdin`, and a parse failure names the document the same way. At a terminal with no file the reader states the rule instead of waiting for text that will not arrive.
 
 ## Standard Schema validation
 
@@ -414,7 +414,9 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 ### Example coverage
 
-[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes files at or above the byte threshold and totals only retained files. No retained files produces no file rows and a zero total when requested.
+[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes sources at or above the byte threshold and totals only retained sources. No retained source produces no rows and a zero total when requested.
+
+`files` is an optional variadic argument with a custom Standard Schema. Its validator reads the validation context: a nonempty list passes, and an empty list passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false. Otherwise it returns the issue `Supply file arguments or pipe text to stdin.`, which core reports as an input error. The action never reads the terminal. It counts each supplied file, or `host.stdin` when no file is supplied, and prints the row name `stdin` for the piped text. Every source is counted incrementally over its chunks, so a word or a multibyte character that a chunk boundary splits is counted once.
 
 ## Graph inspection
 
@@ -556,4 +558,4 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
 
-Help output, stdin selection, custom renderers, and plugins are outside this increment.
+Help output, custom renderers, and plugins are outside this increment.
