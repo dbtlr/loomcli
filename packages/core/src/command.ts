@@ -297,7 +297,7 @@ function checkDeclarationOrder(state: Declared): void {
   }
   if (late.kind === 'alias') {
     throw new DeclarationError(
-      `${commandSentence(name)} declares alias "${late.alias}" after its action. Declare arguments and options before action().`,
+      `${commandSentence(name)} declares alias "${late.alias}" after its action. Declare aliases before action().`,
     );
   }
   // Child identity and names are settled before this call, so the node and its name are valid.

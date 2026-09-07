@@ -137,7 +137,7 @@ test.each([
   ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
   [
     'late-alias',
-    'Command "keys" declares alias "ls" after its action. Declare arguments and options before action().',
+    'Command "keys" declares alias "ls" after its action. Declare aliases before action().',
   ],
   [
     'nested-alias-sibling-name',
