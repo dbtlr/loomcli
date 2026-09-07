@@ -87,6 +87,47 @@ switch (scenario) {
     );
     break;
   }
+  case 'snapshot': {
+    const seen = [];
+    /** Writes to every array the context hands it, so only a copy keeps the invocation intact. */
+    const writer = {
+      '~standard': {
+        validate: (value, options) => {
+          const context = validationContext(options);
+          context.passthrough.push('written');
+          context.supplied.args.files.push('written');
+          context.supplied.options.multi.push('written');
+          return { value };
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+    /** The next schema call of the same invocation, where a surviving write would show. */
+    const reader = {
+      '~standard': {
+        validate: (value, options) => {
+          const context = validationContext(options);
+          seen.push({
+            files: context.supplied.args.files,
+            multi: context.supplied.options.multi,
+            passthrough: context.passthrough,
+            value,
+          });
+          return { value };
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+    app = new Application('context')
+      .argument('files', { validate: writer, variadic: true })
+      .option('multi', { multiple: true, type: 'string', validate: reader })
+      .action(({ args, options, passthrough, out }) =>
+        out.print(encode({ args, options, passthrough, seen })),
+      );
+    break;
+  }
   case 'zod': {
     app = new Application('context')
       .option('size', {

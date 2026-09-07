@@ -368,7 +368,7 @@ Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@
 | `passthrough` | absent                   | The tail after the first bare `--`                         |
 | `supplied`    | absent                   | The raw tokens of every declared input, before any default |
 
-A default validates before any token is parsed, so its phase reports the host and the declaration alone. Every schema call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs.
+A default validates before any token is parsed, so its phase reports the host and the declaration alone. Every schema call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs. The context is a snapshot: each call reads its own copy of the passthrough tail and of every collected value, so a schema that writes to its context changes nothing that a later schema or the action reads.
 
 `supplied` holds the tokens as the parser read them, before any schema runs and before any default applies. Every declared name of the routed Command, and every global name, is a key.
 

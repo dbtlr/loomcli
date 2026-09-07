@@ -156,6 +156,15 @@ test('a schema another caller runs, and a foreign carrier, read no context', () 
   });
 });
 
+test('the context is a snapshot, so a schema that writes to it changes nothing', () => {
+  expect(context('snapshot', ['a', 'b', '--multi', 'x', '--', 'tail'])).toEqual({
+    args: { files: ['a', 'b'] },
+    options: { multi: ['x'] },
+    passthrough: ['tail'],
+    seen: [{ files: ['a', 'b'], multi: ['x'], passthrough: ['tail'], value: ['x'] }],
+  });
+});
+
 test('a Zod schema validates as it does without the context', () => {
   expect(context('zod', ['--size', '12'])).toEqual({ size: 12 });
   const failed = invoke(new URL('fixtures/validation-context.mjs', import.meta.url), [

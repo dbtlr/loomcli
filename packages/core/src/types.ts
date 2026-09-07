@@ -106,12 +106,16 @@ export interface InputIdentity {
   global: boolean;
 }
 
-/** The raw tokens of one invocation, keyed by declared name, before any schema or default runs. */
+/**
+ * The raw tokens of one invocation, keyed by declared name, before any schema or default runs.
+ * Each schema call reads its own snapshot, so a collected value is read-only and writing to one
+ * changes nothing the parser, a later schema, or the action reads.
+ */
 export interface SuppliedInputs {
-  /** Raw positional values of the routed Command: one string, or `string[]` for a variadic. */
-  args: Readonly<Record<string, string | string[] | undefined>>;
+  /** Raw positional values of the routed Command: one string, or the tokens of a variadic. */
+  args: Readonly<Record<string, string | readonly string[] | undefined>>;
   /** Raw option values, globals and locals: a string, every occurrence, or a Boolean presence. */
-  options: Readonly<Record<string, string | string[] | boolean | undefined>>;
+  options: Readonly<Record<string, string | readonly string[] | boolean | undefined>>;
 }
 
 /**

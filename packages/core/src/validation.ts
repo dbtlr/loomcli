@@ -167,6 +167,11 @@ function suppliedOption(options: OptionValues, name: string, collected: boolean)
   return collected ? options.lists.get(name) : options.strings.get(name);
 }
 
+/** The copy a collected value is handed out as, because the parser's array is the action's. */
+function copied(value: string | string[] | undefined) {
+  return Array.isArray(value) ? [...value] : value;
+}
+
 /** Without a schema the raw shape is the declared default's only contract. */
 function holdsRawDefault(input: InputDeclaration) {
   const value = input.config.default;
@@ -400,23 +405,25 @@ function freshDefault(value: unknown) {
 
 /**
  * The raw tokens of one invocation, keyed by declared name. Every declared input of the routed
- * Command and every global appears, so absence reads as the shape its declaration collects.
+ * Command and every global appears, so absence reads as the shape its declaration collects. Each
+ * collected value is copied, because the parser's own array is what the action reads.
  */
 function suppliedInputs(
   declarations: readonly InputDeclaration[],
   supplied: SuppliedValues,
 ): SuppliedInputs {
-  const args: Record<string, string | string[] | undefined> = {};
-  const options: Record<string, string | string[] | boolean | undefined> = {};
+  const args: Record<string, string | readonly string[] | undefined> = {};
+  const options: Record<string, string | readonly string[] | boolean | undefined> = {};
   for (const input of declarations) {
     const collected = collects(input);
     if (input.kind === 'argument') {
-      args[input.name] = supplied.args.get(input) ?? (collected ? [] : undefined);
+      args[input.name] = copied(supplied.args.get(input)) ?? (collected ? [] : undefined);
     } else if (input.config.type === 'boolean') {
       options[input.name] = supplied.options.booleans.get(input.name);
     } else {
       options[input.name] =
-        suppliedOption(supplied.options, input.name, collected) ?? (collected ? [] : undefined);
+        copied(suppliedOption(supplied.options, input.name, collected)) ??
+        (collected ? [] : undefined);
     }
   }
   return { args, options };
@@ -425,22 +432,26 @@ function suppliedInputs(
 export async function validateValues(invocation: Invocation): Promise<ValidatedInputs> {
   const { defaults, supplied } = invocation;
   const declarations = scoped(invocation.inputs);
-  /** Every schema call of this invocation shares one reading of the tokens and the route. */
-  const shared = {
+  /**
+   * One reading of the tokens and the route, built anew for each schema call. Every array in it
+   * is a copy, so a schema that writes to its context reaches neither the parser's collections,
+   * nor the tail the action receives, nor the next schema of this invocation.
+   */
+  const facts = () => ({
     command: invocation.command,
     host: invocation.host,
-    passthrough: invocation.passthrough,
+    passthrough: [...invocation.passthrough],
     supplied: suppliedInputs(
       declarations.map((entry) => entry.input),
       supplied,
     ),
-  };
+  });
   const values = new Map<InputDeclaration, unknown>();
   const issues: string[] = [];
   /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
   const accept = async (entry: ScopedInput, raw: unknown, subject: string) => {
     const result = await validate(entry.input, raw, {
-      ...shared,
+      ...facts(),
       input: identityOf(entry),
       phase: 'invocation',
     });
