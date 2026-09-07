@@ -568,3 +568,17 @@ test('check rejects release-only options through Loom before reading files', () 
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--initial');
 });
+
+test.each(['check', 'preview', 'write'])(
+  '%s rejects unused passthrough without editing release files',
+  (mode) => {
+    const root = repository();
+    put(root, '.changes/change.md', '- Add an operation.\n');
+    commit(root);
+    const result = run(root, mode, '--', '--date', '2026-09-07');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Arguments after -- are not supported.');
+    expect(git(root, ['status', '--porcelain'])).toBe('');
+  },
+);

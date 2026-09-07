@@ -45,8 +45,11 @@ function prepare(
 }
 
 // Convert compiler failures to Loom's fatal channel; keep generated Markdown byte-for-byte.
-async function output(out: Out, produce: () => string) {
+async function output(out: Out, passthrough: string[], produce: () => string) {
   try {
+    if (passthrough.length > 0) {
+      out.fatal('Arguments after -- are not supported.');
+    }
     const text = produce();
     await out.render(text, { render: (value) => value });
   } catch (error) {
@@ -56,21 +59,21 @@ async function output(out: Out, produce: () => string) {
 
 export const changelog = new Application('changelog')
   .command(
-    new Command('check').action(async ({ host, out }) => {
-      await output(out, () => {
+    new Command('check').action(async ({ host, out, passthrough }) => {
+      await output(out, passthrough, () => {
         const fragments = readFragments(host.cwd);
         return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
       });
     }),
   )
   .command(
-    releaseOptions('preview').action(async ({ host, options, out }) => {
-      await output(out, () => prepare(host.cwd, options).section);
+    releaseOptions('preview').action(async ({ host, options, out, passthrough }) => {
+      await output(out, passthrough, () => prepare(host.cwd, options).section);
     }),
   )
   .command(
-    releaseOptions('write').action(async ({ host, options, out }) => {
-      await output(out, () => {
+    releaseOptions('write').action(async ({ host, options, out, passthrough }) => {
+      await output(out, passthrough, () => {
         const release = prepare(host.cwd, options);
         writeRelease(host.cwd, release);
         return release.section;

@@ -35,7 +35,7 @@ Both preparation modes accept these options:
 | `--since REF`       | Ancestor commit or tag used for the material-change report. The default is `v<current-manifest-version>`. The first release marks all libraries changed. |
 | `--narrative FILE`  | Copy Markdown prose before the entries. The file cannot be empty or contain level-one or level-two headings.                                             |
 
-Without `--initial`, an empty fragment set fails preparation. Success exits with status 0. Loom command and option errors exit with status 2. Invalid release content or an operational failure exits with status 1. Diagnostics go to stderr. Release options belong to `preview` and `write`; `check` accepts no options.
+Without `--initial`, an empty fragment set fails preparation. Success exits with status 0. Loom command and option errors exit with status 2. Invalid release content or an operational failure exits with status 1. Diagnostics go to stderr. Release options belong to `preview` and `write`; `check` accepts no options. Nonempty argument tails after `--` are rejected with status 1 before preparation.
 
 ## Version calculation
 
