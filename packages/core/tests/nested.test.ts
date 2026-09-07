@@ -86,7 +86,7 @@ test.each([
   ],
   [
     'shared-child',
-    'Command "cache" attaches child "clear", which the root Command also attaches. Attach a Command value at one point; create a new Command for each placement.',
+    'The root Command attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
   ],
   [
     'shared-child-same-parent-name',

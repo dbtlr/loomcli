@@ -90,10 +90,10 @@ interface AttachedCommand {
 
 /**
  * One graph build's shared state. `globals` compiles once and every Command reads it. `owners`
- * records the name of the parent the build walk reached first for each node, so a second parent
- * holding the same value is building a graph with more than one path to that node, not a tree.
- * The walk is pre-order over attachment order: it claims a parent's children, then finishes each
- * child's subtree before the next sibling, so the first owner is the parent it reaches first.
+ * records the name of the parent that claimed each node, so a second parent holding the same value
+ * is building a graph with more than one path to that node, not a tree. The build is a depth-first
+ * walk in attachment order, and a parent claims each child as the walk reaches it, so the first
+ * owner is the parent whose attachment the walk meets first.
  */
 interface BuildContext {
   globals: BuiltGlobals;
@@ -255,12 +255,8 @@ function checkDeclarationOrder(state: Declared): void {
   );
 }
 
-/**
- * Child names are checked before any child builds, so parent diagnostics come first. Every node
- * is also claimed by its first parent here, before recursion reaches a second parent that attaches
- * the same value, so the graph stays a tree: one Command value attaches at one point.
- */
-function collectChildren(state: Declared, context: BuildContext): [string, AttachedCommand][] {
+/** Child names are checked before any child builds, so parent diagnostics come first. */
+function collectChildren(state: Declared): [string, AttachedCommand][] {
   const attached: [string, AttachedCommand][] = [];
   const seen = new Set<string>();
   for (const child of state.children) {
@@ -273,18 +269,30 @@ function collectChildren(state: Declared, context: BuildContext): [string, Attac
       );
     }
     seen.add(name);
-    // A claimed node always means a second parent: one parent attaching a value twice fails above.
-    // Parents may share a name, so the claim is by node identity and the name serves the diagnostic.
-    const owner = context.owners.get(node);
-    if (owner !== undefined) {
-      throw new DeclarationError(
-        `${commandSentence(state.name)} attaches child "${name}", which ${commandSubject(owner)} also attaches. Attach a Command value at one point; create a new Command for each placement.`,
-      );
-    }
-    context.owners.set(node, state.name);
     attached.push([name, node]);
   }
   return attached;
+}
+
+/**
+ * Claims a child for its parent when the depth-first walk reaches it, then builds its subtree. A
+ * claimed node always means a second parent, because the duplicate-name rule rejects one parent
+ * attaching a value twice. Parents may share a name, so the claim is by node identity and the name
+ * serves the diagnostic alone.
+ */
+function buildChild(
+  parent: string | null,
+  [name, node]: [string, AttachedCommand],
+  context: BuildContext,
+): BuiltCommand {
+  const owner = context.owners.get(node);
+  if (owner !== undefined) {
+    throw new DeclarationError(
+      `${commandSentence(parent)} attaches child "${name}", which ${commandSubject(owner)} also attaches. Attach a Command value at one point; create a new Command for each placement.`,
+    );
+  }
+  context.owners.set(node, parent);
+  return node.build(context);
 }
 
 /** A variadic or optional slot ends the positional list, so nothing may follow either one. */
@@ -403,7 +411,7 @@ export function buildCommand<Args, Options, Globals>(
       `${commandSentence(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
     );
   }
-  const attached = collectChildren(state, context);
+  const attached = collectChildren(state);
   checkDeclarationOrder(state);
   const slots = collectArguments(state, subject);
   const first = slots[0];
@@ -425,7 +433,7 @@ export function buildCommand<Args, Options, Globals>(
   const options = compileLocalOptions(state, globals, subject);
   return {
     arguments: slots,
-    children: new Map(attached.map(([key, node]) => [key, node.build(context)])),
+    children: new Map(attached.map((entry) => [entry[0], buildChild(name, entry, context)])),
     dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
