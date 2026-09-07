@@ -44,6 +44,39 @@ test.each([
   },
 );
 
+test.each([
+  [['cache', 'ls'], 'list', {}],
+  [['cache', 'l'], 'list', {}],
+  [['c', 'list'], 'list', {}],
+  [['c', 'ls'], 'list', {}],
+  [['c', 'clear', '--force'], 'clear', { force: true }],
+] satisfies [string[], string, Record<string, unknown>][])(
+  'routes %j through a hidden alias to the Command its canonical name selects',
+  (argv, command, options) => {
+    expect(report(['--file', 'data.json', ...argv])).toEqual({
+      args: {},
+      command,
+      options: { file: 'data.json', ...options },
+      passthrough: [],
+    });
+  },
+);
+
+test.each([
+  [['c'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
+  [['cache', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
+  [['c', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
+  [['cache', 'ls', 'extra'], 'Command "list" accepts no arguments. Remove the supplied values.'],
+] satisfies [string[], string][])(
+  'reports canonical names alone for the aliased invocation %j',
+  (argv, reason) => {
+    const result = invokeNested(argv);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  },
+);
+
 function invokeNestedGraph(scenario: string, argv: string[] = []) {
   const result = invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, ...argv]);
   expect(result.stderr).toBe('');

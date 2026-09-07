@@ -55,9 +55,10 @@ import { captureConfig, checkDeclarations, prepareInputs } from './validation.js
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
- * The unnamed root declares what a named Command declares, so the two unions hold the same names.
+ * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
+ * to no bare token, so it has no name to alias.
  */
-export type ApplicationMethod = CommandMethod;
+export type ApplicationMethod = Exclude<CommandMethod, 'alias'>;
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noRegistrations: FailureRegistry = new Map();

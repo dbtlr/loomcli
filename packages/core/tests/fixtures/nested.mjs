@@ -11,10 +11,11 @@ const clear = new Command('clear', globals)
   .option('force', { short: 'F', type: 'boolean' })
   .action(report('clear'));
 
-const list = new Command('list', globals).action(report('list'));
+// Hidden aliases route like the canonical name, and a group carries them like any other Command.
+const list = new Command('list', globals).alias('ls', 'l').action(report('list'));
 
 // A Command with children and no action is a group; routing requires one of its children.
-const cache = new Command('cache', globals).command(clear).command(list);
+const cache = new Command('cache', globals).alias('c').command(clear).command(list);
 
 const put = new Command('put', globals).action(report('put'));
 
