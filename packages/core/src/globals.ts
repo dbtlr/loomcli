@@ -6,6 +6,7 @@ import type {
   NameConstraint,
   OptionConfig,
   OptionValue,
+  ValidateOmittedConstraint,
 } from './types.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 import { captureConfig } from './validation.js';
@@ -60,7 +61,8 @@ class GlobalOptionsBuilder<Options> {
     config: Config &
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>>,
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): GlobalOptions<Options & Record<Name, OptionValue<Config>>> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),

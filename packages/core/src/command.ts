@@ -16,6 +16,7 @@ import type {
   OptionConfig,
   OptionValue,
   Out,
+  ValidateOmittedConstraint,
 } from './types.js';
 import { captureConfig, validateValues } from './validation.js';
 import type {
@@ -431,7 +432,10 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
@@ -447,7 +451,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>>,
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),

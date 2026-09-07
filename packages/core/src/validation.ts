@@ -153,6 +153,15 @@ function collects(input: InputDeclaration) {
   return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
 }
 
+/**
+ * The declaration flag that sends an omitted value to its own schema. Only a value input can
+ * declare it, so a Boolean option reads as false here and the declaration rules reject the flag.
+ */
+export function validatesOmission(input: InputDeclaration) {
+  const { config } = input;
+  return 'validateOmitted' in config && config.validateOmitted;
+}
+
 /** One accessor for a supplied option value, so the collected and single shapes read alike. */
 function suppliedOption(options: OptionValues, name: string, collected: boolean) {
   return collected ? options.lists.get(name) : options.strings.get(name);
@@ -166,12 +175,46 @@ function holdsRawDefault(input: InputDeclaration) {
     : typeof value === 'string';
 }
 
+/**
+ * `validateOmitted: true` is the one way an omitted scalar reaches its schema, so every other rule
+ * that already decides absence rejects it, and the flag needs a schema to receive the omission.
+ */
+function checkOmissionValidation(input: InputDeclaration) {
+  const { config } = input;
+  const subject = declaredName(input);
+  if (config.required) {
+    throw new DeclarationError(
+      `${subject} is required and declares validateOmitted. Remove validateOmitted or make the input optional.`,
+    );
+  }
+  if (hasDefault(input)) {
+    throw new DeclarationError(
+      `${subject} declares a default and validateOmitted. Remove one; the default already fills an omitted value.`,
+    );
+  }
+  if (collects(input)) {
+    throw new DeclarationError(
+      `${subject} collects its values and declares validateOmitted. Remove validateOmitted; an omitted collection reaches the schema as an empty array.`,
+    );
+  }
+  if (config.validate === undefined) {
+    throw new DeclarationError(
+      `${subject} declares validateOmitted without a schema. Add validate or remove validateOmitted.`,
+    );
+  }
+}
+
 function checkDeclaration(input: InputDeclaration) {
   const { config } = input;
   if (input.kind === 'option' && input.config.type === 'boolean') {
-    if ('validate' in config || 'default' in config || 'required' in config) {
+    if (
+      'validate' in config ||
+      'default' in config ||
+      'required' in config ||
+      'validateOmitted' in config
+    ) {
       throw new DeclarationError(
-        `${declaredName(input)} is Boolean. Remove validate, default, and required; use polarity to control its absent value.`,
+        `${declaredName(input)} is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.`,
       );
     }
     return;
@@ -194,6 +237,9 @@ function checkDeclaration(input: InputDeclaration) {
     throw new DeclarationError(
       `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
     );
+  }
+  if (validatesOmission(input)) {
+    checkOmissionValidation(input);
   }
   const schema = config.validate;
   if (
@@ -421,6 +467,10 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
           await accept(entry, [], subject);
+        } else if (validatesOmission(input)) {
+          // The flag sends the omission itself to the schema, so an absence rule reads the same
+          // Invocation context a supplied value reads, and its issues read as input issues.
+          await accept(entry, undefined, subject);
         } else {
           values.set(input, freshDefault(input, defaults.get(input)));
         }

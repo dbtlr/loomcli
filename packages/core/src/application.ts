@@ -38,6 +38,7 @@ import type {
   OptionConfig,
   OptionValue,
   RunOptions,
+  ValidateOmittedConstraint,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
 import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
@@ -75,7 +76,10 @@ class ApplicationBuilder<
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
-    config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>>,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,
@@ -96,7 +100,8 @@ class ApplicationBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>>,
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),

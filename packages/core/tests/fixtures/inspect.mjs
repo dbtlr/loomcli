@@ -74,6 +74,13 @@ function tails() {
     .action(dispatch);
 }
 
+function omission() {
+  return new Application('omission')
+    .option('file', { type: 'string', validate: digits, validateOmitted: true })
+    .argument('path', { validate: digits, validateOmitted: true })
+    .action(dispatch);
+}
+
 function invalid() {
   const globals = new GlobalOptions();
   return new Application('invalid', globals).command(new Command('get', globals)).action(dispatch);
@@ -110,7 +117,7 @@ const faults = {
       .action(dispatch),
 };
 
-const graphs = { defaults, invalid, jsonkit, nested, polarity, roles, tails, ...faults };
+const graphs = { defaults, invalid, jsonkit, nested, omission, polarity, roles, tails, ...faults };
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 

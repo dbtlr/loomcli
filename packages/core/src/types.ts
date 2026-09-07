@@ -39,6 +39,11 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
 /** The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does. */
 type Multiplicity = { multiple: true } | { multiple?: false };
 /**
+ * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member
+ * keeps the flag exact under contextual typing, as `Multiplicity` does.
+ */
+type Omission = { validateOmitted: true } | { validateOmitted?: false };
+/**
  * The tokens one declaration collects before validation: one string, or the whole collection. A
  * multiple option and a variadic argument collect alike, so they share this raw shape.
  */
@@ -134,10 +139,12 @@ export interface Out {
 }
 export type StringOption = OptionSpelling &
   Presence &
-  Multiplicity & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+  Multiplicity &
+  Omission & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence & { variadic: true; validate?: StandardSchemaV1 };
-export type ScalarArgument = Presence & { variadic?: false; validate?: StandardSchemaV1 };
+export type ScalarArgument = Presence &
+  Omission & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
@@ -164,11 +171,33 @@ export type MultipleConstraint<Config> = Config extends { multiple: true }
       : { 'A multiple option schema must accept a string[] input': Config['validate'] }
     : unknown
   : unknown;
+/**
+ * The declaration rules `validateOmitted: true` needs: a schema that accepts `undefined`, an
+ * omission the schema can answer, and no other rule that already decides absence. Each key names
+ * its fault, the way the other declaration constraints do.
+ */
+export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted: true }
+  ? Config extends { type: 'boolean' }
+    ? { 'A Boolean option declares no validateOmitted': never }
+    : Config extends { required: true }
+      ? { 'A required input rejects validateOmitted': never }
+      : Config extends { default: unknown }
+        ? { 'A declared default rejects validateOmitted': never }
+        : Config extends { multiple: true } | { variadic: true }
+          ? { 'A collected input validates its omission as an empty array': never }
+          : 'validate' extends keyof Config
+            ? undefined extends SchemaInput<Config['validate']>
+              ? unknown
+              : { 'A validateOmitted schema must accept an undefined input': Config['validate'] }
+            : { 'validateOmitted needs a validate schema to receive the omission': never }
+  : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   :
       | ValidatedValue<Config, string>
-      | (Config extends { required: true } | { default: unknown } ? never : undefined);
+      | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+          ? never
+          : undefined);
 export type BooleanOption =
   | (OptionSpelling & {
       type: 'boolean';
@@ -194,7 +223,9 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     ? ValidatedValue<Config, string[]>
     :
         | ValidatedValue<Config, string>
-        | (Config extends { required: true } | { default: unknown } ? never : undefined)
+        | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+            ? never
+            : undefined)
   : boolean;
 
 export interface ActionContext<Args, Options = {}> {

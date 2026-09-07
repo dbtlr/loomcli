@@ -3,6 +3,7 @@ import type { BuiltGlobals } from './globals.js';
 import type { compileOptions } from './options.js';
 import type { ArgumentConfig, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
+import { validatesOmission } from './validation.js';
 
 /** One declared argument. `default` wraps the declared value, so an explicit `undefined` shows. */
 interface ArgumentNode {
@@ -10,6 +11,7 @@ interface ArgumentNode {
   readonly required: boolean;
   readonly variadic: boolean;
   readonly validated: boolean;
+  readonly validateOmitted: boolean;
   readonly default: { readonly value: unknown } | undefined;
 }
 
@@ -23,6 +25,7 @@ type OptionNode =
       readonly required: boolean;
       readonly multiple: boolean;
       readonly validated: boolean;
+      readonly validateOmitted: boolean;
       readonly default: { readonly value: unknown } | undefined;
     }
   | {
@@ -119,6 +122,7 @@ function optionNode(input: OptionInput, table: ReturnType<typeof compileOptions>
           required: config.required === true,
           short,
           type: 'string',
+          validateOmitted: validatesOmission(input),
           validated: config.validate !== undefined,
         };
   return Object.freeze(node);
@@ -131,6 +135,7 @@ function argumentNode(slot: ArgumentSlot): ArgumentNode {
     default: declaredDefault(config),
     name,
     required: slot.required,
+    validateOmitted: validatesOmission(slot.input),
     validated: config.validate !== undefined,
     variadic: slot.variadic,
   };
