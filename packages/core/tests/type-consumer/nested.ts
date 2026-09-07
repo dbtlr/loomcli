@@ -15,4 +15,4 @@ export const list = new Command('list', globals)
 // A group registers no action, so it keeps `option()` and `command()` open.
 export const cache = new Command('cache', globals).command(clear).command(list);
 
-export const nested = new Application('nested', globals).command(cache);
+export const nested = new Application('nested', { globals }).command(cache);

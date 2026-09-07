@@ -33,11 +33,11 @@ new Command('optional').argument('path', { required: false });
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
 new Command('collision', globals).option('file', { type: 'boolean' });
 // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
-new Application('collision', globals).option('quiet', { type: 'boolean' });
-// @ts-expect-error TS2345: A globals type argument cannot forge values the declaration lacks.
-new Application<{ forged: number }>('forged', new GlobalOptions());
+new Application('collision', { globals }).option('quiet', { type: 'boolean' });
+// @ts-expect-error TS2322: A globals type argument cannot forge values the declaration lacks.
+new Application<{ forged: number }>('forged', { globals: new GlobalOptions() });
 // @ts-expect-error TS2345: A child must carry the same globals value as its Application.
-new Application('mismatch', globals).command(new Command('get').action(() => {}));
+new Application('mismatch', { globals }).command(new Command('get').action(() => {}));
 
 new Application('plain')
   .argument('files', { required: true, variadic: true })

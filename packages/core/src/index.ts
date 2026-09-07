@@ -1,10 +1,28 @@
 export { Application } from './application.js';
 export { Command } from './command.js';
 export { validationContext, validationContextKey } from './context.js';
-export { DeclarationError, FatalError } from './errors.js';
+export {
+  DeclarationError,
+  FatalError,
+  InputError,
+  InternalError,
+  LoomError,
+  MissingValueError,
+  NonCallableCommandError,
+  RepeatedOptionError,
+  ShortGroupError,
+  UnexpectedArgumentError,
+  UnexpectedValueError,
+  UnknownCommandError,
+  UnknownOptionError,
+  UsageError,
+  renderFailure,
+} from './errors.js';
 export { GlobalOptions } from './globals.js';
+export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
-export type { ApplicationMethod } from './application.js';
+export type { ApplicationMethod, ApplicationOptions } from './application.js';
+export type { FailureRenderer, InputProblem } from './errors.js';
 export type { CommandMethod } from './command.js';
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 export type {
@@ -22,6 +40,7 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
+  Renderer,
   RunOptions,
   ScalarArgument,
   StringOption,

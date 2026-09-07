@@ -61,21 +61,24 @@ test('jsonkit keeps a repeated field at its first position', () => {
   });
 });
 
-test('jsonkit rejects an empty field name through the field schema', () => {
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    expect(invoke(main, ['--file', 'doc.json', 'select', '--field='], { cwd })).toEqual({
-      status: 2,
-      stderr: 'Invalid input: Option "--field" at 0: Supply a nonempty field name.\n',
-      stdout: '',
+test.each([[['--field', '']], [['--field=']]])(
+  'jsonkit rejects the empty field name %j through the field schema',
+  (option) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, ['select', ...option, '-f', 'doc.json'], { cwd })).toEqual({
+        status: 2,
+        stderr: 'jsonkit: --field at 0: Supply a nonempty field name.\n',
+        stdout: '',
+      });
     });
-  });
-});
+  },
+);
 
 test('jsonkit requires at least one field for select', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json', 'select'], { cwd })).toEqual({
       status: 2,
-      stderr: 'Invalid input: Option "--field" is required. Supply at least one value.\n',
+      stderr: 'jsonkit: --field: required\n',
       stdout: '',
     });
   });

@@ -1,20 +1,13 @@
 import type { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
-import { FatalError } from './errors.js';
-import type { Host, Out } from './types.js';
+import { FatalError, notTextReason } from './errors.js';
+import type { Host, Out, Renderer } from './types.js';
 
 type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
-type Purpose =
-  | 'print'
-  | 'info'
-  | 'success'
-  | 'warn'
-  | 'error'
-  | 'fatal'
-  | 'internal'
-  | 'declaration'
-  | 'input';
+
+/** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
+type Purpose = 'print' | 'info' | 'success' | 'warn' | 'error';
 
 class Destination {
   tail: Promise<void> = Promise.resolve();
@@ -81,8 +74,19 @@ class Destination {
   }
 }
 
+/** The text a renderer produced, or the value that stands for its failure to produce text. */
+function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
+  try {
+    const text: unknown = produce();
+    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason(text)) };
+  } catch (error) {
+    return { failed: error };
+  }
+}
+
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
+  private renderFault: { cause: unknown } | undefined = undefined;
   readonly out: Out;
 
   constructor(readonly host: Pick<Host, 'stdout' | 'stderr'>) {
@@ -93,19 +97,63 @@ export class Output {
       },
       info: (message) => this.emit('info', message),
       print: (message) => this.emit('print', message),
+      render: <Data>(data: Data, renderer: Renderer<Data>): Promise<void> =>
+        this.rendered(() => renderer.render(data)),
       success: (message) => this.emit('success', message),
       warn: (message) => this.emit('warn', message),
     };
   }
 
+  /** A semantic message is one line on its destination; only `print` writes to stdout. */
   emit(kind: Purpose, message: string): Promise<void> {
-    const stream = kind === 'print' ? this.host.stdout : this.host.stderr;
+    return this.write(kind === 'print' ? this.host.stdout : this.host.stderr, `${message}\n`);
+  }
+
+  /**
+   * The failure report of one invocation. Like `render`, the text is queued on its destination
+   * exactly as given: the caller already carries its own trailing newline, whether that text came
+   * from a registered renderer or from core's own default text.
+   */
+  report(text: string): Promise<void> {
+    return this.write(this.host.stderr, text);
+  }
+
+  /**
+   * The renderer owns every byte, so its text is queued on stdout exactly as returned. A throw or
+   * a non-string return rejects this call alone: nothing is written for it, later output still
+   * writes, and the recorded cause ends the invocation once the action has completed.
+   */
+  private rendered(produce: () => unknown): Promise<void> {
+    const rendered = renderText(produce);
+    return 'text' in rendered
+      ? this.write(this.host.stdout, rendered.text)
+      : this.renderFailed(rendered.failed);
+  }
+
+  /**
+   * The rejected call. The first renderer failure is the reported one, so a later one adds no
+   * second diagnostic, and the rejection is observed here as well, because an action that never
+   * awaits the call must not end the process with an unhandled rejection.
+   */
+  private renderFailed(cause: unknown): Promise<void> {
+    this.renderFault ??= { cause };
+    const rejection = Promise.reject(cause);
+    void rejection.catch(() => undefined);
+    return rejection;
+  }
+
+  /** What a renderer failed with during this invocation, if one did. */
+  get fault(): { cause: unknown } | undefined {
+    return this.renderFault;
+  }
+
+  private write(stream: Writable, text: string): Promise<void> {
     let destination = this.destinations.get(stream);
     if (!destination) {
       destination = new Destination(stream);
       this.destinations.set(stream, destination);
     }
-    return destination.write(`${message}\n`);
+    return destination.write(text);
   }
 
   async settle(): Promise<WriteState> {
@@ -137,11 +185,17 @@ export class Output {
   }
 }
 
-export async function reportOutputFailure(stderr: Writable): Promise<void> {
+/**
+ * The plain fallback path: a fresh destination on stderr, outside the invocation's queues and
+ * outside every registration, so no application code runs on it. The caller composes the newlines
+ * between whatever it is reporting, then passes the one string this writes verbatim. A failed
+ * write ends reporting.
+ */
+export async function reportPlainly(stderr: Writable, text: string): Promise<void> {
   try {
     const destination = new Destination(stderr);
     try {
-      await destination.write('Internal error: Could not write invocation output.\n');
+      await destination.write(text);
     } finally {
       await setImmediate();
       destination.dispose();

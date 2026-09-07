@@ -98,6 +98,15 @@ function nodeOf(globals: object): GlobalsNode {
   return node;
 }
 
+/**
+ * Whether a value is an authored GlobalOptions declaration, whichever call produced it. The
+ * registry is the test, because `option()` returns a new declaration of its own and the exported
+ * constructor is only the first of them.
+ */
+function isGlobalOptions(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && nodes.has(value);
+}
+
 /** Absent globals compile to an empty table whose source is `undefined`, like the declarations. */
 function buildGlobals(globals: object | undefined): BuiltGlobals {
   return globals === undefined ? compileTable([], undefined) : nodeOf(globals).build();
@@ -124,4 +133,4 @@ const GlobalOptions: new () => GlobalOptions = class extends GlobalOptionsBuilde
 };
 
 export type { BuiltGlobals };
-export { bindGlobals, buildGlobals, GlobalOptions };
+export { bindGlobals, buildGlobals, GlobalOptions, isGlobalOptions };

@@ -133,12 +133,22 @@ export type ValidationContext =
       passthrough: readonly string[];
       supplied: SuppliedInputs;
     };
+/**
+ * One value turned into the exact text core writes. A renderer owns every byte, the trailing
+ * newline included. It is synchronous and pure: it receives the value alone, returns a string, and
+ * holds no output handle. A throw or a non-string return is a renderer failure.
+ */
+export interface Renderer<Data> {
+  render: (data: Readonly<Data>) => string;
+}
 export interface Out {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
+  /** The neutral presentation call: a rendered value has no purpose and no destination. */
+  render<Data>(data: Data, renderer: Renderer<Data>): Promise<void>;
   fatal(message: string): never;
 }
 export type StringOption = OptionSpelling &

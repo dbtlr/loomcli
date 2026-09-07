@@ -11,7 +11,7 @@ function leaf(name, declarations = globals) {
 }
 
 function build() {
-  const app = new Application('nested-graph', globals);
+  const app = new Application('nested-graph', { globals });
   switch (scenario) {
     case 'group-option': {
       return app

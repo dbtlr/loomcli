@@ -16,7 +16,7 @@ pnpm build
 node examples/textstat/dist/main.js README.md
 ```
 
-Each output line contains a count, a tab, and the supplied file path. The example reads files in argument order. Bytes are the default metric.
+The output is one table: a header naming the metric, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
 
 To count words and add a combined total:
 
@@ -27,7 +27,7 @@ node examples/textstat/dist/main.js -tm words README.md docs/core.md
 
 `--metric` accepts `bytes`, `words`, or `lines`. Bytes count file bytes. Words are runs of non-whitespace characters after UTF-8 decoding, using JavaScript whitespace rules. Lines count LF characters; an unterminated final line adds no LF. Empty files count as zero for every metric.
 
-`--total` or `-t` appends a `count<TAB>total` row, including for one file. Unsupported metrics fail before file access. A read error retains earlier output and prevents the final total.
+`--total` or `-t` appends a `total` row, including for one file. Unsupported metrics fail before file access. The table renders once, after every source is counted, so a read error prints no table at all.
 
 To keep only files with at least 100 bytes:
 
@@ -45,7 +45,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
 
 ## Run jsonkit
 
@@ -71,9 +71,9 @@ node examples/jsonkit/dist/main.js --file package.json get repository.url
 node examples/jsonkit/dist/main.js --file package.json get workspaces.1
 ```
 
-The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path, an unreadable file, and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name lists `get, keys` and exits 2.
+The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path, an unreadable file, and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
 
-The [command modules](examples/jsonkit/src/commands) share one [globals value](examples/jsonkit/src/globals.ts), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration.
+The [command modules](examples/jsonkit/src/commands) share one [globals value](examples/jsonkit/src/globals.ts), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application registers its own [failure renderers](examples/jsonkit/src/failures.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
 
 ## Verify the package
 

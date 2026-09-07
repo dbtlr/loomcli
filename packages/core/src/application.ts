@@ -18,12 +18,21 @@ import type {
   CommandMethod,
   CommandState,
 } from './command.js';
-import { describeFailure } from './errors.js';
+import {
+  buildFailures,
+  DeclarationError,
+  describeFailure,
+  InternalError,
+  reasonOf,
+  toFailure,
+} from './errors.js';
+import type { FailureRegistry, FailureRenderer } from './errors.js';
+import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
-import { Output, reportOutputFailure } from './output.js';
+import { Output, reportPlainly } from './output.js';
 import type {
   Action,
   ArgumentConfig,
@@ -50,6 +59,18 @@ import { captureConfig, checkDeclarations, prepareInputs } from './validation.js
  */
 export type ApplicationMethod = CommandMethod;
 
+/** The registry a failure is reported through when the application's own could not be built. */
+const noRegistrations: FailureRegistry = new Map();
+
+/**
+ * Everything an application configures beside its declarations: the options every Command shares,
+ * and the renderers that answer the failure classes core throws.
+ */
+export interface ApplicationOptions<Globals = {}> {
+  globals?: GlobalOptions<Globals>;
+  failures?: readonly FailureRenderer[];
+}
+
 /**
  * The Application holds the unnamed root's declaration state and applies the same transitions a
  * Command does, so each declaration call has one typed implementation and no builder to recover.
@@ -64,9 +85,20 @@ class ApplicationBuilder<
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
+  readonly #failures: readonly FailureRenderer[];
+  // The constructor's raw options argument stays unexamined until build.
+  // The options-slot rules answer at the same point every other authoring fault does:
+  // `inspect()` and `run()`.
+  readonly #options: unknown;
 
-  constructor(name: string, root: CommandState<Args, Options, Globals>) {
+  constructor(
+    name: string,
+    root: CommandState<Args, Options, Globals>,
+    config: { failures: readonly FailureRenderer[]; options?: unknown },
+  ) {
+    this.#failures = config.failures;
     this.#name = name;
+    this.#options = config.options;
     this.#root = root;
   }
 
@@ -131,7 +163,10 @@ class ApplicationBuilder<
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
   ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
-    return new ApplicationBuilder(this.#name, root);
+    return new ApplicationBuilder(this.#name, root, {
+      failures: this.#failures,
+      options: this.#options,
+    });
   }
 
   /**
@@ -141,6 +176,8 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
+    checkOptions(this.#options);
+    buildFailures(this.#failures);
     const graph = buildGraph(this.#root);
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
     return inspectGraph(this.#name, graph);
@@ -151,11 +188,15 @@ class ApplicationBuilder<
     let output: Output | undefined = undefined;
     let code: ExitCode = 0;
     let reportingFailed = false;
+    // A registry that could not be built reports through core's defaults, not through itself.
+    let registry: FailureRegistry | undefined = undefined;
     try {
       const overrides = options?.host;
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
+      checkOptions(this.#options);
+      registry = buildFailures(this.#failures);
       const graph = buildGraph(this.#root);
       const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
       const defaults = await prepareInputs(inputs, host);
@@ -166,14 +207,33 @@ class ApplicationBuilder<
         passthrough: selected.passthrough,
         values: selected.values,
       });
+      // The fault check covers the same window the write accounting covers.
+      // A render failure an unawaited helper raised is still this invocation's failure.
+      await output.settle();
+      const fault = output.fault;
+      if (fault) {
+        // The action returned, so the renderer failure is this invocation's own failure.
+        throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
+      }
     } catch (error) {
       try {
-        const failure = describeFailure(error);
-        code = failure.code;
+        const failure = toFailure(error);
+        code = failure.exitCode;
         output ??= new Output({ stderr, stdout: process.stdout });
         const writes = await output.settle();
         if (writes.kind === 'ok') {
-          await output.emit(failure.kind, failure.message);
+          const report = describeFailure(registry ?? noRegistrations, failure);
+          if (report.kind === 'rendered') {
+            // The renderer already owns every byte, trailing newline included: pass it through.
+            await output.report(report.text);
+          } else {
+            code = 1;
+            // `report.text` is core's default text, which already ends in `\n`.
+            await reportPlainly(
+              stderr,
+              `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+            );
+          }
         }
       } catch {
         code = 1;
@@ -189,7 +249,7 @@ class ApplicationBuilder<
       output.dispose();
     }
     if (reportingFailed) {
-      await reportOutputFailure(stderr);
+      await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
     }
     process.exitCode = code;
     return code;
@@ -216,10 +276,37 @@ export type Application<
 
 interface ApplicationConstructor {
   new (name: string): Application<{}, {}, {}, ApplicationMethod>;
-  new <Globals>(
+  new <Globals = {}>(
     name: string,
-    globals: GlobalOptions<Globals>,
+    options: ApplicationOptions<Globals>,
   ): Application<{}, {}, Globals, ApplicationMethod>;
+}
+
+/** The options slot holds one object literal, so a declaration that carries state is not one. */
+function isPlainObject(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * The second argument, read where it is supplied. The retired positional form declares its globals
+ * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
+ * operator, not the author, meets the consequence as an unknown-option error.
+ */
+function checkOptions(options: unknown): void {
+  if (isGlobalOptions(options)) {
+    throw new DeclarationError(
+      'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
+    );
+  }
+  if (options !== undefined && !isPlainObject(options)) {
+    throw new DeclarationError(
+      'The Application options must be an object. Supply { globals, failures }.',
+    );
+  }
 }
 
 /**
@@ -228,10 +315,15 @@ interface ApplicationConstructor {
  * signature of the constructor interface publishes.
  */
 class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
-  constructor(name: string, globals?: GlobalOptions<Globals>) {
-    super(name, freshState(null, globals));
+  constructor(name: string, options?: ApplicationOptions<Globals>) {
+    // The options slot is read defensively, never inspected: an invalid value still yields
+    // `globals` and `failures` of some kind, and `checkOptions` reports it at build instead.
+    super(name, freshState(null, options?.globals), { failures: options?.failures ?? [], options });
   }
 }
 
-/** The public constructor takes a name and narrows the globals type to the supplied value. */
+/**
+ * The public constructor takes a name and one options object. The globals type narrows to the
+ * supplied value, and the failure renderers configure the application the way its commands do.
+ */
 export const Application: ApplicationConstructor = ApplicationDeclaration;

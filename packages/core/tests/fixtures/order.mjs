@@ -23,7 +23,7 @@ const pair = new Command('pair', globals)
   .argument('two', { required: true })
   .action(({ args, out }) => out.print(JSON.stringify(args)));
 
-await new Application('order', globals)
+await new Application('order', { globals })
   .command(order)
   .command(pair)
   .action(({ out }) => out.print('root'))

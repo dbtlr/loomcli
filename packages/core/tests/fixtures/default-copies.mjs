@@ -19,7 +19,7 @@ const globals = new GlobalOptions().option('tag', {
   type: 'string',
 });
 
-const app = new Application('copies', globals)
+const app = new Application('copies', { globals })
   // The schema returns the declared array itself, so only a copy keeps the next invocation clean.
   .argument('files', { default: paths, validate: anyValue, variadic: true })
   .option('field', { default: fields, multiple: true, type: 'string' })

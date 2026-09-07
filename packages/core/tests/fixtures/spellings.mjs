@@ -27,7 +27,7 @@ const set = new Command('set', globals)
 
 const cache = new Command('cache', globals).command(set);
 
-const app = new Application('spellings', globals)
+const app = new Application('spellings', { globals })
   .command(select)
   .command(count)
   .command(cache)

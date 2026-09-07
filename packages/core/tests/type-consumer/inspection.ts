@@ -3,7 +3,7 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loom/
 
 // `inspect()` answers in every authoring state, as `run()` and `name` do.
 const globals = new GlobalOptions().option('file', { required: true, short: 'f', type: 'string' });
-const fresh = new Application('fresh', globals);
+const fresh = new Application('fresh', { globals });
 const partial = fresh.option('pretty', { type: 'boolean' });
 const finished = partial.command(new Command('get', globals).action(() => {})).action(() => {});
 

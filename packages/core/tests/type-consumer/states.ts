@@ -5,7 +5,7 @@ import type { ActionArgs, ActionHandler, ActionOptions } from '@loom/core';
 const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
 
 const freshCommand = new Command('fresh', globals);
-const freshApplication = new Application('fresh', globals);
+const freshApplication = new Application('fresh', { globals });
 const partial = new Command('partial', globals).argument('path', { required: true });
 const partialOption = new Command('partial-option', globals).option('raw', { type: 'boolean' });
 const finished = new Command('get', globals)
@@ -20,7 +20,7 @@ finished.option;
 // @ts-expect-error TS2339: A Command registers one action, so the call does not return.
 finished.action;
 
-const group = new Application('group', globals).command(finished);
+const group = new Application('group', { globals }).command(finished);
 const openAfterChild = group.option('pretty', { type: 'boolean' }).command(finished);
 const application = openAfterChild.action(({ options, out }) => out.print(options.file));
 
@@ -80,9 +80,10 @@ const wider = new GlobalOptions()
   .option('file', { required: true, type: 'string' })
   .option('depth', { type: 'string' });
 // @ts-expect-error TS2345: A child cannot declare globals its Application does not declare.
-new Application('subset', globals).command(new Command('wide', wider).action(() => {}));
+new Application('subset', { globals }).command(new Command('wide', wider).action(() => {}));
+const narrow = new Command('narrow', globals).action(() => {});
 // @ts-expect-error TS2345: A child cannot drop globals its Application declares.
-new Application('superset', wider).command(new Command('narrow', globals).action(() => {}));
+new Application('superset', { globals: wider }).command(narrow);
 
 void groupRun;
 void applicationName;

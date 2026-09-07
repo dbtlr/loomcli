@@ -1,12 +1,19 @@
 ---
-description: Public SDK, invocation phases, host capture, output, and failure behavior for named commands with global and local options, Standard Schema validation, and passthrough.
+description: Public SDK, invocation phases, host capture, rendered and semantic output, and the failure classes and renderers for named commands with global and local options, Standard Schema validation, and passthrough.
 ---
 
 # Core reference
 
 ## Application declarations
 
-`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, globals)` shares one `GlobalOptions` value with the root and every attached Command.
+`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `globals` shares one `GlobalOptions` value with the root and every attached Command, and `failures` registers the renderers described in [Failure renderers](#failure-renderers).
+
+```ts
+interface ApplicationOptions<Globals = {}> {
+  globals?: GlobalOptions<Globals>;
+  failures?: readonly FailureRenderer[];
+}
+```
 
 ```ts
 import { Application } from '@loom/core';
@@ -182,7 +189,7 @@ export const globals = new GlobalOptions().option('file', {
 
 Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
 
-`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, globals?).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. Both constructors omit the second argument when the application declares no globals.
+`new Command(name, globals?)` declares a named Command with `argument()`, `option()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, { globals }).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. A Command takes its globals positionally, because the globals are the only thing it configures. Both constructors omit the second argument when the application declares no globals.
 
 The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own, both at compile time and during graph build.
 
@@ -202,7 +209,7 @@ const clear = new Command('clear', globals).option('force', { type: 'boolean' })
 const list = new Command('list', globals).action(listCache);
 const cache = new Command('cache', globals).command(clear).command(list);
 
-export const store = new Application('store', globals).command(cache).action(summarize);
+export const store = new Application('store', { globals }).command(cache).action(summarize);
 ```
 
 Routing reads a nested graph the way it reads a flat one. Bare tokens descend from the root, and the first hyphen token commits to the Command they reach, so `store cache clear --force` dispatches `clear` with the global values and its own locals. An unknown child lists the children of the Command that holds it, at every depth.
@@ -213,13 +220,14 @@ An invocation that commits to a group fails before local parsing, with code 2. T
 
 Globals are a value, so a Command in its own module knows the global types without importing the application. Module dependencies flow one way: globals, then commands, then the application. The `jsonkit` example uses this layout.
 
-| Module                                                                  | Contents                                                                                                     |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/globals.ts`                                                        | the shared `GlobalOptions` value                                                                             |
-| `src/commands/get.ts`, `src/commands/keys.ts`, `src/commands/select.ts` | one `Command` each                                                                                           |
-| `src/actions/*.ts`                                                      | one `ActionHandler<typeof declaration>` each                                                                 |
-| `src/application.ts`                                                    | the root: `new Application('jsonkit', globals).command(get).command(keys).command(select).action(summarize)` |
-| `src/main.ts`                                                           | `await jsonkit.run()`                                                                                        |
+| Module                                                                  | Contents                                                                                                                                        |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/globals.ts`                                                        | the shared `GlobalOptions` value                                                                                                                |
+| `src/commands/get.ts`, `src/commands/keys.ts`, `src/commands/select.ts` | one `Command` each                                                                                                                              |
+| `src/actions/*.ts`                                                      | one `ActionHandler<typeof declaration>` each                                                                                                    |
+| `src/failures.ts`                                                       | one `Renderer` per branded failure class                                                                                                        |
+| `src/application.ts`                                                    | the root: the options object with `globals` and the failure registrations, then `.command(get).command(keys).command(select).action(summarize)` |
+| `src/main.ts`                                                           | `await jsonkit.run()`                                                                                                                           |
 
 The application module is the root's authoring file. It declares the root action and attaches the children, and it is the declaration the root action type-imports. One Application value exists, so there is no separate root value to run by mistake.
 
@@ -260,7 +268,7 @@ Values win over route names. In `jsonkit --file keys get name`, the value of `--
 
 The selected Command then parses the remaining tokens with its own spellings and the existing passthrough rule. One validation pass checks the globals in authoring order, then that Command's declarations in authoring order.
 
-A missing required option is a validation-phase issue, so it loses to routing and to local structure errors. `jsonkit get` reports the missing `path` argument, not the `--file` omission issue, and `jsonkit nope` reports the unknown command.
+A missing required input is a validation-phase problem, so it loses to routing and to local structure errors: `jsonkit nope` reports the unknown command and validates nothing. Inside the phase, omissions aggregate in authoring order, the globals first, so an invocation that omits both a required `--file` global and a required `path` argument reports the `--file` line and then the `path` line in one failure.
 
 | Invocation for a `get` and `keys` graph  | Diagnostic                                                                                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -277,27 +285,30 @@ A missing required option is a validation-phase issue, so it loses to routing an
 
 ### Graph build errors
 
-Core builds and validates the whole graph before it reads any invocation token. This covers the globals table, every Command's spellings, every declared default, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Seven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, an argument or option declared after the action, and a child attached after the action. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, and the order of the declaration calls. Each rule below returns code 1 and names both sides with a correction. Nine of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument or option declared after the action, a child attached after the action, and an options slot holding a positional GlobalOptions value. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, an invalid child name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
-| Rejected declaration                                    | Diagnostic                                                                                                                                                                                                    |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A Command that declares arguments and attaches children | `The root Command declares argument "files" and attaches child "get". Move the argument into a child Command or remove the children.`                                                                         |
-| Two children with one name                              | `The root Command attaches two children named "get". Rename or remove one.`                                                                                                                                   |
-| An invalid child name                                   | `The root Command attaches a child named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                       |
-| An invalid argument name                                | `The root Command declares an argument named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                   |
-| A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.` A child whose globals type differs is also a compile error at `command()`. |
-| A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                                                                                               |
-| A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`                                                                             |
-| A Command with neither children nor an action           | `Command "get" has no action. Register an action.`                                                                                                                                                            |
-| A group that declares a local option                    | `Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.` The root form reads `The root Command declares option "verbose" ...`.             |
-| A Command with several actions                          | `Command "get" has multiple actions. Register one action.`                                                                                                                                                    |
-| An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                    |
-| A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                    |
-| A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                             |
-| An optional argument before a required one              | `Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.`                                                                        |
-| An argument after an optional one                       | `Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.`                                                                                                   |
-| An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                        |
-| A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                    |
+| Rejected declaration                                    | Diagnostic                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A Command that declares arguments and attaches children | `The root Command declares argument "files" and attaches child "get". Move the argument into a child Command or remove the children.`                                                                                                                                      |
+| Two children with one name                              | `The root Command attaches two children named "get". Rename or remove one.`                                                                                                                                                                                                |
+| An invalid child name                                   | `The root Command attaches a child named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                                                                                    |
+| An invalid argument name                                | `The root Command declares an argument named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                                                                                |
+| A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.` A child whose globals type differs is also a compile error at `command()`.                                                              |
+| A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                                                                                                                                                            |
+| A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`                                                                                                                                          |
+| A Command with neither children nor an action           | `Command "get" has no action. Register an action.`                                                                                                                                                                                                                         |
+| A group that declares a local option                    | `Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.` The root form reads `The root Command declares option "verbose" ...`.                                                                          |
+| A Command with several actions                          | `Command "get" has multiple actions. Register one action.`                                                                                                                                                                                                                 |
+| An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                                                                                 |
+| A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                                                                                 |
+| An options slot that holds no options object            | `The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.` for the retired positional form, and `The Application options must be an object. Supply { globals, failures }.` for any other value that is not a plain object. |
+| A failures entry that is not a registration             | `The Application holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).`                                                                                                                                                |
+| Two failure renderers for one class                     | `The Application registers two failure renderers for "InputError". Remove one registration.`                                                                                                                                                                               |
+| A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                                                                                          |
+| An optional argument before a required one              | `Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.`                                                                                                                                     |
+| An argument after an optional one                       | `Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.`                                                                                                                                                                |
+| An argument or option declared after the action         | `Command "get" declares option "raw" after its action. Declare arguments and options before action().`                                                                                                                                                                     |
+| A child attached after the action                       | `The root Command attaches child "get" after its action. Attach children before action().`                                                                                                                                                                                 |
 
 Local options on separate Commands can reuse names and spellings, with a different value shape on each one, so `--field` and `-F` can collect strings on one Command, read as a Boolean with `--no-field` on a sibling, and carry a validated scalar on a nested leaf. Each action sees only its own Command's declarations. Core holds one globals table and never copies it into a Command.
 
@@ -397,7 +408,7 @@ An omitted Boolean reads as `undefined` here, because the polarity value is the 
 | Required input with a declared default          | Developer declaration error                       |
 | Invalid declared default                        | Developer declaration error, even when overridden |
 
-A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration itself: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, and an argument under its name. The action value is the schema output alone, because the schema always runs.
+A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration by the spelling an operator would type: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, a `shortOnly` option under its short spelling, and an argument under its name. The action value is the schema output alone, because the schema always runs.
 
 ```ts
 import { GlobalOptions, validationContext } from '@loom/core';
@@ -448,11 +459,11 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 ### Example coverage
 
-[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes sources at or above the byte threshold and totals only retained sources. No retained source produces no rows and a zero total when requested.
+[textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It keeps a row for each source at or above the byte threshold and totals only retained sources. A selection the threshold filters entirely still prints the header, and a `total` row of zero when the invocation asked for one.
 
 `files` is an optional variadic argument with a custom Standard Schema. Its validator reads the validation context: a nonempty list passes, and an empty list passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false. Otherwise it returns the issue `Supply file arguments or pipe text to stdin.`, which core reports as an input error. The action never reads the terminal. It counts each supplied file, or `host.stdin` when no file is supplied, and prints the row name `stdin` for the piped text. Every source is counted incrementally over its chunks, so a word or a multibyte character that a chunk boundary splits is counted once.
 
-[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` and code 2, before any action runs. The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
+[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with code 2 before any action runs. The application registers its own `InputError` renderer, so the operator reads `jsonkit: --file: Supply a file or pipe JSON to stdin.` where core's default text would read `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
 
 ## Graph inspection
 
@@ -577,16 +588,17 @@ The public declarations include Node stream types. The package supplies their ty
 
 ## Output and failures
 
-| Method                 | Default destination | Return          |
-| ---------------------- | ------------------- | --------------- |
-| `out.print(message)`   | stdout              | `Promise<void>` |
-| `out.info(message)`    | stderr              | `Promise<void>` |
-| `out.success(message)` | stderr              | `Promise<void>` |
-| `out.warn(message)`    | stderr              | `Promise<void>` |
-| `out.error(message)`   | stderr              | `Promise<void>` |
-| `out.fatal(message)`   | Failure path        | `never`         |
+| Method                       | Default destination | Return          |
+| ---------------------------- | ------------------- | --------------- |
+| `out.print(message)`         | stdout              | `Promise<void>` |
+| `out.info(message)`          | stderr              | `Promise<void>` |
+| `out.success(message)`       | stderr              | `Promise<void>` |
+| `out.warn(message)`          | stderr              | `Promise<void>` |
+| `out.error(message)`         | stderr              | `Promise<void>` |
+| `out.render(data, renderer)` | stdout              | `Promise<void>` |
+| `out.fatal(message)`         | Failure path        | `never`         |
 
-Messages are strings. The initial renderer appends one newline and preserves all supplied whitespace. Semantic method identity remains distinct inside core.
+Messages are strings. The five semantic methods append one newline and preserve all supplied whitespace. Semantic method identity remains distinct inside core. `out.render` is the neutral presentation call, and [Rendered output](#rendered-output) describes it.
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. Catching that rejection does not make the invocation successful.
 
@@ -594,6 +606,149 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 `out.fatal()` synchronously throws the exported `FatalError` without an eager write. An uncaught `FatalError` prints its message once and returns code 1. A caught fatal error does not itself change success. Other exceptions use an internal-error diagnostic.
 
-If output or diagnostic rendering fails, core attempts one plain stderr fallback and returns code 1. If fallback setup or writing fails, reporting stops. A broken output pipe follows this same failure path and returns code 1.
+A broken output pipe returns code 1 through the failure path below.
 
-Help output, custom renderers, and plugins are outside this increment.
+### Rendered output
+
+```ts
+interface Renderer<Data> {
+  render: (data: Readonly<Data>) => string;
+}
+```
+
+`out.render(data, renderer)` writes the renderer's text to stdout. A renderer turns one value into the exact bytes core writes, the trailing newline included: core appends nothing and strips nothing. It is synchronous and pure. It receives the value alone, returns a string, and holds no output handle, so an application owns its presentation without owning the destination.
+
+```ts
+import { Application } from '@loom/core';
+import type { Renderer } from '@loom/core';
+
+interface Row {
+  count: number;
+  source: string;
+}
+
+const table: Renderer<readonly Row[]> = {
+  render: (rows) => rows.map((row) => `${String(row.count)}  ${row.source}\n`).join(''),
+};
+
+const app = new Application('counts')
+  .argument('files', { required: true, variadic: true })
+  .action(({ args, out }) => {
+    const rows: readonly Row[] = args.files.map((source) => ({ count: source.length, source }));
+    return out.render(rows, table);
+  });
+```
+
+A rendered value has no semantic identity: no purpose parameter and no destination parameter. The five semantic methods keep their string-only signatures and their own destinations.
+
+Core calls the renderer synchronously inside the `out.render` call, then queues its text on stdout. Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a renderer or write failure, and catching that rejection changes the action's control flow, not the invocation result.
+
+The type parameter is inferred from the value, so `out.render(rows, table)` checks the renderer against the rows it receives. A renderer for another value type, and one that returns anything but a string, are compile errors.
+
+### Failure classes
+
+Every failure `run()` reports is an instance of a public class. Each class carries the facts its sentence interpolates, so a renderer reads them instead of parsing prose. `message` is the sentence without its category prefix. The exit code is a field of the base, so a subclass inherits it and a renderer reads it.
+
+```ts
+abstract class LoomError extends Error {
+  readonly exitCode: 1 | 2;
+}
+abstract class UsageError extends LoomError {} // exit 2: the invocation is wrong
+
+type InputProblem =
+  | { input: InputIdentity; spelling: string; reason: 'missing' }
+  | {
+      input: InputIdentity;
+      spelling: string;
+      reason: 'invalid';
+      issues: readonly StandardSchemaV1.Issue[];
+    };
+```
+
+| Class                     | Base         | Code | Facts                                  |
+| ------------------------- | ------------ | ---- | -------------------------------------- |
+| `InputError`              | `UsageError` | 2    | `problems`                             |
+| `UnknownCommandError`     | `UsageError` | 2    | `token`, `candidates`                  |
+| `NonCallableCommandError` | `UsageError` | 2    | `command`, `candidates`                |
+| `UnexpectedArgumentError` | `UsageError` | 2    | `command`, `accepted`, `extra`         |
+| `UnknownOptionError`      | `UsageError` | 2    | `spelling`                             |
+| `MissingValueError`       | `UsageError` | 2    | `spelling`                             |
+| `UnexpectedValueError`    | `UsageError` | 2    | `spelling`, `value`                    |
+| `RepeatedOptionError`     | `UsageError` | 2    | `spelling`                             |
+| `ShortGroupError`         | `UsageError` | 2    | `token`, `reason`                      |
+| `DeclarationError`        | `LoomError`  | 1    | the declaration sentence alone         |
+| `FatalError`              | `LoomError`  | 1    | the message `out.fatal()` received     |
+| `InternalError`           | `LoomError`  | 1    | `cause`, the thrown value core wrapped |
+
+Core's default renderers add the category prefixes: `Invalid input: ` for every `UsageError`, `Invalid declaration: ` for `DeclarationError`, `Internal error: ` for `InternalError`, and none for `FatalError`.
+
+`InputError.problems` carries the whole validation phase in authoring order: each required input the invocation omitted, and each value a schema rejected with the issues that schema returned. `spelling` is the token an operator would type: `--file` for an option, `-F` for a `shortOnly` option, and the declared name for an argument. An omitted required argument is a `missing` problem like an omitted required option, so omission has one class whichever kind of input it names. An `invalid` problem always carries at least one issue: a schema that rejected a value and returned none reports `The schema rejected this value without an explanation.`, the sentence core's own text uses. Error precedence is unchanged, because routing and token errors still precede validation.
+
+`issuePath(issue)` returns the dotted path an issue names inside a value, such as `1` for the second item of a collection, or `undefined` when the issue names the value itself, so a renderer positions an issue the way core's default text does.
+
+`ShortGroupError.reason` is `'value-position'` for a value option that is not last in its group, and `'mixed-scope'` for a group that mixes a global letter with one the globals do not own. `ShortGroupError.token` holds what each reason names: the single option's spelling, such as `-d`, for `'value-position'`, and the whole group, such as `-qZ`, for `'mixed-scope'`.
+
+`InternalError` wraps an unexpected exception or a non-error throw. Its message is the thrown error's message, or `An unknown error occurred.` A schema that throws stays a `DeclarationError`, because only a returned issue states a validation verdict.
+
+`FatalError` is the class `out.fatal()` throws. An application can subclass it and register a renderer for the subclass, which is how one fatal type implies one diagnostic.
+
+### Failure renderers
+
+An application registers renderers for these classes through the constructor options object. `renderFailure` pairs one class with a renderer for its instances; it is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
+
+```ts
+import { Application, InputError, renderFailure, UnknownCommandError } from '@loom/core';
+
+import { summarize } from './actions/summarize.js';
+import { inputProblems, unknownCommand } from './failures.js';
+import { globals } from './globals.js';
+
+export const jsonkit = new Application('jsonkit', {
+  failures: [
+    renderFailure(InputError, inputProblems),
+    renderFailure(UnknownCommandError, unknownCommand),
+  ],
+  globals,
+}).action(summarize);
+```
+
+The renderer receives the failure instance and returns the diagnostic core writes to stderr. Like `out.render`, the renderer owns every byte core writes, the trailing newline included: core appends nothing and strips nothing. A working renderer cannot change the exit code, which is a fact of the class. A renderer that throws or returns a non-string is itself an internal failure, so that invocation returns 1 whichever code the original failure carried.
+
+Resolution walks the thrown failure's prototype chain, most derived first, through the application's registrations, and falls to core's default text when none answers. A registration for `UsageError` therefore brands every exit-2 failure at once, and a registration for a `FatalError` subclass beats one for `FatalError`. `DeclarationError` and `InternalError` reach registered renderers too, because an author-facing diagnostic is still output the application owns. Two registrations for one class are a `DeclarationError` at build, reported through core's default rendering.
+
+### Failure contract
+
+Renderer and destination failures are internal errors and return code 1.
+
+| Failure                                           | Observation                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An output renderer throws or returns a non-string | The `out.render` call rejects with the renderer's error, and nothing is written for that call. Later output still writes. After the action completes, core reports one `InternalError` through the registry, `Rendering output failed: <reason>`, and returns 1. An action failure stays primary over it. |
+| A destination write fails                         | The call rejects, later writes to that destination reject, core attempts one plain stderr fallback, and returns 1.                                                                                                                                                                                        |
+| A failure renderer throws or returns a non-string | Core writes the default text of the original failure, then `Internal error: Rendering the failure failed: <reason>`, through the plain fallback path on stderr, bypassing every registration, and returns 1. The original failure stays primary.                                                          |
+| The fallback write fails                          | Reporting stops. `run()` still resolves 1.                                                                                                                                                                                                                                                                |
+
+Successful completion requires output completion. A renderer failure during the action makes the invocation unsuccessful even when the action returned normally and even when it caught the rejection. The fallback path calls no renderer. A thenable a renderer returned receives a rejection handler and is otherwise ignored.
+
+### Example coverage
+
+[textstat](../examples/textstat/src/table.ts) holds its `Row` and `Table` types and one table renderer in its own module. The action collects a row per counted source and calls `out.render` once, after the last source is counted, so no core helper knows about columns and a read failure on any source leaves stdout empty. The header names the metric in upper case, then `SOURCE`. Counts right-align in a column as wide as the header or the widest count, a two-space gutter separates the columns, and the source column has no trailing padding. The total row is present only with `--total` and its source is `total`, so a selection that the byte threshold filters entirely still prints the header and one `total` row.
+
+```text
+BYTES  SOURCE
+    6  one.txt
+    2  two words.txt
+    8  total
+```
+
+[jsonkit](../examples/jsonkit/src/failures.ts) registers two renderers and keeps core's text for every other class. Both prefix the application name. The `InputError` renderer writes one line per problem, `jsonkit: <spelling>: <issue message>`, with ` at <path>` after the spelling when an issue carries a path, and `jsonkit: <spelling>: required` for an omission. The `UnknownCommandError` renderer writes `jsonkit: unknown command "<token>"; try <candidates>.`
+
+| Invocation                              | stderr                                                    | Code |
+| --------------------------------------- | --------------------------------------------------------- | ---- |
+| `jsonkit select --field '' -f doc.json` | `jsonkit: --field at 0: Supply a nonempty field name.`    | 2    |
+| `jsonkit get -f doc.json`               | `jsonkit: path: required`                                 | 2    |
+| `jsonkit typo -f doc.json`              | `jsonkit: unknown command "typo"; try get, keys, select.` | 2    |
+| `jsonkit get missing -f doc.json`       | `Path not found: missing`                                 | 1    |
+
+The last row is an unregistered class inside an application that registers others: the fatal path keeps core's text.
+
+Help output and plugins are outside this increment.
