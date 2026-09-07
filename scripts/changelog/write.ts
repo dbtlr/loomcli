@@ -33,8 +33,8 @@ function insertSection(changelog: string, section: string, version: string) {
   if (
     headings.some(
       (node) =>
-        headingText(node).toLowerCase() === 'unreleased' ||
-        headingText(node).startsWith(`v${version} - `),
+        headingText(node).trim().toLowerCase() === 'unreleased' ||
+        headingText(node).trim().split(/\s/u)[0] === `v${version}`,
     )
   ) {
     throw new Error('CHANGELOG.md already contains this version or an Unreleased section.');

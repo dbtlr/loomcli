@@ -5,6 +5,9 @@ type Heading = Extract<ReturnType<typeof fromMarkdown>['children'][number], { ty
 function text(nodes: Heading['children']): string {
   return nodes
     .map((node) => {
+      if (node.type === 'html') {
+        return '';
+      }
       if ('value' in node) {
         return node.value;
       }

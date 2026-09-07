@@ -528,3 +528,15 @@ test('write refuses history with an open block that would hide the new release',
   expect(run(root, 'write').stderr).toContain('unclosed Markdown block');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
+
+test.each(['## <em>Unreleased</em>', '## <code>v0.1.0</code> - 2026-01-01', '## v0.1.0'])(
+  'write rejects history heading %s by its displayed text',
+  (heading) => {
+    const root = repository();
+    put(root, 'CHANGELOG.md', `# Changelog\n\n${heading}\n\n- Existing.\n`);
+    put(root, '.changes/add.md', '- Add.\n');
+    commit(root);
+    expect(run(root, 'write').stderr).toContain('already contains');
+    expect(git(root, ['status', '--porcelain'])).toBe('');
+  },
+);
