@@ -98,3 +98,5 @@ The [core reference](docs/core.md) defines invocation, output, and failure behav
 ## Contribute a change
 
 Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.
+
+The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
