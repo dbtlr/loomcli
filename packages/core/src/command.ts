@@ -85,7 +85,19 @@ type LateDeclaration =
 /** The attachable shape of a Command, without its inferred declaration types. */
 interface AttachedCommand {
   readonly name: string | null;
-  build(globals: BuiltGlobals): BuiltCommand;
+  build(context: BuildContext): BuiltCommand;
+}
+
+/**
+ * One graph build's shared state. `globals` compiles once and every Command reads it. `owners`
+ * records the name of the parent that claimed each node, so a second parent holding the same value
+ * is building a graph with more than one path to that node, not a tree. The build is a depth-first
+ * walk in attachment order, and a parent claims each child as the walk reaches it, so the first
+ * owner is the parent whose attachment the walk meets first.
+ */
+interface BuildContext {
+  globals: BuiltGlobals;
+  owners: Map<AttachedCommand, string | null>;
 }
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
@@ -262,6 +274,27 @@ function collectChildren(state: Declared): [string, AttachedCommand][] {
   return attached;
 }
 
+/**
+ * Claims a child for its parent when the depth-first walk reaches it, then builds its subtree. A
+ * claimed node always means a second parent, because the duplicate-name rule rejects one parent
+ * attaching a value twice. Parents may share a name, so the claim is by node identity and the name
+ * serves the diagnostic alone.
+ */
+function buildChild(
+  parent: string | null,
+  [name, node]: [string, AttachedCommand],
+  context: BuildContext,
+): BuiltCommand {
+  const owner = context.owners.get(node);
+  if (owner !== undefined) {
+    throw new DeclarationError(
+      `${commandSentence(parent)} attaches child "${name}", which ${commandSubject(owner)} also attaches. Attach a Command value at one point; create a new Command for each placement.`,
+    );
+  }
+  context.owners.set(node, parent);
+  return node.build(context);
+}
+
 /** A variadic or optional slot ends the positional list, so nothing may follow either one. */
 function checkSlotOrder(slot: ArgumentSlot, next: ArgumentSlot, subject: string) {
   if (slot.variadic) {
@@ -368,9 +401,10 @@ function bindDispatch<Args, Options, Globals>(
 /** Validates one declaration against the shared globals table and compiles it for dispatch. */
 export function buildCommand<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  globals: BuiltGlobals,
+  context: BuildContext,
 ): BuiltCommand {
   const { actions, name } = state;
+  const { globals } = context;
   const subject = commandSubject(name);
   if (state.globals !== globals.source) {
     throw new DeclarationError(
@@ -399,7 +433,7 @@ export function buildCommand<Args, Options, Globals>(
   const options = compileLocalOptions(state, globals, subject);
   return {
     arguments: slots,
-    children: new Map(attached.map(([key, node]) => [key, node.build(globals)])),
+    children: new Map(attached.map((entry) => [entry[0], buildChild(name, entry, context)])),
     dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
@@ -407,12 +441,12 @@ export function buildCommand<Args, Options, Globals>(
   };
 }
 
-/** The globals table compiles once per invocation and every Command in the graph shares it. */
+/** The globals table and the owners record each compile once per invocation and the whole graph shares them. */
 export function buildGraph<Args, Options, Globals>(
   root: CommandState<Args, Options, Globals>,
 ): { globals: BuiltGlobals; root: BuiltCommand } {
-  const globals = buildGlobals(root.globals);
-  return { globals, root: buildCommand(root, globals) };
+  const context: BuildContext = { globals: buildGlobals(root.globals), owners: new Map() };
+  return { globals: context.globals, root: buildCommand(root, context) };
 }
 
 export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
@@ -474,8 +508,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
     return new CommandBuilder(declareAction(this.#state, handler));
   }
 
-  build(globals: BuiltGlobals): BuiltCommand {
-    return buildCommand(this.#state, globals);
+  build(context: BuildContext): BuiltCommand {
+    return buildCommand(this.#state, context);
   }
 }
 
