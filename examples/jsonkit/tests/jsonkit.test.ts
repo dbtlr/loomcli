@@ -239,6 +239,13 @@ test('jsonkit reports the reason a stdin read failed', () => {
   expect(result.stderr).toBe('Cannot read stdin: The connection failed.\n');
 });
 
+test('jsonkit reports a stdin connection that closed before it ended', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['closed-early']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toMatch(/^Cannot read stdin: .+\n$/u);
+});
+
 test('jsonkit never reads stdin when the file global is supplied', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['file-only'])).toEqual({
     status: 0,

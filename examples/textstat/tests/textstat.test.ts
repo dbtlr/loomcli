@@ -66,6 +66,21 @@ test('textstat asks for files or piped text when stdin is a terminal', () => {
   });
 });
 
+test('textstat counts one unbroken token that spans many chunks', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['long-token'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '1\tstdin\n',
+  });
+});
+
+test('textstat reports a stdin connection that closed before it ended', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['closed-early']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toMatch(/^Cannot read stdin: .+\n$/u);
+});
+
 test('textstat reports the reason a stdin read failed', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['unreadable']);
   expect(result.status).toBe(1);

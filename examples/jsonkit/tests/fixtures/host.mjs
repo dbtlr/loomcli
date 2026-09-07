@@ -64,6 +64,20 @@ if (scenario === 'cwd') {
     },
   });
   await jsonkit.run({ host: { argv: ['get', 'name'], stdin, terminal: piped } });
+} else if (scenario === 'closed-early') {
+  // A connection destroyed without an error emits "close" and never "end".
+  let sent = false;
+  const stdin = new Readable({
+    read() {
+      if (sent) {
+        this.destroy();
+        return;
+      }
+      sent = true;
+      this.push(contents);
+    },
+  });
+  await jsonkit.run({ host: { argv: ['get', 'name'], stdin, terminal: piped } });
 } else if (scenario === 'file-only') {
   let reads = 0;
   const stdin = new Readable({

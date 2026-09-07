@@ -57,6 +57,31 @@ if (scenario === 'cwd') {
       terminal: { ...piped, stdin: { isTTY: true } },
     },
   });
+} else if (scenario === 'long-token') {
+  // One unbroken token across many chunks, so a counter that keeps the open word grows with it.
+  const chunk = 'a'.repeat(64 * 1024);
+  let remaining = 128;
+  const stdin = new Readable({
+    read() {
+      remaining -= 1;
+      this.push(remaining >= 0 ? chunk : null);
+    },
+  });
+  await textstat.run({ host: { argv: ['--metric', 'words'], stdin, terminal: piped } });
+} else if (scenario === 'closed-early') {
+  // A connection destroyed without an error emits "close" and never "end".
+  let sent = false;
+  const stdin = new Readable({
+    read() {
+      if (sent) {
+        this.destroy();
+        return;
+      }
+      sent = true;
+      this.push('one two');
+    },
+  });
+  await textstat.run({ host: { argv: ['--metric', 'words'], stdin, terminal: piped } });
 } else if (scenario === 'unreadable') {
   const stdin = new Readable({
     read() {
