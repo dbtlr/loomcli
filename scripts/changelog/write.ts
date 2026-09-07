@@ -5,7 +5,6 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -76,7 +75,7 @@ function updateLockfile(root: string) {
 
 // Stage package-manager work before touching the checkout; handled write failures restore originals.
 function installRelease(root: string, release: ReturnType<typeof prepareRelease>) {
-  if (realpathSync(git(root, ['rev-parse', '--show-toplevel']).trim()) !== realpathSync(root)) {
+  if (git(root, ['rev-parse', '--show-prefix']).trim() !== '') {
     throw new Error('Run write from the repository root.');
   }
   if (git(root, ['status', '--porcelain', '--untracked-files=all']).trim()) {

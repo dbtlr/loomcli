@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
@@ -338,7 +338,7 @@ syncBuiltinESMExports();
   commit(root);
   const result = spawnSync(
     'node',
-    ['--import', preload, fileURLToPath(cli), 'write', '--date', '2026-09-07'],
+    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'write', '--date', '2026-09-07'],
     {
       cwd: root,
       encoding: 'utf8',
@@ -472,12 +472,16 @@ syncBuiltinESMExports();
 `,
   );
   commit(root);
-  const result = spawnSync('node', ['--import', preload, fileURLToPath(cli), 'write'], {
-    cwd: root,
-    encoding: 'utf8',
-    env: { ...process.env, FAIL_WRITE_PATH: join(root, 'packages/core/package.json') },
-    timeout: 10_000,
-  });
+  const result = spawnSync(
+    'node',
+    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'write'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, FAIL_WRITE_PATH: join(root, 'packages/core/package.json') },
+      timeout: 10_000,
+    },
+  );
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('rollback incomplete');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(originalChangelog);
