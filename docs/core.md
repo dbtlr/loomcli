@@ -41,7 +41,7 @@ TypeScript requires one statically known name for each `argument()` and `option(
 
 A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ variadic: true }`, must be last and takes the remaining tokens.
 
-A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind.
+A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. A validated optional argument can declare `validateOmitted: true` to send its omission to its own schema, as [Absence and defaults](#absence-and-defaults) describes. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind.
 
 A variadic argument follows the presence rules of a [multiple option](#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the schema output, and never `undefined`: an empty tail is an accurate empty collection, so it enters the schema like a supplied one. A default is a `string[]`, or the schema's input type when the declaration validates, and each invocation receives its own copy when no schema replaces it.
 
@@ -97,7 +97,7 @@ The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `d
 
 A separately consumed value cannot start with a hyphen. A long assignment can contain any string, including hyphens and additional `=` characters. Short-only string options cannot receive a hyphen-prefixed value in this increment.
 
-The parser preserves empty values. After parsing, value inputs pass through their declared validation schemas. A declared default fills only an omitted optional value.
+The parser preserves empty values. After parsing, value inputs pass through their declared validation schemas. A declared default fills only an omitted optional value. A validated optional value can declare `validateOmitted: true` instead, which sends its omission to its schema, as [Absence and defaults](#absence-and-defaults) describes.
 
 ### Short groups
 
@@ -307,7 +307,7 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ## Standard Schema validation
 
-Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, or `required`; their polarity controls their absent value.
+Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, `required`, or `validateOmitted`; their polarity controls their absent value.
 
 ```ts
 import { Application } from '@loom/core';
@@ -381,20 +381,25 @@ A default validates before any token is parsed, so its phase reports the host an
 | Boolean option, supplied                       | The value of its spelling      |
 | Boolean option, omitted                        | `undefined`                    |
 
-An omitted Boolean reads as `undefined` here, because the polarity value is the absent value, not a supplied token. Absence rules do not change: an omitted optional value with no default never reaches its schema, so no context is produced for it.
+An omitted Boolean reads as `undefined` here, because the polarity value is the absent value, not a supplied token. Absence rules do not change: an omitted optional value with no default never reaches its schema, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.
 
 ### Absence and defaults
 
-| Declaration and input                          | Action value or failure                           |
-| ---------------------------------------------- | ------------------------------------------------- |
-| Optional value or argument omitted, no default | `undefined`; schema is not called                 |
-| Optional multiple option omitted, no default   | The validated output of `[]`                      |
-| Optional variadic argument omitted, no default | The validated output of `[]`                      |
-| Optional value omitted, declared default       | The validated default output                      |
-| Supplied value, including an empty string      | Its validated output or input issues              |
-| `required: true` value option omitted          | Input error; no dispatch                          |
-| Required input with a declared default         | Developer declaration error                       |
-| Invalid declared default                       | Developer declaration error, even when overridden |
+| Declaration and input                           | Action value or failure                           |
+| ----------------------------------------------- | ------------------------------------------------- |
+| Optional value or argument omitted, no default  | `undefined`; schema is not called                 |
+| Optional value omitted, `validateOmitted: true` | The validated output of `undefined`               |
+| Optional multiple option omitted, no default    | The validated output of `[]`                      |
+| Optional variadic argument omitted, no default  | The validated output of `[]`                      |
+| Optional value omitted, declared default        | The validated default output                      |
+| Supplied value, including an empty string       | Its validated output or input issues              |
+| `required: true` value option omitted           | Input error; no dispatch                          |
+| Required input with a declared default          | Developer declaration error                       |
+| Invalid declared default                        | Developer declaration error, even when overridden |
+
+A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other, so it names the supplied spelling and returns code 2. The action value is the schema output alone, because the schema always runs.
+
+The flag belongs to an optional scalar string option or scalar argument that declares a schema and no default. Every other declaration already decides its own absence, so the flag beside `required: true`, beside a `default`, beside `multiple: true` or `variadic: true`, on a Boolean option, or without `validate` is a compile error at the declaration call and a declaration error at build. The schema's input type must accept `undefined`, the way a declared default must satisfy that same input type.
 
 Defaults use the schema's input type, not its output type. In the example, `default: '0'` is valid and `default: 0` is a type error. Without a schema, a value default must be a string.
 
@@ -454,6 +459,7 @@ interface ArgumentNode {
   readonly required: boolean;
   readonly variadic: boolean;
   readonly validated: boolean;
+  readonly validateOmitted: boolean;
   readonly default: { readonly value: unknown } | undefined;
 }
 type OptionNode =
@@ -465,6 +471,7 @@ type OptionNode =
       readonly required: boolean;
       readonly multiple: boolean;
       readonly validated: boolean;
+      readonly validateOmitted: boolean;
       readonly default: { readonly value: unknown } | undefined;
     }
   | {
@@ -480,7 +487,7 @@ type OptionNode =
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
-- Schema objects stay private. `validated` says whether a schema exists. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
+- Schema objects stay private. `validated` says whether a schema exists, and `validateOmitted` says whether the declaration sends its omission to that schema. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
 
 ```ts
