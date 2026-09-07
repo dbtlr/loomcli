@@ -94,3 +94,7 @@ In PowerShell, set `$env:LOOM_TEST_RUNTIME = 'bun'` before `pnpm test`.
 CI tests Node 22.23.2 and Bun 1.4.0 on macOS, Linux, and Windows. These versions define the compatibility baseline for this increment. TypeScript 7.0.2 checks emitted declarations with strict NodeNext resolution. Earlier versions are unverified.
 
 The [core reference](docs/core.md) defines invocation, output, and failure behavior.
+
+## Contribute a change
+
+Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.

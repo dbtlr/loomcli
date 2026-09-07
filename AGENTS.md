@@ -1,4 +1,14 @@
+---
+description: Project conventions for TypeScript assertions and pull request changelog decisions.
+---
+
 # Loom CLI
+
+## Pull requests
+
+Before opening or updating a PR, read [.changes/README.md](.changes/README.md). It defines when to add a fragment, when to apply `skip-changelog`, and how to document breaking changes or correct an earlier unreleased entry. Apply those rules to the final diff and state the fragment path or skip reason in the PR description.
+
+During an upgrade, read the [changelog](CHANGELOG.md) breaking sections between the installed and target versions and follow their migration instructions.
 
 ## Conventions
 
