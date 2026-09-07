@@ -15,6 +15,7 @@ const globalOptions: readonly OptionNode[] = graph.globals;
 const slots: readonly ArgumentNode[] = root.arguments;
 const name: string | null = root.name;
 const path: readonly string[] = root.path;
+const aliases: readonly string[] = root.aliases;
 
 // The option union reads by its `type` tag, and each form publishes its own spellings.
 const spelling = (option: OptionNode) =>
@@ -28,6 +29,8 @@ graph.name = 'other';
 root.hasAction = true;
 // @ts-expect-error TS2339: A read-only list publishes no mutating call.
 root.children.push(root);
+// @ts-expect-error TS2339: The alias list is read-only too.
+root.aliases.push('other');
 // @ts-expect-error TS2339: The graph carries the globals once, never inside a Command node.
 root.globals;
 
@@ -47,3 +50,4 @@ void globalOptions;
 void slots;
 void name;
 void path;
+void aliases;

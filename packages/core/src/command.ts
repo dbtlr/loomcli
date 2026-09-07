@@ -48,14 +48,30 @@ export interface DispatchInput {
   values: ValidatedInputs;
 }
 
-/** A group registers no action, so its `dispatch` is `undefined` and selection rejects it. */
+/**
+ * One child a bare token reaches, under its canonical name or one of its hidden aliases.
+ * `name` repeats the key `children` holds, because `BuiltCommand.name` is `string | null` for the
+ * root and the routed path a child extends holds strings alone.
+ */
+export interface RoutedChild {
+  command: BuiltCommand;
+  name: string;
+}
+
+/**
+ * A group registers no action, so its `dispatch` is `undefined` and selection rejects it.
+ * `children` is keyed by canonical name, so every candidate list and every walk of the graph reads
+ * it, and `routes` adds the hidden aliases, so routing alone resolves them.
+ */
 export interface BuiltCommand {
+  aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
+  routes: ReadonlyMap<string, RoutedChild>;
 }
 
 /** Phantom key. It marks a Command value, so only a Command can be attached as a child. */
@@ -66,7 +82,7 @@ export declare const commandValue: unique symbol;
  * and each call removes the names it invalidates. A Command attaches children at any depth, so
  * `command()` belongs to every Command and to the unnamed root alike.
  */
-export type CommandMethod = 'action' | 'argument' | 'command' | 'option';
+export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
 export type AfterArgument<State> = Exclude<State, 'command'>;
@@ -79,8 +95,15 @@ export type AfterAction = never;
 
 /** A declaration made after the action, kept in authoring order so build reports the first. */
 type LateDeclaration =
+  | { alias: string; kind: 'alias' }
   | { child: object; kind: 'child' }
   | { input: InputDeclaration; kind: 'input' };
+
+/**
+ * The names one `alias()` call declares. Each call keeps its own group, so a call that names none,
+ * which the types reject and a JavaScript author can still write, reports as the call it is.
+ */
+type AliasDeclaration = readonly string[];
 
 /** The attachable shape of a Command, without its inferred declaration types. */
 interface AttachedCommand {
@@ -127,6 +150,15 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
   }
 }
 
+/** An alias is a bare token the way a child name is, so it answers to the same name rule. */
+function checkAliasName(command: string | null, alias: unknown): void {
+  if (!isDeclaredName(alias)) {
+    throw new DeclarationError(
+      `${commandSentence(command)} declares an alias named "${String(alias)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+    );
+  }
+}
+
 /**
  * Everything one Command declaration holds. The transitions below copy it with fields replaced, and
  * the Command and Application builders share them, so one declaration call has one implementation.
@@ -134,6 +166,7 @@ function checkChildName(parent: string | null, name: unknown): asserts name is s
  */
 export interface CommandState<Args, Options, Globals> {
   actions: readonly Action<Args, Globals & Options>[];
+  aliases: readonly AliasDeclaration[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
   globals: GlobalOptions<Globals> | undefined;
@@ -149,6 +182,7 @@ export function freshState<Globals>(
 ): CommandState<{}, {}, Globals> {
   return {
     actions: [],
+    aliases: [],
     bind: () => ({ args: {}, options: {} }),
     children: [],
     globals,
@@ -161,9 +195,9 @@ export function freshState<Globals>(
 /** A declaration after the action is an order fault; build reports the first one recorded. */
 function recordLate<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  declaration: LateDeclaration,
+  declarations: readonly LateDeclaration[],
 ): readonly LateDeclaration[] {
-  return state.actions.length > 0 ? [...state.late, declaration] : state.late;
+  return state.actions.length > 0 ? [...state.late, ...declarations] : state.late;
 }
 
 /** The declared value joins `args` under its literal name, typed by its own config. */
@@ -185,7 +219,7 @@ export function declareArgument<
       return { ...bound, args: { ...bound.args, ...values.argument(input) } };
     },
     inputs: [...state.inputs, input],
-    late: recordLate(state, { input, kind: 'input' }),
+    late: recordLate(state, [{ input, kind: 'input' }]),
   };
 }
 
@@ -208,7 +242,22 @@ export function declareOption<
       return { ...bound, options: { ...bound.options, ...values.option(input) } };
     },
     inputs: [...state.inputs, input],
-    late: recordLate(state, { input, kind: 'input' }),
+    late: recordLate(state, [{ input, kind: 'input' }]),
+  };
+}
+
+/** One call's names stay one group, so the empty call the types reject still reports as one. */
+export function declareAlias<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  names: AliasDeclaration,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    aliases: [...state.aliases, names],
+    late: recordLate(
+      state,
+      names.map((alias): LateDeclaration => ({ alias, kind: 'alias' })),
+    ),
   };
 }
 
@@ -227,14 +276,14 @@ export function attachChild<Args, Options, Globals>(
   return {
     ...state,
     children: [...state.children, child],
-    late: recordLate(state, { child, kind: 'child' }),
+    late: recordLate(state, [{ child, kind: 'child' }]),
   };
 }
 
 /** The untyped part of a declaration, which every build check reads regardless of its generics. */
 type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'children' | 'inputs' | 'late' | 'name'
+  'aliases' | 'children' | 'inputs' | 'late' | 'name'
 >;
 
 /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
@@ -247,6 +296,11 @@ function checkDeclarationOrder(state: Declared): void {
   if (late.kind === 'input') {
     throw new DeclarationError(
       `${commandSentence(name)} declares ${late.input.kind} "${late.input.name}" after its action. Declare arguments and options before action().`,
+    );
+  }
+  if (late.kind === 'alias') {
+    throw new DeclarationError(
+      `${commandSentence(name)} declares alias "${late.alias}" after its action. Declare aliases before action().`,
     );
   }
   // Child identity and names are settled before this call, so the node and its name are valid.
@@ -272,6 +326,62 @@ function collectChildren(state: Declared): [string, AttachedCommand][] {
     attached.push([name, node]);
   }
   return attached;
+}
+
+/**
+ * A Command's own alias rules, and the flat list in declaration order that routing and inspection
+ * read. Each call keeps its own group, so a call that names none reports as the call it is.
+ */
+function collectAliases(state: Declared): string[] {
+  const { name } = state;
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const declaration of state.aliases) {
+    if (declaration.length === 0) {
+      throw new DeclarationError(
+        `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
+      );
+    }
+    for (const alias of declaration) {
+      checkAliasName(name, alias);
+      if (alias === name) {
+        throw new DeclarationError(
+          `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
+        );
+      }
+      if (seen.has(alias)) {
+        throw new DeclarationError(
+          `${commandSentence(name)} declares alias "${alias}" twice. Remove the repeated alias.`,
+        );
+      }
+      seen.add(alias);
+      aliases.push(alias);
+    }
+  }
+  return aliases;
+}
+
+/**
+ * One parent's namespace, which every canonical name and alias under it shares. Each child settled
+ * its own alias rules while it built, so what is left is the collision with a sibling. The names are
+ * read before the walk, so the rule reads the same whichever sibling the author declared first.
+ */
+function aliasNamespace(parent: string | null, names: ReadonlySet<string>) {
+  const owners = new Map<string, string>();
+  return function claim(child: string, alias: string): void {
+    if (names.has(alias)) {
+      throw new DeclarationError(
+        `${commandSentence(parent)} attaches child "${child}" with alias "${alias}", which is also the name of child "${alias}". Rename or remove one.`,
+      );
+    }
+    const owner = owners.get(alias);
+    if (owner !== undefined) {
+      throw new DeclarationError(
+        `${commandSentence(parent)} attaches child "${child}" with alias "${alias}", which is also an alias of child "${owner}". Rename or remove one.`,
+      );
+    }
+    owners.set(alias, child);
+  };
 }
 
 /**
@@ -413,6 +523,7 @@ export function buildCommand<Args, Options, Globals>(
   }
   const attached = collectChildren(state);
   checkDeclarationOrder(state);
+  const aliases = collectAliases(state);
   const slots = collectArguments(state, subject);
   const first = slots[0];
   const child = attached[0];
@@ -431,13 +542,28 @@ export function buildCommand<Args, Options, Globals>(
     checkGroup(state, attached);
   }
   const options = compileLocalOptions(state, globals, subject);
+  const children = new Map<string, BuiltCommand>();
+  const routes = new Map<string, RoutedChild>();
+  const claim = aliasNamespace(name, new Set(attached.map((entry) => entry[0])));
+  for (const entry of attached) {
+    // The subtree builds before its aliases are claimed, so the tree rule keeps its precedence.
+    const routed: RoutedChild = { command: buildChild(name, entry, context), name: entry[0] };
+    children.set(routed.name, routed.command);
+    routes.set(routed.name, routed);
+    for (const alias of routed.command.aliases) {
+      claim(routed.name, alias);
+      routes.set(alias, routed);
+    }
+  }
   return {
+    aliases,
     arguments: slots,
-    children: new Map(attached.map((entry) => [entry[0], buildChild(name, entry, context)])),
+    children,
     dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
     options,
+    routes,
   };
 }
 
@@ -494,6 +620,14 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       name,
     };
     return new CommandBuilder(declareOption(this.#state, input));
+  }
+
+  /**
+   * Hidden aliases are other bare tokens that route to this Command. They invalidate no call, and
+   * the tuple rest parameter rejects a call that names none.
+   */
+  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State> {
+    return new CommandBuilder(declareAlias(this.#state, names));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
@@ -560,7 +694,7 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
   ];
 }
 
-/** Bare tokens select children until a Command has none; the first hyphen token commits. */
+/** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
   const path: string[] = [];
@@ -570,12 +704,13 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
     if (token === undefined || token === '--' || token.startsWith('-')) {
       break;
     }
-    const child = command.children.get(token);
+    const child = command.routes.get(token);
     if (!child) {
       throw new UnknownCommandError(token, [...command.children.keys()]);
     }
-    command = child;
-    path.push(token);
+    // An alias routes like the canonical name, and the path it walks reports that name alone.
+    command = child.command;
+    path.push(child.name);
     index += 1;
   }
   return { command, path, tokens: tokens.slice(index) };

@@ -82,6 +82,16 @@ test('jsonkit lists the keys of an object in JavaScript property order', () => {
   });
 });
 
+test('jsonkit ls lists the keys the way jsonkit keys does', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['ls', '--file', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'name\ntags\nnested\ncount\nok\nnone\n',
+    });
+  });
+});
+
 test('jsonkit lists integer-like keys first, as JavaScript orders them', () => {
   withDocuments({ 'doc.json': '{"b": 1, "2": 2, "a": 3}' }, (cwd) => {
     expect(invoke(main, ['keys', '--file', 'doc.json'], { cwd })).toEqual({

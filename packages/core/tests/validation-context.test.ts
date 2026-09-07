@@ -115,6 +115,33 @@ test('a nested Command reports its whole route and its own supplied inputs', () 
   });
 });
 
+test('a route walked through hidden aliases reports the canonical names', () => {
+  const argv = ['c', 'cl', '--force', 'yes', '--mode', 'fast'];
+  const shared = {
+    command: ['cache', 'clear'],
+    host: { argv, cwd },
+    passthrough: [],
+    phase: 'invocation',
+    supplied: { args: {}, options: { force: 'yes', mode: 'fast' } },
+    suppliedKey: true,
+  };
+  expect(context('nested', argv)).toEqual({
+    records: [
+      {
+        context: { ...shared, input: { global: true, kind: 'option', name: 'mode' } },
+        label: 'mode',
+        value: 'fast',
+      },
+      {
+        context: { ...shared, input: { global: false, kind: 'option', name: 'force' } },
+        label: 'force',
+        value: 'yes',
+      },
+    ],
+    sameHost: true,
+  });
+});
+
 test('a default validates in its own phase, with the host and no supplied inputs', () => {
   const argv = ['--size', '2'];
   const host = { argv, cwd };

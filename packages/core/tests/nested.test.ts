@@ -44,6 +44,45 @@ test.each([
   },
 );
 
+test.each([
+  [['cache', 'ls'], 'list', {}],
+  [['cache', 'l'], 'list', {}],
+  [['c', 'list'], 'list', {}],
+  [['c', 'ls'], 'list', {}],
+  [['c', 'clear', '--force'], 'clear', { force: true }],
+] satisfies [string[], string, Record<string, unknown>][])(
+  'routes %j through a hidden alias to the Command its canonical name selects',
+  (argv, command, options) => {
+    expect(report(['--file', 'data.json', ...argv])).toEqual({
+      args: {},
+      command,
+      options: { file: 'data.json', ...options },
+      passthrough: [],
+    });
+  },
+);
+
+test('one alias namespace belongs to one parent, so two parents each spend "ls" on a child', () => {
+  const shared = { args: {}, options: { file: 'data.json' }, passthrough: [] };
+  expect(report(['--file', 'data.json', 'cache', 'ls'])).toEqual({ ...shared, command: 'list' });
+  expect(report(['--file', 'data.json', 'store', 'ls'])).toEqual({ ...shared, command: 'put' });
+});
+
+test.each([
+  [['c'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
+  [['cache', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
+  [['c', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
+  [['cache', 'ls', 'extra'], 'Command "list" accepts no arguments. Remove the supplied values.'],
+] satisfies [string[], string][])(
+  'reports canonical names alone for the aliased invocation %j',
+  (argv, reason) => {
+    const result = invokeNested(argv);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  },
+);
+
 function invokeNestedGraph(scenario: string, argv: string[] = []) {
   const result = invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, ...argv]);
   expect(result.stderr).toBe('');
@@ -83,6 +122,36 @@ test.each([
   [
     'nested-shared-option-key',
     'Option "file" is declared as a global option and as a local option on Command "clear". Rename the local option.',
+  ],
+  [
+    'alias-sibling-name',
+    'The root Command attaches child "keys" with alias "get", which is also the name of child "get". Rename or remove one.',
+  ],
+  [
+    'alias-before-sibling-name',
+    'The root Command attaches child "keys" with alias "get", which is also the name of child "get". Rename or remove one.',
+  ],
+  [
+    'alias-sibling-alias',
+    'The root Command attaches child "keys" with alias "ls", which is also an alias of child "select". Rename or remove one.',
+  ],
+  [
+    'alias-own-name',
+    'Command "keys" declares alias "keys", which is its own name. Remove the alias.',
+  ],
+  ['repeated-alias', 'Command "keys" declares alias "ls" twice. Remove the repeated alias.'],
+  [
+    'invalid-alias-name',
+    'Command "keys" declares an alias named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
+  [
+    'late-alias',
+    'Command "keys" declares alias "ls" after its action. Declare aliases before action().',
+  ],
+  [
+    'nested-alias-sibling-name',
+    'Command "cache" attaches child "list" with alias "clear", which is also the name of child "clear". Rename or remove one.',
   ],
   [
     'shared-child',
