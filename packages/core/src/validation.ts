@@ -383,12 +383,13 @@ export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<D
 }
 
 /**
- * Without a schema the declared array reaches the action itself, so each invocation takes a copy
- * and an action that mutates its collection cannot rewrite the declaration. A schema output is the
- * author's own value, produced anew for this invocation, so it passes through unchanged.
+ * An array default reaches the action as its own copy, so an action that mutates its collection
+ * rewrites neither the declaration nor the next invocation. A schema that returns a new array is
+ * copied too, because a pass-through schema returns the declared array itself and cannot be told
+ * apart from one that built its own. Every other output passes through unchanged.
  */
-function freshDefault(input: InputDeclaration, value: unknown) {
-  return input.config.validate === undefined && Array.isArray(value) ? [...value] : value;
+function freshDefault(value: unknown) {
+  return Array.isArray(value) ? [...value] : value;
 }
 
 /**
@@ -472,7 +473,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
           // Invocation context a supplied value reads, and its issues read as input issues.
           await accept(entry, undefined, subject);
         } else {
-          values.set(input, freshDefault(input, defaults.get(input)));
+          values.set(input, freshDefault(defaults.get(input)));
         }
       } else {
         await accept(entry, raw, subject);

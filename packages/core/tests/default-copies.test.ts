@@ -10,8 +10,9 @@ function copies(mode: string) {
 }
 
 test('a declared array default is copied for each invocation and at authoring', () => {
-  const line = '{"field":["a","b","x"],"tag":["one","y"]}\n';
-  expect(copies('runs')).toBe(`${line}${line}`);
+  const line = '{"field":["a","b","x"],"files":["a","extra"],"mark":["m","z"],"tag":["one","y"]}\n';
+  const declared = '{"files":["a"],"mark":["m"]}\n';
+  expect(copies('runs')).toBe(`${line}${line}${declared}`);
 });
 
 test('an inspected default is a frozen snapshot that no consumer can write through', () => {

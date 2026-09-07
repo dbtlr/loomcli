@@ -407,7 +407,7 @@ Omission does not invoke schema-internal defaults. An explicitly declared `defau
 
 Every `run()` checks the complete declarations, then validates all declared defaults before parsing invocation tokens. It awaits asynchronous defaults and reuses their transformed outputs for that invocation. Invalid defaults report the affected declaration, the schema explanation, and a correction with exit code 1. Default results are not cached across invocations.
 
-Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. An array default is copied at authoring, and each invocation receives its own copy when no schema replaces it, so a later change to the declared array, and an action that mutates its collection, reach neither the declaration nor the next invocation. Schema objects and other default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
+Authoring captures configuration properties. Replacing a property on the original configuration object does not alter the declaration. An array default is copied at authoring, and it reaches each invocation as its own copy, so a later change to the declared array, and an action that mutates its collection, reach neither the declaration nor the next invocation. A schema replaces the default with the value it returns, and an array it returns is copied for that invocation the same way. Schema objects and other default objects are retained by reference; core does not clone arbitrary library objects or enforce validator purity.
 
 ### Issues and validator failures
 
