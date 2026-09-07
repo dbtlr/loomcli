@@ -70,6 +70,10 @@ function build() {
     case 'alias-sibling-name': {
       return app.command(leaf('get')).command(aliased('keys', 'get')).action(dispatch);
     }
+    case 'alias-before-sibling-name': {
+      // The alias is declared before the child whose name it repeats, so the rule reads both ways.
+      return app.command(aliased('keys', 'get')).command(leaf('get')).action(dispatch);
+    }
     case 'alias-sibling-alias': {
       return app.command(aliased('select', 'ls')).command(aliased('keys', 'ls')).action(dispatch);
     }

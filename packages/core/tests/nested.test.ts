@@ -62,6 +62,12 @@ test.each([
   },
 );
 
+test('one alias namespace belongs to one parent, so two parents each spend "ls" on a child', () => {
+  const shared = { args: {}, options: { file: 'data.json' }, passthrough: [] };
+  expect(report(['--file', 'data.json', 'cache', 'ls'])).toEqual({ ...shared, command: 'list' });
+  expect(report(['--file', 'data.json', 'store', 'ls'])).toEqual({ ...shared, command: 'put' });
+});
+
 test.each([
   [['c'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
   [['cache', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
@@ -119,6 +125,10 @@ test.each([
   ],
   [
     'alias-sibling-name',
+    'The root Command attaches child "keys" with alias "get", which is also the name of child "get". Rename or remove one.',
+  ],
+  [
+    'alias-before-sibling-name',
     'The root Command attaches child "keys" with alias "get", which is also the name of child "get". Rename or remove one.',
   ],
   [

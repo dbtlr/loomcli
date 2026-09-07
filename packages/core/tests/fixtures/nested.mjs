@@ -17,7 +17,8 @@ const list = new Command('list', globals).alias('ls', 'l').action(report('list')
 // A Command with children and no action is a group; routing requires one of its children.
 const cache = new Command('cache', globals).alias('c').command(clear).command(list);
 
-const put = new Command('put', globals).action(report('put'));
+// One namespace belongs to one parent, so "ls" is free here while "cache" already spends it.
+const put = new Command('put', globals).alias('ls').action(report('put'));
 
 // A Command with children and an action keeps its options and runs its action when it is selected.
 const store = new Command('store', globals)
