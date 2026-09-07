@@ -65,6 +65,8 @@ The material report includes local changes and untracked files during preview. F
 
 Run `write` in an isolated release checkout. The writer copies tracked regular files into a temporary directory and updates the lockfile there. It runs pnpm with scripts and pnpmfile hooks disabled, offline resolution, and a lockfile destination inside that directory. Missing cached dependencies fail preparation.
 
+The writer launches the pinned pnpm native executable directly, so its timeout controls the package-manager process. The workspace permits pnpm's installation scripts to prepare that executable during dependency installation.
+
 Invalid inputs and lockfile preparation failures leave release files untouched. Before applying changes, the writer checks that the checkout and release inputs still match. After a filesystem failure, it attempts to restore every affected file. Persistent filesystem failures produce an explicit rollback-incomplete diagnostic naming the files that need recovery. An exclusive lock in the checkout's Git directory prevents concurrent writers.
 
 A process kill or machine crash can interrupt the final multi-file update. Use a fresh isolated checkout after such an interruption. Do not treat a partial working tree as a completed cut. No commit, tag, push, or publication occurs in this command.

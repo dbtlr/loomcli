@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { parseAllDocuments } from 'yaml';
@@ -55,12 +56,26 @@ function updateLockfile(root: string) {
       z.object({ lockfileVersion: z.union([z.string(), z.number()]) }).parse(document.toJS());
     }
   }
+  const manifestPath = fileURLToPath(import.meta.resolve('pnpm/package.json'));
+  const manifestSource = readRegularFile(dirname(manifestPath), 'package.json');
+  const manifest = z
+    .object({ bin: z.object({ pnpm: z.string() }) })
+    .parse(JSON.parse(manifestSource));
   const result = spawnSync(
-    'pnpm install --lockfile-only --lockfile-dir . --offline --ignore-scripts --ignore-pnpmfile --config.frozen-lockfile=false',
+    join(dirname(manifestPath), manifest.bin.pnpm),
+    [
+      'install',
+      '--lockfile-only',
+      '--lockfile-dir',
+      '.',
+      '--offline',
+      '--ignore-scripts',
+      '--ignore-pnpmfile',
+      '--config.frozen-lockfile=false',
+    ],
     {
       cwd: root,
       encoding: 'utf8',
-      shell: true,
       timeout: 60_000,
     },
   );
@@ -175,7 +190,17 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
 
 export function writeRelease(root: string, release: ReturnType<typeof prepareRelease>) {
   const lock = resolve(root, git(root, ['rev-parse', '--git-path', 'changelog-write.lock']).trim());
-  mkdirSync(lock);
+  try {
+    mkdirSync(lock);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+      throw new Error(
+        `Release lock already exists at ${lock}. Another writer may be active. After an interrupted write, use a fresh isolated checkout.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   try {
     installRelease(root, release);
   } finally {

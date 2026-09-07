@@ -544,3 +544,19 @@ test.each(['## <em>Unreleased</em>', '## <code>v0.1.0</code> - 2026-01-01', '## 
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
+
+test('an existing release lock stays intact and gives recovery guidance', () => {
+  const root = repository();
+  put(root, '.changes/add.md', '- Add.\n');
+  commit(root);
+  mkdirSync(join(root, '.git/changelog-write.lock'));
+  put(root, '.git/changelog-write.lock/owner', 'existing writer');
+  const result = run(root, 'write');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('Another writer may be active');
+  expect(result.stderr).toContain('fresh isolated checkout');
+  expect(readFileSync(join(root, '.git/changelog-write.lock/owner'), 'utf8')).toBe(
+    'existing writer',
+  );
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+});
