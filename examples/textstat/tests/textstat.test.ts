@@ -137,3 +137,37 @@ test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
     expect(result.stderr).not.toContain('Cannot read file');
   },
 );
+
+test.each([
+  [['--metric', 'words'], 'hello brave world\n', '3\tstdin\n'],
+  [['--metric', 'words', '--total'], 'hello brave world\n', '3\tstdin\n3\ttotal\n'],
+  [['--metric', 'lines'], 'one\ntwo\n', '2\tstdin\n'],
+  [[], 'hello\n', '6\tstdin\n'],
+  [['--total'], '', '0\tstdin\n0\ttotal\n'],
+  [['--min-bytes', '3', '--total'], 'hi', '0\ttotal\n'],
+  [['--min-bytes', '2', '--total'], 'hi', '2\tstdin\n2\ttotal\n'],
+] satisfies [string[], string, string][])(
+  'textstat counts piped stdin for %j',
+  (args, input, stdout) => {
+    expect(invoke(new URL('../dist/main.js', import.meta.url), args, { input })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout,
+    });
+  },
+);
+
+test('textstat counts the supplied files and leaves the piped text unread', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-stdin-'));
+  try {
+    writeFileSync(join(directory, 'one.txt'), 'hello\n');
+    expect(
+      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
+        cwd: directory,
+        input: 'piped text that is longer',
+      }),
+    ).toEqual({ status: 0, stderr: '', stdout: '6\tone.txt\n' });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});

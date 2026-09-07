@@ -1,41 +1,50 @@
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
+import type { Readable } from 'node:stream';
 
-import type { ActionHandler, ActionOptions } from '@loom/core';
+import type { ActionHandler, Host } from '@loom/core';
 
 import type { textstat } from './application.js';
+import { countSource } from './count-source.js';
 
-type Metric = ActionOptions<typeof textstat>['metric'];
+/** No supplied file is the whole rule for reading stdin, so the empty selection names it. */
+const EMPTY = 0;
 
-function countContent(bytes: Buffer, metric: Metric) {
-  switch (metric) {
-    case 'bytes': {
-      return bytes.byteLength;
-    }
-    case 'words': {
-      return [...bytes.toString('utf8').matchAll(/\S+/gu)].length;
-    }
-    case 'lines': {
-      return [...bytes.toString('utf8').matchAll(/\n/gu)].length;
-    }
-    default: {
-      const exhaustive: never = metric;
-      return exhaustive;
-    }
+/**
+ * One counted source: the name its row prints, the label a read failure reads under, and the
+ * connection, opened only when the source is reached.
+ */
+interface Source {
+  label: string;
+  name: string;
+  open: () => Readable;
+}
+
+/**
+ * The sources of one invocation. Supplied files are the whole selection, so stdin is read only
+ * when no file is named. The schema has already ruled out an empty selection at a terminal.
+ */
+function sources(files: readonly string[], host: Host): Source[] {
+  if (files.length === EMPTY) {
+    return [{ label: 'stdin', name: 'stdin', open: () => host.stdin }];
   }
+  return files.map((file) => ({
+    label: `file: ${file}`,
+    name: file,
+    open: () => createReadStream(resolve(host.cwd, file)),
+  }));
 }
 
 export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
   let total = 0;
-  for (const file of args.files) {
-    const bytes = await readFile(resolve(host.cwd, file)).catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : 'The file could not be read.';
-      return out.fatal(`Cannot read file: ${file}: ${reason}`);
+  for (const source of sources(args.files, host)) {
+    const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : 'The source could not be read.';
+      return out.fatal(`Cannot read ${source.label}: ${reason}`);
     });
-    if (bytes.byteLength >= options['min-bytes']) {
-      const count = countContent(bytes, options.metric);
-      total += count;
-      await out.print(`${count}\t${file}`);
+    if (counts.bytes >= options['min-bytes']) {
+      total += counts.metric;
+      await out.print(`${counts.metric}\t${source.name}`);
     }
   }
   if (options.total) {
