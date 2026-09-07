@@ -55,6 +55,7 @@ switch (scenario) {
       .option('absent', { type: 'string' })
       .option('pending', { multiple: true, type: 'string' })
       .option('flag', { type: 'boolean' })
+      .option('color', { polarity: 'both', type: 'boolean' })
       .option('quiet', { type: 'boolean' })
       .action(print);
     break;

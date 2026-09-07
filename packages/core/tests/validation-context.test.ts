@@ -32,6 +32,7 @@ test('every invocation schema call reads the routed path, passthrough, and suppl
     '--multi',
     'b',
     '--flag',
+    '--no-color',
     '--',
     'tail',
   ];
@@ -44,6 +45,7 @@ test('every invocation schema call reads the routed path, passthrough, and suppl
       args: { files: ['two', 'three'], name: 'one' },
       options: {
         absent: none,
+        color: false,
         flag: true,
         mode: 'fast',
         multi: ['a', 'b'],
