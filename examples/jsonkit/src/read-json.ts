@@ -20,7 +20,8 @@ function explain(error: unknown, fallback: string) {
 
 /**
  * The source of one invocation. A supplied file is the selection; without one the piped text is.
- * The `--file` schema decides whether omission is allowed, so no host fact is read here.
+ * The `--file` schema decides whether omission is allowed, so the reader reads no terminal fact
+ * and names the source and its connection alone.
  */
 function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {

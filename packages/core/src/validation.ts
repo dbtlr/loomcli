@@ -154,8 +154,8 @@ function collects(input: InputDeclaration) {
 }
 
 /**
- * The declaration flag that sends an omitted value to its own schema. Only a value input can
- * declare it, so a Boolean option reads as false here and the declaration rules reject the flag.
+ * The declaration flag that sends an omitted value to its own schema. Every declaration reads it
+ * here, and the declaration rules below reject it wherever another rule already decides absence.
  */
 export function validatesOmission(input: InputDeclaration) {
   const { config } = input;
