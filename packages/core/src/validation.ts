@@ -233,6 +233,12 @@ function checkDeclaration(input: InputDeclaration) {
       `${declaredName(input)} variadic must be Boolean. Use true or false.`,
     );
   }
+  // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
+  if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
+    throw new DeclarationError(
+      `${declaredName(input)} validateOmitted must be Boolean. Use true or false.`,
+    );
+  }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
       `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
