@@ -43,7 +43,7 @@ A Command accepts arguments in declaration order. A scalar argument, with option
 
 A scalar argument is optional when it omits `required` or declares `required: false`. It then binds the next bare token when one exists, and its action value is `string | undefined`, or the schema output or `undefined`. The presence rules are the option rules: `required: true` excludes `default`, a declared default removes `undefined` from the action value, and omission with no default is `undefined` with no call to the schema. A validated optional argument can declare `validateOmitted: true` to send its omission to its own schema, as [Absence and defaults](#absence-and-defaults) describes. An optional argument declares after every required one, and no argument declares after it, so `app keys` and `app keys a.b` both bind.
 
-A variadic argument follows the presence rules of a [multiple option](#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the schema output, and never `undefined`: an empty tail is an accurate empty collection, so it enters the schema like a supplied one. A default is a `string[]`, or the schema's input type when the declaration validates, and each invocation receives its own copy when no schema replaces it.
+A variadic argument follows the presence rules of a [multiple option](#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the schema output, and never `undefined`: an empty tail is an accurate empty collection, so it enters the schema like a supplied one. A default is a `string[]`, or the schema's input type when the declaration validates, and it reaches each invocation as its own copy.
 
 ```ts
 const keys = new Command('keys', globals).argument('path', {}).action(({ args, out }) => {
@@ -80,7 +80,7 @@ const app = new Application('textstat')
 
 Declarations infer types through fluent calls and `ActionHandler<typeof app>`. The constructor accepts no caller-supplied input types. `StringOption`, `BooleanOption`, and their union `OptionConfig` support extracted configuration with `satisfies`.
 
-The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive.
+The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive. A hyphenated name is not a JavaScript identifier, so its action value reads with bracket access: `options['dry-run']`, the way textstat reads `options['min-bytes']`.
 
 `shortOnly: true` requires `short` and suppresses every long spelling. For example, `.option('metric', { short: 'm', shortOnly: true, type: 'string' })` accepts `-m words` and rejects `--metric`.
 
@@ -260,7 +260,7 @@ Values win over route names. In `jsonkit --file keys get name`, the value of `--
 
 The selected Command then parses the remaining tokens with its own spellings and the existing passthrough rule. One validation pass checks the globals in authoring order, then that Command's declarations in authoring order.
 
-A missing required option is a validation-phase issue, so it loses to routing and to local structure errors. `jsonkit get` reports the missing `path` argument, not the missing `--file`, and `jsonkit nope` reports the unknown command.
+A missing required option is a validation-phase issue, so it loses to routing and to local structure errors. `jsonkit get` reports the missing `path` argument, not the `--file` omission issue, and `jsonkit nope` reports the unknown command.
 
 | Invocation for a `get` and `keys` graph  | Diagnostic                                                                                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -344,7 +344,7 @@ Core calls every schema through the Standard Schema options argument, under the 
 import { validationContext } from '@loom/core';
 import type { StandardSchemaV1 } from '@loom/core';
 
-const upper = {
+const upper: StandardSchemaV1<string, string> = {
   '~standard': {
     validate: (value: unknown, options?: StandardSchemaV1.Options) => {
       const name = validationContext(options)?.input.name ?? 'the value';
@@ -358,7 +358,7 @@ const upper = {
 };
 ```
 
-Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loom/core` alone. The accessor answers for the contexts core produced alone. A value another caller writes under the same key reads as `undefined`.
+Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loom/core` alone. The annotation is what fixes the schema's input and output types; an unannotated object literal widens `version: 1` to `number` and resolves the output to `unknown`. The accessor answers for the contexts core produced alone. A value core did not produce reads as `undefined`.
 
 | Field         | `phase: 'default'`       | `phase: 'invocation'`                                      |
 | ------------- | ------------------------ | ---------------------------------------------------------- |
@@ -397,7 +397,36 @@ An omitted Boolean reads as `undefined` here, because the polarity value is the 
 | Required input with a declared default          | Developer declaration error                       |
 | Invalid declared default                        | Developer declaration error, even when overridden |
 
-A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other, so it names the supplied spelling and returns code 2. The action value is the schema output alone, because the schema always runs.
+A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration itself: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, and an argument under its name. The action value is the schema output alone, because the schema always runs.
+
+```ts
+import { GlobalOptions, validationContext } from '@loom/core';
+import type { StandardSchemaV1 } from '@loom/core';
+
+/** The rule answers omission too, so the schema's input type accepts `undefined`. */
+const fileOrStdin: StandardSchemaV1<string | undefined, string | undefined> = {
+  '~standard': {
+    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
+      if (typeof value === 'string') {
+        return { value };
+      }
+      const context = validationContext(options);
+      return context?.phase === 'invocation' && !context.host.terminal.stdin.isTTY
+        ? { value: undefined }
+        : { issues: [{ message: 'Supply a file or pipe JSON to stdin.' }] };
+    },
+    vendor: 'jsonkit',
+    version: 1,
+  },
+};
+
+const globals = new GlobalOptions().option('file', {
+  short: 'f',
+  type: 'string',
+  validate: fileOrStdin,
+  validateOmitted: true,
+});
+```
 
 The flag belongs to an optional scalar string option or scalar argument that declares a schema and no default. Every other declaration already decides its own absence, so the flag beside `required: true`, beside a `default`, beside `multiple: true` or `variadic: true`, on a Boolean option, or without `validate` is a compile error at the declaration call and a declaration error at build. The schema's input type must accept `undefined`, the way a declared default must satisfy that same input type. The flag is Boolean, the way `required` and `variadic` are: any other declared value, an explicit `undefined` included, is the declaration error `Option "file" validateOmitted must be Boolean. Use true or false.`
 
@@ -421,9 +450,9 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 [textstat](../examples/textstat/src/application.ts) declares `metric` with a Zod enum and the default `'bytes'`. Its `min-bytes` schema transforms decimal digits into a non-negative safe integer with default `'0'`. The action uses the inferred values directly. It includes sources at or above the byte threshold and totals only retained sources. No retained source produces no rows and a zero total when requested.
 
-[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` and code 2, before any action runs. The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
-
 `files` is an optional variadic argument with a custom Standard Schema. Its validator reads the validation context: a nonempty list passes, and an empty list passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false. Otherwise it returns the issue `Supply file arguments or pipe text to stdin.`, which core reports as an input error. The action never reads the terminal. It counts each supplied file, or `host.stdin` when no file is supplied, and prints the row name `stdin` for the piped text. Every source is counted incrementally over its chunks, so a word or a multibyte character that a chunk boundary splits is counted once.
+
+[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` and code 2, before any action runs. The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
 
 ## Graph inspection
 
@@ -544,7 +573,7 @@ The environment snapshot is a plain, case-sensitive map on every operating syste
 
 Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads.
 
-The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference.
+The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference. Core exports the `Host` and `Out` types, so a helper extracted out of an action, such as a reader that opens a file or `host.stdin`, states its own parameters without reading them back off the action context.
 
 ## Output and failures
 

@@ -140,7 +140,10 @@ function declaredName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
 }
 
-/** An input error names the spelling the operator supplied, because that is the token to change. */
+/**
+ * An input error names an option by its long form and an argument by its name, so a rule that
+ * reads an omission, where no token was supplied, names the declaration the same way.
+ */
 function suppliedName(input: InputDeclaration) {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "--${input.name}"`;
 }
