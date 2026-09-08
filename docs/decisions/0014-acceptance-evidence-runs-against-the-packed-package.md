@@ -30,3 +30,4 @@ Adding a runtime or platform to the support statement means adding it to the exe
 ## Changelog
 
 - 2026-09-08: The runtime check that ran the examples against packed tarballs was retired with the publication layer. `packages/core/tests/check-types.mjs` still compiles a consumer against the packed declarations. The examples now run as processes against the workspace build. The decision is unchanged.
+- 2026-09-08: [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) proposes narrowing the packed-package clause. Packaging is proved by a runtime consumer that installs the packed tarball on Linux under Node and Bun. Behavior is proved by the examples against the workspace build on every supported platform. The narrowing binds when ADR-0016 is accepted.
