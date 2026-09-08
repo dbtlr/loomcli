@@ -4,10 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Prepare a new set or verify an existing set
+        description: Prepare, verify, or publish and resume a retained set
         type: choice
-        options: [prepare, verify]
+        options: [prepare, verify, publish]
         required: true
+      tooling:
+        description: Full machinery commit SHA (optional repair, defaults to this run SHA)
+      auth:
+        description: npm publication authentication (publish only)
+        type: choice
+        options: [trusted, bootstrap]
+        default: trusted
       source:
         description: Full release commit SHA
         required: true
@@ -16,11 +23,11 @@ on:
       title:
         description: Guard-validated release title (prepare only)
       run:
-        description: Original Actions run ID (verify only)
+        description: Original Actions run ID (verify or publish)
       artifact:
-        description: Original Actions artifact ID (verify only)
+        description: Original Actions artifact ID (verify or publish)
       digest:
-        description: Recorded manifest SHA-256 (verify only)
+        description: Recorded manifest SHA-256 (verify or publish)
 
 permissions:
   contents: read
@@ -31,7 +38,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  selection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate workflow and tooling identity
+        env:
+          MODE: ${{ inputs.mode }}
+          SOURCE: ${{ inputs.source }}
+          TOOLING: ${{ inputs.tooling }}
+        run: |
+          if [[ -n "$TOOLING" && ! "$TOOLING" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Tooling must be a full commit SHA." >&2
+            exit 1
+          fi
+          if [[ "$MODE" == publish && "$GITHUB_SHA" != "$SOURCE" ]]; then
+            echo "Dispatch publication from a ref at the retained release source SHA." >&2
+            exit 1
+          fi
   retain:
+    needs: selection
     permissions:
       contents: write
       actions: read
@@ -45,12 +70,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: tools
+          ref: ${{ inputs.tooling || github.sha }}
           persist-credentials: false
       - name: Validate artifact selection
         id: inputs
         uses: actions/github-script@v9
         env:
-          MODE: ${{ inputs.mode }}
+          MODE: ${{ inputs.mode == 'publish' && 'verify' || inputs.mode }}
           SOURCE: ${{ inputs.source }}
           BASE: ${{ inputs.base }}
           TITLE: ${{ inputs.title }}
@@ -149,6 +175,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: tools
+          ref: ${{ inputs.tooling || github.sha }}
           persist-credentials: false
       - name: Check out release history
         uses: actions/checkout@v7
@@ -193,3 +220,64 @@ jobs:
           node "$TOOLS_ROOT/apps/loom/dist/main.js" publication verify \
             --artifacts "$RUNNER_TEMP/release-set" --digest "$MANIFEST_DIGEST" \
             --head "$RELEASE_SOURCE" --runtime "$CONSUMER_RUNTIME"
+
+  publish:
+    if: inputs.mode == 'publish'
+    needs: [retain, consumers]
+    runs-on: ubuntu-latest
+    environment: npm-publication
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    steps:
+      - name: Check out tooling
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          ref: ${{ inputs.tooling || github.sha }}
+          persist-credentials: false
+      - name: Check out release history
+        uses: actions/checkout@v7
+        with:
+          path: source
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.2
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+          registry-url: https://registry.npmjs.org/
+      - name: Build tooling
+        working-directory: tools
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Download the selected artifact
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.retain.outputs.artifact }}
+          run-id: ${{ needs.retain.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-set
+          merge-multiple: true
+      - name: Publish or resume the retained release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_OPERATIONS_TOKEN }}
+          PUBLICATION_AUTH: ${{ inputs.auth }}
+          RELEASE_SOURCE: ${{ inputs.source }}
+          MANIFEST_DIGEST: ${{ needs.retain.outputs.digest }}
+          ARTIFACT_RUN: ${{ needs.retain.outputs.run }}
+          ARTIFACT_ID: ${{ needs.retain.outputs.artifact }}
+          TOOLS_ROOT: ${{ github.workspace }}/tools
+          SOURCE_ROOT: ${{ github.workspace }}/source
+        run: |
+          cd "$SOURCE_ROOT"
+          node "$TOOLS_ROOT/apps/loom/dist/main.js" publication publish \
+            --artifacts "$RUNNER_TEMP/release-set" --digest "$MANIFEST_DIGEST" \
+            --head "$RELEASE_SOURCE" --repository "$GITHUB_REPOSITORY" \
+            --run "$ARTIFACT_RUN" --artifact "$ARTIFACT_ID" --auth "$PUBLICATION_AUTH"

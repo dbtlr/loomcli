@@ -102,6 +102,8 @@ export function inspectPack(
     'module',
     'files',
     'engines',
+    'repository',
+    'publishConfig',
     'dependencies',
     'devDependencies',
     'optionalDependencies',

@@ -231,3 +231,53 @@ test('workflow reuse binds the source, original run, artifact ID, and independen
     'reservation differs',
   );
 });
+
+test('only explicit publication dispatch can write after every retained consumer lane succeeds', () => {
+  const workflow = z
+    .object({
+      concurrency: z.object({ 'cancel-in-progress': z.literal(false), group: z.string() }),
+      jobs: z.object({
+        consumers: z.object({ needs: z.literal('retain') }),
+        publish: z.object({
+          environment: z.literal('npm-publication'),
+          if: z.literal("inputs.mode == 'publish'"),
+          needs: z.array(z.string()),
+          permissions: permissions.extend({
+            contents: z.literal('write'),
+            'id-token': z.literal('write'),
+          }),
+          steps: z.array(
+            z.object({
+              env: z.record(z.string(), z.string()).optional(),
+              name: z.string(),
+              run: z.string().optional(),
+            }),
+          ),
+        }),
+        retain: z.object({ needs: z.literal('selection') }),
+        selection: z.object({ steps: z.array(z.object({ name: z.string(), run: z.string() })) }),
+      }),
+      on: z.object({ workflow_dispatch: z.unknown() }).strict(),
+    })
+    .parse(
+      parse(
+        readFileSync(
+          new URL('../../../.github/workflows/publication.yml', import.meta.url),
+          'utf8',
+        ),
+      ),
+    );
+  expect(workflow.jobs.publish.needs).toEqual(['retain', 'consumers']);
+  expect(workflow.concurrency.group).toBe('publication-artifacts');
+  const publish = workflow.jobs.publish.steps.find(
+    (entry) => entry.name === 'Publish or resume the retained release',
+  );
+  expect(publish?.run).toContain('publication publish');
+  expect(publish?.run).toContain('--run "$ARTIFACT_RUN" --artifact "$ARTIFACT_ID"');
+  expect(publish?.env?.NODE_AUTH_TOKEN).toBe(`\${{ secrets.NPM_OPERATIONS_TOKEN }}`);
+  expect(
+    workflow.jobs.publish.steps.filter((entry) => entry.env?.NODE_AUTH_TOKEN !== undefined),
+  ).toHaveLength(1);
+  const validation = workflow.jobs.selection.steps[0];
+  expect(validation?.run).toContain('"$GITHUB_SHA" != "$SOURCE"');
+});
