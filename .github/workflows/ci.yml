@@ -41,6 +41,10 @@ jobs:
       - name: Build, check types, and run process tests
         run: pnpm verify
 
+      - name: Run the packed consumer
+        if: runner.os == 'Linux'
+        run: pnpm check:packed
+
   bun_matrix:
     name: bun / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -77,6 +81,10 @@ jobs:
 
       - name: Build, check types, and run process tests
         run: pnpm verify
+
+      - name: Run the packed consumer
+        if: runner.os == 'Linux'
+        run: pnpm check:packed
 
   node:
     name: Node LTS / verify
