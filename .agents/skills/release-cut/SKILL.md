@@ -7,7 +7,7 @@ description: Prepare a Loom CLI library release pull request from pending change
 
 Produce one reviewable release commit and a ready-for-review PR. Use the existing compiler and version writer for every generated file.
 
-This procedure prepares a cut. Publication machinery and recovery records are not implemented in this repository yet. Record missing publication evidence as a blocker; a successful local guard does not prove release readiness.
+This procedure prepares a cut. The [artifact commands](../../../docs/publication-artifacts.md) prepare retained package sets, and the [bootstrap procedure](../../../docs/initial-publication.md) defines first-publication prerequisites. Registry publication and recovery automation remain unimplemented. Record missing publication evidence as a blocker; a successful local guard does not prove release readiness.
 
 ## Establish the release inputs
 

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { stringify } from 'yaml';
 import { z } from 'zod';
 
 import { pnpm, pnpmExecutable, runProcess } from './publication-process.js';
@@ -67,8 +68,9 @@ export function checkConsumers(
     }
     writeFileSync(
       join(root, 'package.json'),
-      JSON.stringify({ dependencies, pnpm: { overrides }, private: true, type: 'module' }),
+      JSON.stringify({ dependencies, private: true, type: 'module' }),
     );
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), stringify({ overrides }));
     pnpm(root, ['install', '--ignore-scripts', '--prefer-offline', '--lockfile=false']);
     const specifiers = packages.flatMap((library) =>
       library.exports.map((name) =>
