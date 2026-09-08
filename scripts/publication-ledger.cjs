@@ -58,11 +58,12 @@ async function writeLedger(github, repo, head, tree, ledger, message) {
 }
 
 module.exports = async function publicationLedger({ github, context, core, env }) {
-  const { MODE, SOURCE, BASE, TITLE, RETAINED_RUN, RETAINED_ARTIFACT, RETAINED_DIGEST } = env;
+  const { SOURCE, BASE, TITLE } = env;
+  let { MODE, RETAINED_RUN, RETAINED_ARTIFACT, RETAINED_DIGEST } = env;
   if (!sha.test(SOURCE)) {
     throw new Error('A full source SHA is required.');
   }
-  if (!['prepare', 'retain', 'verify'].includes(MODE)) {
+  if (!['prepare', 'retain', 'verify', 'automatic'].includes(MODE)) {
     throw new Error('Unknown artifact operation.');
   }
   // Missing branches and unreadable records fail closed. Initialization is a separate operator step.
@@ -76,6 +77,28 @@ module.exports = async function publicationLedger({ github, context, core, env }
   const ledger = validateLedger(JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')));
   const record = ledger.records.find((entry) => entry.source === SOURCE);
   const name = `release-${SOURCE}`;
+  if (MODE === 'automatic') {
+    if (record) {
+      if (record.base !== BASE || record.title !== TITLE) {
+        throw new Error(
+          'Automatic retry differs from the original release. Stop for reconciliation.',
+        );
+      }
+      if (record.state !== 'retained') {
+        throw new Error(
+          'Publication reservation is incomplete. Stop for reconciliation; do not rebuild.',
+        );
+      }
+      MODE = 'verify';
+      RETAINED_RUN = record.run;
+      RETAINED_ARTIFACT = record.artifact;
+      RETAINED_DIGEST = record.digest;
+      core.setOutput('prepare', 'false');
+    } else {
+      MODE = 'prepare';
+      core.setOutput('prepare', 'true');
+    }
+  }
   if (MODE === 'prepare') {
     if (Number(env.GITHUB_RUN_ATTEMPT) !== 1) {
       throw new Error(

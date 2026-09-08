@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,17 +67,28 @@ export function publicationServices(
       try {
         const manifestPath = fileURLToPath(import.meta.resolve('npm/package.json'));
         const executable = join(dirname(manifestPath), 'bin/npm-cli.js');
+        const env = { ...process.env };
+        if (args[0] === 'publish' && auth === 'trusted') {
+          // OIDC publication must not fall back to credentials from npm configuration.
+          for (const key of Object.keys(env)) {
+            if (key.toLowerCase().startsWith('npm_config_')) {
+              delete env[key];
+            }
+          }
+          env.NODE_AUTH_TOKEN = '';
+          env.NPM_TOKEN = '';
+          env.NPM_CONFIG_USERCONFIG = join(directory, 'user.npmrc');
+          env.NPM_CONFIG_GLOBALCONFIG = join(directory, 'global.npmrc');
+          writeFileSync(env.NPM_CONFIG_USERCONFIG, '');
+          writeFileSync(env.NPM_CONFIG_GLOBALCONFIG, '');
+        }
         const result = spawnSync(
           process.execPath,
           [executable, ...args, '--registry=https://registry.npmjs.org/'],
           {
             cwd: directory,
             encoding: 'utf8',
-            env: {
-              ...process.env,
-              NODE_AUTH_TOKEN:
-                args[0] === 'publish' && auth === 'trusted' ? '' : process.env.NODE_AUTH_TOKEN,
-            },
+            env,
             maxBuffer: 16 * 1024 * 1024,
             timeout: 120_000,
           },

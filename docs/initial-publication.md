@@ -6,7 +6,7 @@ description: First-publication prerequisites and the manual bootstrap sequence f
 
 This procedure prepares an operator for the first publication of each participating library. Executing registry mutations, creating credentials, changing publishing configuration, and creating release tags or GitHub Releases require explicit release authorization.
 
-The workflow performs these mutations only through its explicitly dispatched [publish mode](publication-recovery.md). Its [artifact verification](publication-artifacts.md) is an input to this procedure, not proof that publication is complete.
+The first-package bootstrap uses the explicitly dispatched [publish mode](publication-recovery.md). Configured routine releases use the approved release-merge trigger. Its [artifact verification](publication-artifacts.md) is an input to this procedure, not proof that publication is complete.
 
 ## Initialize the preparation ledger
 
@@ -95,7 +95,9 @@ If any step fails, record completed external steps and resume the same set. Exis
 1. Add the exact future publishing workflow as each package's trusted publisher.
 2. Permit direct `npm publish` for the agreed temporary-dist-tag sequence.
 3. Verify the configuration through an authorized publication before removing the working bootstrap path.
-4. Revoke the bootstrap token after its use and the required transition checks.
-5. Restrict traditional token access according to the approved publishing configuration.
+4. Retire the bootstrap token after its use and the required transition checks. If it expires before the next genuine release, record its expiry; do not renew it for routine token publication.
+5. Restrict traditional token access according to the approved publishing configuration. Preserve separately scoped operations credentials for registry inspection and tag promotion. Record their expiry, rotation responsibility, and environment secret location. Keep bootstrap capability for each new package that has no trusted-publisher settings yet.
 
 New trusted publisher configurations default to permitting `npm stage publish`; direct `npm publish` needs its own permission. Registry reads and dist-tag mutations do not receive npm publish's OIDC authentication automatically. The publication workflow requires the operations token for those operations separately. [npm trusted publishing permissions and limitations](https://docs.npmjs.com/trusted-publishers/)
+
+A configured trusted publisher is readiness evidence. The next genuine release must demonstrate actual OIDC publication without token fallback, matching provenance and retained bytes, and a no-write retry. Do not create a package version solely to test authentication.

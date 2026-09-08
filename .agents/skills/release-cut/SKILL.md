@@ -7,7 +7,7 @@ description: Prepare a Loom CLI library release pull request from pending change
 
 Produce one reviewable release commit and a ready-for-review PR. Use the existing compiler and version writer for every generated file.
 
-This procedure prepares a cut. The [artifact commands](../../../docs/publication-artifacts.md) prepare retained package sets, and the [bootstrap procedure](../../../docs/initial-publication.md) defines first-publication prerequisites. Registry publication and recovery automation remain unimplemented. Record missing publication evidence as a blocker; a successful local guard does not prove release readiness.
+This procedure prepares a cut. The [artifact commands](../../../docs/publication-artifacts.md) prepare retained package sets, and the [bootstrap procedure](../../../docs/initial-publication.md) defines first-publication prerequisites. Approved release merges trigger the [publication workflow](../../../docs/publication-recovery.md); manual dispatch supports bootstrap and recovery. Record missing publication evidence as a blocker; a successful local guard does not prove release readiness.
 
 ## Establish the release inputs
 
@@ -92,4 +92,4 @@ Use a body file or a structured API argument to preserve Markdown and avoid shel
 
 Watch the exact PR head through the required checks and review. Resolve findings before declaring the cut ready. A changed base requires refreshed preparation even if old checks passed.
 
-Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title. This skill never merges, publishes packages, promotes registry tags, or creates a Git tag or GitHub Release.
+Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title, cut tree, and original base. That approved merge triggers trusted publication and its environment approval gate. Do not prepare a separate artifact set at the PR head for an automatic release: the selected publication source is the merge commit. This skill never merges, publishes packages, promotes registry tags, or creates a Git tag or GitHub Release.

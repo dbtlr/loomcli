@@ -15,7 +15,15 @@ const config = z
         steps: z.array(step),
       }),
     }),
-    on: z.object({ workflow_dispatch: z.unknown() }).strict(),
+    on: z
+      .object({
+        pull_request: z.object({
+          branches: z.tuple([z.literal('main')]),
+          types: z.tuple([z.literal('closed')]),
+        }),
+        workflow_dispatch: z.unknown(),
+      })
+      .strict(),
     permissions,
   })
   .parse(
@@ -232,15 +240,19 @@ test('workflow reuse binds the source, original run, artifact ID, and independen
   );
 });
 
-test('only explicit publication dispatch can write after every retained consumer lane succeeds', () => {
+test('only selected publication can write after every retained consumer lane succeeds', () => {
   const workflow = z
     .object({
-      concurrency: z.object({ 'cancel-in-progress': z.literal(false), group: z.string() }),
+      concurrency: z.object({
+        'cancel-in-progress': z.literal(false),
+        group: z.string(),
+        queue: z.literal('max'),
+      }),
       jobs: z.object({
-        consumers: z.object({ needs: z.literal('retain') }),
+        consumers: z.object({ needs: z.tuple([z.literal('selection'), z.literal('retain')]) }),
         publish: z.object({
           environment: z.literal('npm-publication'),
-          if: z.literal("inputs.mode == 'publish'"),
+          if: z.literal("needs.selection.outputs.publish == 'true'"),
           needs: z.array(z.string()),
           permissions: permissions.extend({
             contents: z.literal('write'),
@@ -255,9 +267,21 @@ test('only explicit publication dispatch can write after every retained consumer
           ),
         }),
         retain: z.object({ needs: z.literal('selection') }),
-        selection: z.object({ steps: z.array(z.object({ name: z.string(), run: z.string() })) }),
+        selection: z.object({
+          steps: z.array(
+            z.object({ name: z.string(), with: z.record(z.string(), z.unknown()).optional() }),
+          ),
+        }),
       }),
-      on: z.object({ workflow_dispatch: z.unknown() }).strict(),
+      on: z
+        .object({
+          pull_request: z.object({
+            branches: z.tuple([z.literal('main')]),
+            types: z.tuple([z.literal('closed')]),
+          }),
+          workflow_dispatch: z.unknown(),
+        })
+        .strict(),
     })
     .parse(
       parse(
@@ -267,7 +291,7 @@ test('only explicit publication dispatch can write after every retained consumer
         ),
       ),
     );
-  expect(workflow.jobs.publish.needs).toEqual(['retain', 'consumers']);
+  expect(workflow.jobs.publish.needs).toEqual(['selection', 'retain', 'consumers']);
   expect(workflow.concurrency.group).toBe('publication-artifacts');
   const publish = workflow.jobs.publish.steps.find(
     (entry) => entry.name === 'Publish or resume the retained release',
@@ -278,6 +302,39 @@ test('only explicit publication dispatch can write after every retained consumer
   expect(
     workflow.jobs.publish.steps.filter((entry) => entry.env?.NODE_AUTH_TOKEN !== undefined),
   ).toHaveLength(1);
-  const validation = workflow.jobs.selection.steps[0];
-  expect(validation?.run).toContain('"$GITHUB_SHA" != "$SOURCE"');
+  const validation = workflow.jobs.selection.steps.find(
+    (entry) => entry.name === 'Select publication',
+  );
+  expect(validation?.with?.script).toContain('publication-selection.cjs');
+});
+
+test('automatic release events reserve once and duplicate events reuse the original artifact without writes', async () => {
+  await expect(service().select({ MODE: 'automatic' })).resolves.toEqual({
+    prepare: 'true',
+    run: 34,
+  });
+  const api = service([retained]);
+  await expect(api.select({ GITHUB_RUN_ATTEMPT: '2', MODE: 'automatic' })).resolves.toEqual({
+    artifact: '56',
+    digest: 'c'.repeat(64),
+    prepare: 'false',
+    run: '12',
+  });
+  expect(api.writes).toEqual([]);
+  await expect(service([reserved]).select({ MODE: 'automatic' })).rejects.toThrow('incomplete');
+  await expect(service().select({ GITHUB_RUN_ATTEMPT: '2', MODE: 'automatic' })).rejects.toThrow(
+    'Do not rebuild',
+  );
+  await expect(
+    service([retained]).select({ BASE: 'd'.repeat(40), MODE: 'automatic' }),
+  ).rejects.toThrow('original release');
+  await expect(
+    service([retained]).select({
+      MODE: 'automatic',
+      TITLE: 'chore(release): Release v0.1.0 - Changed',
+    }),
+  ).rejects.toThrow('original release');
+  await expect(
+    service([retained]).select({ MODE: 'automatic' }, { ...artifact, expired: true }),
+  ).rejects.toThrow('expired');
 });

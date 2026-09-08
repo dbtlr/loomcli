@@ -1,6 +1,9 @@
 name: Publication artifacts
 
 on:
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
@@ -36,26 +39,51 @@ permissions:
 concurrency:
   group: publication-artifacts
   cancel-in-progress: false
+  queue: max
 
 jobs:
   selection:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    outputs:
+      auth: ${{ steps.select.outputs.auth }}
+      base: ${{ steps.select.outputs.base }}
+      mode: ${{ steps.select.outputs.mode }}
+      publish: ${{ steps.select.outputs.publish }}
+      source: ${{ steps.select.outputs.source }}
+      title: ${{ steps.select.outputs.title }}
+      tooling: ${{ steps.select.outputs.tooling }}
     steps:
-      - name: Validate workflow and tooling identity
+      - name: Validate tooling input
         env:
-          MODE: ${{ inputs.mode }}
-          SOURCE: ${{ inputs.source }}
           TOOLING: ${{ inputs.tooling }}
         run: |
           if [[ -n "$TOOLING" && ! "$TOOLING" =~ ^[a-f0-9]{40}$ ]]; then
             echo "Tooling must be a full commit SHA." >&2
             exit 1
           fi
-          if [[ "$MODE" == publish && "$GITHUB_SHA" != "$SOURCE" ]]; then
-            echo "Dispatch publication from a ref at the retained release source SHA." >&2
-            exit 1
-          fi
+      - name: Check out selection tooling
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          ref: ${{ inputs.tooling || github.sha }}
+          persist-credentials: false
+      - name: Select publication
+        id: select
+        uses: actions/github-script@v9
+        env:
+          MODE: ${{ inputs.mode }}
+          AUTH: ${{ inputs.auth }}
+          SOURCE: ${{ inputs.source }}
+          BASE: ${{ inputs.base }}
+          TITLE: ${{ inputs.title }}
+          TOOLING: ${{ inputs.tooling }}
+        with:
+          script: |
+            const select = require(`${process.env.GITHUB_WORKSPACE}/tools/scripts/publication-selection.cjs`);
+            await select({ github, context, core, env: process.env });
   retain:
+    if: needs.selection.outputs.source != ''
     needs: selection
     permissions:
       contents: write
@@ -70,16 +98,16 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: tools
-          ref: ${{ inputs.tooling || github.sha }}
+          ref: ${{ needs.selection.outputs.tooling }}
           persist-credentials: false
       - name: Validate artifact selection
         id: inputs
         uses: actions/github-script@v9
         env:
-          MODE: ${{ inputs.mode == 'publish' && 'verify' || inputs.mode }}
-          SOURCE: ${{ inputs.source }}
-          BASE: ${{ inputs.base }}
-          TITLE: ${{ inputs.title }}
+          MODE: ${{ needs.selection.outputs.mode }}
+          SOURCE: ${{ needs.selection.outputs.source }}
+          BASE: ${{ needs.selection.outputs.base }}
+          TITLE: ${{ needs.selection.outputs.title }}
           RETAINED_RUN: ${{ inputs.run }}
           RETAINED_ARTIFACT: ${{ inputs.artifact }}
           RETAINED_DIGEST: ${{ inputs.digest }}
@@ -88,33 +116,33 @@ jobs:
             const ledger = require(`${process.env.GITHUB_WORKSPACE}/tools/scripts/publication-ledger.cjs`);
             await ledger({ github, context, core, env: process.env });
       - name: Check out release history
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         uses: actions/checkout@v7
         with:
           path: source
-          ref: ${{ inputs.source }}
+          ref: ${{ needs.selection.outputs.source }}
           fetch-depth: 0
           persist-credentials: false
       - name: Set up pnpm
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 12.3.2
       - name: Set up Node.js
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 22.23.2
       - name: Build tooling
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         working-directory: tools
         run: pnpm install --frozen-lockfile && pnpm run build
       - name: Prepare release artifacts
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         env:
-          RELEASE_BASE: ${{ inputs.base }}
-          RELEASE_SOURCE: ${{ inputs.source }}
-          RELEASE_TITLE: ${{ inputs.title }}
+          RELEASE_BASE: ${{ needs.selection.outputs.base }}
+          RELEASE_SOURCE: ${{ needs.selection.outputs.source }}
+          RELEASE_TITLE: ${{ needs.selection.outputs.title }}
           TOOLS_ROOT: ${{ github.workspace }}/tools
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: |
@@ -123,7 +151,7 @@ jobs:
             --base "$RELEASE_BASE" --head "$RELEASE_SOURCE" --title "$RELEASE_TITLE" \
             --output "$RUNNER_TEMP/release-set" > "$RUNNER_TEMP/identity.json"
       - name: Record manifest identity
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         id: identity
         uses: actions/github-script@v9
         with:
@@ -134,22 +162,22 @@ jobs:
             core.setOutput('digest', identity.digest);
             await core.summary.addCodeBlock(JSON.stringify(identity, null, 2), 'json').write();
       - name: Retain unchanged tarballs and manifest
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         id: upload
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ inputs.source }}
+          name: release-${{ needs.selection.outputs.source }}
           path: ${{ runner.temp }}/release-set
           if-no-files-found: error
           retention-days: 90
           overwrite: false
 
       - name: Commit retained artifact identity
-        if: inputs.mode == 'prepare'
+        if: needs.selection.outputs.mode == 'prepare' || steps.inputs.outputs.prepare == 'true'
         uses: actions/github-script@v9
         env:
           MODE: retain
-          SOURCE: ${{ inputs.source }}
+          SOURCE: ${{ needs.selection.outputs.source }}
           RETAINED_RUN: ${{ github.run_id }}
           RETAINED_ARTIFACT: ${{ steps.upload.outputs.artifact-id }}
           RETAINED_DIGEST: ${{ steps.identity.outputs.digest }}
@@ -159,7 +187,7 @@ jobs:
             await ledger({ github, context, core, env: process.env });
 
   consumers:
-    needs: retain
+    needs: [selection, retain]
     name: packed / ${{ matrix.runtime }} / ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -175,13 +203,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: tools
-          ref: ${{ inputs.tooling || github.sha }}
+          ref: ${{ needs.selection.outputs.tooling }}
           persist-credentials: false
       - name: Check out release history
         uses: actions/checkout@v7
         with:
           path: source
-          ref: ${{ inputs.source }}
+          ref: ${{ needs.selection.outputs.source }}
           fetch-depth: 0
           persist-credentials: false
       - name: Set up pnpm
@@ -210,7 +238,7 @@ jobs:
           merge-multiple: true
       - name: Verify retained packages without rebuilding release source
         env:
-          RELEASE_SOURCE: ${{ inputs.source }}
+          RELEASE_SOURCE: ${{ needs.selection.outputs.source }}
           MANIFEST_DIGEST: ${{ needs.retain.outputs.digest }}
           CONSUMER_RUNTIME: ${{ matrix.runtime }}
           TOOLS_ROOT: ${{ github.workspace }}/tools
@@ -222,8 +250,8 @@ jobs:
             --head "$RELEASE_SOURCE" --runtime "$CONSUMER_RUNTIME"
 
   publish:
-    if: inputs.mode == 'publish'
-    needs: [retain, consumers]
+    if: needs.selection.outputs.publish == 'true'
+    needs: [selection, retain, consumers]
     runs-on: ubuntu-latest
     environment: npm-publication
     permissions:
@@ -235,13 +263,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: tools
-          ref: ${{ inputs.tooling || github.sha }}
+          ref: ${{ needs.selection.outputs.tooling }}
           persist-credentials: false
       - name: Check out release history
         uses: actions/checkout@v7
         with:
           path: source
-          ref: ${{ inputs.source }}
+          ref: ${{ needs.selection.outputs.source }}
           fetch-depth: 0
           persist-credentials: false
       - name: Set up pnpm
@@ -268,8 +296,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_OPERATIONS_TOKEN }}
-          PUBLICATION_AUTH: ${{ inputs.auth }}
-          RELEASE_SOURCE: ${{ inputs.source }}
+          PUBLICATION_AUTH: ${{ needs.selection.outputs.auth }}
+          RELEASE_SOURCE: ${{ needs.selection.outputs.source }}
           MANIFEST_DIGEST: ${{ needs.retain.outputs.digest }}
           ARTIFACT_RUN: ${{ needs.retain.outputs.run }}
           ARTIFACT_ID: ${{ needs.retain.outputs.artifact }}

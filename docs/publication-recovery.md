@@ -1,10 +1,24 @@
 ---
-description: Manual publication and recovery of retained library releases, including workflow identity, npm authentication, completion checks, and reconciliation boundaries.
+description: Automatic release-merge publication and manual recovery, including retained identity, trusted authentication, completion checks, and reconciliation boundaries.
 ---
 
 # Publish and resume a retained release
 
-The **Publication artifacts** workflow publishes an existing release artifact set through its `publish` mode. The same operation resumes an interrupted release. Preparation remains a separate dispatch. Release merges do not trigger publication.
+The **Publication artifacts** workflow prepares and publishes approved release merges on `main`. Ordinary merges and unmerged PRs do not publish. Manual dispatch remains available for bootstrap, artifact inspection, and recovery.
+
+## Automatic release publication
+
+Merge approval for a valid release PR authorizes that release. The publishing job still waits for the `npm-publication` environment approval.
+
+1. Prepare one release-cut commit from the current `main` base. Preserve the release PR title as the merge commit title.
+2. Merge the reviewed cut without changing its tree or base. If `main` advances first, prepare a fresh cut before merging.
+3. The closed-PR event selects its exact merge SHA, which must equal the Actions run SHA. The cut parent supplies the original base. Merge and squash commits are accepted when these checks hold.
+4. The workflow reserves the identity, replays release validation, runs repository checks, packs and retains the libraries, and verifies all six consumer lanes.
+5. After environment approval, publication uses trusted authentication and completes the registry, source tag, and GitHub Release sequence below.
+
+A duplicate event or full rerun resolves the retained identity from the ledger and skips release preparation and upload. A reservation without a retained set stops for reconciliation. Missing or expired artifacts never trigger a rebuild. The workflow serializes automatic and manual runs without cancelling an active publication. Its concurrency queue retains up to 100 pending runs. If that queue fills, GitHub cancels additional runs; inspect and retry those events after capacity is available.
+
+The release source is the merge commit, not the PR head or a later `main` commit. Manual recovery must use that recorded source. A completed rerun verifies the same set without external writes.
 
 ## Authorize and select the release
 
@@ -31,7 +45,9 @@ For `bootstrap`, `NPM_OPERATIONS_TOKEN` also supplies the first-publish credenti
 
 The trusted publisher must permit direct `npm publish` and name `publication.yml`, the repository, and the `npm-publication` environment. The job requests `id-token: write` for provenance. Trusted publishing does not authenticate registry reads or dist-tag changes. [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
 
-The operations token requires package write access for promotions. Its lifetime and scope follow the [bootstrap procedure](initial-publication.md). Credentials stay in the environment and npm configuration, outside command arguments and retained artifacts.
+The operations token requires write access to participating packages for promotions, with no organization-management access. Record its expiry and rotate the `NPM_OPERATIONS_TOKEN` environment secret before expiry. Use the narrowest supported permissions for non-interactive tag operations; verify their 2FA requirements independently of trusted publication. The first-publish token is temporary and does not define routine credential lifetime.
+
+The trusted publish subprocess receives neither token credentials nor the token-bearing npm user configuration. Operations credentials remain available only to registry inspection and tag promotion. Credentials stay outside command arguments and retained artifacts.
 
 ## Publication sequence
 
@@ -57,6 +73,8 @@ Existing releases must match the exact title, source SHA, tag name, changelog no
 1. Preserve the original source, run, artifact ID, and digest.
 2. Resolve the failed operation's credential, service, or machinery error.
 3. Repeat `publish` with the same retained identity.
+
+npm publish-time scanning can delay normal registry visibility after an accepted publish. During that interval, the post-publication integrity check can fail because npm reads do not yet return the version. Inspect the version, dist-tags, workflow output, and retained integrity before retrying. Once registry visibility converges, resume the same artifact set. Do not republish under another version or interpret temporary absence as permission to rebuild. Scanning is described in [npm publish-time scanning](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/).
 
 A retry reads external state instead of trusting an earlier command's acknowledgement. It skips matching package versions, promotions, tags, and attachments. A completed retry performs no external writes.
 
@@ -94,4 +112,4 @@ pnpm exec vp test --run apps/loom/tests/publication-release.test.ts apps/loom/te
 
 The recovery suite creates a real two-package release cut and retained tarballs. It runs the publication entrypoint with simulated npm process and GitHub HTTP boundaries. Lost acknowledgements leave committed external state for the next attempt. The suite covers each publication boundary, conflicts, missing artifacts, and old-release retries. A localhost registry also exercises staging-only tag reads with the pinned npm executable.
 
-These rehearsals do not contact npm for publication or create real GitHub releases. Hosted provenance, credentials, permissions, and registry propagation require the separately authorized first publication.
+These rehearsals do not contact npm for publication or create real GitHub releases. Hosted trusted authentication, provenance, credentials, permissions, and registry propagation require an authorized real publication. A no-write retry skips npm publish and cannot prove OIDC authentication.

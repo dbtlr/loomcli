@@ -55,6 +55,9 @@ test('trusted publication removes the token fallback while registry operations r
   const run = vi
     .mocked(spawnSync)
     .mockReturnValue({ output: [], pid: 1, signal: null, status: 0, stderr: '', stdout: '{}' });
+  vi.stubEnv('NPM_CONFIG_USERCONFIG', '/fixture/credential.npmrc');
+  vi.stubEnv('npm_config_globalconfig', '/fixture/global.npmrc');
+  vi.stubEnv('NPM_TOKEN', 'fixture-other-token');
   const services = publicationServices('sample/fixture', 'trusted');
   await services.npm(['publish', '/fixture/package.tgz']);
   expect(run).toHaveBeenLastCalledWith(
@@ -65,7 +68,14 @@ test('trusted publication removes the token fallback while registry operations r
       '/fixture/package.tgz',
       '--registry=https://registry.npmjs.org/',
     ],
-    expect.objectContaining({ env: expect.objectContaining({ NODE_AUTH_TOKEN: '' }) }),
+    expect.objectContaining({
+      env: expect.objectContaining({
+        NODE_AUTH_TOKEN: '',
+        NPM_CONFIG_GLOBALCONFIG: expect.stringMatching(/global\.npmrc$/u),
+        NPM_CONFIG_USERCONFIG: expect.stringMatching(/user\.npmrc$/u),
+        NPM_TOKEN: '',
+      }),
+    }),
   );
   await services.npm(['dist-tag', 'add', '@sample/core@0.1.0', 'latest']);
   expect(run).toHaveBeenLastCalledWith(
