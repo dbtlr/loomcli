@@ -8,11 +8,34 @@ This procedure prepares an operator for the first publication of each participat
 
 The preparation workflow does not implement these mutations. Its [artifact verification](publication-artifacts.md) is an input to this procedure, not proof that publication is complete.
 
+## Initialize the preparation ledger
+
+Before the first hosted preparation, initialize the dedicated `publication-ledger` branch once. This is a repository metadata operation, separate from npm publication.
+
+1. Inspect remote branches, Actions runs, artifacts, and release history. Confirm that no earlier preparation needs reconciliation.
+2. If ledger history existed before, recover that history. Do not initialize an empty replacement.
+3. In a new temporary repository, create and push the initial ledger commit. Set `repository_url` to the target GitHub repository URL.
+
+```sh
+ledger_directory="$(mktemp -d)"
+git init --initial-branch=publication-ledger "$ledger_directory"
+printf '%s\n' '{"schema":1,"records":[]}' > "$ledger_directory/ledger.json"
+git -C "$ledger_directory" add ledger.json
+git -C "$ledger_directory" commit -m "Initialize publication preparation ledger"
+git -C "$ledger_directory" remote add origin "$repository_url"
+git -C "$ledger_directory" push origin HEAD:refs/heads/publication-ledger
+```
+
+4. Protect `publication-ledger` against deletion and force pushes. Permit the preparation workflow to append ledger commits without requiring unrelated source CI or PR checks.
+5. Keep normal repository changes on the default branch. Do not merge the ledger branch into source history.
+
+The workflow never creates a missing ledger. A missing branch, denied write, or concurrent update stops preparation before the release build. Branch administration and history reconciliation require explicit maintainer action.
+
 ## Establish the release identity
 
 1. Obtain the approved release cut, original base, package list, version, and title.
 2. Verify the upstream release history, tags, open cuts, and incomplete publication records.
-3. Obtain the artifact run ID, artifact ID, manifest digest, and source SHA from the preparation record.
+3. Obtain the artifact run ID, artifact ID, manifest digest, and source SHA from the retained record in `publication-ledger:ledger.json`.
 4. Require successful packed consumer verification under Node and Bun on Linux, macOS, and Windows for that set.
 5. Download the retained set and run `publication verify` with the recorded digest and source SHA.
 

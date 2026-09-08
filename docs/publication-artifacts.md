@@ -57,11 +57,19 @@ The manually dispatched **Publication artifacts** workflow has two modes:
 - `prepare` produces a new set from the supplied release source, base, and title.
 - `verify` downloads an existing set using its original run ID, artifact ID, source SHA, and manifest digest.
 
-The workflow stores the set as `release-<source SHA>` with 90-day retention. It rejects a repeated preparation when that source has an artifact record, including an expired record. A full rerun of a preparation attempt is rejected. Failed consumer jobs can be rerun, or a new `verify` dispatch can reuse the original set.
+The workflow reserves the source and version in `ledger.json` on the dedicated `publication-ledger` branch before building. It rejects an existing reservation for either identity, even after deletion of every Actions artifact record. A missing or unreadable ledger stops the workflow.
+
+The workflow stores the set as `release-<source SHA>` with 90-day retention. After upload, it records the original run ID, artifact ID, and manifest digest in the reservation. Verification requires these inputs to match the ledger. The workflow also rejects preparation when that source already has an Actions artifact record, including an expired record. A full rerun of a preparation attempt is rejected. Failed consumer jobs can be rerun, or a new `verify` dispatch can reuse the original set.
 
 All six Node and Bun platform lanes download the same artifact ID. Each lane builds its private tooling in a separate checkout, then verifies the retained release without rebuilding its source. A set becomes publication-ready only when all lanes succeed for that artifact identity. An upload alone is not acceptance evidence.
 
-Retain the manifest digest, source SHA, run ID, artifact ID, and successful verification run with the release record. Actions retention is finite. A deleted record cannot prove that preparation never happened. Missing or expired artifacts require reconciliation, never automatic reconstruction.
+The ledger has schema version `1` and an array of `records`. Each record binds `source`, `base`, `title`, `version`, and the original `run`. Its state moves once from `reserved` to `retained`, which adds `artifact` and `digest`. Records remain after completion or artifact loss. Updates create commits with the observed branch head as their parent and advance the ref without force. Competing writes fail instead of admitting two builds.
+
+A failed build, failed upload, or interrupted ledger update leaves the reservation in place. Stop for maintainer reconciliation; do not remove the reservation or rerun preparation. An uploaded set without its final ledger record is not automatically reusable. Reconciliation must recover the original identity from independent run evidence and preserve the existing record.
+
+Retain the successful verification run with the release record. Actions retention is finite. Missing or expired artifacts require reconciliation, never automatic reconstruction. The ledger prevents accidental rebuilding after artifact loss; it does not protect against an administrator deliberately rewriting repository history.
+
+Only the retention job receives `contents: write` for ledger commits. Consumer jobs retain read-only permissions. Initialize and protect the ledger branch using the [bootstrap procedure](initial-publication.md#initialize-the-preparation-ledger). The local CLI remains a preparation primitive for isolated rehearsals; it does not enforce hosted reservation history.
 
 The subsequent publication workflow must attach the identical manifest and tarballs to the completed GitHub Release for durable history. That attachment and all registry mutations are outside this preparation workflow. [ADR-0015](decisions/0015-publication-retries-reuse-retained-artifacts.md) fixes this retry rule.
 

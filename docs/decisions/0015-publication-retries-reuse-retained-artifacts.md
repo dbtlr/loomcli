@@ -17,7 +17,9 @@ One release artifact set binds the tarballs, their integrity digests, participat
 
 A retry verifies and reuses that set. It never rebuilds release packages, substitutes a repair commit, or trusts package-version presence without matching integrity. Existing annotated tags are reusable only at the recorded source SHA. An absent, expired, or inconsistent set stops automatic recovery for maintainer reconciliation. Changed package contents require a new version.
 
-GitHub Actions artifacts retain preparation and incomplete-release sets. The completed GitHub Release receives the identical set for durable history. The recorded manifest digest and source SHA are independent verification inputs, alongside the Actions artifact and run IDs.
+GitHub Actions artifacts retain preparation and incomplete-release sets. The completed GitHub Release receives the identical set for durable history. A dedicated GitHub branch retains a preparation ledger independently of Actions artifact retention. The workflow reserves each source and version before building and records artifact identity after upload. Reservations survive failed attempts and artifact deletion. Missing ledger history stops preparation; initialization and history reconciliation are explicit operator procedures. Non-forced updates reject competing reservations.
+
+The recorded manifest digest and source SHA are independent verification inputs, alongside the Actions artifact and run IDs. Verification binds them to the retained ledger record. Branch protection must prevent deletion and force pushes; deliberate administrator history rewriting is outside this guarantee.
 
 ## Considered options
 

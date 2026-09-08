@@ -32,12 +32,20 @@ concurrency:
 
 jobs:
   retain:
+    permissions:
+      contents: write
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       artifact: ${{ steps.upload.outputs.artifact-id || steps.inputs.outputs.artifact }}
       run: ${{ steps.inputs.outputs.run }}
       digest: ${{ steps.identity.outputs.digest || steps.inputs.outputs.digest }}
     steps:
+      - name: Check out tooling
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          persist-credentials: false
       - name: Validate artifact selection
         id: inputs
         uses: actions/github-script@v9
@@ -51,31 +59,8 @@ jobs:
           RETAINED_DIGEST: ${{ inputs.digest }}
         with:
           script: |
-            const { MODE, SOURCE, BASE, TITLE, RETAINED_RUN, RETAINED_ARTIFACT, RETAINED_DIGEST } = process.env;
-            if (!/^[a-f0-9]{40}$/.test(SOURCE)) throw new Error('A full source SHA is required.');
-            const name = `release-${SOURCE}`;
-            if (MODE === 'prepare') {
-              if (Number(process.env.GITHUB_RUN_ATTEMPT) !== 1) throw new Error('Use verify with the retained artifact ID and digest. Do not rebuild on retry.');
-              if (!/^[a-f0-9]{40}$/.test(BASE) || !TITLE.startsWith('chore(release): Release ')) throw new Error('A release base SHA and title are required.');
-              const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, { ...context.repo, name, per_page: 100 });
-              if (artifacts.some((artifact) => artifact.name === name)) throw new Error('This source already has an artifact record. Reuse it or reconcile missing artifacts.');
-              core.setOutput('run', context.runId);
-            } else if (MODE === 'verify') {
-              if (!/^[1-9][0-9]*$/.test(RETAINED_RUN) || !/^[1-9][0-9]*$/.test(RETAINED_ARTIFACT) || !/^[a-f0-9]{64}$/.test(RETAINED_DIGEST)) throw new Error('The original run, artifact ID, and manifest digest are required.');
-              const { data } = await github.rest.actions.getArtifact({ ...context.repo, artifact_id: Number(RETAINED_ARTIFACT) });
-              if (data.expired || data.name !== name || String(data.workflow_run.id) !== RETAINED_RUN) throw new Error('Retained artifact identity differs or has expired. Stop for reconciliation.');
-              core.setOutput('run', RETAINED_RUN);
-              core.setOutput('artifact', RETAINED_ARTIFACT);
-              core.setOutput('digest', RETAINED_DIGEST);
-            } else {
-              throw new Error('Unknown artifact operation.');
-            }
-      - name: Check out tooling
-        if: inputs.mode == 'prepare'
-        uses: actions/checkout@v7
-        with:
-          path: tools
-          persist-credentials: false
+            const ledger = require(`${process.env.GITHUB_WORKSPACE}/tools/scripts/publication-ledger.cjs`);
+            await ledger({ github, context, core, env: process.env });
       - name: Check out release history
         if: inputs.mode == 'prepare'
         uses: actions/checkout@v7
@@ -132,6 +117,20 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           overwrite: false
+
+      - name: Commit retained artifact identity
+        if: inputs.mode == 'prepare'
+        uses: actions/github-script@v9
+        env:
+          MODE: retain
+          SOURCE: ${{ inputs.source }}
+          RETAINED_RUN: ${{ github.run_id }}
+          RETAINED_ARTIFACT: ${{ steps.upload.outputs.artifact-id }}
+          RETAINED_DIGEST: ${{ steps.identity.outputs.digest }}
+        with:
+          script: |
+            const ledger = require(`${process.env.GITHUB_WORKSPACE}/tools/scripts/publication-ledger.cjs`);
+            await ledger({ github, context, core, env: process.env });
 
   consumers:
     needs: retain
