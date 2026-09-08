@@ -1,0 +1,196 @@
+name: Publication artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Prepare a new set or verify an existing set
+        type: choice
+        options: [prepare, verify]
+        required: true
+      source:
+        description: Full release commit SHA
+        required: true
+      base:
+        description: Original release base SHA (prepare only)
+      title:
+        description: Guard-validated release title (prepare only)
+      run:
+        description: Original Actions run ID (verify only)
+      artifact:
+        description: Original Actions artifact ID (verify only)
+      digest:
+        description: Recorded manifest SHA-256 (verify only)
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publication-artifacts
+  cancel-in-progress: false
+
+jobs:
+  retain:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: ${{ steps.upload.outputs.artifact-id || steps.inputs.outputs.artifact }}
+      run: ${{ steps.inputs.outputs.run }}
+      digest: ${{ steps.identity.outputs.digest || steps.inputs.outputs.digest }}
+    steps:
+      - name: Validate artifact selection
+        id: inputs
+        uses: actions/github-script@v9
+        env:
+          MODE: ${{ inputs.mode }}
+          SOURCE: ${{ inputs.source }}
+          BASE: ${{ inputs.base }}
+          TITLE: ${{ inputs.title }}
+          RETAINED_RUN: ${{ inputs.run }}
+          RETAINED_ARTIFACT: ${{ inputs.artifact }}
+          RETAINED_DIGEST: ${{ inputs.digest }}
+        with:
+          script: |
+            const { MODE, SOURCE, BASE, TITLE, RETAINED_RUN, RETAINED_ARTIFACT, RETAINED_DIGEST } = process.env;
+            if (!/^[a-f0-9]{40}$/.test(SOURCE)) throw new Error('A full source SHA is required.');
+            const name = `release-${SOURCE}`;
+            if (MODE === 'prepare') {
+              if (Number(process.env.GITHUB_RUN_ATTEMPT) !== 1) throw new Error('Use verify with the retained artifact ID and digest. Do not rebuild on retry.');
+              if (!/^[a-f0-9]{40}$/.test(BASE) || !TITLE.startsWith('chore(release): Release ')) throw new Error('A release base SHA and title are required.');
+              const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, { ...context.repo, name, per_page: 100 });
+              if (artifacts.some((artifact) => artifact.name === name)) throw new Error('This source already has an artifact record. Reuse it or reconcile missing artifacts.');
+              core.setOutput('run', context.runId);
+            } else if (MODE === 'verify') {
+              if (!/^[1-9][0-9]*$/.test(RETAINED_RUN) || !/^[1-9][0-9]*$/.test(RETAINED_ARTIFACT) || !/^[a-f0-9]{64}$/.test(RETAINED_DIGEST)) throw new Error('The original run, artifact ID, and manifest digest are required.');
+              const { data } = await github.rest.actions.getArtifact({ ...context.repo, artifact_id: Number(RETAINED_ARTIFACT) });
+              if (data.expired || data.name !== name || String(data.workflow_run.id) !== RETAINED_RUN) throw new Error('Retained artifact identity differs or has expired. Stop for reconciliation.');
+              core.setOutput('run', RETAINED_RUN);
+              core.setOutput('artifact', RETAINED_ARTIFACT);
+              core.setOutput('digest', RETAINED_DIGEST);
+            } else {
+              throw new Error('Unknown artifact operation.');
+            }
+      - name: Check out tooling
+        if: inputs.mode == 'prepare'
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          persist-credentials: false
+      - name: Check out release history
+        if: inputs.mode == 'prepare'
+        uses: actions/checkout@v7
+        with:
+          path: source
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pnpm
+        if: inputs.mode == 'prepare'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.2
+      - name: Set up Node.js
+        if: inputs.mode == 'prepare'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+      - name: Build tooling
+        if: inputs.mode == 'prepare'
+        working-directory: tools
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Prepare release artifacts
+        if: inputs.mode == 'prepare'
+        env:
+          RELEASE_BASE: ${{ inputs.base }}
+          RELEASE_SOURCE: ${{ inputs.source }}
+          RELEASE_TITLE: ${{ inputs.title }}
+          TOOLS_ROOT: ${{ github.workspace }}/tools
+          SOURCE_ROOT: ${{ github.workspace }}/source
+        run: |
+          cd "$SOURCE_ROOT"
+          node "$TOOLS_ROOT/apps/loom/dist/main.js" publication prepare \
+            --base "$RELEASE_BASE" --head "$RELEASE_SOURCE" --title "$RELEASE_TITLE" \
+            --output "$RUNNER_TEMP/release-set" > "$RUNNER_TEMP/identity.json"
+      - name: Record manifest identity
+        if: inputs.mode == 'prepare'
+        id: identity
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const identity = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'identity.json'), 'utf8'));
+            core.setOutput('digest', identity.digest);
+            await core.summary.addCodeBlock(JSON.stringify(identity, null, 2), 'json').write();
+      - name: Retain unchanged tarballs and manifest
+        if: inputs.mode == 'prepare'
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ inputs.source }}
+          path: ${{ runner.temp }}/release-set
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: false
+
+  consumers:
+    needs: retain
+    name: packed / ${{ matrix.runtime }} / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        runtime: [node, bun]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out tooling
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          persist-credentials: false
+      - name: Check out release history
+        uses: actions/checkout@v7
+        with:
+          path: source
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.2
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+      - name: Set up Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Build tooling
+        working-directory: tools
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Download the selected artifact
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.retain.outputs.artifact }}
+          run-id: ${{ needs.retain.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-set
+          merge-multiple: true
+      - name: Verify retained packages without rebuilding release source
+        env:
+          RELEASE_SOURCE: ${{ inputs.source }}
+          MANIFEST_DIGEST: ${{ needs.retain.outputs.digest }}
+          CONSUMER_RUNTIME: ${{ matrix.runtime }}
+          TOOLS_ROOT: ${{ github.workspace }}/tools
+          SOURCE_ROOT: ${{ github.workspace }}/source
+        run: |
+          cd "$SOURCE_ROOT"
+          node "$TOOLS_ROOT/apps/loom/dist/main.js" publication verify \
+            --artifacts "$RUNNER_TEMP/release-set" --digest "$MANIFEST_DIGEST" \
+            --head "$RELEASE_SOURCE" --runtime "$CONSUMER_RUNTIME"

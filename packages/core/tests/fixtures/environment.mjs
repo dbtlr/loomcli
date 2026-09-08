@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 process.env.LOOM_MiXeD_CASE = 'captured';
 const nativeUppercase = process.env.LOOM_MIXED_CASE;

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loom/core';
+import { Application, Command } from '@loomcli/core';
 
 import { clearCache } from './clear-cache.js';
 import { globals } from './commands.js';

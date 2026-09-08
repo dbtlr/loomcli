@@ -1,5 +1,5 @@
-import { Application } from '@loom/core';
-import type { ActionHandler, StringOption } from '@loom/core';
+import { Application } from '@loomcli/core';
+import type { ActionHandler, StringOption } from '@loomcli/core';
 import { z } from 'zod';
 
 const number = z.string().transform(Number);

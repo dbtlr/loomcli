@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const scenario = process.argv[2];
 if (scenario === 'capture') {

@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const config = { polarity: 'negative', short: 'n', type: 'boolean' };
 const base = new Application('state')

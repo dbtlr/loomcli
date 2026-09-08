@@ -1,4 +1,4 @@
-import type { ActionHandler, Out } from '@loom/core';
+import type { ActionHandler, Out } from '@loomcli/core';
 
 import type { select } from '../commands/select.js';
 import { formatJson } from '../json.js';

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
-import type { Host, Out } from '@loom/core';
+import type { Host, Out } from '@loomcli/core';
 
 /** One document source: the subject each failure names, and the connection it reads. */
 interface Source {

@@ -45,7 +45,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
 
 ## Run jsonkit
 

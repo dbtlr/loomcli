@@ -4,7 +4,7 @@ title: ADR-0005 - Validation delegates to Standard Schema, with context passed t
 description: Core has no native validator and no validate hook. A value input accepts any Standard Schema object, and core passes a validation context on every call through the standard's libraryOptions record.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0005 - Validation delegates to Standard Schema, with context passed through the standard's own channel
@@ -26,3 +26,7 @@ Some input rules depend on the invocation, such as "a file path, or piped stdin 
 ## Consequences
 
 Boolean options accept no schema; their polarity decides their absent value. A schema that throws or returns a malformed result is a declaration error with exit 1, because only a returned issue states a validation verdict.
+
+## Changelog
+
+- 2026-09-08: The core package is named `@loomcli/core` before its first publication. References to `@loom/core` above name the same library. The architectural decision is unchanged.

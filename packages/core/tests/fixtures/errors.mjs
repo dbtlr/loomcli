@@ -1,4 +1,4 @@
-import { Application, FatalError } from '@loom/core';
+import { Application, FatalError } from '@loomcli/core';
 
 const scenario = process.argv[2];
 let app = new Application('fixture');

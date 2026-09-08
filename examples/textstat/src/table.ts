@@ -1,4 +1,4 @@
-import type { Renderer } from '@loom/core';
+import type { Renderer } from '@loomcli/core';
 
 import type { Metric } from './count-source.js';
 

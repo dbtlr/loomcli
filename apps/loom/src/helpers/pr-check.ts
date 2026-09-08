@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
-import { readFragments } from '../../helpers/fragments.js';
-import { isBuildAffectingPath } from '../../helpers/material.js';
-import { currentVersion, git, readLibraries, readRegularFile } from '../../helpers/repository.js';
-import { checkRelease } from './release.js';
+import { readFragments } from './fragments.js';
+import { isBuildAffectingPath } from './material.js';
+import { checkRelease } from './release-check.js';
+import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
 
 export function checkPullRequest(
   root: string,
-  options: { base: string; head: string; title: string; labels: string[] },
+  options: { base: string; head: string; title: string; labels: string[]; retained?: boolean },
 ) {
   if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
     throw new Error('PR checks require full Git history.');
@@ -45,7 +45,7 @@ export function checkPullRequest(
     if (fragments.length > 0) {
       throw new Error('No fragments may remain after a release cut.');
     }
-    checkRelease(root, base, head, version, changed);
+    checkRelease(root, base, head, version, changed, options.retained ?? false);
     return;
   }
   const libraries = readLibraries(root, head);

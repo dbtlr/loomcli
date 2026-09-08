@@ -1,4 +1,4 @@
-import { Command } from '@loom/core';
+import { Command } from '@loomcli/core';
 
 import { getValue } from '../actions/get-value.js';
 import { globals } from '../globals.js';

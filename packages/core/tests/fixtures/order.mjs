@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 
 /** Every supplied value fails, so the diagnostic lines report the validation order alone. */
 const reject = (label) => ({

@@ -3,7 +3,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ValidationContext } from './types.js';
 
 /** The `libraryOptions` key core writes its context under. It names the package that owns it. */
-const validationContextKey = '@loom/core';
+const validationContextKey = '@loomcli/core';
 
 /**
  * Every context core has emitted. The accessor answers from this registry alone, so a value some

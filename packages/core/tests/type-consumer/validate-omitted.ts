@@ -1,5 +1,5 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
-import type { StandardSchemaV1, StringOption } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
+import type { StandardSchemaV1, StringOption } from '@loomcli/core';
 import { z } from 'zod';
 
 /** Omission is one of the values this rule answers, so its input type accepts `undefined`. */

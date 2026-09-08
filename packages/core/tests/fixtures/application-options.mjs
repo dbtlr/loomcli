@@ -1,4 +1,4 @@
-import { Application, DeclarationError, GlobalOptions } from '@loom/core';
+import { Application, DeclarationError, GlobalOptions } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const mode = process.argv[3];

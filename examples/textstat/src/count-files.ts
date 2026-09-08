@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
-import type { ActionHandler, Host } from '@loom/core';
+import type { ActionHandler, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';

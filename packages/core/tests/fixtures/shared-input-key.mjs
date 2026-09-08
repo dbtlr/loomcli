@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 await new Application('shared-input-key')
   .argument('files', { required: true, variadic: true })

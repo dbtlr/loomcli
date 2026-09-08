@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const globals = new GlobalOptions()

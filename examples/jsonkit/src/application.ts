@@ -1,4 +1,4 @@
-import { Application, InputError, renderFailure, UnknownCommandError } from '@loom/core';
+import { Application, InputError, renderFailure, UnknownCommandError } from '@loomcli/core';
 
 import { summarize } from './actions/summarize.js';
 import { get } from './commands/get.js';

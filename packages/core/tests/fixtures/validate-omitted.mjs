@@ -1,4 +1,4 @@
-import { Application, validationContext } from '@loom/core';
+import { Application, validationContext } from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);

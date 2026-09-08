@@ -1,5 +1,5 @@
-import { issuePath } from '@loom/core';
-import type { InputError, InputProblem, Renderer, UnknownCommandError } from '@loom/core';
+import { issuePath } from '@loomcli/core';
+import type { InputError, InputProblem, Renderer, UnknownCommandError } from '@loomcli/core';
 
 /** Every diagnostic this application writes names the application first. */
 const NAME = 'jsonkit';

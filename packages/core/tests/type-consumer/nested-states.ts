@@ -1,4 +1,4 @@
-import { Command, GlobalOptions } from '@loom/core';
+import { Command, GlobalOptions } from '@loomcli/core';
 
 // A named Command attaches children under the rules the unnamed root follows.
 const globals = new GlobalOptions().option('file', { required: true, type: 'string' });

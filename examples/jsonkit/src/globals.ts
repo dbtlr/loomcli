@@ -1,4 +1,4 @@
-import { GlobalOptions } from '@loom/core';
+import { GlobalOptions } from '@loomcli/core';
 
 import { fileOrStdin } from './file-or-stdin.js';
 

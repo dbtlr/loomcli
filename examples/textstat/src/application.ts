@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 import { z } from 'zod';
 
 import { countFiles } from './count-files.js';

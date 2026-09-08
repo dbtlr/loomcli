@@ -1,4 +1,4 @@
-import type { ActionHandler, Renderer } from '@loom/core';
+import type { ActionHandler, Renderer } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 

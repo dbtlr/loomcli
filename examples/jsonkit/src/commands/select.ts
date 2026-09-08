@@ -1,4 +1,4 @@
-import { Command } from '@loom/core';
+import { Command } from '@loomcli/core';
 import { z } from 'zod';
 
 import { selectFields } from '../actions/select-fields.js';

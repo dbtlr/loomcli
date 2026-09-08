@@ -4,7 +4,7 @@ import {
   GlobalOptions,
   validationContext,
   validationContextKey,
-} from '@loom/core';
+} from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);

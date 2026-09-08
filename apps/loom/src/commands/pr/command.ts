@@ -1,6 +1,6 @@
-import { Command } from '@loom/core';
+import { Command } from '@loomcli/core';
 
-import { checkPullRequest } from './check.js';
+import { checkPullRequest } from '../../helpers/pr-check.js';
 
 export const pr = new Command('pr').command(
   new Command('check')

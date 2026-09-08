@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@loom/core": "workspace:*",
+    "@loomcli/core": "workspace:*",
     "mdast-util-from-markdown": "^2.0.3",
     "pnpm": "12.3.2",
+    "tar": "^7.5.22",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   }

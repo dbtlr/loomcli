@@ -33,6 +33,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0012](0012-synchronized-versions-from-manifests-and-owned-fragments.md) | Synchronized library versions derive from manifests and owned fragments; only a release cut changes them. | accepted |
 | [ADR-0013](0013-core-installs-no-plugins-and-composes-first-in-wins.md)      | Core installs no plugins by default; contributions compose first-in-wins with single-owner slots.         | proposed |
 | [ADR-0014](0014-acceptance-evidence-runs-against-the-packed-package.md)      | Acceptance evidence runs against the packed package through the public API.                               | accepted |
+| [ADR-0015](0015-publication-retries-reuse-retained-artifacts.md)             | Publication retries reuse one retained artifact set and stop on artifact loss.                            | accepted |
 
 ## Adding a record
 

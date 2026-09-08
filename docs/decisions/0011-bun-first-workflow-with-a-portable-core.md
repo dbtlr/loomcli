@@ -4,7 +4,7 @@ title: ADR-0011 - Bun-first developer workflow with a portable published core
 description: Bun is the project's development runtime. The published core is portable ESM that uses no Bun-only API, and the supported runtimes are stated only from executable evidence, never from CI pins.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0011 - Bun-first developer workflow with a portable published core
@@ -28,3 +28,7 @@ The supported runtimes are Node and Bun on macOS, Linux, and Windows. A compatib
 ## Consequences
 
 Explicit minimum Node and Bun versions and the TypeScript baseline remain open until the evidence exists. Adding a Bun-only API to core is a violation, not a convenience.
+
+## Changelog
+
+- 2026-09-08: The core package is named `@loomcli/core` before its first publication. References to `@loom/core` above name the same library. The architectural decision is unchanged.
