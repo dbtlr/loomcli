@@ -8,7 +8,15 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const cli = join(root, 'apps/loom/dist/main.js');
 const temporary = mkdtempSync(join(tmpdir(), 'loom-publication-rehearsal-'));
-const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+const runtimes = (
+  process.env.LOOM_REHEARSAL_RUNTIMES ??
+  process.env.LOOM_TEST_RUNTIME ??
+  'node'
+).split(',');
+assert.ok(
+  runtimes.length > 0 && runtimes.every((runtime) => ['node', 'bun'].includes(runtime)),
+  'Expected node, bun, or node,bun.',
+);
 function run(cwd, command, args, env = process.env) {
   const result = spawnSync(command, args, {
     cwd,
@@ -26,8 +34,38 @@ try {
   const artifacts = join(temporary, 'artifacts');
   const downloaded = join(temporary, 'downloaded');
   run(root, 'git', ['clone', '--no-hardlinks', '--', root, source]);
+  const initial =
+    JSON.parse(readFileSync(join(source, 'packages/core/package.json'), 'utf8')).version ===
+    '0.0.0';
+  if (!initial) {
+    writeFileSync(
+      join(source, '.changes/publication-rehearsal.md'),
+      '- Verify the isolated publication rehearsal.\n',
+    );
+    run(source, 'git', ['add', '.changes/publication-rehearsal.md']);
+    run(source, 'git', [
+      '-c',
+      'user.name=Release rehearsal',
+      '-c',
+      'user.email=rehearsal@example.invalid',
+      'commit',
+      '-m',
+      'Prepare a rehearsal fragment',
+    ]);
+  }
   const base = run(source, 'git', ['rev-parse', 'HEAD']);
-  run(source, 'node', [cli, 'changelog', 'write', '--initial', '--date', '2026-09-08']);
+  run(source, 'node', [
+    cli,
+    'changelog',
+    'write',
+    ...(initial ? ['--initial'] : []),
+    '--date',
+    '2026-09-08',
+  ]);
+  const version = JSON.parse(
+    readFileSync(join(source, 'packages/core/package.json'), 'utf8'),
+  ).version;
+  const title = `chore(release): Release v${version} - Rehearsal`;
   run(source, 'git', ['add', '.']);
   run(source, 'git', [
     '-c',
@@ -36,7 +74,7 @@ try {
     'user.email=rehearsal@example.invalid',
     'commit',
     '-m',
-    'chore(release): Release v0.1.0 - Rehearsal',
+    title,
   ]);
   const head = run(source, 'git', ['rev-parse', 'HEAD']);
   process.stdout.write(`Preparing ${head} from ${base}.\n`);
@@ -50,11 +88,11 @@ try {
       '--head',
       head,
       '--title',
-      'chore(release): Release v0.1.0 - Rehearsal',
+      title,
       '--output',
       artifacts,
       '--runtime',
-      runtime,
+      'node',
     ]),
   );
   const manifest = JSON.parse(readFileSync(join(artifacts, 'manifest.json'), 'utf8'));
@@ -80,25 +118,27 @@ try {
     '-m',
     'Rehearse a later machinery repair',
   ]);
-  process.stdout.write(`Verifying downloaded set ${result.digest} under ${runtime}.\n`);
-  run(source, 'node', [
-    cli,
-    'publication',
-    'verify',
-    '--artifacts',
-    downloaded,
-    '--digest',
-    result.digest,
-    '--head',
-    head,
-    '--runtime',
-    runtime,
-  ]);
+  for (const runtime of runtimes) {
+    process.stdout.write(`Verifying downloaded set ${result.digest} under ${runtime}.\n`);
+    run(source, 'node', [
+      cli,
+      'publication',
+      'verify',
+      '--artifacts',
+      downloaded,
+      '--digest',
+      result.digest,
+      '--head',
+      head,
+      '--runtime',
+      runtime,
+    ]);
+  }
   for (const [file, bytes] of retained) {
     assert.deepEqual(readFileSync(join(downloaded, file)), bytes);
   }
   process.stdout.write(
-    `${JSON.stringify({ ...result, packages: manifest.packages.map(({ name, integrity }) => ({ integrity, name })), reused: true, runtime }, null, 2)}\n`,
+    `${JSON.stringify({ ...result, packages: manifest.packages.map(({ name, integrity }) => ({ integrity, name })), reused: true, runtimes }, null, 2)}\n`,
   );
 } finally {
   rmSync(temporary, { force: true, recursive: true });

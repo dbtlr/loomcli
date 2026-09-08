@@ -67,15 +67,15 @@ The subsequent publication workflow must attach the identical manifest and tarba
 
 ## Isolated rehearsal
 
-The rehearsal runs against the current committed checkout, initially at `0.0.0`. It creates an isolated `0.1.0` cut with the existing compiler, prepares the real packages, copies the set to simulate download, removes the original copy, advances the checkout, and verifies the downloaded bytes again.
+The rehearsal runs against the current committed checkout. It creates an isolated cut with the existing compiler, prepares the real packages, copies the set to simulate download, removes the original copy, advances the checkout, and verifies the downloaded bytes again. The `0.0.0` sentinel produces `0.1.0`; later versions receive a temporary rehearsal fragment before the cut.
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm run build
 node scripts/rehearse-publication.mjs
-LOOM_TEST_RUNTIME=bun node scripts/rehearse-publication.mjs
+LOOM_REHEARSAL_RUNTIMES=node,bun node scripts/rehearse-publication.mjs
 ```
 
-The rehearsal removes its temporary directories on completion. It never pushes its cut, creates release tags, or contacts npm for publication. Registry downloads for dependency installation remain necessary.
+CI runs the rehearsal on Linux, macOS, and Windows. Both runtimes consume the same set within each rehearsal. The rehearsal removes its temporary directories on completion. It never pushes its cut, creates release tags, or contacts npm for publication. Registry downloads for dependency installation remain necessary.
 
 The [bootstrap procedure](initial-publication.md) defines the separately authorized first publication.
