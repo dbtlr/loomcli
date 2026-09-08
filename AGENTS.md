@@ -1,8 +1,14 @@
 ---
-description: Project conventions for TypeScript assertions and pull request changelog decisions.
+description: Project conventions for the domain glossary, decision records, TypeScript assertions, and pull request changelog decisions.
 ---
 
 # Loom CLI
+
+## Glossary and decision records
+
+The [glossary](docs/glossary.md) is the domain model. Use its terms in code, documentation, diagnostics, and reviews, and update it in the same change that sharpens or adds a term.
+
+The [decision records](docs/decisions/README.md) are constraints on the work, not an archive. Check a plan against the index before building, and open the records that govern the area under change. An `accepted` record is load-bearing: a change that conflicts with it supersedes it with a new record rather than editing it.
 
 ## Pull requests
 
