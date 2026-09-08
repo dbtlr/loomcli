@@ -52,7 +52,7 @@ The lockfile comparison uses the pinned pnpm in a temporary directory, with offl
 
 The material-change baseline is the current version tag. Fetch the repository's tags before checking a release. A local check cannot detect an unfetched remote tag.
 
-Replacement version overrides are rejected. Publication completion, reserved versions, and recovery authorization require publication records and remain outside this guard. A passing check does not publish or authorize a release.
+Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish or authorize a release.
 
 ## GitHub Actions
 
@@ -60,4 +60,4 @@ Replacement version overrides are rejected. Publication completion, reserved ver
 
 The job uses read-only repository permissions and passes PR metadata from environment variables directly into a process argument array. Label names retain their exact case. Builds and consumer tests remain in the existing CI workflow.
 
-Repository administrators must require `PR / fragment and version guards` on `main` to make this check a merge gate. This workflow does not change branch protection settings. Release merges must preserve the release PR title as the merge commit title for future publication tooling.
+Repository administrators must require `PR / fragment and version guards` on `main` to make this check a merge gate. This workflow does not change branch protection settings. Release merges must preserve the release PR title as the commit title on `main`.

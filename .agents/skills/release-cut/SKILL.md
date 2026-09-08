@@ -7,7 +7,7 @@ description: Prepare a Loom CLI library release pull request from pending change
 
 Produce one reviewable release commit and a ready-for-review PR. Use the existing compiler and version writer for every generated file.
 
-This procedure prepares a cut. The [artifact commands](../../../docs/publication-artifacts.md) prepare retained package sets, and the [bootstrap procedure](../../../docs/initial-publication.md) defines first-publication prerequisites. Registry publication and recovery automation remain unimplemented. Record missing publication evidence as a blocker; a successful local guard does not prove release readiness.
+This procedure prepares a cut. Registry publication is not automated in this repository. A successful local guard does not prove release readiness.
 
 ## Establish the release inputs
 
@@ -15,31 +15,13 @@ Read the repository's [fragment guide](../../../.changes/README.md), [compiler r
 
 1. Resolve the repository root, configured Git remote, and its GitHub repository identity. Use the intended upstream repository for all external checks.
 2. Fetch the current `main` and tags without overwriting conflicting local tags. Record the exact upstream `main` SHA as the cut base.
-3. Inspect open release PRs and recent release merges. Resume a matching unfinished cut instead of creating a duplicate. Stop if another cut or incomplete publication needs reconciliation.
+3. Inspect open release PRs and recent release merges. Resume a matching unfinished cut instead of creating a duplicate. Stop if another open cut needs reconciliation.
 4. Read all participating manifests at the cut base. Participation and version arithmetic belong to the compiler. Keep the package list, current version, and base SHA together in the release evidence.
-5. Complete the applicable publication prerequisite below before invoking `write`.
+5. Complete the previous-release prerequisite below before invoking `write`.
 
-### Initial release
+### Previous-release prerequisite
 
-The initial cut starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
-
-Verify the upstream release history, tags, and each package's registry history. Establish that no previous or incomplete Loom library release exists and that the target package versions are available. Authentication errors, network errors, and ambiguous registry responses do not prove absence. A package name already owned by another project requires maintainer reconciliation.
-
-The first publication needs a separately verified bootstrap procedure and explicit release authorization. Record its readiness in the PR. If publication preparation is incomplete, the cut remains a preparation artifact with an explicit merge blocker.
-
-### Later releases
-
-Require the previous release's retained artifact set: package list, version, source SHA, original base, consumed fragments, tarballs, and digests. Verify all of the following against GitHub and the configured registry:
-
-- Each package version exists and its registry integrity matches its retained tarball.
-- Every participating package's `latest` tag points to the completed release version.
-- The annotated version tag resolves to the recorded source SHA, which is an ancestor of the cut base.
-- The matching GitHub Release is published against that tag.
-- No newer reserved version, incomplete release, or unfinished publication supersedes that state.
-
-Use the previous release's package list for this audit, including packages removed from the current tree. Audit registry reservations and initial-publication readiness for newly participating packages separately.
-
-Missing artifacts or inconsistent state stops the cut. Tag presence alone is insufficient. Resume the original publication or request maintainer reconciliation. Replacement cuts and version overrides remain unsupported.
+Confirm that the previous release version is tagged `v<version>` at its recorded commit, which is an ancestor of the cut base, and that every participating package is published on npm at that version with `latest` pointing at it. Any other state stops the cut for maintainer reconciliation. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
 
 ## Review the cycle
 
@@ -74,18 +56,18 @@ IFS= read -r release_title < "$release_title_file"
 pnpm loom pr check --base "$base_sha" --head "$head_sha" --title "$release_title"
 ```
 
-Use the title form `chore(release): Release v<version> - <description>`. Keep prose out of shell source, including variable assignments. Run the repository verification commands against the prepared cut. Package builds and publication remain the publishing workflow's responsibility; local verification does not publish anything.
+Use the title form `chore(release): Release v<version> - <description>`. Keep prose out of shell source, including variable assignments. Run the repository verification commands against the prepared cut. Local verification does not publish anything.
 
 ## Publish the PR for review
 
-Refresh upstream state before pushing. If `main` advanced, prepare again from the new base and repeat the publication prerequisite and cycle review. Do not rerun `write` on an already bumped release commit. Preserve any earlier cut until its replacement is validated; do not overwrite another contributor's branch.
+Refresh upstream state before pushing. If `main` advanced, prepare again from the new base and repeat the previous-release prerequisite and cycle review. Do not rerun `write` on an already bumped release commit. Preserve any earlier cut until its replacement is validated; do not overwrite another contributor's branch.
 
-Recheck target-version reservations and unfinished cuts. Push the reviewed branch and create or update its ready-for-review PR using the exact validated title. The PR body records:
+Recheck that the target version is still unpublished and untagged, and that no other cut is open. Push the reviewed branch and create or update its ready-for-review PR using the exact validated title. The PR body records:
 
 - The release purpose and upgrade actions, if any.
 - The base SHA, cut SHA, version, and participating packages.
-- Previous-release completion evidence, or initial-release absence evidence.
-- Validation results and any publication/bootstrap merge blocker.
+- Previous-release tag and npm evidence, or a statement that this is the initial cut.
+- Validation results and any merge blocker.
 - Consumed fragments and optional narrative rationale.
 
 Use a body file or a structured API argument to preserve Markdown and avoid shell evaluation. The generated release diff is its changelog decision; it needs no new fragment or `skip-changelog` exemption.

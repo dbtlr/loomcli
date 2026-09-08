@@ -254,10 +254,6 @@ _Avoid_: Version bump, release build
 A change to a library, a library dependency, or a shared build input that can affect the library's published contents.
 _Avoid_: Direct change, visible change
 
-**Release artifact set**:
-The retained package bytes and identity evidence for one release cut, reused across publication attempts.
-_Avoid_: Build cache, release tag
-
 **Replacement cut**:
 A separately authorized release cut that supersedes an abandoned incomplete release with a higher version.
 _Avoid_: Retry, rebuild

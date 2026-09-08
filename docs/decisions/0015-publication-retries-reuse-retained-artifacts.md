@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0015 - Publication retries reuse one retained artifact set
 description: Publication identity includes immutable tarballs and their source evidence. Retries verify retained bytes and stop when artifacts are missing instead of rebuilding packages.
-status: accepted
+status: deprecated
 created: 2026-09-08
 modified: 2026-09-08
 ---
@@ -30,6 +30,10 @@ The recorded manifest digest and source SHA are independent verification inputs,
 
 ## Consequences
 
-[Preparation and verification](../publication-artifacts.md) enforce artifact identity and reuse. They do not establish external publication completion. The subsequent publication implementation must compare registry integrity, finish all promotions, and verify the matching tag and published GitHub Release. It must retain the identical set with that release before declaring completion.
+Preparation and verification enforce artifact identity and reuse. They do not establish external publication completion. The subsequent publication implementation must compare registry integrity, finish all promotions, and verify the matching tag and published GitHub Release. It must retain the identical set with that release before declaring completion.
 
 This decision extends the publication boundary left open by [ADR-0012](0012-synchronized-versions-from-manifests-and-owned-fragments.md). It does not authorize publication or replacement cuts.
+
+## Changelog
+
+- 2026-09-08: The publication layer was removed from this repository. This record no longer binds anything. It stays for the history of the reasoning.

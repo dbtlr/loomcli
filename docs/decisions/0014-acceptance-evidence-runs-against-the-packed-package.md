@@ -4,7 +4,7 @@ title: ADR-0014 - Acceptance evidence runs against the packed package through th
 description: The example applications are the acceptance surface. They use only public core APIs, resolve core through the packed package, and run as real processes under every supported runtime. Passing tests alone do not accept a deliverable.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0014 - Acceptance evidence runs against the packed package through the public API
@@ -26,3 +26,7 @@ A deliverable is not accepted because its tests pass. Its SDK syntax must also b
 ## Consequences
 
 Adding a runtime or platform to the support statement means adding it to the executable evidence first. A change that the examples cannot exercise needs a new example increment or a public-API fixture before it is accepted.
+
+## Changelog
+
+- 2026-09-08: The runtime check that ran the examples against packed tarballs was retired with the publication layer. `packages/core/tests/check-types.mjs` still compiles a consumer against the packed declarations. The examples now run as processes against the workspace build. The decision is unchanged.
