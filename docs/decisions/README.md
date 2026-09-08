@@ -34,6 +34,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0013](0013-core-installs-no-plugins-and-composes-first-in-wins.md)      | Core installs no plugins by default; contributions compose first-in-wins with single-owner slots.         | proposed |
 | [ADR-0014](0014-acceptance-evidence-runs-against-the-packed-package.md)      | Acceptance evidence runs against the packed package through the public API.                               | accepted |
 | [ADR-0015](0015-publication-retries-reuse-retained-artifacts.md)             | Publication retries reuse one retained artifact set and stop on artifact loss.                            | deprecated |
+| [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) | A release merge publishes through one idempotent, token-free workflow that reconciles npm, tag, and GitHub Release with the manifest version. | proposed |
 
 ## Adding a record
 
