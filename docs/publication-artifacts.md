@@ -76,7 +76,7 @@ The `publish` mode attaches the identical manifest and tarballs to the GitHub Re
 
 ## Isolated rehearsal
 
-The rehearsal runs against the current committed checkout. It creates an isolated cut with the existing compiler, prepares the real packages, copies the set to simulate download, removes the original copy, advances the checkout, and verifies the downloaded bytes again. The `0.0.0` sentinel produces `0.1.0`; later versions receive a temporary rehearsal fragment before the cut.
+The rehearsal runs against the current committed checkout. It creates an isolated cut with the existing compiler, prepares the real packages, copies the set to simulate download, removes the original copy, advances the checkout, and verifies the downloaded bytes again. The `0.0.0` sentinel produces `0.1.0`; later versions receive a temporary rehearsal fragment before the cut. When the current version has no tag, the temporary clone receives a baseline tag before preparing that next cut. Existing tags remain unchanged.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -85,6 +85,6 @@ node scripts/rehearse-publication.mjs
 LOOM_REHEARSAL_RUNTIMES=node,bun node scripts/rehearse-publication.mjs
 ```
 
-CI runs the rehearsal on Linux, macOS, and Windows. Both runtimes consume the same set within each rehearsal. The rehearsal removes its temporary directories on completion. It never pushes its cut, creates release tags, or contacts npm for publication. Registry downloads for dependency installation remain necessary.
+CI runs the rehearsal on Linux, macOS, and Windows. Both runtimes consume the same set within each rehearsal. The rehearsal removes its temporary directories on completion. It never pushes its cut, changes tags in the source repository or remote, or contacts npm for publication. Registry downloads for dependency installation remain necessary.
 
 The [bootstrap procedure](initial-publication.md) defines the separately authorized first publication.
