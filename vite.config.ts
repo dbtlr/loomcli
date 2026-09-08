@@ -2,7 +2,7 @@ import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
   fmt: {
-    ignore: ['CHANGELOG.md', 'dist/**', '**/*.generated.ts', '**/*.{md,mdx,markdown}'],
+    ignorePatterns: ['dist/**', '**/*.generated.ts', '**/*.{md,mdx,markdown}'],
     singleQuote: true,
     sortImports: { ignoreCase: true },
   },
