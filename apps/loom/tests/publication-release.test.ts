@@ -300,7 +300,7 @@ function boundaries() {
   };
 }
 
-test('publication completes the retained set and an identical retry performs no writes', async () => {
+test('publication accepts E404 for missing packages and tags, then retries without writes', async () => {
   const boundary = boundaries();
   const result = await publishPublication(root, options, boundary.services);
   expect(result).toMatchObject({
@@ -427,6 +427,89 @@ test.each(['E401', 'E403', 'ETIMEDOUT'])('registry %s is not package absence', a
   );
   expect(boundary.writes).toEqual([]);
 });
+
+test.each(['', '{', '{"error":{"code":"E404"}', '{}', 'null'])(
+  'malformed npm error %j preserves registry recovery guidance',
+  async (stdout) => {
+    const boundary = boundaries();
+    const original = boundary.services.npm.bind(boundary.services);
+    boundary.services.npm = async (args) =>
+      args[0] === 'view' ? { status: 1, stdout } : original(args);
+    await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+      'npm view failed. Stop and inspect the authenticated registry state.',
+    );
+    expect(boundary.writes).toEqual([]);
+  },
+);
+
+test.each(['', '{'])(
+  'malformed successful npm response %j stops for reconciliation',
+  async (stdout) => {
+    const boundary = boundaries();
+    const original = boundary.services.npm.bind(boundary.services);
+    boundary.services.npm = async (args) =>
+      args[0] === 'view' ? { status: 0, stdout } : original(args);
+    await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+      'Invalid npm view JSON response. Stop for reconciliation.',
+    );
+    expect(boundary.writes).toEqual([]);
+  },
+);
+
+test('E404 cannot turn a failed authentication check into absence', async () => {
+  const boundary = boundaries();
+  const original = boundary.services.npm.bind(boundary.services);
+  boundary.services.npm = async (args) =>
+    args[0] === 'whoami' ? { status: 1, stdout: '{"error":{"code":"E404"}}' } : original(args);
+  await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+    'npm whoami failed. Stop and inspect the authenticated registry state.',
+  );
+  expect(boundary.writes).toEqual([]);
+});
+
+test('malformed npm dist-tag error cannot become an absent latest tag', async () => {
+  const boundary = boundaries();
+  const original = boundary.services.npm.bind(boundary.services);
+  boundary.services.npm = async (args) =>
+    args[0] === 'dist-tag' && args[1] === 'ls' ? { status: 1, stdout: '' } : original(args);
+  await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+    'npm dist-tag failed. Stop and inspect the authenticated registry state.',
+  );
+  expect(boundary.writes).toEqual([]);
+});
+
+test.each(['0.2.0-beta.1', '1.0.0', 'invalid'])(
+  'unsupported latest %s stops before publication',
+  async (latest) => {
+    const boundary = boundaries();
+    boundary.tags.set('@sample/other', latest);
+    await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+      `@sample/other: unsupported npm latest version ${latest}. Stop for reconciliation.`,
+    );
+    expect(boundary.writes).toEqual([]);
+    expect(boundary.tags.get('@sample/other')).toBe(latest);
+  },
+);
+
+test.each(['0.2.0-beta.1', '1.0.0'])(
+  'unsupported latest %s appearing before promotion is not overwritten',
+  async (latest) => {
+    const boundary = boundaries();
+    const original = boundary.services.npm.bind(boundary.services);
+    boundary.services.npm = async (args) => {
+      const result = await original(args);
+      if (args[0] === 'publish') {
+        boundary.tags.set('@sample/core', latest);
+      }
+      return result;
+    };
+    await expect(publishPublication(root, options, boundary.services)).rejects.toThrow(
+      `@sample/core: unsupported npm latest version ${latest}. Stop for reconciliation.`,
+    );
+    expect(boundary.writes).toEqual(['publish @sample/core', 'publish @sample/other']);
+    expect(boundary.tags.get('@sample/core')).toBe(latest);
+  },
+);
 
 test('an older incomplete release cannot roll latest back', async () => {
   const boundary = boundaries();

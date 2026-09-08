@@ -62,6 +62,10 @@ A retry reads external state instead of trusting an earlier command's acknowledg
 
 An older incomplete release cannot change `latest` after a newer version appears. Either a participating package's `latest` tag or a published GitHub Release establishes that boundary. A completed historical release is verified without restoring its old `latest` tags.
 
+Failed npm reads retain registry-inspection guidance even when their error output is empty or malformed. A failed read counts as absence only when its structured error code is `E404` and the operation allows absence. Invalid JSON from a successful npm read stops recovery for reconciliation.
+
+Automatic `latest` comparisons accept stable `0.x` versions only. An unsupported value, such as `0.2.0-beta.1` or `1.0.0`, stops comparison for reconciliation before the affected publication or promotion. Recovery never treats that value as absent or skips the comparison to permit a write. A newer published GitHub Release still permits verification of a completed historical release without comparing its current `latest` tags.
+
 An expired or missing Actions artifact still stops automatic recovery, even when GitHub Release attachments exist. Attachments provide durable history; automatic selection from that storage is outside this workflow. A lost ledger, incomplete reservation, integrity mismatch, conflicting tag, or conflicting attachment requires maintainer reconciliation. Rebuilding or substituting package bytes is never a recovery action. [ADR-0015](decisions/0015-publication-retries-reuse-retained-artifacts.md)
 
 Replacement cuts and version overrides remain separate work.
