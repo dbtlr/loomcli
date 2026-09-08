@@ -10,7 +10,6 @@ export function checkRelease(
   head: string,
   version: string,
   changed: string[],
-  retained = false,
 ) {
   const previous = readLibraries(root, base);
   const libraries = readLibraries(root, head);
@@ -45,16 +44,7 @@ export function checkRelease(
     throw new Error(`Every participating library must carry title version ${version}.`);
   }
   if (git(root, ['tag', '--list', `v${version}`]).trim()) {
-    if (!retained) {
-      throw new Error(`Tag v${version} already exists.`);
-    }
-    const tag = `refs/tags/v${version}`;
-    if (
-      git(root, ['cat-file', '-t', tag]).trim() !== 'tag' ||
-      git(root, ['rev-parse', `${tag}^{commit}`]).trim() !== head
-    ) {
-      throw new Error(`Tag v${version} must be annotated at the retained source SHA.`);
-    }
+    throw new Error(`Tag v${version} already exists.`);
   }
   if (
     !isDeepStrictEqual(

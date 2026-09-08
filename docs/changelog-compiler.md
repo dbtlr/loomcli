@@ -8,7 +8,7 @@ The changelog compiler is the first command group in the private Loom CLI, `@loo
 
 `pnpm build` compiles the library, examples, and local Loom CLI. Running its changelog command group prepares release files.
 
-An agent release skill coordinates preparation and reviews the result. GitHub Actions can build and publish the approved release. Those release orchestration and publication tools are separate work.
+An agent release skill coordinates preparation and reviews the result. Registry publication is separate work and is not implemented in this repository.
 
 ## Commands
 
@@ -49,7 +49,7 @@ Participating `package.json` versions must be identical stable `0.x` versions. P
 | `0.4.7`         | At least one breaking fragment | `0.5.0`      |
 | `0.4.7`         | Compatible fragments only      | `0.4.8`      |
 
-Git tags never determine the next version. The `--since` option changes only the material-change report. The release agent owns external checks for completed or incomplete publications. This command has no version override for replacement cuts.
+Git tags never determine the next version. The `--since` option changes only the material-change report. The release agent owns any external check of what is already published. This command has no version override for replacement cuts.
 
 ## Rendering and material changes
 

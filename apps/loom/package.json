@@ -5,9 +5,7 @@
   "dependencies": {
     "@loomcli/core": "workspace:*",
     "mdast-util-from-markdown": "^2.0.3",
-    "npm": "11.11.1",
     "pnpm": "12.3.2",
-    "tar": "^7.5.22",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   }

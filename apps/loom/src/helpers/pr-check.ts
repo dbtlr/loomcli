@@ -7,7 +7,7 @@ import { currentVersion, git, readLibraries, readRegularFile } from './repositor
 
 export function checkPullRequest(
   root: string,
-  options: { base: string; head: string; title: string; labels: string[]; retained?: boolean },
+  options: { base: string; head: string; title: string; labels: string[] },
 ) {
   if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
     throw new Error('PR checks require full Git history.');
@@ -45,7 +45,7 @@ export function checkPullRequest(
     if (fragments.length > 0) {
       throw new Error('No fragments may remain after a release cut.');
     }
-    checkRelease(root, base, head, version, changed, options.retained ?? false);
+    checkRelease(root, base, head, version, changed);
     return;
   }
   const libraries = readLibraries(root, head);

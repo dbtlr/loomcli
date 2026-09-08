@@ -101,4 +101,4 @@ Read the [change fragment guide](.changes/README.md) before opening a pull reque
 
 The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
 
-Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates publication prerequisites, cycle review, isolated preparation, and PR validation. The [publication artifact commands](docs/publication-artifacts.md) prepare and verify retained packages. The [initial-publication procedure](docs/initial-publication.md) documents bootstrap prerequisites. Registry publication and recovery automation remain separate work.
+Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Registry publication is not automated in this repository yet.
