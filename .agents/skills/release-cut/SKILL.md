@@ -67,13 +67,14 @@ An empty fragment set after the initial release does not create a release. A fai
 
 Review the complete diff. It must contain only participating manifest version changes, the lockfile, the compiled changelog section, and consumed-fragment deletions. Preserve `workspace:*` references in repository manifests. Commit these changes together once; obtain the target version from the generated manifests.
 
-Validate the committed cut using its exact base and head:
+Validate the committed cut using its exact base and head. Set `base_sha` and `head_sha` from the recorded Git SHAs. Write the exact release title as one newline-terminated line in a file outside the checkout. Use a file-writing tool, preserving the title as data. Set `release_title_file` to that file's path.
 
 ```sh
-pnpm loom pr check --base BASE_SHA --head HEAD_SHA --title "chore(release): Release vVERSION - DESCRIPTION"
+IFS= read -r release_title < "$release_title_file"
+pnpm loom pr check --base "$base_sha" --head "$head_sha" --title "$release_title"
 ```
 
-Replace the placeholders with recorded values. Pass prose as one argument without shell evaluation. Run the repository verification commands against the prepared cut. Package builds and publication remain the publishing workflow's responsibility; local verification does not publish anything.
+Use the title form `chore(release): Release v<version> - <description>`. Keep prose out of shell source, including variable assignments. Run the repository verification commands against the prepared cut. Package builds and publication remain the publishing workflow's responsibility; local verification does not publish anything.
 
 ## Publish the PR for review
 
