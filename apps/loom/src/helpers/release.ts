@@ -15,6 +15,18 @@ function compareNames(left: string, right: string) {
   return 0;
 }
 
+export function releaseDate(input: string | undefined) {
+  const date = input ?? new Date().toISOString().slice(0, 10);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/u.test(date) ||
+    Number.isNaN(Date.parse(date)) ||
+    new Date(date).toISOString().slice(0, 10) !== date
+  ) {
+    throw new Error('Expected a calendar date: YYYY-MM-DD.');
+  }
+  return date;
+}
+
 export function prepareRelease(
   root: string,
   options: {
@@ -23,12 +35,13 @@ export function prepareRelease(
     since: string | undefined;
     narrative: string | undefined;
   },
+  ref?: string,
 ) {
   if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
     throw new Error('Release preparation requires full Git history.');
   }
-  const head = git(root, ['rev-parse', 'HEAD']).trim();
-  const fragments = readFragments(root)
+  const head = ref ?? git(root, ['rev-parse', 'HEAD']).trim();
+  const fragments = readFragments(root, ref)
     .map((fragment) => {
       const added = git(root, [
         'log',
@@ -36,7 +49,7 @@ export function prepareRelease(
         '--diff-filter=A',
         '-1',
         '--format=%ct',
-        'HEAD',
+        head,
         '--',
         `.changes/${fragment.name}`,
       ]).trim();
@@ -53,7 +66,7 @@ export function prepareRelease(
       };
     })
     .toSorted((left, right) => left.added - right.added || compareNames(left.name, right.name));
-  const libraries = readLibraries(root);
+  const libraries = readLibraries(root, ref);
   const current = currentVersion(libraries);
   if (options.initial && current.text !== '0.0.0') {
     throw new Error('--initial requires library version 0.0.0.');
@@ -97,7 +110,7 @@ export function prepareRelease(
   const unchanged =
     current.text === '0.0.0'
       ? []
-      : unchangedLibraries(root, libraries, options.since ?? `v${current.text}`);
+      : unchangedLibraries(root, libraries, options.since ?? `v${current.text}`, ref);
   if (unchanged.length > 0) {
     section += `No material changes: ${unchanged.join(', ')}.\n\n`;
   }

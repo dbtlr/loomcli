@@ -4,7 +4,7 @@ description: Pull request rules and examples for ordinary and breaking library c
 
 # Change fragments
 
-This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes preview and release-file preparation. PR fragment admission and version guards remain manual.
+This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes preview and release-file preparation. The [PR guard reference](../docs/pr-guards.md) describes automated fragment admission and version checks.
 
 ## Choose a fragment or a skip label
 

@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { Command } from '@loom/core';
 import type { Out } from '@loom/core';
 
-import { readFragments } from './fragments.js';
-import { prepareRelease } from './release.js';
+import { readFragments } from '../../helpers/fragments.js';
+import { prepareRelease, releaseDate } from '../../helpers/release.js';
 import { writeRelease } from './write.js';
 
 function prepare(
@@ -17,16 +17,8 @@ function prepare(
     narrative: string | undefined;
   },
 ) {
-  const date = options.date ?? new Date().toISOString().slice(0, 10);
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/u.test(date) ||
-    Number.isNaN(Date.parse(date)) ||
-    new Date(date).toISOString().slice(0, 10) !== date
-  ) {
-    throw new Error('Expected a calendar date: YYYY-MM-DD.');
-  }
   return prepareRelease(root, {
-    date,
+    date: releaseDate(options.date),
     initial: options.initial,
     narrative:
       options.narrative === undefined
