@@ -100,3 +100,5 @@ The [core reference](docs/core.md) defines invocation, output, and failure behav
 Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.
 
 The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
+
+Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates publication prerequisites, cycle review, isolated preparation, and PR validation. Publication and recovery tooling remain future work.
