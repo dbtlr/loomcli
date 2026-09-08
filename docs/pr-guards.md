@@ -50,7 +50,7 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 
 The lockfile comparison uses the pinned pnpm in a temporary directory, with offline resolution and scripts and pnpmfile hooks disabled. Dependencies must be cached. This is the same preparation used by `loom changelog write`.
 
-The material-change baseline is the current version tag. Fetch the repository's tags before checking a release. A local check cannot detect an unfetched remote tag.
+The material-change baseline is the first-parent commit at the base that set the current version. No tag enters this computation, so a version that was abandoned without a tag gives the same baseline as a published one. The guard needs the full first-parent history of the base, and still rejects an existing local tag for the new version.
 
 Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish or authorize a release.
 

@@ -2,7 +2,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { readFragments } from './fragments.js';
 import { requireClosedBlocks } from './markdown.js';
-import { unchangedLibraries } from './material.js';
+import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, git, readLibraries } from './repository.js';
 
 function compareNames(left: string, right: string) {
@@ -110,7 +110,12 @@ export function prepareRelease(
   const unchanged =
     current.text === '0.0.0'
       ? []
-      : unchangedLibraries(root, libraries, options.since ?? `v${current.text}`, ref);
+      : unchangedLibraries(
+          root,
+          libraries,
+          options.since ?? materialBaseline(root, libraries, current.text, head),
+          ref,
+        );
   if (unchanged.length > 0) {
     section += `No material changes: ${unchanged.join(', ')}.\n\n`;
   }

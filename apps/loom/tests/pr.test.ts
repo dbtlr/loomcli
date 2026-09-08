@@ -41,7 +41,7 @@ function commit(root: string) {
   return git(root, 'rev-parse', 'HEAD');
 }
 
-function repository(version = '0.4.7') {
+function repository(version = '0.4.7', { tag = true } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-pr-')));
   roots.push(root);
   git(root, 'init', '-q');
@@ -53,7 +53,7 @@ function repository(version = '0.4.7') {
   put(root, 'packages/core/index.js', 'export const value = 1;\n');
   put(root, 'CHANGELOG.md', '# Changelog\n\n');
   const base = commit(root);
-  if (version !== '0.0.0') {
+  if (tag && version !== '0.0.0') {
     git(root, 'tag', `v${version}`);
   }
   return { base, root };
@@ -102,6 +102,29 @@ test('a compiler-written release passes and unrelated code cannot enter the rele
   expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
     status: 1,
     stderr: expect.stringContaining('outside the release cut'),
+  });
+});
+
+test('a release check derives the material baseline at the base without a tag', () => {
+  const { root } = repository('0.4.7', { tag: false });
+  put(
+    root,
+    'packages/core/package.json',
+    JSON.stringify({ name: '@sample/core', version: '0.5.0' }),
+  );
+  put(root, 'packages/other/package.json', JSON.stringify({ name: 'other', version: '0.5.0' }));
+  commit(root);
+  put(root, 'packages/core/index.js', 'export const value = 2;\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  const written = invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root });
+  expect(written.status).toBe(0);
+  expect(written.stdout).toContain('No material changes: other.\n');
+  commit(root);
+  expect(releaseCheck(root, base, '0.5.1')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
   });
 });
 

@@ -1,7 +1,6 @@
 import { posix } from 'node:path';
 
-import type { readLibraries } from './repository.js';
-import { git } from './repository.js';
+import { currentVersion, git, readLibraries } from './repository.js';
 
 function dependencyName(
   directory: string,
@@ -19,6 +18,50 @@ function dependencyName(
   }
   const separator = target.lastIndexOf('@');
   return separator > 0 ? target.slice(0, separator) : name;
+}
+
+// A commit before the participating manifests existed, or one whose library versions disagree, has no synchronized version.
+function synchronizedVersion(root: string, ref: string | undefined) {
+  if (ref === undefined) {
+    return undefined;
+  }
+  try {
+    return currentVersion(readLibraries(root, ref)).text;
+  } catch {
+    return undefined;
+  }
+}
+
+// An abandoned version never receives a tag, so the baseline is the commit that set the current version.
+// The walk visits the first-parent commits that touched a participating manifest, newest first.
+export function materialBaseline(
+  root: string,
+  libraries: ReturnType<typeof readLibraries>,
+  version: string,
+  head: string,
+) {
+  const candidates = git(root, [
+    'log',
+    '--first-parent',
+    '--format=%H %P',
+    head,
+    '--',
+    ...libraries.map((library) => library.path),
+  ])
+    .split('\n')
+    .flatMap((line) => {
+      const [commit, parent] = line.split(' ').filter(Boolean);
+      return commit === undefined ? [] : [{ commit, parent }];
+    });
+  for (const { commit, parent } of candidates) {
+    if (
+      synchronizedVersion(root, commit) === version &&
+      synchronizedVersion(root, parent) !== version
+    ) {
+      return commit;
+    }
+  }
+  throw new Error(`No first-parent commit sets version ${version}.`);
 }
 
 // Root Markdown and docs do not enter the current library build.
