@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { Command } from '@loom/core';
 import type { Out } from '@loom/core';
 
-import { readFragments } from './fragments.js';
-import { prepareRelease, releaseDate } from './release.js';
+import { readFragments } from '../../helpers/fragments.js';
+import { prepareRelease, releaseDate } from '../../helpers/release.js';
 import { writeRelease } from './write.js';
 
 function prepare(

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { readFragments } from '../changelog/fragments.js';
-import { isBuildAffectingPath } from '../changelog/material.js';
-import { currentVersion, git, readLibraries, readRegularFile } from '../changelog/repository.js';
+import { readFragments } from '../../helpers/fragments.js';
+import { isBuildAffectingPath } from '../../helpers/material.js';
+import { currentVersion, git, readLibraries, readRegularFile } from '../../helpers/repository.js';
 import { checkRelease } from './release.js';
 
 export function checkPullRequest(
