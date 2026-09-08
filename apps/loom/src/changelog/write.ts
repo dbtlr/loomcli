@@ -1,13 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,9 +11,9 @@ import { z } from 'zod';
 import { headingText, requireClosedBlocks } from './markdown.js';
 import type { prepareRelease } from './release.js';
 import { blankLine } from './release.js';
-import { git, readRegularFile } from './repository.js';
+import { git, readRegularFile, readRegularFileBytes } from './repository.js';
 
-function insertSection(changelog: string, section: string, version: string) {
+function releaseInsertion(changelog: string, version: string) {
   const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog)?.[0] ?? '';
   const body = changelog.slice(frontmatter.length);
   requireClosedBlocks(body, 'CHANGELOG.md');
@@ -43,7 +35,12 @@ function insertSection(changelog: string, section: string, version: string) {
   const offset = firstRelease?.position?.start.offset;
   const before = offset === undefined ? changelog : changelog.slice(0, frontmatter.length + offset);
   const after = offset === undefined ? '' : changelog.slice(frontmatter.length + offset);
-  return before + blankLine(before) + section + after;
+  return { after, before: before + blankLine(before) };
+}
+
+function insertSection(changelog: string, section: string, version: string) {
+  const { after, before } = releaseInsertion(changelog, version);
+  return before + section + after;
 }
 
 function updateLockfile(root: string) {
@@ -88,6 +85,11 @@ function updateLockfile(root: string) {
   return readRegularFile(root, 'pnpm-lock.yaml');
 }
 
+function versionedManifest(source: string, version: string) {
+  const document = z.record(z.string(), z.unknown()).parse(JSON.parse(source));
+  return `${JSON.stringify({ ...document, version }, null, 2)}\n`;
+}
+
 // Stage package-manager work before touching the checkout; handled write failures restore originals.
 function installRelease(root: string, release: ReturnType<typeof prepareRelease>) {
   if (git(root, ['rev-parse', '--show-prefix']).trim() !== '') {
@@ -108,11 +110,7 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
   );
   for (const library of release.libraries) {
     original.set(library.path, library.source);
-    const document = z.record(z.string(), z.unknown()).parse(JSON.parse(library.source));
-    updates.set(
-      library.path,
-      `${JSON.stringify({ ...document, version: release.version }, null, 2)}\n`,
-    );
+    updates.set(library.path, versionedManifest(library.source, release.version));
   }
   for (const fragment of release.fragments) {
     original.set(`.changes/${fragment.name}`, fragment.body);
@@ -123,22 +121,8 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
     existsSync(join(root, 'pnpm-lock.yaml')) ? readRegularFile(root, 'pnpm-lock.yaml') : undefined,
   );
   const installed: string[] = [];
-  const stage = mkdtempSync(join(tmpdir(), 'loom-release-'));
+  updates.set('pnpm-lock.yaml', prepareLockfile(root, release));
   try {
-    for (const path of git(root, ['ls-files', '-z']).split('\0').filter(Boolean)) {
-      if (!lstatSync(join(root, path)).isFile()) {
-        throw new Error(`${path}: release staging requires regular files.`);
-      }
-      mkdirSync(dirname(join(stage, path)), { recursive: true });
-      cpSync(join(root, path), join(stage, path));
-    }
-    for (const library of release.libraries) {
-      const contents = updates.get(library.path);
-      if (contents !== undefined) {
-        writeFileSync(join(stage, library.path), contents);
-      }
-    }
-    updates.set('pnpm-lock.yaml', updateLockfile(stage));
     if (
       git(root, ['rev-parse', 'HEAD']).trim() !== release.head ||
       git(root, ['status', '--porcelain', '--untracked-files=all']).trim()
@@ -183,8 +167,6 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
       );
     }
     throw error;
-  } finally {
-    rmSync(stage, { force: true, recursive: true });
   }
 }
 
@@ -207,3 +189,29 @@ export function writeRelease(root: string, release: ReturnType<typeof prepareRel
     rmSync(lock, { recursive: true });
   }
 }
+
+export function prepareLockfile(
+  root: string,
+  release: Pick<ReturnType<typeof prepareRelease>, 'libraries' | 'version'>,
+  ref?: string,
+) {
+  const stage = mkdtempSync(join(tmpdir(), 'loom-release-'));
+  try {
+    const paths = git(
+      root,
+      ref === undefined ? ['ls-files', '-z'] : ['ls-tree', '-r', '--name-only', '-z', ref],
+    );
+    for (const path of paths.split('\0').filter(Boolean)) {
+      mkdirSync(dirname(join(stage, path)), { recursive: true });
+      writeFileSync(join(stage, path), readRegularFileBytes(root, path, ref));
+    }
+    for (const library of release.libraries) {
+      writeFileSync(join(stage, library.path), versionedManifest(library.source, release.version));
+    }
+    return updateLockfile(stage);
+  } finally {
+    rmSync(stage, { force: true, recursive: true });
+  }
+}
+
+export { releaseInsertion };

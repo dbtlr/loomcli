@@ -1,9 +1,7 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { requireClosedBlocks } from './markdown.js';
+import { readDirectory, readRegularFile } from './repository.js';
 
 function validateBody(name: string, body: string) {
   requireClosedBlocks(body, `.changes/${name}`);
@@ -56,8 +54,8 @@ function validateBody(name: string, body: string) {
   }
 }
 
-export function readFragments(root: string) {
-  return readdirSync(join(root, '.changes'), { withFileTypes: true })
+export function readFragments(root: string, ref?: string) {
+  return readDirectory(root, '.changes', ref)
     .filter((entry) => entry.name !== 'README.md' || !entry.isFile())
     .map((entry) => {
       const { name } = entry;
@@ -69,7 +67,7 @@ export function readFragments(root: string) {
       ) {
         throw new Error(`.changes/${name}: expected <slug>.md or breaking.<slug>.md.`);
       }
-      const body = readFileSync(join(root, '.changes', name), 'utf8');
+      const body = readRegularFile(root, `.changes/${name}`, ref);
       validateBody(name, body);
       return { body, breaking: name.startsWith('breaking.'), name };
     });

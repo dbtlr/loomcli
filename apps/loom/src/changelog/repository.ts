@@ -14,48 +14,79 @@ const manifestSchema = z.looseObject({
   version: z.string(),
 });
 
-export function git(root: string, args: string[]) {
+function gitBytes(root: string, args: string[]) {
   const result = spawnSync('git', ['--literal-pathspecs', ...args], {
     cwd: root,
-    encoding: 'utf8',
   });
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`git ${args[0]} failed: ${result.stderr.trim()}`);
+    throw new Error(`git ${args[0]} failed: ${result.stderr.toString('utf8').trim()}`);
   }
   return result.stdout;
 }
 
-export function readRegularFile(root: string, path: string) {
+export function git(root: string, args: string[]) {
+  return gitBytes(root, args).toString('utf8');
+}
+
+export function readDirectory(root: string, path: string, ref?: string) {
+  if (ref === undefined) {
+    return readdirSync(join(root, path), { withFileTypes: true });
+  }
+  return git(root, ['ls-tree', '-z', `${ref}:${path}`])
+    .split('\0')
+    .filter(Boolean)
+    .map((entry) => {
+      const tab = entry.indexOf('\t');
+      const mode = entry.slice(0, 6);
+      return {
+        isDirectory: () => mode === '040000',
+        isFile: () => mode === '100644' || mode === '100755',
+        isSymbolicLink: () => mode === '120000',
+        name: entry.slice(tab + 1),
+      };
+    });
+}
+
+export function readRegularFileBytes(root: string, path: string, ref?: string) {
+  if (ref !== undefined) {
+    const entry = git(root, ['ls-tree', '-z', ref, '--', path]);
+    if (!/^100(?:644|755) blob /u.test(entry)) {
+      throw new Error(`${path}: expected a regular file.`);
+    }
+    return gitBytes(root, ['show', `${ref}:${path}`]);
+  }
   const absolute = join(root, path);
   if (!lstatSync(absolute).isFile()) {
     throw new Error(`${path}: expected a regular file.`);
   }
-  return readFileSync(absolute, 'utf8');
+  return readFileSync(absolute);
 }
 
-export function readLibraries(root: string) {
-  const libraries = readdirSync(join(root, 'packages'), { withFileTypes: true }).flatMap(
-    (entry) => {
-      if (entry.isSymbolicLink()) {
-        throw new Error(`packages/${entry.name}: symlinks are not supported.`);
-      }
-      if (!entry.isDirectory()) {
-        return [];
-      }
-      const directory = `packages/${entry.name}`;
-      const path = `${directory}/package.json`;
-      const source = readRegularFile(root, path);
-      const input: unknown = JSON.parse(source);
-      if (z.object({ private: z.boolean().optional() }).parse(input).private) {
-        return [];
-      }
-      const manifest = manifestSchema.parse(input);
-      return [{ directory, manifest, path, source }];
-    },
-  );
+export function readRegularFile(root: string, path: string, ref?: string) {
+  return readRegularFileBytes(root, path, ref).toString('utf8');
+}
+
+export function readLibraries(root: string, ref?: string) {
+  const libraries = readDirectory(root, 'packages', ref).flatMap((entry) => {
+    if (entry.isSymbolicLink()) {
+      throw new Error(`packages/${entry.name}: symlinks are not supported.`);
+    }
+    if (!entry.isDirectory()) {
+      return [];
+    }
+    const directory = `packages/${entry.name}`;
+    const path = `${directory}/package.json`;
+    const source = readRegularFile(root, path, ref);
+    const input: unknown = JSON.parse(source);
+    if (z.object({ private: z.boolean().optional() }).parse(input).private) {
+      return [];
+    }
+    const manifest = manifestSchema.parse(input);
+    return [{ directory, manifest, path, source }];
+  });
   if (libraries.length === 0) {
     throw new Error('No publishable libraries in packages/*.');
   }

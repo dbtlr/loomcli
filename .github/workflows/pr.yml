@@ -1,0 +1,63 @@
+name: PR
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-guards-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guards:
+    name: PR / fragment and version guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR head with release history and tags
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: 22.23.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the private Loom CLI
+        run: pnpm build
+
+      - name: Check PR fragments and versions
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { spawnSync } from 'node:child_process';
+          const labels = JSON.parse(process.env.PR_LABELS);
+          const result = spawnSync('pnpm', [
+            'loom', 'pr', 'check',
+            `--base=${process.env.PR_BASE}`,
+            `--head=${process.env.PR_HEAD}`,
+            `--title=${process.env.PR_TITLE}`,
+            ...labels.map((label) => `--label=${label}`),
+          ], { stdio: 'inherit' });
+          if (result.error) throw result.error;
+          process.exit(result.status ?? 1);
+          JS

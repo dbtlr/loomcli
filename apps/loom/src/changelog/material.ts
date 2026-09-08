@@ -30,13 +30,24 @@ export function unchangedLibraries(
   root: string,
   libraries: ReturnType<typeof readLibraries>,
   since: string,
+  head?: string,
 ) {
   const base = git(root, ['rev-parse', '--verify', '--end-of-options', `${since}^{commit}`]).trim();
-  git(root, ['merge-base', '--is-ancestor', base, 'HEAD']);
-  const paths = git(root, ['diff', '--no-renames', '--name-only', '-z', base, '--'])
+  git(root, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
+  const paths = git(root, [
+    'diff',
+    '--no-renames',
+    '--name-only',
+    '-z',
+    base,
+    ...(head === undefined ? [] : [head]),
+    '--',
+  ])
     .split('\0')
     .filter(Boolean);
-  const untracked = git(root, ['ls-files', '--others', '--exclude-standard', '-z'])
+  const untracked = (
+    head === undefined ? git(root, ['ls-files', '--others', '--exclude-standard', '-z']) : ''
+  )
     .split('\0')
     .filter(Boolean);
   const changed = new Set<string>();
