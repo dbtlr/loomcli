@@ -83,6 +83,13 @@ function releaseNotes(root: string, source: string, target: string) {
   }
   return notes;
 }
+function parseNpmJson(output: string, failure: Error): unknown {
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw failure;
+  }
+}
 async function npmOutput(
   services: PublicationServices,
   args: string[],
@@ -90,12 +97,15 @@ async function npmOutput(
 ): Promise<string | undefined> {
   const result = await services.npm([...args, '--json']);
   if (result.status !== 0) {
-    const data: unknown = JSON.parse(result.stdout);
+    const failure = new Error(
+      `npm ${args[0]} failed. Stop and inspect the authenticated registry state.`,
+    );
+    const data = parseNpmJson(result.stdout, failure);
     const error = z.object({ error: z.object({ code: z.string() }) }).safeParse(data);
     if (absent && error.success && error.data.error.code === 'E404') {
       return undefined;
     }
-    throw new Error(`npm ${args[0]} failed. Stop and inspect the authenticated registry state.`);
+    throw failure;
   }
   return result.stdout;
 }
@@ -105,7 +115,13 @@ async function npmJson(
   absent = false,
 ): Promise<unknown> {
   const output = await npmOutput(services, args, absent);
-  return output === undefined ? undefined : JSON.parse(output);
+  if (output === undefined) {
+    return undefined;
+  }
+  return parseNpmJson(
+    output,
+    new Error(`Invalid npm ${args[0]} JSON response. Stop for reconciliation.`),
+  );
 }
 async function registryPackage(services: PublicationServices, name: string, target: string) {
   const data = await npmJson(services, ['view', `${name}@${target}`], true);
@@ -136,6 +152,16 @@ async function latestTag(services: PublicationServices, name: string) {
     tags.set(match.groups.tag, match.groups.version);
   }
   return tags.get('latest');
+}
+function latestIsLater(name: string, latest: string | undefined, target: string) {
+  if (latest === undefined) {
+    return false;
+  }
+  const parsed = version.safeParse(latest);
+  if (!parsed.success) {
+    throw new Error(`${name}: unsupported npm latest version ${latest}. Stop for reconciliation.`);
+  }
+  return later(parsed.data, target);
 }
 async function mutateNpm(services: PublicationServices, args: string[]) {
   const result = await services.npm([...args, '--json']);
@@ -348,8 +374,7 @@ export async function publishPublication(
     });
   }
   const superseded =
-    newer ||
-    states.some((state) => state.latest !== undefined && later(state.latest, manifest.version));
+    newer || states.some((state) => latestIsLater(state.pkg.name, state.latest, manifest.version));
   if (superseded) {
     if (release && !release.draft && tagged && attached && states.every((state) => state.present)) {
       return {
@@ -383,7 +408,7 @@ export async function publishPublication(
   }
   for (const { pkg } of states) {
     const latest = await latestTag(services, pkg.name);
-    if (latest !== undefined && later(latest, pkg.version)) {
+    if (latestIsLater(pkg.name, latest, pkg.version)) {
       throw new Error('A newer latest tag appeared. Stop for reconciliation.');
     }
     if (latest !== pkg.version) {
