@@ -52,9 +52,10 @@ The verifier creates a temporary checkout of the original source and installs te
 
 Tarballs are named `package-0.tgz`, `package-1.tgz`, and so on in participant discovery order. SHA-256 of the exact manifest bytes identifies the set. The SHA-512 integrity values use npm's registry integrity format.
 
-The manually dispatched **Publication artifacts** workflow has two modes:
+The manually dispatched **Publication artifacts** workflow has three modes:
 
 - `prepare` produces a new set from the supplied release source, base, and title.
+- `publish` verifies an existing set across all consumer lanes, then publishes or resumes it through the [recovery workflow](publication-recovery.md).
 - `verify` downloads an existing set using its original run ID, artifact ID, source SHA, and manifest digest.
 
 The workflow reserves the source and version in `ledger.json` on the dedicated `publication-ledger` branch before building. It rejects an existing reservation for either identity, even after deletion of every Actions artifact record. A missing or unreadable ledger stops the workflow.
@@ -69,9 +70,9 @@ A failed build, failed upload, or interrupted ledger update leaves the reservati
 
 Retain the successful verification run with the release record. Actions retention is finite. Missing or expired artifacts require reconciliation, never automatic reconstruction. The ledger prevents accidental rebuilding after artifact loss; it does not protect against an administrator deliberately rewriting repository history.
 
-Only the retention job receives `contents: write` for ledger commits. Consumer jobs retain read-only permissions. Initialize and protect the ledger branch using the [bootstrap procedure](initial-publication.md#initialize-the-preparation-ledger). The local CLI remains a preparation primitive for isolated rehearsals; it does not enforce hosted reservation history.
+The retention job receives `contents: write` for ledger commits. The publication job receives it for release tags and attachments in `publish` mode. Consumer jobs retain read-only permissions. Initialize and protect the ledger branch using the [bootstrap procedure](initial-publication.md#initialize-the-preparation-ledger). The local `prepare` command remains a primitive for isolated rehearsals. It does not enforce hosted reservation history.
 
-The subsequent publication workflow must attach the identical manifest and tarballs to the completed GitHub Release for durable history. That attachment and all registry mutations are outside this preparation workflow. [ADR-0015](decisions/0015-publication-retries-reuse-retained-artifacts.md) fixes this retry rule.
+The `publish` mode attaches the identical manifest and tarballs to the GitHub Release for durable history. Registry mutations require that explicit mode and successful consumer verification. The [publication and recovery procedure](publication-recovery.md) defines its authorization, authentication, and retry behavior. [ADR-0015](decisions/0015-publication-retries-reuse-retained-artifacts.md) fixes this retry rule.
 
 ## Isolated rehearsal
 

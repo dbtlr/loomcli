@@ -6,7 +6,7 @@ description: First-publication prerequisites and the manual bootstrap sequence f
 
 This procedure prepares an operator for the first publication of each participating library. Executing registry mutations, creating credentials, changing publishing configuration, and creating release tags or GitHub Releases require explicit release authorization.
 
-The preparation workflow does not implement these mutations. Its [artifact verification](publication-artifacts.md) is an input to this procedure, not proof that publication is complete.
+The workflow performs these mutations only through its explicitly dispatched [publish mode](publication-recovery.md). Its [artifact verification](publication-artifacts.md) is an input to this procedure, not proof that publication is complete.
 
 ## Initialize the preparation ledger
 
@@ -79,16 +79,16 @@ The per-package command shape is:
 npm publish "$retained_tarball" --access public --provenance --tag loom-staging --ignore-scripts
 ```
 
-Run this command from the separately authorized hosted publishing job, with the required OIDC permission for provenance. The packed repository URL must match the publishing repository. A local rehearsal does not generate production provenance. [npm provenance requirements](https://docs.npmjs.com/generating-provenance-statements/)
+The `publish` mode runs this command in the separately authorized hosted job, with the required OIDC permission for provenance. The packed repository URL must match the publishing repository. A local rehearsal does not generate production provenance. [npm provenance requirements](https://docs.npmjs.com/generating-provenance-statements/)
 
 4. Compare each registry version's `dist.integrity` with the manifest's retained integrity.
 5. After all packages match, promote each package's `latest` tag to the release version.
 6. Extract the nonempty version section from `CHANGELOG.md` and prepare a draft GitHub Release.
-7. Create the annotated version tag at the retained source SHA, then publish the prepared GitHub Release against that tag.
-8. Attach the unchanged artifact set and its identity record to the completed GitHub Release.
+7. Create the annotated version tag at the retained source SHA.
+8. Attach and verify the unchanged artifact set and identity record, then publish the GitHub Release against that tag.
 9. Verify package integrity, every `latest` tag, the annotated source tag, the published GitHub Release, and its artifact attachments.
 
-If any step fails, record completed external steps and resume the same set. Existing versions must match retained integrity. Tag presence alone does not establish completion. Automatic recovery and replacement cuts remain separate implementation work.
+If any step fails, record completed external steps and resume the same set. Existing versions must match retained integrity. Tag presence alone does not establish completion. The [publication command](publication-recovery.md) implements automatic recovery. Replacement cuts remain separate work.
 
 ## Configure routine publication
 
@@ -98,4 +98,4 @@ If any step fails, record completed external steps and resume the same set. Exis
 4. Revoke the bootstrap token after its use and the required transition checks.
 5. Restrict traditional token access according to the approved publishing configuration.
 
-New trusted publisher configurations default to permitting `npm stage publish`; direct `npm publish` needs its own permission. Registry reads and dist-tag mutations do not receive npm publish's OIDC authentication automatically. The later publication implementation must verify credentials for those operations separately. [npm trusted publishing permissions and limitations](https://docs.npmjs.com/trusted-publishers/)
+New trusted publisher configurations default to permitting `npm stage publish`; direct `npm publish` needs its own permission. Registry reads and dist-tag mutations do not receive npm publish's OIDC authentication automatically. The publication workflow requires the operations token for those operations separately. [npm trusted publishing permissions and limitations](https://docs.npmjs.com/trusted-publishers/)
