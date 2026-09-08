@@ -34,10 +34,16 @@ try {
   const artifacts = join(temporary, 'artifacts');
   const downloaded = join(temporary, 'downloaded');
   run(root, 'git', ['clone', '--no-hardlinks', '--', root, source]);
-  const initial =
-    JSON.parse(readFileSync(join(source, 'packages/core/package.json'), 'utf8')).version ===
-    '0.0.0';
+  const currentVersion = JSON.parse(
+    readFileSync(join(source, 'packages/core/package.json'), 'utf8'),
+  ).version;
+  const initial = currentVersion === '0.0.0';
   if (!initial) {
+    // An unpublished cut has no version tag yet. Only this isolated clone treats it as a baseline.
+    const baseline = `v${currentVersion}`;
+    if (run(source, 'git', ['tag', '--list', baseline]) === '') {
+      run(source, 'git', ['tag', baseline]);
+    }
     writeFileSync(
       join(source, '.changes/publication-rehearsal.md'),
       '- Verify the isolated publication rehearsal.\n',
