@@ -4,11 +4,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+
+// These fixtures run multiple Git and pnpm processes; Windows CI exceeds the five-second default.
+vi.setConfig({ testTimeout: 30_000 });
 
 const cli = new URL('../dist/main.js', import.meta.url);
 const roots: string[] = [];
