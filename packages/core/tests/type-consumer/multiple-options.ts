@@ -1,5 +1,5 @@
-import { Application, GlobalOptions } from '@loom/core';
-import type { StringOption } from '@loom/core';
+import { Application, GlobalOptions } from '@loomcli/core';
+import type { StringOption } from '@loomcli/core';
 import { z } from 'zod';
 
 const names = z.array(z.string()).transform((values) => values.length);

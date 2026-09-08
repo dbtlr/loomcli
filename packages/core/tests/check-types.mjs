@@ -41,18 +41,25 @@ async function compile(cwd) {
 }
 
 const source = fileURLToPath(new URL('type-consumer', import.meta.url));
-const workspace = await compile(source);
-assert.equal(workspace.status, 0, workspace.output);
+const suppliedTarball = process.env.LOOM_CORE_TARBALL;
+if (suppliedTarball === undefined) {
+  const workspace = await compile(source);
+  assert.equal(workspace.status, 0, workspace.output);
+}
 
 const temporary = await mkdtemp(join(tmpdir(), 'loom-type-consumer-'));
 try {
   const tarball = join(temporary, 'core.tgz');
-  pnpm(['pack', '--out', tarball], join(root, 'packages/core'));
+  if (suppliedTarball === undefined) {
+    pnpm(['pack', '--out', tarball], join(root, 'packages/core'));
+  } else {
+    await cp(suppliedTarball, tarball);
+  }
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
     JSON.stringify({
-      dependencies: { '@loom/core': 'file:./core.tgz', zod: zod.version },
+      dependencies: { '@loomcli/core': 'file:./core.tgz', zod: zod.version },
       private: true,
       type: 'module',
     }),
@@ -85,7 +92,7 @@ try {
   ].map(({ groups: { file, line, code } }) => `${basename(file)}:${line}:TS${code}`);
   assert.deepEqual(actual.toSorted(), expected.toSorted(), negative.output);
   process.stdout.write(
-    `TypeScript ${version}: workspace and packed declarations passed; ${expected.length} rejected SDK uses produced the expected diagnostics.\n`,
+    `TypeScript ${version}: ${suppliedTarball === undefined ? 'workspace and packed' : 'retained packed'} declarations passed; ${expected.length} rejected SDK uses produced the expected diagnostics.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

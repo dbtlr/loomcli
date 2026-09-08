@@ -1,4 +1,4 @@
-import { Application, GlobalOptions } from '@loom/core';
+import { Application, GlobalOptions } from '@loomcli/core';
 
 const mode = process.argv[2];
 

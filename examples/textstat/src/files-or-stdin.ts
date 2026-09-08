@@ -1,5 +1,5 @@
-import { validationContext } from '@loom/core';
-import type { StandardSchemaV1 } from '@loom/core';
+import { validationContext } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 
 const MESSAGE = 'Supply file arguments or pipe text to stdin.';
 /** An empty selection is the case this rule decides, so its length names it. */

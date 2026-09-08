@@ -1,5 +1,5 @@
-import { Application, Command, DeclarationError, GlobalOptions } from '@loom/core';
-import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loom/core';
+import { Application, Command, DeclarationError, GlobalOptions } from '@loomcli/core';
+import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
 
 // `inspect()` answers in every authoring state, as `run()` and `name` do.
 const globals = new GlobalOptions().option('file', { required: true, short: 'f', type: 'string' });

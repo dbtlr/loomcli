@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 new Application('inline')
   .argument('files', { required: true, variadic: true })

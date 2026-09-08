@@ -1,5 +1,5 @@
-import { Application } from '@loom/core';
-import type { BooleanOption, OptionConfig, StringOption } from '@loom/core';
+import { Application } from '@loomcli/core';
+import type { BooleanOption, OptionConfig, StringOption } from '@loomcli/core';
 
 const metric = { short: 'm', shortOnly: true, type: 'string' } satisfies StringOption;
 const total = { polarity: 'both', short: 't', type: 'boolean' } satisfies BooleanOption;

@@ -7,14 +7,14 @@ import {
   renderFailure,
   UnknownCommandError,
   UsageError,
-} from '@loom/core';
+} from '@loomcli/core';
 import type {
   ApplicationOptions,
   FailureRenderer,
   InputProblem,
   Renderer,
   LoomError,
-} from '@loom/core';
+} from '@loomcli/core';
 
 interface Row {
   count: number;

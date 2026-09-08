@@ -1,8 +1,8 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { prepareLockfile, releaseInsertion } from '../../helpers/release-files.js';
-import { prepareRelease, releaseDate } from '../../helpers/release.js';
-import { currentVersion, git, readLibraries, readRegularFile } from '../../helpers/repository.js';
+import { prepareLockfile, releaseInsertion } from './release-files.js';
+import { prepareRelease, releaseDate } from './release.js';
+import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
 
 export function checkRelease(
   root: string,
@@ -10,6 +10,7 @@ export function checkRelease(
   head: string,
   version: string,
   changed: string[],
+  retained = false,
 ) {
   const previous = readLibraries(root, base);
   const libraries = readLibraries(root, head);
@@ -44,7 +45,16 @@ export function checkRelease(
     throw new Error(`Every participating library must carry title version ${version}.`);
   }
   if (git(root, ['tag', '--list', `v${version}`]).trim()) {
-    throw new Error(`Tag v${version} already exists.`);
+    if (!retained) {
+      throw new Error(`Tag v${version} already exists.`);
+    }
+    const tag = `refs/tags/v${version}`;
+    if (
+      git(root, ['cat-file', '-t', tag]).trim() !== 'tag' ||
+      git(root, ['rev-parse', `${tag}^{commit}`]).trim() !== head
+    ) {
+      throw new Error(`Tag v${version} must be annotated at the retained source SHA.`);
+    }
   }
   if (
     !isDeepStrictEqual(

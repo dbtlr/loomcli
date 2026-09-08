@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 Object.defineProperties(process.stdout, {
   columns: { configurable: true, value: 0, writable: true },

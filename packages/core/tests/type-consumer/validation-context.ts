@@ -1,10 +1,10 @@
-import { Application, validationContext, validationContextKey } from '@loom/core';
+import { Application, validationContext, validationContextKey } from '@loomcli/core';
 import type {
   InputIdentity,
   StandardSchemaV1,
   SuppliedInputs,
   ValidationContext,
-} from '@loom/core';
+} from '@loomcli/core';
 
 const key: string = validationContextKey;
 const identity: InputIdentity = { global: true, kind: 'option', name: 'mode' };

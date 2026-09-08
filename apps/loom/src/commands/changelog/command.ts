@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Command } from '@loom/core';
-import type { Out } from '@loom/core';
+import { Command } from '@loomcli/core';
+import type { Out } from '@loomcli/core';
 
 import { readFragments } from '../../helpers/fragments.js';
 import { prepareRelease, releaseDate } from '../../helpers/release.js';

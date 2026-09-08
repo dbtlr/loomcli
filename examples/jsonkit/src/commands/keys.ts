@@ -1,4 +1,4 @@
-import { Command } from '@loom/core';
+import { Command } from '@loomcli/core';
 
 import { listKeys } from '../actions/list-keys.js';
 import { globals } from '../globals.js';

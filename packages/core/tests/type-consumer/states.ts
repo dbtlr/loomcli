@@ -1,5 +1,5 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
-import type { ActionArgs, ActionHandler, ActionOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
+import type { ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
 
 // Each authoring call publishes only the calls that stay valid after it.
 const globals = new GlobalOptions().option('file', { required: true, type: 'string' });

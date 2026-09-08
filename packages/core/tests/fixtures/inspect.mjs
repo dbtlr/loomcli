@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, GlobalOptions } from '@loom/core';
+import { Application, Command, DeclarationError, GlobalOptions } from '@loomcli/core';
 
 const digits = {
   '~standard': {

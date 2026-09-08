@@ -1,4 +1,4 @@
-import { Application, Command } from '@loom/core';
+import { Application, Command } from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);

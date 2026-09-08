@@ -16,7 +16,7 @@ interface ApplicationOptions<Globals = {}> {
 ```
 
 ```ts
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const app = new Application('paths')
   .argument('files', { variadic: true, required: true })
@@ -69,7 +69,7 @@ Graph build rejects invalid and duplicate argument names, a variadic argument th
 ## Local options
 
 ```ts
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const app = new Application('textstat')
   .argument('files', { required: true, variadic: true })
@@ -179,7 +179,7 @@ Passthrough is always available and is empty when no tail exists. It does not sa
 `new GlobalOptions()` declares the options that every Command in one application shares. It has `option()` alone; it declares no arguments and no action. Like every authoring call, `option()` returns a new value and leaves its receiver unchanged; the value the declarations receive is the application's globals. An empty `GlobalOptions` value is legal, and every Command in that graph then declares its own options.
 
 ```ts
-import { GlobalOptions } from '@loom/core';
+import { GlobalOptions } from '@loomcli/core';
 
 export const globals = new GlobalOptions().option('file', {
   required: true,
@@ -201,7 +201,7 @@ The action `options` object is the intersection of the global values and the sel
 A Command with children and no action is a group. The unnamed root may be a group too. A group holds children alone: a local option on it reaches no handler, because locals never inherit, so build rejects the declaration. A Command with children and an action keeps its options for that action and runs it when routing selects no child. A Command with neither children nor an action keeps the no-action build error.
 
 ```ts
-import { Application, Command } from '@loom/core';
+import { Application, Command } from '@loomcli/core';
 
 import { clearCache, listCache, summarize } from './actions.js';
 import { globals } from './globals.js';
@@ -249,7 +249,7 @@ An action type-imports its own declaration. The import is erased, so the cycle b
 
 ```ts
 // src/commands/get.ts
-import { Command } from '@loom/core';
+import { Command } from '@loomcli/core';
 
 import { getValue } from '../actions/get-value.js';
 import { globals } from '../globals.js';
@@ -259,7 +259,7 @@ export const get = new Command('get', globals)
   .action(getValue);
 
 // src/actions/get-value.ts
-import type { ActionHandler } from '@loom/core';
+import type { ActionHandler } from '@loomcli/core';
 
 import type { get } from '../commands/get.js';
 
@@ -343,7 +343,7 @@ Local options on separate Commands can reuse names and spellings, with a differe
 Value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options do not accept `validate`, `default`, `required`, or `validateOmitted`; their polarity controls their absent value.
 
 ```ts
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 import { z } from 'zod';
 
 const app = new Application('sizes')
@@ -374,8 +374,8 @@ A scalar argument's schema receives its one token. A variadic argument's schema,
 Core calls every schema through the Standard Schema options argument, under the `libraryOptions` key `validationContextKey`. `validationContext(options)` reads that channel and returns the `ValidationContext` core attached, or `undefined` when another caller ran the same schema. A schema library that ignores the argument, such as Zod, is unaffected: the extra argument changes nothing for a schema that does not read it.
 
 ```ts
-import { validationContext } from '@loom/core';
-import type { StandardSchemaV1 } from '@loom/core';
+import { validationContext } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 
 const upper: StandardSchemaV1<string, string> = {
   '~standard': {
@@ -391,7 +391,7 @@ const upper: StandardSchemaV1<string, string> = {
 };
 ```
 
-Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loom/core` alone. The annotation is what fixes the schema's input and output types; an unannotated object literal widens `version: 1` to `number` and resolves the output to `unknown`. The accessor answers for the contexts core produced alone. A value core did not produce reads as `undefined`.
+Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@loomcli/core` alone. The annotation is what fixes the schema's input and output types; an unannotated object literal widens `version: 1` to `number` and resolves the output to `unknown`. The accessor answers for the contexts core produced alone. A value core did not produce reads as `undefined`.
 
 | Field         | `phase: 'default'`       | `phase: 'invocation'`                                      |
 | ------------- | ------------------------ | ---------------------------------------------------------- |
@@ -433,8 +433,8 @@ An omitted Boolean reads as `undefined` here, because the polarity value is the 
 A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration by the spelling an operator would type: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, a `shortOnly` option under its short spelling, and an argument under its name. The action value is the schema output alone, because the schema always runs.
 
 ```ts
-import { GlobalOptions, validationContext } from '@loom/core';
-import type { StandardSchemaV1 } from '@loom/core';
+import { GlobalOptions, validationContext } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 
 /** The rule answers omission too, so the schema's input type accepts `undefined`. */
 const fileOrStdin: StandardSchemaV1<string | undefined, string | undefined> = {
@@ -492,7 +492,7 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 `inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default through its schema, because that call can be asynchronous. So it applies the build and structural checks, every rule a single declaration carries, such as a Boolean option with `validate`, `required: true` beside a default, and a non-Boolean `required`, `variadic`, or `validateOmitted`, and the raw shape of a default declared without a schema. A rejected declaration throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1, and it alone reports a default its schema rejects. `inspect()` reads no host facts, and it caches nothing: each call builds the graph anew.
 
 ```ts
-import { DeclarationError } from '@loom/core';
+import { DeclarationError } from '@loomcli/core';
 
 try {
   const graph = app.inspect();
@@ -643,8 +643,8 @@ interface Renderer<Data> {
 `out.render(data, renderer)` writes the renderer's text to stdout. A renderer turns one value into the exact bytes core writes, the trailing newline included: core appends nothing and strips nothing. It is synchronous and pure. It receives the value alone, returns a string, and holds no output handle, so an application owns its presentation without owning the destination.
 
 ```ts
-import { Application } from '@loom/core';
-import type { Renderer } from '@loom/core';
+import { Application } from '@loomcli/core';
+import type { Renderer } from '@loomcli/core';
 
 interface Row {
   count: number;
@@ -723,7 +723,7 @@ Core's default renderers add the category prefixes: `Invalid input: ` for every 
 An application registers renderers for these classes through the constructor options object. `renderFailure` pairs one class with a renderer for its instances; it is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
 
 ```ts
-import { Application, InputError, renderFailure, UnknownCommandError } from '@loom/core';
+import { Application, InputError, renderFailure, UnknownCommandError } from '@loomcli/core';
 
 import { summarize } from './actions/summarize.js';
 import { inputProblems, unknownCommand } from './failures.js';

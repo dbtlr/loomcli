@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const scenario = process.argv[2];
 let app = new Application('declarations');

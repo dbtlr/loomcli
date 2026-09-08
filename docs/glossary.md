@@ -233,5 +233,31 @@ An explicitly installed extension that may extend typed context, contribute grap
 _Avoid_: Extension, middleware, addon, bundled plugin
 
 **Core**:
-The `@loom/core` package: authoring, graph build, invocation, host capture, output, and failures. Core is host-independent and installs no plugins.
+The `@loomcli/core` package: authoring, graph build, invocation, host capture, output, and failures. Core is host-independent and installs no plugins.
 _Avoid_: Framework (for the package), runtime, engine
+
+## Releases
+
+**Participating library**:
+A publishable first-party library included in the synchronized release version and package set.
+_Avoid_: Release target, public workspace
+
+**Change fragment**:
+A pending record of one pull request's consumer-visible changes and any required migration.
+_Avoid_: Changeset, release note draft
+
+**Release cut**:
+The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release.
+_Avoid_: Version bump, release build
+
+**Material change**:
+A change to a library, a library dependency, or a shared build input that can affect the library's published contents.
+_Avoid_: Direct change, visible change
+
+**Release artifact set**:
+The retained package bytes and identity evidence for one release cut, reused across publication attempts.
+_Avoid_: Build cache, release tag
+
+**Replacement cut**:
+A separately authorized release cut that supersedes an abandoned incomplete release with a higher version.
+_Avoid_: Retry, rebuild

@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const code = await new Application('reporting')
   .action(() => {

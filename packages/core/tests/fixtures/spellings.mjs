@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 import { z } from 'zod';
 
 // One name and one alias, three value shapes. The globals put -f beside every local -F.

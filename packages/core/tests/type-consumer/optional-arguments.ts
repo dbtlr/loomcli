@@ -1,5 +1,5 @@
-import { Application, Command } from '@loom/core';
-import type { ArgumentConfig, ScalarArgument } from '@loom/core';
+import { Application, Command } from '@loomcli/core';
+import type { ArgumentConfig, ScalarArgument } from '@loomcli/core';
 import { z } from 'zod';
 
 const size = z.string().transform(Number);

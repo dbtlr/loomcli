@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 
 const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
 

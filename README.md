@@ -45,7 +45,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loom/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
 
 ## Run jsonkit
 
@@ -101,4 +101,4 @@ Read the [change fragment guide](.changes/README.md) before opening a pull reque
 
 The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
 
-Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates publication prerequisites, cycle review, isolated preparation, and PR validation. Publication and recovery tooling remain future work.
+Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates publication prerequisites, cycle review, isolated preparation, and PR validation. The [publication artifact commands](docs/publication-artifacts.md) prepare and verify retained packages. The [initial-publication procedure](docs/initial-publication.md) documents bootstrap prerequisites. Registry publication and recovery automation remain separate work.

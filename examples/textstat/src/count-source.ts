@@ -1,7 +1,7 @@
 import type { Readable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 
-import type { ActionOptions } from '@loom/core';
+import type { ActionOptions } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 

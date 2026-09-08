@@ -1,4 +1,4 @@
-import type { ActionHandler } from '@loom/core';
+import type { ActionHandler } from '@loomcli/core';
 
 import type { keys } from '../commands/keys.js';
 import { describeKind, isRecord } from '../kinds.js';

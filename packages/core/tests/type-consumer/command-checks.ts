@@ -1,5 +1,5 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
-import type { ActionArgs, ActionHandler, ActionOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
+import type { ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
 import { z } from 'zod';
 
 import { get, globals, jsonkit } from './commands.js';

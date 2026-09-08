@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 
 const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
 const dispatch = ({ out }) => out.print('dispatched');

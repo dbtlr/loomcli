@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loom/core';
+import { Application, Command, GlobalOptions } from '@loomcli/core';
 import { z } from 'zod';
 
 import { countFields } from './count-fields.js';

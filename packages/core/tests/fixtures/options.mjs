@@ -1,4 +1,4 @@
-import { Application } from '@loom/core';
+import { Application } from '@loomcli/core';
 
 const app = new Application('options')
   .argument('files', { required: true, variadic: true })

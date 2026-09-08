@@ -1,5 +1,5 @@
-import { validationContext } from '@loom/core';
-import type { StandardSchemaV1 } from '@loom/core';
+import { validationContext } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 
 const MESSAGE = 'Supply a file or pipe JSON to stdin.';
 
