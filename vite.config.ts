@@ -194,5 +194,7 @@ export default defineConfig({
       'examples/*/tests/**/*.test.ts',
       'apps/*/tests/**/*.test.ts',
     ],
+    // Process tests can run several children, each with its own ten-second deadline.
+    testTimeout: 30_000,
   },
 });
