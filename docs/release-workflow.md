@@ -70,6 +70,8 @@ The command reads the participating libraries at the head, takes their synchroni
 
 `publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
 
+The manifests carry `0.0.0` until the initial cut. That version is never published, tagged, or released, so the command reports it as the unreleased version with nothing to reconcile and writes a plan with `publish: false`, `record: false`, and empty notes. It reads no registry and needs no changelog section. Every other version carries the notes of its section.
+
 A Release is incomplete when an expected asset is missing or unfinished. The expected assets are the npm pack names of the participating libraries, and an asset counts as finished only when GitHub reports its state as `uploaded` and its size above 0. One Release is complete despite carrying no expected asset: a Release that carries other assets and none of the expected ones was recorded by another process, and the workflow leaves it alone.
 
 `provenanceCommit` is the commit the registry attests for the published libraries, and it is null while the version is unpublished or the registry reports no attestation yet. Every published library must attest the same commit.
@@ -126,3 +128,5 @@ The `record` job installs from the frozen lockfile and builds the private Loom C
 ## A run with nothing to do
 
 When the version is on the registry, the tag exists, and the Release exists, the plan reports `publish=false` and `record=false`. The `build`, `publish`, and `record` jobs are all skipped, and the run ends in seconds with the plan summary as its only output. No permission beyond `contents: read` is used, and no external record changes.
+
+A repository whose manifests still carry `0.0.0` ends the same way. Before the initial cut there is no version to publish and no section to read, so every push to `main` reports that `0.0.0` is the unreleased version and skips the same three jobs.

@@ -36,13 +36,13 @@ function changelogFile(sections: string[]) {
   return `---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n\n${sections.join('\n')}`;
 }
 
-function baseRepository() {
+function baseRepository(version = '0.1.0', sections = [earlierSection]) {
   return repository({
     files: {
-      'CHANGELOG.md': changelogFile([earlierSection]),
+      'CHANGELOG.md': changelogFile(sections),
       'package.json': '{"name":"fixture","private":true}\n',
       'packages/core/index.js': 'export const value = 1;\n',
-      'packages/core/package.json': manifest('0.1.0'),
+      'packages/core/package.json': manifest(version),
       'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',
       'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
       'tsconfig.json': '{}\n',
@@ -267,6 +267,24 @@ test('an unpublished version whose tag names the head still publishes', async ()
   });
   expect(plan(root, endpoints).status).toBe(0);
   expect(planned(root)).toMatchObject({ publish: true, record: true, tag: { present: true } });
+});
+
+test('the unreleased version 0.0.0 reconciles nothing and needs no changelog section', async () => {
+  const root = baseRepository('0.0.0', []);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.0.0' });
+  const result = plan(root, endpoints);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(planned(root)).toMatchObject({
+    libraries: [{ name: library, published: false }],
+    notes: '',
+    publish: false,
+    record: false,
+    release: { present: false },
+    tag: { commit: null, present: false },
+    version: '0.0.0',
+  });
+  expect(result.stdout).toContain('nothing to reconcile');
+  expect(result.stdout).toContain('Publish: no. Record: no.');
 });
 
 test('a missing changelog section fails', async () => {

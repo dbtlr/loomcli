@@ -26,6 +26,9 @@ const releaseFactsSchema = z.object({ present: z.boolean() });
 
 const tagFactsSchema = z.object({ commit: z.string().nullable(), present: z.boolean() });
 
+// The manifests carry this version until the initial cut, and it is never published, tagged, or released.
+const unreleasedVersion = '0.0.0';
+
 // A heading, a rule, and raw HTML carry no notes, so a section built only from them says nothing.
 const decorations = new Set(['heading', 'html', 'thematicBreak']);
 
@@ -63,6 +66,20 @@ function abandon(version: string, reason: string) {
   return new Error(
     `Version ${version} is absent from the registry and ${reason} Publication attests the head, so ${version} must be abandoned as unpublished and superseded by the next cut.`,
   );
+}
+
+// Every participating library, named without a registry read, because the unreleased version is never published.
+function unreleasedLibraries(
+  participants: ReturnType<typeof readLibraries>,
+): ReleasePlan['libraries'] {
+  const [first, ...others] = participants;
+  const libraries: ReleasePlan['libraries'] = [
+    { directory: first.directory, name: first.manifest.name, published: false },
+  ];
+  for (const other of others) {
+    libraries.push({ directory: other.directory, name: other.manifest.name, published: false });
+  }
+  return libraries;
 }
 
 // The registry facts of one participating library at the released version.
@@ -131,19 +148,25 @@ const sharedBuildInputs = [
   'tsconfig.json',
 ];
 
-export const planSchema = z.object({
-  cutCommit: z.string().min(1),
-  head: z.string().min(1),
-  // A release participates with at least one library, and the record command reads the first one.
-  libraries: z.tuple([librarySchema], librarySchema),
-  notes: z.string().min(1),
-  provenanceCommit: z.string().min(1).nullable(),
-  publish: z.boolean(),
-  record: z.boolean(),
-  release: releaseFactsSchema,
-  tag: tagFactsSchema,
-  version: z.string().min(1),
-});
+export const planSchema = z
+  .object({
+    cutCommit: z.string().min(1),
+    head: z.string().min(1),
+    // A release participates with at least one library, and the record command reads the first one.
+    libraries: z.tuple([librarySchema], librarySchema),
+    notes: z.string(),
+    provenanceCommit: z.string().min(1).nullable(),
+    publish: z.boolean(),
+    record: z.boolean(),
+    release: releaseFactsSchema,
+    tag: tagFactsSchema,
+    version: z.string().min(1),
+  })
+  // The notes are the body of the Release, so only the unreleased version plans without them.
+  .refine((plan) => plan.notes !== '' || plan.version === unreleasedVersion, {
+    error: 'A plan for a released version carries notes.',
+    path: ['notes'],
+  });
 
 export type ReleasePlan = z.output<typeof planSchema>;
 
@@ -168,6 +191,21 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
   const participants = readLibraries(request.root, head);
   const version = currentVersion(participants).text;
   const cutCommit = materialBaseline(request.root, participants, version, head);
+  // The unreleased version has no registry record, no changelog section, and nothing to reconcile.
+  if (version === unreleasedVersion) {
+    return {
+      cutCommit,
+      head,
+      libraries: unreleasedLibraries(participants),
+      notes: '',
+      provenanceCommit: null,
+      publish: false,
+      record: false,
+      release: { present: false },
+      tag: { commit: null, present: false },
+      version,
+    };
+  }
   const changelog = readRegularFile(request.root, 'CHANGELOG.md', head);
   const notes = changelogSection(changelog, version);
   const [participant, ...others] = participants;
@@ -236,6 +274,9 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
 
 export function renderPlan(plan: ReleasePlan) {
   const tag = `v${plan.version}`;
+  if (plan.version === unreleasedVersion) {
+    return `${plan.version} is the unreleased version at head ${plan.head}, so there is nothing to reconcile.\nPublish: no. Record: no.\n`;
+  }
   const lines = [
     `Plan ${tag} at head ${plan.head}, cut commit ${plan.cutCommit}.`,
     ...plan.libraries.map(
