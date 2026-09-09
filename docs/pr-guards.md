@@ -42,7 +42,7 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 
 - The head includes the supplied base commit. A stale release branch must incorporate the current base and prepare the cut again.
 - Every participating library carries the title version, with the same participation and all other manifest fields preserved.
-- The title version matches the compiler's calculation from the base fragments. The initial cut advances `0.0.0` to `0.1.0`, including an empty initial cut.
+- The title version matches the compiler's calculation from the base fragments. The initial cut advances `0.0.0` to `0.1.0`. An initial cut that consumes no fragments carries a narrative, because a section without entries would leave the release without notes.
 - The corresponding local Git tag is absent, and no pending fragments remain.
 - The changelog preserves its introduction and earlier releases. The new section matches the compiler output, including fragment order and the material-change report. An optional narrative follows the compiler's Markdown rules.
 - The diff contains only library version fields, `pnpm-lock.yaml`, the new changelog section, and consumed-fragment deletions. Retained files keep their modes, and the lockfile remains a regular file.

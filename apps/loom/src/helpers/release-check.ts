@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { prepareLockfile, releaseInsertion } from './release-files.js';
-import { prepareRelease, releaseDate } from './release.js';
+import { prepareRelease, releaseDate, requireReleaseNotes } from './release.js';
 import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
 
 export function checkRelease(
@@ -87,10 +87,9 @@ export function checkRelease(
     throw new Error('CHANGELOG.md must contain the compiler output for the consumed fragments.');
   }
   const narrative = section.slice(heading.length, section.length - entries.length);
-  if (
-    section !==
-    prepareRelease(root, { ...options, narrative: narrative || undefined }, base).section
-  ) {
+  const compiled = prepareRelease(root, { ...options, narrative: narrative || undefined }, base);
+  if (section !== compiled.section) {
     throw new Error('CHANGELOG.md must contain exactly one compiled release section.');
   }
+  requireReleaseNotes(compiled);
 }

@@ -31,7 +31,7 @@ Both preparation modes accept these options:
 | Option              | Meaning                                                                                                                                                  |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--date YYYY-MM-DD` | Release date. The default is the current UTC date. Invalid calendar dates fail.                                                                          |
-| `--initial`         | Explicitly prepare `0.1.0` from `0.0.0`, including when no fragments exist. Other current versions reject this option.                                   |
+| `--initial`         | Explicitly prepare `0.1.0` from `0.0.0`, including when no fragments exist. Without fragments it also requires `--narrative`, so the release carries notes. Other current versions reject this option. |
 | `--since REF`       | Ancestor commit or tag used for the material-change report. The default is the first-parent commit that set the current manifest version. The first release marks all libraries changed. |
 | `--narrative FILE`  | Copy Markdown prose before the entries. The file cannot be empty or contain level-one or level-two headings.                                             |
 

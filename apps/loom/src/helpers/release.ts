@@ -120,6 +120,17 @@ export function prepareRelease(
   return { fragments, head, libraries, section, version };
 }
 
+// A release must carry notes, because the release plan refuses a changelog section that says nothing.
+// Only an initial cut can reach that state: every other cut consumes at least one fragment.
+export function requireReleaseNotes(release: ReturnType<typeof prepareRelease>) {
+  const body = release.section.slice(release.section.indexOf('\n') + 1);
+  if (body.trim() === '') {
+    throw new Error(
+      `Release v${release.version} carries no entries, so it requires a narrative for its notes.`,
+    );
+  }
+}
+
 export function blankLine(text: string) {
   if (text.endsWith('\n\n')) {
     return '';

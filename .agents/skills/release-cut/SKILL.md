@@ -50,7 +50,7 @@ pnpm loom changelog preview --date YYYY-MM-DD
 pnpm loom changelog write --date YYYY-MM-DD
 ```
 
-Replace the date with one valid UTC release date for both commands. Add `--initial` to both preparation commands for the initial cut. If a narrative is warranted, pass the same `--narrative FILE` to both. Use the default material baseline; normal cuts do not use `--since` overrides.
+Replace the date with one valid UTC release date for both commands. Add `--initial` to both preparation commands for the initial cut; an initial cut that consumes no fragments also requires `--narrative`, because the section carries no entries. If a narrative is warranted, pass the same `--narrative FILE` to both. Use the default material baseline; normal cuts do not use `--since` overrides.
 
 An empty fragment set after the initial release does not create a release. A failed or interrupted write is not a prepared cut. Inspect its diagnostic; preserve the failed checkout for diagnosis and restart preparation from the recorded base in a fresh checkout when necessary.
 

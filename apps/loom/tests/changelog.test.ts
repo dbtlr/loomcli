@@ -189,13 +189,24 @@ test('preview refuses mismatched manifests and invalid dates without edits', () 
 test('an empty set requires explicit first-release intent and cannot release later versions', () => {
   const root = repository();
   expect(run(root, 'preview').stderr).toContain('No fragments');
-  expect(run(root, 'preview', '--initial', '--date', '2026-09-07')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: '## v0.1.0 - 2026-09-07\n\n',
-  });
   const later = repository('0.2.0');
   expect(run(later, 'preview', '--initial').stderr).toContain('0.0.0');
+});
+
+test('an empty initial cut carries notes only through a narrative', () => {
+  const root = repository();
+  expect(run(root, 'preview', '--initial', '--date', '2026-09-07').stderr).toContain(
+    'requires a narrative',
+  );
+  put(root, 'narrative.md', 'Start using the typed command API.\n');
+  commit(root);
+  expect(
+    run(root, 'preview', '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md'),
+  ).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v0.1.0 - 2026-09-07\n\nStart using the typed command API.\n\n',
+  });
 });
 
 test('material changes propagate through library peer dependencies while docs stay immaterial', () => {

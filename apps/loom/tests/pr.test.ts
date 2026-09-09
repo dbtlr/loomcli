@@ -44,6 +44,19 @@ afterEach(() => {
   removeRoots();
 });
 
+const narrativeProse = 'Start using the typed command API.';
+
+// An initial cut consumes no fragments, so its notes come from a narrative kept outside the checkout.
+function writeInitialRelease(root: string) {
+  const narrative = join(temporaryRoot('loom-narrative-'), 'narrative.md');
+  writeFileSync(narrative, `${narrativeProse}\n`);
+  return invoke(
+    cli,
+    ['changelog', 'write', '--initial', '--date', '2026-09-07', '--narrative', narrative],
+    { cwd: root },
+  );
+}
+
 function releaseCheck(root: string, base: string, version: string) {
   return invoke(
     cli,
@@ -171,9 +184,7 @@ test('release validation checks generated entries and preserves earlier changelo
 test('a release cannot delete its lockfile or change a manifest file mode', () => {
   const { root } = repository('0.0.0');
   const base = git(root, ['rev-parse', 'HEAD']);
-  expect(
-    invoke(cli, ['changelog', 'write', '--initial', '--date', '2026-09-07'], { cwd: root }).status,
-  ).toBe(0);
+  expect(writeInitialRelease(root).status).toBe(0);
   const cut = commit(root);
   rmSync(join(root, 'pnpm-lock.yaml'));
   commit(root);
@@ -266,24 +277,20 @@ test('ordinary PRs allow private version edits and require new libraries to join
 
 test('the initial empty cut and a narrative round-trip through the compiler', () => {
   const { base, root } = repository('0.0.0');
-  const narrativeRoot = temporaryRoot('loom-narrative-');
-  const narrative = join(narrativeRoot, 'narrative.md');
-  writeFileSync(narrative, 'Start using the typed command API.\n');
-  try {
-    expect(
-      invoke(
-        cli,
-        ['changelog', 'write', '--initial', '--date', '2026-09-07', '--narrative', narrative],
-        { cwd: root },
-      ).status,
-    ).toBe(0);
-  } finally {
-    rmSync(narrative);
-  }
+  expect(writeInitialRelease(root).status).toBe(0);
   commit(root);
   expect(releaseCheck(root, base, '0.1.0').status).toBe(0);
   git(root, ['tag', 'v0.1.0']);
   expect(releaseCheck(root, base, '0.1.0').stderr).toContain('Tag v0.1.0 already exists');
+});
+
+test('an initial cut whose section lost its narrative carries no notes and fails', () => {
+  const { base, root } = repository('0.0.0');
+  expect(writeInitialRelease(root).status).toBe(0);
+  const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+  put(root, 'CHANGELOG.md', changelog.replace(`${narrativeProse}\n\n`, ''));
+  commit(root);
+  expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
 });
 
 test.skipIf(process.platform === 'win32')(
@@ -384,9 +391,7 @@ test('breaking cuts advance the minor and synchronize every library', () => {
 
 test('a release rejects lockfile changes that the version writer did not produce', () => {
   const { base, root } = repository('0.0.0');
-  expect(
-    invoke(cli, ['changelog', 'write', '--initial', '--date', '2026-09-07'], { cwd: root }).status,
-  ).toBe(0);
+  expect(writeInitialRelease(root).status).toBe(0);
   const lockfile = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8');
   const changed = lockfile.replace('autoInstallPeers: true', 'autoInstallPeers: false');
   expect(changed).not.toBe(lockfile);
