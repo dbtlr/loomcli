@@ -133,7 +133,7 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, validation, the action, and the exit status.
+One `run()` call: host capture, graph build, global pre-scan, routing, the middleware chain, local parsing, validation, the action, and the exit status.
 _Avoid_: Execution, call, request
 
 **Pre-scan**:
@@ -153,7 +153,15 @@ The captured facts of the process an invocation runs in: argument tokens, workin
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Exit code**:
-The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure ended it.
+The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure or which signal ended it.
+
+**Run signal**:
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal or the signals owner aborts it, with a reason naming the cause.
+_Avoid_: Abort controller (for the concept), cancellation token, interrupt
+
+**Signals owner**:
+The one installed plugin that claims the signals slot, on whose behalf core installs and removes the process listeners for one run.
+_Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
@@ -229,11 +237,39 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor
 
 **Plugin**:
-An explicitly installed extension that may extend typed context, contribute graph data and projections, and hook lifecycle conditions through the same public contract first-party packages use. Core installs none by default.
-_Avoid_: Extension, middleware, addon, bundled plugin
+A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, extensions, failure renderers, or a slot claim through the same public contract first-party packages use. Core installs none by default.
+_Avoid_: Extension (for the whole plugin), addon, bundled plugin
+
+**Plugin identity**:
+The nonempty string that names a plugin, fixed where the plugin is defined. By convention it is the package name, or the package name with a suffix when one package ships several plugins.
+_Avoid_: Plugin name (when the key is meant), id (in prose)
+
+**Contribution**:
+One thing a plugin adds to an Application: an option, a middleware, an extension, a failure renderer, or a slot claim. Contributions compose in installation order.
+_Avoid_: Hook, registration, feature
+
+**Slot**:
+A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The signals slot is the first.
+_Avoid_: Singleton, capability (for the position)
+
+**Middleware**:
+A plugin's participation in an invocation, run between routing and local parsing. It receives its own options and the routed node, and it either takes over by returning or continues the chain by calling `next()`.
+_Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
+
+**Activation**:
+A middleware's declared condition for running and loading: a list of its plugin's own option names, any of which being present activates it, or always.
+_Avoid_: Trigger, gate, filter
+
+**Extension**:
+A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity.
+_Avoid_: Metadata, annotation, field, decorator
+
+**Core fact**:
+A declaration fact core owns and every projection reads without any plugin installed: description, version, deprecated, and hidden.
+_Avoid_: Built-in metadata, reserved field
 
 **Core**:
-The `@loomcli/core` package: authoring, graph build, invocation, host capture, output, and failures. Core is host-independent and installs no plugins.
+The `@loomcli/core` package: authoring, graph build, invocation, host capture, output, failures, and the plugin contract. Core is host-independent and installs no plugins.
 _Avoid_: Framework (for the package), runtime, engine
 
 ## Releases

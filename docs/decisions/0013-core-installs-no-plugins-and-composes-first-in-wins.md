@@ -4,7 +4,7 @@ title: ADR-0013 - Core installs no plugins by default, and contributions compose
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
 status: proposed
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots
@@ -30,3 +30,7 @@ Proposed. Milestone 1 ships no plugin contract, so no code exercises this decisi
 ## Consequences
 
 An application that wants help output installs the help plugin. Core stays small and host-independent, and the plugin contract is designed once for every consumer.
+
+## Changelog
+
+- 2026-09-08: The contract that honors this record is shaped in the plugin section of `docs/core.md`. A plugin is a frozen value with an identity fixed at definition, installed through the `plugins` list on the Application options in composition order. Its contribution kinds are global options, one middleware with declared activation and a loader, extension values, failure renderers, and one claim on the signals slot. Three records carry the decisions that go beyond this one: ADR-0017 for the middleware chain and activation, ADR-0018 for cancellation and the signals slot, and ADR-0019 for descriptor-keyed extension values and the core-owned `description` and `version` facts. Two refinements to the wording above: a first-party plugin identity is the package name by convention, and the namespace sentence applies to extension identities, which a plugin names under its own identity, rather than to option spellings, which share one table with the application's globals and fail on collision. A fact whose plugin is not installed is inert rather than an error. The decision is unchanged.

@@ -4,7 +4,7 @@ title: ADR-0009 - Core captures the host itself, accepts whole-field overrides, 
 description: run() snapshots the process, replaces any supplied host field entirely, uses Node streams in its public contract, never calls process.exit, never rejects, and may run the same Application again.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0009 - Core captures the host itself, accepts whole-field overrides, and resolves an exit code
@@ -28,3 +28,7 @@ The public contract uses Node `Readable` and `Writable` for the streams. `run()`
 ## Consequences
 
 Application code owns file access and stdin reads. Tests drive a real Application through `run({ host })` with captured streams, and the built examples run as real processes under Node and Bun.
+
+## Changelog
+
+- 2026-09-08: ADR-0018 qualifies the signal sentence. Core still installs no signal or cleanup handlers of its own, and `run()` still never calls `process.exit()`. With the plugin contract, core installs process listeners only on behalf of the one installed plugin that owns the signals slot, only for the duration of one run, and it re-raises a repeated signal so the default disposition ends the process. `run({ signal })` joins the run options as the caller-owned cancellation path, and the exit code set gains 130 and 143. The decision is unchanged.
