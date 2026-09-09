@@ -37,11 +37,13 @@ export const release = new Command('release')
       .option('registry', { default: defaultRegistry, type: 'string' })
       .option('github-api', { default: defaultGitHubApi, type: 'string' })
       .option('head', { default: 'HEAD', type: 'string' })
+      .option('request-timeout-ms', { default: '30000', type: 'string', validate: count })
       .action(async ({ host, options, out, passthrough }) => {
         await report(out, passthrough, async () => {
           const plan = await planRelease({
             githubApi: options['github-api'],
             head: options.head,
+            policy: { requestTimeoutMs: options['request-timeout-ms'] },
             registry: options.registry,
             repository: options.repository,
             root: host.cwd,
@@ -58,6 +60,7 @@ export const release = new Command('release')
       .option('plan', { required: true, type: 'string' })
       .option('registry', { default: defaultRegistry, type: 'string' })
       .option('github-api', { default: defaultGitHubApi, type: 'string' })
+      .option('request-timeout-ms', { default: '30000', type: 'string', validate: count })
       .option('retry-attempts', { default: '8', type: 'string', validate: count })
       .option('retry-delay-ms', { default: '5000', type: 'string', validate: count })
       .action(async ({ host, options, out, passthrough }) => {
@@ -75,6 +78,7 @@ export const release = new Command('release')
             retry: {
               attempts: options['retry-attempts'],
               delayMs: options['retry-delay-ms'],
+              requestTimeoutMs: options['request-timeout-ms'],
             },
             root: host.cwd,
             token,

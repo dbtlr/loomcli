@@ -41,6 +41,8 @@ The packed consumer runs in CI on every pull request: the Linux Node job proves 
 
 Both commands read `GH_TOKEN` from the environment. `plan` sends it as a bearer token when it is set, and `record` fails without it. Both accept `--registry` (default `https://registry.npmjs.org`) and `--github-api` (default `https://api.github.com`).
 
+Both also accept `--request-timeout-ms` (default 30000). Every request carries that deadline, and a tarball read carries four times it, because a tarball is larger than a JSON answer. A request that reaches its deadline fails with its method, its url, and the deadline, so a stalled connection ends the run instead of holding it. In `record` that failure counts as one attempt and the retry policy reads again.
+
 ### `loom release plan`
 
 ```sh

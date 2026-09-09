@@ -21,14 +21,15 @@ async function readUpload(
   lines: string[],
 ) {
   const { plan, retry } = request;
+  const registry = { policy: retry, registry: request.registry };
   const name = library.name;
   const subject = `${name}@${plan.version}`;
   const published = await until(retry, `${subject} on the registry`, async () =>
-    readPublished(request.registry, name, plan.version),
+    readPublished(registry, name, plan.version),
   );
   lines.push(`Read ${subject} from the registry.`);
   const provenance = await until(retry, `the provenance of ${subject}`, async () =>
-    readProvenance(request.registry, name, plan.version),
+    readProvenance(registry, name, plan.version),
   );
   const source = `git+https://github.com/${request.repository}@refs/heads/main`;
   if (provenance.uri !== source) {
@@ -37,7 +38,7 @@ async function readUpload(
     );
   }
   const bytes = await until(retry, `the ${subject} tarball`, async () =>
-    readBytes(published.tarball),
+    readBytes(retry, published.tarball),
   );
   verifyIntegrity(subject, bytes, published.integrity);
   lines.push(`Verified the ${subject} tarball against ${published.integrity}.`);
@@ -75,7 +76,12 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
   const { plan, retry } = request;
   const version = plan.version;
   const tag = `v${version}`;
-  const target = { api: request.githubApi, repository: request.repository, token: request.token };
+  const target = {
+    api: request.githubApi,
+    policy: retry,
+    repository: request.repository,
+    token: request.token,
+  };
   const lines: string[] = [];
   const first = await readUpload(request, plan.libraries[0], lines);
   const uploads = [first];

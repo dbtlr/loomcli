@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 import { readJson } from './http.js';
+import type { HttpPolicy } from './http.js';
 
 const packumentSchema = z.looseObject({ versions: z.record(z.string(), z.unknown()) });
 
@@ -41,13 +42,19 @@ function packageUrl(name: string, version: string) {
   return `pkg:npm/${name.replace('@', '%40')}@${version}`;
 }
 
-function endpoint(registry: string, path: string) {
-  return `${registry.replace(/\/+$/u, '')}/${path}`;
+function endpoint(target: RegistryTarget, path: string) {
+  return `${target.registry.replace(/\/+$/u, '')}/${path}`;
+}
+
+// The registry the release reads, with the deadline every one of its requests carries.
+export interface RegistryTarget {
+  policy: HttpPolicy;
+  registry: string;
 }
 
 // The distribution facts of one published version, or undefined while the registry lacks it.
-export async function readPublished(registry: string, name: string, version: string) {
-  const { data } = await readJson(endpoint(registry, name));
+export async function readPublished(target: RegistryTarget, name: string, version: string) {
+  const { data } = await readJson(target.policy, endpoint(target, name));
   if (data === undefined) {
     return undefined;
   }
@@ -56,9 +63,9 @@ export async function readPublished(registry: string, name: string, version: str
 }
 
 // The commit and the source repository npm attests for one published version.
-export async function readProvenance(registry: string, name: string, version: string) {
+export async function readProvenance(target: RegistryTarget, name: string, version: string) {
   const path = `-/npm/v1/attestations/${name}@${version}`;
-  const { data } = await readJson(endpoint(registry, path));
+  const { data } = await readJson(target.policy, endpoint(target, path));
   if (data === undefined) {
     return undefined;
   }

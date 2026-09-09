@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
+import type { HttpPolicy } from './http.js';
 import { locateRelease } from './markdown.js';
 import { materialBaseline } from './material.js';
 import { readProvenance, readPublished, tarballName } from './registry.js';
+import type { RegistryTarget } from './registry.js';
 import {
   currentVersion,
   git,
@@ -65,24 +67,24 @@ function abandon(version: string, reason: string) {
 
 // The registry facts of one participating library at the released version.
 async function describeLibrary(
-  request: PlanRequest,
+  registry: RegistryTarget,
   participant: ReturnType<typeof readLibraries>[number],
   version: string,
 ) {
   const name = participant.manifest.name;
-  const published = await readPublished(request.registry, name, version);
+  const published = await readPublished(registry, name, version);
   return { directory: participant.directory, name, published: published !== undefined };
 }
 
 // Every published library attests the same build commit, and that commit is where the tag belongs.
 async function publishedCommit(
-  request: PlanRequest,
+  registry: RegistryTarget,
   libraries: ReleasePlan['libraries'],
   version: string,
 ) {
   let commit: string | undefined = undefined;
   for (const library of libraries) {
-    const provenance = await readProvenance(request.registry, library.name, version);
+    const provenance = await readProvenance(registry, library.name, version);
     if (provenance === undefined) {
       return undefined;
     }
@@ -148,6 +150,7 @@ export type ReleasePlan = z.output<typeof planSchema>;
 export interface PlanRequest {
   githubApi: string;
   head: string;
+  policy: HttpPolicy;
   registry: string;
   repository: string;
   root: string;
@@ -168,14 +171,20 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
   const changelog = readRegularFile(request.root, 'CHANGELOG.md', head);
   const notes = changelogSection(changelog, version);
   const [participant, ...others] = participants;
+  const registry = { policy: request.policy, registry: request.registry };
   const libraries: ReleasePlan['libraries'] = [
-    await describeLibrary(request, participant, version),
+    await describeLibrary(registry, participant, version),
   ];
   for (const other of others) {
-    libraries.push(await describeLibrary(request, other, version));
+    libraries.push(await describeLibrary(registry, other, version));
   }
   const tag = `v${version}`;
-  const target = { api: request.githubApi, repository: request.repository, token: request.token };
+  const target = {
+    api: request.githubApi,
+    policy: request.policy,
+    repository: request.repository,
+    token: request.token,
+  };
   const tagCommit = await readTagCommit(target, tag);
   const release = await readRelease(target, tag);
   const publish = libraries.some((library) => !library.published);
@@ -204,7 +213,7 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
       throw abandon(version, `tag ${tag} already names ${tagCommit} instead of the head ${head}.`);
     }
   } else {
-    provenanceCommit = (await publishedCommit(request, libraries, version)) ?? null;
+    provenanceCommit = (await publishedCommit(registry, libraries, version)) ?? null;
     requireTagAtPublication(tag, tagCommit, provenanceCommit, version);
   }
   const expected = libraries.map((library) => tarballName(library.name, version));

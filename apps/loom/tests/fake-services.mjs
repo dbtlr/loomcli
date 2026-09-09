@@ -121,6 +121,11 @@ function registry(request, response, path, host) {
       missing(response);
       return;
     }
+    if (found[1].tarballStalls > 0) {
+      found[1].tarballStalls -= 1;
+      // The endpoint holds the connection and never answers, so the client's own deadline ends the request.
+      return;
+    }
     if (found[1].tarballMisses > 0) {
       found[1].tarballMisses -= 1;
       send(response, 503, { message: 'Service Unavailable' });
@@ -134,6 +139,11 @@ function registry(request, response, path, host) {
   const entry = findPackage(name);
   if (!entry) {
     missing(response);
+    return;
+  }
+  if (entry.stalls > 0) {
+    entry.stalls -= 1;
+    // The endpoint holds the connection and never answers, so the client's own deadline ends the request.
     return;
   }
   if (entry.misses > 0) {

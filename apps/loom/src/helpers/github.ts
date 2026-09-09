@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { readJson, removeResource, writeBytes, writeJson } from './http.js';
+import type { HttpPolicy } from './http.js';
 
 // GitHub serves uploads from its own host, and a self-hosted API serves them from the API host.
 const uploadOrigin = 'https://uploads.github.com';
@@ -36,6 +37,7 @@ function repositoryUrl(target: { api: string; repository: string }, path: string
 
 export interface GitHubTarget {
   api: string;
+  policy: HttpPolicy;
   repository: string;
   token: string | undefined;
 }
@@ -53,7 +55,11 @@ export function isUploadedAsset(asset: z.output<typeof assetSchema>) {
 
 // The tag reference names an annotated tag object or the commit itself, and callers want the commit.
 export async function readTagCommit(target: GitHubTarget, tag: string) {
-  const { data } = await readJson(repositoryUrl(target, `git/ref/tags/${tag}`), target.token);
+  const { data } = await readJson(
+    target.policy,
+    repositoryUrl(target, `git/ref/tags/${tag}`),
+    target.token,
+  );
   if (data === undefined) {
     return undefined;
   }
@@ -62,37 +68,41 @@ export async function readTagCommit(target: GitHubTarget, tag: string) {
     return object.sha;
   }
   const url = repositoryUrl(target, `git/tags/${object.sha}`);
-  const dereferenced = await readJson(url, target.token);
+  const dereferenced = await readJson(target.policy, url, target.token);
   return tagObjectSchema.parse(dereferenced.data).object.sha;
 }
 
 export async function readRelease(target: GitHubTarget, tag: string) {
-  const { data } = await readJson(repositoryUrl(target, `releases/tags/${tag}`), target.token);
+  const { data } = await readJson(
+    target.policy,
+    repositoryUrl(target, `releases/tags/${tag}`),
+    target.token,
+  );
   return data === undefined ? undefined : releaseSchema.parse(data);
 }
 
 export async function readAssets(target: GitHubTarget, id: number) {
   const url = repositoryUrl(target, `releases/${String(id)}/assets`);
-  const { data } = await readJson(url, target.token);
+  const { data } = await readJson(target.policy, url, target.token);
   return assetsSchema.parse(data);
 }
 
 export async function createTag(target: GitHubWriter, tag: string, commit: string) {
-  const created = await writeJson(repositoryUrl(target, 'git/tags'), target.token, {
+  const created = await writeJson(target.policy, repositoryUrl(target, 'git/tags'), target.token, {
     message: tag,
     object: commit,
     tag,
     type: 'commit',
   });
   const object = targetSchema.parse(created);
-  await writeJson(repositoryUrl(target, 'git/refs'), target.token, {
+  await writeJson(target.policy, repositoryUrl(target, 'git/refs'), target.token, {
     ref: `refs/tags/${tag}`,
     sha: object.sha,
   });
 }
 
 export async function createRelease(target: GitHubWriter, tag: string, body: string) {
-  await writeJson(repositoryUrl(target, 'releases'), target.token, {
+  await writeJson(target.policy, repositoryUrl(target, 'releases'), target.token, {
     body,
     draft: false,
     name: tag,
@@ -102,7 +112,11 @@ export async function createRelease(target: GitHubWriter, tag: string, body: str
 }
 
 export async function removeAsset(target: GitHubWriter, id: number) {
-  await removeResource(repositoryUrl(target, `releases/assets/${String(id)}`), target.token);
+  await removeResource(
+    target.policy,
+    repositoryUrl(target, `releases/assets/${String(id)}`),
+    target.token,
+  );
 }
 
 // The Release publishes its upload endpoint as a URI template whose parameters this call supplies.
@@ -120,5 +134,5 @@ export async function uploadAsset(
     );
   }
   const endpoint = `${uploadUrl.replace('{?name,label}', '')}?name=${encodeURIComponent(name)}`;
-  await writeBytes(endpoint, target.token, bytes, 'application/gzip');
+  await writeBytes(target.policy, endpoint, target.token, bytes, 'application/gzip');
 }

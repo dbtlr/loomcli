@@ -1,5 +1,8 @@
 const maximumDelayMs = 60_000;
 
+// A tarball is larger than a JSON answer, so its deadline is four times the configured one.
+const bytesDeadlineFactor = 4;
+
 function headers(token: string | undefined) {
   return {
     accept: 'application/json',
@@ -27,7 +30,37 @@ function sleep(delayMs: number) {
   });
 }
 
-export interface RetryPolicy {
+// A deadline reached during the request or during the body read arrives as the timeout error itself or as its cause.
+function timedOut(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || timedOut(error.cause));
+}
+
+// Every request carries a deadline, because a stalled connection would otherwise hold the run forever.
+// The abort error names neither the endpoint nor the deadline, so a stall is reported with both.
+async function within<Value>(
+  method: string,
+  url: string,
+  deadlineMs: number,
+  exchange: (signal: AbortSignal) => Promise<Value>,
+) {
+  try {
+    return await exchange(AbortSignal.timeout(deadlineMs));
+  } catch (error) {
+    if (timedOut(error)) {
+      throw new Error(`${method} ${url} did not answer within ${String(deadlineMs)} ms.`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+// The deadline every request carries, which the plan and record commands read from their options.
+export interface HttpPolicy {
+  requestTimeoutMs: number;
+}
+
+export interface RetryPolicy extends HttpPolicy {
   attempts: number;
   delayMs: number;
 }
@@ -38,56 +71,80 @@ export interface JsonAnswer {
 }
 
 // An absent resource is a fact the caller reads, so a 404 answers with an undefined body.
-export async function readJson(url: string, token?: string): Promise<JsonAnswer> {
-  const response = await fetch(url, { headers: headers(token) });
-  if (response.status === 404) {
-    return { data: undefined, status: response.status };
-  }
-  if (!response.ok) {
-    throw await refuse('GET', url, response);
-  }
-  const text = await response.text();
-  return { data: parseJson(url, text), status: response.status };
-}
-
-export async function readBytes(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw await refuse('GET', url, response);
-  }
-  const body = await response.arrayBuffer();
-  return Buffer.from(body);
-}
-
-export async function writeJson(url: string, token: string, body: unknown) {
-  const response = await fetch(url, {
-    body: JSON.stringify(body),
-    headers: { ...headers(token), 'content-type': 'application/json' },
-    method: 'POST',
+export async function readJson(
+  policy: HttpPolicy,
+  url: string,
+  token?: string,
+): Promise<JsonAnswer> {
+  return within('GET', url, policy.requestTimeoutMs, async (signal) => {
+    const response = await fetch(url, { headers: headers(token), signal });
+    if (response.status === 404) {
+      return { data: undefined, status: response.status };
+    }
+    if (!response.ok) {
+      throw await refuse('GET', url, response);
+    }
+    const text = await response.text();
+    return { data: parseJson(url, text), status: response.status };
   });
-  if (!response.ok) {
-    throw await refuse('POST', url, response);
-  }
-  const text = await response.text();
-  return parseJson(url, text);
 }
 
-export async function writeBytes(url: string, token: string, bytes: Buffer, contentType: string) {
-  const response = await fetch(url, {
-    body: new Uint8Array(bytes),
-    headers: { ...headers(token), 'content-type': contentType },
-    method: 'POST',
+export async function readBytes(policy: HttpPolicy, url: string) {
+  const deadlineMs = policy.requestTimeoutMs * bytesDeadlineFactor;
+  return within('GET', url, deadlineMs, async (signal) => {
+    const response = await fetch(url, { signal });
+    if (!response.ok) {
+      throw await refuse('GET', url, response);
+    }
+    const body = await response.arrayBuffer();
+    return Buffer.from(body);
   });
-  if (!response.ok) {
-    throw await refuse('POST', url, response);
-  }
 }
 
-export async function removeResource(url: string, token: string) {
-  const response = await fetch(url, { headers: headers(token), method: 'DELETE' });
-  if (!response.ok) {
-    throw await refuse('DELETE', url, response);
-  }
+export async function writeJson(policy: HttpPolicy, url: string, token: string, body: unknown) {
+  return within('POST', url, policy.requestTimeoutMs, async (signal) => {
+    const response = await fetch(url, {
+      body: JSON.stringify(body),
+      headers: { ...headers(token), 'content-type': 'application/json' },
+      method: 'POST',
+      signal,
+    });
+    if (!response.ok) {
+      throw await refuse('POST', url, response);
+    }
+    const text = await response.text();
+    return parseJson(url, text);
+  });
+}
+
+export async function writeBytes(
+  policy: HttpPolicy,
+  url: string,
+  token: string,
+  bytes: Buffer,
+  contentType: string,
+) {
+  const deadlineMs = policy.requestTimeoutMs * bytesDeadlineFactor;
+  await within('POST', url, deadlineMs, async (signal) => {
+    const response = await fetch(url, {
+      body: new Uint8Array(bytes),
+      headers: { ...headers(token), 'content-type': contentType },
+      method: 'POST',
+      signal,
+    });
+    if (!response.ok) {
+      throw await refuse('POST', url, response);
+    }
+  });
+}
+
+export async function removeResource(policy: HttpPolicy, url: string, token: string) {
+  await within('DELETE', url, policy.requestTimeoutMs, async (signal) => {
+    const response = await fetch(url, { headers: headers(token), method: 'DELETE', signal });
+    if (!response.ok) {
+      throw await refuse('DELETE', url, response);
+    }
+  });
 }
 
 // The registry and the GitHub API both propagate a write with a delay, so a read after a write waits for it.

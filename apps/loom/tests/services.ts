@@ -50,6 +50,8 @@ export interface PackageState {
   integrity?: string;
   // The number of 404 answers the packument gives before it reports the version.
   misses?: number;
+  // The number of packument requests the registry holds without answering, so the client's deadline ends them.
+  stalls?: number;
   provenanceCommit?: string;
   // Overrides the repository the provenance names in its resolved dependency uri.
   provenanceRepository?: string;
@@ -61,6 +63,8 @@ export interface PackageState {
   tarball?: string;
   // The number of 503 answers the tarball endpoint gives before it serves the bytes.
   tarballMisses?: number;
+  // The number of tarball requests the endpoint holds without answering, so the client's deadline ends them.
+  tarballStalls?: number;
 }
 
 export interface ServicesState {

@@ -457,7 +457,7 @@ function recordFixture(overrides: Partial<PackageState> = {}) {
 function record(
   root: string,
   endpoints: Endpoints,
-  options: { token: string | undefined } = { token: 'test-token' },
+  options: { requestTimeoutMs?: number; token: string | undefined } = { token: 'test-token' },
 ) {
   return invoke(
     cli,
@@ -474,6 +474,9 @@ function record(
       endpoints.githubApi,
       '--retry-delay-ms',
       '10',
+      ...(options.requestTimeoutMs === undefined
+        ? []
+        : ['--request-timeout-ms', String(options.requestTimeoutMs)]),
     ],
     { cwd: root, env: { GH_TOKEN: options.token } },
   );
@@ -613,6 +616,31 @@ test('a tarball endpoint that answers 503 twice is read again until it serves th
     version: '0.2.0',
   });
   expect(record(root, endpoints).status).toBe(0);
+});
+
+test('a tarball endpoint that stalls past the deadline is read again until it serves the bytes', async () => {
+  const { packages, published, root } = recordFixture({ tarballStalls: 1 });
+  const endpoints = await startServices({
+    packages,
+    release: { assets: [{ id: 11, name: asset, size: 40 }], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: published },
+    version: '0.2.0',
+  });
+  expect(record(root, endpoints, { requestTimeoutMs: 50, token: 'test-token' }).status).toBe(0);
+});
+
+test('a stalled registry read under plan fails with the url it waited on', async () => {
+  const { root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { published: true, stalls: 1 } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const result = plan(root, endpoints, '--request-timeout-ms', '50');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(`${endpoints.registry}/${library}`);
+  expect(result.stderr).toContain('did not answer within 50 ms');
 });
 
 test('a tarball that does not match its integrity fails before any write', async () => {
