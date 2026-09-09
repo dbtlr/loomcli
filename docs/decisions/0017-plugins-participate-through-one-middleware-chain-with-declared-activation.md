@@ -13,7 +13,9 @@ modified: 2026-09-08
 
 Help, version, manifest, completion, logging, color policy, and timing all need to act on an invocation. Two of those needs differ in kind. Help and its relatives take over when one option appears. Logging and its relatives wrap every invocation and read their options as settings. A framework that gives each need its own mechanism grows a terminal-option entity for the first and a hook set for the second, and a plugin that grows from one need to the other migrates between mechanisms.
 
-The seam sits after the global pre-scan and routing and before the callable check, local parsing, and validation. Help on `app get --help` must render while `get` is missing its required argument, and help on a group must render while the group is not callable, so a seam that wraps only the action can never serve help. An unknown command still fails in routing first.
+The seam sits after the global pre-scan and routing and before the callable check, local parsing, and validation. Help on `app get --help` must render while `get` is missing its required argument, and help on a group must render while the group is not callable, so a seam that wraps only the action can never serve help. An unknown command still fails in routing first. The callable check on a group keeps the rank ADR-0004 gives it, ahead of local parsing, but it is judged after the chain rather than inside routing; ADR-0004 carries a dated entry for that placement.
+
+A plugin's options are structural: type, spellings, polarity, multiple, and default, with no schema and no presence rule. A schema on a plugin option would have to run before local parsing, where the validation context every schema is promised cannot exist, and its issue would have to rank somewhere the existing precedence does not describe. The middleware reads parsed values and interprets them itself, and a value it cannot use is the plugin's own diagnostic.
 
 A middleware declares its activation: a list of the plugin's own option names, or always. There is no default. With a list, core evaluates presence from the pre-scan it already ran and calls the plugin's loader only when an option is present, so an installed plugin costs one small module on an invocation that never reaches it. The startup cost of a plugin is therefore the plugin author's explicit choice, visible in the descriptor.
 
@@ -27,6 +29,7 @@ Cleanup is the unwinding side of the chain. A middleware's code after `next()` r
 - **Activation inferred from any of the plugin's options.** Rejected. It conflates the options a plugin reads with the options that wake it, and a logger's level option would wake a plugin that must already be present.
 - **A default activation.** Rejected. Always makes a forgotten field cost every invocation; lazy makes a logger's sink never install. Silence should not pick the expensive or the broken behavior.
 - **A separate shutdown contribution with a fixed budget.** Rejected. Unwinding gives reverse order, a typed reason, and lazy agreement for free, and core awaits cleanup the way it awaits actions.
+- **Schemas and presence rules on plugin options.** Rejected for this increment. Validating before the chain contradicts the error precedence and starves the validation context of local inputs; validating inside the chain lets an earlier middleware run before a later plugin's option is rejected. No plugin on the roadmap needs one, and a plugin that does can interpret the string itself. The rule can be revisited when a plugin author shows a case that needs it.
 
 ## Consequences
 

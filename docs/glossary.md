@@ -129,7 +129,7 @@ The phase that turns the declarations into a Command graph and applies every dec
 _Avoid_: Compilation, registration, setup
 
 **Inspection**:
-Reading the Command graph as plain frozen data through `inspect()`, without reading host facts or running a schema.
+Reading the Command graph as plain frozen data through `inspect()`, without reading host facts or running an input schema.
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
@@ -265,8 +265,12 @@ A typed fact a plugin defines for one target, Command, option, or argument, and 
 _Avoid_: Metadata, annotation, field, decorator
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed: description, version, deprecated, and hidden.
+A declaration fact core owns and every projection reads without any plugin installed, such as description and version.
 _Avoid_: Built-in metadata, reserved field
+
+**Plugin option**:
+An option a plugin contributes. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action.
+_Avoid_: Global option (for a plugin's option), flag
 
 **Core**:
 The `@loomcli/core` package: authoring, graph build, invocation, host capture, output, failures, and the plugin contract. Core is host-independent and installs no plugins.

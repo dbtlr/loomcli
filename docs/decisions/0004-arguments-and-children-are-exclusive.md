@@ -4,7 +4,7 @@ title: ADR-0004 - A Command declares arguments or attaches children, never both
 description: A Command with children and no action is a group that routing passes through. Invoking a group, or a Command with neither children nor an action, is an error rather than a fallback.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0004 - A Command declares arguments or attaches children, never both
@@ -25,3 +25,7 @@ A Command with children and no action is a group. Routing passes through it to a
 ## Consequences
 
 A root with children accepts no arguments and reports that when given some. Help and manifest consumers can treat every Command as either a leaf with inputs or a container of children, with the mixed case only for a Command that has children and an action but no arguments.
+
+## Changelog
+
+- 2026-09-08: ADR-0017, proposed, places the plugin middleware chain between routing and the group check. Under it, an invocation that commits to a group still fails with exit 2, lists the children's canonical names, and ranks before any local parsing, but the check is judged after the chain rather than inside routing, so a plugin such as help can take over a group invocation. The failure's class, code, and rank are unchanged; only its position relative to the chain moves, and that placement binds when ADR-0017 is accepted.
