@@ -256,7 +256,11 @@ async function absorbing({ out, signal }) {
   await cancelled(signal);
   process.on('SIGINT', absorbed);
   await out.print('ready');
-  await Promise.race([embedded, after(20_000)]);
+  // A referenced timer keeps the process alive while it waits, because signal listeners alone do not.
+  // It is cancelled once the listener fires, so the process ends with the run rather than with it.
+  const hold = new AbortController();
+  await Promise.race([embedded, after(20_000, undefined, { signal: hold.signal })]);
+  hold.abort();
   // A grace after the first absorb, so the re-raise that follows it lands before the run ends.
   await after(50);
   await out.print(`action:${describe(signal.reason)}`);

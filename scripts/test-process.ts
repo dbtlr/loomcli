@@ -2,6 +2,9 @@ import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as after } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
+/** How long a fixture may run or stay silent before the harness ends it and the test fails. */
+const fixtureTimeout = 10_000;
+
 export function invoke(
   file: URL,
   args: string[] = [],
@@ -15,7 +18,7 @@ export function invoke(
       ...rest,
       encoding: 'utf8',
       env: { ...process.env, LOOM_CAPTURE_TEST: 'present', ...env },
-      timeout: 10_000,
+      timeout: fixtureTimeout,
     },
   );
   if (result.error) {
@@ -46,7 +49,11 @@ export function start(
   const child = spawn(process.env.LOOM_TEST_RUNTIME ?? 'node', [fileURLToPath(file), ...args], {
     ...(cwd === undefined ? {} : { cwd }),
     env: { ...process.env, LOOM_CAPTURE_TEST: 'present', ...env },
+    // A fixture that owns the signals slot would absorb a SIGTERM as its first cooperative signal.
+    // The harness therefore ends a stuck child with a signal no listener can absorb.
+    killSignal: 'SIGKILL',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: fixtureTimeout,
   });
   let stdout = '';
   let stderr = '';
@@ -75,7 +82,7 @@ export function start(
   });
   /** Waits until the child wrote the announced line, so a signal lands where a test means it. */
   const announced = async (line: string): Promise<void> => {
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + fixtureTimeout;
     while (!stdout.includes(`${line}\n`)) {
       if (settlement) {
         const cause =
@@ -87,7 +94,9 @@ export function start(
         );
       }
       if (Date.now() > deadline) {
-        throw new Error(`The fixture never announced "${line}". It wrote:\n${stdout}${stderr}`);
+        throw new Error(
+          `The fixture never announced "${line}" within ${fixtureTimeout} ms. It wrote:\n${stdout}${stderr}`,
+        );
       }
       await after(10);
     }
