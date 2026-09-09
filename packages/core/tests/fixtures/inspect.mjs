@@ -33,6 +33,27 @@ function jsonkit() {
     .action(dispatch);
 }
 
+// Every target of a core fact declares one, so inspection reports each of them in place.
+// The root node repeats the Application's description, which the graph carries too.
+function described() {
+  const globals = new GlobalOptions().option('file', {
+    description: 'The document to read.',
+    short: 'f',
+    type: 'string',
+  });
+  const get = new Command('get', { description: 'Reads one value.', globals })
+    .argument('path', { description: 'The path to read.', required: true })
+    .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
+    .action(dispatch);
+  return new Application('described', {
+    description: 'Reads a JSON document.',
+    globals,
+    version: '1.2.0',
+  })
+    .command(get)
+    .action(dispatch);
+}
+
 function nested() {
   const globals = new GlobalOptions();
   const clear = new Command('clear', { globals }).action(dispatch);
@@ -136,7 +157,18 @@ const faults = {
       .action(dispatch),
 };
 
-const graphs = { defaults, invalid, jsonkit, nested, omission, polarity, roles, tails, ...faults };
+const graphs = {
+  defaults,
+  described,
+  invalid,
+  jsonkit,
+  nested,
+  omission,
+  polarity,
+  roles,
+  tails,
+  ...faults,
+};
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 

@@ -17,6 +17,13 @@ const name: string | null = root.name;
 const path: readonly string[] = root.path;
 const aliases: readonly string[] = root.aliases;
 
+// The core facts read as optional strings wherever a declaration carries one.
+const version: string | undefined = graph.version;
+const summary: string | undefined = graph.description;
+const rootSummary: string | undefined = root.description;
+const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;
+const optionSummary = (option: OptionNode): string | undefined => option.description;
+
 // The option union reads by its `type` tag, and each form publishes its own spellings.
 const spelling = (option: OptionNode) =>
   option.type === 'boolean' ? option.negative : option.default;
@@ -51,3 +58,8 @@ void slots;
 void name;
 void path;
 void aliases;
+void version;
+void summary;
+void rootSummary;
+void argumentSummary;
+void optionSummary;

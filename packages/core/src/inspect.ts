@@ -1,4 +1,5 @@
 import type { ArgumentSlot, BuiltCommand } from './command.js';
+import { isPlainObject } from './facts.js';
 import type { BuiltGlobals } from './globals.js';
 import type { compileOptions } from './options.js';
 import type { ArgumentConfig, OptionConfig } from './types.js';
@@ -8,6 +9,7 @@ import { validatesOmission } from './validation.js';
 /** One declared argument. `default` wraps the declared value, so an explicit `undefined` shows. */
 interface ArgumentNode {
   readonly name: string;
+  readonly description: string | undefined;
   readonly required: boolean;
   readonly variadic: boolean;
   readonly validated: boolean;
@@ -20,6 +22,7 @@ type OptionNode =
   | {
       readonly type: 'string';
       readonly name: string;
+      readonly description: string | undefined;
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
@@ -31,6 +34,7 @@ type OptionNode =
   | {
       readonly type: 'boolean';
       readonly name: string;
+      readonly description: string | undefined;
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
@@ -40,21 +44,28 @@ type OptionNode =
 /**
  * One Command in the graph. `name` is `null` for the root, and `path` is its route from it.
  * `aliases` holds the hidden aliases in declaration order, so a Command appears once, under its
- * canonical name, and `path` never holds an alias.
+ * canonical name, and `path` never holds an alias. The root reports the Application's description,
+ * so a projection that walks nodes never special-cases it.
  */
 interface CommandNode {
   readonly name: string | null;
   readonly aliases: readonly string[];
   readonly path: readonly string[];
+  readonly description: string | undefined;
   readonly hasAction: boolean;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
   readonly children: readonly CommandNode[];
 }
 
-/** One built graph as plain data. The globals appear once here and in no `CommandNode`. */
+/**
+ * One built graph as plain data. The globals appear once here and in no `CommandNode`. `version`
+ * and `description` are the Application's own core facts, and `undefined` where it declares none.
+ */
 interface CommandGraph {
   readonly name: string;
+  readonly version: string | undefined;
+  readonly description: string | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
 }
@@ -79,15 +90,6 @@ function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Sp
     }
   }
   return spellings;
-}
-
-/** A structural value core can copy faithfully. Anything else is a library object it leaves alone. */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object') {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -117,9 +119,18 @@ function optionNode(input: OptionInput, table: ReturnType<typeof compileOptions>
   const { long, negative, short } = spellingsOf(table, name);
   const node: OptionNode =
     config.type === 'boolean'
-      ? { long, name, negative, polarity: config.polarity ?? 'positive', short, type: 'boolean' }
+      ? {
+          description: config.description,
+          long,
+          name,
+          negative,
+          polarity: config.polarity ?? 'positive',
+          short,
+          type: 'boolean',
+        }
       : {
           default: declaredDefault(config),
+          description: config.description,
           long,
           // The parser reads the same test, so a collection reports as one here and there.
           multiple: config.multiple === true,
@@ -138,6 +149,7 @@ function argumentNode(slot: ArgumentSlot): ArgumentNode {
   const { config, name } = slot.input;
   const node: ArgumentNode = {
     default: declaredDefault(config),
+    description: config.description,
     name,
     required: slot.required,
     validateOmitted: validatesOmission(slot.input),
@@ -156,7 +168,15 @@ function optionNodes(
   );
 }
 
-function commandNode(command: BuiltCommand, path: readonly string[]): CommandNode {
+/**
+ * One Command as frozen plain data. A child reports the description its own declaration carries,
+ * and the root reports the Application's, which is why the caller supplies that one.
+ */
+function commandNode(
+  command: BuiltCommand,
+  path: readonly string[],
+  description: string | undefined = command.description,
+): CommandNode {
   const node: CommandNode = {
     aliases: Object.freeze([...command.aliases]),
     arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot))),
@@ -165,6 +185,7 @@ function commandNode(command: BuiltCommand, path: readonly string[]): CommandNod
         commandNode(child, Object.freeze([...path, name])),
       ),
     ),
+    description,
     hasAction: command.dispatch !== undefined,
     name: command.name,
     options: optionNodes(command.inputs, command.options),
@@ -177,11 +198,14 @@ function commandNode(command: BuiltCommand, path: readonly string[]): CommandNod
 function inspectGraph(
   name: string,
   graph: { globals: BuiltGlobals; root: BuiltCommand },
+  facts: { description: string | undefined; version: string | undefined },
 ): CommandGraph {
   const inspected: CommandGraph = {
+    description: facts.description,
     globals: optionNodes(graph.globals.inputs, graph.globals.options),
     name,
-    root: commandNode(graph.root, Object.freeze([])),
+    root: commandNode(graph.root, Object.freeze([]), facts.description),
+    version: facts.version,
   };
   return Object.freeze(inspected);
 }

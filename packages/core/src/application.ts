@@ -180,11 +180,11 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    checkOptions(this.#options);
+    const facts = checkOptions(this.#options);
     buildFailures(this.#failures);
     const graph = buildGraph(this.#root);
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
-    return inspectGraph(this.#name, graph);
+    return inspectGraph(this.#name, graph, facts);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
