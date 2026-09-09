@@ -6,7 +6,7 @@ import {
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
-import { isPlainObject } from './facts.js';
+import { checkDescription, isPlainObject } from './facts.js';
 import type { BuiltGlobals, GlobalOptions } from './globals.js';
 import { bindGlobals, buildGlobals, isGlobalOptions } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
@@ -68,6 +68,7 @@ export interface BuiltCommand {
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
+  description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
   inputs: readonly InputDeclaration[];
   name: string | null;
@@ -145,7 +146,7 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
  * It answers before every other rule, because a Command that lost its globals this way would
  * otherwise report the mismatch with its Application instead of the slot that caused it.
  */
-function checkCommandOptions(name: string | null, options: unknown): void {
+function checkCommandOptions(name: string | null, options: unknown): string | undefined {
   if (isGlobalOptions(options)) {
     throw new DeclarationError(
       `${commandSentence(name)} takes an options object. Supply { globals } instead of a positional GlobalOptions value.`,
@@ -156,6 +157,10 @@ function checkCommandOptions(name: string | null, options: unknown): void {
       `${commandSentence(name)} options must be an object. Supply { globals }.`,
     );
   }
+  return checkDescription(
+    commandSentence(name),
+    isPlainObject(options) ? options.description : undefined,
+  );
 }
 
 /** One name rule for every declared name in the graph, so a child and an argument read alike. */
@@ -543,7 +548,14 @@ export function buildCommand<Args, Options, Globals>(
   const { actions, name } = state;
   const { globals } = context;
   const subject = commandSubject(name);
-  checkCommandOptions(name, state.options);
+  const description = checkCommandOptions(name, state.options);
+  // Each declaration's own facts, in authoring order, before the rules that pair declarations.
+  for (const input of state.inputs) {
+    checkDescription(
+      `${commandSentence(name)} ${input.kind} "${input.name}"`,
+      input.config.description,
+    );
+  }
   if (state.globals !== globals.source) {
     throw new DeclarationError(
       `${commandSentence(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
@@ -587,6 +599,7 @@ export function buildCommand<Args, Options, Globals>(
     aliases,
     arguments: slots,
     children,
+    description,
     dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,

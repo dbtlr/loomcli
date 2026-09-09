@@ -1,4 +1,5 @@
 import { DeclarationError } from './errors.js';
+import { checkDescription } from './facts.js';
 import { compileOptions } from './options.js';
 import type {
   DefaultConstraint,
@@ -34,6 +35,10 @@ interface GlobalsNode {
 const nodes = new WeakMap<object, GlobalsNode>();
 
 function compileTable(inputs: readonly InputDeclaration[], source: unknown): BuiltGlobals {
+  // A global option belongs to the application, not to one Command, so its facts read that way.
+  for (const input of inputs) {
+    checkDescription(`Global option "${input.name}"`, input.config.description);
+  }
   return {
     inputs,
     names: new Set(inputs.map((input) => input.name)),

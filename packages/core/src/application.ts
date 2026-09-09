@@ -27,7 +27,7 @@ import {
   toFailure,
 } from './errors.js';
 import type { FailureRegistry, FailureRenderer } from './errors.js';
-import { isPlainObject } from './facts.js';
+import { checkDescription, checkVersion, isPlainObject } from './facts.js';
 import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
@@ -71,6 +71,8 @@ const noRegistrations: FailureRegistry = new Map();
 export interface ApplicationOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   failures?: readonly FailureRenderer[];
+  description?: string;
+  version?: string;
 }
 
 /**
@@ -284,12 +286,19 @@ interface ApplicationConstructor {
   ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
+/** The core facts one Application declares, read once per build and reported by `inspect()`. */
+interface ApplicationFacts {
+  description: string | undefined;
+  version: string | undefined;
+}
+
 /**
  * The second argument, read where it is supplied. The retired positional form declares its globals
  * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
- * operator, not the author, meets the consequence as an unknown-option error.
+ * operator, not the author, meets the consequence as an unknown-option error. The slot's own shape
+ * settles first, because the facts it carries are read out of it.
  */
-function checkOptions(options: unknown): void {
+function checkOptions(options: unknown): ApplicationFacts {
   if (isGlobalOptions(options)) {
     throw new DeclarationError(
       'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
@@ -300,6 +309,11 @@ function checkOptions(options: unknown): void {
       'The Application options must be an object. Supply { globals, failures }.',
     );
   }
+  const supplied = isPlainObject(options) ? options : {};
+  return {
+    description: checkDescription('The Application', supplied.description),
+    version: checkVersion(supplied.version),
+  };
 }
 
 /**
@@ -311,8 +325,8 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
   constructor(name: string, options?: ApplicationOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
     // `globals` and `failures` of some kind, and `checkOptions` reports it at build instead.
-    // The root's own slot stays empty: the Application checks the slot it was handed, and its
-    // Facts name the Application rather than the root Command.
+    // The root's own slot stays empty, because the Application checks the slot it was handed.
+    // Its diagnostics name the Application rather than the root Command.
     super(name, freshState(null, options?.globals, undefined), {
       failures: options?.failures ?? [],
       options,
