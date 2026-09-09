@@ -1,26 +1,23 @@
 import { spawnSync } from 'node:child_process';
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import {
+  commit,
+  git,
+  put,
+  removeRoots,
+  repository as fixtureRepository,
+  temporaryRoot,
+} from './fixture.js';
 
 const cli = new URL('../dist/main.js', import.meta.url);
-const roots: string[] = [];
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-changelog-')));
-  roots.push(root);
+  const root = temporaryRoot('loom-changelog-');
   mkdirSync(join(root, '.changes'));
   writeFileSync(join(root, '.changes/README.md'), '# Guide\n');
   return root;
@@ -29,9 +26,7 @@ function run(root: string, ...args: string[]) {
   return invoke(cli, ['changelog', ...args], { cwd: root });
 }
 afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { force: true, recursive: true });
-  }
+  removeRoots();
 });
 
 test('check accepts nested Markdown and ignores only the directory guide', () => {
@@ -100,58 +95,21 @@ test.each([
   expect(readFileSync(join(root, '.changes', name), 'utf8')).toBe(body);
 });
 
-function git(root: string, args: string[], date = '2026-01-01T12:00:00Z') {
-  const result = spawnSync('git', args, {
-    cwd: root,
-    encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr);
-  }
-  return result.stdout.trim();
-}
-function put(root: string, path: string, body: string) {
-  const file = join(root, path);
-  mkdirSync(join(file, '..'), { recursive: true });
-  writeFileSync(file, body);
-}
-function commit(root: string, date?: string) {
-  git(root, ['add', '.']);
-  git(
-    root,
-    ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'fixture'],
-    date,
-  );
-}
 function repository(version = '0.0.0', { tag = true } = {}) {
-  const root = fixture();
-  git(root, ['init', '-q']);
-  git(root, ['config', 'core.autocrlf', 'false']);
-  put(root, '.gitignore', 'node_modules/\n');
-  put(root, 'package.json', '{"name":"fixture","private":true,"version":"9.0.0"}\n');
-  put(root, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n  - examples/*\n');
-  put(
-    root,
-    'packages/core/package.json',
-    `${JSON.stringify({ name: '@sample/core', version }, null, 2)}\n`,
-  );
-  put(root, 'examples/demo/package.json', '{"name":"demo","private":true,"version":"7.0.0"}\n');
-  put(
-    root,
-    'packages/private/package.json',
-    '{"name":"private","private":true,"version":"5.0.0"}\n',
-  );
-  put(
-    root,
-    'CHANGELOG.md',
-    '---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n',
-  );
-  commit(root);
-  if (tag && version !== '0.0.0') {
-    git(root, ['tag', `v${version}`]);
-  }
-  return root;
+  return fixtureRepository({
+    files: {
+      '.changes/README.md': '# Guide\n',
+      '.gitignore': 'node_modules/\n',
+      'CHANGELOG.md': '---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n',
+      'examples/demo/package.json': '{"name":"demo","private":true,"version":"7.0.0"}\n',
+      'package.json': '{"name":"fixture","private":true,"version":"9.0.0"}\n',
+      'packages/core/package.json': `${JSON.stringify({ name: '@sample/core', version }, null, 2)}\n`,
+      'packages/private/package.json': '{"name":"private","private":true,"version":"5.0.0"}\n',
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n  - examples/*\n',
+    },
+    prefix: 'loom-changelog-',
+    tag: tag && version !== '0.0.0' ? `v${version}` : undefined,
+  }).root;
 }
 
 // A release cut sets one synchronized version across every participating manifest.
