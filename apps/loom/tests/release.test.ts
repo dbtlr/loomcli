@@ -13,15 +13,18 @@ import type { PackageState } from './services.js';
 const cli = new URL('../dist/main.js', import.meta.url);
 const owner = 'dbtlr/loomcli';
 const library = '@sample/core';
+const extraLibrary = '@sample/extra';
 const notes = '### Changes\n\n- Fix output.';
+const asset = 'sample-core-0.2.0.tgz';
+const elsewhere = '1111111111111111111111111111111111111111';
 
 afterEach(() => {
   stopServices();
   removeRoots();
 });
 
-function manifest(version: string) {
-  return `${JSON.stringify({ name: library, version }, null, 2)}\n`;
+function manifest(version: string, name = library) {
+  return `${JSON.stringify({ name, version }, null, 2)}\n`;
 }
 
 function section(version: string, body: string) {
@@ -67,12 +70,17 @@ const planSchema = z.object({
   head: z.string(),
   libraries: z.array(z.object({ directory: z.string(), name: z.string(), published: z.boolean() })),
   notes: z.string(),
+  provenanceCommit: z.string().nullable(),
   publish: z.boolean(),
   record: z.boolean(),
-  release: z.object({ id: z.number().nullable(), present: z.boolean() }),
+  release: z.object({ present: z.boolean() }),
   tag: z.object({ commit: z.string().nullable(), present: z.boolean() }),
   version: z.string(),
 });
+
+function uploaded(name = asset) {
+  return { id: 11, name, size: 40, state: 'uploaded' };
+}
 
 interface Endpoints {
   githubApi: string;
@@ -104,11 +112,11 @@ function plan(root: string, endpoints: Endpoints, ...args: string[]) {
   );
 }
 
-test('a version on the registry, the tag, and the Release leaves nothing to do', async () => {
+test('a version on the registry, the tag, and a complete Release leaves nothing to do', async () => {
   const { cut, root } = releaseRepository();
   const endpoints = await startServices({
-    packages: { [library]: { published: true } },
-    release: { assets: [], id: 900 },
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    release: { assets: [uploaded()], id: 900 },
     repository: owner,
     tag: { annotated: true, commit: cut },
     version: '0.2.0',
@@ -120,13 +128,59 @@ test('a version on the registry, the tag, and the Release leaves nothing to do',
     head: cut,
     libraries: [{ directory: 'packages/core', name: library, published: true }],
     notes,
+    provenanceCommit: cut,
     publish: false,
     record: false,
-    release: { id: 900, present: true },
+    release: { present: true },
     tag: { commit: cut, present: true },
     version: '0.2.0',
   });
   expect(result.stdout).toContain('Publish: no. Record: no.');
+});
+
+test.each([
+  ['no assets', []],
+  ['an empty expected asset', [{ id: 11, name: asset, size: 0, state: 'uploaded' }]],
+  ['an unfinished expected asset', [{ id: 11, name: asset, size: 40, state: 'starter' }]],
+])('a Release carrying %s is incomplete and plans recording', async (_label, assets) => {
+  const { cut, root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    release: { assets, id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: cut },
+    version: '0.2.0',
+  });
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({ publish: false, record: true, release: { present: true } });
+});
+
+test('a Release carrying only foreign assets was recorded elsewhere and is complete', async () => {
+  const { cut, root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    release: { assets: [uploaded('sample-core-0.2.0.zip')], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: cut },
+    version: '0.2.0',
+  });
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({ record: false });
+});
+
+test('a published version whose tag names another commit fails', async () => {
+  const { cut, root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    release: { assets: [uploaded()], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: elsewhere },
+    version: '0.2.0',
+  });
+  const result = plan(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(elsewhere);
+  expect(result.stderr).toContain(cut);
 });
 
 test('a version absent from the registry plans publication and recording', async () => {
@@ -142,7 +196,7 @@ test('a version absent from the registry plans publication and recording', async
     libraries: [{ name: library, published: false }],
     publish: true,
     record: true,
-    release: { id: null, present: false },
+    release: { present: false },
     tag: { commit: null, present: false },
   });
 });
@@ -161,7 +215,7 @@ test('a published version without a tag plans recording alone', async () => {
 test('a published and tagged version without a Release plans recording', async () => {
   const { cut, root } = releaseRepository();
   const endpoints = await startServices({
-    packages: { [library]: { published: true } },
+    packages: { [library]: { provenanceCommit: cut, published: true } },
     repository: owner,
     tag: { annotated: false, commit: cut },
     version: '0.2.0',
@@ -318,6 +372,27 @@ test('a version set on a merge commit resolves that merge as the cut commit', as
   expect(planned(root)).toMatchObject({ cutCommit: merge, head: merge, publish: true });
 });
 
+test('one published and one unpublished library still plans publication', async () => {
+  const root = baseRepository();
+  put(root, 'packages/extra/package.json', manifest('0.1.0', extraLibrary));
+  commit(root);
+  put(root, 'packages/extra/package.json', manifest('0.2.0', extraLibrary));
+  cutRelease(root, '0.2.0');
+  const endpoints = await startServices({
+    packages: { [library]: { published: true } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({
+    libraries: [
+      { name: library, published: true },
+      { name: extraLibrary, published: false },
+    ],
+    publish: true,
+  });
+});
+
 test('a shallow checkout refuses to plan', async () => {
   const { root } = releaseRepository();
   const shallow = join(temporaryRoot('loom-shallow-'), 'clone');
@@ -336,27 +411,42 @@ test('an explicit head plans the version that commit carries', async () => {
   expect(planned(root)).toMatchObject({ cutCommit: cut, head: cut, version: '0.2.0' });
 });
 
-const source = 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00';
-const elsewhere = '1111111111111111111111111111111111111111';
 const tarball = 'core tarball bytes';
-const asset = 'sample-core-0.2.0.tgz';
 
-function writePlan(root: string) {
+// Recording checks the provenance commit against the checkout, so its fixture is a repository.
+function recordRepository() {
+  return repository({ files: { 'README.md': '# Fixture\n' }, prefix: 'loom-record-' });
+}
+
+const coreLibrary = { directory: 'packages/core', name: library, published: true };
+
+function writePlan(root: string, head: string, libraries = [coreLibrary]) {
   writeFileSync(
     join(root, 'plan.json'),
     JSON.stringify({
-      cutCommit: source,
-      head: source,
-      libraries: [{ directory: 'packages/core', name: library, published: false }],
+      cutCommit: head,
+      head,
+      libraries,
       notes,
+      provenanceCommit: head,
       publish: true,
       record: true,
-      release: { id: null, present: false },
+      release: { present: false },
       tag: { commit: null, present: false },
       version: '0.2.0',
     }),
   );
-  return root;
+}
+
+// A checkout whose own commit is the one the registry attests for the published library.
+function recordFixture(overrides: Partial<PackageState> = {}) {
+  const { base, root } = recordRepository();
+  writePlan(root, base);
+  return {
+    packages: { [library]: { provenanceCommit: base, published: true, tarball, ...overrides } },
+    published: base,
+    root,
+  };
 }
 
 function record(
@@ -384,23 +474,16 @@ function record(
   );
 }
 
-function publishedPackage(overrides: Partial<PackageState> = {}) {
-  return {
-    [library]: { provenanceCommit: source, published: true, tarball, ...overrides },
-  };
-}
-
 test('an absent tag and Release are created at the provenance commit with the notes and the asset', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
-  const endpoints = await startServices({
-    packages: publishedPackage(),
-    repository: owner,
-    version: '0.2.0',
-  });
+  const { packages, published, root } = recordFixture();
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
   expect(record(root, endpoints)).toMatchObject({ status: 0, stderr: '' });
   await expect(endpoints.writes()).resolves.toMatchObject([
-    { body: { message: 'v0.2.0', object: source, tag: 'v0.2.0', type: 'commit' }, method: 'POST' },
-    { body: { ref: 'refs/tags/v0.2.0', sha: `tagobject-${source}` }, method: 'POST' },
+    {
+      body: { message: 'v0.2.0', object: published, tag: 'v0.2.0', type: 'commit' },
+      method: 'POST',
+    },
+    { body: { ref: 'refs/tags/v0.2.0', sha: `tagobject-${published}` }, method: 'POST' },
     {
       body: { body: notes, draft: false, name: 'v0.2.0', prerelease: false, tag_name: 'v0.2.0' },
       method: 'POST',
@@ -409,12 +492,28 @@ test('an absent tag and Release are created at the provenance commit with the no
   ]);
 });
 
-test('a tag already at the provenance commit is reused without a tag write', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+test('a head past the published commit tags the commit the run published from', async () => {
+  const { base, root } = recordRepository();
+  put(root, 'docs/guide.md', '# Guide\n');
+  const head = commit(root);
+  writePlan(root, base);
   const endpoints = await startServices({
-    packages: publishedPackage(),
+    packages: { [library]: { provenanceCommit: base, published: true, tarball } },
     repository: owner,
-    tag: { annotated: true, commit: source },
+    version: '0.2.0',
+  });
+  expect(record(root, endpoints).status).toBe(0);
+  const writes = await endpoints.writes();
+  expect(writes[0]).toMatchObject({ body: { object: base } });
+  expect(JSON.stringify(writes)).not.toContain(head);
+});
+
+test('a tag already at the provenance commit is reused without a tag write', async () => {
+  const { packages, published, root } = recordFixture();
+  const endpoints = await startServices({
+    packages,
+    repository: owner,
+    tag: { annotated: true, commit: published },
     version: '0.2.0',
   });
   expect(record(root, endpoints).status).toBe(0);
@@ -424,9 +523,9 @@ test('a tag already at the provenance commit is reused without a tag write', asy
 });
 
 test('a tag at another commit fails before any write', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+  const { packages, published, root } = recordFixture();
   const endpoints = await startServices({
-    packages: publishedPackage(),
+    packages,
     repository: owner,
     tag: { annotated: true, commit: elsewhere },
     version: '0.2.0',
@@ -434,17 +533,20 @@ test('a tag at another commit fails before any write', async () => {
   const result = record(root, endpoints);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(elsewhere);
-  expect(result.stderr).toContain(source);
+  expect(result.stderr).toContain(published);
   await expect(endpoints.writes()).resolves.toEqual([]);
 });
 
-test('an empty placeholder asset is deleted and uploaded again', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+test.each([
+  ['an empty', 0, 'uploaded'],
+  ['an unfinished', 40, 'starter'],
+])('%s asset is deleted and uploaded again', async (_label, size, state) => {
+  const { packages, published, root } = recordFixture();
   const endpoints = await startServices({
-    packages: publishedPackage(),
-    release: { assets: [{ id: 11, name: asset, size: 0 }], id: 900 },
+    packages,
+    release: { assets: [{ id: 11, name: asset, size, state }], id: 900 },
     repository: owner,
-    tag: { annotated: true, commit: source },
+    tag: { annotated: true, commit: published },
     version: '0.2.0',
   });
   expect(record(root, endpoints).status).toBe(0);
@@ -455,12 +557,12 @@ test('an empty placeholder asset is deleted and uploaded again', async () => {
 });
 
 test('an uploaded asset is kept and never replaced', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+  const { packages, published, root } = recordFixture();
   const endpoints = await startServices({
-    packages: publishedPackage(),
+    packages,
     release: { assets: [{ id: 11, name: asset, size: 40 }], id: 900 },
     repository: owner,
-    tag: { annotated: true, commit: source },
+    tag: { annotated: true, commit: published },
     version: '0.2.0',
   });
   const result = record(root, endpoints);
@@ -469,25 +571,48 @@ test('an uploaded asset is kept and never replaced', async () => {
   await expect(endpoints.writes()).resolves.toEqual([]);
 });
 
-test('a registry that answers 404 twice is read again until the version appears', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+test('a Release whose upload endpoint names another origin fails before any upload', async () => {
+  const { packages, published, root } = recordFixture();
   const endpoints = await startServices({
-    packages: publishedPackage({ misses: 2 }),
+    packages,
+    release: { assets: [], id: 900, uploadHost: 'uploads.example.invalid' },
+    repository: owner,
+    tag: { annotated: true, commit: published },
+    version: '0.2.0',
+  });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('uploads.example.invalid');
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
+test('a registry that answers 404 twice is read again until the version appears', async () => {
+  const { packages, published, root } = recordFixture({ misses: 2 });
+  const endpoints = await startServices({
+    packages,
     release: { assets: [{ id: 11, name: asset, size: 40 }], id: 900 },
     repository: owner,
-    tag: { annotated: true, commit: source },
+    tag: { annotated: true, commit: published },
+    version: '0.2.0',
+  });
+  expect(record(root, endpoints).status).toBe(0);
+});
+
+test('a tarball endpoint that answers 503 twice is read again until it serves the bytes', async () => {
+  const { packages, published, root } = recordFixture({ tarballMisses: 2 });
+  const endpoints = await startServices({
+    packages,
+    release: { assets: [{ id: 11, name: asset, size: 40 }], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: published },
     version: '0.2.0',
   });
   expect(record(root, endpoints).status).toBe(0);
 });
 
 test('a tarball that does not match its integrity fails before any write', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
-  const endpoints = await startServices({
-    packages: publishedPackage({ integrity: 'sha512-Ym9ndXM=' }),
-    repository: owner,
-    version: '0.2.0',
-  });
+  const { packages, root } = recordFixture({ integrity: 'sha512-Ym9ndXM=' });
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
   const result = record(root, endpoints);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('sha512-Ym9ndXM=');
@@ -495,25 +620,66 @@ test('a tarball that does not match its integrity fails before any write', async
 });
 
 test('provenance that names another repository fails before any write', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
-  const endpoints = await startServices({
-    packages: publishedPackage({ provenanceRepository: 'other/project' }),
-    repository: owner,
-    version: '0.2.0',
-  });
+  const { packages, root } = recordFixture({ provenanceRepository: 'other/project' });
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
   const result = record(root, endpoints);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('other/project');
   await expect(endpoints.writes()).resolves.toEqual([]);
 });
 
-test('a missing token fails before any read', async () => {
-  const root = writePlan(temporaryRoot('loom-record-'));
+test('provenance that names another branch fails before any write', async () => {
+  const { packages, root } = recordFixture({ provenanceRef: 'refs/heads/other' });
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('refs/heads/other');
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
+test('provenance that attests another package fails before any write', async () => {
+  const subject = 'pkg:npm/%40other/core@0.2.0';
+  const { packages, root } = recordFixture({ provenanceSubject: subject });
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(subject);
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
+test('a provenance commit the checkout does not carry fails before any write', async () => {
+  const { packages, root } = recordFixture({ provenanceCommit: elsewhere });
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(elsewhere);
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
+test('two libraries published from different commits fail before any write', async () => {
+  const { base, root } = recordRepository();
+  writePlan(root, base, [
+    coreLibrary,
+    { directory: 'packages/extra', name: extraLibrary, published: true },
+  ]);
   const endpoints = await startServices({
-    packages: publishedPackage(),
+    packages: {
+      [library]: { provenanceCommit: base, published: true, tarball },
+      [extraLibrary]: { provenanceCommit: elsewhere, published: true, tarball: 'extra bytes' },
+    },
     repository: owner,
     version: '0.2.0',
   });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(elsewhere);
+  expect(result.stderr).toContain(base);
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
+test('a missing token fails before any read', async () => {
+  const { packages, root } = recordFixture();
+  const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
   const result = record(root, endpoints, { token: undefined });
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('GH_TOKEN');

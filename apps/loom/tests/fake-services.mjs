@@ -64,13 +64,17 @@ function provenance(entry, name) {
         resolvedDependencies: [
           {
             digest: { gitCommit: entry.provenanceCommit },
-            uri: `git+https://github.com/${entry.provenanceRepository ?? state.repository}@refs/heads/main`,
+            uri: `git+https://github.com/${entry.provenanceRepository ?? state.repository}@${entry.provenanceRef ?? 'refs/heads/main'}`,
           },
         ],
       },
     },
     predicateType: 'https://slsa.dev/provenance/v1',
-    subject: [{ name: `pkg:npm/${name}@${state.version}` }],
+    subject: [
+      {
+        name: entry.provenanceSubject ?? `pkg:npm/${name.replace('@', '%40')}@${state.version}`,
+      },
+    ],
   };
   return {
     attestations: [
@@ -117,6 +121,11 @@ function registry(request, response, path, host) {
       missing(response);
       return;
     }
+    if (found[1].tarballMisses > 0) {
+      found[1].tarballMisses -= 1;
+      send(response, 503, { message: 'Service Unavailable' });
+      return;
+    }
     response.writeHead(200, { 'content-type': 'application/gzip' });
     response.end(tarballBytes(found[1]));
     return;
@@ -135,12 +144,17 @@ function registry(request, response, path, host) {
   send(response, 200, packument(entry, name, host));
 }
 
+// GitHub reports the upload state of every asset, and an asset the fixture leaves unstated finished its upload.
+function releaseAssets() {
+  return state.release.assets.map((asset) => ({ state: 'uploaded', ...asset }));
+}
+
 function releaseBody(host) {
   return {
-    assets: state.release.assets,
+    assets: releaseAssets(),
     id: state.release.id,
     tag_name: `v${state.version}`,
-    upload_url: `http://${host}/github/uploads/repos/${state.repository}/releases/${state.release.id}/assets{?name,label}`,
+    upload_url: `http://${state.release.uploadHost ?? host}/github/uploads/repos/${state.repository}/releases/${state.release.id}/assets{?name,label}`,
   };
 }
 
@@ -194,7 +208,7 @@ function github(request, response, path, host, body) {
     return;
   }
   if (request.method === 'GET' && path === `${repository}/releases/${state.release?.id}/assets`) {
-    send(response, 200, state.release.assets);
+    send(response, 200, releaseAssets());
     return;
   }
   if (request.method === 'DELETE' && path.startsWith(`${repository}/releases/assets/`)) {
@@ -217,7 +231,12 @@ function upload(request, response, url, body) {
     path: url.pathname,
     size: body.length,
   });
-  const asset = { id: 500 + state.release.assets.length, name, size: body.length };
+  const asset = {
+    id: 500 + state.release.assets.length,
+    name,
+    size: body.length,
+    state: 'uploaded',
+  };
   state.release.assets = [...state.release.assets, asset];
   send(response, 201, asset);
 }

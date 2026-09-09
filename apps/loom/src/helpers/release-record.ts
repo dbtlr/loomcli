@@ -1,6 +1,7 @@
 import {
   createRelease,
   createTag,
+  isUploadedAsset,
   readAssets,
   readRelease,
   readTagCommit,
@@ -11,6 +12,52 @@ import { readBytes, until } from './http.js';
 import type { RetryPolicy } from './http.js';
 import { readProvenance, readPublished, tarballName, verifyIntegrity } from './registry.js';
 import type { ReleasePlan } from './release-plan.js';
+import { git } from './repository.js';
+
+// The bytes, the build commit, and the asset name of one published library.
+async function readUpload(
+  request: RecordRequest,
+  library: ReleasePlan['libraries'][number],
+  lines: string[],
+) {
+  const { plan, retry } = request;
+  const name = library.name;
+  const subject = `${name}@${plan.version}`;
+  const published = await until(retry, `${subject} on the registry`, async () =>
+    readPublished(request.registry, name, plan.version),
+  );
+  lines.push(`Read ${subject} from the registry.`);
+  const provenance = await until(retry, `the provenance of ${subject}`, async () =>
+    readProvenance(request.registry, name, plan.version),
+  );
+  const source = `git+https://github.com/${request.repository}@refs/heads/main`;
+  if (provenance.uri !== source) {
+    throw new Error(
+      `${subject}: its provenance names ${provenance.uri}, which is not a build of ${source}.`,
+    );
+  }
+  const bytes = await until(retry, `the ${subject} tarball`, async () =>
+    readBytes(published.tarball),
+  );
+  verifyIntegrity(subject, bytes, published.integrity);
+  lines.push(`Verified the ${subject} tarball against ${published.integrity}.`);
+  return { bytes, commit: provenance.commit, name: tarballName(name, plan.version), subject };
+}
+
+// Provenance attests a commit of this repository, and the checkout proves it is one this branch carries.
+function requireCommitInCheckout(root: string, commit: string, subject: string) {
+  const head = git(root, ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}']).trim();
+  if (head === commit) {
+    return;
+  }
+  try {
+    git(root, ['merge-base', '--is-ancestor', commit, head]);
+  } catch {
+    throw new Error(
+      `${subject} was published from ${commit}, which is neither the head ${head} of the checkout nor an ancestor of it.`,
+    );
+  }
+}
 
 export interface RecordRequest {
   githubApi: string;
@@ -18,6 +65,7 @@ export interface RecordRequest {
   registry: string;
   repository: string;
   retry: RetryPolicy;
+  root: string;
   token: string;
 }
 
@@ -28,40 +76,20 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
   const version = plan.version;
   const tag = `v${version}`;
   const target = { api: request.githubApi, repository: request.repository, token: request.token };
-  const source = `git+https://github.com/${request.repository}@`;
   const lines: string[] = [];
-  const uploads = [];
-  for (const library of plan.libraries) {
-    const name = library.name;
-    const subject = `${name}@${version}`;
-    const published = await until(retry, `${subject} on the registry`, async () =>
-      readPublished(request.registry, name, version),
-    );
-    lines.push(`Read ${subject} from the registry.`);
-    const provenance = await until(retry, `the provenance of ${subject}`, async () =>
-      readProvenance(request.registry, name, version),
-    );
-    if (!provenance.uri.startsWith(source)) {
+  const first = await readUpload(request, plan.libraries[0], lines);
+  const uploads = [first];
+  for (const library of plan.libraries.slice(1)) {
+    const upload = await readUpload(request, library, lines);
+    if (upload.commit !== first.commit) {
       throw new Error(
-        `${subject}: its provenance names ${provenance.uri}, which is not a build of ${request.repository}.`,
+        `${upload.subject} was published from ${upload.commit}, but ${first.subject} was published from ${first.commit}.`,
       );
     }
-    const bytes = await readBytes(published.tarball);
-    verifyIntegrity(subject, bytes, published.integrity);
-    lines.push(`Verified the ${subject} tarball against ${published.integrity}.`);
-    uploads.push({ bytes, commit: provenance.commit, name: tarballName(name, version), subject });
-  }
-  const [first, ...rest] = uploads;
-  if (first === undefined) {
-    throw new Error('The plan names no participating libraries.');
-  }
-  const disagreeing = rest.find((upload) => upload.commit !== first.commit);
-  if (disagreeing !== undefined) {
-    throw new Error(
-      `${disagreeing.subject} was published from ${disagreeing.commit}, but ${first.subject} was published from ${first.commit}.`,
-    );
+    uploads.push(upload);
   }
   const commit = first.commit;
+  requireCommitInCheckout(request.root, commit, tag);
   const tagged = await readTagCommit(target, tag);
   if (tagged === undefined) {
     await createTag(target, tag, commit);
@@ -84,17 +112,17 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
   for (const upload of uploads) {
     const assets = await readAssets(target, release.id);
     const present = assets.find((asset) => asset.name === upload.name);
-    if (present !== undefined && present.size > 0) {
+    if (present !== undefined && isUploadedAsset(present)) {
       lines.push(`Kept the ${upload.name} asset.`);
     } else {
       if (present !== undefined) {
         await removeAsset(target, present.id);
-        lines.push(`Deleted the empty ${upload.name} asset.`);
+        lines.push(`Deleted the unfinished ${upload.name} asset.`);
       }
       await uploadAsset(target, release.uploadUrl, upload.name, upload.bytes);
       await until(retry, `the ${upload.name} asset`, async () => {
         const uploaded = await readAssets(target, release.id);
-        return uploaded.find((asset) => asset.name === upload.name && asset.size > 0);
+        return uploaded.find((asset) => asset.name === upload.name && isUploadedAsset(asset));
       });
       lines.push(`Uploaded the ${upload.name} asset.`);
     }

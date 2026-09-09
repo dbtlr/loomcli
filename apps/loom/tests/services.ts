@@ -51,15 +51,29 @@ export interface PackageState {
   // The number of 404 answers the packument gives before it reports the version.
   misses?: number;
   provenanceCommit?: string;
+  // Overrides the repository the provenance names in its resolved dependency uri.
   provenanceRepository?: string;
+  // Overrides the reference the provenance names in its resolved dependency uri.
+  provenanceRef?: string;
+  // Overrides the subject the provenance statement attests.
+  provenanceSubject?: string;
   published: boolean;
   tarball?: string;
+  // The number of 503 answers the tarball endpoint gives before it serves the bytes.
+  tarballMisses?: number;
 }
 
 export interface ServicesState {
   // A package absent from this map is absent from the registry.
   packages: Record<string, PackageState>;
-  release?: { assets: { id: number; name: string; size: number }[]; id: number } | undefined;
+  release?:
+    | {
+        assets: { id: number; name: string; size: number; state?: string }[];
+        id: number;
+        // Overrides the host of the Release's upload_url, which the uploader checks before it sends the token.
+        uploadHost?: string;
+      }
+    | undefined;
   repository: string;
   tag?: { annotated: boolean; commit: string } | undefined;
   version: string;

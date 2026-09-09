@@ -76,6 +76,7 @@ export const release = new Command('release')
               attempts: options['retry-attempts'],
               delayMs: options['retry-delay-ms'],
             },
+            root: host.cwd,
             token,
           });
         });

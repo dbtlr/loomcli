@@ -27,9 +27,19 @@ const buildDefinitionSchema = z.looseObject({ resolvedDependencies: z.array(depe
 
 const predicateSchema = z.looseObject({ buildDefinition: buildDefinitionSchema });
 
-const provenanceSchema = z.looseObject({ predicate: predicateSchema });
+const subjectSchema = z.looseObject({ name: z.string() });
+
+const provenanceSchema = z.looseObject({
+  predicate: predicateSchema,
+  subject: z.array(subjectSchema),
+});
 
 const provenancePredicateType = 'https://slsa.dev/provenance/v1';
+
+// Npm attests a version under its package URL, whose scope separator is percent-encoded.
+function packageUrl(name: string, version: string) {
+  return `pkg:npm/${name.replace('@', '%40')}@${version}`;
+}
 
 function endpoint(registry: string, path: string) {
   return `${registry.replace(/\/+$/u, '')}/${path}`;
@@ -60,7 +70,15 @@ export async function readProvenance(registry: string, name: string, version: st
   }
   const statement = Buffer.from(attestation.bundle.dsseEnvelope.payload, 'base64').toString('utf8');
   const payload: unknown = JSON.parse(statement);
-  const [source] = provenanceSchema.parse(payload).predicate.buildDefinition.resolvedDependencies;
+  const provenance = provenanceSchema.parse(payload);
+  const purl = packageUrl(name, version);
+  if (!provenance.subject.some((subject) => subject.name === purl)) {
+    const attested = provenance.subject.map((subject) => subject.name).join(', ');
+    throw new Error(
+      `${name}@${version}: its provenance attests ${attested || 'nothing'}, not ${purl}.`,
+    );
+  }
+  const [source] = provenance.predicate.buildDefinition.resolvedDependencies;
   if (source === undefined) {
     throw new Error(`${name}@${version}: its provenance resolves no source repository.`);
   }

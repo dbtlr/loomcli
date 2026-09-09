@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 import { readJson, removeResource, writeBytes, writeJson } from './http.js';
 
+// GitHub serves uploads from its own host, and a self-hosted API serves them from the API host.
+const uploadOrigin = 'https://uploads.github.com';
+
 const objectSchema = z.looseObject({ sha: z.string().min(1), type: z.string() });
 
 const referenceSchema = z.looseObject({ object: objectSchema });
@@ -10,7 +13,12 @@ const targetSchema = z.looseObject({ sha: z.string().min(1) });
 
 const tagObjectSchema = z.looseObject({ object: targetSchema, sha: z.string().min(1) });
 
-const assetSchema = z.looseObject({ id: z.number(), name: z.string(), size: z.number() });
+const assetSchema = z.looseObject({
+  id: z.number(),
+  name: z.string(),
+  size: z.number(),
+  state: z.string(),
+});
 
 const assetsSchema = z.array(assetSchema);
 
@@ -35,6 +43,12 @@ export interface GitHubTarget {
 // Every write needs a token, which the record command requires before it reads anything.
 export interface GitHubWriter extends GitHubTarget {
   token: string;
+}
+
+// An upload finishes when GitHub reports the uploaded state and the bytes it received.
+// A Release asset in any other state is an interrupted upload that recording replaces.
+export function isUploadedAsset(asset: z.output<typeof assetSchema>) {
+  return asset.state === 'uploaded' && asset.size > 0;
 }
 
 // The tag reference names an annotated tag object or the commit itself, and callers want the commit.
@@ -92,12 +106,19 @@ export async function removeAsset(target: GitHubWriter, id: number) {
 }
 
 // The Release publishes its upload endpoint as a URI template whose parameters this call supplies.
+// The endpoint arrives in the Release body, so its origin is checked before the token is sent to it.
 export async function uploadAsset(
   target: GitHubWriter,
   uploadUrl: string,
   name: string,
   bytes: Buffer,
 ) {
+  const origin = new URL(uploadUrl).origin;
+  if (origin !== new URL(target.api).origin && origin !== uploadOrigin) {
+    throw new Error(
+      `The Release publishes its upload endpoint at ${origin}, which is neither ${new URL(target.api).origin} nor ${uploadOrigin}.`,
+    );
+  }
   const endpoint = `${uploadUrl.replace('{?name,label}', '')}?name=${encodeURIComponent(name)}`;
   await writeBytes(endpoint, target.token, bytes, 'application/gzip');
 }

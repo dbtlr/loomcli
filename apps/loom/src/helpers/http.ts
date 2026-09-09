@@ -91,21 +91,31 @@ export async function removeResource(url: string, token: string) {
 }
 
 // The registry and the GitHub API both propagate a write with a delay, so a read after a write waits for it.
+// A failed read is one more way a write has not propagated, so it counts as an attempt and its error survives to the end.
 export async function until<Value>(
   policy: RetryPolicy,
   subject: string,
   read: () => Promise<Value | undefined>,
 ) {
   let delayMs = policy.delayMs;
+  let failure: { error: unknown } | undefined = undefined;
   for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
-    const value = await read();
-    if (value !== undefined) {
-      return value;
+    try {
+      const value = await read();
+      if (value !== undefined) {
+        return value;
+      }
+      failure = undefined;
+    } catch (error) {
+      failure = { error };
     }
     if (attempt < policy.attempts) {
       await sleep(delayMs);
       delayMs = Math.min(delayMs * 2, maximumDelayMs);
     }
+  }
+  if (failure !== undefined) {
+    throw failure.error;
   }
   throw new Error(`${subject} did not appear after ${String(policy.attempts)} attempts.`);
 }

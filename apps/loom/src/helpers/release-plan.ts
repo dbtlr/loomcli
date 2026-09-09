@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
-import { readRelease, readTagCommit } from './github.js';
+import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
 import { locateRelease } from './markdown.js';
 import { materialBaseline } from './material.js';
-import { readPublished } from './registry.js';
+import { readProvenance, readPublished, tarballName } from './registry.js';
 import {
   currentVersion,
   git,
@@ -12,13 +12,15 @@ import {
   requireFullHistory,
 } from './repository.js';
 
+type ReleaseAssets = NonNullable<Awaited<ReturnType<typeof readRelease>>>['assets'];
+
 const librarySchema = z.object({
   directory: z.string().min(1),
   name: z.string().min(1),
   published: z.boolean(),
 });
 
-const releaseFactsSchema = z.object({ id: z.number().nullable(), present: z.boolean() });
+const releaseFactsSchema = z.object({ present: z.boolean() });
 
 const tagFactsSchema = z.object({ commit: z.string().nullable(), present: z.boolean() });
 
@@ -43,10 +45,77 @@ function changelogSection(changelog: string, version: string) {
   return body.slice(start, end).trim();
 }
 
+// A Release is complete once it carries every expected asset as a finished upload.
+// The exception: a Release that carries none of the expected assets but carries others was recorded by another process, and it is left alone.
+function releaseComplete(assets: ReleaseAssets, expected: string[]) {
+  const carriesExpected = expected.some((name) => assets.some((asset) => asset.name === name));
+  if (!carriesExpected && assets.length > 0) {
+    return true;
+  }
+  return expected.every((name) =>
+    assets.some((asset) => asset.name === name && isUploadedAsset(asset)),
+  );
+}
+
 function abandon(version: string, reason: string) {
   return new Error(
     `Version ${version} is absent from the registry and ${reason} Publication attests the head, so ${version} must be abandoned as unpublished and superseded by the next cut.`,
   );
+}
+
+// The registry facts of one participating library at the released version.
+async function describeLibrary(
+  request: PlanRequest,
+  participant: ReturnType<typeof readLibraries>[number],
+  version: string,
+) {
+  const name = participant.manifest.name;
+  const published = await readPublished(request.registry, name, version);
+  return { directory: participant.directory, name, published: published !== undefined };
+}
+
+// Every published library attests the same build commit, and that commit is where the tag belongs.
+async function publishedCommit(
+  request: PlanRequest,
+  libraries: ReleasePlan['libraries'],
+  version: string,
+) {
+  let commit: string | undefined = undefined;
+  for (const library of libraries) {
+    const provenance = await readProvenance(request.registry, library.name, version);
+    if (provenance === undefined) {
+      return undefined;
+    }
+    if (commit !== undefined && provenance.commit !== commit) {
+      throw new Error(
+        `${library.name}@${version} was published from ${provenance.commit}, but an earlier library names ${commit}.`,
+      );
+    }
+    commit = provenance.commit;
+  }
+  return commit;
+}
+
+// A tag anywhere other than the commit the version was published from fails the run, and recording never moves one.
+function requireTagAtPublication(
+  tag: string,
+  tagCommit: string | undefined,
+  provenanceCommit: string | null,
+  version: string,
+) {
+  if (tagCommit === undefined) {
+    return;
+  }
+  if (provenanceCommit === null) {
+    throw new Error(
+      `Tag ${tag} names ${tagCommit}, but the registry reports no provenance for ${version}, so the commit it was published from is unknown.`,
+    );
+  }
+  if (tagCommit !== provenanceCommit) {
+    throw new Error(
+      `Tag ${tag} names ${tagCommit}, but ${version} was published from ${provenanceCommit}; recording never moves a tag.`,
+    );
+  }
 }
 
 // The paths whose bytes can reach a published library build.
@@ -63,8 +132,10 @@ export const sharedBuildInputs = [
 export const planSchema = z.object({
   cutCommit: z.string().min(1),
   head: z.string().min(1),
-  libraries: z.array(librarySchema).min(1),
+  // A release participates with at least one library, and the record command reads the first one.
+  libraries: z.tuple([librarySchema], librarySchema),
   notes: z.string().min(1),
+  provenanceCommit: z.string().min(1).nullable(),
   publish: z.boolean(),
   record: z.boolean(),
   release: releaseFactsSchema,
@@ -96,17 +167,19 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
   const cutCommit = materialBaseline(request.root, participants, version, head);
   const changelog = readRegularFile(request.root, 'CHANGELOG.md', head);
   const notes = changelogSection(changelog, version);
-  const libraries = [];
-  for (const participant of participants) {
-    const name = participant.manifest.name;
-    const published = await readPublished(request.registry, name, version);
-    libraries.push({ directory: participant.directory, name, published: published !== undefined });
+  const [participant, ...others] = participants;
+  const libraries: ReleasePlan['libraries'] = [
+    await describeLibrary(request, participant, version),
+  ];
+  for (const other of others) {
+    libraries.push(await describeLibrary(request, other, version));
   }
   const tag = `v${version}`;
   const target = { api: request.githubApi, repository: request.repository, token: request.token };
   const tagCommit = await readTagCommit(target, tag);
   const release = await readRelease(target, tag);
   const publish = libraries.some((library) => !library.published);
+  let provenanceCommit: string | null = null;
   if (publish) {
     const changed = git(request.root, [
       'diff',
@@ -130,15 +203,23 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
     if (tagCommit !== undefined && tagCommit !== head) {
       throw abandon(version, `tag ${tag} already names ${tagCommit} instead of the head ${head}.`);
     }
+  } else {
+    provenanceCommit = (await publishedCommit(request, libraries, version)) ?? null;
+    requireTagAtPublication(tag, tagCommit, provenanceCommit, version);
   }
+  const expected = libraries.map((library) => tarballName(library.name, version));
   return {
     cutCommit,
     head,
     libraries,
     notes,
+    provenanceCommit,
     publish,
-    record: tagCommit === undefined || release === undefined,
-    release: { id: release?.id ?? null, present: release !== undefined },
+    record:
+      tagCommit === undefined ||
+      release === undefined ||
+      !releaseComplete(release.assets, expected),
+    release: { present: release !== undefined },
     tag: { commit: tagCommit ?? null, present: tagCommit !== undefined },
     version,
   };
