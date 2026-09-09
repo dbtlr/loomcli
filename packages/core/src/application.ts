@@ -1,5 +1,6 @@
 import type { Writable } from 'node:stream';
 
+import { runInvocation } from './chain.js';
 import {
   attachChild,
   buildGraph,
@@ -8,12 +9,12 @@ import {
   declareArgument,
   declareOption,
   freshState,
-  selectCommand,
 } from './command.js';
 import type {
   AfterAction,
   AfterArgument,
   AfterCommand,
+  BuiltGraph,
   Command,
   CommandMethod,
   CommandState,
@@ -23,10 +24,12 @@ import {
   DeclarationError,
   describeFailure,
   InternalError,
+  mergeFailures,
   reasonOf,
   toFailure,
 } from './errors.js';
-import type { FailureRegistry, FailureRenderer } from './errors.js';
+import type { FailureRegistry, FailureRenderer, LoomError } from './errors.js';
+import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkVersion, isPlainObject } from './facts.js';
 import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
@@ -34,6 +37,8 @@ import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { Output, reportPlainly } from './output.js';
+import { buildPlugins, installPlugins, pluginSentence } from './plugin.js';
+import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
 import type {
   Action,
   ArgumentConfig,
@@ -71,6 +76,8 @@ const noRegistrations: FailureRegistry = new Map();
 export interface ApplicationOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   failures?: readonly FailureRenderer[];
+  plugins?: readonly Plugin[];
+  extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
   version?: string;
 }
@@ -90,6 +97,7 @@ class ApplicationBuilder<
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
+  readonly #plugins: readonly Plugin[];
   // The constructor's raw options argument, kept for the slot's own shape rules.
   // The options-slot rules answer at the same point every other authoring fault does:
   // `inspect()` and `run()`.
@@ -100,12 +108,18 @@ class ApplicationBuilder<
   constructor(
     name: string,
     root: CommandState<Args, Options, Globals>,
-    config: { declared: DeclaredFacts; failures: readonly FailureRenderer[]; options?: unknown },
+    config: {
+      declared: DeclaredFacts;
+      failures: readonly FailureRenderer[];
+      options?: unknown;
+      plugins: readonly Plugin[];
+    },
   ) {
     this.#declared = config.declared;
     this.#failures = config.failures;
     this.#name = name;
     this.#options = config.options;
+    this.#plugins = config.plugins;
     this.#root = root;
   }
 
@@ -174,7 +188,36 @@ class ApplicationBuilder<
       declared: this.#declared,
       failures: this.#failures,
       options: this.#options,
+      plugins: this.#plugins,
     });
+  }
+
+  /**
+   * Every rule that reads the declarations alone, in the order `run()` reads them: the options
+   * slot, the installed list, the application's failure registrations, each plugin's declarations,
+   * then the whole Command graph. The registry is published as soon as it is known, so a later
+   * declaration error still reaches the renderers the application registered for it.
+   */
+  private prepare(register: (registry: FailureRegistry) => void): {
+    facts: ApplicationFacts;
+    graph: BuiltGraph;
+    plugins: readonly BuiltPlugin[];
+  } {
+    const facts = checkOptions(this.#options, this.#declared);
+    const installed = installPlugins(this.#plugins);
+    const application = buildFailures(this.#failures);
+    register(application);
+    const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
+    const plugins = buildPlugins(installed, install);
+    register(
+      mergeFailures([
+        application,
+        ...plugins.map((entry) => buildFailures(entry.failures, pluginSentence(entry.identity))),
+      ]),
+    );
+    const graph = buildGraph(this.#root, { ...install, plugins });
+    checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
+    return { facts, graph, plugins };
   }
 
   /**
@@ -184,11 +227,8 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    const facts = checkOptions(this.#options, this.#declared);
-    buildFailures(this.#failures);
-    const graph = buildGraph(this.#root);
-    checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
-    return inspectGraph(this.#name, graph, facts);
+    const built = this.prepare(() => undefined);
+    return inspectGraph(this.#name, built.graph, built.facts);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -198,22 +238,31 @@ class ApplicationBuilder<
     let reportingFailed = false;
     // A registry that could not be built reports through core's defaults, not through itself.
     let registry: FailureRegistry | undefined = undefined;
+    // Faults a plugin raised beside the primary outcome, reported after it and never before it.
+    const faults: LoomError[] = [];
     try {
       const overrides = options?.host;
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      checkOptions(this.#options, this.#declared);
-      registry = buildFailures(this.#failures);
-      const graph = buildGraph(this.#root);
+      const built = this.prepare((value) => {
+        registry = value;
+      });
+      const { graph } = built;
       const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
       const defaults = await prepareInputs(inputs, host);
-      const selected = await selectCommand(graph, { defaults, host });
-      await selected.dispatch({
+      // One private controller per run. Nothing aborts it until a caller or a signals owner can.
+      const controller = new AbortController();
+      await runInvocation({
+        defaults,
+        facts: built.facts,
+        graph,
         host,
+        name: this.#name,
         out: output.out,
-        passthrough: selected.passthrough,
-        values: selected.values,
+        plugins: built.plugins,
+        report: (fault) => faults.push(fault),
+        signal: controller.signal,
       });
       // The fault check covers the same window the write accounting covers.
       // A render failure an unawaited helper raised is still this invocation's failure.
@@ -245,6 +294,26 @@ class ApplicationBuilder<
         }
       } catch {
         code = 1;
+        reportingFailed = true;
+      }
+    }
+    // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
+    // The primary outcome keeps its code, the way a renderer failure leaves it alone.
+    // It is reported the way the primary failure is, so a registered renderer answers its class.
+    for (const fault of faults) {
+      code = code === 0 ? 1 : code;
+      try {
+        const report = describeFailure(registry ?? noRegistrations, fault);
+        if (report.kind === 'rendered') {
+          await output?.report(report.text);
+        } else {
+          code = 1;
+          await reportPlainly(
+            stderr,
+            `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+          );
+        }
+      } catch {
         reportingFailed = true;
       }
     }
@@ -340,6 +409,7 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
       name,
       freshState({
         description: undefined,
+        extensions: options?.extensions,
         globals: options?.globals,
         name: null,
         options: undefined,
@@ -348,6 +418,7 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
         declared: { description: options?.description, version: options?.version },
         failures: options?.failures ?? [],
         options,
+        plugins: options?.plugins ?? [],
       },
     );
   }

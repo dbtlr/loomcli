@@ -6,10 +6,20 @@ import {
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
+import { buildExtensions } from './extension.js';
+import type { DescriptorRegistry, ExtensionRecords, ExtensionValue } from './extension.js';
 import { checkDescription, isPlainObject } from './facts.js';
-import type { BuiltGlobals, GlobalOptions } from './globals.js';
-import { bindGlobals, buildGlobals, isGlobalOptions } from './globals.js';
+import type { BuiltGlobals, GlobalOptions, OptionOwner } from './globals.js';
+import {
+  bindGlobals,
+  buildGlobals,
+  isGlobalOptions,
+  keyCollision,
+  spellingCollision,
+} from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
+import type { OptionValues } from './options.js';
+import type { BuiltPlugin, PluginBuild } from './plugin.js';
 import type {
   Action,
   ArgumentConfig,
@@ -46,6 +56,7 @@ export interface DispatchInput {
   host: Host;
   out: Out;
   passthrough: string[];
+  signal: AbortSignal;
   values: ValidatedInputs;
 }
 
@@ -70,6 +81,7 @@ export interface BuiltCommand {
   children: ReadonlyMap<string, BuiltCommand>;
   description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
+  extensions: Readonly<Record<string, unknown>>;
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
@@ -121,6 +133,8 @@ interface AttachedCommand {
  * owner is the parent whose attachment the walk meets first.
  */
 interface BuildContext {
+  descriptors: DescriptorRegistry;
+  extensions: ExtensionRecords;
   globals: BuiltGlobals;
   owners: Map<AttachedCommand, string | null>;
 }
@@ -195,6 +209,8 @@ export interface CommandState<Args, Options, Globals> {
   // The description the constructor read out of the options slot, unexamined until build.
   // The Application checks its own slot, so the root carries none here.
   description: unknown;
+  // The extension values the same slot carried, read at build against the `command` target.
+  extensions: unknown;
   globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
@@ -211,6 +227,7 @@ export interface CommandState<Args, Options, Globals> {
  */
 export function freshState<Globals>(declaration: {
   description: unknown;
+  extensions: unknown;
   globals: GlobalOptions<Globals> | undefined;
   name: string | null;
   options: unknown;
@@ -221,6 +238,7 @@ export function freshState<Globals>(declaration: {
     bind: () => ({ args: {}, options: {} }),
     children: [],
     description: declaration.description,
+    extensions: declaration.extensions,
     globals: declaration.globals,
     inputs: [],
     late: [],
@@ -489,21 +507,29 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
   return slots;
 }
 
+/**
+ * One Command's own options against the shared globals table. The table holds the application's
+ * globals and every plugin option, so a local collision reads the same sentence whichever scope on
+ * the other side claimed the name or the spelling.
+ */
 function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: string) {
   const declarations = state.inputs.filter((input) => input.kind === 'option');
+  const local: OptionOwner = { kind: 'local', subject };
+  const application: OptionOwner = { kind: 'application' };
   for (const declaration of declarations) {
-    if (globals.names.has(declaration.name)) {
-      throw new DeclarationError(
-        `Option "${declaration.name}" is declared as a global option and as a local option on ${subject}. Rename the local option.`,
-      );
+    const claimed = globals.names.get(declaration.name);
+    if (claimed) {
+      throw keyCollision(declaration.name, claimed, local);
     }
   }
   const options = compileOptions(declarations, subject);
   for (const [spelling, option] of options) {
     const global = globals.options.get(spelling);
     if (global) {
-      throw new DeclarationError(
-        `Option spelling "${spelling}" is used by the global option "${global.name}" and the local option "${option.name}" on ${subject}. Change one declaration.`,
+      throw spellingCollision(
+        spelling,
+        { name: global.name, owner: globals.names.get(global.name) ?? application },
+        { name: option.name, owner: local },
       );
     }
   }
@@ -533,7 +559,7 @@ function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   action: Action<Args, Globals & Options>,
 ) {
-  return ({ host, out, passthrough, values }: DispatchInput) => {
+  return ({ host, out, passthrough, signal, values }: DispatchInput) => {
     const bound = state.bind(values);
     return action({
       args: bound.args,
@@ -541,6 +567,7 @@ function bindDispatch<Args, Options, Globals>(
       options: { ...bindGlobals(state.globals, values), ...bound.options },
       out,
       passthrough,
+      signal,
     });
   };
 }
@@ -555,11 +582,24 @@ export function buildCommand<Args, Options, Globals>(
   const subject = commandSubject(name);
   checkCommandOptions(name, state.options);
   const description = checkDescription(commandSentence(name), state.description);
+  const extensions = buildExtensions({
+    declared: state.extensions,
+    descriptors: context.descriptors,
+    subject: { phrase: `on ${subject}`, sentence: commandSentence(name) },
+    target: 'command',
+  });
   // Each declaration's own facts, in authoring order, before the rules that pair declarations.
   for (const input of state.inputs) {
-    checkDescription(
-      `${commandSentence(name)} ${input.kind} "${input.name}"`,
-      input.config.description,
+    const sentence = `${commandSentence(name)} ${input.kind} "${input.name}"`;
+    checkDescription(sentence, input.config.description);
+    context.extensions.set(
+      input,
+      buildExtensions({
+        declared: input.config.extensions,
+        descriptors: context.descriptors,
+        subject: { phrase: `on ${subject} ${input.kind} "${input.name}"`, sentence },
+        target: input.kind,
+      }),
     );
   }
   if (state.globals !== globals.source) {
@@ -607,6 +647,7 @@ export function buildCommand<Args, Options, Globals>(
     children,
     description,
     dispatch: action ? bindDispatch(state, action) : undefined,
+    extensions,
     inputs: state.inputs,
     name,
     options,
@@ -614,12 +655,29 @@ export function buildCommand<Args, Options, Globals>(
   };
 }
 
+/** One built graph: the shared globals table, the root Command, and the facts each node carries. */
+export interface BuiltGraph {
+  extensions: ExtensionRecords;
+  globals: BuiltGlobals;
+  root: BuiltCommand;
+}
+
 /** The globals table and the owners record each compile once per invocation and the whole graph shares them. */
 export function buildGraph<Args, Options, Globals>(
   root: CommandState<Args, Options, Globals>,
-): { globals: BuiltGlobals; root: BuiltCommand } {
-  const context: BuildContext = { globals: buildGlobals(root.globals), owners: new Map() };
-  return { globals: context.globals, root: buildCommand(root, context) };
+  install: PluginBuild & { plugins: readonly BuiltPlugin[] },
+): BuiltGraph {
+  const context: BuildContext = {
+    descriptors: install.descriptors,
+    extensions: install.extensions,
+    globals: buildGlobals(root.globals, install.plugins, install),
+    owners: new Map(),
+  };
+  return {
+    extensions: context.extensions,
+    globals: context.globals,
+    root: buildCommand(root, context),
+  };
 }
 
 export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
@@ -718,6 +776,7 @@ export type Command<
 export interface CommandOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   description?: string;
+  extensions?: readonly ExtensionValue<'command'>[];
 }
 
 interface CommandConstructor {
@@ -736,9 +795,15 @@ interface CommandConstructor {
 class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
   constructor(name: string, options?: CommandOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals` and `description` of some kind, and `buildCommand` reports it at build instead.
+    // `globals`, `description`, and `extensions` of some kind, and `buildCommand` reports it.
     super(
-      freshState({ description: options?.description, globals: options?.globals, name, options }),
+      freshState({
+        description: options?.description,
+        extensions: options?.extensions,
+        globals: options?.globals,
+        name,
+        options,
+      }),
     );
   }
 }
@@ -810,28 +875,58 @@ function bindArguments(
   return values;
 }
 
-/** Consumes globals, routes to a Command, then validates globals and locals in one pass. */
-export async function selectCommand(
-  graph: { globals: BuiltGlobals; root: BuiltCommand },
-  invocation: { defaults: DefaultValues; host: Host },
-) {
-  const { host } = invocation;
-  const scan = extractGlobals(graph.globals.options, [...host.argv]);
-  const { command, path, tokens: rest } = route(graph.root, scan.rest);
+/** One invocation after the pre-scan and routing, which the middleware chain runs on top of. */
+export interface RoutedInvocation {
+  command: BuiltCommand;
+  path: readonly string[];
+  scan: OptionValues;
+  tokens: readonly string[];
+}
+
+/** Consumes the globals table, then routes the remaining bare tokens to a Command. */
+export function routeInvocation(graph: BuiltGraph, argv: readonly string[]): RoutedInvocation {
+  const scan = extractGlobals(graph.globals.options, [...argv]);
+  const routed = route(graph.root, scan.rest);
+  return {
+    command: routed.command,
+    path: routed.path,
+    scan: scan.values,
+    tokens: routed.tokens,
+  };
+}
+
+/**
+ * The phases the middleware chain terminates in: the callable check, local parsing, validation, and
+ * the action. It answers with the call that dispatches, so the caller records that the action was
+ * invoked at the moment it invokes it and no earlier failure reads as a dispatch.
+ */
+export async function prepareDispatch(
+  graph: BuiltGraph,
+  routed: RoutedInvocation,
+  invocation: { defaults: DefaultValues; host: Host; out: Out; signal: AbortSignal },
+): Promise<() => unknown> {
+  const { command, path, scan } = routed;
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
   if (!dispatch) {
     throw new NonCallableCommandError(path, [...command.children.keys()]);
   }
-  const parsed = parseInputs(command.options, rest);
+  const parsed = parseInputs(command.options, routed.tokens);
   const args = bindArguments(command, path, parsed.positionals);
   const values = await validateValues({
     command: path,
     defaults: invocation.defaults,
-    host,
+    host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: command.inputs },
     passthrough: parsed.passthrough,
-    supplied: { args, options: mergeValues(scan.values, parsed.options) },
+    supplied: { args, options: mergeValues(scan, parsed.options) },
   });
-  return { dispatch, passthrough: parsed.passthrough, values };
+  return () =>
+    dispatch({
+      host: invocation.host,
+      out: invocation.out,
+      passthrough: parsed.passthrough,
+      signal: invocation.signal,
+      values,
+    });
 }

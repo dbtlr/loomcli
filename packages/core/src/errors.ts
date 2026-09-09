@@ -77,11 +77,11 @@ class RegisteredFailure {
 }
 
 /** Reads the pair behind a registered value; anything else is a declaration error. */
-function nodeOf(value: object): Registration {
+function nodeOf(value: object, subject: string): Registration {
   const registration = nodes.get(value);
   if (!registration) {
     throw new DeclarationError(
-      'The Application holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).',
+      `${subject} holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).`,
     );
   }
   return registration;
@@ -315,19 +315,41 @@ export function renderFailure<Failure extends LoomError>(
 /** The renderers one application registered, keyed by the class each one names. */
 export type FailureRegistry = ReadonlyMap<unknown, Registration>;
 
-/** One class answers to one renderer, so a second registration for it is a declaration fault. */
-export function buildFailures(failures: readonly FailureRenderer[]): FailureRegistry {
+/**
+ * One class answers to one renderer inside one contributor, so a second registration for it is a
+ * declaration fault. The subject names the contributor: the Application, or an installed plugin.
+ */
+export function buildFailures(
+  failures: readonly FailureRenderer[],
+  subject = 'The Application',
+): FailureRegistry {
   const registry = new Map<unknown, Registration>();
   for (const failure of failures) {
-    const registration = nodeOf(failure);
+    const registration = nodeOf(failure, subject);
     if (registry.has(registration.prototype)) {
       throw new DeclarationError(
-        `The Application registers two failure renderers for "${registration.name}". Remove one registration.`,
+        `${subject} registers two failure renderers for "${registration.name}". Remove one registration.`,
       );
     }
     registry.set(registration.prototype, registration);
   }
   return registry;
+}
+
+/**
+ * One registry from every contributor's own, resolving first-in-wins: the application's
+ * registrations, then each installed plugin's in installation order, then core's text.
+ */
+export function mergeFailures(registries: readonly FailureRegistry[]): FailureRegistry {
+  const merged = new Map<unknown, Registration>();
+  for (const registry of registries) {
+    for (const [type, registration] of registry) {
+      if (!merged.has(type)) {
+        merged.set(type, registration);
+      }
+    }
+  }
+  return merged;
 }
 
 /**
