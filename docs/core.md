@@ -15,7 +15,7 @@ interface ApplicationOptions<Globals = {}> {
   failures?: readonly FailureRenderer[];
   description?: string;
   version?: string;
-  extensions?: readonly ExtensionValue[];
+  extensions?: readonly ExtensionValue<'command'>[];
 }
 ```
 
@@ -92,7 +92,7 @@ const app = new Application('textstat')
 
 Declarations infer types through fluent calls and `ActionHandler<typeof app>`. The constructor accepts no caller-supplied input types. `StringOption`, `BooleanOption`, and their union `OptionConfig` support extracted configuration with `satisfies`.
 
-Every option and argument config object also accepts `description`, the one-line core fact every projection reads, and `extensions`, the list of [extension values](#extensions) plugins define for inputs. Both are optional, both apply to `GlobalOptions` declarations and plugin options alike, and neither changes parsing or validation.
+Every option and argument config object also accepts `description`, the nonempty one-line core fact every projection reads, and `extensions`, the list of [extension values](#extensions) plugins define for inputs: `ExtensionValue<'option'>` on `StringOption` and `BooleanOption`, and `ExtensionValue<'argument'>` on `ArgumentConfig`. Both keys are optional, both apply to `GlobalOptions` declarations and plugin options alike, and neither changes parsing or validation.
 
 The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive. A hyphenated name is not a JavaScript identifier, so its action value reads with bracket access: `options['dry-run']`, the way textstat reads `options['min-bytes']`.
 
@@ -202,7 +202,7 @@ Global names, aliases, polarity, defaults, and schemas follow the local-option r
 interface CommandOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   description?: string;
-  extensions?: readonly ExtensionValue[];
+  extensions?: readonly ExtensionValue<'command'>[];
 }
 ```
 
@@ -313,7 +313,7 @@ A missing required input is a validation-phase problem, so it loses to routing a
 
 ### Graph build errors
 
-Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Eleven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, an options slot holding a positional GlobalOptions value on the Application, and the same positional value on a Command. The rest surface only at build time, for TypeScript and JavaScript authors alike: two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Eleven of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, an options slot holding a positional GlobalOptions value on the Application, and the same positional value on a Command. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is not a nonempty one-line string, a version that is not a string, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -338,7 +338,7 @@ Authoring calls collect declarations; core validates them during `run()` and `in
 | An options slot that holds no options object            | `The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.` for the retired positional form, and `The Application options must be an object. Supply { globals, failures }.` for any other value that is not a plain object. |
 | A failures entry that is not a registration             | `The Application holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).`                                                                                                                                                |
 | A positional globals value on a Command                 | `Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.` |
-| A description that is not a one-line string             | `Command "get" description must be a one-line string. Supply a string with no line break.` The same sentence names the Application, an option, or an argument. |
+| A description that is not a nonempty one-line string    | `Command "get" description must be a nonempty one-line string. Supply a string with no line break.` The same sentence names the Application, an option, or an argument. |
 | A version that is not a string                          | `The Application version must be a string. Supply a string such as "1.2.0".` |
 | Two failure renderers for one class                     | `The Application registers two failure renderers for "InputError". Remove one registration.`                                                                                                                                                                               |
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                                                                                          |
@@ -555,6 +555,7 @@ type OptionNode =
       readonly type: 'string';
       readonly name: string;
       readonly description: string | undefined;
+      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
@@ -568,6 +569,7 @@ type OptionNode =
       readonly type: 'boolean';
       readonly name: string;
       readonly description: string | undefined;
+      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
@@ -582,7 +584,7 @@ type OptionNode =
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
 - Schema objects stay private. `validated` says whether a schema exists, and `validateOmitted` says whether the declaration sends its omission to that schema. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
 - `version` and every `description` are the core facts the declarations carry, or `undefined` when omitted. The graph names no plugin: which plugin contributed an option or defined a fact is provenance, and a projection describes the built product alone.
-- `globals` holds the application's global options and every plugin option in one list, in the order the globals table holds them: the application's declarations, then each plugin's in installation order.
+- `globals` holds the application's global options and every plugin option in one list, in the order the globals table holds them: the application's declarations, then each plugin's in installation order. `scope` is `'application'` for a global option, whose value reaches every action, and `'plugin'` for a [plugin option](#plugin-options), which reaches no action; it names no plugin.
 - `extensions` holds each [extension value](#extensions) the declaration carries, keyed by extension identity, as the frozen plain-data output of its schema. `readExtension(node, descriptor)` is the typed read; the record is the projection-neutral form.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
 
@@ -611,16 +613,17 @@ Each invocation follows this order:
 4. Consume global options and plugin options in a pre-scan that stops at the first bare `--`.
 5. Route the remaining bare tokens to the selected Command.
 6. Run the [middleware](#middleware) of each installed plugin whose activation matched, in installation order, loading each one as the chain reaches it. A middleware that takes over ends the invocation here.
-7. Parse the remaining tokens with that Command's own spellings.
-8. Validate the globals in authoring order, then that Command's inputs in authoring order.
-9. Await its action.
-10. Unwind the middleware chain, finish pending core output, remove any process listeners, and set the exit status.
+7. Reject the invocation if the selected Command is a group, with the rank the routing errors have.
+8. Parse the remaining tokens with that Command's own spellings.
+9. Validate the globals in authoring order, then that Command's inputs in authoring order.
+10. Await its action.
+11. Unwind the middleware chain, finish pending core output, remove any process listeners, and set the exit status.
 
 Error precedence follows these phases. A global structure error comes before a routing error, a routing error comes before a local structure error, and a local structure error comes before a schema issue. Unknown-command, missing-value, repetition, and unexpected-argument diagnostics return code 2.
 
 An action receives `{ args, options, passthrough, out, host, signal }`. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals.
 
-The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()`, consume stdin, or track unrelated background work. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so the process ends by its default disposition.
+The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()`, consume stdin, or track unrelated background work. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
 
 ## Host
 
@@ -821,13 +824,13 @@ interface PluginDefinition<Options extends PluginOptions> {
     activate: 'always' | readonly (keyof Options & string)[];
     load: () => Promise<{ default: Middleware<Plugin<Options>> }>;
   };
-  extensions?: readonly Extension[];
+  extensions?: readonly AnyExtension[];
   failures?: readonly FailureRenderer[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
 }
 ```
 
-`Plugin<Options>` carries its options as a phantom type parameter, so a `plugins` list holds plugins with different options the way `failures` holds renderers for different classes. A plugin that declares options and loads a middleware exports its options type and annotates its factory's return type. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
+`Plugin<Options>` carries its options as a phantom type parameter and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `failures` holds renderers for different classes. `AnyExtension` is the erased element type a plugin's `extensions` list uses, because a descriptor's schema type is exact and a list cannot name one schema per element. A plugin that declares options and loads a middleware exports its options type and annotates its factory's return type. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
 ```ts
 // src/plugin.ts, the package's entry module
@@ -871,9 +874,9 @@ export const jsonkit = new Application('jsonkit', {
 
 ### Plugin options
 
-A plugin declares options under `options`, keyed by name, with the structural part of the `OptionConfig` shape: `type`, `short`, `shortOnly`, `polarity`, `multiple`, and `default`. A plugin option declares no schema and no presence rule: build rejects `validate`, `validateOmitted`, and `required` on it. Its value is therefore what the parser produced, typed from the declaration: `boolean` for a Boolean option, `string | undefined` for a string option, `string` when it declares a default, and `string[]` for a multiple option. A plugin that needs a richer value, such as a log level, reads the string and interprets it itself, and a value it cannot use is the plugin's own diagnostic, never an input error.
+A plugin declares options under `options`, keyed by name, with the parsing part of the `OptionConfig` shape, `type`, `short`, `shortOnly`, `polarity`, `multiple`, and `default`, plus `description` and `extensions`. A plugin option declares no schema and no presence rule: build rejects `validate`, `validateOmitted`, and `required` on it, and a Boolean option keeps the inherited rule that it declares no default. Its value is what the parser produced, or the declared default when the option was omitted, which core fills before the chain without validation and copies afresh for each run. The type follows the declaration: `boolean` for a Boolean option, `string | undefined` for a string option, `string` when it declares a default, and `string[]` for a multiple option, `[]` when omitted with no default. A plugin that needs a richer value, such as a log level, reads the string and interprets it itself. A value it cannot use is the plugin's own diagnostic, thrown as whichever failure class the plugin chooses, and core never generates an input error for it.
 
-Plugin options share the globals table with the application's global options: the pre-scan consumes them at any placement before the passthrough delimiter with the ordinary value rules, and every collision is a build error, by key or by spelling, against an application global, against a local option on any Command, or against another plugin's option. A structure fault in a plugin option, such as a missing value or a repeated occurrence, is the same pre-scan input error a global option produces, with the same precedence. Plugin options are not global options: a global value reaches every action, while a plugin option reaches its own plugin's middleware alone. An action never receives them, and a middleware never receives another plugin's options or the application's globals.
+Plugin options share the globals table with the application's global options: the pre-scan consumes them at any placement before the passthrough delimiter with the ordinary value rules, and every collision is a build error, by key or by spelling, against an application global, against a local option on any Command, or against another plugin's option. A structure fault in a plugin option, such as a missing value or a repeated occurrence, is the same pre-scan input error a global option produces, with the same precedence. Plugin options are not global options: a global value reaches every action, while a plugin option reaches its own plugin's middleware alone. An action never receives them, and a middleware never receives another plugin's options or the application's globals. `inspect()` lists both kinds in `globals` and tells them apart by `scope`.
 
 ### Middleware
 
@@ -887,17 +890,21 @@ interface MiddlewareContext<Options extends PluginOptions> {
   readonly host: Host;
   readonly out: Out;
   readonly signal: AbortSignal;
-  readonly next: () => Promise<void>;
+  readonly next: () => Promise<ChainOutcome>;
 }
-type Middleware<P extends Plugin> = (context: MiddlewareContext<OptionsOf<P>>) => Promise<void> | void;
+type ChainOutcome = 'dispatched' | 'taken-over' | 'cancelled';
+type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
+  context: MiddlewareContext<OptionsOf<P>>,
+) => Promise<void> | void;
 ```
 
-- `options` holds the plugin's own parsed option values, typed from its declaration. `Middleware<typeof help>` derives them from the factory's annotated return type.
+- `options` holds the plugin's own option values, typed from its declaration. `Middleware` accepts the plugin type or its factory's type, with or without parameters, and the exported `OptionsOf` extracts the declared options from either, so `Middleware<typeof help>` reads them from the factory's annotated return type.
 - `graph` is the frozen graph `inspect()` returns, and `command` is the routed node inside it, so `jsonkit get --help` renders help for `get`, `jsonkit --help` for the root, and `jsonkit cache --help` for the `cache` group. An unknown command fails in routing before any middleware runs, as it does today. The callable check on a group keeps its rank among the routing errors but is judged after the chain, so a middleware can take over a group invocation and `jsonkit cache --verbose` still reports the missing subcommand when no middleware takes over.
-- `next()` continues the invocation: the callable check, local parsing, validation, every later middleware, and the action. It resolves when the rest of the chain has completed and rejects with the failure the rest of the chain raised. Core records that failure when it is raised, so a middleware that catches the rejection changes its own control flow and not the exit code, the rule an action's caught output rejection already follows. A middleware that calls `next()` without awaiting it still holds the chain open: core awaits the middleware's own result and `next()` both. Calling `next()` twice is an internal error.
-- A middleware that returns without calling `next()` has taken over the invocation. The remaining tokens are never parsed, nothing later in the chain runs, and the exit code is 0 unless the middleware throws or its output fails. Because the chain runs in installation order, `jsonkit --help --version` prints help when help is installed first.
+- `next()` continues the invocation: the callable check, local parsing, validation, every later middleware, and the action. It resolves when the rest of the chain has settled, with `'dispatched'` when the action ran, `'taken-over'` when a later middleware returned without calling its own `next()`, and `'cancelled'` when cancellation stopped the chain before dispatch, so a wrapping plugin knows what it wrapped. It rejects with the failure the rest of the chain raised. Core records that failure when it is raised, so a middleware that catches the rejection changes its own control flow and not the exit code, the rule an action's caught output rejection already follows.
+- `next` is live until the middleware's own result settles. Calling it twice, or calling it after the middleware has returned, is an internal error: the call rejects, nothing is parsed or dispatched, and the run's outcome stands.
+- A middleware that returns without calling `next()` has taken over the invocation. The remaining tokens are never parsed, nothing later in the chain runs, and the exit code is 0 unless the middleware throws, its output fails, or the run was cancelled, under the precedence in [Signals and cancellation](#signals-and-cancellation). Because the chain runs in installation order, `jsonkit --help --version` prints help when help is installed first.
 - Core calls a plugin's `load` at the moment the chain reaches that plugin, not before. A takeover earlier in the chain therefore never loads a later plugin, and `jsonkit --help --version` never imports the version module.
-- Work after `next()` returns, or in a `finally`, is the plugin's cleanup, and it runs in reverse installation order because the calls unwind. A middleware reads the outcome directly: `next()` returned, `next()` threw, or `signal.aborted` with a reason naming the signal.
+- Work after `await next()` returns, or in a `finally` around it, is the plugin's cleanup, and it runs in reverse installation order because the awaited calls unwind. A middleware reads the outcome directly: the value `next()` resolved, the failure it rejected with, or `signal.aborted` with a reason naming the signal. The order holds for a middleware that awaits `next()`. A middleware that calls `next()` without awaiting it still holds the chain open, because core awaits the middleware's own result and the downstream promise both, but its own cleanup then runs whenever it returns, ahead of the chain it started.
 - `out` follows the output contract an action has. Output a middleware issues counts toward completion the same way, and a middleware whose promise never settles holds the run open exactly as an action would.
 
 A thrown `FatalError` or other failure inside a middleware resolves through the failure path with that class's exit code. A throw during unwinding, after `next()` has already settled, is reported after the primary outcome and turns a would-be 0 into 1, the way a renderer failure does. The primary outcome keeps its code.
@@ -913,6 +920,19 @@ const middleware: Middleware<typeof help> = ({ command, graph, out }) => out.pri
 export default middleware;
 ```
 
+```ts
+// An always-on wrapper: cleanup in finally, the outcome from next()
+const timing: Middleware<typeof timer> = async ({ next, out }) => {
+  const started = performance.now();
+  try {
+    const outcome = await next();
+    if (outcome === 'dispatched') await out.info(`${Math.round(performance.now() - started)} ms`);
+  } finally {
+    stopClock();
+  }
+};
+```
+
 ### Activation
 
 A middleware declares what activates it, and there is no default. `activate` is a list of the plugin's own option names, or `'always'`. With a list, the middleware runs when any listed option is present in the invocation; present means supplied as a token, in any spelling including a negative Boolean form, so a declared default never activates anything. With `'always'`, the middleware runs on every invocation that reaches the chain.
@@ -923,7 +943,7 @@ An activation name that is not one of the plugin's declared options is a compile
 
 ### Extensions
 
-An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, and a declaration lists those values under `extensions` in its config object. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. The Application's options object carries the unnamed root's extensions, and `StringOption`, `BooleanOption`, and `ArgumentConfig` carry `extensions` for the inputs, on a `GlobalOptions` declaration and on a plugin option alike.
+An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, and a declaration lists those values under `extensions` in its config object. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. Each config object takes the values for its own target: `ApplicationOptions` and `CommandOptions` take `ExtensionValue<'command'>`, `StringOption` and `BooleanOption` take `ExtensionValue<'option'>`, on a `GlobalOptions` declaration and on a plugin option alike, and `ArgumentConfig` takes `ExtensionValue<'argument'>`.
 
 ```ts
 // src/extension.ts in the help package
@@ -952,15 +972,17 @@ const get = new Command('get', {
 }).argument('path', { required: true, description: 'Dot path to read.' });
 ```
 
-An extension value is keyed by its extension's identity and branded with its target, so it needs no field name and collides with no core key, and a value on the wrong target is a compile error at the config object. The call is typed from the schema's input type, so an unresolved descriptor or an ill-typed value fails to compile; identity strings and the remaining rules are checked at build. The value carries the input the author supplied. Build validates it once against the schema, which must answer synchronously, and stores the output on the graph node under the identity. The output must be plain data, meaning primitives, arrays, and plain objects to any depth, because the node freezes it and `inspect()` reports it as the projection-neutral form; a schema that produces anything else is rejected at build. `readExtension(node, descriptor)` returns the stored output as a deeply read-only value, or `undefined`. It trusts the stored output and runs no schema.
+An extension value is keyed by its extension's identity and branded with its target, so it needs no field name and collides with no core key, and a value on the wrong target is a compile error at the config object. The call is typed from the schema's input type, so an unresolved descriptor or an ill-typed value fails to compile; identity strings and the remaining rules are checked at build. The value carries the input the author supplied and a private reference to the descriptor that produced it. Build validates the input once against the descriptor's schema, which must answer synchronously, and stores a copy of the output on the graph node under the identity, frozen to any depth, the way a declared default is stored, so a later change to the author's object changes nothing. `readExtension(node, descriptor)` returns the stored output as a deeply read-only value, or `undefined` when the node carries no value for that identity. It compares the descriptor by reference with the one that produced the value and throws when they differ, so a read never returns output another schema produced. It runs no schema.
 
-One identity means one descriptor. Build rejects two distinct descriptor objects that share an identity anywhere on one graph, whether an installed plugin defines them or a declaration carries values from them, because a read through one descriptor would return a value another descriptor's schema produced. A second copy of one plugin package in `node_modules` trips this rule, which is the intended signal to deduplicate. A projection that reads another plugin's facts imports that plugin's descriptor module, which is declarations alone and never its middleware, and it never imports the plugin's implementation.
+The stored output must be plain data: `string`, `number`, `boolean`, `null`, arrays, and objects whose prototype is `Object.prototype` or `null` with no accessors, to any depth, with `undefined` property values dropped. That is the form the node can freeze and `inspect()` can report as the projection-neutral form. A schema that produces anything else, a `Date`, a `Map`, a class instance, a `bigint`, a `symbol`, or a function, is rejected at build; a date travels as a string and a map as an array of pairs.
+
+One identity means one descriptor. Every descriptor on a graph, whether an installed plugin defines it or a carried value references it, is compared by reference, and build rejects two distinct descriptor objects that share an identity, because a read through one would return a value another schema produced. A second copy of one plugin package in `node_modules`, installed or not, trips this rule, which is the intended signal to deduplicate. A projection that reads another plugin's facts imports that plugin's descriptor module, which is declarations alone and never its middleware, and it never imports the plugin's implementation.
 
 Build also rejects two values of one extension on one declaration, a value the schema rejects, a schema that returns a promise, and an `extensions` entry that is not an extension value.
 
 A fact whose plugin is not installed is inert. It sits on the graph, `inspect()` reports it, and nothing reads it. A Command library can therefore ship help facts into an application that installs no help plugin, or one that installs a different help plugin.
 
-Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, and `version` on the Application. Each is an optional string, and a description holds no line break. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. Further facts of the same kind follow the same rule when they are specified. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
+Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, and `version` on the Application. Each is optional; a description is a nonempty string with no line break, and a version is a string. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. Further facts of the same kind follow the same rule when they are specified. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
 
 ### Failure renderers from plugins
 
@@ -968,7 +990,7 @@ A plugin registers failure renderers under `failures` with `renderFailure`, and 
 
 ### Signals and cancellation
 
-Every run creates one private cancellation controller and exposes its signal to each middleware and to the action context as `signal`. Two things can abort it. A caller passes `signal` in the run options, which is the path for an embedding host or a test. Or one installed plugin claims the signals slot by listing the signals it owns, `SIGINT`, `SIGTERM`, or both, and core installs a process listener for each once the graph has built and validated, and removes it on every exit path of that run, a build failure included, so an Application can run again and a test leaks no listener. The slot has one owner: a second claim is a build error naming both plugins, and a signal outside the closed set is a build error. With no owner and no run signal, core installs nothing. Each run installs and removes its own listeners, so two concurrent runs each observe a signal independently.
+Every run creates one private cancellation controller and exposes its signal to each middleware and to the action context as `signal`. Two things can abort it. A caller passes `signal` in the run options, which is the path for an embedding host or a test; core subscribes to it at run entry and honors an abort at every phase boundary from then on. Or one installed plugin claims the signals slot by listing the signals it owns, `SIGINT`, `SIGTERM`, or both, and core installs a process listener for each once the graph has built and validated, and removes it on every exit path of that run, so an Application can run again and a test leaks no listener. The slot has one owner: a second claim is a build error naming both plugins, and a signal outside the closed set is a build error. With no owner and no run signal, core installs nothing.
 
 ```ts
 export function signals() {
@@ -978,45 +1000,47 @@ export function signals() {
 
 The first cause to abort the controller fixes the run's cancellation reason and code: 130 for `SIGINT`, 143 for `SIGTERM`, and 130 for a caller-supplied abort. A later cause changes neither. Core keeps awaiting the chain: a middleware or action already running reads `signal` and finishes on its own terms, and core never ends the process on a first signal. Core starts nothing new after cancellation: a middleware the chain has not reached and an action not yet dispatched are skipped, a loader already in flight settles and its middleware is skipped, and the entries already running unwind in order. A run whose caller signal is already aborted at entry still builds and validates the graph, so a declaration error reports with code 1, and otherwise resolves 130 having loaded no plugin and run no middleware or action.
 
-Work that must happen at the moment of the signal, such as restoring the cursor or leaving raw mode, belongs in a synchronous listener the plugin adds to `signal` before it changes terminal state; it runs even when the action ignores the abort. Any process signal that arrives after the run is cancelled, by any cause, is the force path: core removes its own listeners for that run and re-raises the signal. The default disposition then ends the process with the conventional status when no other listener remains. Core does not own the process, so when an embedding host or another run still listens, the process continues, that run observes no further signals, and it keeps awaiting the chain. A listener that blocks the event loop delays the second signal's handling until it yields, as it delays everything else.
+Work that must happen at the moment of the signal, such as restoring the cursor or leaving raw mode, belongs in a synchronous listener the plugin adds to `signal` before it changes terminal state; it runs even when the action ignores the abort. Any process signal that arrives after the run is cancelled, by any cause, is the force path: core removes its own listeners for that run and re-raises the signal. The default disposition then ends the process with the conventional status when no other listener remains. Core does not own the process. A re-raised signal reaches every listener still installed, so an embedding host's own listener sees it, and a second run in the same process that owns the slot receives it as its own first or repeated signal and escalates with the first. When a listener outside core's control keeps the process alive, that run observes no further signals and keeps awaiting the chain. An embedding host that runs several Applications in one process supplies `run({ signal })` and installs no slot owner. A listener that blocks the event loop delays the second signal's handling until it yields, as it delays everything else.
 
-The signal decides the code whatever the action did afterward, because a script that sees 0 after an interrupt carries on as if the work finished. Core aborts with a reason, so an API that rejects with `signal.reason`, as `fetch` does, throws the reason itself; a thrown value that is the reason, or an error named `AbortError`, is silent. Any other failure after cancellation is rendered as usual, and the code stays the signal's. A signal that arrives after the chain has settled, while core is rendering a failure or finishing output, changes nothing. One rule orders every code: a broken failure renderer or destination forces 1 over any other outcome, the accepted renderer rule, cancellation included; otherwise a cancelled run resolves its signal's code; otherwise the primary failure or the action decides, and a throw during unwinding turns a would-be 0 into 1.
+The signal decides the code whatever the action did afterward, because a script that sees 0 after an interrupt carries on as if the work finished. Core aborts with a reason, so an API that rejects with `signal.reason`, as `fetch` does, throws the reason itself; a thrown value that is the reason, or an error named `AbortError`, is silent. Any other failure after cancellation is rendered as usual, and the code stays the signal's. A signal that arrives after the chain has settled, while core is rendering a failure or finishing output, changes nothing. One rule orders every code: a cancelled run resolves its signal's code, and a broken failure renderer or destination in that run is reported as text without changing it; otherwise a broken failure renderer or destination forces 1 over the primary outcome, the accepted renderer rule; otherwise the primary failure or the action decides, and a throw during unwinding turns a would-be 0 into 1.
 
 ```ts
 type ExitCode = 0 | 1 | 2 | 130 | 143;
 ```
 
+The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switches exhaustively on it gains two cases.
+
 ### Plugin build errors
 
-Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. The wrong-target rule reaches JavaScript authors alone, because the value's target brand rejects it at the config object.
+Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. The wrong-target rule reaches JavaScript authors alone, because each config object's `extensions` slot is typed by target.
 
-| Rejected declaration                             | Diagnostic                                                                                                                                                                |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A `plugins` entry that is not a plugin           | `The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).`                                                          |
-| An identity installed twice                      | `The Application installs plugin "@loomcli/help" twice. Install each plugin once.`                                                                                        |
-| An empty identity                                | `A plugin declares an empty identity. Supply a nonempty string, such as the package name.`                                                                                |
-| A plugin option with a schema or presence rule   | `Plugin "@loomcli/log" option "level" declares validate. Remove validate, validateOmitted, and required from a plugin option and interpret the value in the middleware.` |
-| A plugin option that repeats a global key        | `Option "help" is declared by plugin "@loomcli/help" and as a global option. Rename one declaration.`                                                                      |
-| A plugin option that repeats a local key         | `Option "help" is declared by plugin "@loomcli/help" and as a local option on Command "get". Rename the local option.`                                                     |
-| Two plugins declaring one option key             | `Option "verbose" is declared by plugin "@loomcli/log" and plugin "@acme/trace". Install one of them or rename the option.`                                                |
-| A plugin option spelling used elsewhere          | `Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.`                                               |
-| A middleware without activation                  | `Plugin "@loomcli/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`                                     |
-| An empty activation list                         | `Plugin "@loomcli/help" declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`                                     |
-| An activation naming an undeclared option        | `Plugin "@loomcli/help" activates middleware on option "hlep", which it does not declare. Name one of the plugin's own options.`                                           |
-| A middleware without a loader                    | `Plugin "@loomcli/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`                                                         |
-| A second claim on the signals slot               | `Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.`                                                         |
-| A signal outside the closed set                  | `Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.`                                                                                               |
-| An `extensions` entry that is not an extension   | `Command "get" holds a value that is not an extension value. Supply the value returned by calling an extension.`                                                          |
-| An extension value on the wrong target           | `Command "get" holds extension "@loomcli/help/input", which applies to options. Supply an extension that applies to Commands.`                                            |
-| Two values of one extension on one declaration   | `Command "get" holds extension "@loomcli/help/command" twice. Supply one value.`                                                                                           |
-| Two descriptors sharing one identity             | `Extension "@loomcli/help/command" is defined twice. Install one copy of the package that defines it.`                                                                     |
-| An extension value its schema rejects            | `Command "get" holds an invalid "@loomcli/help/command" value: <issue message>. Correct the value.`                                                                        |
-| An extension schema that answers asynchronously  | `Extension "@loomcli/help/command" validates asynchronously. Supply a schema that answers synchronously.`                                                                  |
-| An extension output that is not plain data       | `Extension "@loomcli/help/command" produced a value that is not plain data on Command "get". Return primitives, arrays, and plain objects.`                                |
-| A plugin registering two renderers for one class | `Plugin "@loomcli/help" registers two failure renderers for "InputError". Remove one registration.`                                                                       |
+| Rejected declaration                             | Diagnostic                                                                                                                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A `plugins` entry that is not a plugin           | `The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).`                                                                        |
+| An identity installed twice                      | `The Application installs plugin "@loomcli/help" twice. Install each plugin once.`                                                                                                      |
+| An empty identity                                | `A plugin declares an empty identity. Supply a nonempty string, such as the package name.`                                                                                              |
+| A plugin option with a schema or presence rule   | `Plugin "@loomcli/log" option "level" declares <validate, validateOmitted, or required>. Remove it; a plugin option carries no schema or presence rule, and the middleware interprets the value.` |
+| A plugin option that repeats a global key        | `Option "help" is declared by plugin "@loomcli/help" and as a global option. Rename one declaration.`                                                                                    |
+| A plugin option that repeats a local key         | `Option "help" is declared by plugin "@loomcli/help" and as a local option on Command "get". Rename the local option.`                                                                   |
+| Two plugins declaring one option key             | `Option "verbose" is declared by plugin "@loomcli/log" and plugin "@acme/trace". Install one of them or rename the option.`                                                              |
+| A plugin option spelling used elsewhere          | `Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.`                                                             |
+| A middleware without activation                  | `Plugin "@loomcli/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`                                                   |
+| An empty activation list                         | `Plugin "@loomcli/help" declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`                                                   |
+| An activation naming an undeclared option        | `Plugin "@loomcli/help" activates middleware on option "hlep", which it does not declare. Name one of the plugin's own options.`                                                         |
+| A middleware without a loader                    | `Plugin "@loomcli/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`                                                                       |
+| A second claim on the signals slot               | `Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.`                                                                       |
+| A signal outside the closed set                  | `Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.`                                                                                                             |
+| An `extensions` entry that is not an extension   | `Command "get" holds a value that is not an extension value. Supply the value returned by calling an extension.`                                                                        |
+| An extension value on the wrong target           | `Command "get" holds extension "@loomcli/help/input", which applies to options. Supply an extension that applies to Commands.`                                                          |
+| Two values of one extension on one declaration   | `Command "get" holds extension "@loomcli/help/command" twice. Supply one value.`                                                                                                         |
+| Two descriptors sharing one identity             | `Extension "@loomcli/help/command" is defined twice. Install one copy of the package that defines it.`                                                                                   |
+| An extension value its schema rejects            | `Command "get" holds an invalid "@loomcli/help/command" value: <issue message>. Correct the value.`                                                                                      |
+| An extension schema that answers asynchronously  | `Extension "@loomcli/help/command" validates asynchronously. Supply a schema that answers synchronously.`                                                                                |
+| An extension output that is not plain data       | `Extension "@loomcli/help/command" produced a value that is not plain data on Command "get". Return strings, numbers, booleans, null, arrays, and plain objects.`                       |
+| A plugin registering two renderers for one class | `Plugin "@loomcli/help" registers two failure renderers for "InputError". Remove one registration.`                                                                                     |
 
-Two faults surface at invocation time rather than build, as internal errors with code 1: `Loading plugin "@loomcli/help" failed: <reason>` when `load` rejects or its module exports no default middleware function, and `Plugin "@loomcli/help" called next() twice.`
+Three faults surface at invocation time rather than build, as internal errors with code 1: `Loading plugin "@loomcli/help" failed: <reason>` when `load` rejects or its module exports no default middleware function, `Plugin "@loomcli/help" called next() twice.`, and `Plugin "@loomcli/help" called next() after its middleware returned.` A typed read through a descriptor that did not produce the stored value throws `Extension "@loomcli/help/command" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.`, an internal error when it happens inside a run.
 
 ### Example coverage
 
-The plugin increment is proven when both example applications install a plugin through `plugins` and public APIs alone. The acceptance tests cover the seam with in-repository fixture plugins rather than a published package: one with option-activated middleware whose implementation module records its own evaluation, so a test shows the module is never loaded on an invocation that does not supply its option and never loaded when an earlier middleware takes over; one with always-on middleware that wraps `next()` and observes each outcome; one that claims the signals slot, with a second claimant failing at build and no listener surviving a run; and one that defines an extension both examples attach to a Command. The first-party help and version plugins are specified separately and land after the seam exists.
+The plugin increment is proven when both example applications install a plugin through `plugins` and public APIs alone. The acceptance tests cover the seam with in-repository fixture plugins rather than a published package: one with option-activated middleware whose implementation module records its own evaluation, so a test shows the module is never loaded on an invocation that does not supply its option and never loaded when an earlier middleware takes over; one with always-on middleware that wraps `next()` and observes each outcome value; one that claims the signals slot, with a second claimant failing at build and no listener surviving a run; and one that defines an extension both examples attach to a Command. The first-party help and version plugins are specified separately and land after the seam exists.

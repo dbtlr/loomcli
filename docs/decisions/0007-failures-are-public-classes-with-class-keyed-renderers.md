@@ -4,7 +4,7 @@ title: ADR-0007 - Failures are public classes with typed facts, rendered by clas
 description: Every failure run() reports is an instance of a public class carrying the facts its sentence interpolates and its exit code. Renderers are registered per class on the constructor, resolved along the prototype chain. A working renderer cannot change the exit code, and a broken one is an internal failure that never escapes.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-08
 ---
 
 # ADR-0007 - Failures are public classes with typed facts, rendered by class-keyed renderers registered on the Application
@@ -27,3 +27,7 @@ An application registers renderers through the constructor's `failures` option a
 ## Consequences
 
 `DeclarationError` and `InternalError` reach registered renderers too, because an author-facing diagnostic is still output the application owns. A `FatalError` subclass can carry its own renderer, which is how one fatal type implies one diagnostic.
+
+## Changelog
+
+- 2026-09-08: ADR-0018, proposed, ranks cancellation above the rule that a broken renderer or destination returns 1. A run cancelled by a signal or a caller resolves its cancellation code, 130 or 143, and a renderer or destination fault in that run is reported as text without changing the code, because a signal is a fact about the run and a broken sink is a fact about the destination. For every other run the rule above stands: a broken renderer or destination returns 1 whichever code the original failure carried. Plugins also register renderers, resolved after the application's and before core's text, under ADR-0013. This entry binds when ADR-0018 is accepted.
