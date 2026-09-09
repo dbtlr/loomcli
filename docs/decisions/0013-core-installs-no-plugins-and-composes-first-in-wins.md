@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
-status: proposed
+status: accepted
 created: 2026-09-07
 modified: 2026-09-09
 ---
@@ -19,7 +19,7 @@ Where contributions compose, they resolve first-in-wins: caller-supplied facts, 
 
 ## Status
 
-Proposed. Milestone 1 ships no plugin contract, so no code exercises this decision yet. It records the shape the first plugin increment must honor, and it moves to accepted with the code that enforces it.
+Accepted 2026-09-09 with the code that installs plugins through the `plugins` list alone, composes their contributions first-in-wins, and fails a duplicate identity or a second slot claim at build.
 
 ## Considered options
 
@@ -34,3 +34,4 @@ An application that wants help output installs the help plugin. Core stays small
 ## Changelog
 
 - 2026-09-08: The contract that honors this record is shaped in the plugin section of `docs/core.md`. A plugin is a frozen value with an identity fixed at definition, installed through the `plugins` list on the Application options in composition order. Its contribution kinds are plugin options, which share the globals table but reach no action, one middleware with declared activation and a loader, extension values, failure renderers, and one claim on the signals slot. Three records carry the decisions that go beyond this one: ADR-0017 for the middleware chain and activation, ADR-0018 for cancellation and the signals slot, and ADR-0019 for descriptor-keyed extension values and the core-owned `description` and `version` facts. Three refinements to the wording above: a first-party plugin identity is the package name by convention; the namespace sentence applies to extension identities, which a plugin names under its own identity, rather than to option spellings, which share one table with the application's globals and fail on collision; and "fails compilation" above means graph build, the same surface every other declaration rule uses, because a duplicate identity and a second slot claim are facts of the installed list that the type system does not see. A fact whose plugin is not installed is inert rather than an error. The decision is unchanged, and these refinements bind with the records that carry them.
+- 2026-09-09: Accepted. PR 36 (branch `feat/lm-60-plugins`) implements `plugin(identity, definition)` and the `plugins` list on the Application options as the one installation path, with no default plugin and no deregistration, and its tests prove first-in-wins composition: failure renderers from installed plugins resolve first-in-wins ahead of core's default text, and a duplicate plugin identity fails at build. The single-owner-slot invariant this record states in the general case is proven concretely by the signals slot that the third pull request of LM-60, whose number is not yet assigned, adds as the first slot the codebase carries: `packages/core/tests/plugins.test.ts` shows a second claim on it fails at build, naming both plugins.

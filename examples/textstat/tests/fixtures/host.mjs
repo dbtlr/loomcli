@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
-import { textstat } from '../../dist/application.js';
+import { textstat } from '../../dist/src/application.js';
 
 const [scenario, metric = 'words'] = process.argv.slice(2);
 

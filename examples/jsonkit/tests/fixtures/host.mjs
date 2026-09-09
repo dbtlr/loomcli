@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
-import { jsonkit } from '../../dist/application.js';
+import { jsonkit } from '../../dist/src/application.js';
 
 const scenario = process.argv[2];
 const contents = '{"name":"loom"}';

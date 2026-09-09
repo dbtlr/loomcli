@@ -117,6 +117,13 @@ test('calling next() twice rejects, dispatches nothing more, and turns a 0 into 
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
 
+test('a next() fault the middleware let escape is reported once, not twice', () => {
+  const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'escaping' });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe('Internal error: Plugin "@fixture/misuse" called next() twice.\n');
+  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
+});
+
 test('calling next() after the middleware returned rejects with its own sentence', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'after-return' });
   expect(result.status).toBe(1);

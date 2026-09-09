@@ -37,8 +37,10 @@ import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { Output, reportPlainly } from './output.js';
-import { buildPlugins, installPlugins, pluginSentence } from './plugin.js';
+import { buildPlugins, installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
+import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
+import type { CancellationCode, SignalBracket } from './signals.js';
 import type {
   Action,
   ArgumentConfig,
@@ -68,6 +70,35 @@ export type ApplicationMethod = Exclude<CommandMethod, 'alias'>;
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noRegistrations: FailureRegistry = new Map();
+
+/**
+ * Whether one failure is the cancellation the run already reports, which core does not report a
+ * second time. Any other failure after cancellation is rendered as usual.
+ */
+function silenced(
+  thrown: unknown,
+  signal: AbortSignal,
+  cancelled: CancellationCode | undefined,
+): boolean {
+  return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
+}
+
+/**
+ * The caller's own signal, read where it enters. A JavaScript caller reaches the slot with any
+ * value, and a value that is not an `AbortSignal` would otherwise escape as a raw TypeError.
+ */
+function checkSignal(signal: unknown): AbortSignal | undefined {
+  if (signal === undefined) {
+    return undefined;
+  }
+  if (!(signal instanceof AbortSignal)) {
+    throw new InternalError(
+      'run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.',
+      undefined,
+    );
+  }
+  return signal;
+}
 
 /**
  * Everything an application configures beside its declarations: the options every Command shares,
@@ -240,96 +271,133 @@ class ApplicationBuilder<
     let registry: FailureRegistry | undefined = undefined;
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
+    // One private controller per run, subscribed to the caller's signal at run entry.
+    const controller = new AbortController();
+    /**
+     * The bracket this run holds. It exists once the caller's own signal has been read, so a
+     * signal that is not an `AbortSignal` is reported through the failure path like any other.
+     */
+    let signals: SignalBracket | undefined = undefined;
+    // A cancelled run resolves its cancellation code whenever it ends after graph build.
+    // A declaration or internal failure raised before that ends the run with its own code instead.
+    let graphBuilt = false;
+    const cancellation = (): CancellationCode | undefined => {
+      const reason = graphBuilt ? signals?.reason() : undefined;
+      return reason ? cancellationCode(reason) : undefined;
+    };
+    /**
+     * Every exit path of the run leaves through the removal below, the one place it is written,
+     * so no listener this run installed outlives it however the run ends.
+     */
     try {
-      const overrides = options?.host;
-      stderr = overrides?.stderr ?? stderr;
-      const host = captureHost(overrides, stderr);
-      output = new Output(host);
-      const built = this.prepare((value) => {
-        registry = value;
-      });
-      const { graph } = built;
-      const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
-      const defaults = await prepareInputs(inputs, host);
-      // One private controller per run. Nothing aborts it until a caller or a signals owner can.
-      const controller = new AbortController();
-      await runInvocation({
-        defaults,
-        facts: built.facts,
-        graph,
-        host,
-        name: this.#name,
-        out: output.out,
-        plugins: built.plugins,
-        report: (fault) => faults.push(fault),
-        signal: controller.signal,
-      });
-      // The fault check covers the same window the write accounting covers.
-      // A render failure an unawaited helper raised is still this invocation's failure.
-      await output.settle();
-      const fault = output.fault;
-      if (fault) {
-        // The action returned, so the renderer failure is this invocation's own failure.
-        throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
-      }
-    } catch (error) {
       try {
-        const failure = toFailure(error);
-        code = failure.exitCode;
-        output ??= new Output({ stderr, stdout: process.stdout });
-        const writes = await output.settle();
-        if (writes.kind === 'ok') {
-          const report = describeFailure(registry ?? noRegistrations, failure);
-          if (report.kind === 'rendered') {
-            // The renderer already owns every byte, trailing newline included: pass it through.
-            await output.report(report.text);
-          } else {
-            code = 1;
-            // `report.text` is core's default text, which already ends in `\n`.
-            await reportPlainly(
-              stderr,
-              `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
-            );
+        const overrides = options?.host;
+        stderr = overrides?.stderr ?? stderr;
+        const host = captureHost(overrides, stderr);
+        output = new Output(host);
+        signals = bracketRun(controller, checkSignal(options?.signal));
+        const built = this.prepare((value) => {
+          registry = value;
+        });
+        const { graph } = built;
+        const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
+        const defaults = await prepareInputs(inputs, host);
+        graphBuilt = true;
+        if (!controller.signal.aborted) {
+          /**
+           * The listeners the validated signals owner claimed. A build failure installs none, and
+           * neither does a run the caller had already cancelled: it touches the process not at all.
+           */
+          signals.install(ownedSignals(built.plugins));
+          await runInvocation({
+            defaults,
+            facts: built.facts,
+            graph,
+            host,
+            name: this.#name,
+            out: output.out,
+            plugins: built.plugins,
+            report: (fault) => faults.push(fault),
+            signal: controller.signal,
+          });
+        }
+        // The fault check covers the same window the write accounting covers.
+        // A render failure an unawaited helper raised is still this invocation's failure.
+        await output.settle();
+        const fault = output.fault;
+        if (fault) {
+          // The action returned, so the renderer failure is this invocation's own failure.
+          throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
+        }
+      } catch (error) {
+        try {
+          const failure = toFailure(error);
+          code = failure.exitCode;
+          output ??= new Output({ stderr, stdout: process.stdout });
+          const writes = await output.settle();
+          if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
+            const report = describeFailure(registry ?? noRegistrations, failure);
+            if (report.kind === 'rendered') {
+              // The renderer already owns every byte, trailing newline included: pass it through.
+              await output.report(report.text);
+            } else {
+              code = 1;
+              // `report.text` is core's default text, which already ends in `\n`.
+              await reportPlainly(
+                stderr,
+                `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+              );
+            }
+          }
+        } catch {
+          code = 1;
+          reportingFailed = true;
+        }
+      }
+      // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
+      // The primary outcome keeps its code, the way a renderer failure leaves it alone.
+      // It is reported the way the primary failure is, so a registered renderer answers its class.
+      for (const fault of faults) {
+        if (!silenced(fault, controller.signal, cancellation())) {
+          code = code === 0 ? 1 : code;
+          try {
+            const report = describeFailure(registry ?? noRegistrations, fault);
+            if (report.kind === 'rendered') {
+              await output?.report(report.text);
+            } else {
+              code = 1;
+              await reportPlainly(
+                stderr,
+                `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+              );
+            }
+          } catch {
+            reportingFailed = true;
           }
         }
-      } catch {
-        code = 1;
-        reportingFailed = true;
       }
-    }
-    // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
-    // The primary outcome keeps its code, the way a renderer failure leaves it alone.
-    // It is reported the way the primary failure is, so a registered renderer answers its class.
-    for (const fault of faults) {
-      code = code === 0 ? 1 : code;
-      try {
-        const report = describeFailure(registry ?? noRegistrations, fault);
-        if (report.kind === 'rendered') {
-          await output?.report(report.text);
-        } else {
+      if (output) {
+        const writes = await output.settle();
+        if (writes.kind === 'failed') {
           code = 1;
-          await reportPlainly(
-            stderr,
-            `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
-          );
+          reportingFailed = true;
         }
-      } catch {
-        reportingFailed = true;
+        output.dispose();
       }
-    }
-    if (output) {
-      const writes = await output.settle();
-      if (writes.kind === 'failed') {
-        code = 1;
-        reportingFailed = true;
+      if (reportingFailed) {
+        await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
       }
-      output.dispose();
+      /**
+       * One rule orders every code: a cancelled run resolves its signal's code, and a broken
+       * failure renderer or destination in that run is reported as text without changing it. The
+       * signal decides the code whatever the action did afterward, so this reading comes last.
+       */
+      code = cancellation() ?? code;
+      process.exitCode = code;
+      return code;
+    } finally {
+      signals?.finish();
     }
-    if (reportingFailed) {
-      await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
-    }
-    process.exitCode = code;
-    return code;
   }
 }
 

@@ -12,7 +12,7 @@ test('textstat prints one table for the counted files, with the total only when 
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     writeFileSync(join(directory, 'two words.txt'), 'é');
     expect(
-      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt'], {
+      invoke(new URL('../dist/src/main.js', import.meta.url), ['one.txt', 'two words.txt'], {
         cwd: directory,
       }),
     ).toEqual({
@@ -21,9 +21,13 @@ test('textstat prints one table for the counted files, with the total only when 
       stdout: 'BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n',
     });
     expect(
-      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt', '--total'], {
-        cwd: directory,
-      }),
+      invoke(
+        new URL('../dist/src/main.js', import.meta.url),
+        ['one.txt', 'two words.txt', '--total'],
+        {
+          cwd: directory,
+        },
+      ),
     ).toEqual({
       status: 0,
       stderr: '',
@@ -41,7 +45,7 @@ test('textstat prints the header alone when the byte threshold filters every sou
     writeFileSync(join(directory, 'large.txt'), 'hello');
     expect(
       invoke(
-        new URL('../dist/main.js', import.meta.url),
+        new URL('../dist/src/main.js', import.meta.url),
         ['small.txt', 'large.txt', '--min-bytes', '6'],
         { cwd: directory },
       ),
@@ -55,7 +59,7 @@ test.each([
   ['missing-fixture.txt', 'ENOENT'],
   ['.', 'EISDIR'],
 ])('textstat preserves the file-read reason for %s', (file, reason) => {
-  const result = invoke(new URL('../dist/main.js', import.meta.url), [file]);
+  const result = invoke(new URL('../dist/src/main.js', import.meta.url), [file]);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(`Cannot read file: ${file}: `);
@@ -67,7 +71,7 @@ test('textstat prints no table when a later source cannot be read', () => {
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     const result = invoke(
-      new URL('../dist/main.js', import.meta.url),
+      new URL('../dist/src/main.js', import.meta.url),
       ['one.txt', 'missing-fixture.txt', '--total'],
       { cwd: directory },
     );
@@ -84,7 +88,7 @@ test('textstat widens the count column past the header for a large count', () =>
   try {
     writeFileSync(join(directory, 'big.txt'), 'a'.repeat(123_456));
     expect(
-      invoke(new URL('../dist/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
+      invoke(new URL('../dist/src/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
     ).toEqual({ status: 0, stderr: '', stdout: ' BYTES  SOURCE\n123456  big.txt\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
@@ -167,9 +171,13 @@ test.each([
       writeFileSync(join(directory, 'one.txt'), 'hello world\n');
       writeFileSync(join(directory, 'two.txt'), 'é\tthree\r\nlast');
       expect(
-        invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', ...options, 'two.txt'], {
-          cwd: directory,
-        }),
+        invoke(
+          new URL('../dist/src/main.js', import.meta.url),
+          ['one.txt', ...options, 'two.txt'],
+          {
+            cwd: directory,
+          },
+        ),
       ).toEqual({ status: 0, stderr: '', stdout });
     } finally {
       rmSync(directory, { force: true, recursive: true });
@@ -186,7 +194,7 @@ test.each([
     writeFileSync(join(directory, 'empty.txt'), '');
     expect(
       invoke(
-        new URL('../dist/main.js', import.meta.url),
+        new URL('../dist/src/main.js', import.meta.url),
         ['--metric', metric, 'empty.txt', '--total'],
         { cwd: directory },
       ),
@@ -197,7 +205,7 @@ test.each([
 });
 
 test.each(['unsupported', ''])('textstat rejects metric %j before file access', (metric) => {
-  const result = invoke(new URL('../dist/main.js', import.meta.url), [
+  const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
     '--metric',
     metric,
     'missing-fixture.txt',
@@ -224,7 +232,7 @@ test.each([
       writeFileSync(join(directory, 'large.txt'), 'hello');
       expect(
         invoke(
-          new URL('../dist/main.js', import.meta.url),
+          new URL('../dist/src/main.js', import.meta.url),
           ['empty.txt', 'small.txt', 'large.txt', '--min-bytes', minimum, '--total'],
           { cwd: directory },
         ),
@@ -238,7 +246,7 @@ test.each([
 test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
   'textstat rejects minimum %j before file access',
   (minimum) => {
-    const result = invoke(new URL('../dist/main.js', import.meta.url), [
+    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
       `--min-bytes=${minimum}`,
       'missing-fixture.txt',
     ]);
@@ -264,7 +272,7 @@ test.each([
 ] satisfies [string[], string, string][])(
   'textstat counts piped stdin for %j',
   (args, input, stdout) => {
-    expect(invoke(new URL('../dist/main.js', import.meta.url), args, { input })).toEqual({
+    expect(invoke(new URL('../dist/src/main.js', import.meta.url), args, { input })).toEqual({
       status: 0,
       stderr: '',
       stdout,
@@ -277,7 +285,7 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     expect(
-      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
+      invoke(new URL('../dist/src/main.js', import.meta.url), ['one.txt'], {
         cwd: directory,
         input: 'piped text that is longer',
       }),

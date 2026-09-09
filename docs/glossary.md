@@ -156,7 +156,7 @@ _Avoid_: Environment (for the whole object), process, platform, context
 The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure or which signal ended it.
 
 **Run signal**:
-The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal or the signals owner aborts it, with a reason naming the cause.
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal or the signals owner aborts it, with a `CancellationReason` naming the cause.
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
 
 **Signals owner**:

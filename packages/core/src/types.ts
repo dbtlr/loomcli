@@ -95,7 +95,7 @@ export type NameConstraint<Name extends string, Whole extends string = Name> =
         : LiteralNameFault
       : LiteralNameFault;
 
-export type ExitCode = 0 | 1 | 2;
+export type ExitCode = 0 | 1 | 2 | 130 | 143;
 export interface InputTerminal {
   isTTY: boolean;
 }
@@ -114,6 +114,11 @@ export interface Host {
 }
 export interface RunOptions {
   host?: Partial<Host>;
+  /**
+   * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
+   * abort at every phase boundary; it composes with an installed signals owner.
+   */
+  signal?: AbortSignal;
 }
 
 /** The declaration one schema call validates, under the name and the scope it was declared in. */

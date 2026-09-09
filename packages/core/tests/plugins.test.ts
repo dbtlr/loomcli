@@ -7,8 +7,24 @@ function build(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/plugins/build.mjs', import.meta.url), [scenario, mode]);
 }
 
-/** Every row of the plugin build errors, less the two the signals slot owns. */
+/** Every row of the plugin build errors. */
 const rejected = [
+  [
+    'signals-not-array',
+    'Plugin "@loomcli/signals" declares signals that are not an array. Supply a list of signal names.',
+  ],
+  [
+    'signals-outside-set',
+    'Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.',
+  ],
+  [
+    'signals-repeated-claim',
+    'Plugin "@loomcli/signals" claims signal "SIGINT" twice. Claim each signal once.',
+  ],
+  [
+    'signals-second-claim',
+    'Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.',
+  ],
   [
     'not-a-plugin',
     'The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).',
@@ -237,6 +253,14 @@ test('one class registered by the application and by a plugin resolves first-in-
     status: 1,
     stderr: 'plugin fatal: the action stopped the invocation\n',
     stdout: 'resolved:1\n',
+  });
+});
+
+test('an empty signals claim leaves the slot free for the next plugin', () => {
+  expect(build('signals-empty-claim', 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'inspected\n',
   });
 });
 
