@@ -37,8 +37,10 @@ import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { Output, reportPlainly } from './output.js';
-import { buildPlugins, installPlugins, pluginSentence } from './plugin.js';
+import { buildPlugins, installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
+import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
+import type { CancellationCode } from './signals.js';
 import type {
   Action,
   ArgumentConfig,
@@ -68,6 +70,18 @@ export type ApplicationMethod = Exclude<CommandMethod, 'alias'>;
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noRegistrations: FailureRegistry = new Map();
+
+/**
+ * Whether one failure is the cancellation the run already reports, which core does not report a
+ * second time. Any other failure after cancellation is rendered as usual.
+ */
+function silenced(
+  thrown: unknown,
+  signal: AbortSignal,
+  cancelled: CancellationCode | undefined,
+): boolean {
+  return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
+}
 
 /**
  * Everything an application configures beside its declarations: the options every Command shares,
@@ -240,6 +254,16 @@ class ApplicationBuilder<
     let registry: FailureRegistry | undefined = undefined;
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
+    // One private controller per run, subscribed to the caller's signal at run entry.
+    const controller = new AbortController();
+    const signals = bracketRun(controller, options?.signal);
+    // A cancelled run resolves its cancellation code whenever it ends after graph build. A
+    // Declaration or internal failure raised before that ends the run with its own code instead.
+    let graphBuilt = false;
+    const cancellation = (): CancellationCode | undefined => {
+      const reason = graphBuilt ? signals.reason() : undefined;
+      return reason ? cancellationCode(reason) : undefined;
+    };
     try {
       const overrides = options?.host;
       stderr = overrides?.stderr ?? stderr;
@@ -251,19 +275,22 @@ class ApplicationBuilder<
       const { graph } = built;
       const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
       const defaults = await prepareInputs(inputs, host);
-      // One private controller per run. Nothing aborts it until a caller or a signals owner can.
-      const controller = new AbortController();
-      await runInvocation({
-        defaults,
-        facts: built.facts,
-        graph,
-        host,
-        name: this.#name,
-        out: output.out,
-        plugins: built.plugins,
-        report: (fault) => faults.push(fault),
-        signal: controller.signal,
-      });
+      graphBuilt = true;
+      // The listeners the validated signals owner claimed. A build failure installs none.
+      signals.install(ownedSignals(built.plugins));
+      if (!controller.signal.aborted) {
+        await runInvocation({
+          defaults,
+          facts: built.facts,
+          graph,
+          host,
+          name: this.#name,
+          out: output.out,
+          plugins: built.plugins,
+          report: (fault) => faults.push(fault),
+          signal: controller.signal,
+        });
+      }
       // The fault check covers the same window the write accounting covers.
       // A render failure an unawaited helper raised is still this invocation's failure.
       await output.settle();
@@ -278,7 +305,7 @@ class ApplicationBuilder<
         code = failure.exitCode;
         output ??= new Output({ stderr, stdout: process.stdout });
         const writes = await output.settle();
-        if (writes.kind === 'ok') {
+        if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
           const report = describeFailure(registry ?? noRegistrations, failure);
           if (report.kind === 'rendered') {
             // The renderer already owns every byte, trailing newline included: pass it through.
@@ -301,20 +328,22 @@ class ApplicationBuilder<
     // The primary outcome keeps its code, the way a renderer failure leaves it alone.
     // It is reported the way the primary failure is, so a registered renderer answers its class.
     for (const fault of faults) {
-      code = code === 0 ? 1 : code;
-      try {
-        const report = describeFailure(registry ?? noRegistrations, fault);
-        if (report.kind === 'rendered') {
-          await output?.report(report.text);
-        } else {
-          code = 1;
-          await reportPlainly(
-            stderr,
-            `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
-          );
+      if (!silenced(fault, controller.signal, cancellation())) {
+        code = code === 0 ? 1 : code;
+        try {
+          const report = describeFailure(registry ?? noRegistrations, fault);
+          if (report.kind === 'rendered') {
+            await output?.report(report.text);
+          } else {
+            code = 1;
+            await reportPlainly(
+              stderr,
+              `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+            );
+          }
+        } catch {
+          reportingFailed = true;
         }
-      } catch {
-        reportingFailed = true;
       }
     }
     if (output) {
@@ -328,6 +357,11 @@ class ApplicationBuilder<
     if (reportingFailed) {
       await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
     }
+    // One rule orders every code: a cancelled run resolves its signal's code, and a broken failure
+    // Renderer or destination in that run is reported as text without changing it. The signal
+    // Decides the code whatever the action did afterward, so this reading comes last.
+    code = cancellation() ?? code;
+    signals.finish();
     process.exitCode = code;
     return code;
   }

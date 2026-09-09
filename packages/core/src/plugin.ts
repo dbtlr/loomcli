@@ -4,6 +4,8 @@ import type { FailureRenderer } from './errors.js';
 import { buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
 import { checkDescription, isPlainObject } from './facts.js';
+import { isProcessSignal } from './signals.js';
+import type { ProcessSignal } from './signals.js';
 import type { OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { OptionInput } from './validation.js';
@@ -307,13 +309,37 @@ function readMiddleware(
   return { activate, load };
 }
 
+/**
+ * One plugin's claim on the signals slot, drawn from the closed set core installs listeners for.
+ * An empty list claims nothing, so it leaves the slot free for another plugin.
+ */
+function readSignals(identity: string, declared: unknown): readonly ProcessSignal[] {
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares signals that are not an array. Supply a list of signal names.`,
+    );
+  }
+  const list: readonly unknown[] = declared;
+  return list.map((value) => {
+    if (!isProcessSignal(value)) {
+      throw new DeclarationError(
+        `${pluginSentence(identity)} claims signal "${String(value)}". Claim SIGINT or SIGTERM.`,
+      );
+    }
+    return value;
+  });
+}
+
 /** One installed plugin's declarations, read once per build in installation order. */
 interface BuiltPlugin {
   failures: readonly FailureRenderer[];
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
-  signals: unknown;
+  signals: readonly ProcessSignal[];
 }
 
 /** The shared registers one build fills while it reads each plugin's contributions. */
@@ -365,18 +391,35 @@ function buildPlugins(
   installed: readonly InstalledPlugin[],
   build: PluginBuild,
 ): readonly BuiltPlugin[] {
+  // The signals slot has one owner, so the first plugin to claim it names the second claimant's
+  // Diagnostic. An empty claim leaves the slot free.
+  let owner: string | undefined = undefined;
   return installed.map(({ declaration, identity }) => {
     defineExtensions(identity, declaration, build);
     const inputs = readOptions(identity, declaration.options, build);
     const names = new Set(inputs.map((input) => input.name));
+    const signals = readSignals(identity, declaration.signals);
+    if (signals.length > 0) {
+      if (owner !== undefined) {
+        throw new DeclarationError(
+          `${pluginSentence(identity)} claims the signals slot, which plugin "${owner}" already holds. Install one owner.`,
+        );
+      }
+      owner = identity;
+    }
     return {
       failures: readFailures(identity, declaration.failures),
       identity,
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),
-      signals: declaration.signals,
+      signals,
     };
   });
+}
+
+/** The signals the one slot owner claimed, or none when no installed plugin claims the slot. */
+function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ProcessSignal[] {
+  return plugins.find((entry) => entry.signals.length > 0)?.signals ?? [];
 }
 
 export type {
@@ -390,4 +433,4 @@ export type {
   PluginOptions,
   PluginOptionValues,
 };
-export { buildPlugins, installPlugins, plugin, pluginSentence };
+export { buildPlugins, installPlugins, ownedSignals, plugin, pluginSentence };

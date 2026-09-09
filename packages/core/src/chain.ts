@@ -170,11 +170,21 @@ interface Invocation {
 
 /** The state one chain shares: what it reached, what it raised, and how it continues. */
 interface Chain {
+  cancelled: () => boolean;
   context: (entry: ChainEntry, next: () => Promise<ChainOutcome>) => MiddlewareContext;
   invoked: () => boolean;
   record: (error: unknown) => void;
   report: (fault: LoomError) => void;
   step: (index: number) => Promise<ChainOutcome>;
+}
+
+/**
+ * The outcome one entry reports to its caller. `'cancelled'` wins over `'taken-over'`, so a later
+ * middleware that returned because it saw the abort reports as cancelled, the order the exit codes
+ * follow. An action that already ran still reports as dispatched.
+ */
+function reported(chain: Chain, outcome: ChainOutcome): ChainOutcome {
+  return outcome === 'taken-over' && chain.cancelled() ? 'cancelled' : outcome;
 }
 
 /** One entry's turn in the chain, and the shared state that turn writes to. */
@@ -261,12 +271,12 @@ async function settle(
     chain.report(new InternalError(reasonOf(thrown.value), thrown.value));
   }
   if (state.calls === 0) {
-    return 'taken-over';
+    return reported(chain, 'taken-over');
   }
   await quiet(state.downstream);
   // A middleware that caught the rejection reports what the chain reached; the recorded failure
   // Still decides the exit code.
-  return state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over');
+  return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 
 /** The module one loader answers with, whether it throws where it is called or rejects later. */
@@ -297,6 +307,11 @@ async function loadMiddleware(entry: ChainEntry) {
 /** One entry's turn: its module loads here, when the chain reaches it and never before. */
 async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise<ChainOutcome> {
   const middleware = await loadMiddleware(entry);
+  if (chain.cancelled()) {
+    // A module import cannot be aborted, so a loader already in flight settles and core starts
+    // Nothing with it: the middleware it resolved to is skipped.
+    return 'cancelled';
+  }
   const state: EntryState = { calls: 0, returned: false, settled: false };
   const turn: EntryTurn = { chain, entry, index, state };
   const thrown = await call(middleware, chain.context(entry, nextOf(turn)));
@@ -317,14 +332,18 @@ async function runChain(
     await dispatch();
     return 'dispatched';
   };
+  const cancelled = () => invocation.signal.aborted;
   if (entries.length === 0) {
-    await terminal();
+    if (!cancelled()) {
+      await terminal();
+    }
     return undefined;
   }
   // The graph a middleware reads is the one `inspect()` returns, built once for the run.
   const graph = inspectGraph(invocation.name, invocation.graph, invocation.facts);
   const command = nodeAt(graph, routed.path);
   const chain: Chain = {
+    cancelled,
     context: (entry, next) => ({
       command,
       graph,
@@ -340,6 +359,11 @@ async function runChain(
     },
     report: invocation.report,
     step: (index) => {
+      if (cancelled()) {
+        // Core starts nothing new after cancellation: a middleware the chain has not reached and
+        // An action not yet dispatched are skipped, and the entries already running unwind.
+        return Promise.resolve<ChainOutcome>('cancelled');
+      }
       const entry = entries[index];
       return entry ? runEntry(entry, index, chain) : terminal();
     },
