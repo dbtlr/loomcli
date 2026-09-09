@@ -1,5 +1,11 @@
 import { Command, plugin, readExtension } from '@loomcli/core';
-import type { Middleware, Plugin, PluginOptions } from '@loomcli/core';
+import type {
+  AnyExtension,
+  ExtensionValue,
+  Middleware,
+  Plugin,
+  PluginOptions,
+} from '@loomcli/core';
 import { z } from 'zod';
 
 import type { help } from './plugin-entry.js';
@@ -52,6 +58,14 @@ const reader: Middleware<typeof help> = ({ options }) => {
   void options.verbose;
 };
 
+// A plugin's own list holds descriptors, which publish an identity and a target.
+const defined: readonly AnyExtension[] = [helpCommand, helpInput, helpArgument];
+const carried: ExtensionValue<'command'> = helpCommand({});
+// @ts-expect-error TS2739: An extension value publishes its brand alone, never a descriptor's keys.
+const valueAsDescriptor: AnyExtension = carried;
+
+void defined;
+void valueAsDescriptor;
 void commandValue;
 void optionValue;
 void argumentValue;
