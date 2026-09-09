@@ -1,6 +1,6 @@
 - Add `run({ signal })`. It accepts a caller-owned `AbortSignal` that cancels the run; core subscribes at run entry and honors the abort at every phase boundary.
 - Add the signals slot. One installed plugin claims `SIGINT`, `SIGTERM`, or both; core installs one process listener per claimed signal once the graph has validated, removes them on every exit path of that run, and re-raises a repeated signal so the default disposition ends the process when no other listener remains.
-- Add a typed cancellation reason. The `signal` on a middleware context and on an action context aborts with `{ source: 'SIGINT' | 'SIGTERM' | 'caller', cause?: unknown }`, where `cause` carries the caller's own `signal.reason`. The exported `CancellationReason` type names it.
+- Add a typed cancellation reason. The `signal` on a middleware context and on an action context aborts with a reason core owns, `{ source: 'SIGINT' | 'SIGTERM' | 'caller', cause?: unknown }`, where `cause` carries the caller's own `signal.reason`, so a middleware reads `source` and never infers a signal name.
 - Change `ExitCode` to widen from `0 | 1 | 2` to `0 | 1 | 2 | 130 | 143`: 130 for `SIGINT` or a caller abort, 143 for `SIGTERM`.
 
 ### Migration

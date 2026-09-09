@@ -29,7 +29,6 @@ export type { FailureRenderer, InputProblem } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
-export type { CancellationReason } from './signals.js';
 export type {
   Middleware,
   OptionsOf,
