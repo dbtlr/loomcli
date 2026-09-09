@@ -18,7 +18,7 @@ const globals = new GlobalOptions().option('file', {
   validateOmitted: true,
 });
 
-new Command('read', globals)
+new Command('read', { globals })
   .argument('path', { validate: fileOrStdin, validateOmitted: true })
   .option('output', { type: 'string', validate: fileOrStdin, validateOmitted: true })
   .action(({ args, options }) => {

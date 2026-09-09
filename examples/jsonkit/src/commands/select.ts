@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { selectFields } from '../actions/select-fields.js';
 import { globals } from '../globals.js';
 
-export const select = new Command('select', globals)
+export const select = new Command('select', { globals })
   .option('field', {
     multiple: true,
     required: true,

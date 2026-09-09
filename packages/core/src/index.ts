@@ -23,7 +23,7 @@ export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { FailureRenderer, InputProblem } from './errors.js';
-export type { CommandMethod } from './command.js';
+export type { CommandMethod, CommandOptions } from './command.js';
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 export type {
   Action,

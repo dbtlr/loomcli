@@ -9,12 +9,12 @@ export const globals = new GlobalOptions()
   .option('quiet', { short: 'q', type: 'boolean' })
   .option('limit', { type: 'string', validate: z.string().transform(Number) });
 
-export const get = new Command('get', globals)
+export const get = new Command('get', { globals })
   .argument('path', { required: true })
   .option('raw', { short: 'r', type: 'boolean' })
   .action(getValue);
 
-export const keys = new Command('keys', globals).action(({ args, options, passthrough }) => {
+export const keys = new Command('keys', { globals }).action(({ args, options, passthrough }) => {
   const file: string = options.file;
   const quiet: boolean = options.quiet;
   const limit: number | undefined = options.limit;

@@ -93,7 +93,7 @@ function routed(failures) {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })
     .option('quiet', { short: 'q', type: 'boolean' });
-  const get = new Command('get', globals)
+  const get = new Command('get', { globals })
     .argument('path', { required: true })
     .option('depth', { short: 'd', type: 'string', validate: digits })
     .option('mode', { short: 'm', shortOnly: true, type: 'string', validate: speed })
@@ -104,8 +104,8 @@ function routed(failures) {
       validate: z.array(z.string().min(1, 'Supply a field name.')),
     })
     .action(dispatch);
-  const cache = new Command('cache', globals).command(
-    new Command('keys', globals).action(dispatch),
+  const cache = new Command('cache', { globals }).command(
+    new Command('keys', { globals }).action(dispatch),
   );
   return new Application('failures', { failures, globals })
     .command(get)

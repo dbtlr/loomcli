@@ -5,7 +5,7 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomc
 const globals = new GlobalOptions().option('file', { required: true, short: 'f', type: 'string' });
 const fresh = new Application('fresh', { globals });
 const partial = fresh.option('pretty', { type: 'boolean' });
-const finished = partial.command(new Command('get', globals).action(() => {})).action(() => {});
+const finished = partial.command(new Command('get', { globals }).action(() => {})).action(() => {});
 
 const freshGraph: CommandGraph = fresh.inspect();
 const partialGraph: CommandGraph = partial.inspect();
@@ -16,6 +16,13 @@ const slots: readonly ArgumentNode[] = root.arguments;
 const name: string | null = root.name;
 const path: readonly string[] = root.path;
 const aliases: readonly string[] = root.aliases;
+
+// The core facts read as optional strings wherever a declaration carries one.
+const version: string | undefined = graph.version;
+const summary: string | undefined = graph.description;
+const rootSummary: string | undefined = root.description;
+const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;
+const optionSummary = (option: OptionNode): string | undefined => option.description;
 
 // The option union reads by its `type` tag, and each form publishes its own spellings.
 const spelling = (option: OptionNode) =>
@@ -51,3 +58,8 @@ void slots;
 void name;
 void path;
 void aliases;
+void version;
+void summary;
+void rootSummary;
+void argumentSummary;
+void optionSummary;

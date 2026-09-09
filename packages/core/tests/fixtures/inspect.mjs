@@ -21,9 +21,9 @@ function jsonkit() {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })
     .option('quiet', { short: 'q', type: 'boolean' });
-  const get = new Command('get', globals).argument('path', { required: true }).action(dispatch);
-  const keys = new Command('keys', globals).argument('path', {}).action(dispatch);
-  const select = new Command('select', globals)
+  const get = new Command('get', { globals }).argument('path', { required: true }).action(dispatch);
+  const keys = new Command('keys', { globals }).argument('path', {}).action(dispatch);
+  const select = new Command('select', { globals })
     .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
     .action(dispatch);
   return new Application('jsonkit', { globals })
@@ -33,11 +33,32 @@ function jsonkit() {
     .action(dispatch);
 }
 
+// Every target of a core fact declares one, so inspection reports each of them in place.
+// The root node repeats the Application's description, which the graph carries too.
+function described() {
+  const globals = new GlobalOptions().option('file', {
+    description: 'The document to read.',
+    short: 'f',
+    type: 'string',
+  });
+  const get = new Command('get', { description: 'Reads one value.', globals })
+    .argument('path', { description: 'The path to read.', required: true })
+    .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
+    .action(dispatch);
+  return new Application('described', {
+    description: 'Reads a JSON document.',
+    globals,
+    version: '1.2.0',
+  })
+    .command(get)
+    .action(dispatch);
+}
+
 function nested() {
   const globals = new GlobalOptions();
-  const clear = new Command('clear', globals).action(dispatch);
-  const list = new Command('list', globals).alias('ls').alias('l').action(dispatch);
-  const cache = new Command('cache', globals).alias('c').command(clear).command(list);
+  const clear = new Command('clear', { globals }).action(dispatch);
+  const list = new Command('list', { globals }).alias('ls').alias('l').action(dispatch);
+  const cache = new Command('cache', { globals }).alias('c').command(clear).command(list);
   return new Application('store', { globals }).command(cache).action(dispatch);
 }
 
@@ -68,6 +89,17 @@ function defaults() {
     .action(dispatch);
 }
 
+// An object with no prototype is plain data too, so inspection copies and freezes its default.
+function bare() {
+  return new Application('bare')
+    .option('config', {
+      default: Object.assign(Object.create(null), { depth: '1' }),
+      type: 'string',
+      validate: digits,
+    })
+    .action(dispatch);
+}
+
 function tails() {
   return new Application('tails')
     .argument('files', { default: ['a'], variadic: true })
@@ -85,7 +117,7 @@ function omission() {
 function invalid() {
   const globals = new GlobalOptions();
   return new Application('invalid', { globals })
-    .command(new Command('get', globals))
+    .command(new Command('get', { globals }))
     .action(dispatch);
 }
 
@@ -136,7 +168,19 @@ const faults = {
       .action(dispatch),
 };
 
-const graphs = { defaults, invalid, jsonkit, nested, omission, polarity, roles, tails, ...faults };
+const graphs = {
+  bare,
+  defaults,
+  described,
+  invalid,
+  jsonkit,
+  nested,
+  omission,
+  polarity,
+  roles,
+  tails,
+  ...faults,
+};
 const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 
@@ -189,6 +233,16 @@ if (mode === 'catch') {
     graph.root.children[0].aliases.push('other');
   });
   process.stdout.write(`${encode({ attempts, repeats: build().inspect().name })}\n`);
+} else if (mode === 'default') {
+  // A reported default is a copy, frozen to any depth, so a consumer cannot reach the declaration.
+  const [option] = build().inspect().root.options;
+  let rejected = false;
+  try {
+    option.default.value.depth = 'other';
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  process.stdout.write(`${encode({ rejected, value: option.default.value })}\n`);
 } else {
   process.stdout.write(`${encode(build().inspect())}\n`);
 }

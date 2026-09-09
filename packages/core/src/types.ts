@@ -44,6 +44,13 @@ type Multiplicity = { multiple: true } | { multiple?: false };
  */
 type Omission = { validateOmitted: true } | { validateOmitted?: false };
 /**
+ * The one-line summary every projection reads. It is a core fact: optional, and a string that holds
+ * a character other than whitespace and no line terminator.
+ */
+interface Described {
+  description?: string;
+}
+/**
  * The tokens one declaration collects before validation: one string, or the whole collection. A
  * multiple option and a variadic argument collect alike, so they share this raw shape.
  */
@@ -154,11 +161,14 @@ export interface Out {
 export type StringOption = OptionSpelling &
   Presence &
   Multiplicity &
-  Omission & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+  Omission &
+  Described & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
-export type VariadicArgument = Presence & { variadic: true; validate?: StandardSchemaV1 };
+export type VariadicArgument = Presence &
+  Described & { variadic: true; validate?: StandardSchemaV1 };
 export type ScalarArgument = Presence &
-  Omission & { variadic?: false; validate?: StandardSchemaV1 };
+  Omission &
+  Described & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
@@ -213,16 +223,17 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
           ? never
           : undefined);
 export type BooleanOption =
-  | (OptionSpelling & {
-      type: 'boolean';
-      validate?: never;
-      default?: never;
-      multiple?: never;
-      required?: never;
-      validateOmitted?: never;
-      polarity?: 'positive' | 'negative';
-    })
-  | {
+  | (OptionSpelling &
+      Described & {
+        type: 'boolean';
+        validate?: never;
+        default?: never;
+        multiple?: never;
+        required?: never;
+        validateOmitted?: never;
+        polarity?: 'positive' | 'negative';
+      })
+  | (Described & {
       type: 'boolean';
       validate?: never;
       default?: never;
@@ -232,7 +243,7 @@ export type BooleanOption =
       polarity: 'both';
       short?: ShortAlias;
       shortOnly?: false;
-    };
+    });
 export type OptionConfig = StringOption | BooleanOption;
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
   ? Config extends { multiple: true }

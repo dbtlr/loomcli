@@ -6,8 +6,9 @@ import {
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
+import { checkDescription, isPlainObject } from './facts.js';
 import type { BuiltGlobals, GlobalOptions } from './globals.js';
-import { bindGlobals, buildGlobals } from './globals.js';
+import { bindGlobals, buildGlobals, isGlobalOptions } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type {
   Action,
@@ -67,6 +68,7 @@ export interface BuiltCommand {
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
+  description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
   inputs: readonly InputDeclaration[];
   name: string | null;
@@ -137,6 +139,27 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
   return node;
 }
 
+/**
+ * The shape of a Command's second argument, read where it is supplied. The retired positional form
+ * declares its globals on a value that holds no `globals` key, so without this rule the globals
+ * vanish silently and the operator, not the author, meets the consequence as an unknown-option
+ * error. It answers before every other rule, because a Command that lost its globals this way would
+ * otherwise report the mismatch with its Application instead of the slot that caused it.
+ * The facts the slot carried were captured at construction, so this reads the slot's shape alone.
+ */
+function checkCommandOptions(name: string | null, options: unknown): void {
+  if (isGlobalOptions(options)) {
+    throw new DeclarationError(
+      `${commandSentence(name)} takes an options object. Supply { globals } instead of a positional GlobalOptions value.`,
+    );
+  }
+  if (options !== undefined && !isPlainObject(options)) {
+    throw new DeclarationError(
+      `${commandSentence(name)} options must be an object. Supply { globals }.`,
+    );
+  }
+}
+
 /** One name rule for every declared name in the graph, so a child and an argument read alike. */
 function isDeclaredName(name: unknown): name is string {
   return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
@@ -169,26 +192,40 @@ export interface CommandState<Args, Options, Globals> {
   aliases: readonly AliasDeclaration[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
+  // The description the constructor read out of the options slot, unexamined until build.
+  // The Application checks its own slot, so the root carries none here.
+  description: unknown;
   globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
   name: string | null;
+  // The constructor's raw options argument, kept for the slot's own shape rules.
+  // Those rules answer at the same point every other authoring fault does.
+  options: unknown;
 }
 
-/** The state every declaration starts from. The unnamed root and each named Command share it. */
-export function freshState<Globals>(
-  name: string | null,
-  globals: GlobalOptions<Globals> | undefined,
-): CommandState<{}, {}, Globals> {
+/**
+ * The state every declaration starts from. The unnamed root and each named Command share it.
+ * The declaration values arrive captured, because a later change to the options object the author
+ * passed changes nothing the declaration holds.
+ */
+export function freshState<Globals>(declaration: {
+  description: unknown;
+  globals: GlobalOptions<Globals> | undefined;
+  name: string | null;
+  options: unknown;
+}): CommandState<{}, {}, Globals> {
   return {
     actions: [],
     aliases: [],
     bind: () => ({ args: {}, options: {} }),
     children: [],
-    globals,
+    description: declaration.description,
+    globals: declaration.globals,
     inputs: [],
     late: [],
-    name,
+    name: declaration.name,
+    options: declaration.options,
   };
 }
 
@@ -516,6 +553,15 @@ export function buildCommand<Args, Options, Globals>(
   const { actions, name } = state;
   const { globals } = context;
   const subject = commandSubject(name);
+  checkCommandOptions(name, state.options);
+  const description = checkDescription(commandSentence(name), state.description);
+  // Each declaration's own facts, in authoring order, before the rules that pair declarations.
+  for (const input of state.inputs) {
+    checkDescription(
+      `${commandSentence(name)} ${input.kind} "${input.name}"`,
+      input.config.description,
+    );
+  }
   if (state.globals !== globals.source) {
     throw new DeclarationError(
       `${commandSentence(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
@@ -559,6 +605,7 @@ export function buildCommand<Args, Options, Globals>(
     aliases,
     arguments: slots,
     children,
+    description,
     dispatch: action ? bindDispatch(state, action) : undefined,
     inputs: state.inputs,
     name,
@@ -664,11 +711,20 @@ export type Command<
   typeof commandValue | typeof declaredTypes | State
 >;
 
+/**
+ * Everything a Command configures beside its declarations: the options value every Command in one
+ * application shares, and the core facts the declaration carries.
+ */
+export interface CommandOptions<Globals = {}> {
+  globals?: GlobalOptions<Globals>;
+  description?: string;
+}
+
 interface CommandConstructor {
   new (name: string): Command<{}, {}, {}, CommandMethod>;
-  new <Globals>(
+  new <Globals = {}>(
     name: string,
-    globals: GlobalOptions<Globals>,
+    options: CommandOptions<Globals>,
   ): Command<{}, {}, Globals, CommandMethod>;
 }
 
@@ -678,12 +734,16 @@ interface CommandConstructor {
  * signature of the constructor interface publishes.
  */
 class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
-  constructor(name: string, globals?: GlobalOptions<Globals>) {
-    super(freshState(name, globals));
+  constructor(name: string, options?: CommandOptions<Globals>) {
+    // The options slot is read defensively, never inspected: an invalid value still yields
+    // `globals` and `description` of some kind, and `buildCommand` reports it at build instead.
+    super(
+      freshState({ description: options?.description, globals: options?.globals, name, options }),
+    );
   }
 }
 
-/** The public constructor requires a name and narrows the globals type to the supplied value. */
+/** The public constructor takes a name and one options object, as the Application does. */
 export const Command: CommandConstructor = CommandDeclaration;
 
 /** Every declaration in the graph, so defaults are validated before any token is read. */

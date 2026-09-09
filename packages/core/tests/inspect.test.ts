@@ -12,13 +12,22 @@ function invokeInspect(graph: string, mode = 'json') {
   return JSON.parse(result.stdout);
 }
 
-const leaf = { aliases: [], arguments: [], children: [], hasAction: true, options: [] };
+const leaf = {
+  aliases: [],
+  arguments: [],
+  children: [],
+  description: none,
+  hasAction: true,
+  options: [],
+};
 
 test('inspects a graph of globals, a root action, and three children', () => {
   expect(invokeInspect('jsonkit')).toEqual({
+    description: none,
     globals: [
       {
         default: none,
+        description: none,
         long: '--file',
         multiple: false,
         name: 'file',
@@ -29,6 +38,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         validated: false,
       },
       {
+        description: none,
         long: '--quiet',
         name: 'quiet',
         negative: null,
@@ -47,6 +57,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           arguments: [
             {
               default: none,
+              description: none,
               name: 'path',
               required: true,
               validateOmitted: false,
@@ -62,6 +73,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           arguments: [
             {
               default: none,
+              description: none,
               name: 'path',
               required: false,
               validateOmitted: false,
@@ -78,6 +90,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           options: [
             {
               default: none,
+              description: none,
               long: '--field',
               multiple: true,
               name: 'field',
@@ -91,16 +104,82 @@ test('inspects a graph of globals, a root action, and three children', () => {
           path: ['select'],
         },
       ],
+      description: none,
       hasAction: true,
       name: null,
       options: [],
       path: [],
     },
+    version: none,
+  });
+});
+
+test('reports the version and every declared description, and the root reports the graph one', () => {
+  expect(invokeInspect('described')).toEqual({
+    description: 'Reads a JSON document.',
+    globals: [
+      {
+        default: none,
+        description: 'The document to read.',
+        long: '--file',
+        multiple: false,
+        name: 'file',
+        required: false,
+        short: '-f',
+        type: 'string',
+        validateOmitted: false,
+        validated: false,
+      },
+    ],
+    name: 'described',
+    root: {
+      aliases: [],
+      arguments: [],
+      children: [
+        {
+          aliases: [],
+          arguments: [
+            {
+              default: none,
+              description: 'The path to read.',
+              name: 'path',
+              required: true,
+              validateOmitted: false,
+              validated: false,
+              variadic: false,
+            },
+          ],
+          children: [],
+          description: 'Reads one value.',
+          hasAction: true,
+          name: 'get',
+          options: [
+            {
+              description: 'Prints the value unquoted.',
+              long: '--raw',
+              name: 'raw',
+              negative: null,
+              polarity: 'positive',
+              short: null,
+              type: 'boolean',
+            },
+          ],
+          path: ['get'],
+        },
+      ],
+      description: 'Reads a JSON document.',
+      hasAction: true,
+      name: null,
+      options: [],
+      path: [],
+    },
+    version: '1.2.0',
   });
 });
 
 test('inspects a group at two named levels below the root', () => {
   expect(invokeInspect('nested')).toEqual({
+    description: none,
     globals: [],
     name: 'store',
     root: {
@@ -114,23 +193,27 @@ test('inspects a group at two named levels below the root', () => {
             { ...leaf, name: 'clear', path: ['cache', 'clear'] },
             { ...leaf, aliases: ['ls', 'l'], name: 'list', path: ['cache', 'list'] },
           ],
+          description: none,
           hasAction: false,
           name: 'cache',
           options: [],
           path: ['cache'],
         },
       ],
+      description: none,
       hasAction: true,
       name: null,
       options: [],
       path: [],
     },
+    version: none,
   });
 });
 
 test('reports the accepted spellings of each polarity and of a short-only option', () => {
   expect(invokeInspect('polarity').root.options).toEqual([
     {
+      description: none,
       long: '--total',
       name: 'total',
       negative: '--no-total',
@@ -139,6 +222,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       type: 'boolean',
     },
     {
+      description: none,
       long: '--color',
       name: 'color',
       negative: null,
@@ -147,6 +231,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       type: 'boolean',
     },
     {
+      description: none,
       long: null,
       name: 'cache',
       negative: '--no-cache',
@@ -156,6 +241,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
     },
     {
       default: none,
+      description: none,
       long: null,
       multiple: false,
       name: 'mode',
@@ -171,6 +257,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
 test('reads each spelling role from the table, including a name that begins with "no-"', () => {
   expect(invokeInspect('roles').root.options).toEqual([
     {
+      description: none,
       long: '--no-color',
       name: 'no-color',
       negative: '--no-no-color',
@@ -180,6 +267,7 @@ test('reads each spelling role from the table, including a name that begins with
     },
     {
       default: none,
+      description: none,
       long: null,
       multiple: true,
       name: 'field',
@@ -197,6 +285,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   expect(root.options).toEqual([
     {
       default: { value: '1' },
+      description: none,
       long: '--depth',
       multiple: false,
       name: 'depth',
@@ -208,6 +297,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
     },
     {
       default: { value: none },
+      description: none,
       long: '--limit',
       multiple: false,
       name: 'limit',
@@ -219,6 +309,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
     },
     {
       default: none,
+      description: none,
       long: '--plain',
       multiple: false,
       name: 'plain',
@@ -232,6 +323,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   expect(root.arguments).toEqual([
     {
       default: { value: 'root' },
+      description: none,
       name: 'path',
       required: false,
       validateOmitted: false,
@@ -246,6 +338,7 @@ test('reports the option and the argument that validate their own omission', () 
   expect(root.options).toEqual([
     {
       default: none,
+      description: none,
       long: '--file',
       multiple: false,
       name: 'file',
@@ -257,6 +350,7 @@ test('reports the option and the argument that validate their own omission', () 
     },
     {
       default: none,
+      description: none,
       long: '--size',
       multiple: false,
       name: 'size',
@@ -270,6 +364,7 @@ test('reports the option and the argument that validate their own omission', () 
   expect(root.arguments).toEqual([
     {
       default: none,
+      description: none,
       name: 'path',
       required: false,
       validateOmitted: true,
@@ -291,6 +386,7 @@ test('reports an optional variadic argument with its declared default', () => {
   expect(invokeInspect('tails').root.arguments).toEqual([
     {
       default: { value: ['a'] },
+      description: none,
       name: 'files',
       required: false,
       validateOmitted: false,
@@ -359,6 +455,10 @@ test('run() still reports the invalid graph as a diagnostic with code 1', () => 
     'Invalid declaration: Command "get" has no action. Register an action.\n',
   );
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
+});
+
+test('copies and freezes a declared default that has no prototype', () => {
+  expect(invokeInspect('bare', 'default')).toEqual({ rejected: true, value: { depth: '1' } });
 });
 
 test('returns frozen data and builds a new graph on each call', () => {

@@ -9,15 +9,15 @@ const report =
   ({ args, options, passthrough, out }) =>
     out.print(JSON.stringify({ args, command, options, passthrough }));
 
-const select = new Command('select', globals)
+const select = new Command('select', { globals })
   .option('field', { multiple: true, short: 'F', type: 'string' })
   .action(report('select'));
 
-const count = new Command('count', globals)
+const count = new Command('count', { globals })
   .option('field', { polarity: 'both', short: 'F', type: 'boolean' })
   .action(report('count'));
 
-const set = new Command('set', globals)
+const set = new Command('set', { globals })
   .option('field', {
     short: 'F',
     type: 'string',
@@ -25,7 +25,7 @@ const set = new Command('set', globals)
   })
   .action(report('set'));
 
-const cache = new Command('cache', globals).command(set);
+const cache = new Command('cache', { globals }).command(set);
 
 const app = new Application('spellings', { globals })
   .command(select)

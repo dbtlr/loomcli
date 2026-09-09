@@ -9,7 +9,7 @@ const globals = new GlobalOptions()
 const dispatch = ({ out }) => out.print('dispatched');
 
 function child(name) {
-  return new Command(name, globals).action(dispatch);
+  return new Command(name, { globals }).action(dispatch);
 }
 
 function build() {
@@ -44,12 +44,12 @@ function build() {
     }
     case 'nonstring-argument-name': {
       return app
-        .command(new Command('get', globals).argument(1, {}).action(dispatch))
+        .command(new Command('get', { globals }).argument(1, {}).action(dispatch))
         .action(dispatch);
     }
     case 'foreign-globals': {
       const other = new GlobalOptions().option('file', { type: 'string' });
-      return app.command(new Command('get', other).action(dispatch)).action(dispatch);
+      return app.command(new Command('get', { globals: other }).action(dispatch)).action(dispatch);
     }
     case 'foreign-child': {
       return app.command({ name: 'get' }).action(dispatch);
@@ -66,13 +66,15 @@ function build() {
     }
     case 'shared-option-key': {
       return app
-        .command(new Command('get', globals).option('file', { type: 'boolean' }).action(dispatch))
+        .command(
+          new Command('get', { globals }).option('file', { type: 'boolean' }).action(dispatch),
+        )
         .action(dispatch);
     }
     case 'shared-short-spelling': {
       return app
         .command(
-          new Command('get', globals)
+          new Command('get', { globals })
             .option('force', { short: 'f', type: 'boolean' })
             .action(dispatch),
         )
@@ -81,7 +83,7 @@ function build() {
     case 'shared-negative-spelling': {
       return app
         .command(
-          new Command('get', globals).option('no-total', { type: 'string' }).action(dispatch),
+          new Command('get', { globals }).option('no-total', { type: 'string' }).action(dispatch),
         )
         .action(dispatch);
     }
@@ -89,7 +91,7 @@ function build() {
       return app.option('file', { type: 'boolean' }).command(child('get')).action(dispatch);
     }
     case 'child-actionless': {
-      return app.command(new Command('get', globals)).action(dispatch);
+      return app.command(new Command('get', { globals })).action(dispatch);
     }
     case 'child-multiple-actions': {
       return app.command(child('get').action(dispatch)).action(dispatch);
@@ -97,7 +99,7 @@ function build() {
     case 'child-duplicate-argument': {
       return app
         .command(
-          new Command('get', globals)
+          new Command('get', { globals })
             .argument('path', { required: true })
             .argument('path', { required: true })
             .action(dispatch),
@@ -107,7 +109,7 @@ function build() {
     case 'child-variadic-not-last': {
       return app
         .command(
-          new Command('get', globals)
+          new Command('get', { globals })
             .argument('paths', { required: true, variadic: true })
             .argument('path', { required: true })
             .action(dispatch),
@@ -117,7 +119,7 @@ function build() {
     case 'child-invalid-default': {
       return app
         .command(
-          new Command('get', globals)
+          new Command('get', { globals })
             .option('depth', { default: 'deep', type: 'string', validate: digits() })
             .action(dispatch),
         )
@@ -125,12 +127,16 @@ function build() {
     }
     case 'late-argument': {
       return app
-        .command(new Command('get', globals).action(dispatch).argument('path', { required: true }))
+        .command(
+          new Command('get', { globals }).action(dispatch).argument('path', { required: true }),
+        )
         .action(dispatch);
     }
     case 'late-option': {
       return app
-        .command(new Command('get', globals).action(dispatch).option('raw', { type: 'boolean' }))
+        .command(
+          new Command('get', { globals }).action(dispatch).option('raw', { type: 'boolean' }),
+        )
         .action(dispatch);
     }
     case 'late-root-argument': {
@@ -142,7 +148,7 @@ function build() {
     case 'late-two-options': {
       return app
         .command(
-          new Command('get', globals)
+          new Command('get', { globals })
             .action(dispatch)
             .option('raw', { type: 'boolean' })
             .option('deep', { type: 'boolean' }),

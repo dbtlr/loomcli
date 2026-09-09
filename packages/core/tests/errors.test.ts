@@ -127,3 +127,74 @@ test('an options object with globals constructs, inspects, and runs the Applicat
     stdout: 'assembled\ndispatched\nresolved:0\n',
   });
 });
+
+/** A Command reads its own options slot under the same rules, through the same entry points. */
+function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
+  return invoke(new URL('fixtures/command-options.mjs', import.meta.url), [scenario, mode]);
+}
+
+test.each(['positional-globals', 'empty-globals'])(
+  'the retired positional globals form %s on a Command is a declaration error at build',
+  (scenario) => {
+    expect(withCommandOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout:
+        'assembled\ndeclaration:1: Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+    });
+    expect(withCommandOptions(scenario, 'run')).toEqual({
+      status: 1,
+      stderr:
+        'Invalid declaration: Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
+
+test.each(['string-options', 'array-options'])(
+  'Command options that are not an object (%s) are a declaration error at build',
+  (scenario) => {
+    expect(withCommandOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout:
+        'assembled\ndeclaration:1: Command "get" options must be an object. Supply { globals }.\n',
+    });
+    expect(withCommandOptions(scenario, 'run')).toEqual({
+      status: 1,
+      stderr: 'Invalid declaration: Command "get" options must be an object. Supply { globals }.\n',
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
+
+test('an options object with globals constructs, inspects, and runs the Command', () => {
+  expect(withCommandOptions('options-object', 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'assembled\ninspected\n',
+  });
+  expect(withCommandOptions('options-object', 'run')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'assembled\ndispatched\nresolved:0\n',
+  });
+});
+
+// An object with no prototype carries no state of its own, so it is an options object.
+// The rule holds on the Command's slot and on the Application's alike.
+test.each(['null-prototype', 'null-prototype-application'])(
+  'an options object with no prototype (%s) inspects and runs',
+  (scenario) => {
+    expect(withCommandOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'assembled\ninspected\n',
+    });
+    expect(withCommandOptions(scenario, 'run')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'assembled\ndispatched\nresolved:0\n',
+    });
+  },
+);

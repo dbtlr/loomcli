@@ -4,11 +4,11 @@ import type { ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
 // Each authoring call publishes only the calls that stay valid after it.
 const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
 
-const freshCommand = new Command('fresh', globals);
+const freshCommand = new Command('fresh', { globals });
 const freshApplication = new Application('fresh', { globals });
-const partial = new Command('partial', globals).argument('path', { required: true });
-const partialOption = new Command('partial-option', globals).option('raw', { type: 'boolean' });
-const finished = new Command('get', globals)
+const partial = new Command('partial', { globals }).argument('path', { required: true });
+const partialOption = new Command('partial-option', { globals }).option('raw', { type: 'boolean' });
+const finished = new Command('get', { globals })
   .argument('path', { required: true })
   .option('raw', { type: 'boolean' })
   .action(() => {});
@@ -81,9 +81,10 @@ const usedFinished = useCommand(finished);
 const wider = new GlobalOptions()
   .option('file', { required: true, type: 'string' })
   .option('depth', { type: 'string' });
+const wide = new Command('wide', { globals: wider }).action(() => {});
 // @ts-expect-error TS2345: A child cannot declare globals its Application does not declare.
-new Application('subset', { globals }).command(new Command('wide', wider).action(() => {}));
-const narrow = new Command('narrow', globals).action(() => {});
+new Application('subset', { globals }).command(wide);
+const narrow = new Command('narrow', { globals }).action(() => {});
 // @ts-expect-error TS2345: A child cannot drop globals its Application declares.
 new Application('superset', { globals: wider }).command(narrow);
 

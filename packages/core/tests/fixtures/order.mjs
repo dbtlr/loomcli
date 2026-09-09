@@ -13,12 +13,12 @@ const globals = new GlobalOptions()
   .option('alpha', { type: 'string', validate: reject('alpha') })
   .option('beta', { type: 'string', validate: reject('beta') });
 
-const order = new Command('order', globals)
+const order = new Command('order', { globals })
   .option('local', { type: 'string', validate: reject('local') })
   .argument('path', { required: true, validate: reject('path') })
   .action(({ out }) => out.print('order'));
 
-const pair = new Command('pair', globals)
+const pair = new Command('pair', { globals })
   .argument('one', { required: true })
   .argument('two', { required: true })
   .action(({ args, out }) => out.print(JSON.stringify(args)));

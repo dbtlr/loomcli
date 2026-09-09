@@ -27,6 +27,7 @@ import {
   toFailure,
 } from './errors.js';
 import type { FailureRegistry, FailureRenderer } from './errors.js';
+import { checkDescription, checkVersion, isPlainObject } from './facts.js';
 import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
@@ -70,6 +71,8 @@ const noRegistrations: FailureRegistry = new Map();
 export interface ApplicationOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   failures?: readonly FailureRenderer[];
+  description?: string;
+  version?: string;
 }
 
 /**
@@ -87,16 +90,19 @@ class ApplicationBuilder<
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
-  // The constructor's raw options argument stays unexamined until build.
+  // The constructor's raw options argument, kept for the slot's own shape rules.
   // The options-slot rules answer at the same point every other authoring fault does:
   // `inspect()` and `run()`.
   readonly #options: unknown;
+  // The facts the constructor read out of that slot, unexamined until build.
+  readonly #declared: DeclaredFacts;
 
   constructor(
     name: string,
     root: CommandState<Args, Options, Globals>,
-    config: { failures: readonly FailureRenderer[]; options?: unknown },
+    config: { declared: DeclaredFacts; failures: readonly FailureRenderer[]; options?: unknown },
   ) {
+    this.#declared = config.declared;
     this.#failures = config.failures;
     this.#name = name;
     this.#options = config.options;
@@ -165,6 +171,7 @@ class ApplicationBuilder<
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
   ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
     return new ApplicationBuilder(this.#name, root, {
+      declared: this.#declared,
       failures: this.#failures,
       options: this.#options,
     });
@@ -177,11 +184,11 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    checkOptions(this.#options);
+    const facts = checkOptions(this.#options, this.#declared);
     buildFailures(this.#failures);
     const graph = buildGraph(this.#root);
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
-    return inspectGraph(this.#name, graph);
+    return inspectGraph(this.#name, graph, facts);
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -196,7 +203,7 @@ class ApplicationBuilder<
       stderr = overrides?.stderr ?? stderr;
       const host = captureHost(overrides, stderr);
       output = new Output(host);
-      checkOptions(this.#options);
+      checkOptions(this.#options, this.#declared);
       registry = buildFailures(this.#failures);
       const graph = buildGraph(this.#root);
       const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
@@ -283,21 +290,25 @@ interface ApplicationConstructor {
   ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
-/** The options slot holds one object literal, so a declaration that carries state is not one. */
-function isPlainObject(value: unknown): boolean {
-  if (value === null || typeof value !== 'object') {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+/** The core facts one Application declares, validated at build and reported by `inspect()`. */
+interface ApplicationFacts {
+  description: string | undefined;
+  version: string | undefined;
+}
+
+/** The same facts as the constructor captured them, before any rule has read them. */
+interface DeclaredFacts {
+  description: unknown;
+  version: unknown;
 }
 
 /**
  * The second argument, read where it is supplied. The retired positional form declares its globals
  * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
- * operator, not the author, meets the consequence as an unknown-option error.
+ * operator, not the author, meets the consequence as an unknown-option error. The slot's own shape
+ * settles first, because a slot that is not an options object carries no facts to report.
  */
-function checkOptions(options: unknown): void {
+function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFacts {
   if (isGlobalOptions(options)) {
     throw new DeclarationError(
       'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
@@ -308,6 +319,10 @@ function checkOptions(options: unknown): void {
       'The Application options must be an object. Supply { globals, failures }.',
     );
   }
+  return {
+    description: checkDescription('The Application', declared.description),
+    version: checkVersion(declared.version),
+  };
 }
 
 /**
@@ -318,8 +333,23 @@ function checkOptions(options: unknown): void {
 class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
   constructor(name: string, options?: ApplicationOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals` and `failures` of some kind, and `checkOptions` reports it at build instead.
-    super(name, freshState(null, options?.globals), { failures: options?.failures ?? [], options });
+    // `globals`, `failures`, and the facts of some kind, and `checkOptions` reports it at build.
+    // The root's own slot and description stay empty, because the Application checks its own slot.
+    // Its diagnostics name the Application rather than the root Command.
+    super(
+      name,
+      freshState({
+        description: undefined,
+        globals: options?.globals,
+        name: null,
+        options: undefined,
+      }),
+      {
+        declared: { description: options?.description, version: options?.version },
+        failures: options?.failures ?? [],
+        options,
+      },
+    );
   }
 }
 

@@ -103,7 +103,9 @@ switch (scenario) {
       short: 'F',
       type: 'string',
     });
-    const show = new Command('show', globals).option('local', { type: 'boolean' }).action(report);
+    const show = new Command('show', { globals })
+      .option('local', { type: 'boolean' })
+      .action(report);
     app = new Application('multiple', { globals }).command(show).action(report);
     break;
   }

@@ -1,5 +1,5 @@
 import { Application, Command, GlobalOptions } from '@loomcli/core';
-import type { ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
+import type { ActionArgs, ActionHandler, ActionOptions, CommandOptions } from '@loomcli/core';
 import { z } from 'zod';
 
 import { get, globals, jsonkit } from './commands.js';
@@ -30,8 +30,38 @@ jsonkit.root;
 
 new Command('optional').argument('path', { required: false });
 
+// @ts-expect-error TS2559: A Command takes an options object, never a positional globals value.
+new Command('positional', globals);
+
+// A core fact is typed, so a value of the wrong type never reaches the build rule that rejects it.
+const numbered = { description: 42 };
+// @ts-expect-error TS2345: A description is one line of prose, never a number.
+new Command('numbered', numbered);
+const counted = { version: 1 };
+// @ts-expect-error TS2345: A version is an opaque string, never a number.
+new Application('counted', counted);
+
+// The core facts are optional, and a Command declares its description with or without globals.
+const described: CommandOptions = { description: 'Reads a value.' };
+new Command('summarized', { description: 'Reads one value.', globals })
+  .argument('path', { description: 'The path to read.', required: true })
+  .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
+  .action(() => {});
+new Command('standalone', { description: 'Answers alone.' }).action(() => {});
+new Application('facts', {
+  description: 'Reads a JSON document.',
+  globals: new GlobalOptions().option('file', {
+    description: 'The document to read.',
+    type: 'string',
+  }),
+  version: '1.2.0',
+})
+  .argument('files', { description: 'The documents to read.', required: true, variadic: true })
+  .action(() => {});
+void described;
+
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
-new Command('collision', globals).option('file', { type: 'boolean' });
+new Command('collision', { globals }).option('file', { type: 'boolean' });
 // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
 new Application('collision', { globals }).option('quiet', { type: 'boolean' });
 // @ts-expect-error TS2322: A globals type argument cannot forge values the declaration lacks.
