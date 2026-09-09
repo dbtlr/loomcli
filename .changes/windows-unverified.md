@@ -1,1 +1,0 @@
-- Change the verified platforms to macOS and Linux. Windows is no longer exercised in CI and is unverified.

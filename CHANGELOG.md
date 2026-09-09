@@ -6,6 +6,12 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.1.1 - 2026-09-09
+
+### Changes
+
+- Change the verified platforms to macOS and Linux. Windows is no longer exercised in CI and is unverified.
+
 ## v0.1.0 - 2026-09-08
 
 This first release provides typed command declarations, local and global options, nested Commands, and Standard Schema validation.
