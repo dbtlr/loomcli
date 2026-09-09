@@ -1,18 +1,195 @@
-import { Application, DeclarationError, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  extension,
+  GlobalOptions,
+  InputError,
+  plugin,
+  renderFailure,
+} from '@loomcli/core';
+import { z } from 'zod';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
+const load = () => import('./modules/silent.mjs');
+
+/** One descriptor per target, so a value on the wrong slot is a value some extension produced. */
+const facts = {
+  argument: extension('@fixture/facts/argument', {
+    schema: z.object({ hint: z.string() }),
+    target: 'argument',
+  }),
+  command: extension('@fixture/facts/command', {
+    schema: z.object({ details: z.string() }),
+    target: 'command',
+  }),
+  option: extension('@fixture/facts/option', {
+    schema: z.object({ placeholder: z.string() }),
+    target: 'option',
+  }),
+};
+
+/** A second descriptor object under one identity, which one graph may never hold twice. */
+const twin = extension('@fixture/facts/command', {
+  schema: z.object({ details: z.string() }),
+  target: 'command',
+});
+
+/** A schema that answers with a promise, which build cannot wait for. */
+const asynchronous = {
+  '~standard': {
+    validate: async () => Promise.resolve({ value: {} }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/** A schema whose output holds a value the graph cannot freeze as plain data. */
+const exotic = {
+  '~standard': {
+    validate: () => ({ value: { at: new Date(0) } }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+const named = (identity, definition) => plugin(identity, definition);
+
 const scenarios = {
-  'empty-identity': () => new Application('app', { plugins: [plugin('', {})] }).action(dispatch),
-  installed: () =>
-    new Application('app', { plugins: [plugin('@loomcli/help', {})] }).action(dispatch),
+  'activation-undeclared': () =>
+    withPlugin(
+      named('@loomcli/help', {
+        middleware: { activate: ['hlep'], load },
+        options: { help: { short: 'h', type: 'boolean' } },
+      }),
+    ),
+  'async-schema': () => {
+    const descriptor = extension('@fixture/async', {
+      schema: asynchronous,
+      target: 'command',
+    });
+    return new Application('app', { extensions: [descriptor({})] }).action(dispatch);
+  },
+  'empty-activation': () =>
+    withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),
+  'empty-identity': () => withPlugin(plugin('', {})),
+  'exotic-output': () => {
+    const descriptor = extension('@fixture/exotic', { schema: exotic, target: 'command' });
+    const globals = new GlobalOptions();
+    const get = new Command('get', { extensions: [descriptor({})], globals }).action(dispatch);
+    return new Application('app', { globals }).command(get).action(dispatch);
+  },
+  installed: () => withPlugin(named('@loomcli/help', {})),
   'installed-twice': () =>
     new Application('app', {
-      plugins: [plugin('@loomcli/help', {}), plugin('@loomcli/help', {})],
+      plugins: [named('@loomcli/help', {}), named('@loomcli/help', {})],
     }).action(dispatch),
+  'invalid-value': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', {
+      extensions: [facts.command({ details: 7 })],
+      globals,
+    }).action(dispatch);
+    return new Application('app', { globals }).command(get).action(dispatch);
+  },
+  'local-key': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', { globals })
+      .option('help', { type: 'boolean' })
+      .action(dispatch);
+    return new Application('app', {
+      globals,
+      plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
+    })
+      .command(get)
+      .action(dispatch);
+  },
+  'no-activation': () => withPlugin(named('@loomcli/help', { middleware: { load } })),
+  'no-loader': () => withPlugin(named('@loomcli/help', { middleware: { activate: 'always' } })),
   'not-a-plugin': () =>
     new Application('app', { plugins: [{ identity: '@loomcli/help' }] }).action(dispatch),
+  'not-an-extension': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', { extensions: [{ identity: 'forged' }], globals }).action(
+      dispatch,
+    );
+    return new Application('app', { globals }).command(get).action(dispatch);
+  },
+  'option-global-key': () =>
+    new Application('app', {
+      globals: new GlobalOptions().option('help', { type: 'boolean' }),
+      plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
+    }).action(dispatch),
+  'option-required': () =>
+    withPlugin(named('@loomcli/log', { options: { level: { required: true, type: 'string' } } })),
+  'option-spelling': () =>
+    new Application('app', {
+      globals: new GlobalOptions().option('host', { short: 'h', type: 'string' }),
+      plugins: [named('@loomcli/help', { options: { help: { short: 'h', type: 'boolean' } } })],
+    }).action(dispatch),
+  'option-validate': () =>
+    withPlugin(
+      named('@loomcli/log', {
+        options: { level: { type: 'string', validate: z.string() } },
+      }),
+    ),
+  'option-validate-omitted': () =>
+    withPlugin(
+      named('@loomcli/log', {
+        options: { level: { type: 'string', validateOmitted: true } },
+      }),
+    ),
+  'plugin-renderers': () =>
+    withPlugin(
+      named('@loomcli/help', {
+        failures: [
+          renderFailure(InputError, { render: () => 'one\n' }),
+          renderFailure(InputError, { render: () => 'two\n' }),
+        ],
+      }),
+    ),
+  'twice-on-one': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', {
+      extensions: [facts.command({ details: 'one' }), facts.command({ details: 'two' })],
+      globals,
+    }).action(dispatch);
+    return new Application('app', { globals }).command(get).action(dispatch);
+  },
+  'twin-descriptors': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', { extensions: [twin({ details: 'one' })], globals }).action(
+      dispatch,
+    );
+    return new Application('app', {
+      globals,
+      plugins: [named('@fixture/facts', { extensions: [facts.command] })],
+    })
+      .command(get)
+      .action(dispatch);
+  },
+  'two-plugin-keys': () =>
+    new Application('app', {
+      plugins: [
+        named('@loomcli/log', { options: { verbose: { type: 'boolean' } } }),
+        named('@acme/trace', { options: { verbose: { type: 'boolean' } } }),
+      ],
+    }).action(dispatch),
+  'wrong-target': () => {
+    const globals = new GlobalOptions();
+    const get = new Command('get', {
+      extensions: [facts.option({ placeholder: 'path' })],
+      globals,
+    }).action(dispatch);
+    return new Application('app', { globals }).command(get).action(dispatch);
+  },
 };
+
+/** The shortest application that installs one plugin, for a rule the plugin alone carries. */
+function withPlugin(installed) {
+  return new Application('app', { plugins: [installed] }).action(dispatch);
+}
 
 const build = scenarios[process.argv[2]];
 const mode = process.argv[3];
