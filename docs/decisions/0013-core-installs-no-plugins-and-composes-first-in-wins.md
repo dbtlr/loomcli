@@ -19,7 +19,7 @@ Where contributions compose, they resolve first-in-wins: caller-supplied facts, 
 
 ## Status
 
-Proposed. Milestone 1 ships no plugin contract, so no code exercises this decision yet. It records the shape the first plugin increment must honor, and it moves to accepted with the code that enforces it.
+Accepted 2026-09-09 with the code that installs plugins through the `plugins` list alone, composes their contributions first-in-wins, and fails a duplicate identity or a second slot claim at build.
 
 ## Considered options
 
