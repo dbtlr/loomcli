@@ -27,6 +27,7 @@ import {
   toFailure,
 } from './errors.js';
 import type { FailureRegistry, FailureRenderer } from './errors.js';
+import { isPlainObject } from './facts.js';
 import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
@@ -283,15 +284,6 @@ interface ApplicationConstructor {
   ): Application<{}, {}, Globals, ApplicationMethod>;
 }
 
-/** The options slot holds one object literal, so a declaration that carries state is not one. */
-function isPlainObject(value: unknown): boolean {
-  if (value === null || typeof value !== 'object') {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 /**
  * The second argument, read where it is supplied. The retired positional form declares its globals
  * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
@@ -319,7 +311,12 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
   constructor(name: string, options?: ApplicationOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
     // `globals` and `failures` of some kind, and `checkOptions` reports it at build instead.
-    super(name, freshState(null, options?.globals), { failures: options?.failures ?? [], options });
+    // The root's own slot stays empty: the Application checks the slot it was handed, and its
+    // Facts name the Application rather than the root Command.
+    super(name, freshState(null, options?.globals, undefined), {
+      failures: options?.failures ?? [],
+      options,
+    });
   }
 }
 

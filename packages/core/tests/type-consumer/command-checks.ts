@@ -30,8 +30,11 @@ jsonkit.root;
 
 new Command('optional').argument('path', { required: false });
 
+// @ts-expect-error TS2559: A Command takes an options object, never a positional globals value.
+new Command('positional', globals);
+
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
-new Command('collision', globals).option('file', { type: 'boolean' });
+new Command('collision', { globals }).option('file', { type: 'boolean' });
 // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
 new Application('collision', { globals }).option('quiet', { type: 'boolean' });
 // @ts-expect-error TS2322: A globals type argument cannot forge values the declaration lacks.

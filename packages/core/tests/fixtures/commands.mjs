@@ -21,12 +21,12 @@ const report =
   ({ args, options, passthrough, out }) =>
     out.print(JSON.stringify({ args, command, options, passthrough }));
 
-const get = new Command('get', globals)
+const get = new Command('get', { globals })
   .argument('path', { required: true })
   .option('raw', { short: 'r', type: 'boolean' })
   .action(report('get'));
 
-const keys = new Command('keys', globals).action(report('keys'));
+const keys = new Command('keys', { globals }).action(report('keys'));
 
 const app = new Application('jsonkit', { globals })
   .option('pretty', { short: 'p', type: 'boolean' })

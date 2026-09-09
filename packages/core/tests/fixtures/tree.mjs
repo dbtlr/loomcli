@@ -4,18 +4,18 @@ import { Application, Command, GlobalOptions } from '@loomcli/core';
 
 const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
 const dispatch = ({ out }) => out.print('dispatched');
-const leaf = (name) => new Command(name, globals).action(dispatch);
+const leaf = (name) => new Command(name, { globals }).action(dispatch);
 
 // One value sits in two Applications, and two distinct values share a name under two parents.
 // Every graph here is a tree, so every build must succeed, however often it runs.
 const shared = leaf('clear');
 const first = new Application('tree-first', { globals })
-  .command(new Command('cache', globals).command(shared))
+  .command(new Command('cache', { globals }).command(shared))
   .action(dispatch);
 const second = new Application('tree-second', { globals })
-  .command(new Command('cache', globals).command(leaf('clear')))
-  .command(new Command('store', globals).command(leaf('clear')))
-  .command(new Command('extra', globals).command(shared))
+  .command(new Command('cache', { globals }).command(leaf('clear')))
+  .command(new Command('store', { globals }).command(leaf('clear')))
+  .command(new Command('extra', { globals }).command(shared))
   .action(dispatch);
 
 const lines = [];

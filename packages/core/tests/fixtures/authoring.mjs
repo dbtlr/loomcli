@@ -22,7 +22,7 @@ const plain = new Application('plain').command(keys.action(report('keys'))).acti
 
 const empty = new GlobalOptions();
 const shared = new Application('empty', { globals: empty })
-  .command(new Command('leaf', empty).action(report('leaf')))
+  .command(new Command('leaf', { globals: empty }).action(report('leaf')))
   .action(report('root'));
 
 const declarations = { aliased, composed, forked, plain, root, shared };

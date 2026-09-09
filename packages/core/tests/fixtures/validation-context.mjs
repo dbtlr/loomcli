@@ -62,11 +62,11 @@ switch (scenario) {
   }
   case 'nested': {
     const globals = new GlobalOptions().option('mode', { type: 'string', validate: echo('mode') });
-    const clear = new Command('clear', globals)
+    const clear = new Command('clear', { globals })
       .alias('cl')
       .option('force', { type: 'string', validate: echo('force') })
       .action(print);
-    const cache = new Command('cache', globals).alias('c').command(clear);
+    const cache = new Command('cache', { globals }).alias('c').command(clear);
     app = new Application('context', { globals }).command(cache).action(print);
     break;
   }

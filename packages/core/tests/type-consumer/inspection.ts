@@ -5,7 +5,7 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomc
 const globals = new GlobalOptions().option('file', { required: true, short: 'f', type: 'string' });
 const fresh = new Application('fresh', { globals });
 const partial = fresh.option('pretty', { type: 'boolean' });
-const finished = partial.command(new Command('get', globals).action(() => {})).action(() => {});
+const finished = partial.command(new Command('get', { globals }).action(() => {})).action(() => {});
 
 const freshGraph: CommandGraph = fresh.inspect();
 const partialGraph: CommandGraph = partial.inspect();

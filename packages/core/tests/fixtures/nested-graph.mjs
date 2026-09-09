@@ -7,11 +7,11 @@ const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' 
 const dispatch = ({ out }) => out.print('dispatched');
 
 function leaf(name, declarations = globals) {
-  return new Command(name, declarations).action(dispatch);
+  return new Command(name, { globals: declarations }).action(dispatch);
 }
 
 function aliased(name, ...aliases) {
-  return new Command(name, globals).alias(...aliases).action(dispatch);
+  return new Command(name, { globals }).alias(...aliases).action(dispatch);
 }
 
 function build() {
@@ -20,7 +20,7 @@ function build() {
     case 'group-option': {
       return app
         .command(
-          new Command('cache', globals)
+          new Command('cache', { globals })
             .option('verbose', { type: 'boolean' })
             .command(leaf('clear')),
         )
@@ -31,38 +31,40 @@ function build() {
     }
     case 'leaf-actionless': {
       return app
-        .command(new Command('cache', globals).command(new Command('clear', globals)))
+        .command(new Command('cache', { globals }).command(new Command('clear', { globals })))
         .action(dispatch);
     }
     case 'nested-foreign-globals': {
       const other = new GlobalOptions().option('file', { type: 'string' });
       return app
-        .command(new Command('cache', globals).command(leaf('clear', other)))
+        .command(new Command('cache', { globals }).command(leaf('clear', other)))
         .action(dispatch);
     }
     case 'nested-missing-globals': {
       return app
-        .command(new Command('cache', globals).command(new Command('clear').action(dispatch)))
+        .command(new Command('cache', { globals }).command(new Command('clear').action(dispatch)))
         .action(dispatch);
     }
     case 'duplicate-nested-children': {
       return app
-        .command(new Command('cache', globals).command(leaf('clear')).command(leaf('clear')))
+        .command(new Command('cache', { globals }).command(leaf('clear')).command(leaf('clear')))
         .action(dispatch);
     }
     case 'invalid-nested-child-name': {
-      return app.command(new Command('cache', globals).command(leaf('bad name'))).action(dispatch);
+      return app
+        .command(new Command('cache', { globals }).command(leaf('bad name')))
+        .action(dispatch);
     }
     case 'late-nested-child': {
       return app
-        .command(new Command('cache', globals).action(dispatch).command(leaf('clear')))
+        .command(new Command('cache', { globals }).action(dispatch).command(leaf('clear')))
         .action(dispatch);
     }
     case 'nested-shared-option-key': {
       return app
         .command(
-          new Command('cache', globals).command(
-            new Command('clear', globals).option('file', { type: 'boolean' }).action(dispatch),
+          new Command('cache', { globals }).command(
+            new Command('clear', { globals }).option('file', { type: 'boolean' }).action(dispatch),
           ),
         )
         .action(dispatch);
@@ -82,31 +84,35 @@ function build() {
     }
     case 'repeated-alias': {
       return app
-        .command(new Command('keys', globals).alias('ls').alias('ls').action(dispatch))
+        .command(new Command('keys', { globals }).alias('ls').alias('ls').action(dispatch))
         .action(dispatch);
     }
     case 'invalid-alias-name': {
       return app.command(aliased('keys', 'bad name')).action(dispatch);
     }
     case 'empty-alias': {
-      return app.command(new Command('keys', globals).alias().action(dispatch)).action(dispatch);
+      return app
+        .command(new Command('keys', { globals }).alias().action(dispatch))
+        .action(dispatch);
     }
     case 'late-alias': {
       return app
-        .command(new Command('keys', globals).action(dispatch).alias('ls'))
+        .command(new Command('keys', { globals }).action(dispatch).alias('ls'))
         .action(dispatch);
     }
     case 'nested-alias-sibling-name': {
       return app
         .command(
-          new Command('cache', globals).command(leaf('clear')).command(aliased('list', 'clear')),
+          new Command('cache', { globals })
+            .command(leaf('clear'))
+            .command(aliased('list', 'clear')),
         )
         .action(dispatch);
     }
     case 'shared-child': {
       const clear = leaf('clear');
       return app
-        .command(new Command('cache', globals).command(clear))
+        .command(new Command('cache', { globals }).command(clear))
         .command(clear)
         .action(dispatch);
     }
@@ -114,14 +120,16 @@ function build() {
       // Two distinct parents named "cache" at different depths attach one "clear" value.
       const clear = leaf('clear');
       return app
-        .command(new Command('cache', globals).command(clear))
+        .command(new Command('cache', { globals }).command(clear))
         .command(
-          new Command('other', globals).command(new Command('cache', globals).command(clear)),
+          new Command('other', { globals }).command(
+            new Command('cache', { globals }).command(clear),
+          ),
         )
         .action(dispatch);
     }
     default: {
-      return app.command(new Command('cache', globals).command(leaf('clear'))).action(dispatch);
+      return app.command(new Command('cache', { globals }).command(leaf('clear'))).action(dispatch);
     }
   }
 }

@@ -21,9 +21,9 @@ function jsonkit() {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })
     .option('quiet', { short: 'q', type: 'boolean' });
-  const get = new Command('get', globals).argument('path', { required: true }).action(dispatch);
-  const keys = new Command('keys', globals).argument('path', {}).action(dispatch);
-  const select = new Command('select', globals)
+  const get = new Command('get', { globals }).argument('path', { required: true }).action(dispatch);
+  const keys = new Command('keys', { globals }).argument('path', {}).action(dispatch);
+  const select = new Command('select', { globals })
     .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
     .action(dispatch);
   return new Application('jsonkit', { globals })
@@ -35,9 +35,9 @@ function jsonkit() {
 
 function nested() {
   const globals = new GlobalOptions();
-  const clear = new Command('clear', globals).action(dispatch);
-  const list = new Command('list', globals).alias('ls').alias('l').action(dispatch);
-  const cache = new Command('cache', globals).alias('c').command(clear).command(list);
+  const clear = new Command('clear', { globals }).action(dispatch);
+  const list = new Command('list', { globals }).alias('ls').alias('l').action(dispatch);
+  const cache = new Command('cache', { globals }).alias('c').command(clear).command(list);
   return new Application('store', { globals }).command(cache).action(dispatch);
 }
 
@@ -85,7 +85,7 @@ function omission() {
 function invalid() {
   const globals = new GlobalOptions();
   return new Application('invalid', { globals })
-    .command(new Command('get', globals))
+    .command(new Command('get', { globals }))
     .action(dispatch);
 }
 
