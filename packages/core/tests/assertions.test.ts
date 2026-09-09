@@ -4,8 +4,12 @@ import { expect, test } from 'vite-plus/test';
 
 const source = new URL('../src/', import.meta.url);
 
-/** The seams where validated `unknown` values meet declaration-inferred types. Nothing else. */
-const allowed = { 'globals.ts': 1, 'validation.ts': 1 };
+/**
+ * The seams where validated `unknown` values meet declaration-inferred types. Nothing else.
+ * `extension.ts` reads a stored output back from the record the graph keys by string identity,
+ * after the descriptor that produced it has been compared by reference.
+ */
+const allowed = { 'extension.ts': 1, 'globals.ts': 1, 'validation.ts': 1 };
 
 /**
  * Any lint disable that would let an unsafe assertion through: one that names the rule, or one

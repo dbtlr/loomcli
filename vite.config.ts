@@ -73,6 +73,19 @@ export default defineConfig({
       },
       {
         files: [
+          'packages/core/src/chain.ts',
+          'packages/core/src/extension.ts',
+          'packages/core/src/globals.ts',
+          'packages/core/src/plugin.ts',
+        ],
+        rules: {
+          // Each of these reads one ordered sequence of declaration rules, or the `next()`
+          // Lifecycle. Splitting a rule out of its sequence hides which diagnostic answers first.
+          'eslint/max-statements': 'off',
+        },
+      },
+      {
+        files: [
           'packages/core/src/application.ts',
           'packages/core/src/output.ts',
           'packages/core/src/command.ts',

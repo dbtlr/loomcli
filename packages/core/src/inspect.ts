@@ -1,10 +1,13 @@
-import type { ArgumentSlot, BuiltCommand } from './command.js';
+import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
+import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
-import type { BuiltGlobals } from './globals.js';
 import type { compileOptions } from './options.js';
 import type { ArgumentConfig, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { validatesOmission } from './validation.js';
+
+/** A declaration that carries no extension value publishes one shared, empty frozen record. */
+const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
 
 /** One declared argument. `default` wraps the declared value, so an explicit `undefined` shows. */
 interface ArgumentNode {
@@ -15,14 +18,19 @@ interface ArgumentNode {
   readonly validated: boolean;
   readonly validateOmitted: boolean;
   readonly default: { readonly value: unknown } | undefined;
+  readonly extensions: Readonly<Record<string, unknown>>;
 }
 
-/** One declared option, in the shape its type gives it. Spellings are the accepted CLI forms. */
+/**
+ * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms, and
+ * `scope` tells an application's own option from a plugin option, which reaches no action.
+ */
 type OptionNode =
   | {
       readonly type: 'string';
       readonly name: string;
       readonly description: string | undefined;
+      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
@@ -30,15 +38,18 @@ type OptionNode =
       readonly validated: boolean;
       readonly validateOmitted: boolean;
       readonly default: { readonly value: unknown } | undefined;
+      readonly extensions: Readonly<Record<string, unknown>>;
     }
   | {
       readonly type: 'boolean';
       readonly name: string;
       readonly description: string | undefined;
+      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
+      readonly extensions: Readonly<Record<string, unknown>>;
     };
 
 /**
@@ -56,6 +67,7 @@ interface CommandNode {
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
   readonly children: readonly CommandNode[];
+  readonly extensions: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -114,28 +126,45 @@ function declaredDefault(config: ArgumentConfig | OptionConfig) {
   return 'default' in config ? Object.freeze({ value: snapshot(config.default) }) : undefined;
 }
 
-function optionNode(input: OptionInput, table: ReturnType<typeof compileOptions>): OptionNode {
+/** One declaration's extension record, which is the shared empty one when it carries no value. */
+function extensionsOf(records: ExtensionRecords, declaration: object) {
+  return records.get(declaration) ?? noExtensions;
+}
+
+/** The scope one list of options is read under, with the registers its nodes read from. */
+interface OptionScope {
+  records: ExtensionRecords;
+  scope: 'application' | 'plugin';
+  table: ReturnType<typeof compileOptions>;
+}
+
+function optionNode(input: OptionInput, { records, scope, table }: OptionScope): OptionNode {
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
+  const extensions = extensionsOf(records, input);
   const node: OptionNode =
     config.type === 'boolean'
       ? {
           description: config.description,
+          extensions,
           long,
           name,
           negative,
           polarity: config.polarity ?? 'positive',
+          scope,
           short,
           type: 'boolean',
         }
       : {
           default: declaredDefault(config),
           description: config.description,
+          extensions,
           long,
           // The parser reads the same test, so a collection reports as one here and there.
           multiple: config.multiple === true,
           name,
           required: config.required === true,
+          scope,
           short,
           type: 'string',
           validateOmitted: validatesOmission(input),
@@ -145,11 +174,12 @@ function optionNode(input: OptionInput, table: ReturnType<typeof compileOptions>
 }
 
 /** The built slots already answer presence and arity, so the node repeats no config reading. */
-function argumentNode(slot: ArgumentSlot): ArgumentNode {
+function argumentNode(slot: ArgumentSlot, records: ExtensionRecords): ArgumentNode {
   const { config, name } = slot.input;
   const node: ArgumentNode = {
     default: declaredDefault(config),
     description: config.description,
+    extensions: extensionsOf(records, slot.input),
     name,
     required: slot.required,
     validateOmitted: validatesOmission(slot.input),
@@ -159,13 +189,8 @@ function argumentNode(slot: ArgumentSlot): ArgumentNode {
   return Object.freeze(node);
 }
 
-function optionNodes(
-  inputs: readonly InputDeclaration[],
-  table: ReturnType<typeof compileOptions>,
-) {
-  return Object.freeze(
-    inputs.filter((input) => input.kind === 'option').map((input) => optionNode(input, table)),
-  );
+function optionNodes(inputs: readonly InputDeclaration[], read: OptionScope) {
+  return inputs.filter((input) => input.kind === 'option').map((input) => optionNode(input, read));
 }
 
 /**
@@ -174,37 +199,55 @@ function optionNodes(
  */
 function commandNode(
   command: BuiltCommand,
-  path: readonly string[],
-  description: string | undefined = command.description,
+  place: { description?: string | undefined; path: readonly string[]; records: ExtensionRecords },
 ): CommandNode {
+  const { path, records } = place;
   const node: CommandNode = {
     aliases: Object.freeze([...command.aliases]),
-    arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot))),
+    arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot, records))),
     children: Object.freeze(
       [...command.children].map(([name, child]) =>
-        commandNode(child, Object.freeze([...path, name])),
+        commandNode(child, { path: Object.freeze([...path, name]), records }),
       ),
     ),
-    description,
+    description: 'description' in place ? place.description : command.description,
+    extensions: command.extensions,
     hasAction: command.dispatch !== undefined,
     name: command.name,
-    options: optionNodes(command.inputs, command.options),
+    options: Object.freeze(
+      optionNodes(command.inputs, { records, scope: 'application', table: command.options }),
+    ),
     path,
   };
   return Object.freeze(node);
 }
 
-/** Renders one built graph as frozen plain data. Nothing here reads a host fact or a schema. */
+/**
+ * Renders one built graph as frozen plain data. Nothing here reads a host fact or a schema. The
+ * globals list holds the application's own options, then each installed plugin's in installation
+ * order, which is the order the globals table holds them in.
+ */
 function inspectGraph(
   name: string,
-  graph: { globals: BuiltGlobals; root: BuiltCommand },
+  graph: BuiltGraph,
   facts: { description: string | undefined; version: string | undefined },
 ): CommandGraph {
+  const records = graph.extensions;
+  const table = graph.globals.options;
   const inspected: CommandGraph = {
     description: facts.description,
-    globals: optionNodes(graph.globals.inputs, graph.globals.options),
+    globals: Object.freeze([
+      ...optionNodes(graph.globals.inputs, { records, scope: 'application', table }),
+      ...graph.globals.plugins.flatMap((installed) =>
+        optionNodes(installed.inputs, { records, scope: 'plugin', table }),
+      ),
+    ]),
     name,
-    root: commandNode(graph.root, Object.freeze([]), facts.description),
+    root: commandNode(graph.root, {
+      description: facts.description,
+      path: Object.freeze([]),
+      records,
+    }),
     version: facts.version,
   };
   return Object.freeze(inspected);

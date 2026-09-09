@@ -5,6 +5,12 @@ import { invoke } from '../../../scripts/test-process.js';
 /** The fixture encodes a declared `undefined` as this marker, which JSON alone cannot carry. */
 const none = '#undefined';
 
+/** A declaration that carries no extension value reports the empty record, never a missing key. */
+const bare = { extensions: {} };
+
+/** An option the application declared, global or local, reports the application scope. */
+const owned = { extensions: {}, scope: 'application' };
+
 function invokeInspect(graph: string, mode = 'json') {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, mode]);
   expect(result.stderr).toBe('');
@@ -17,6 +23,7 @@ const leaf = {
   arguments: [],
   children: [],
   description: none,
+  extensions: {},
   hasAction: true,
   options: [],
 };
@@ -26,6 +33,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
     description: none,
     globals: [
       {
+        ...owned,
         default: none,
         description: none,
         long: '--file',
@@ -38,6 +46,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         validated: false,
       },
       {
+        ...owned,
         description: none,
         long: '--quiet',
         name: 'quiet',
@@ -56,6 +65,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           ...leaf,
           arguments: [
             {
+              ...bare,
               default: none,
               description: none,
               name: 'path',
@@ -72,6 +82,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           ...leaf,
           arguments: [
             {
+              ...bare,
               default: none,
               description: none,
               name: 'path',
@@ -89,6 +100,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           name: 'select',
           options: [
             {
+              ...owned,
               default: none,
               description: none,
               long: '--field',
@@ -105,6 +117,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         },
       ],
       description: none,
+      extensions: {},
       hasAction: true,
       name: null,
       options: [],
@@ -119,6 +132,7 @@ test('reports the version and every declared description, and the root reports t
     description: 'Reads a JSON document.',
     globals: [
       {
+        ...owned,
         default: none,
         description: 'The document to read.',
         long: '--file',
@@ -140,6 +154,7 @@ test('reports the version and every declared description, and the root reports t
           aliases: [],
           arguments: [
             {
+              ...bare,
               default: none,
               description: 'The path to read.',
               name: 'path',
@@ -151,10 +166,12 @@ test('reports the version and every declared description, and the root reports t
           ],
           children: [],
           description: 'Reads one value.',
+          extensions: {},
           hasAction: true,
           name: 'get',
           options: [
             {
+              ...owned,
               description: 'Prints the value unquoted.',
               long: '--raw',
               name: 'raw',
@@ -168,6 +185,7 @@ test('reports the version and every declared description, and the root reports t
         },
       ],
       description: 'Reads a JSON document.',
+      extensions: {},
       hasAction: true,
       name: null,
       options: [],
@@ -194,6 +212,7 @@ test('inspects a group at two named levels below the root', () => {
             { ...leaf, aliases: ['ls', 'l'], name: 'list', path: ['cache', 'list'] },
           ],
           description: none,
+          extensions: {},
           hasAction: false,
           name: 'cache',
           options: [],
@@ -201,6 +220,7 @@ test('inspects a group at two named levels below the root', () => {
         },
       ],
       description: none,
+      extensions: {},
       hasAction: true,
       name: null,
       options: [],
@@ -213,6 +233,7 @@ test('inspects a group at two named levels below the root', () => {
 test('reports the accepted spellings of each polarity and of a short-only option', () => {
   expect(invokeInspect('polarity').root.options).toEqual([
     {
+      ...owned,
       description: none,
       long: '--total',
       name: 'total',
@@ -222,6 +243,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       type: 'boolean',
     },
     {
+      ...owned,
       description: none,
       long: '--color',
       name: 'color',
@@ -231,6 +253,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       type: 'boolean',
     },
     {
+      ...owned,
       description: none,
       long: null,
       name: 'cache',
@@ -240,6 +263,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       type: 'boolean',
     },
     {
+      ...owned,
       default: none,
       description: none,
       long: null,
@@ -257,6 +281,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
 test('reads each spelling role from the table, including a name that begins with "no-"', () => {
   expect(invokeInspect('roles').root.options).toEqual([
     {
+      ...owned,
       description: none,
       long: '--no-color',
       name: 'no-color',
@@ -266,6 +291,7 @@ test('reads each spelling role from the table, including a name that begins with
       type: 'boolean',
     },
     {
+      ...owned,
       default: none,
       description: none,
       long: null,
@@ -284,6 +310,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   const root = invokeInspect('defaults').root;
   expect(root.options).toEqual([
     {
+      ...owned,
       default: { value: '1' },
       description: none,
       long: '--depth',
@@ -296,6 +323,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       validated: false,
     },
     {
+      ...owned,
       default: { value: none },
       description: none,
       long: '--limit',
@@ -308,6 +336,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
       validated: true,
     },
     {
+      ...owned,
       default: none,
       description: none,
       long: '--plain',
@@ -322,6 +351,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   ]);
   expect(root.arguments).toEqual([
     {
+      ...bare,
       default: { value: 'root' },
       description: none,
       name: 'path',
@@ -337,6 +367,7 @@ test('reports the option and the argument that validate their own omission', () 
   const root = invokeInspect('omission').root;
   expect(root.options).toEqual([
     {
+      ...owned,
       default: none,
       description: none,
       long: '--file',
@@ -349,6 +380,7 @@ test('reports the option and the argument that validate their own omission', () 
       validated: true,
     },
     {
+      ...owned,
       default: none,
       description: none,
       long: '--size',
@@ -363,6 +395,7 @@ test('reports the option and the argument that validate their own omission', () 
   ]);
   expect(root.arguments).toEqual([
     {
+      ...bare,
       default: none,
       description: none,
       name: 'path',
@@ -385,6 +418,7 @@ test('throws a DeclarationError a consumer catches by class, without run()', () 
 test('reports an optional variadic argument with its declared default', () => {
   expect(invokeInspect('tails').root.arguments).toEqual([
     {
+      ...bare,
       default: { value: ['a'] },
       description: none,
       name: 'files',

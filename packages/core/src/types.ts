@@ -3,6 +3,8 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import type { ExtensionValue } from './extension.js';
+
 type LowercaseLetter =
   | 'a'
   | 'b'
@@ -49,6 +51,14 @@ type Omission = { validateOmitted: true } | { validateOmitted?: false };
  */
 interface Described {
   description?: string;
+}
+/** The extension values one option declaration carries, whatever scope declares the option. */
+interface OptionExtensions {
+  extensions?: readonly ExtensionValue<'option'>[];
+}
+/** The same slot on an argument declaration, typed by the target its values must name. */
+interface ArgumentExtensions {
+  extensions?: readonly ExtensionValue<'argument'>[];
 }
 /**
  * The tokens one declaration collects before validation: one string, or the whole collection. A
@@ -162,13 +172,16 @@ export type StringOption = OptionSpelling &
   Presence &
   Multiplicity &
   Omission &
-  Described & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+  Described &
+  OptionExtensions & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence &
-  Described & { variadic: true; validate?: StandardSchemaV1 };
+  Described &
+  ArgumentExtensions & { variadic: true; validate?: StandardSchemaV1 };
 export type ScalarArgument = Presence &
   Omission &
-  Described & { variadic?: false; validate?: StandardSchemaV1 };
+  Described &
+  ArgumentExtensions & { variadic?: false; validate?: StandardSchemaV1 };
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
@@ -224,7 +237,8 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
           : undefined);
 export type BooleanOption =
   | (OptionSpelling &
-      Described & {
+      Described &
+      OptionExtensions & {
         type: 'boolean';
         validate?: never;
         default?: never;
@@ -233,18 +247,37 @@ export type BooleanOption =
         validateOmitted?: never;
         polarity?: 'positive' | 'negative';
       })
-  | (Described & {
-      type: 'boolean';
-      validate?: never;
-      default?: never;
-      multiple?: never;
-      required?: never;
-      validateOmitted?: never;
-      polarity: 'both';
-      short?: ShortAlias;
-      shortOnly?: false;
-    });
+  | (Described &
+      OptionExtensions & {
+        type: 'boolean';
+        validate?: never;
+        default?: never;
+        multiple?: never;
+        required?: never;
+        validateOmitted?: never;
+        polarity: 'both';
+        short?: ShortAlias;
+        shortOnly?: false;
+      });
 export type OptionConfig = StringOption | BooleanOption;
+/**
+ * The parsing part of a string option config, which is all a plugin option declares. A plugin
+ * option carries no schema and no presence rule, because it is read before local parsing, where the
+ * validation context every schema is promised cannot exist. Its middleware interprets the value.
+ * A Boolean plugin option is an ordinary `BooleanOption`, which already declares none of them.
+ */
+export type PluginStringOption = OptionSpelling &
+  Multiplicity &
+  Described &
+  OptionExtensions & {
+    type: 'string';
+    default?: string | string[];
+    polarity?: never;
+    required?: never;
+    validate?: never;
+    validateOmitted?: never;
+  };
+export type PluginOptionConfig = PluginStringOption | BooleanOption;
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
   ? Config extends { multiple: true }
     ? ValidatedValue<Config, string[]>
@@ -261,6 +294,8 @@ export interface ActionContext<Args, Options = {}> {
   passthrough: string[];
   out: Out;
   host: Host;
+  /** The run's cancellation signal, which a caller or an installed signals owner aborts. */
+  signal: AbortSignal;
 }
 export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>) => unknown;
 
