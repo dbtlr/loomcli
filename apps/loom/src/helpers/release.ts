@@ -3,7 +3,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { readFragments } from './fragments.js';
 import { requireClosedBlocks } from './markdown.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
-import { currentVersion, git, readLibraries } from './repository.js';
+import { currentVersion, git, readLibraries, requireFullHistory } from './repository.js';
 
 function compareNames(left: string, right: string) {
   if (left < right) {
@@ -37,9 +37,7 @@ export function prepareRelease(
   },
   ref?: string,
 ) {
-  if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
-    throw new Error('Release preparation requires full Git history.');
-  }
+  requireFullHistory(root);
   const head = ref ?? git(root, ['rev-parse', 'HEAD']).trim();
   const fragments = readFragments(root, ref)
     .map((fragment) => {

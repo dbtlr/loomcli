@@ -1,6 +1,13 @@
 import { posix } from 'node:path';
 
-import { currentVersion, git, readLibraries } from './repository.js';
+import type { readLibraries } from './repository.js';
+import {
+  currentVersion,
+  git,
+  readParticipants,
+  requireCoherentLibraries,
+  requireFullHistory,
+} from './repository.js';
 
 function dependencyName(
   directory: string,
@@ -20,16 +27,17 @@ function dependencyName(
   return separator > 0 ? target.slice(0, separator) : name;
 }
 
-// A commit before the participating manifests existed, or one whose library versions disagree, has no synchronized version.
+// Only a commit that carries no participating manifest has no synchronized version.
+// Every other failure of the walk is a defect or a damaged repository, and it propagates.
 function synchronizedVersion(root: string, ref: string | undefined) {
   if (ref === undefined) {
     return undefined;
   }
-  try {
-    return currentVersion(readLibraries(root, ref)).text;
-  } catch {
+  const [first, ...rest] = readParticipants(root, ref);
+  if (first === undefined) {
     return undefined;
   }
+  return currentVersion(requireCoherentLibraries([first, ...rest])).text;
 }
 
 // An abandoned version never receives a tag, so the baseline is the commit that set the current version.
@@ -40,6 +48,7 @@ export function materialBaseline(
   version: string,
   head: string,
 ) {
+  requireFullHistory(root);
   const candidates = git(root, [
     'log',
     '--first-parent',

@@ -1,22 +1,16 @@
-import { fromMarkdown } from 'mdast-util-from-markdown';
 import { z } from 'zod';
 
 import { readRelease, readTagCommit } from './github.js';
-import { headingText } from './markdown.js';
+import { locateRelease } from './markdown.js';
 import { materialBaseline } from './material.js';
 import { readPublished } from './registry.js';
-import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
-
-// The paths whose bytes can reach a published library build.
-// Publication attests the head commit, so a change to any of them after the cut commit would attest bytes the cut did not produce.
-// Documentation and root Markdown are absent from this set and never refuse a publication.
-const sharedBuildInputs = [
-  'package.json',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'scripts/clean.mjs',
-  'tsconfig.json',
-];
+import {
+  currentVersion,
+  git,
+  readLibraries,
+  readRegularFile,
+  requireFullHistory,
+} from './repository.js';
 
 const librarySchema = z.object({
   directory: z.string().min(1),
@@ -28,26 +22,25 @@ const releaseFactsSchema = z.object({ id: z.number().nullable(), present: z.bool
 
 const tagFactsSchema = z.object({ commit: z.string().nullable(), present: z.boolean() });
 
+// A heading, a rule, and raw HTML carry no notes, so a section built only from them says nothing.
+const decorations = new Set(['heading', 'html', 'thematicBreak']);
+
 // The notes are the body under the version's heading, up to the next release heading.
 function changelogSection(changelog: string, version: string) {
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog)?.[0] ?? '';
-  const body = changelog.slice(frontmatter.length);
-  const headings = fromMarkdown(body).children.flatMap((node) =>
-    node.type === 'heading' && node.depth === 2 ? [node] : [],
-  );
-  const index = headings.findIndex(
-    (heading) => headingText(heading).trim().split(/\s/u)[0] === `v${version}`,
-  );
-  const start = headings[index]?.position?.end.offset;
+  const { body, index, nodes, releases } = locateRelease(changelog, version);
+  const start = releases[index]?.position?.end.offset;
   if (start === undefined) {
     throw new Error(`CHANGELOG.md has no v${version} section.`);
   }
-  const end = headings[index + 1]?.position?.start.offset ?? body.length;
-  const notes = body.slice(start, end).trim();
-  if (notes === '') {
+  const end = releases[index + 1]?.position?.start.offset ?? body.length;
+  const carries = nodes.some((node) => {
+    const offset = node.position?.start.offset;
+    return offset !== undefined && offset >= start && offset < end && !decorations.has(node.type);
+  });
+  if (!carries) {
     throw new Error(`CHANGELOG.md: the v${version} section has no notes.`);
   }
-  return notes;
+  return body.slice(start, end).trim();
 }
 
 function abandon(version: string, reason: string) {
@@ -55,6 +48,17 @@ function abandon(version: string, reason: string) {
     `Version ${version} is absent from the registry and ${reason} Publication attests the head, so ${version} must be abandoned as unpublished and superseded by the next cut.`,
   );
 }
+
+// The paths whose bytes can reach a published library build.
+// Publication attests the head commit, so a change to any of them after the cut commit would attest bytes the cut did not produce.
+// Documentation and root Markdown are absent from this set and never refuse a publication.
+export const sharedBuildInputs = [
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'scripts/clean.mjs',
+  'tsconfig.json',
+];
 
 export const planSchema = z.object({
   cutCommit: z.string().min(1),
@@ -80,6 +84,7 @@ export interface PlanRequest {
 }
 
 export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
+  requireFullHistory(request.root);
   const head = git(request.root, [
     'rev-parse',
     '--verify',

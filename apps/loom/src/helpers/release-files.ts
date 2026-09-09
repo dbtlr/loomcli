@@ -4,20 +4,17 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fromMarkdown } from 'mdast-util-from-markdown';
 import { parseAllDocuments } from 'yaml';
 import { z } from 'zod';
 
-import { headingText, requireClosedBlocks } from './markdown.js';
+import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import type { prepareRelease } from './release.js';
 import { blankLine } from './release.js';
 import { git, readRegularFile, readRegularFileBytes } from './repository.js';
 
 function releaseInsertion(changelog: string, version: string) {
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog)?.[0] ?? '';
-  const body = changelog.slice(frontmatter.length);
+  const { body, frontmatter, nodes, releases } = locateRelease(changelog, version);
   requireClosedBlocks(body, 'CHANGELOG.md');
-  const nodes = fromMarkdown(body).children;
   const headings = nodes.filter((node) => node.type === 'heading');
   if (!headings.some((node) => node.depth === 1)) {
     throw new Error('CHANGELOG.md requires a title.');
@@ -31,8 +28,7 @@ function releaseInsertion(changelog: string, version: string) {
   ) {
     throw new Error('CHANGELOG.md already contains this version or an Unreleased section.');
   }
-  const firstRelease = headings.find((node) => node.depth === 2);
-  const offset = firstRelease?.position?.start.offset;
+  const offset = releases[0]?.position?.start.offset;
   const before = offset === undefined ? changelog : changelog.slice(0, frontmatter.length + offset);
   const after = offset === undefined ? '' : changelog.slice(frontmatter.length + offset);
   return { after, before: before + blankLine(before) };

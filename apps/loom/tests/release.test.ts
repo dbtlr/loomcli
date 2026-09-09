@@ -5,6 +5,7 @@ import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { sharedBuildInputs } from '../src/helpers/release-plan.js';
 import { commit, git, put, removeRoots, repository, temporaryRoot } from './fixture.js';
 import { startServices, stopServices } from './services.js';
 import type { PackageState } from './services.js';
@@ -217,6 +218,34 @@ test('an empty changelog section fails', async () => {
   expect(result.stderr).toContain('CHANGELOG.md');
 });
 
+test.each([
+  ['only a subheading', '### Changes'],
+  ['only a thematic break', '---'],
+  ['only an HTML comment', '<!-- nothing to say -->'],
+])('a changelog section carrying %s fails', async (_label, body) => {
+  const { root } = releaseRepository('0.2.0', [section('0.2.0', body)]);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+  const result = plan(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('CHANGELOG.md');
+  expect(result.stderr).toContain('v0.2.0');
+});
+
+test('a changelog section carrying one list item is accepted', async () => {
+  const { root } = releaseRepository('0.2.0', [section('0.2.0', '- Fix output.')]);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({ notes: '- Fix output.' });
+});
+
+test('a heading that mentions the version in prose is not the release section', async () => {
+  const prose = section('0.2.0', notes).replace('## v0.2.0 - 2026-09-07', '## Upgrading to v0.2.0');
+  const { root } = releaseRepository('0.2.0', [prose, section('0.2.0', '- The real notes.')]);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({ notes: '- The real notes.' });
+});
+
 test('a library change after the cut commit refuses publication', async () => {
   const { cut, root } = releaseRepository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
@@ -230,14 +259,30 @@ test('a library change after the cut commit refuses publication', async () => {
   expect(result.stderr).toContain('abandoned as unpublished');
 });
 
-test('a lockfile change after the cut commit refuses publication', async () => {
-  const { root } = releaseRepository();
-  put(root, 'pnpm-lock.yaml', 'lockfileVersion: "9.0"\nsettings: {}\n');
-  commit(root);
+test.each(sharedBuildInputs)(
+  'a change to %s after the cut commit refuses publication',
+  async (path) => {
+    const { cut, root } = releaseRepository();
+    put(root, path, path.endsWith('.json') ? '{"changed":true}\n' : '# changed\n');
+    const head = commit(root);
+    const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+    const result = plan(root, endpoints);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(path);
+    expect(result.stderr).toContain(cut);
+    expect(result.stderr).toContain(head);
+    expect(result.stderr).toContain('abandoned as unpublished');
+  },
+);
+
+test('a version set, reverted, and set again takes the newest setter as the cut commit', async () => {
+  const root = baseRepository();
+  cutRelease(root, '0.2.0');
+  cutRelease(root, '0.1.0', []);
+  const cut = cutRelease(root, '0.2.0');
   const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
-  const result = plan(root, endpoints);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain('pnpm-lock.yaml');
+  expect(plan(root, endpoints).status).toBe(0);
+  expect(planned(root)).toMatchObject({ cutCommit: cut, head: cut });
 });
 
 test('documentation changes after the cut commit still publish', async () => {
@@ -271,6 +316,16 @@ test('a version set on a merge commit resolves that merge as the cut commit', as
   const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
   expect(plan(root, endpoints).status).toBe(0);
   expect(planned(root)).toMatchObject({ cutCommit: merge, head: merge, publish: true });
+});
+
+test('a shallow checkout refuses to plan', async () => {
+  const { root } = releaseRepository();
+  const shallow = join(temporaryRoot('loom-shallow-'), 'clone');
+  git(root, ['clone', '-q', '--depth', '1', `file://${root}`, shallow]);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+  const result = plan(shallow, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('Release preparation requires full Git history.');
 });
 
 test('an explicit head plans the version that commit carries', async () => {
