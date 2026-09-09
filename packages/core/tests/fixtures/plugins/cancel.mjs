@@ -14,14 +14,25 @@ function describe(reason) {
   return `${reason.source}:${reason.cause instanceof Error ? reason.cause.message : 'none'}`;
 }
 
-/** Resolves once the run is cancelled, which is how a cooperative action reads the abort. */
+/**
+ * Resolves once the run is cancelled, which is how a cooperative action reads the abort. A process
+ * signal listener does not keep the runtime alive, so the wait holds one referenced timer.
+ */
 function cancelled(signal) {
   return new Promise((resolve) => {
     if (signal.aborted) {
       resolve();
       return;
     }
-    signal.addEventListener('abort', () => resolve(), { once: true });
+    const held = setTimeout(resolve, 20_000);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(held);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 

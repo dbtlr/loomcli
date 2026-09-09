@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { setTimeout as after } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 export function invoke(
@@ -21,4 +22,57 @@ export function invoke(
     throw result.error;
   }
   return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+/** How the fixture ended: the status it resolved, or the signal that ended it, and its output. */
+export interface Completion {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * The same fixture spawned asynchronously, so a test can wait for a line the child announced and
+ * then send it a signal. `exit` resolves once the child has ended and both of its streams closed,
+ * which is how a signal that ended the process rather than a status is observed.
+ */
+export function start(
+  file: URL,
+  args: string[] = [],
+  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
+) {
+  const { cwd, env } = options;
+  const child = spawn(process.env.LOOM_TEST_RUNTIME ?? 'node', [fileURLToPath(file), ...args], {
+    ...(cwd === undefined ? {} : { cwd }),
+    env: { ...process.env, LOOM_CAPTURE_TEST: 'present', ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  const exit = new Promise<Completion>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (status, signal) => {
+      resolve({ signal, status, stderr, stdout });
+    });
+  });
+  /** Waits until the child wrote the announced line, so a signal lands where a test means it. */
+  const announced = async (line: string): Promise<void> => {
+    const deadline = Date.now() + 10_000;
+    while (!stdout.includes(`${line}\n`)) {
+      if (Date.now() > deadline) {
+        throw new Error(`The fixture never announced "${line}". It wrote:\n${stdout}${stderr}`);
+      }
+      await after(10);
+    }
+  };
+  return { announced, child, exit };
 }
