@@ -42,7 +42,7 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 
 - The head includes the supplied base commit. A stale release branch must incorporate the current base and prepare the cut again.
 - Every participating library carries the title version, with the same participation and all other manifest fields preserved.
-- The title version matches the compiler's calculation from the base fragments. The initial cut advances `0.0.0` to `0.1.0`, including an empty initial cut.
+- The title version matches the compiler's calculation from the base fragments. The initial cut advances `0.0.0` to `0.1.0`. An initial cut that consumes no fragments carries a narrative, because a section without entries would leave the release without notes.
 - The corresponding local Git tag is absent, and no pending fragments remain.
 - The changelog preserves its introduction and earlier releases. The new section matches the compiler output, including fragment order and the material-change report. An optional narrative follows the compiler's Markdown rules.
 - The diff contains only library version fields, `pnpm-lock.yaml`, the new changelog section, and consumed-fragment deletions. Retained files keep their modes, and the lockfile remains a regular file.
@@ -50,9 +50,9 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 
 The lockfile comparison uses the pinned pnpm in a temporary directory, with offline resolution and scripts and pnpmfile hooks disabled. Dependencies must be cached. This is the same preparation used by `loom changelog write`.
 
-The material-change baseline is the current version tag. Fetch the repository's tags before checking a release. A local check cannot detect an unfetched remote tag.
+The material-change baseline is the first-parent commit at the base that set the current version. No tag enters this computation, so a version that was abandoned without a tag gives the same baseline as a published one. The guard needs the full first-parent history of the base, and still rejects an existing local tag for the new version.
 
-Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish or authorize a release.
+Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish; merging the release PR authorizes the [release workflow](release-workflow.md), which publishes only a version absent from the registry.
 
 ## GitHub Actions
 

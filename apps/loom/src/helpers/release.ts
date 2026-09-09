@@ -2,8 +2,8 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { readFragments } from './fragments.js';
 import { requireClosedBlocks } from './markdown.js';
-import { unchangedLibraries } from './material.js';
-import { currentVersion, git, readLibraries } from './repository.js';
+import { materialBaseline, unchangedLibraries } from './material.js';
+import { currentVersion, git, readLibraries, requireFullHistory } from './repository.js';
 
 function compareNames(left: string, right: string) {
   if (left < right) {
@@ -37,9 +37,7 @@ export function prepareRelease(
   },
   ref?: string,
 ) {
-  if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
-    throw new Error('Release preparation requires full Git history.');
-  }
+  requireFullHistory(root);
   const head = ref ?? git(root, ['rev-parse', 'HEAD']).trim();
   const fragments = readFragments(root, ref)
     .map((fragment) => {
@@ -110,11 +108,27 @@ export function prepareRelease(
   const unchanged =
     current.text === '0.0.0'
       ? []
-      : unchangedLibraries(root, libraries, options.since ?? `v${current.text}`, ref);
+      : unchangedLibraries(
+          root,
+          libraries,
+          options.since ?? materialBaseline(root, libraries, current.text, head),
+          ref,
+        );
   if (unchanged.length > 0) {
     section += `No material changes: ${unchanged.join(', ')}.\n\n`;
   }
   return { fragments, head, libraries, section, version };
+}
+
+// A release must carry notes, because the release plan refuses a changelog section that says nothing.
+// Only an initial cut can reach that state: every other cut consumes at least one fragment.
+export function requireReleaseNotes(release: ReturnType<typeof prepareRelease>) {
+  const body = release.section.slice(release.section.indexOf('\n') + 1);
+  if (body.trim() === '') {
+    throw new Error(
+      `Release v${release.version} carries no entries, so it requires a narrative for its notes.`,
+    );
+  }
 }
 
 export function blankLine(text: string) {

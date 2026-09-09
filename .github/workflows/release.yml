@@ -1,0 +1,228 @@
+name: Release
+
+# Reconciles npm, the annotated tag, and the GitHub Release with the participating manifest version.
+# Every push to main runs it; a dispatch re-runs it at main's head. Every job holds one permission.
+# See docs/decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PNPM_VERSION: 12.3.2
+  NODE_VERSION: 22.23.2
+  BUN_VERSION: 1.4.0
+
+jobs:
+  plan:
+    name: Release / plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+      record: ${{ steps.plan.outputs.record }}
+      libraries: ${{ steps.plan.outputs.libraries }}
+    steps:
+      - name: Require main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::The release workflow runs only at main; dispatch it from main. Got $REF."
+            exit 1
+          fi
+
+      - name: Check out main with full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the private Loom CLI
+        run: pnpm build
+
+      - name: Plan the reconciliation
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node apps/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          jq -r '"version=\(.version)", "publish=\(.publish)", "record=\(.record)"' "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT"
+          echo "libraries=$(jq -c '[.libraries[].directory]' "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Release / build
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit this run attests
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run the packed runtime consumer under Node and Bun
+        run: pnpm check:packed
+
+      - name: Pack every participating library
+        env:
+          LIBRARIES: ${{ needs.plan.outputs.libraries }}
+        run: |
+          set -eu
+          for directory in $(jq -r '.[]' <<<"$LIBRARIES"); do
+            pnpm --dir "$directory" pack --pack-destination "$RUNNER_TEMP/tarballs"
+          done
+
+      - name: Upload the tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Release / publish
+    needs: [plan, build]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: Set up Node.js 24 for trusted publishing
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Require npm 11.5.1 or newer
+        run: |
+          node -e '
+            const version = process.argv[1];
+            const [major, minor, patch] = version.split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) {
+              console.error("npm " + version + " cannot use trusted publishing; 11.5.1 or newer is required.");
+              process.exit(1);
+            }
+          ' "$(npm --version)"
+
+      - name: Download the tarballs
+        uses: actions/download-artifact@v8
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/tarballs
+
+      # Runs outside any checkout because the repository's devEngines setting rejects npm inside it.
+      # The registry is read before each publication, so a failed publish is a failure of the job.
+      - name: Publish each tarball with provenance
+        working-directory: ${{ runner.temp }}/tarballs
+        run: |
+          set -eu
+          for tarball in *.tgz; do
+            manifest="$(tar -xOf "$tarball" package/package.json)"
+            spec="$(node -p 'const m = JSON.parse(process.argv[1]); m.name + "@" + m.version' "$manifest")"
+            echo "::group::npm publish $tarball ($spec)"
+            if npm view "$spec" version >/dev/null 2>&1; then
+              echo "$spec is already on the registry; skipping publication."
+            else
+              npm publish "$tarball" --access public --provenance --ignore-scripts
+              echo "Published $spec."
+            fi
+            echo "::endgroup::"
+          done
+
+  record:
+    name: Release / record
+    needs: [plan, build, publish]
+    if: >-
+      ${{ !cancelled()
+        && needs.plan.result == 'success'
+        && needs.plan.outputs.record == 'true'
+        && (needs.build.result == 'success' || needs.build.result == 'skipped')
+        && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out main with full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the private Loom CLI
+        run: pnpm build
+
+      # The plan is re-derived here rather than carried between jobs, so the record reads one source of truth.
+      - name: Record the tag and the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          node apps/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          node apps/loom/dist/main.js release record --repository "$REPOSITORY" --plan "$RUNNER_TEMP/plan.json"

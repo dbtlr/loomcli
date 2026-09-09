@@ -1,7 +1,13 @@
 import { posix } from 'node:path';
 
 import type { readLibraries } from './repository.js';
-import { git } from './repository.js';
+import {
+  currentVersion,
+  git,
+  readParticipants,
+  requireCoherentLibraries,
+  requireFullHistory,
+} from './repository.js';
 
 function dependencyName(
   directory: string,
@@ -19,6 +25,52 @@ function dependencyName(
   }
   const separator = target.lastIndexOf('@');
   return separator > 0 ? target.slice(0, separator) : name;
+}
+
+// Only a commit that carries no participating manifest has no synchronized version.
+// Every other failure of the walk is a defect or a damaged repository, and it propagates.
+function synchronizedVersion(root: string, ref: string | undefined) {
+  if (ref === undefined) {
+    return undefined;
+  }
+  const [first, ...rest] = readParticipants(root, ref);
+  if (first === undefined) {
+    return undefined;
+  }
+  return currentVersion(requireCoherentLibraries([first, ...rest])).text;
+}
+
+// An abandoned version never receives a tag, so the baseline is the commit that set the current version.
+// The walk visits the first-parent commits that touched a participating manifest, newest first.
+export function materialBaseline(
+  root: string,
+  libraries: ReturnType<typeof readLibraries>,
+  version: string,
+  head: string,
+) {
+  requireFullHistory(root);
+  const candidates = git(root, [
+    'log',
+    '--first-parent',
+    '--format=%H %P',
+    head,
+    '--',
+    ...libraries.map((library) => library.path),
+  ])
+    .split('\n')
+    .flatMap((line) => {
+      const [commit, parent] = line.split(' ').filter(Boolean);
+      return commit === undefined ? [] : [{ commit, parent }];
+    });
+  for (const { commit, parent } of candidates) {
+    if (
+      synchronizedVersion(root, commit) === version &&
+      synchronizedVersion(root, parent) !== version
+    ) {
+      return commit;
+    }
+  }
+  throw new Error(`No first-parent commit sets version ${version}.`);
 }
 
 // Root Markdown and docs do not enter the current library build.

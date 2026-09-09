@@ -1,26 +1,23 @@
 import { spawnSync } from 'node:child_process';
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import {
+  commit,
+  git,
+  put,
+  removeRoots,
+  repository as fixtureRepository,
+  temporaryRoot,
+} from './fixture.js';
 
 const cli = new URL('../dist/main.js', import.meta.url);
-const roots: string[] = [];
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-changelog-')));
-  roots.push(root);
+  const root = temporaryRoot('loom-changelog-');
   mkdirSync(join(root, '.changes'));
   writeFileSync(join(root, '.changes/README.md'), '# Guide\n');
   return root;
@@ -29,9 +26,7 @@ function run(root: string, ...args: string[]) {
   return invoke(cli, ['changelog', ...args], { cwd: root });
 }
 afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { force: true, recursive: true });
-  }
+  removeRoots();
 });
 
 test('check accepts nested Markdown and ignores only the directory guide', () => {
@@ -100,58 +95,42 @@ test.each([
   expect(readFileSync(join(root, '.changes', name), 'utf8')).toBe(body);
 });
 
-function git(root: string, args: string[], date = '2026-01-01T12:00:00Z') {
-  const result = spawnSync('git', args, {
-    cwd: root,
-    encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr);
-  }
-  return result.stdout.trim();
+function repository(version = '0.0.0', { tag = true } = {}) {
+  return fixtureRepository({
+    files: {
+      '.changes/README.md': '# Guide\n',
+      '.gitignore': 'node_modules/\n',
+      'CHANGELOG.md': '---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n',
+      'examples/demo/package.json': '{"name":"demo","private":true,"version":"7.0.0"}\n',
+      'package.json': '{"name":"fixture","private":true,"version":"9.0.0"}\n',
+      'packages/core/package.json': `${JSON.stringify({ name: '@sample/core', version }, null, 2)}\n`,
+      'packages/private/package.json': '{"name":"private","private":true,"version":"5.0.0"}\n',
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n  - examples/*\n',
+    },
+    prefix: 'loom-changelog-',
+    tag: tag && version !== '0.0.0' ? `v${version}` : undefined,
+  }).root;
 }
-function put(root: string, path: string, body: string) {
-  const file = join(root, path);
-  mkdirSync(join(file, '..'), { recursive: true });
-  writeFileSync(file, body);
-}
-function commit(root: string, date?: string) {
-  git(root, ['add', '.']);
-  git(
-    root,
-    ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'fixture'],
-    date,
-  );
-}
-function repository(version = '0.0.0') {
-  const root = fixture();
-  git(root, ['init', '-q']);
-  git(root, ['config', 'core.autocrlf', 'false']);
-  put(root, '.gitignore', 'node_modules/\n');
-  put(root, 'package.json', '{"name":"fixture","private":true,"version":"9.0.0"}\n');
-  put(root, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n  - examples/*\n');
+
+// A release cut sets one synchronized version across every participating manifest.
+function setVersion(
+  root: string,
+  version: string,
+  manifests: Record<string, Record<string, unknown>> = {},
+) {
   put(
     root,
     'packages/core/package.json',
     `${JSON.stringify({ name: '@sample/core', version }, null, 2)}\n`,
   );
-  put(root, 'examples/demo/package.json', '{"name":"demo","private":true,"version":"7.0.0"}\n');
-  put(
-    root,
-    'packages/private/package.json',
-    '{"name":"private","private":true,"version":"5.0.0"}\n',
-  );
-  put(
-    root,
-    'CHANGELOG.md',
-    '---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n',
-  );
-  commit(root);
-  if (version !== '0.0.0') {
-    git(root, ['tag', `v${version}`]);
+  for (const [directory, manifest] of Object.entries(manifests)) {
+    put(
+      root,
+      `packages/${directory}/package.json`,
+      `${JSON.stringify({ ...manifest, version }, null, 2)}\n`,
+    );
   }
-  return root;
+  commit(root);
 }
 
 test('preview derives the first version from manifests and preserves fragment prose', () => {
@@ -210,26 +189,32 @@ test('preview refuses mismatched manifests and invalid dates without edits', () 
 test('an empty set requires explicit first-release intent and cannot release later versions', () => {
   const root = repository();
   expect(run(root, 'preview').stderr).toContain('No fragments');
-  expect(run(root, 'preview', '--initial', '--date', '2026-09-07')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: '## v0.1.0 - 2026-09-07\n\n',
-  });
   const later = repository('0.2.0');
   expect(run(later, 'preview', '--initial').stderr).toContain('0.0.0');
 });
 
-test('material changes propagate through library peer dependencies while docs stay immaterial', () => {
-  const root = repository('0.3.0');
-  git(root, ['tag', '-d', 'v0.3.0']);
-  put(
-    root,
-    'packages/adapter/package.json',
-    '{"name":"adapter","version":"0.3.0","peerDependencies":{"@sample/core":"workspace:*"}}\n',
+test('an empty initial cut carries notes only through a narrative', () => {
+  const root = repository();
+  expect(run(root, 'preview', '--initial', '--date', '2026-09-07').stderr).toContain(
+    'requires a narrative',
   );
-  put(root, 'packages/unrelated/package.json', '{"name":"unrelated","version":"0.3.0"}\n');
+  put(root, 'narrative.md', 'Start using the typed command API.\n');
   commit(root);
-  git(root, ['tag', 'v0.3.0']);
+  expect(
+    run(root, 'preview', '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md'),
+  ).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v0.1.0 - 2026-09-07\n\nStart using the typed command API.\n\n',
+  });
+});
+
+test('material changes propagate through library peer dependencies while docs stay immaterial', () => {
+  const root = repository('0.2.0');
+  setVersion(root, '0.3.0', {
+    adapter: { name: 'adapter', peerDependencies: { '@sample/core': 'workspace:*' } },
+    unrelated: { name: 'unrelated' },
+  });
   put(root, 'packages/core/source.ts', 'export const value = 1;\n');
   put(root, 'docs/guide.md', '# Guide\n');
   put(root, '.changes/add.md', '- Add input.\n');
@@ -253,6 +238,70 @@ test('a supplied history base changes the material report but never the version'
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.8.3 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core.');
+});
+
+test('the material report needs no tag for the current version', () => {
+  const root = repository('0.6.0', { tag: false });
+  put(root, 'docs/guide.md', '# Guide\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  commit(root);
+  const result = run(root, 'preview', '--date', '2026-09-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('## v0.6.1 - 2026-09-07');
+  expect(result.stdout).toContain('No material changes: @sample/core.\n');
+});
+
+test('an abandoned unpublished version keeps the baseline at the commit that set it', () => {
+  const root = repository('0.1.0');
+  setVersion(root, '0.2.0', { other: { name: 'other' } });
+  put(root, 'packages/core/source.ts', 'export {};\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  commit(root);
+  const result = run(root, 'preview', '--date', '2026-09-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('## v0.2.1 - 2026-09-07');
+  expect(result.stdout).toContain('No material changes: other.\n');
+});
+
+test('a version tag on an unrelated commit does not move the baseline', () => {
+  const root = repository('0.7.0', { tag: false });
+  const unrelated = git(root, ['rev-parse', 'HEAD']);
+  setVersion(root, '0.8.0', { other: { name: 'other' } });
+  git(root, ['tag', 'v0.8.0', unrelated]);
+  put(root, 'packages/core/source.ts', 'export {};\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  commit(root);
+  const result = run(root, 'preview', '--date', '2026-09-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('## v0.8.1 - 2026-09-07');
+  expect(result.stdout).toContain('No material changes: other.\n');
+});
+
+test('a version set on a side branch takes its baseline from the merge commit', () => {
+  const root = repository('0.3.0');
+  setVersion(root, '0.3.0', { idle: { name: 'idle' }, other: { name: 'other' } });
+  const branch = git(root, ['branch', '--show-current']);
+  git(root, ['checkout', '-qb', 'feature']);
+  setVersion(root, '0.4.0', { idle: { name: 'idle' }, other: { name: 'other' } });
+  git(root, ['checkout', '-q', branch]);
+  put(root, 'packages/other/source.ts', 'export {};\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  commit(root);
+  git(root, [
+    '-c',
+    'user.name=Test',
+    '-c',
+    'user.email=test@example.com',
+    'merge',
+    '--no-ff',
+    '-m',
+    'Merge feature',
+    'feature',
+  ]);
+  const result = run(root, 'preview', '--date', '2026-09-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('## v0.4.1 - 2026-09-07');
+  expect(result.stdout).toContain('No material changes: @sample/core, idle, other.\n');
 });
 
 test('write updates only release files, preserves workspace references, and refuses a second increment', () => {
@@ -441,17 +490,12 @@ test('private manifests need no name or version to be excluded', () => {
 });
 
 test('explicit workspace targets win over dependency keys with the same library name', () => {
-  const root = repository('0.3.0');
-  git(root, ['tag', '-d', 'v0.3.0']);
-  put(root, 'packages/aaa/package.json', '{"name":"aaa","version":"0.3.0"}\n');
-  put(root, 'packages/zzz/package.json', '{"name":"zzz","version":"0.3.0"}\n');
-  put(
-    root,
-    'packages/consumer/package.json',
-    '{"name":"consumer","version":"0.3.0","dependencies":{"aaa":"workspace:zzz@*"}}\n',
-  );
-  commit(root);
-  git(root, ['tag', 'v0.3.0']);
+  const root = repository('0.2.0');
+  setVersion(root, '0.3.0', {
+    aaa: { name: 'aaa' },
+    consumer: { dependencies: { aaa: 'workspace:zzz@*' }, name: 'consumer' },
+    zzz: { name: 'zzz' },
+  });
   put(root, 'packages/zzz/code.ts', 'export {};\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);

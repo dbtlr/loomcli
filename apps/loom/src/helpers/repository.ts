@@ -69,8 +69,22 @@ export function readRegularFile(root: string, path: string, ref?: string) {
   return readRegularFileBytes(root, path, ref).toString('utf8');
 }
 
-export function readLibraries(root: string, ref?: string) {
-  const libraries = readDirectory(root, 'packages', ref).flatMap((entry) => {
+// A shallow clone hides the commits the material baseline and the release notes are derived from.
+export function requireFullHistory(root: string) {
+  if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
+    throw new Error('Release preparation requires full Git history.');
+  }
+}
+
+// The non-private manifests under packages/, empty when the ref carries no packages tree.
+export function readParticipants(root: string, ref?: string) {
+  if (
+    ref !== undefined &&
+    !git(root, ['ls-tree', '-z', ref, '--', 'packages']).startsWith('040000 tree ')
+  ) {
+    return [];
+  }
+  return readDirectory(root, 'packages', ref).flatMap((entry) => {
     if (entry.isSymbolicLink()) {
       throw new Error(`packages/${entry.name}: symlinks are not supported.`);
     }
@@ -87,9 +101,12 @@ export function readLibraries(root: string, ref?: string) {
     const manifest = manifestSchema.parse(input);
     return [{ directory, manifest, path, source }];
   });
-  if (libraries.length === 0) {
-    throw new Error('No publishable libraries in packages/*.');
-  }
+}
+
+// Participating libraries share one name space and one version, because only a release cut moves them.
+export function requireCoherentLibraries(
+  libraries: [ReturnType<typeof readParticipants>[number], ...ReturnType<typeof readParticipants>],
+) {
   if (new Set(libraries.map((library) => library.manifest.name)).size !== libraries.length) {
     throw new Error('Publishable library names must be unique.');
   }
@@ -98,6 +115,14 @@ export function readLibraries(root: string, ref?: string) {
     throw new Error('Publishable library versions must match.');
   }
   return libraries;
+}
+
+export function readLibraries(root: string, ref?: string) {
+  const [first, ...rest] = readParticipants(root, ref);
+  if (first === undefined) {
+    throw new Error('No publishable libraries in packages/*.');
+  }
+  return requireCoherentLibraries([first, ...rest]);
 }
 
 export function currentVersion(libraries: ReturnType<typeof readLibraries>) {

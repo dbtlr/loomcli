@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -9,54 +8,30 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import {
+  commit,
+  git,
+  put,
+  removeRoots,
+  repository as fixtureRepository,
+  temporaryRoot,
+} from './fixture.js';
 
 const cli = new URL('../dist/main.js', import.meta.url);
-const roots: string[] = [];
 
-function git(root: string, ...args: string[]) {
-  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(result.stderr);
-  }
-  return result.stdout.trim();
-}
-
-function put(root: string, path: string, body: string) {
-  mkdirSync(dirname(join(root, path)), { recursive: true });
-  writeFileSync(join(root, path), body);
-}
-
-function commit(root: string) {
-  git(root, 'add', '.');
-  git(
-    root,
-    '-c',
-    'user.name=Test',
-    '-c',
-    'user.email=test@example.com',
-    'commit',
-    '-qm',
-    'fixture',
-  );
-  return git(root, 'rev-parse', 'HEAD');
-}
-
-function repository(version = '0.4.7') {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-pr-')));
-  roots.push(root);
-  git(root, 'init', '-q');
-  git(root, 'config', 'core.autocrlf', 'false');
-  put(root, '.changes/README.md', '# Guide\n');
-  put(root, 'package.json', '{"name":"fixture","private":true}');
-  put(root, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
-  put(root, 'packages/core/package.json', JSON.stringify({ name: '@sample/core', version }));
-  put(root, 'packages/core/index.js', 'export const value = 1;\n');
-  put(root, 'CHANGELOG.md', '# Changelog\n\n');
-  const base = commit(root);
-  if (version !== '0.0.0') {
-    git(root, 'tag', `v${version}`);
-  }
-  return { base, root };
+function repository(version = '0.4.7', { tag = true } = {}) {
+  return fixtureRepository({
+    files: {
+      '.changes/README.md': '# Guide\n',
+      'CHANGELOG.md': '# Changelog\n\n',
+      'package.json': '{"name":"fixture","private":true}',
+      'packages/core/index.js': 'export const value = 1;\n',
+      'packages/core/package.json': JSON.stringify({ name: '@sample/core', version }),
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+    },
+    prefix: 'loom-pr-',
+    tag: tag && version !== '0.0.0' ? `v${version}` : undefined,
+  });
 }
 
 function check(root: string, base: string, ...args: string[]) {
@@ -66,10 +41,21 @@ function check(root: string, base: string, ...args: string[]) {
 }
 
 afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { force: true, recursive: true });
-  }
+  removeRoots();
 });
+
+const narrativeProse = 'Start using the typed command API.';
+
+// An initial cut consumes no fragments, so its notes come from a narrative kept outside the checkout.
+function writeInitialRelease(root: string) {
+  const narrative = join(temporaryRoot('loom-narrative-'), 'narrative.md');
+  writeFileSync(narrative, `${narrativeProse}\n`);
+  return invoke(
+    cli,
+    ['changelog', 'write', '--initial', '--date', '2026-09-07', '--narrative', narrative],
+    { cwd: root },
+  );
+}
 
 function releaseCheck(root: string, base: string, version: string) {
   return invoke(
@@ -102,6 +88,29 @@ test('a compiler-written release passes and unrelated code cannot enter the rele
   expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
     status: 1,
     stderr: expect.stringContaining('outside the release cut'),
+  });
+});
+
+test('a release check derives the material baseline at the base without a tag', () => {
+  const { root } = repository('0.4.7', { tag: false });
+  put(
+    root,
+    'packages/core/package.json',
+    JSON.stringify({ name: '@sample/core', version: '0.5.0' }),
+  );
+  put(root, 'packages/other/package.json', JSON.stringify({ name: 'other', version: '0.5.0' }));
+  commit(root);
+  put(root, 'packages/core/index.js', 'export const value = 2;\n');
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  const written = invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root });
+  expect(written.status).toBe(0);
+  expect(written.stdout).toContain('No material changes: other.\n');
+  commit(root);
+  expect(releaseCheck(root, base, '0.5.1')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
   });
 });
 
@@ -174,10 +183,8 @@ test('release validation checks generated entries and preserves earlier changelo
 
 test('a release cannot delete its lockfile or change a manifest file mode', () => {
   const { root } = repository('0.0.0');
-  const base = git(root, 'rev-parse', 'HEAD');
-  expect(
-    invoke(cli, ['changelog', 'write', '--initial', '--date', '2026-09-07'], { cwd: root }).status,
-  ).toBe(0);
+  const base = git(root, ['rev-parse', 'HEAD']);
+  expect(writeInitialRelease(root).status).toBe(0);
   const cut = commit(root);
   rmSync(join(root, 'pnpm-lock.yaml'));
   commit(root);
@@ -185,9 +192,9 @@ test('a release cannot delete its lockfile or change a manifest file mode', () =
     status: 1,
     stderr: expect.stringContaining('pnpm-lock.yaml'),
   });
-  git(root, 'reset', '--hard', cut);
-  git(root, 'update-index', '--chmod=+x', 'packages/core/package.json');
-  git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'mode');
+  git(root, ['reset', '--hard', cut]);
+  git(root, ['update-index', '--chmod=+x', 'packages/core/package.json']);
+  git(root, ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'mode']);
   expect(releaseCheck(root, base, '0.1.0')).toMatchObject({
     status: 1,
     stderr: expect.stringContaining('file mode'),
@@ -199,7 +206,7 @@ test('PR checks refuse shallow history', () => {
   put(root, 'docs/guide.md', '# Guide\n');
   commit(root);
   const clone = join(root, 'shallow');
-  git(root, 'clone', '--depth=1', '--no-local', root, clone);
+  git(root, ['clone', '--depth=1', '--no-local', root, clone]);
   expect(check(clone, base)).toMatchObject({
     status: 1,
     stderr: expect.stringContaining('full Git history'),
@@ -245,11 +252,11 @@ test('comparison uses committed head content and excludes changes from the base 
   put(root, '.changes/local.md', '- Uncommitted output.\n');
   expect(check(root, base, '--head', feature).stderr).toContain('fragment or skip-changelog');
   rmSync(join(root, '.changes/local.md'));
-  git(root, 'checkout', '--detach', base);
+  git(root, ['checkout', '--detach', base]);
   put(root, '.changes/base.md', '- A different feature.\n');
   const advanced = commit(root);
   expect(check(root, advanced, '--head', feature).stderr).toContain('fragment or skip-changelog');
-  git(root, 'checkout', '--detach', base);
+  git(root, ['checkout', '--detach', base]);
   put(root, 'docs/guide.md', '# Guide\n');
   const docs = commit(root);
   expect(check(root, advanced, '--head', docs).status).toBe(0);
@@ -270,25 +277,20 @@ test('ordinary PRs allow private version edits and require new libraries to join
 
 test('the initial empty cut and a narrative round-trip through the compiler', () => {
   const { base, root } = repository('0.0.0');
-  const narrativeRoot = mkdtempSync(join(tmpdir(), 'loom-narrative-'));
-  roots.push(narrativeRoot);
-  const narrative = join(narrativeRoot, 'narrative.md');
-  writeFileSync(narrative, 'Start using the typed command API.\n');
-  try {
-    expect(
-      invoke(
-        cli,
-        ['changelog', 'write', '--initial', '--date', '2026-09-07', '--narrative', narrative],
-        { cwd: root },
-      ).status,
-    ).toBe(0);
-  } finally {
-    rmSync(narrative);
-  }
+  expect(writeInitialRelease(root).status).toBe(0);
   commit(root);
   expect(releaseCheck(root, base, '0.1.0').status).toBe(0);
-  git(root, 'tag', 'v0.1.0');
+  git(root, ['tag', 'v0.1.0']);
   expect(releaseCheck(root, base, '0.1.0').stderr).toContain('Tag v0.1.0 already exists');
+});
+
+test('an initial cut whose section lost its narrative carries no notes and fails', () => {
+  const { base, root } = repository('0.0.0');
+  expect(writeInitialRelease(root).status).toBe(0);
+  const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+  put(root, 'CHANGELOG.md', changelog.replace(`${narrativeProse}\n\n`, ''));
+  commit(root);
+  expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
 });
 
 test.skipIf(process.platform === 'win32')(
@@ -349,7 +351,7 @@ test.skipIf(process.platform === 'win32')(
     });
     expect(admitted.status).toBe(1);
     expect(admitted.stderr).toContain('fragment or skip-changelog');
-    expect(git(root, 'status', '--porcelain')).toBe('');
+    expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
 
@@ -389,9 +391,7 @@ test('breaking cuts advance the minor and synchronize every library', () => {
 
 test('a release rejects lockfile changes that the version writer did not produce', () => {
   const { base, root } = repository('0.0.0');
-  expect(
-    invoke(cli, ['changelog', 'write', '--initial', '--date', '2026-09-07'], { cwd: root }).status,
-  ).toBe(0);
+  expect(writeInitialRelease(root).status).toBe(0);
   const lockfile = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8');
   const changed = lockfile.replace('autoInstallPeers: true', 'autoInstallPeers: false');
   expect(changed).not.toBe(lockfile);
@@ -419,7 +419,7 @@ test('release cuts reject non-version manifest changes and replacement numbers',
   );
   commit(root);
   expect(releaseCheck(root, base, '0.4.8').stderr).toContain('only the version field');
-  git(root, 'reset', '--hard', cut);
+  git(root, ['reset', '--hard', cut]);
   put(root, '.changes/left.md', '- Left behind.\n');
   commit(root);
   expect(releaseCheck(root, base, '0.4.8').stderr).toContain('No fragments may remain');
@@ -431,10 +431,10 @@ test('a release branch must include the current base and ordinary argument error
   const base = commit(root);
   expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   const cut = commit(root);
-  git(root, 'checkout', '--detach', base);
+  git(root, ['checkout', '--detach', base]);
   put(root, 'docs/guide.md', '# Guide\n');
   const advanced = commit(root);
-  git(root, 'checkout', '--detach', cut);
+  git(root, ['checkout', '--detach', cut]);
   expect(releaseCheck(root, advanced, '0.4.8').stderr).toContain('include the current base');
   expect(releaseCheck(root, base, '1.0.0').stderr).toContain('Expected release title');
   expect(check(root, base, '--', 'extra').stderr).toContain('Arguments after --');

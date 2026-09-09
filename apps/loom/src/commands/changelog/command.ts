@@ -5,7 +5,7 @@ import { Command } from '@loomcli/core';
 import type { Out } from '@loomcli/core';
 
 import { readFragments } from '../../helpers/fragments.js';
-import { prepareRelease, releaseDate } from '../../helpers/release.js';
+import { prepareRelease, releaseDate, requireReleaseNotes } from '../../helpers/release.js';
 import { writeRelease } from './write.js';
 
 function prepare(
@@ -17,7 +17,7 @@ function prepare(
     narrative: string | undefined;
   },
 ) {
-  return prepareRelease(root, {
+  const release = prepareRelease(root, {
     date: releaseDate(options.date),
     initial: options.initial,
     narrative:
@@ -26,6 +26,8 @@ function prepare(
         : readFileSync(resolve(root, options.narrative), 'utf8'),
     since: options.since,
   });
+  requireReleaseNotes(release);
+  return release;
 }
 
 // Convert compiler failures to Loom's fatal channel; keep generated Markdown byte-for-byte.
