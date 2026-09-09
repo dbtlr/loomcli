@@ -182,6 +182,21 @@ test('a published version whose tag names another commit fails', async () => {
   expect(result.stderr).toContain(cut);
 });
 
+test('a tag reference whose tag object the API does not carry fails', async () => {
+  const { cut, root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    release: { assets: [uploaded()], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: cut, missingObject: true },
+    version: '0.2.0',
+  });
+  const result = plan(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(`Tag v0.2.0 names tag object tagobject-${cut}`);
+  expect(result.stderr).toContain('which the API does not return');
+});
+
 test('a version absent from the registry plans publication and recording', async () => {
   const { cut, root } = releaseRepository();
   const endpoints = await startServices({

@@ -72,6 +72,11 @@ export async function readTagCommit(target: GitHubTarget, tag: string) {
   }
   const url = repositoryUrl(target, `git/tags/${object.sha}`);
   const dereferenced = await readJson(target.policy, url, target.token);
+  // The reference exists, so an absent tag object is a damaged record rather than an absent tag.
+  // Reporting it as an absent tag would let recording create a second tag over the first.
+  if (dereferenced.data === undefined) {
+    throw new Error(`Tag ${tag} names tag object ${object.sha}, which the API does not return.`);
+  }
   return tagObjectSchema.parse(dereferenced.data).object.sha;
 }
 

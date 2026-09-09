@@ -79,7 +79,14 @@ export interface ServicesState {
       }
     | undefined;
   repository: string;
-  tag?: { annotated: boolean; commit: string } | undefined;
+  tag?:
+    | {
+        annotated: boolean;
+        commit: string;
+        // Serves the tag reference while the tag object it names is absent from the API.
+        missingObject?: boolean;
+      }
+    | undefined;
   version: string;
 }
 

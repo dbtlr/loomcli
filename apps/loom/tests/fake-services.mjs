@@ -185,6 +185,10 @@ function github(request, response, url, host, body) {
     return;
   }
   if (request.method === 'GET' && path.startsWith(`${repository}/git/tags/`)) {
+    if (state.tag?.missingObject) {
+      missing(response);
+      return;
+    }
     const sha = path.slice(`${repository}/git/tags/`.length);
     send(response, 200, {
       object: { sha: sha.replace('tagobject-', ''), type: 'commit' },
