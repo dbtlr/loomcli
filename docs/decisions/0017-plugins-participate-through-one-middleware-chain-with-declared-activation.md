@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0017 - Plugins participate through one middleware chain with declared activation
 description: Every plugin that acts on an invocation does so through one middleware seam between routing and local parsing, taking over by not calling next() or wrapping the rest of the chain. A middleware declares what activates it, and core loads its implementation only when the activation matches.
-status: proposed
+status: accepted
 created: 2026-09-08
 modified: 2026-09-09
 ---
@@ -38,3 +38,7 @@ A plugin's options are visible to its own middleware alone. Actions do not recei
 ## Status
 
 Proposed. The record moves to accepted with the code that runs the chain, enforces the activation rules at build, and proves under test that an unused plugin's implementation module is never loaded.
+
+## Changelog
+
+- 2026-09-09: Accepted. PR 36 (branch `feat/lm-60-plugins`) runs the one middleware chain between routing and the callable check, with declared activation and a per-middleware loader; its tests prove an unused plugin's implementation module is never loaded and that a takeover never loads a later plugin. This pull request adds the chain's cancellation boundary: `packages/core/tests/cancellation.test.ts` shows that a caller signal already aborted at entry loads no plugin at all, that a loader already in flight settles and its middleware is skipped, and that a wrapping middleware reads `'cancelled'` from its own `next()`. Both example applications install a plugin through `plugins` and public APIs alone.

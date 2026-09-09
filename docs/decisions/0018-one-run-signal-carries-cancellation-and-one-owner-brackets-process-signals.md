@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0018 - One run signal carries cancellation, and one slot owner brackets process signals
 description: Each run has one private cancellation signal, fed by a caller-supplied AbortSignal or by the single plugin that owns the signals slot. Core installs and removes the process listeners for that owner inside one run, stays cooperative on a first signal, re-raises a repeated one, and resolves 130 or 143.
-status: proposed
+status: accepted
 created: 2026-09-08
 modified: 2026-09-09
 ---
@@ -33,3 +33,7 @@ The exit code type gains 130 and 143. Re-raising a repeated signal is the one wa
 ## Status
 
 Proposed. The record moves to accepted with the code that brackets a run for a slot owner, proves under test that a second claim fails at build and that no listener survives a run, and resolves the cancellation codes.
+
+## Changelog
+
+- 2026-09-09: Accepted. This pull request implements `run({ signal })`, the private per-run cancellation controller and its `{ source, cause? }` reason, the signals slot with its build-time single-owner and `SIGINT`/`SIGTERM`-only rules, the bracketed process listeners core installs after graph build and removes on every exit path, the force path that re-raises a repeated signal, `ChainOutcome`'s `'cancelled'`, and the widened `ExitCode` (`0 | 1 | 2 | 130 | 143`). `packages/core/tests/plugins.test.ts` proves that a second claim on the signals slot fails at build, and that a signal outside `SIGINT` and `SIGTERM` fails at build. `packages/core/tests/cancellation.test.ts` proves, under Node and under Bun, that `process.listenerCount` is 0 before a run, 1 per claimed signal during it, and 0 after, including across two runs of one Application; that a `SIGINT` during a cooperative action resolves 130 and a `SIGTERM` resolves 143; that a repeated `SIGINT` ends the process through the default disposition; that a caller abort resolves 130 with `source: 'caller'` and the caller's own reason as `cause`; and that a caller signal already aborted at entry resolves 130 having loaded no plugin and installed no listener. The sentence this record amends in [ADR-0009](0009-core-captures-the-host-and-resolves-an-exit-code.md), "installs no signal or cleanup handlers," now binds as amended: core installs process listeners only on behalf of the one installed plugin that owns the signals slot, only inside one run, and only after the graph has built.

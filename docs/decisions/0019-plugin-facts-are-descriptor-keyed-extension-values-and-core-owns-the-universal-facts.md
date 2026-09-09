@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0019 - Plugin facts are descriptor-keyed extension values, and core owns the universal facts
 description: A plugin attaches typed facts to a Command, option, or argument as branded values from a descriptor it defines, listed under extensions on the config object and keyed by the extension's identity. Core owns description and version as graph facts so every projection is minimally useful with no plugin installed.
-status: proposed
+status: accepted
 created: 2026-09-08
 modified: 2026-09-09
 ---
@@ -37,3 +37,7 @@ A Command takes an options object like the Application, and the positional globa
 ## Status
 
 Proposed. The record moves to accepted with the code that validates and stores extension values, exposes them through `inspect()`, and carries `description` and `version` as graph facts.
+
+## Changelog
+
+- 2026-09-09: Accepted. PR 35 (`8585389`, on `main`) carries `description` and `version` as core graph facts, reported by `inspect()`, so a projection is minimally useful with no plugin installed. PR 36 (branch `feat/lm-60-plugins`) adds the `extension(identity, config)` descriptor factory, the branded extension values a declaration lists under `extensions`, and `readExtension` for a typed read keyed by the descriptor's own identity.
