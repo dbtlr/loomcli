@@ -4,8 +4,12 @@ import { z } from 'zod';
 import { selectFields } from '../actions/select-fields.js';
 import { globals } from '../globals.js';
 
-export const select = new Command('select', { globals })
+export const select = new Command('select', {
+  description: 'Keep the named fields of the document.',
+  globals,
+})
   .option('field', {
+    description: 'A field to keep. Repeat it for several.',
     multiple: true,
     required: true,
     short: 'F',

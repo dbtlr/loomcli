@@ -19,7 +19,7 @@
     "prepare": "vp config",
     "test": "pnpm run build && vp test --run",
     "verify": "pnpm run check && vp test --run",
-    "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/textstat/tsconfig.json && tsc -p examples/jsonkit/tsconfig.json && tsc -p apps/loom/tsconfig.json",
+    "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p examples/explain/tsconfig.json && tsc -p examples/textstat/tsconfig.json && tsc -p examples/jsonkit/tsconfig.json && tsc -p apps/loom/tsconfig.json",
     "check:packed": "node packages/core/tests/check-packed.mjs",
     "check:types": "node packages/core/tests/check-types.mjs",
     "loom": "node apps/loom/dist/main.js"

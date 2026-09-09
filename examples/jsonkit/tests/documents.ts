@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export const main = new URL('../dist/main.js', import.meta.url);
+export const main = new URL('../dist/src/main.js', import.meta.url);
 export const document =
   '{"name":"loom","tags":["a","b"],"nested":{"deep":{"value":"found"}},"count":3,"ok":true,"none":null}';
 

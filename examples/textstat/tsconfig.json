@@ -9,9 +9,9 @@
     "allowImportingTsExtensions": false,
     "declaration": true,
     "skipLibCheck": false,
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "package.json"],
   "exclude": ["dist"]
 }

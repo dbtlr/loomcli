@@ -1,0 +1,20 @@
+{
+  "name": "@loom/explain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/plugin.d.ts",
+      "default": "./dist/src/plugin.js"
+    },
+    "./extension": {
+      "types": "./dist/src/extension.d.ts",
+      "default": "./dist/src/extension.js"
+    }
+  },
+  "dependencies": {
+    "@loomcli/core": "workspace:*",
+    "zod": "^4.5.4"
+  }
+}

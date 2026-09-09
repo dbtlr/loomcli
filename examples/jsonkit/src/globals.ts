@@ -8,6 +8,7 @@ import { fileOrStdin } from './file-or-stdin.js';
  * the shared reader only selects between the two sources.
  */
 export const globals = new GlobalOptions().option('file', {
+  description: 'The document to read. Omit it to read piped text.',
   short: 'f',
   type: 'string',
   validate: fileOrStdin,

@@ -140,8 +140,20 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
 
+  examples/explain:
+    dependencies:
+      '@loomcli/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+
   examples/jsonkit:
     dependencies:
+      '@loom/explain':
+        specifier: workspace:*
+        version: link:../explain
       '@loomcli/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -151,6 +163,9 @@ importers:
 
   examples/textstat:
     dependencies:
+      '@loom/explain':
+        specifier: workspace:*
+        version: link:../explain
       '@loomcli/core':
         specifier: workspace:*
         version: link:../../packages/core
