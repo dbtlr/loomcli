@@ -6,6 +6,7 @@ import {
   FatalError,
   GlobalOptions,
   InputError,
+  InternalError,
   plugin,
   renderFailure,
 } from '@loomcli/core';
@@ -41,6 +42,8 @@ const plugins = {
     }),
   inner: () =>
     plugin('@fixture/inner', { middleware: { activate: 'always', load: load('inner') } }),
+  microtask: () =>
+    plugin('@fixture/microtask', { middleware: { activate: 'always', load: load('microtask') } }),
   misuse: () =>
     plugin('@fixture/misuse', { middleware: { activate: 'always', load: load('misuse') } }),
   'no-default': () =>
@@ -49,6 +52,8 @@ const plugins = {
     }),
   outer: () =>
     plugin('@fixture/outer', { middleware: { activate: 'always', load: load('outer') } }),
+  recatching: () =>
+    plugin('@fixture/recatching', { middleware: { activate: 'always', load: load('recatching') } }),
   settings: () =>
     plugin('@fixture/settings', {
       middleware: { activate: ['cache', 'mode', 'quiet', 'tags'], load: load('settings') },
@@ -61,6 +66,21 @@ const plugins = {
     }),
   signals: () =>
     plugin('@fixture/signals', { middleware: { activate: 'always', load: load('signals') } }),
+  'stash-caller': () =>
+    plugin('@fixture/stash-caller', {
+      middleware: { activate: 'always', load: load('stash-caller') },
+    }),
+  stashing: () =>
+    plugin('@fixture/stashing', { middleware: { activate: 'always', load: load('stashing') } }),
+  'sync-loader': () =>
+    plugin('@fixture/sync-loader', {
+      middleware: {
+        activate: 'always',
+        load: () => {
+          throw new Error('the loader threw before it could import');
+        },
+      },
+    }),
   throwing: () =>
     plugin('@fixture/throwing', { middleware: { activate: 'always', load: load('throwing') } }),
   version: () =>
@@ -79,13 +99,32 @@ const installed = {
   'failures-both': ['failures'],
   help: ['help', 'version'],
   inert: [],
+  microtask: ['outer', 'microtask'],
   misuse: ['misuse'],
+  'misuse-rendered': ['misuse'],
   'no-default': ['no-default'],
+  recatching: ['recatching'],
   settings: ['settings'],
   signals: ['signals'],
+  stashed: ['stash-caller', 'stashing'],
+  'sync-loader': ['sync-loader'],
   throwing: ['throwing'],
   wrapped: ['outer', 'inner'],
+  'wrapped-catching': ['outer', 'catching'],
   'wrapped-help': ['outer', 'help'],
+};
+
+/**
+ * The renderers the application itself registers. The failure scenarios show how one class resolves
+ * between contributors, and the misuse one shows that a chain fault reaches a registered renderer.
+ */
+const registered = {
+  'failures-both': () => [
+    renderFailure(InputError, { render: (failure) => `app input: ${failure.message}\n` }),
+  ],
+  'misuse-rendered': () => [
+    renderFailure(InternalError, { render: (failure) => `app internal: ${failure.message}\n` }),
+  ],
 };
 
 const scenario = process.argv[2];
@@ -141,10 +180,7 @@ function application() {
     description: 'A fixture application.',
     extensions: [commandFact({ details: 'The whole fixture.' })],
     // The application registers first, so its renderer wins over the plugin's for one class.
-    failures:
-      scenario === 'failures-both'
-        ? [renderFailure(InputError, { render: (failure) => `app input: ${failure.message}\n` })]
-        : [],
+    failures: (registered[scenario] ?? (() => []))(),
     globals,
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',

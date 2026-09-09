@@ -125,6 +125,57 @@ test('calling next() after the middleware returned rejects with its own sentence
   );
 });
 
+test('a chain fault reaches the renderer the application registered for its class', () => {
+  const result = run('misuse-rendered', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    'misuse:Plugin "@fixture/misuse" called next() twice.\napp internal: Plugin "@fixture/misuse" called next() twice.\n',
+  );
+});
+
+test('a next() a middleware kept and called after it returned rejects and dispatches nothing', () => {
+  const result = run('stashed', ['get', 'a.b']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    'stashing:taken-over\ncaller:taken-over\ncaller:Plugin "@fixture/stashing" called next() after its middleware returned.\nInternal error: Plugin "@fixture/stashing" called next() after its middleware returned.\n',
+  );
+  expect(result.stdout).toBe('resolved:1\n');
+});
+
+test('a middleware that throws its own failure while unwinding leaves the caught code alone', () => {
+  const result = run('recatching', ['get']);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(
+    'recatching:Argument "path" requires a value. Supply a value for "path".\nInvalid input: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
+  );
+  expect(result.stdout).toBe('resolved:2\n');
+});
+
+test('a wrapper reads a caught failure as taken-over when the action never ran', () => {
+  const result = run('wrapped-catching', ['get']);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(
+    'outer:start\ncatching:caught:Argument "path" requires a value. Supply a value for "path".\nouter:taken-over\nouter:cleanup\nInvalid input: Argument "path" requires a value. Supply a value for "path".\n',
+  );
+});
+
+test('a wrapper reads a caught failure as dispatched when the action ran and threw', () => {
+  const result = run('wrapped-catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    'outer:start\ncatching:caught:the action stopped the invocation\nouter:dispatched\nouter:cleanup\nthe action stopped the invocation\n',
+  );
+});
+
+test('a next() queued as a microtask lands before the middleware result settles', () => {
+  // "`next` is live until the middleware's own result settles", so the queued call continues
+  // The chain and the action dispatches under the wrapper that observes the outcome.
+  const result = run('microtask', ['get', 'a.b']);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('outer:start\nouter:dispatched\nouter:cleanup\n');
+  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:0\n');
+});
+
 test('a failure thrown before next() resolves through the failure path with its own code', () => {
   expect(run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'fatal' })).toEqual({
     status: 1,
@@ -170,6 +221,15 @@ test('a loader that rejects is an internal error with code 1', () => {
   expect(result.status).toBe(1);
   expect(result.stderr).toMatch(/^Internal error: Loading plugin "@fixture\/broken" failed: /u);
   expect(result.stdout).toBe('resolved:1\n');
+});
+
+test('a loader that throws synchronously names its own plugin', () => {
+  expect(run('sync-loader', ['get', 'a.b'])).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: Loading plugin "@fixture/sync-loader" failed: the loader threw before it could import\n',
+    stdout: 'resolved:1\n',
+  });
 });
 
 test('a module without a default middleware function is an internal error with code 1', () => {
