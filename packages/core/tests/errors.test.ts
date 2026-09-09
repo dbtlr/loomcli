@@ -180,3 +180,21 @@ test('an options object with globals constructs, inspects, and runs the Command'
     stdout: 'assembled\ndispatched\nresolved:0\n',
   });
 });
+
+// An object with no prototype carries no state of its own, so it is an options object.
+// The rule holds on the Command's slot and on the Application's alike.
+test.each(['null-prototype', 'null-prototype-application'])(
+  'an options object with no prototype (%s) inspects and runs',
+  (scenario) => {
+    expect(withCommandOptions(scenario, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'assembled\ninspected\n',
+    });
+    expect(withCommandOptions(scenario, 'run')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'assembled\ndispatched\nresolved:0\n',
+    });
+  },
+);

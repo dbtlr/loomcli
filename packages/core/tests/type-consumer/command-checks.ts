@@ -33,6 +33,14 @@ new Command('optional').argument('path', { required: false });
 // @ts-expect-error TS2559: A Command takes an options object, never a positional globals value.
 new Command('positional', globals);
 
+// A core fact is typed, so a value of the wrong type never reaches the build rule that rejects it.
+const numbered = { description: 42 };
+// @ts-expect-error TS2345: A description is one line of prose, never a number.
+new Command('numbered', numbered);
+const counted = { version: 1 };
+// @ts-expect-error TS2345: A version is an opaque string, never a number.
+new Application('counted', counted);
+
 // The core facts are optional, and a Command declares its description with or without globals.
 const described: CommandOptions = { description: 'Reads a value.' };
 new Command('summarized', { description: 'Reads one value.', globals })

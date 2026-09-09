@@ -89,6 +89,17 @@ function defaults() {
     .action(dispatch);
 }
 
+// An object with no prototype is plain data too, so inspection copies and freezes its default.
+function bare() {
+  return new Application('bare')
+    .option('config', {
+      default: Object.assign(Object.create(null), { depth: '1' }),
+      type: 'string',
+      validate: digits,
+    })
+    .action(dispatch);
+}
+
 function tails() {
   return new Application('tails')
     .argument('files', { default: ['a'], variadic: true })
@@ -158,6 +169,7 @@ const faults = {
 };
 
 const graphs = {
+  bare,
   defaults,
   described,
   invalid,
@@ -221,6 +233,16 @@ if (mode === 'catch') {
     graph.root.children[0].aliases.push('other');
   });
   process.stdout.write(`${encode({ attempts, repeats: build().inspect().name })}\n`);
+} else if (mode === 'default') {
+  // A reported default is a copy, frozen to any depth, so a consumer cannot reach the declaration.
+  const [option] = build().inspect().root.options;
+  let rejected = false;
+  try {
+    option.default.value.depth = 'other';
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  process.stdout.write(`${encode({ rejected, value: option.default.value })}\n`);
 } else {
   process.stdout.write(`${encode(build().inspect())}\n`);
 }

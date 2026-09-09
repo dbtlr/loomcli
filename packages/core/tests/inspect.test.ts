@@ -457,6 +457,10 @@ test('run() still reports the invalid graph as a diagnostic with code 1', () => 
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 
+test('copies and freezes a declared default that has no prototype', () => {
+  expect(invokeInspect('bare', 'default')).toEqual({ rejected: true, value: { depth: '1' } });
+});
+
 test('returns frozen data and builds a new graph on each call', () => {
   expect(invokeInspect('jsonkit', 'freeze')).toEqual({
     attempts: [

@@ -56,30 +56,62 @@ test.each(subjects)('a description that holds a line feed on %s is rejected', (t
   });
 });
 
-test.each(['tabs', 'carriage-return', 'line-separator', 'paragraph-separator', 'number'])(
-  'a %s description is rejected with the same sentence',
-  (value) => {
-    expect(withFact('command', value, 'inspect')).toEqual({
+// Whitespace is Unicode White_Space, and the seven line terminators belong to it.
+// Each value here holds no character outside that class, or one of those terminators.
+test.each([
+  'tabs',
+  'carriage-return',
+  'form-feed',
+  'line-separator',
+  'next-line',
+  'next-line-inside',
+  'no-break-space',
+  'paragraph-separator',
+  'vertical-tab',
+])('a %s description is rejected with the same sentence', (value) => {
+  expect(withFact('command', value, 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `assembled\ndeclaration:1: Command "get" ${rule}\n`,
+  });
+});
+
+/** Every subject reads one rule, so a value that is not a string reports it wherever it lands. */
+const nonStrings: [string, string, string][] = subjects.flatMap(([target, subject]) =>
+  ['null', 'number', 'string-object'].map((value): [string, string, string] => [
+    target,
+    value,
+    subject,
+  ]),
+);
+
+test.each(nonStrings)(
+  'a %s description that is the %s value is rejected, naming %s',
+  (target, value, subject) => {
+    expect(withFact(target, value, 'inspect')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: Command "get" ${rule}\n`,
+      stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
     });
   },
 );
 
-test('a version that is not a string is a declaration error in inspect() and in run()', () => {
-  const message = 'The Application version must be a string. Supply a string such as "1.2.0".';
-  expect(withFact('version', 'number', 'inspect')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `assembled\ndeclaration:1: ${message}\n`,
-  });
-  expect(withFact('version', 'number', 'run')).toEqual({
-    status: 1,
-    stderr: `Invalid declaration: ${message}\n`,
-    stdout: 'assembled\nresolved:1\n',
-  });
-});
+test.each(['null', 'number', 'string-object'])(
+  'a version that is the %s value is a declaration error in inspect() and in run()',
+  (value) => {
+    const message = 'The Application version must be a string. Supply a string such as "1.2.0".';
+    expect(withFact('version', value, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `assembled\ndeclaration:1: ${message}\n`,
+    });
+    expect(withFact('version', value, 'run')).toEqual({
+      status: 1,
+      stderr: `Invalid declaration: ${message}\n`,
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
 
 test.each([...subjects.map(([target]) => target), 'version'])(
   'a one-line summary on %s builds',
@@ -91,3 +123,27 @@ test.each([...subjects.map(([target]) => target), 'version'])(
     });
   },
 );
+
+// A no-break space is whitespace, and a zero-width space is a format character.
+// Prose holds either one, so a description that holds other characters too is accepted.
+test.each(['no-break-space-inside', 'zero-width-space'])('a %s description builds', (value) => {
+  expect(withFact('command', value, 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'assembled\ninspected\n',
+  });
+});
+
+/** The constructor captures each fact, so the fixture changes its options object after it. */
+function afterChange(scenario: string) {
+  return invoke(new URL('fixtures/capture.mjs', import.meta.url), [scenario]);
+}
+
+test.each([
+  ['application-description', '"One."'],
+  ['application-version', '"1.2.0"'],
+  ['command-description', '"One."'],
+  ['command-blanked', '"One."'],
+])('%s reports the captured value after the options object changes', (scenario, reported) => {
+  expect(afterChange(scenario)).toEqual({ status: 0, stderr: '', stdout: `${reported}\n` });
+});

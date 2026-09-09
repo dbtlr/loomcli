@@ -13,13 +13,23 @@ const dispatch = ({ out }) => out.print('dispatched');
 const values = {
   blank: '',
   'carriage-return': 'One line\rand another',
+  'form-feed': 'One line\fand another',
   'line-feed': 'One line\nand another',
   'line-separator': 'One line\u2028and another',
+  'next-line': '\u0085',
+  'next-line-inside': 'One line\u0085and another',
+  'no-break-space': '\u00a0',
+  'no-break-space-inside': 'One\u00a0line.',
+  null: null,
   number: 42,
   'paragraph-separator': 'One line\u2029and another',
   spaces: '   ',
+  'string-object': new String('Reads one document.'),
   summary: 'Reads one document.',
   tabs: '\t\t',
+  'vertical-tab': 'One line\vand another',
+  // A zero-width space is a format character, not whitespace, so it reads as prose.
+  'zero-width-space': '\u200b',
 };
 
 /** One target of the description fact per entry, each declared the way an author declares it. */

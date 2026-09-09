@@ -1,9 +1,17 @@
 import { DeclarationError } from './errors.js';
 
 /**
- * Every character that ends a line, so a description a projection prints on one line holds none.
+ * One character outside Unicode `White_Space`, so a description holds prose and not only spacing.
+ * The class covers the tab, the space, the line terminators, the no-break space, and every other
+ * space separator. A format character such as the zero-width space is outside it, so it is prose.
  */
-const lineTerminator = /[\n\r\u2028\u2029]/u;
+const prose = /\P{White_Space}/u;
+
+/**
+ * Every character that ends a line, so a description a projection prints on one line holds none.
+ * The seven are LF, VT, FF, CR, NEL, LS, and PS, each of them `White_Space` too.
+ */
+const lineTerminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
 
 /**
  * The `description` core fact: one line of prose every projection reads. A value that is not a
@@ -14,7 +22,7 @@ export function checkDescription(subject: string, value: unknown): string | unde
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== 'string' || !/\S/u.test(value) || lineTerminator.test(value)) {
+  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
     throw new DeclarationError(
       `${subject} description must hold a character other than whitespace and no line terminator. Supply a one-line summary.`,
     );

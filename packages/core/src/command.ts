@@ -140,13 +140,14 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
 }
 
 /**
- * The second argument of a Command, read where it is supplied. The retired positional form declares
- * its globals on a value that holds no `globals` key, so without this rule the globals vanish
- * silently and the operator, not the author, meets the consequence as an unknown-option error.
- * It answers before every other rule, because a Command that lost its globals this way would
+ * The shape of a Command's second argument, read where it is supplied. The retired positional form
+ * declares its globals on a value that holds no `globals` key, so without this rule the globals
+ * vanish silently and the operator, not the author, meets the consequence as an unknown-option
+ * error. It answers before every other rule, because a Command that lost its globals this way would
  * otherwise report the mismatch with its Application instead of the slot that caused it.
+ * The facts the slot carried were captured at construction, so this reads the slot's shape alone.
  */
-function checkCommandOptions(name: string | null, options: unknown): string | undefined {
+function checkCommandOptions(name: string | null, options: unknown): void {
   if (isGlobalOptions(options)) {
     throw new DeclarationError(
       `${commandSentence(name)} takes an options object. Supply { globals } instead of a positional GlobalOptions value.`,
@@ -157,10 +158,6 @@ function checkCommandOptions(name: string | null, options: unknown): string | un
       `${commandSentence(name)} options must be an object. Supply { globals }.`,
     );
   }
-  return checkDescription(
-    commandSentence(name),
-    isPlainObject(options) ? options.description : undefined,
-  );
 }
 
 /** One name rule for every declared name in the graph, so a child and an argument read alike. */
@@ -195,32 +192,40 @@ export interface CommandState<Args, Options, Globals> {
   aliases: readonly AliasDeclaration[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
+  // The description the constructor read out of the options slot, unexamined until build.
+  // The Application checks its own slot, so the root carries none here.
+  description: unknown;
   globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
   name: string | null;
-  // The constructor's raw options argument stays unexamined until build.
-  // The options-slot rules answer at the same point every other authoring fault does.
-  // The Application checks its own slot, so the root carries none here.
+  // The constructor's raw options argument, kept for the slot's own shape rules.
+  // Those rules answer at the same point every other authoring fault does.
   options: unknown;
 }
 
-/** The state every declaration starts from. The unnamed root and each named Command share it. */
-export function freshState<Globals>(
-  name: string | null,
-  globals: GlobalOptions<Globals> | undefined,
-  options: unknown,
-): CommandState<{}, {}, Globals> {
+/**
+ * The state every declaration starts from. The unnamed root and each named Command share it.
+ * The declaration values arrive captured, because a later change to the options object the author
+ * passed changes nothing the declaration holds.
+ */
+export function freshState<Globals>(declaration: {
+  description: unknown;
+  globals: GlobalOptions<Globals> | undefined;
+  name: string | null;
+  options: unknown;
+}): CommandState<{}, {}, Globals> {
   return {
     actions: [],
     aliases: [],
     bind: () => ({ args: {}, options: {} }),
     children: [],
-    globals,
+    description: declaration.description,
+    globals: declaration.globals,
     inputs: [],
     late: [],
-    name,
-    options,
+    name: declaration.name,
+    options: declaration.options,
   };
 }
 
@@ -548,7 +553,8 @@ export function buildCommand<Args, Options, Globals>(
   const { actions, name } = state;
   const { globals } = context;
   const subject = commandSubject(name);
-  const description = checkCommandOptions(name, state.options);
+  checkCommandOptions(name, state.options);
+  const description = checkDescription(commandSentence(name), state.description);
   // Each declaration's own facts, in authoring order, before the rules that pair declarations.
   for (const input of state.inputs) {
     checkDescription(
@@ -730,8 +736,10 @@ interface CommandConstructor {
 class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
   constructor(name: string, options?: CommandOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals` of some kind, and `buildCommand` reports it at build instead.
-    super(freshState(name, options?.globals, options));
+    // `globals` and `description` of some kind, and `buildCommand` reports it at build instead.
+    super(
+      freshState({ description: options?.description, globals: options?.globals, name, options }),
+    );
   }
 }
 
