@@ -4,7 +4,7 @@ title: ADR-0009 - Core captures the host itself, accepts whole-field overrides, 
 description: run() snapshots the process, replaces any supplied host field entirely, uses Node streams in its public contract, never calls process.exit, never rejects, and may run the same Application again.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0009 - Core captures the host itself, accepts whole-field overrides, and resolves an exit code

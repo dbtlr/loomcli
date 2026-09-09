@@ -4,7 +4,7 @@ title: ADR-0013 - Core installs no plugins by default, and contributions compose
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
 status: proposed
 created: 2026-09-07
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots

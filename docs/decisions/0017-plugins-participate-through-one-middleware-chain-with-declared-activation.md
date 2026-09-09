@@ -4,7 +4,7 @@ title: ADR-0017 - Plugins participate through one middleware chain with declared
 description: Every plugin that acts on an invocation does so through one middleware seam between routing and local parsing, taking over by not calling next() or wrapping the rest of the chain. A middleware declares what activates it, and core loads its implementation only when the activation matches.
 status: proposed
 created: 2026-09-08
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0017 - Plugins participate through one middleware chain with declared activation

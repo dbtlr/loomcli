@@ -4,7 +4,7 @@ title: ADR-0003 - Global options are one application-owned value, and nothing in
 description: The globals table lives on the graph once and is consumed in a pre-scan before routing. A local option reaches its own Command's action alone, and the first hyphen token commits routing.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0003 - Global options are one application-owned value, and nothing inherits along a path

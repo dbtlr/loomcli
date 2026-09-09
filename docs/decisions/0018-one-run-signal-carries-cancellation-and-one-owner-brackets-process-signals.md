@@ -4,7 +4,7 @@ title: ADR-0018 - One run signal carries cancellation, and one slot owner bracke
 description: Each run has one private cancellation signal, fed by a caller-supplied AbortSignal or by the single plugin that owns the signals slot. Core installs and removes the process listeners for that owner inside one run, stays cooperative on a first signal, re-raises a repeated one, and resolves 130 or 143.
 status: proposed
 created: 2026-09-08
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0018 - One run signal carries cancellation, and one slot owner brackets process signals
