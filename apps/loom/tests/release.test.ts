@@ -5,7 +5,6 @@ import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { sharedBuildInputs } from '../src/helpers/release-plan.js';
 import { commit, git, put, removeRoots, repository, temporaryRoot } from './fixture.js';
 import { startServices, stopServices } from './services.js';
 import type { PackageState } from './services.js';
@@ -313,21 +312,27 @@ test('a library change after the cut commit refuses publication', async () => {
   expect(result.stderr).toContain('abandoned as unpublished');
 });
 
-test.each(sharedBuildInputs)(
-  'a change to %s after the cut commit refuses publication',
-  async (path) => {
-    const { cut, root } = releaseRepository();
-    put(root, path, path.endsWith('.json') ? '{"changed":true}\n' : '# changed\n');
-    const head = commit(root);
-    const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
-    const result = plan(root, endpoints);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(path);
-    expect(result.stderr).toContain(cut);
-    expect(result.stderr).toContain(head);
-    expect(result.stderr).toContain('abandoned as unpublished');
-  },
-);
+// The list is written out here, not imported, so a shrunken production set fails a case instead of dropping it.
+const buildInputs = [
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'scripts/clean.mjs',
+  'tsconfig.json',
+];
+
+test.each(buildInputs)('a change to %s after the cut commit refuses publication', async (path) => {
+  const { cut, root } = releaseRepository();
+  put(root, path, path.endsWith('.json') ? '{"changed":true}\n' : '# changed\n');
+  const head = commit(root);
+  const endpoints = await startServices({ packages: {}, repository: owner, version: '0.2.0' });
+  const result = plan(root, endpoints);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(path);
+  expect(result.stderr).toContain(cut);
+  expect(result.stderr).toContain(head);
+  expect(result.stderr).toContain('abandoned as unpublished');
+});
 
 test('a version set, reverted, and set again takes the newest setter as the cut commit', async () => {
   const root = baseRepository();

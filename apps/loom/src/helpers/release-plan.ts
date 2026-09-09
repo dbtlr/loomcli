@@ -121,7 +121,7 @@ function requireTagAtPublication(
 // The paths whose bytes can reach a published library build.
 // Publication attests the head commit, so a change to any of them after the cut commit would attest bytes the cut did not produce.
 // Documentation and root Markdown are absent from this set and never refuse a publication.
-export const sharedBuildInputs = [
+const sharedBuildInputs = [
   'package.json',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
