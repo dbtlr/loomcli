@@ -250,10 +250,14 @@ _Avoid_: Changeset, release note draft
 The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release.
 _Avoid_: Version bump, release build
 
+**Cut commit**:
+The first-parent commit on `main` that set the current synchronized version. It is the material-change baseline for the next cut, and the release workflow publishes only while the participating tree is unchanged since it.
+_Avoid_: Release tag, version tag, tagged commit
+
 **Material change**:
 A change to a library, a library dependency, or a shared build input that can affect the library's published contents.
 _Avoid_: Direct change, visible change
 
 **Replacement cut**:
-A separately authorized release cut that supersedes an abandoned incomplete release with a higher version.
-_Avoid_: Retry, rebuild
+The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes the next version and never rewrites, republishes, or retags the version it supersedes.
+_Avoid_: Retry, rebuild, republish, repair

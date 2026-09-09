@@ -8,7 +8,7 @@ The changelog compiler is the first command group in the private Loom CLI, `@loo
 
 `pnpm build` compiles the library, examples, and local Loom CLI. Running its changelog command group prepares release files.
 
-An agent release skill coordinates preparation and reviews the result. Registry publication is separate work and is not implemented in this repository.
+An agent release skill coordinates preparation and reviews the result. Merging the release PR publishes it through the [release workflow](release-workflow.md), which reconciles the registry, the version tag, and the GitHub Release with the manifest version.
 
 ## Commands
 

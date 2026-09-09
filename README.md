@@ -101,4 +101,4 @@ Read the [change fragment guide](.changes/README.md) before opening a pull reque
 
 The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
 
-Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Registry publication is not automated in this repository yet.
+Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Merging the release PR is the only authorization to publish: the [release workflow](docs/release-workflow.md) reconciles npm, the version tag, and the GitHub Release with the manifest version on every push to `main`, without a stored credential.

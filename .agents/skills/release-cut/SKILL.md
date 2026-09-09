@@ -7,7 +7,7 @@ description: Prepare a Loom CLI library release pull request from pending change
 
 Produce one reviewable release commit and a ready-for-review PR. Use the existing compiler and version writer for every generated file.
 
-This procedure prepares a cut. Registry publication is not automated in this repository. A successful local guard does not prove release readiness.
+This procedure prepares a cut. Merging the release PR is the only authorization to publish; the [release workflow](../../../docs/release-workflow.md) then reconciles the registry, the version tag, and the GitHub Release with the merged manifest version. A successful local guard does not prove release readiness.
 
 ## Establish the release inputs
 
@@ -21,7 +21,12 @@ Read the repository's [fragment guide](../../../.changes/README.md), [compiler r
 
 ### Previous-release prerequisite
 
-Confirm that the previous release version is tagged `v<version>` at its recorded commit, which is an ancestor of the cut base, and that every participating package is published on npm at that version with `latest` pointing at it. Any other state stops the cut for maintainer reconciliation. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
+Confirm that the previous version, the one the manifests carry at the cut base, is in one of two states:
+
+- **Published.** It is tagged `v<version>` at the commit its registry provenance names, which is an ancestor of the cut base, and every participating package is published on npm at that version with `latest` pointing at it.
+- **Abandoned unpublished.** It never reached the registry, has no tag and no GitHub Release, and the maintainer confirms that it was abandoned, for example because its release run refused publication. Record the abandonment in the cut's narrative so the changelog says the version was never published.
+
+Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
 
 ## Review the cycle
 
@@ -74,4 +79,14 @@ Use a body file or a structured API argument to preserve Markdown and avoid shel
 
 Watch the exact PR head through the required checks and review. Resolve findings before declaring the cut ready. A changed base requires refreshed preparation even if old checks passed.
 
-Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title. This skill never merges, publishes packages, promotes registry tags, or creates a Git tag or GitHub Release.
+Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title. This skill never merges, publishes packages, or creates a Git tag or GitHub Release; the release workflow does that after the merge.
+
+## Confirm the release after the merge
+
+The squash merge is the only publication step. Watch the `Release` workflow run for the merge commit on `main` until it completes, then confirm the three records it reconciles:
+
+- Every participating package is on npm at the new version with `latest` pointing at it, with provenance naming the merge commit.
+- The annotated tag `v<version>` exists at that commit.
+- The GitHub Release `v<version>` exists on that tag with the changelog section as its notes and one registry tarball per package as its assets.
+
+If the run failed, follow the recovery order in the [release workflow reference](../../../docs/release-workflow.md): re-run the failed job, dispatch the workflow on `main` after fixing the workflow, or abandon the version unpublished and cut the next one. Never publish, tag, or create a Release by hand.

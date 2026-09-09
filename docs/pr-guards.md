@@ -52,7 +52,7 @@ The lockfile comparison uses the pinned pnpm in a temporary directory, with offl
 
 The material-change baseline is the first-parent commit at the base that set the current version. No tag enters this computation, so a version that was abandoned without a tag gives the same baseline as a published one. The guard needs the full first-parent history of the base, and still rejects an existing local tag for the new version.
 
-Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish or authorize a release.
+Replacement version overrides are rejected. This guard checks only the contents of the pull request. A passing check does not publish; merging the release PR authorizes the [release workflow](release-workflow.md), which publishes only a version absent from the registry.
 
 ## GitHub Actions
 
