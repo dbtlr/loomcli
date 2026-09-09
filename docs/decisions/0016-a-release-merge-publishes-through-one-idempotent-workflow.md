@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0016 - A release merge publishes through one idempotent, token-free workflow
 description: Merging the guarded release PR is the only authorization. One workflow reconciles npm, the annotated tag, and the GitHub Release with the manifest version on every push to main, publishes through OIDC with provenance, and holds no secret. Every external step checks before it acts, so recovery is a re-run or a dispatch, and anything else is fixed forward.
-status: proposed
+status: accepted
 created: 2026-09-08
-modified: 2026-09-08
+modified: 2026-09-09
 ---
 
 # ADR-0016 - A release merge publishes through one idempotent, token-free workflow
@@ -61,6 +61,7 @@ The `v0.1.0` Release predates this record and keeps its three assets. The `loom-
 
 The first release through the workflow is the acceptance evidence for this record. Until then a violation is a warning, not an error.
 
-## Status
+## Changelog
 
-This record moves to accepted when one release has published through `release.yml` and its registry version, annotated tag, and GitHub Release all exist as described.
+- 2026-09-08: Recorded as proposed. The record was to move to accepted when one release had published through `release.yml` and its registry version, annotated tag, and GitHub Release all existed as described.
+- 2026-09-09: Accepted. `@loomcli/core@0.1.1` published through `release.yml` from the squash merge of the release PR (commit `0deeadbff0ab71715235a2ad9139d4f2e5b77062`). The registry carries the version as `latest` with provenance naming the workflow on `refs/heads/main` at that commit, the annotated tag `v0.1.1` sits at that commit, and the GitHub Release `v0.1.1` carries the changelog section and the registry tarball. The run before it, on the merge of the workflow itself, was the expected no-op for `0.1.0`.
