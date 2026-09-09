@@ -69,6 +69,31 @@ test('a middleware renders help for the routed group without the callable check'
   });
 });
 
+test('an unknown command fails in routing before any middleware runs', () => {
+  const result = loaded('wrapped', ['nope']);
+  expect(result.marks).toEqual([]);
+  expect(result).toMatchObject({
+    status: 2,
+    stderr: 'Invalid input: Unknown command "nope". Use one of: get, cache.\n',
+  });
+});
+
+test('a middleware takes over a group invocation before the callable check', () => {
+  expect(run('help', ['--help', 'cache'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'help:cache\nresolved:0\n',
+  });
+});
+
+test('the callable check still rejects a group when no middleware takes over', () => {
+  const result = run('wrapped', ['cache']);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(
+    'outer:start\ninner:start\ninner:rejected:Command "cache" requires a subcommand. Use one of: clear.\ninner:cleanup\nouter:rejected:Command "cache" requires a subcommand. Use one of: clear.\nouter:cleanup\nInvalid input: Command "cache" requires a subcommand. Use one of: clear.\n',
+  );
+});
+
 test('two always-on wrappers unwind in reverse installation order', () => {
   const result = run('wrapped', ['get', 'a.b']);
   expect(result.status).toBe(0);

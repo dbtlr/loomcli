@@ -132,6 +132,11 @@ function application() {
       await out.print(`get:${args.path}:${JSON.stringify(options)}`);
       await out.print(`action-signal:${signal instanceof AbortSignal}:${signal.aborted}`);
     });
+  // A group answers no invocation of its own, so the callable check is what rejects it, after
+  // The chain has run and only when no middleware took the invocation over.
+  const cache = new Command('cache', { globals }).command(
+    new Command('clear', { globals }).action(({ out }) => out.print('cleared')),
+  );
   return new Application('app', {
     description: 'A fixture application.',
     extensions: [commandFact({ details: 'The whole fixture.' })],
@@ -145,6 +150,7 @@ function application() {
     version: '1.2.0',
   })
     .command(get)
+    .command(cache)
     .action(({ out }) => out.print('root'));
 }
 

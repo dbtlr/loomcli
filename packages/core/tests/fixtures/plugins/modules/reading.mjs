@@ -34,6 +34,24 @@ const middleware = async ({ command, graph, next, out }) => {
   } catch (error) {
     await out.print(`mismatch:${error.name}:${error.message}`);
   }
+  // The stored output is frozen to any depth, so a projection cannot write through the graph.
+  const frozen = [];
+  for (const write of [
+    () => {
+      read.command.details = 'other';
+    },
+    () => {
+      read.command.examples.push('other');
+    },
+  ]) {
+    try {
+      write();
+      frozen.push(false);
+    } catch (error) {
+      frozen.push(error instanceof TypeError);
+    }
+  }
+  await out.print(`frozen:${JSON.stringify(frozen)}`);
   await next();
 };
 

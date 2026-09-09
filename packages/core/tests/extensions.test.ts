@@ -64,3 +64,8 @@ test('readExtension through another descriptor of one identity throws a Declarat
     'mismatch:DeclarationError:Extension "@fixture/facts/command" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.',
   );
 });
+
+test('a stored output is frozen to any depth', () => {
+  const result = invoke(fixture, ['facts', 'run', 'get', 'a.b']);
+  expect(result.stdout.split('\n')[2]).toBe('frozen:[true,true]');
+});
