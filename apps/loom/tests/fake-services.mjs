@@ -168,7 +168,8 @@ function releaseBody(host) {
   };
 }
 
-function github(request, response, path, host, body) {
+function github(request, response, url, host, body) {
+  const path = url.pathname.slice('/github'.length);
   const repository = `/repos/${state.repository}`;
   if (request.method === 'GET' && path === `${repository}/git/ref/tags/v${state.version}`) {
     if (!state.tag) {
@@ -218,7 +219,9 @@ function github(request, response, path, host, body) {
     return;
   }
   if (request.method === 'GET' && path === `${repository}/releases/${state.release?.id}/assets`) {
-    send(response, 200, releaseAssets());
+    // GitHub pages the assets list, and a client that wants the whole list asks for a page large enough to hold it.
+    const size = Number(url.searchParams.get('per_page') ?? 30);
+    send(response, 200, releaseAssets().slice(0, size));
     return;
   }
   if (request.method === 'DELETE' && path.startsWith(`${repository}/releases/assets/`)) {
@@ -272,7 +275,7 @@ const server = createServer(async (request, response) => {
       upload(request, response, url, raw);
     } else if (url.pathname.startsWith('/github/')) {
       const body = raw.length > 0 ? JSON.parse(raw.toString('utf8')) : undefined;
-      github(request, response, url.pathname.slice('/github'.length), host, body);
+      github(request, response, url, host, body);
     } else {
       missing(response);
     }

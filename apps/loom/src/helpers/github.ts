@@ -6,6 +6,9 @@ import type { HttpPolicy } from './http.js';
 // GitHub serves uploads from its own host, and a self-hosted API serves them from the API host.
 const uploadOrigin = 'https://uploads.github.com';
 
+// The largest page the GitHub API serves.
+const pageSize = 100;
+
 const objectSchema = z.looseObject({ sha: z.string().min(1), type: z.string() });
 
 const referenceSchema = z.looseObject({ object: objectSchema });
@@ -81,8 +84,10 @@ export async function readRelease(target: GitHubTarget, tag: string) {
   return data === undefined ? undefined : releaseSchema.parse(data);
 }
 
+// The assets list is paged, and its default page holds 30 of the 1000 assets a Release can carry.
+// A Release with more assets than one page would hide the expected asset and provoke a needless upload.
 export async function readAssets(target: GitHubTarget, id: number) {
-  const url = repositoryUrl(target, `releases/${String(id)}/assets`);
+  const url = repositoryUrl(target, `releases/${String(id)}/assets?per_page=${String(pageSize)}`);
   const { data } = await readJson(target.policy, url, target.token);
   return assetsSchema.parse(data);
 }

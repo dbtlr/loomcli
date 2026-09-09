@@ -579,6 +579,24 @@ test('an uploaded asset is kept and never replaced', async () => {
   await expect(endpoints.writes()).resolves.toEqual([]);
 });
 
+test('an uploaded asset past the first page of the assets list is still kept', async () => {
+  const { packages, published, root } = recordFixture();
+  const earlier = Array.from({ length: 34 }, (unused, index) =>
+    uploaded(`other-${String(index)}.tgz`),
+  );
+  const endpoints = await startServices({
+    packages,
+    release: { assets: [...earlier, uploaded()], id: 900 },
+    repository: owner,
+    tag: { annotated: true, commit: published },
+    version: '0.2.0',
+  });
+  const result = record(root, endpoints);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain(`Kept the ${asset} asset.`);
+  await expect(endpoints.writes()).resolves.toEqual([]);
+});
+
 test('a Release whose upload endpoint names another origin fails before any upload', async () => {
   const { packages, published, root } = recordFixture();
   const endpoints = await startServices({
