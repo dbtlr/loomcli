@@ -28,6 +28,8 @@ Confirm that the previous version, the one the manifests carry at the cut base, 
 
 Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
 
+Before the first release through the workflow, the maintainer confirms on npmjs.com that each package's trusted publisher names the workflow file `release.yml` and the `release` environment.
+
 ## Review the cycle
 
 Read the pending fragments and the full cycle diff from the last completed release SHA to the cut base. For the initial release, inspect the public library surface and its history.
@@ -85,8 +87,8 @@ Report the PR URL, validated head, check state, and remaining blockers. Explicit
 
 The squash merge is the only publication step. Watch the `Release` workflow run for the merge commit on `main` until it completes, then confirm the three records it reconciles:
 
-- Every participating package is on npm at the new version with `latest` pointing at it, with provenance naming the merge commit.
-- The annotated tag `v<version>` exists at that commit.
+- Every participating package is on npm at the new version with `latest` pointing at it, and its provenance names the commit the run published from. That is the merge commit, unless a dispatch recovered the release after later commits landed on `main`.
+- The annotated tag `v<version>` exists at the commit the run published from.
 - The GitHub Release `v<version>` exists on that tag with the changelog section as its notes and one registry tarball per package as its assets.
 
 If the run failed, follow the recovery order in the [release workflow reference](../../../docs/release-workflow.md): re-run the failed job, dispatch the workflow on `main` after fixing the workflow, or abandon the version unpublished and cut the next one. Never publish, tag, or create a Release by hand.

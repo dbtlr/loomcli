@@ -25,13 +25,17 @@ Each job holds one permission, and the two writing jobs run under the `release` 
 | `publish` | Publication is missing   | `id-token: write` | `release`   |
 | `record`  | The plan asks to record  | `contents: write` | `release`   |
 
-`plan` checks out `main` with full history, builds the CLI, and runs `loom release plan`. It uploads the plan as the `release-plan` artifact and reports `version`, `publish`, and `record` as job outputs.
+`plan` checks out `main` with full history, builds the CLI, and runs `loom release plan`. It reports `version`, `publish`, `record`, and `libraries` as job outputs. `libraries` is a compact JSON array of the participating directories. No job uploads the plan, because the `record` job derives it again from the same checkout.
 
-`build` checks out the commit the run attests, installs with a frozen lockfile, builds, runs `pnpm check:packed`, and packs every participating library. It uploads the tarballs as the `release-tarballs` artifact.
+`build` checks out the commit the run attests, installs with a frozen lockfile, builds, and runs `pnpm check:packed`. It then packs each directory in `libraries` with `pnpm --dir <directory> pack`, so a private or non-participating package is never packed. It uploads the tarballs as the `release-tarballs` artifact.
 
-`publish` runs Node.js 24 for npm 11.5.1 or newer, which trusted publishing requires. It has no checkout, because the repository's `devEngines` setting makes npm refuse to run inside one. It publishes each tarball with `npm publish --access public --provenance --ignore-scripts`. A version that already exists on the registry counts as published.
+`publish` runs Node.js 24 for npm 11.5.1 or newer, which trusted publishing requires. It has no checkout, because the repository's `devEngines` setting makes npm refuse to run inside one. For each tarball it reads the registry first with `npm view <name>@<version> version`. A version the registry already carries is skipped. Every other version is published with `npm publish --access public --provenance --ignore-scripts`, and a failed publication fails the job.
 
-`record` downloads the plan and runs `loom release record`. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
+`record` checks out `main` with full history, builds the CLI, runs `loom release plan` again, and then runs `loom release record` with that plan. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
+
+Every third-party action is pinned to a full commit SHA with its version tag in a comment. GitHub-owned `actions/*` stay on their major tags.
+
+The packed consumer runs in CI on every pull request: the Linux Node job proves it under Node and the Linux Bun job proves it under Bun, each selected by `LOOM_TEST_RUNTIME`.
 
 ## Commands
 
@@ -52,21 +56,25 @@ The command reads the participating libraries at the head, takes their synchroni
   "version": "0.2.0",
   "head": "<sha>",
   "cutCommit": "<sha>",
+  "provenanceCommit": "<sha or null>",
   "notes": "<the section body>",
   "libraries": [{ "name": "@loomcli/core", "directory": "packages/core", "published": false }],
   "publish": true,
   "tag": { "present": false, "commit": null },
-  "release": { "present": false, "id": null },
+  "release": { "present": false },
   "record": true
 }
 ```
 
-`publish` is true when any library is absent from the registry. `record` is true when the tag or the Release is absent. Completeness of the Release is judged by its existence alone, so the assets of an earlier Release stay untouched.
+`publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
 
-Before it plans a publication, the command confirms that the bytes at the head are the bytes of the cut. It refuses in two cases, because npm provenance names the head commit:
+A Release is incomplete when an expected asset is missing or unfinished. The expected assets are the npm pack names of the participating libraries, and an asset counts as finished only when GitHub reports its state as `uploaded` and its size above 0. One Release is complete despite carrying no expected asset: a Release that carries other assets and none of the expected ones was recorded by another process, and the workflow leaves it alone.
 
-- A participating library directory, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `tsconfig.json`, or `scripts/clean.mjs` changed between the cut commit and the head. Changes under `docs/` and to root Markdown files are not in that set and never refuse a publication.
-- The tag `v<version>` exists at a commit other than the head.
+`provenanceCommit` is the commit the registry attests for the published libraries, and it is null while the version is unpublished or the registry reports no attestation yet. Every published library must attest the same commit.
+
+The tag is checked on every run. A published version fails the run when the tag names any commit other than `provenanceCommit`. An unpublished version fails the run when the tag names any commit other than the head.
+
+Before it plans a publication, the command also confirms that the bytes at the head are the bytes of the cut. It refuses when a participating library directory, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `tsconfig.json`, or `scripts/clean.mjs` changed between the cut commit and the head, because npm provenance names the head commit. Changes under `docs/` and to root Markdown files are not in that set and never refuse a publication.
 
 Each refusal names the version, the commits, and the changed paths, and states that the version must be abandoned as unpublished and superseded by the next cut.
 
@@ -82,10 +90,10 @@ pnpm loom release record --repository owner/name --plan plan.json
 
 The command reconciles in this order, and reads before each write:
 
-1. For each library it reads the published version, its `dist.tarball`, and its `dist.integrity`. It reads the npm provenance attestation and takes the commit the build resolved. The attested source must be this repository, every library must name the same commit, and the downloaded tarball must match its integrity digest.
+1. For each library it reads the published version, its `dist.tarball`, and its `dist.integrity`. It reads the npm provenance attestation and takes the commit the build resolved. The attestation must pass three checks: its subject must carry the package URL of the released version, `pkg:npm/<name with @ percent-encoded as %40>@<version>`; its first resolved dependency must name exactly `git+https://github.com/<repository>@refs/heads/main`; and the commit it resolved must be the head of the checkout or an ancestor of it. Every library must name the same commit, and the downloaded tarball must match its integrity digest.
 2. It creates the annotated tag `v<version>` at the attested commit when the tag is absent, reuses a tag that already names that commit, and fails on a tag that names any other commit.
 3. It creates the Release on that tag with the plan's notes when the Release is absent. It reuses an existing Release and never edits its notes.
-4. For each library the expected asset carries the npm pack name: the package name without its leading `@` and with `/` replaced by `-`, then the version and `.tgz`. `@loomcli/core` at 0.2.0 gives `loomcli-core-0.2.0.tgz`. It uploads the asset when no asset carries that name. An asset of size 0 is an interrupted upload: the command deletes it and uploads again. An asset with a size above 0 is kept and never replaced.
+4. For each library the expected asset carries the npm pack name: the package name without its leading `@` and with `/` replaced by `-`, then the version and `.tgz`. `@loomcli/core` at 0.2.0 gives `loomcli-core-0.2.0.tgz`. It uploads the asset when no asset carries that name. An asset that GitHub does not report as `uploaded` with a size above 0 is an interrupted upload: the command deletes it and uploads again. A finished asset is kept and never replaced. Before it sends the token, the command checks that the Release's `upload_url` names the origin of `--github-api` or `https://uploads.github.com`.
 
 The command prints every read, reuse, and write it made.
 
@@ -108,6 +116,10 @@ The workflow depends on settings that live outside this repository's files.
 - Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
 - The npm trusted publisher for each library names this repository, the workflow file `release.yml`, and the `release` environment, and permits direct `npm publish`.
+
+## Accepted risks
+
+The `record` job installs from the frozen lockfile and builds the private Loom CLI in the same job that holds `contents: write`, before the step that uses the token. Dependency scripts are disabled and every package is integrity-pinned by the lockfile, so this is the same code that already runs on every pull request. Running a published `@loomcli/loom` instead would remove the build from that job, and the CLI is private.
 
 ## A run with nothing to do
 
