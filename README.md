@@ -37,6 +37,8 @@ node examples/textstat/dist/src/main.js --min-bytes 100 --total README.md docs/c
 
 `--min-bytes` uses a schema to transform decimal digits into a non-negative safe integer. Its declared default is `'0'`, which becomes numeric `0`. Filtered files do not contribute to the total. Invalid inputs report all schema issues before the action reads any files.
 
+`--explain` prints the command's name, its description, and the details its declaration carries, then ends the invocation without reading a file.
+
 The first bare `--` starts a separate passthrough tail. `textstat` ignores that tail; it does not treat tail tokens as file paths.
 
 The same built application runs with Bun:
@@ -45,7 +47,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/src/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter or plugin. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration and writes its [table](examples/textstat/src/table.ts) through one `out.render` call.
 
 ## Run jsonkit
 
@@ -73,7 +75,9 @@ node examples/jsonkit/dist/src/main.js --file package.json get workspaces.1
 
 The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path, an unreadable file, and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
 
-The [command modules](examples/jsonkit/src/commands) share one [globals value](examples/jsonkit/src/globals.ts), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application registers its own [failure renderers](examples/jsonkit/src/failures.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
+`--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
+
+The [command modules](examples/jsonkit/src/commands) share one [globals value](examples/jsonkit/src/globals.ts), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and registers its own [failure renderers](examples/jsonkit/src/failures.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
 
 ## Verify the package
 

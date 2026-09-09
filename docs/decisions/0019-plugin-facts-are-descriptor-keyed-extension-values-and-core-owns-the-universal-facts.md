@@ -36,8 +36,8 @@ A Command takes an options object like the Application, and the positional globa
 
 ## Status
 
-Proposed. The record moves to accepted with the code that validates and stores extension values, exposes them through `inspect()`, and carries `description` and `version` as graph facts.
+Accepted 2026-09-09 with the code that validates and stores extension values, exposed them through `inspect()`, and carried `description` and `version` as graph facts.
 
 ## Changelog
 
-- 2026-09-09: Accepted. PR 35 (`8585389`, on `main`) carries `description` and `version` as core graph facts, reported by `inspect()`, so a projection is minimally useful with no plugin installed. PR 36 (branch `feat/lm-60-plugins`) adds the `extension(identity, config)` descriptor factory, the branded extension values a declaration lists under `extensions`, and `readExtension` for a typed read keyed by the descriptor's own identity.
+- 2026-09-09: Accepted. PR 35 (`8585389`, on `main`) carries `description` and `version` as core graph facts, reported by `inspect()`, so a projection is minimally useful with no plugin installed. PR 36 (branch `feat/lm-60-plugins`) adds the `extension(identity, config)` descriptor factory, the branded extension values a declaration lists under `extensions`, and `readExtension` for a typed read keyed by the descriptor's own identity. The third pull request of LM-60, whose number is not yet assigned, exercises the pair through the shared example plugin that both example applications install: it defines one descriptor, and each application attaches a value of it to a Command that the plugin's middleware reads back.

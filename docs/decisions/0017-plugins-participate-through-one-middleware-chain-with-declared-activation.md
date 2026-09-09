@@ -37,8 +37,8 @@ A plugin's options are visible to its own middleware alone. Actions do not recei
 
 ## Status
 
-Proposed. The record moves to accepted with the code that runs the chain, enforces the activation rules at build, and proves under test that an unused plugin's implementation module is never loaded.
+Accepted 2026-09-09 with the code that runs the chain and enforces the activation rules at build, and proved under test that an unused plugin's implementation module is never loaded.
 
 ## Changelog
 
-- 2026-09-09: Accepted. PR 36 (branch `feat/lm-60-plugins`) runs the one middleware chain between routing and the callable check, with declared activation and a per-middleware loader; its tests prove an unused plugin's implementation module is never loaded and that a takeover never loads a later plugin. This pull request adds the chain's cancellation boundary: `packages/core/tests/cancellation.test.ts` shows that a caller signal already aborted at entry loads no plugin at all, that a loader already in flight settles and its middleware is skipped, and that a wrapping middleware reads `'cancelled'` from its own `next()`. Both example applications install a plugin through `plugins` and public APIs alone.
+- 2026-09-09: Accepted. PR 36 (branch `feat/lm-60-plugins`) runs the one middleware chain between routing and the callable check, with declared activation and a per-middleware loader; its tests prove an unused plugin's implementation module is never loaded and that a takeover never loads a later plugin. The third pull request of LM-60, whose number is not yet assigned, adds the chain's cancellation boundary: `packages/core/tests/cancellation.test.ts` shows that a caller signal already aborted at entry loads no plugin at all, that a loader already in flight settles and its middleware is skipped, and that a wrapping middleware reads `'cancelled'` from its own `next()`. Both example applications install a plugin through `plugins` and public APIs alone.
