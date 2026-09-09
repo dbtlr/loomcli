@@ -1,6 +1,6 @@
 {
   "name": "@loomcli/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Loom CLI core package. Provides the scaffolding for creating new Loom CLI applications.",
   "license": "MIT",
   "repository": {
