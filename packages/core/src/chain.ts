@@ -4,6 +4,7 @@ import { InternalError, reasonOf, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
+import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
@@ -66,7 +67,7 @@ function pluginValues(inputs: readonly OptionInput[], scan: OptionValues): Plugi
   for (const { config, name } of inputs) {
     const declared: unknown = config.default;
     if (config.type === 'boolean') {
-      values[name] = scan.booleans.get(name) ?? config.polarity === 'negative';
+      values[name] = booleanValue(scan, name, config);
     } else if (config.multiple === true) {
       values[name] = collectedValue(scan.lists.get(name), declared);
     } else {
@@ -112,13 +113,20 @@ function activatedEntries(plugins: readonly BuiltPlugin[], scan: OptionValues): 
     }));
 }
 
-/** The routed node inside the inspected graph, which routing already proved reachable. */
+/**
+ * The routed node inside the inspected graph, which routing already proved reachable. A missing
+ * segment means the two readings of one graph disagree, so the chain stops rather than hand a
+ * middleware the wrong Command.
+ */
 function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
   let node = graph.root;
   for (const name of path) {
     const child = node.children.find((entry) => entry.name === name);
     if (!child) {
-      return node;
+      throw new InternalError(
+        `The routed command "${path.join(' ')}" is not in the inspected graph.`,
+        undefined,
+      );
     }
     node = child;
   }
@@ -261,11 +269,18 @@ async function settle(
   return state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over');
 }
 
+/** The module one loader answers with, whether it throws where it is called or rejects later. */
+async function loadModule(entry: ChainEntry): Promise<unknown> {
+  try {
+    return await entry.load();
+  } catch (error) {
+    throw new InternalError(`Loading plugin "${entry.identity}" failed: ${reasonOf(error)}`, error);
+  }
+}
+
 /** A plugin's module is loaded when the chain reaches it, never before. */
 async function loadMiddleware(entry: ChainEntry) {
-  const module: unknown = await Promise.resolve(entry.load()).catch((error: unknown) => {
-    throw new InternalError(`Loading plugin "${entry.identity}" failed: ${reasonOf(error)}`, error);
-  });
+  const module: unknown = await loadModule(entry);
   const handler: unknown =
     module !== null && typeof module === 'object' && 'default' in module
       ? module.default

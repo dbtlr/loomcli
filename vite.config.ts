@@ -73,28 +73,21 @@ export default defineConfig({
       },
       {
         files: [
-          'packages/core/src/chain.ts',
-          'packages/core/src/extension.ts',
-          'packages/core/src/globals.ts',
-          'packages/core/src/plugin.ts',
-        ],
-        rules: {
-          // Each of these reads one ordered sequence of declaration rules, or the `next()`
-          // Lifecycle. Splitting a rule out of its sequence hides which diagnostic answers first.
-          'eslint/max-statements': 'off',
-        },
-      },
-      {
-        files: [
           'packages/core/src/application.ts',
           'packages/core/src/output.ts',
+          'packages/core/src/chain.ts',
           'packages/core/src/command.ts',
+          'packages/core/src/extension.ts',
+          'packages/core/src/globals.ts',
           'packages/core/src/inspect.ts',
           'packages/core/src/options.ts',
+          'packages/core/src/plugin.ts',
           'packages/core/src/validation.ts',
         ],
         rules: {
           // Keep each ordered lifecycle and write-completion boundary in one method.
+          // A declaration rule sequence and the `next()` lifecycle read the same way: splitting one
+          // Rule out of its sequence hides which diagnostic answers first.
           // An absent spelling reports as `null`, as the inspected graph's public types state.
           'eslint/max-statements': 'off',
           'import/exports-last': 'off',

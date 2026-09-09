@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { DeclarationError } from './errors.js';
+import { DeclarationError, reasonOf } from './errors.js';
 import { isPlainObject } from './facts.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 
@@ -142,63 +142,134 @@ const applies: Readonly<Record<ExtensionTarget, string>> = {
 /** One value of a plain-data walk: the frozen copy, or nothing when the shape is rejected. */
 type PlainResult = { data: unknown } | undefined;
 
-/** Each item of an array, which is plain data only when every one of its items is. */
-function plainArray(value: readonly unknown[], ancestors: readonly object[]): PlainResult {
-  const items: unknown[] = [];
-  for (const item of value) {
-    const entry = plainData(item, ancestors);
-    if (!entry) {
-      return undefined;
-    }
-    items.push(entry.data);
-  }
-  return { data: Object.freeze(items) };
+/** One container the walk is copying: what it reads from, and what it has finished so far. */
+interface Frame {
+  /** Each child value this container contributes, with the key its copy is stored under. */
+  children: readonly { key: string; value: unknown }[];
+  /** The finished children, which the copy is built from once every child is done. */
+  entries: [string, unknown][];
+  /** How many children the walk has finished. */
+  index: number;
+  isArray: boolean;
+  /** The key this container itself occupies in the container above, empty at the root. */
+  key: string;
+  source: object;
 }
 
 /**
- * Each own property of a plain object. An accessor and a symbol key are not plain data, and an
- * `undefined` property value is absence, so it is dropped rather than stored.
+ * The children one container contributes, or nothing when its own shape is not plain data. An
+ * accessor, a symbol key, and a non-enumerable own property are not plain data, and an `undefined`
+ * property value is absence, so it is dropped rather than stored. An array contributes its items,
+ * the way it reads back.
  */
-function plainObject(value: object, ancestors: readonly object[]): PlainResult {
-  if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length > 0) {
+function childrenOf(source: object): { key: string; value: unknown }[] | undefined {
+  if (Array.isArray(source)) {
+    // `Array.from` reads a hole as the `undefined` it is, which the walk rejects like any other
+    // Value that is not plain data.
+    return Array.from(source, (value: unknown, index) => ({ key: String(index), value }));
+  }
+  if (!isPlainObject(source) || Object.getOwnPropertySymbols(source).length > 0) {
     return undefined;
   }
-  const data: Record<string, unknown> = {};
-  for (const key of Object.getOwnPropertyNames(value)) {
-    const property = Object.getOwnPropertyDescriptor(value, key);
-    if (!property || !('value' in property)) {
+  const children: { key: string; value: unknown }[] = [];
+  for (const key of Object.getOwnPropertyNames(source)) {
+    const property = Object.getOwnPropertyDescriptor(source, key);
+    if (!property || !('value' in property) || !property.enumerable) {
       return undefined;
     }
     if (property.value !== undefined) {
-      const entry = plainData(property.value, ancestors);
-      if (!entry) {
-        return undefined;
-      }
-      data[key] = entry.data;
+      children.push({ key, value: property.value });
     }
   }
-  return { data: Object.freeze(data) };
+  return children;
+}
+
+/** What the walk found at one value: a copied leaf, a container to open, or a rejected shape. */
+type Opened = { data: unknown; kind: 'leaf' } | { frame: Frame; kind: 'frame' } | undefined;
+
+/**
+ * One value the walk reached. A primitive is copied where it is read, and a container answers with
+ * the frame the walk fills. `ancestors` holds the containers on the path to this value, so a value
+ * that is one of them is a cycle.
+ */
+function openValue(value: unknown, key: string, ancestors: ReadonlySet<object>): Opened {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return { data: value, kind: 'leaf' };
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? { data: value, kind: 'leaf' } : undefined;
+  }
+  if (typeof value !== 'object' || ancestors.has(value)) {
+    return undefined;
+  }
+  const children = childrenOf(value);
+  if (!children) {
+    return undefined;
+  }
+  const isArray = Array.isArray(value);
+  return { frame: { children, entries: [], index: 0, isArray, key, source: value }, kind: 'frame' };
+}
+
+/**
+ * The frozen copy one finished container contributes. `Object.fromEntries` defines every key as an
+ * own data property, so an output key of `__proto__` is stored under that name and the copy keeps
+ * `Object.prototype`.
+ */
+function closeFrame(frame: Frame): unknown {
+  return Object.freeze(
+    frame.isArray ? frame.entries.map(([, value]) => value) : Object.fromEntries(frame.entries),
+  );
 }
 
 /**
  * Whether a produced output is the plain data a node can freeze and every projection can read:
  * strings, finite numbers, Booleans, null, arrays, and objects whose prototype is `Object.prototype`
  * or null, to any depth and without cycles. It answers with the frozen copy, because the walk that
- * proves the shape is the walk that builds it. A declared default's snapshot answers a different
+ * proves the shape is the walk that builds it. The walk holds its own stack, so a deep output is
+ * bounded by the heap and never by the call stack. A declared default's snapshot answers a different
  * question: it keeps a library object as it is, where an extension output holding one is rejected.
  */
-function plainData(value: unknown, ancestors: readonly object[]): PlainResult {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return { data: value };
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? { data: value } : undefined;
-  }
-  if (typeof value !== 'object' || ancestors.includes(value)) {
+function plainData(value: unknown): PlainResult {
+  const ancestors = new Set<object>();
+  const opened = openValue(value, '', ancestors);
+  if (!opened) {
     return undefined;
   }
-  const path = [...ancestors, value];
-  return Array.isArray(value) ? plainArray(value, path) : plainObject(value, path);
+  if (opened.kind === 'leaf') {
+    return { data: opened.data };
+  }
+  const stack: Frame[] = [opened.frame];
+  ancestors.add(opened.frame.source);
+  for (;;) {
+    const frame = stack.at(-1);
+    if (!frame) {
+      return undefined;
+    }
+    const child = frame.children[frame.index];
+    if (child) {
+      const next = openValue(child.value, child.key, ancestors);
+      if (!next) {
+        return undefined;
+      }
+      if (next.kind === 'leaf') {
+        frame.entries.push([child.key, next.data]);
+        frame.index += 1;
+      } else {
+        stack.push(next.frame);
+        ancestors.add(next.frame.source);
+      }
+    } else {
+      stack.pop();
+      ancestors.delete(frame.source);
+      const data = closeFrame(frame);
+      const parent = stack.at(-1);
+      if (!parent) {
+        return { data };
+      }
+      parent.entries.push([frame.key, data]);
+      parent.index += 1;
+    }
+  }
 }
 
 /** The declaration one `extensions` slot belongs to, as its own diagnostics name it. */
@@ -268,7 +339,16 @@ function issueText(issues: unknown): string {
       return message;
     }
   }
-  return 'The schema rejected this value without an explanation.';
+  // The sentence the caller composes ends the diagnostic, so this text carries no full stop.
+  return 'The schema rejected this value without an explanation';
+}
+
+/**
+ * Whether one schema answered with a promise. A thenable object and a promise from another realm
+ * are as unwaitable here as a native one, so the test is the contract and not the class.
+ */
+function isThenable(value: object): boolean {
+  return 'then' in value && typeof value.then === 'function';
 }
 
 /** The schema one descriptor answers with, which a JavaScript author can leave out. */
@@ -282,13 +362,27 @@ function schemaOf(subject: ExtensionSubject, descriptor: AnyExtension): Standard
   return schema;
 }
 
+/** The result one schema answered with, or the rejection its own throw is. */
+function validated(
+  subject: ExtensionSubject,
+  carried: CarriedValue,
+  schema: StandardSchemaV1,
+): unknown {
+  try {
+    return schema['~standard'].validate(carried.input);
+  } catch (error) {
+    // A schema that throws rejected the value the only way it could, so it reads as a rejection.
+    throw new DeclarationError(
+      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${reasonOf(error)}. Correct the value.`,
+    );
+  }
+}
+
 /** Validates one carried value and answers the plain-data output the node stores under it. */
 function validateValue(subject: ExtensionSubject, carried: CarriedValue): unknown {
   const { identity } = carried.descriptor;
-  const result: unknown = schemaOf(subject, carried.descriptor)['~standard'].validate(
-    carried.input,
-  );
-  if (result === null || typeof result !== 'object' || result instanceof Promise) {
+  const result: unknown = validated(subject, carried, schemaOf(subject, carried.descriptor));
+  if (result === null || typeof result !== 'object' || isThenable(result)) {
     throw new DeclarationError(
       `Extension "${identity}" validates asynchronously. Supply a schema that answers synchronously.`,
     );
@@ -299,7 +393,7 @@ function validateValue(subject: ExtensionSubject, carried: CarriedValue): unknow
       `${subject.sentence} holds an invalid "${identity}" value: ${issueText(issues)}. Correct the value.`,
     );
   }
-  const output = plainData('value' in result ? result.value : undefined, []);
+  const output = plainData('value' in result ? result.value : undefined);
   if (!output) {
     throw new DeclarationError(
       `Extension "${identity}" produced a value that is not plain data ${subject.phrase}. Return strings, numbers, booleans, null, arrays, and plain objects.`,
@@ -356,7 +450,7 @@ interface ExtensionSlot {
  */
 function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>> {
   const { subject } = slot;
-  const record: Record<string, unknown> = {};
+  const stored: [string, unknown][] = [];
   const defined = new Map<string, AnyExtension>();
   for (const entry of readList(subject, slot.declared)) {
     const carried = carriedValue(subject, slot.target, entry);
@@ -368,9 +462,11 @@ function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>>
       );
     }
     defined.set(descriptor.identity, descriptor);
-    record[descriptor.identity] = validateValue(subject, carried);
+    stored.push([descriptor.identity, validateValue(subject, carried)]);
   }
-  const frozen = Object.freeze(record);
+  // `Object.fromEntries` defines each identity as an own data property, so an identity of
+  // `__proto__` is a key of the record and the record keeps `Object.prototype`.
+  const frozen = Object.freeze(Object.fromEntries(stored));
   owners.set(frozen, defined);
   return frozen;
 }

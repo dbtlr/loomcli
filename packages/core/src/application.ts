@@ -299,10 +299,20 @@ class ApplicationBuilder<
     }
     // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
     // The primary outcome keeps its code, the way a renderer failure leaves it alone.
+    // It is reported the way the primary failure is, so a registered renderer answers its class.
     for (const fault of faults) {
       code = code === 0 ? 1 : code;
       try {
-        await output?.report(describeFailure(noRegistrations, fault).text);
+        const report = describeFailure(registry ?? noRegistrations, fault);
+        if (report.kind === 'rendered') {
+          await output?.report(report.text);
+        } else {
+          code = 1;
+          await reportPlainly(
+            stderr,
+            `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
+          );
+        }
       } catch {
         reportingFailed = true;
       }

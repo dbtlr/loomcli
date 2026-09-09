@@ -3,7 +3,7 @@ import { DeclarationError } from './errors.js';
 import type { FailureRenderer } from './errors.js';
 import { buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
-import { checkDescription } from './facts.js';
+import { checkDescription, isPlainObject } from './facts.js';
 import type { OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { OptionInput } from './validation.js';
@@ -128,9 +128,14 @@ function nodeOf(value: unknown): PluginNode {
 }
 
 /** The identity one installed value declares, which is a nonempty string installed once. */
-function readIdentity(value: unknown, installed: ReadonlySet<string>): string {
-  const { identity } = nodeOf(value);
-  if (typeof identity !== 'string' || identity === '') {
+function readIdentity(node: PluginNode, installed: ReadonlySet<string>): string {
+  const { identity } = node;
+  if (typeof identity !== 'string') {
+    throw new DeclarationError(
+      'A plugin declares an identity that is not a string. Supply a nonempty string, such as the package name.',
+    );
+  }
+  if (identity === '') {
     throw new DeclarationError(
       'A plugin declares an empty identity. Supply a nonempty string, such as the package name.',
     );
@@ -143,17 +148,35 @@ function readIdentity(value: unknown, installed: ReadonlySet<string>): string {
   return identity;
 }
 
+/** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
+function definitionOf(identity: string, node: PluginNode): DeclaredPlugin {
+  const { definition } = node;
+  if (!isPlainObject(definition)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares a definition that is not an object. Supply { options, middleware, extensions, failures }.`,
+    );
+  }
+  return definition;
+}
+
 /**
- * The installed list in composition order, with the rules that read the list itself. Each plugin's
- * own declarations are read by the build steps that consume them, in the order those steps run.
+ * The installed list in composition order, with the rules that read the list itself. The slot is
+ * read defensively, because a JavaScript author reaches it with any value. Each plugin's own
+ * declarations are read by the build steps that consume them, in the order those steps run.
  */
-function installPlugins(plugins: readonly Plugin[]): readonly InstalledPlugin[] {
+function installPlugins(plugins: unknown): readonly InstalledPlugin[] {
+  if (!Array.isArray(plugins)) {
+    throw new DeclarationError(
+      'The Application plugins must be an array. Supply a list of plugin values.',
+    );
+  }
   const installed: InstalledPlugin[] = [];
   const identities = new Set<string>();
   for (const value of plugins) {
-    const identity = readIdentity(value, identities);
+    const node = nodeOf(value);
+    const identity = readIdentity(node, identities);
     identities.add(identity);
-    installed.push({ declaration: nodeOf(value).definition, identity });
+    installed.push({ declaration: definitionOf(identity, node), identity });
   }
   return installed;
 }
@@ -163,8 +186,8 @@ const forbidden = ['validate', 'validateOmitted', 'required'] as const;
 
 /** The rules a plugin option answers before every rule an ordinary declaration carries. */
 function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
-  if (config === null || typeof config !== 'object') {
-    return;
+  if (!isPlainObject(config)) {
+    throw new DeclarationError(`${sentence} is not an option declaration. Supply { type, ... }.`);
   }
   const rejected = forbidden.find((key) => key in config);
   if (rejected !== undefined) {
@@ -184,12 +207,18 @@ function readOptions(
   declared: PluginOptions | undefined,
   build: PluginBuild,
 ): readonly OptionInput[] {
+  if (declared !== undefined && !isPlainObject(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares options that are not an object. Supply a record of option declarations.`,
+    );
+  }
   const inputs: OptionInput[] = [];
   for (const [name, config] of Object.entries(declared ?? {})) {
     const sentence = `${pluginSentence(identity)} option "${name}"`;
     checkPluginOption(sentence, config);
     const input: OptionInput = { config: captureConfig(config), kind: 'option', name };
-    checkDeclarations([input]);
+    // The shared rules name the plugin and the option, so a fault reads with its contributor.
+    checkDeclarations([input], sentence);
     build.extensions.set(
       input,
       buildExtensions({
@@ -300,6 +329,22 @@ function defineExtensions(identity: string, declaration: DeclaredPlugin, build: 
   }
 }
 
+/** One plugin's failure registrations, which are a list before any of them is read. */
+function readFailures(
+  identity: string,
+  declared: readonly FailureRenderer[] | undefined,
+): readonly FailureRenderer[] {
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares failures that are not an array. Supply a list of renderFailure values.`,
+    );
+  }
+  return declared;
+}
+
 /**
  * Every installed plugin's declarations, in installation order. A plugin's own extensions register
  * before any declaration carries a value, so a duplicated package copy is reported from the list
@@ -314,7 +359,7 @@ function buildPlugins(
     const inputs = readOptions(identity, declaration.options, build);
     const names = new Set(inputs.map((input) => input.name));
     return {
-      failures: declaration.failures ?? [],
+      failures: readFailures(identity, declaration.failures),
       identity,
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),

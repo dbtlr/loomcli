@@ -56,6 +56,20 @@ const exotic = {
 
 const named = (identity, definition) => plugin(identity, definition);
 
+/** A schema whose validate call is the scenario's own, so the rule under test is the only rule. */
+const schemaOf = (validate) => ({ '~standard': { validate, vendor: 'fixture', version: 1 } });
+
+/** One application whose root carries one extension value, for the rules a schema output answers. */
+function withOutput(identity, validate) {
+  const descriptor = extension(identity, { schema: schemaOf(validate), target: 'command' });
+  return new Application('app', { extensions: [descriptor({})] }).action(dispatch);
+}
+
+/** An output that is plain data except for the one property each scenario names. */
+function output(value) {
+  return () => ({ value });
+}
+
 const scenarios = {
   'activation-undeclared': () =>
     withPlugin(
@@ -71,6 +85,7 @@ const scenarios = {
     });
     return new Application('app', { extensions: [descriptor({})] }).action(dispatch);
   },
+  'definition-not-object': () => withPlugin(named('@loomcli/help', 'nope')),
   'empty-activation': () =>
     withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),
   'empty-identity': () => withPlugin(plugin('', {})),
@@ -80,6 +95,11 @@ const scenarios = {
     const get = new Command('get', { extensions: [descriptor({})], globals }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
+  'failures-not-array': () =>
+    withPlugin(
+      named('@loomcli/help', { failures: renderFailure(InputError, { render: () => 'one\n' }) }),
+    ),
+  'identity-not-string': () => withPlugin(plugin(7, {})),
   installed: () => withPlugin(named('@loomcli/help', {})),
   'installed-twice': () =>
     new Application('app', {
@@ -107,6 +127,12 @@ const scenarios = {
   },
   'no-activation': () => withPlugin(named('@loomcli/help', { middleware: { load } })),
   'no-loader': () => withPlugin(named('@loomcli/help', { middleware: { activate: 'always' } })),
+  'no-schema': () => {
+    const bare = extension('@fixture/bare', { target: 'command' });
+    return new Application('app', { extensions: [bare({})] }).action(dispatch);
+  },
+  'not-a-descriptor': () =>
+    withPlugin(named('@loomcli/help', { extensions: [{ identity: '@fixture/forged' }] })),
   'not-a-plugin': () =>
     new Application('app', { plugins: [{ identity: '@loomcli/help' }] }).action(dispatch),
   'not-an-extension': () => {
@@ -116,11 +142,16 @@ const scenarios = {
     );
     return new Application('app', { globals }).command(get).action(dispatch);
   },
+  'option-boolean-default': () =>
+    withPlugin(named('@loomcli/log', { options: { level: { default: 'warn', type: 'boolean' } } })),
   'option-global-key': () =>
     new Application('app', {
       globals: new GlobalOptions().option('help', { type: 'boolean' }),
       plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
     }).action(dispatch),
+  'option-not-declaration': () => withPlugin(named('@loomcli/log', { options: { level: null } })),
+  'option-raw-default': () =>
+    withPlugin(named('@loomcli/log', { options: { level: { default: 7, type: 'string' } } })),
   'option-required': () =>
     withPlugin(named('@loomcli/log', { options: { level: { required: true, type: 'string' } } })),
   'option-spelling': () =>
@@ -140,6 +171,29 @@ const scenarios = {
         options: { level: { type: 'string', validateOmitted: true } },
       }),
     ),
+  'options-not-object': () => withPlugin(named('@loomcli/log', { options: 'level' })),
+  'output-accessor': () =>
+    withOutput(
+      '@fixture/output/accessor',
+      output(Object.defineProperty({}, 'note', { enumerable: true, get: () => 'read' })),
+    ),
+  'output-cycle': () => {
+    const cycle = { note: 'read' };
+    cycle.self = cycle;
+    return withOutput('@fixture/output/cycle', output(cycle));
+  },
+  'output-hidden': () =>
+    withOutput(
+      '@fixture/output/hidden',
+      output(Object.defineProperty({ note: 'read' }, 'quiet', { enumerable: false, value: 1 })),
+    ),
+  'output-infinite': () =>
+    withOutput('@fixture/output/infinite', output({ ratio: Number.POSITIVE_INFINITY })),
+  'output-nan': () => withOutput('@fixture/output/nan', output({ ratio: Number.NaN })),
+  // A hole reads as the `undefined` the walk rejects, so the hole is the fixture.
+  // oxlint-disable-next-line eslint/no-sparse-arrays
+  'output-sparse': () => withOutput('@fixture/output/sparse', output([, 'read'])),
+  'output-symbol': () => withOutput('@fixture/output/symbol', output({ [Symbol('note')]: 'read' })),
   'plugin-renderers': () =>
     withPlugin(
       named('@loomcli/help', {
@@ -149,6 +203,18 @@ const scenarios = {
         ],
       }),
     ),
+  'plugins-not-array': () => new Application('app', { plugins: 'help' }).action(dispatch),
+  'root-extensions': () =>
+    new Application('app', { extensions: [{ identity: '@fixture/forged' }] }).action(dispatch),
+  'schema-silent': () => withOutput('@fixture/schema/silent', () => ({ issues: [] })),
+  'schema-thenable': () =>
+    // A hand-written thenable is exactly the value this rule rejects, so the shape is the fixture.
+    // oxlint-disable-next-line unicorn/no-thenable
+    withOutput('@fixture/schema/thenable', () => ({ then: () => undefined })),
+  'schema-throws': () =>
+    withOutput('@fixture/schema/throws', () => {
+      throw new Error('the schema threw');
+    }),
   'twice-on-one': () => {
     const globals = new GlobalOptions();
     const get = new Command('get', {

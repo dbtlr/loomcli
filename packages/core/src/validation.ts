@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { schemaOptions } from './context.js';
 import { DeclarationError, InputError } from './errors.js';
 import type { InputProblem } from './errors.js';
+import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
 import type {
   ArgumentConfig,
@@ -212,9 +213,8 @@ function holdsRawDefault(input: InputDeclaration) {
  * `validateOmitted: true` is the one way an omitted scalar reaches its schema, so every other rule
  * that already decides absence rejects it, and the flag needs a schema to receive the omission.
  */
-function checkOmissionValidation(input: InputDeclaration) {
+function checkOmissionValidation(input: InputDeclaration, subject: string) {
   const { config } = input;
-  const subject = declaredName(input);
   if (config.required) {
     throw new DeclarationError(
       `${subject} is required and declares validateOmitted. Remove validateOmitted or make the input optional.`,
@@ -237,7 +237,7 @@ function checkOmissionValidation(input: InputDeclaration) {
   }
 }
 
-function checkDeclaration(input: InputDeclaration) {
+function checkDeclaration(input: InputDeclaration, subject: string) {
   const { config } = input;
   if (input.kind === 'option' && input.config.type === 'boolean') {
     if (
@@ -247,38 +247,32 @@ function checkDeclaration(input: InputDeclaration) {
       'validateOmitted' in config
     ) {
       throw new DeclarationError(
-        `${declaredName(input)} is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.`,
+        `${subject} is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.`,
       );
     }
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
-    throw new DeclarationError(
-      `${declaredName(input)} required must be Boolean. Use true or false.`,
-    );
+    throw new DeclarationError(`${subject} required must be Boolean. Use true or false.`);
   }
   if (
     input.kind === 'argument' &&
     input.config.variadic !== undefined &&
     typeof input.config.variadic !== 'boolean'
   ) {
-    throw new DeclarationError(
-      `${declaredName(input)} variadic must be Boolean. Use true or false.`,
-    );
+    throw new DeclarationError(`${subject} variadic must be Boolean. Use true or false.`);
   }
   // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
   if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
-    throw new DeclarationError(
-      `${declaredName(input)} validateOmitted must be Boolean. Use true or false.`,
-    );
+    throw new DeclarationError(`${subject} validateOmitted must be Boolean. Use true or false.`);
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw new DeclarationError(
-      `${declaredName(input)} is required and declares a default. Remove the default or make the input optional.`,
+      `${subject} is required and declares a default. Remove the default or make the input optional.`,
     );
   }
   if (validatesOmission(input)) {
-    checkOmissionValidation(input);
+    checkOmissionValidation(input, subject);
   }
   const schema = config.validate;
   if (
@@ -291,7 +285,7 @@ function checkDeclaration(input: InputDeclaration) {
       typeof schema['~standard'].validate !== 'function')
   ) {
     throw new DeclarationError(
-      `${declaredName(input)} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
+      `${subject} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
     );
   }
 }
@@ -394,15 +388,17 @@ function hasDefault(input: InputDeclaration) {
 /**
  * Every declaration rule that reads the declaration alone. It is synchronous, so `inspect()` and
  * `run()` apply exactly the same rules, and only validating a default through its schema, which
- * can be asynchronous, is left to `run()`.
+ * can be asynchronous, is left to `run()`. A contributor that declares under its own name, such as
+ * a plugin, supplies the subject its diagnostics read with; every other caller is named by the
+ * declaration itself.
  */
-export function checkDeclarations(inputs: readonly InputDeclaration[]): void {
+export function checkDeclarations(inputs: readonly InputDeclaration[], named?: string): void {
   for (const input of inputs) {
-    checkDeclaration(input);
+    checkDeclaration(input, named ?? declaredName(input));
   }
   for (const input of inputs.filter((entry) => hasDefault(entry))) {
     if (input.config.validate === undefined && !holdsRawDefault(input)) {
-      const subject = declaredName(input);
+      const subject = named ?? declaredName(input);
       throw new DeclarationError(
         collects(input)
           ? `${subject} default must be an array of strings without a schema. Supply a string array default.`
@@ -513,10 +509,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   for (const entry of declarations) {
     const { input } = entry;
     if (input.kind === 'option' && input.config.type === 'boolean') {
-      values.set(
-        input,
-        supplied.options.booleans.get(input.name) ?? input.config.polarity === 'negative',
-      );
+      values.set(input, booleanValue(supplied.options, input.name, input.config));
     } else {
       const collected = collects(input);
       const spelling = spellingOf(input);

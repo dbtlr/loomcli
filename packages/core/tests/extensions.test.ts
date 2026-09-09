@@ -4,6 +4,13 @@ import { invoke } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/plugins/invoke.mjs', import.meta.url);
 
+/** One graph whose single extension value exercises one rule of the plain-data walk. */
+function plain(scenario: string) {
+  const result = invoke(new URL('fixtures/plugins/plain.mjs', import.meta.url), [scenario]);
+  expect(result.stderr).toBe('');
+  return JSON.parse(result.stdout);
+}
+
 /** The fixture graph carries the same extension values whichever plugins one scenario installs. */
 function graphOf(scenario: string) {
   const result = invoke(fixture, [scenario, 'inspect']);
@@ -68,4 +75,37 @@ test('readExtension through another descriptor of one identity throws a Declarat
 test('a stored output is frozen to any depth', () => {
   const result = invoke(fixture, ['facts', 'run', 'get', 'a.b']);
   expect(result.stdout.split('\n')[2]).toBe('frozen:[true,true]');
+});
+
+test('a "__proto__" output key is stored as an own key with the prototype untouched', () => {
+  expect(plain('proto-key')).toEqual({
+    keys: ['@fixture/plain'],
+    names: ['__proto__', 'a'],
+    polluted: null,
+    prototype: true,
+    value: { polluted: true },
+  });
+});
+
+test('an extension whose identity is "__proto__" is an own key of the extensions record', () => {
+  expect(plain('proto-identity')).toEqual({
+    keys: ['__proto__'],
+    prototype: true,
+    stored: { note: 'read' },
+  });
+});
+
+test('an output nested ten thousand deep is stored, because the walk holds no call stack', () => {
+  expect(plain('deep')).toEqual({ depth: 10_000, keys: ['@fixture/plain'] });
+});
+
+test("a change to the author's input object after build changes nothing on the graph", () => {
+  expect(plain('mutated')).toEqual({
+    input: { list: ['one', 'two'], note: 'written' },
+    stored: { list: ['one'], note: 'read' },
+  });
+});
+
+test('the extensions record a node publishes is frozen', () => {
+  expect(plain('frozen')).toEqual({ frozen: true, rejected: true });
 });
