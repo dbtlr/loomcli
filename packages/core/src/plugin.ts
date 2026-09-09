@@ -312,6 +312,8 @@ function readMiddleware(
 /**
  * One plugin's claim on the signals slot, drawn from the closed set core installs listeners for.
  * An empty list claims nothing, so it leaves the slot free for another plugin.
+ * Each signal is claimed once, because core installs one listener per entry and a second listener
+ * on one signal would take the force path on the first signal the run receives.
  */
 function readSignals(identity: string, declared: unknown): readonly ProcessSignal[] {
   if (declared === undefined) {
@@ -323,14 +325,21 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
     );
   }
   const list: readonly unknown[] = declared;
-  return list.map((value) => {
+  const claimed = new Set<ProcessSignal>();
+  for (const value of list) {
     if (!isProcessSignal(value)) {
       throw new DeclarationError(
         `${pluginSentence(identity)} claims signal "${String(value)}". Claim SIGINT or SIGTERM.`,
       );
     }
-    return value;
-  });
+    if (claimed.has(value)) {
+      throw new DeclarationError(
+        `${pluginSentence(identity)} claims signal "${value}" twice. Claim each signal once.`,
+      );
+    }
+    claimed.add(value);
+  }
+  return [...claimed];
 }
 
 /** One installed plugin's declarations, read once per build in installation order. */

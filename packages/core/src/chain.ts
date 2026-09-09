@@ -170,6 +170,8 @@ interface Invocation {
 
 /** The state one chain shares: what it reached, what it raised, and how it continues. */
 interface Chain {
+  /** Whether one value is a fault this chain reported already, which it never reports twice. */
+  announced: (value: unknown) => boolean;
   cancelled: () => boolean;
   context: (entry: ChainEntry, next: () => Promise<ChainOutcome>) => MiddlewareContext;
   invoked: () => boolean;
@@ -268,7 +270,11 @@ async function settle(
       await quiet(state.downstream);
       throw thrown.value;
     }
-    chain.report(new InternalError(reasonOf(thrown.value), thrown.value));
+    // A fault core recorded where it was raised, such as a misused `next()`, reaches this point
+    // Again when the middleware let it escape. It keeps the one report it already has.
+    if (!chain.announced(thrown.value)) {
+      chain.report(new InternalError(reasonOf(thrown.value), thrown.value));
+    }
   }
   if (state.calls === 0) {
     return reported(chain, 'taken-over');
@@ -342,7 +348,10 @@ async function runChain(
   // The graph a middleware reads is the one `inspect()` returns, built once for the run.
   const graph = inspectGraph(invocation.name, invocation.graph, invocation.facts);
   const command = nodeAt(graph, routed.path);
+  // Every fault this chain has reported, so the same one raised again carries no second report.
+  const announced = new WeakSet();
   const chain: Chain = {
+    announced: (value) => typeof value === 'object' && value !== null && announced.has(value),
     cancelled,
     context: (entry, next) => ({
       command,
@@ -357,7 +366,10 @@ async function runChain(
     record: (error) => {
       run.raised ??= toFailure(error);
     },
-    report: invocation.report,
+    report: (fault) => {
+      announced.add(fault);
+      invocation.report(fault);
+    },
     step: (index) => {
       if (cancelled()) {
         // Core starts nothing new after cancellation: a middleware the chain has not reached and

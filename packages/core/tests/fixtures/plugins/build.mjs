@@ -227,6 +227,9 @@ const scenarios = {
     }).action(dispatch),
   'signals-not-array': () => withPlugin(named('@loomcli/signals', { signals: 'SIGINT' })),
   'signals-outside-set': () => withPlugin(named('@loomcli/signals', { signals: ['SIGHUP'] })),
+  // One listener per claimed signal, so a repeated claim would install the force path twice.
+  'signals-repeated-claim': () =>
+    withPlugin(named('@loomcli/signals', { signals: ['SIGINT', 'SIGTERM', 'SIGINT'] })),
   'signals-second-claim': () =>
     new Application('app', {
       plugins: [

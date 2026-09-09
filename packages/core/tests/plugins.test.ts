@@ -18,6 +18,10 @@ const rejected = [
     'Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.',
   ],
   [
+    'signals-repeated-claim',
+    'Plugin "@loomcli/signals" claims signal "SIGINT" twice. Claim each signal once.',
+  ],
+  [
     'signals-second-claim',
     'Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.',
   ],

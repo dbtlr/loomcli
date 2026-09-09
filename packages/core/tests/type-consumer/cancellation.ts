@@ -1,7 +1,10 @@
 import { Application, plugin } from '@loomcli/core';
-import type { ExitCode, Plugin } from '@loomcli/core';
+import type { CancellationReason, ExitCode, Plugin } from '@loomcli/core';
 
 const cancellable = new Application('cancellable').action(({ signal }) => signal.aborted);
+
+// The reason core owns is published, so a middleware reads `source` under a type of its own.
+const source: CancellationReason['source'] = 'SIGTERM';
 
 // A caller-owned signal cancels the run, and `run()` still resolves an `ExitCode`.
 const controller = new AbortController();
@@ -42,5 +45,6 @@ function describe(status: ExitCode): string {
 
 void resolved;
 void hangup;
+void source;
 
 export { describe, signals };
