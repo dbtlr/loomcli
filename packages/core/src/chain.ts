@@ -270,8 +270,10 @@ async function settle(
       await quiet(state.downstream);
       throw thrown.value;
     }
-    // A fault core recorded where it was raised, such as a misused `next()`, reaches this point
-    // Again when the middleware let it escape. It keeps the one report it already has.
+    /**
+     * A fault core recorded where it was raised, such as a misused `next()`, reaches this point
+     * again when the middleware let it escape. It keeps the one report it already has.
+     */
     if (!chain.announced(thrown.value)) {
       chain.report(new InternalError(reasonOf(thrown.value), thrown.value));
     }
@@ -314,8 +316,10 @@ async function loadMiddleware(entry: ChainEntry) {
 async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise<ChainOutcome> {
   const middleware = await loadMiddleware(entry);
   if (chain.cancelled()) {
-    // A module import cannot be aborted, so a loader already in flight settles and core starts
-    // Nothing with it: the middleware it resolved to is skipped.
+    /**
+     * A module import cannot be aborted, so a loader already in flight settles and core starts
+     * nothing with it: the middleware it resolved to is skipped.
+     */
     return 'cancelled';
   }
   const state: EntryState = { calls: 0, returned: false, settled: false };
@@ -372,8 +376,10 @@ async function runChain(
     },
     step: (index) => {
       if (cancelled()) {
-        // Core starts nothing new after cancellation: a middleware the chain has not reached and
-        // An action not yet dispatched are skipped, and the entries already running unwind.
+        /**
+         * Core starts nothing new after cancellation: a middleware the chain has not reached and
+         * an action not yet dispatched are skipped, and the entries already running unwind.
+         */
         return Promise.resolve<ChainOutcome>('cancelled');
       }
       const entry = entries[index];

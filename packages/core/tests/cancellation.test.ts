@@ -31,9 +31,11 @@ test('a caller abort during a run resolves 130 with the caller as its source', (
 });
 
 test('a caller signal already aborted at entry resolves 130 having loaded nothing', () => {
-  // The graph still builds and validates, so a declaration fault would still be reported; the
-  // Plugin's loader is never called, no middleware or action runs, and the probe shows that no
-  // Listener was added at any point, which a count taken after the run could not tell.
+  /**
+   * The graph still builds and validates, so a declaration fault would still be reported; the
+   * plugin's loader is never called, no middleware or action runs, and the probe shows that no
+   * listener was added at any point, which a count taken after the run could not tell.
+   */
   expect(run('pre-aborted')).toEqual({
     status: 130,
     stderr: '',
@@ -68,9 +70,21 @@ test('a run signal that is not an AbortSignal is an internal error with code 1',
   });
 });
 
+test('an invalid signal reports its diagnostic to the host stderr override, not the process stderr', () => {
+  const result = run('not-a-signal-host');
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toBe(
+    `before:0:0\ncaptured:${JSON.stringify(
+      'Internal error: run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.\n',
+    )}\nresolved:1\n`,
+  );
+});
+
 test('a host stderr that refuses every write leaves no listener behind', () => {
-  // Core reports the action's failure to the host's stderr, which refuses it, so the real stderr
-  // Stays empty and the run resolves 1. The bracket is removed whichever way the run ends.
+  /**
+   * Core reports the action's failure to the host's stderr, which refuses it, so the real stderr
+   * stays empty and the run resolves 1. The bracket is removed whichever way the run ends.
+   */
   expect(run('hostile-stderr', { LOOM_FIXTURE_ACTION: 'refusing' })).toEqual({
     status: 1,
     stderr: '',
@@ -230,8 +244,10 @@ test('a caller abort holds its reason against a later signal, which takes the fo
   const running = spawnRun('caller-then-signal', { LOOM_FIXTURE_ACTION: 'absorbing' });
   await running.announced('ready');
   running.child.kill('SIGINT');
-  // The embedding host's own listener absorbs the signal and the re-raise, so the process survives
-  // Both and the run resolves the code its first cause fixed. Core's own listeners are gone.
+  /**
+   * The embedding host's own listener absorbs the signal and the re-raise, so the process survives
+   * both and the run resolves the code its first cause fixed. Core's own listeners are gone.
+   */
   await expect(running.exit).resolves.toEqual({
     signal: null,
     status: 130,

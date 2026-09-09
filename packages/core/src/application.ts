@@ -273,25 +273,29 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
-    // The bracket this run holds. It exists once the caller's own signal has been read, so a
-    // Signal that is not an `AbortSignal` is reported through the failure path like any other.
+    /**
+     * The bracket this run holds. It exists once the caller's own signal has been read, so a
+     * signal that is not an `AbortSignal` is reported through the failure path like any other.
+     */
     let signals: SignalBracket | undefined = undefined;
-    // A cancelled run resolves its cancellation code whenever it ends after graph build. A
-    // Declaration or internal failure raised before that ends the run with its own code instead.
+    // A cancelled run resolves its cancellation code whenever it ends after graph build.
+    // A declaration or internal failure raised before that ends the run with its own code instead.
     let graphBuilt = false;
     const cancellation = (): CancellationCode | undefined => {
       const reason = graphBuilt ? signals?.reason() : undefined;
       return reason ? cancellationCode(reason) : undefined;
     };
-    // Every exit path of the run leaves through the removal below, the one place it is written,
-    // So no listener this run installed outlives it however the run ends.
+    /**
+     * Every exit path of the run leaves through the removal below, the one place it is written,
+     * so no listener this run installed outlives it however the run ends.
+     */
     try {
       try {
-        signals = bracketRun(controller, checkSignal(options?.signal));
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
         output = new Output(host);
+        signals = bracketRun(controller, checkSignal(options?.signal));
         const built = this.prepare((value) => {
           registry = value;
         });
@@ -300,8 +304,10 @@ class ApplicationBuilder<
         const defaults = await prepareInputs(inputs, host);
         graphBuilt = true;
         if (!controller.signal.aborted) {
-          // The listeners the validated signals owner claimed. A build failure installs none, and
-          // Neither does a run the caller had already cancelled: it touches the process not at all.
+          /**
+           * The listeners the validated signals owner claimed. A build failure installs none, and
+           * neither does a run the caller had already cancelled: it touches the process not at all.
+           */
           signals.install(ownedSignals(built.plugins));
           await runInvocation({
             defaults,
@@ -381,9 +387,11 @@ class ApplicationBuilder<
       if (reportingFailed) {
         await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
       }
-      // One rule orders every code: a cancelled run resolves its signal's code, and a broken
-      // Failure renderer or destination in that run is reported as text without changing it. The
-      // Signal decides the code whatever the action did afterward, so this reading comes last.
+      /**
+       * One rule orders every code: a cancelled run resolves its signal's code, and a broken
+       * failure renderer or destination in that run is reported as text without changing it. The
+       * signal decides the code whatever the action did afterward, so this reading comes last.
+       */
       code = cancellation() ?? code;
       process.exitCode = code;
       return code;

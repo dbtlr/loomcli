@@ -400,8 +400,10 @@ function buildPlugins(
   installed: readonly InstalledPlugin[],
   build: PluginBuild,
 ): readonly BuiltPlugin[] {
-  // The signals slot has one owner, so the first plugin to claim it names the second claimant's
-  // Diagnostic. An empty claim leaves the slot free.
+  /**
+   * The signals slot has one owner, so the first plugin to claim it names the second claimant's
+   * diagnostic. An empty claim leaves the slot free.
+   */
   let owner: string | undefined = undefined;
   return installed.map(({ declaration, identity }) => {
     defineExtensions(identity, declaration, build);

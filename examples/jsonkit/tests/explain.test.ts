@@ -63,8 +63,10 @@ test('jsonkit explains the root when no subcommand is routed', () => {
 });
 
 test('jsonkit explains an otherwise invalid invocation instead of rejecting it', () => {
-  // `get` needs its required path, and the named document does not exist. The middleware takes
-  // Over before the callable check, local parsing, and validation, so neither is ever reached.
+  /**
+   * `get` needs its required path, and the named document does not exist. The middleware takes
+   * over before the callable check, local parsing, and validation, so neither is ever reached.
+   */
   withDocuments({}, (cwd) => {
     expect(invoke(main, ['get', '--explain', '--file', 'missing.json'], { cwd })).toEqual({
       status: 0,

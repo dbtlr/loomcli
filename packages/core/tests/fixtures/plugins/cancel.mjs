@@ -146,6 +146,7 @@ const installed = {
   'hostile-stderr': ['owner'],
   'no-owner': [],
   'not-a-signal': ['owner'],
+  'not-a-signal-host': ['owner'],
   owner: ['owner'],
   'pending-loader': ['pending'],
   'pre-aborted': ['reporting'],
@@ -322,8 +323,10 @@ if (scenario === 'pre-aborted') {
   process.stdout.write(`${read()}\n`);
   process.stdout.write(`resolved:${code}\n`);
 } else if (scenario === 'two-runs') {
-  // Run A owns the slot. A synchronous listener on its own abort starts run B, which claims the
-  // Slot in its turn, so both runs hold listeners when the second signal arrives.
+  /**
+   * Run A owns the slot. A synchronous listener on its own abort starts run B, which claims the
+   * slot in its turn, so both runs hold listeners when the second signal arrives.
+   */
   const holding = async ({ out }) => {
     await out.print(counts('second'));
     await after(20_000);
@@ -350,6 +353,21 @@ if (scenario === 'pre-aborted') {
   const second = await app.run({ host: { argv } });
   process.stdout.write(`${counts('after')}\n`);
   process.stdout.write(`resolved:${first}:${second}\n`);
+} else if (scenario === 'not-a-signal-host') {
+  /**
+   * The invalid signal is read from a host whose stderr is overridden, so the diagnostic's
+   * destination proves whether core read the override before or after the signal check.
+   */
+  const captured = [];
+  const stderr = new Writable({
+    write(chunk, _encoding, callback) {
+      captured.push(chunk.toString());
+      callback();
+    },
+  });
+  const code = await application().run({ host: { argv, stderr }, signal: 'not a signal' });
+  process.stdout.write(`captured:${JSON.stringify(captured.join(''))}\n`);
+  process.stdout.write(`resolved:${code}\n`);
 } else {
   const code = await application().run(options());
   process.stdout.write(`${counts('after')}\n`);

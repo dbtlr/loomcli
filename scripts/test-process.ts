@@ -58,9 +58,18 @@ export function start(
   child.stderr.on('data', (chunk: string) => {
     stderr += chunk;
   });
+  /** How the exit promise settled, read by `announced` so a child that closed early fails fast. */
+  let settlement:
+    | { kind: 'closed'; status: number | null; signal: NodeJS.Signals | null }
+    | { kind: 'errored'; error: Error }
+    | undefined = undefined;
   const exit = new Promise<Completion>((resolve, reject) => {
-    child.on('error', reject);
+    child.on('error', (error) => {
+      settlement = { error, kind: 'errored' };
+      reject(error);
+    });
     child.on('close', (status, signal) => {
+      settlement = { kind: 'closed', signal, status };
       resolve({ signal, status, stderr, stdout });
     });
   });
@@ -68,6 +77,15 @@ export function start(
   const announced = async (line: string): Promise<void> => {
     const deadline = Date.now() + 10_000;
     while (!stdout.includes(`${line}\n`)) {
+      if (settlement) {
+        const cause =
+          settlement.kind === 'closed'
+            ? `status ${settlement.status}, signal ${settlement.signal}`
+            : `error ${settlement.error.message}`;
+        throw new Error(
+          `The fixture ended (${cause}) before announcing "${line}". It wrote:\n${stdout}${stderr}`,
+        );
+      }
       if (Date.now() > deadline) {
         throw new Error(`The fixture never announced "${line}". It wrote:\n${stdout}${stderr}`);
       }
