@@ -46,9 +46,10 @@ test('a fact whose plugin is not installed is inert and still reported', () => {
 
 test('a declaration that carries no value reports an empty record', () => {
   const graph = graphOf('facts');
-  expect(graph.root.children[0].options[0].extensions).not.toEqual({});
-  expect(graph.root.arguments).toEqual([]);
-  expect(graph.root.options).toEqual([]);
+  // The "cache" group Command declares no extensions of its own.
+  const cache = graph.root.children[1];
+  expect(cache.name).toBe('cache');
+  expect(cache.extensions).toEqual({});
 });
 
 test('readExtension returns the stored output for each node kind, and undefined for none', () => {

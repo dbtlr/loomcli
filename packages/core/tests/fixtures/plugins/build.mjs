@@ -95,6 +95,7 @@ const scenarios = {
     const get = new Command('get', { extensions: [descriptor({})], globals }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
+  'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
   'failures-not-array': () =>
     withPlugin(
       named('@loomcli/help', { failures: renderFailure(InputError, { render: () => 'one\n' }) }),
@@ -125,6 +126,7 @@ const scenarios = {
       .command(get)
       .action(dispatch);
   },
+  'middleware-not-object': () => withPlugin(named('@loomcli/help', { middleware: null })),
   'no-activation': () => withPlugin(named('@loomcli/help', { middleware: { load } })),
   'no-loader': () => withPlugin(named('@loomcli/help', { middleware: { activate: 'always' } })),
   'no-schema': () => {

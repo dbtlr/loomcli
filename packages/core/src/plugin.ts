@@ -292,6 +292,11 @@ function readMiddleware(
   if (declared === undefined) {
     return undefined;
   }
+  if (!isPlainObject(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares middleware that is not an object. Supply { activate, load }.`,
+    );
+  }
   const activate = readActivation(identity, declared.activate, names);
   const { load } = declared;
   if (!isLoader(load)) {
@@ -319,7 +324,13 @@ interface PluginBuild {
 
 /** A plugin's own list names the extensions it defines, before any declaration carries one. */
 function defineExtensions(identity: string, declaration: DeclaredPlugin, build: PluginBuild): void {
-  for (const descriptor of declaration.extensions ?? []) {
+  const { extensions } = declaration;
+  if (extensions !== undefined && !Array.isArray(extensions)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares extensions that are not an array. Supply a list of extension descriptors.`,
+    );
+  }
+  for (const descriptor of extensions ?? []) {
     if (!isDescriptor(descriptor)) {
       throw new DeclarationError(
         `${pluginSentence(identity)} holds a value that is not an extension. Supply the value returned by extension(identity, config).`,

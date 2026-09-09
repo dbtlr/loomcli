@@ -46,6 +46,10 @@ const rejected = [
     'Plugin "@loomcli/help" declares failures that are not an array. Supply a list of renderFailure values.',
   ],
   [
+    'extensions-not-array',
+    'Plugin "@loomcli/help" declares extensions that are not an array. Supply a list of extension descriptors.',
+  ],
+  [
     'option-validate',
     'Plugin "@loomcli/log" option "level" declares validate. Remove it; a plugin option carries no schema or presence rule, and the middleware interprets the value.',
   ],
@@ -72,6 +76,10 @@ const rejected = [
   [
     'option-spelling',
     'Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.',
+  ],
+  [
+    'middleware-not-object',
+    'Plugin "@loomcli/help" declares middleware that is not an object. Supply { activate, load }.',
   ],
   [
     'no-activation',
