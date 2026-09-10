@@ -20,7 +20,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | Record                                                                       | Decision                                                                                                  | Status   |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------- |
 | [ADR-0001](0001-immutable-declarations-with-typed-authoring-order.md)        | Commands are immutable values, and the authoring order is a compile-time rule.                            | accepted |
-| [ADR-0002](0002-command-graph-is-a-tree-with-hidden-aliases.md)              | The command graph is a tree; hidden aliases replace multi-parent attachment.                              | accepted |
+| [ADR-0002](0002-command-graph-is-a-tree-with-hidden-aliases.md)              | The command graph is a tree; aliases replace multi-parent attachment.                                     | accepted |
 | [ADR-0003](0003-globals-are-application-owned-and-nothing-inherits.md)       | Global options are one application-owned value, and nothing inherits along a path.                        | accepted |
 | [ADR-0004](0004-arguments-and-children-are-exclusive.md)                     | A Command declares arguments or attaches children, never both.                                            | accepted |
 | [ADR-0005](0005-validation-delegates-to-standard-schema.md)                  | Validation delegates to Standard Schema, with context passed through the standard's channel.              | accepted |
