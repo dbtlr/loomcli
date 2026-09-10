@@ -772,7 +772,7 @@ Core's default renderers add the category prefixes: `Invalid input: ` for every 
 
 `issuePath(issue)` returns the dotted path an issue names inside a value, such as `1` for the second item of a collection, or `undefined` when the issue names the value itself, so a renderer positions an issue the way core's default text does.
 
-`candidates` on `UnknownCommandError` and `NonCallableCommandError` holds the canonical child names in authoring order. An alias never appears in it, and neither does a hidden Command.
+`candidates` on `UnknownCommandError` and `NonCallableCommandError` holds the canonical child names in authoring order. An alias never appears in it, and neither does a hidden Command. A deprecated Command appears by name alone, because the list holds names and no message; its migration message lives on the help page.
 
 `ShortGroupError.reason` is `'value-position'` for a value option that is not last in its group, and `'mixed-scope'` for a group that mixes a global letter with one the globals do not own. `ShortGroupError.token` holds what each reason names: the single option's spelling, such as `-d`, for `'value-position'`, and the whole group, such as `-qZ`, for `'mixed-scope'`.
 

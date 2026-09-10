@@ -115,7 +115,7 @@ A full Command kept off every listing. It routes, runs, and has its own help pag
 _Avoid_: Secret command, unlisted command, alias (for this concept)
 
 **Deprecated member**:
-A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every listing that includes it shows beside it; a member that is also hidden appears in none.
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every page that includes it shows beside it; a member that is also hidden appears in none. A candidate list names it without the message, because it holds names alone.
 _Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:
@@ -123,7 +123,7 @@ The descent from the root through child names or aliases to the selected Command
 _Avoid_: Command chain, breadcrumb
 
 **Candidates**:
-The canonical child names a routing failure offers, in authoring order. An alias or a hidden Command never appears among them.
+The canonical child names a routing failure offers, in authoring order. An alias or a hidden Command never appears among them, and a deprecated Command appears by name alone.
 _Avoid_: Suggestions, available commands
 
 ## Compilation and invocation
