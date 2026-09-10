@@ -331,6 +331,14 @@ function isSchema(value: unknown): value is StandardSchemaV1 {
 }
 
 /** The message one rejected value reports, with the placeholder a silent schema earns. */
+/**
+ * One schema message as a sentence of its own. A schema author writes the message with or without a
+ * full stop, so the diagnostic supplies one only where the message carries none.
+ */
+function sentence(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`;
+}
+
 function issueText(issues: unknown): string {
   const first: unknown = Array.isArray(issues) ? issues[0] : undefined;
   if (first !== null && typeof first === 'object' && 'message' in first) {
@@ -373,7 +381,7 @@ function validated(
   } catch (error) {
     // A schema that throws rejected the value the only way it could, so it reads as a rejection.
     throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${reasonOf(error)}. Correct the value.`,
+      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${sentence(reasonOf(error))} Correct the value.`,
     );
   }
 }
@@ -390,7 +398,7 @@ function validateValue(subject: ExtensionSubject, carried: CarriedValue): unknow
   const issues: unknown = 'issues' in result ? result.issues : undefined;
   if (issues !== undefined) {
     throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${identity}" value: ${issueText(issues)}. Correct the value.`,
+      `${subject.sentence} holds an invalid "${identity}" value: ${sentence(issueText(issues))} Correct the value.`,
     );
   }
   const output = plainData('value' in result ? result.value : undefined);

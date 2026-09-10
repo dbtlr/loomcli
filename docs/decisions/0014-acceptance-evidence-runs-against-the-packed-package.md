@@ -4,7 +4,7 @@ title: ADR-0014 - Acceptance evidence runs against the packed package through th
 description: The example applications are the acceptance surface. They use only public core APIs, resolve core through the packed package, and run as real processes under every supported runtime. Passing tests alone do not accept a deliverable.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-09
+modified: 2026-09-10
 ---
 
 # ADR-0014 - Acceptance evidence runs against the packed package through the public API
@@ -33,3 +33,4 @@ Adding a runtime or platform to the support statement means adding it to the exe
 - 2026-09-08: [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) proposes narrowing the Context sentence that has the examples resolve core through the packed package. That sentence is historical since the entry above. Under ADR-0016, packaging is proved by a runtime consumer that installs the packed tarball on Linux under Node and Bun, and behavior is proved by the examples against the workspace build on every supported platform. The narrowing binds when ADR-0016 is accepted; the decision text stays as written because accepted language changes only by supersession.
 - 2026-09-08: Windows left the CI matrix. The examples now run as processes under Node and Bun on macOS and Linux only, and the support statement narrows to match, as this record requires. The platform list in Context is historical.
 - 2026-09-09: [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) is accepted, so the narrowing recorded on 2026-09-08 binds: `pnpm check:packed` proves packaging with a runtime consumer on Linux under Node and Bun on every PR and before every publication, and the examples prove behavior against the workspace build on every supported platform.
+- 2026-09-10: `pnpm check:packed` also packs `@loomcli/plugins` and installs both tarballs into the runtime consumer, which imports the `help`, `help/extension`, and `version` subpaths, compiles against their emitted declarations, and prints a help page and a version line under Node and Bun. This is the extension [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) requires before it can move to accepted.

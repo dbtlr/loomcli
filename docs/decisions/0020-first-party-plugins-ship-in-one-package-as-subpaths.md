@@ -4,7 +4,7 @@ title: ADR-0020 - First-party plugins ship in one package as separately installa
 description: Every first-party plugin ships in @loomcli/plugins as its own subpath export with the identity <package>/<plugin>, installed one at a time through the ordinary plugins list. The package has no root export and installs nothing on import.
 status: proposed
 created: 2026-09-09
-modified: 2026-09-09
+modified: 2026-09-10
 ---
 
 # ADR-0020 - First-party plugins ship in one package as separately installable subpaths
@@ -32,3 +32,7 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 ## Status
 
 Proposed. It moves to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications, and with the packed-consumer check ADR-0014 requires extended to the new package: a consumer installs the packed tarball, imports `@loomcli/plugins/help`, `@loomcli/plugins/help/extension`, and `@loomcli/plugins/version`, compiles against their emitted declarations, and runs under Node and Bun.
+
+## Changelog
+
+- 2026-09-10: The package landed at `packages/plugins` with `private: true`. The release plan discovers every non-private manifest under `packages/` and treats a library absent from the registry as a publication to make, so a public manifest would have made every push to `main` refuse publication until the next cut. The flag comes off in the release cut that first carries the package, once its npm trusted publisher exists, and that is when this record moves to accepted.

@@ -1,4 +1,5 @@
 import { GlobalOptions } from '@loomcli/core';
+import { helpInput } from '@loomcli/plugins/help/extension';
 
 import { fileOrStdin } from './file-or-stdin.js';
 
@@ -9,6 +10,7 @@ import { fileOrStdin } from './file-or-stdin.js';
  */
 export const globals = new GlobalOptions().option('file', {
   description: 'The document to read. Omit it to read piped text.',
+  extensions: [helpInput({ placeholder: 'path' })],
   short: 'f',
   type: 'string',
   validate: fileOrStdin,

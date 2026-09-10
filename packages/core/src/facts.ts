@@ -32,15 +32,17 @@ export function checkDescription(subject: string, value: unknown): string | unde
 
 /**
  * The `version` core fact, which the Application alone carries. Core reads it as an opaque string,
- * because the convention is the package manifest's own field and no scheme is imposed on it.
+ * because the convention is the package manifest's own field and no scheme is imposed on it. An
+ * omitted version is `0.0.0`, which means unversioned, and core keeps no record of which one the
+ * author wrote.
  */
-export function checkVersion(value: unknown): string | undefined {
+export function checkVersion(value: unknown): string {
   if (value === undefined) {
-    return undefined;
+    return '0.0.0';
   }
-  if (typeof value !== 'string') {
+  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
     throw new DeclarationError(
-      'The Application version must be a string. Supply a string such as "1.2.0".',
+      'The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".',
     );
   }
   return value;

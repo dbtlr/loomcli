@@ -208,6 +208,8 @@ const scenarios = {
   'plugins-not-array': () => new Application('app', { plugins: 'help' }).action(dispatch),
   'root-extensions': () =>
     new Application('app', { extensions: [{ identity: '@fixture/forged' }] }).action(dispatch),
+  'schema-sentence': () =>
+    withOutput('@fixture/schema/sentence', () => ({ issues: [{ message: 'Supply one word.' }] })),
   'schema-silent': () => withOutput('@fixture/schema/silent', () => ({ issues: [] })),
   'schema-thenable': () =>
     // A hand-written thenable is exactly the value this rule rejects, so the shape is the fixture.

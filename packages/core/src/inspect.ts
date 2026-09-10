@@ -72,11 +72,13 @@ interface CommandNode {
 
 /**
  * One built graph as plain data. The globals appear once here and in no `CommandNode`. `version`
- * and `description` are the Application's own core facts, and `undefined` where it declares none.
+ * and `description` are the Application's own core facts. `version` is the declared string, or
+ * `0.0.0` when the Application declares none, so it is never `undefined`. `description` stays
+ * `undefined` where the Application declares none.
  */
 interface CommandGraph {
   readonly name: string;
-  readonly version: string | undefined;
+  readonly version: string;
   readonly description: string | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
@@ -230,7 +232,7 @@ function commandNode(
 function inspectGraph(
   name: string,
   graph: BuiltGraph,
-  facts: { description: string | undefined; version: string | undefined },
+  facts: { description: string | undefined; version: string },
 ): CommandGraph {
   const records = graph.extensions;
   const table = graph.globals.options;

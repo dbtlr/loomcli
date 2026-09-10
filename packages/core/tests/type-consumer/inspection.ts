@@ -17,8 +17,8 @@ const name: string | null = root.name;
 const path: readonly string[] = root.path;
 const aliases: readonly string[] = root.aliases;
 
-// The core facts read as optional strings wherever a declaration carries one.
-const version: string | undefined = graph.version;
+// `version` is never absent, and every other core fact reads as an optional string.
+const version: string = graph.version;
 const summary: string | undefined = graph.description;
 const rootSummary: string | undefined = root.description;
 const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;

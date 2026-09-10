@@ -67,12 +67,19 @@ test('the inspected graph carries the plugin option, the extension value, and th
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => [option.name, option.scope])).toEqual([
+    ['help', 'plugin'],
+    ['version', 'plugin'],
     ['explain', 'plugin'],
   ]);
+  // The two plugins define separate facts, so one declaration carries a value for each.
   expect(graph.root.extensions).toEqual({
     '@loom/explain/command': {
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
+    },
+    '@loomcli/plugins/help/command': {
+      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
     },
   });
 });

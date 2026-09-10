@@ -36,6 +36,7 @@ const inspected = z.object({
     children: z.array(
       z.object({ extensions: z.record(z.string(), z.unknown()), name: z.string() }),
     ),
+    extensions: z.record(z.string(), z.unknown()),
   }),
   version: z.string(),
 });
@@ -83,13 +84,33 @@ test('the inspected graph carries the plugin option, the extension value, and th
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => [option.name, option.scope])).toEqual([
     ['file', 'application'],
+    ['help', 'plugin'],
+    ['version', 'plugin'],
     ['explain', 'plugin'],
   ]);
+  // The two plugins define separate facts, so one declaration carries a value for each.
+  expect(graph.root.extensions).toEqual({
+    '@loom/explain/command': {
+      details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
+      examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
+    },
+    '@loomcli/plugins/help/command': {
+      details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
+      examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
+    },
+  });
   const get = graph.root.children.find((child) => child.name === 'get');
   expect(get?.extensions).toEqual({
     '@loom/explain/command': {
       details: 'A path is a dot-separated walk from the root of the document.',
       examples: ['jsonkit get name -f doc.json', 'jsonkit get nested.deep.value -f doc.json'],
+    },
+    '@loomcli/plugins/help/command': {
+      details: 'A path is a dot-separated walk from the root of the document.',
+      examples: [
+        { command: 'get name -f doc.json' },
+        { command: 'get nested.deep.value -f doc.json' },
+      ],
     },
   });
 });

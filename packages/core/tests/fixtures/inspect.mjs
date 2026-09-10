@@ -17,7 +17,9 @@ const dispatch = ({ out }) => out.print('dispatched');
 const encode = (value) =>
   JSON.stringify(value, (_key, item) => (item === undefined ? '#undefined' : item));
 
-function jsonkit() {
+// The optional `version` lets a second graph key declare `0.0.0` explicitly, so a test can compare
+// It against an omitted version without duplicating the whole declaration.
+function jsonkit(version) {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })
     .option('quiet', { short: 'q', type: 'boolean' });
@@ -26,7 +28,7 @@ function jsonkit() {
   const select = new Command('select', { globals })
     .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
     .action(dispatch);
-  return new Application('jsonkit', { globals })
+  return new Application('jsonkit', { globals, version })
     .command(get)
     .command(keys)
     .command(select)
@@ -174,6 +176,7 @@ const graphs = {
   described,
   invalid,
   jsonkit,
+  'jsonkit-versioned': () => jsonkit('0.0.0'),
   nested,
   omission,
   polarity,

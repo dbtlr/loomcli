@@ -25,9 +25,39 @@ for (const name of selected) {
   assert.ok(runtimes.has(name), `LOOM_TEST_RUNTIME accepts node or bun, not "${name}".`);
 }
 
-// One fixed invocation, so the printed line is the whole contract the packed package must satisfy.
-const invocation = ['world', '--greeting', 'packed'];
-const expected = 'packed: world\n';
+/** The help page the packed plugins render, written by hand from the page rules. */
+const page = [
+  'greeter · Greet one subject.',
+  '',
+  '  The greeting is printed before the subject.',
+  '',
+  'USAGE',
+  '  greeter <subject> [options]',
+  '',
+  'ARGUMENTS',
+  '  subject  Who to greet.',
+  '',
+  'OPTIONS',
+  '  -g, --greeting <word>  The greeting to print.  (default: hello)',
+  '  -h, --help             Show this help.',
+  '  -V, --version          Print the version.',
+  '',
+  'EXAMPLES',
+  '  $ greeter world --greeting packed',
+  '    The line this check compares.',
+  '',
+].join('\n');
+
+// Three fixed invocations, so the printed bytes are the whole contract the packed packages satisfy.
+const invocations = [
+  {
+    argv: ['world', '--greeting', 'packed'],
+    expected: 'packed: world\n',
+    reads: 'the action line',
+  },
+  { argv: ['--help'], expected: page, reads: 'the help page' },
+  { argv: ['--version'], expected: 'greeter v1.0.0\n', reads: 'the version line' },
+];
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
@@ -50,13 +80,16 @@ function pnpm(args, cwd) {
 const source = fileURLToPath(new URL('runtime-consumer', import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), 'loom-runtime-consumer-'));
 try {
-  const tarball = join(temporary, 'core.tgz');
-  pnpm(['pack', '--out', tarball], join(root, 'packages/core'));
+  pnpm(['pack', '--out', join(temporary, 'core.tgz')], join(root, 'packages/core'));
+  pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
     JSON.stringify({
-      dependencies: { '@loomcli/core': 'file:./core.tgz' },
+      dependencies: {
+        '@loomcli/core': 'file:./core.tgz',
+        '@loomcli/plugins': 'file:./plugins.tgz',
+      },
       private: true,
       type: 'module',
     }),
@@ -73,12 +106,18 @@ try {
 
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
-    const runtime = run(runtimes.get(name), [entry, ...invocation], temporary);
-    assert.equal(runtime.status, 0, `${name} exited with ${runtime.status}: ${runtime.output}`);
-    assert.equal(runtime.stdout, expected, `${name} printed unexpected output: ${runtime.output}`);
+    for (const { argv, expected, reads } of invocations) {
+      const runtime = run(runtimes.get(name), [entry, ...argv], temporary);
+      assert.equal(runtime.status, 0, `${name} exited with ${runtime.status}: ${runtime.output}`);
+      assert.equal(
+        runtime.stdout,
+        expected,
+        `${name} printed unexpected bytes for ${reads}: ${runtime.output}`,
+      );
+    }
   }
   process.stdout.write(
-    `Packed @loomcli/core ${version}: ${selected.join(' and ')} ran the installed tarball and printed the expected line.\n`,
+    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the help page, and the version line.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

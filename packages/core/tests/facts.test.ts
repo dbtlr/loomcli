@@ -96,22 +96,61 @@ test.each(nonStrings)(
   },
 );
 
+/** The rule every declared version answers to, the same sentence `inspect()` and `run()` report. */
+const versionRule =
+  'The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".';
+
 test.each(['null', 'number', 'string-object'])(
   'a version that is the %s value is a declaration error in inspect() and in run()',
   (value) => {
-    const message = 'The Application version must be a string. Supply a string such as "1.2.0".';
     expect(withFact('version', value, 'inspect')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${message}\n`,
+      stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
     });
     expect(withFact('version', value, 'run')).toEqual({
       status: 1,
-      stderr: `Invalid declaration: ${message}\n`,
+      stderr: `Invalid declaration: ${versionRule}\n`,
       stdout: 'assembled\nresolved:1\n',
     });
   },
 );
+
+test.each(['blank', 'spaces', 'line-feed'])(
+  'a %s version is a declaration error in inspect() and in run()',
+  (value) => {
+    expect(withFact('version', value, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
+    });
+    expect(withFact('version', value, 'run')).toEqual({
+      status: 1,
+      stderr: `Invalid declaration: ${versionRule}\n`,
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);
+
+// Whitespace is Unicode White_Space, and the seven line terminators belong to it.
+// Each value here holds no character outside that class, or one of those terminators.
+test.each([
+  'tabs',
+  'carriage-return',
+  'form-feed',
+  'line-separator',
+  'next-line',
+  'next-line-inside',
+  'no-break-space',
+  'paragraph-separator',
+  'vertical-tab',
+])('a %s version is rejected with the same sentence', (value) => {
+  expect(withFact('version', value, 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
+  });
+});
 
 test.each([...subjects.map(([target]) => target), 'version'])(
   'a one-line summary on %s builds',
