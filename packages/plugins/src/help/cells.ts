@@ -2,6 +2,10 @@ import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode } from '@loomcli/core';
 
 import { helpInput } from './extension.js';
+import { terminators } from './lines.js';
+
+/** One option that takes a value, the only kind the action form and the fact list ever narrow to. */
+type StringOption = Extract<OptionNode, { type: 'string' }>;
 
 /** One row of a section: the two cells the column rule pads and joins. */
 interface Row {
@@ -58,12 +62,12 @@ function optionCell(option: OptionNode): string {
   return option.type === 'string' ? `${cell} <${placeholder(option)}>` : cell;
 }
 
-/** How the action form names one required option, with `...` for a multiple option. */
-function optionForm(option: OptionNode): string {
+/**
+ * How the action form names one required option, with `...` for a multiple option. Only an option
+ * that takes a value reaches this, because core rejects `required` on a Boolean option.
+ */
+function optionForm(option: StringOption): string {
   const spelling = longSpelling(option) ?? option.short ?? '';
-  if (option.type === 'boolean') {
-    return spelling;
-  }
   return `${spelling} <${placeholder(option)}>${option.multiple ? '...' : ''}`;
 }
 
@@ -83,7 +87,6 @@ const escapes: Readonly<Record<string, string>> = {
   '\u2028': String.raw`\u2028`,
   '\u2029': String.raw`\u2029`,
 };
-const terminators = /[\n\v\f\r\u0085\u2028\u2029]/gu;
 
 /** A line terminator inside a rendered default prints as its escape, so a row stays one line. */
 function oneLine(text: string): string {
@@ -93,6 +96,33 @@ function oneLine(text: string): string {
 /** Whether a value is a list of strings, which prints as its elements separated by a space. */
 function isStrings(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string');
+}
+
+/**
+ * Whether `String` is the rule for this value, because JSON does not represent it. `JSON.stringify`
+ * throws on a bigint, drops a symbol and a function, and renders a non-finite number as `null`, so
+ * asking it first would crash the page or print the wrong word. A finite number, a Boolean, and
+ * `null` are the scalars JSON does represent, and each of those prints as JSON renders it.
+ */
+function isText(value: unknown): boolean {
+  const kind = typeof value;
+  if (kind === 'number') {
+    return !Number.isFinite(value);
+  }
+  return kind === 'bigint' || kind === 'symbol' || kind === 'function';
+}
+
+/**
+ * How JSON renders one composite value, and how `String` renders it when JSON cannot: a member that
+ * is itself unrepresentable throws, and a value JSON drops altogether answers `undefined`.
+ */
+function jsonOrText(value: unknown): string {
+  try {
+    const json: string | undefined = JSON.stringify(value);
+    return json ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 /**
@@ -106,8 +136,7 @@ function renderDefault(value: unknown): string {
   if (isStrings(value)) {
     return oneLine(value.join(' '));
   }
-  const json: string | undefined = JSON.stringify(value);
-  return oneLine(json ?? String(value));
+  return oneLine(isText(value) ? String(value) : jsonOrText(value));
 }
 
 /**
@@ -132,7 +161,7 @@ function defaultFacts(declared: { readonly value: unknown } | undefined): string
 }
 
 /** The facts one string option row carries, in the order the right-cell rule names them. */
-function stringFacts(option: Extract<OptionNode, { type: 'string' }>): string[] {
+function stringFacts(option: StringOption): string[] {
   return [
     ...(option.required ? ['required'] : []),
     ...(option.multiple ? ['repeatable'] : []),
@@ -166,7 +195,7 @@ function column(rows: readonly Row[]): string[] {
   );
 }
 
-export type { Row };
+export type { Row, StringOption };
 export {
   argumentFacts,
   argumentForm,

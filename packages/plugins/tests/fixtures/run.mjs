@@ -4,7 +4,7 @@ import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
-import { recordLoads } from './record-loads.mjs';
+import { recordLoads } from '../../../../scripts/record-loads.mjs';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
@@ -108,6 +108,26 @@ function facts() {
         validate: z.coerce.number(),
       })
       .option('label', { default: 'a\nb', description: 'The label.', type: 'string' })
+      // A bigint has no JSON rendering, and JSON renders a non-finite number as `null`.
+      // Each of the three therefore prints as `String` renders it.
+      .option('count', {
+        default: 10n,
+        description: 'How many items.',
+        type: 'string',
+        validate: z.bigint(),
+      })
+      .option('nan', {
+        default: Number.NaN,
+        description: 'The unset ratio.',
+        type: 'string',
+        validate: z.any(),
+      })
+      .option('inf', {
+        default: Number.POSITIVE_INFINITY,
+        description: 'The upper bound.',
+        type: 'string',
+        validate: z.any(),
+      })
       // An explicit `undefined` default reads apart from no default at all and prints no fact.
       .option('note', {
         default: undefined,

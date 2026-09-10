@@ -330,7 +330,6 @@ function isSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-/** The message one rejected value reports, with the placeholder a silent schema earns. */
 /**
  * One schema message as a sentence of its own. A schema author writes the message with or without a
  * full stop, so the diagnostic supplies one only where the message carries none.
@@ -339,6 +338,7 @@ function sentence(text: string): string {
   return text.endsWith('.') ? text : `${text}.`;
 }
 
+/** The message one rejected value reports, with the placeholder a silent schema earns. */
 function issueText(issues: unknown): string {
   const first: unknown = Array.isArray(issues) ? issues[0] : undefined;
   if (first !== null && typeof first === 'object' && 'message' in first) {

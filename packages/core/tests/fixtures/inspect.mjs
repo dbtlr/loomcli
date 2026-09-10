@@ -17,8 +17,8 @@ const dispatch = ({ out }) => out.print('dispatched');
 const encode = (value) =>
   JSON.stringify(value, (_key, item) => (item === undefined ? '#undefined' : item));
 
-// The optional `version` lets a second graph key declare `0.0.0` explicitly, so a test can compare
-// It against an omitted version without duplicating the whole declaration.
+// The optional `version` lets a second graph key declare `0.0.0` explicitly.
+// A test then compares that graph against an omitted version without duplicating the declaration.
 function jsonkit(version) {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })

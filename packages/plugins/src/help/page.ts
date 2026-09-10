@@ -11,19 +11,27 @@ import {
   optionForm,
   rightCell,
 } from './cells.js';
-import type { Row } from './cells.js';
+import type { Row, StringOption } from './cells.js';
 import { helpCommand } from './extension.js';
+import { breaks } from './lines.js';
 
 /**
  * The members one page shows. A member is visible when it is not hidden, and `hidden` is not a graph
- * fact yet, so every member is visible and this is where the filter belongs once it lands.
+ * fact yet, so every member is visible and this is the one place the filter lands once it is. Every
+ * list the page prints, and every decision about whether it prints one, runs through here. A
+ * question about a node's own shape, such as whether it is a group, reads the raw list instead.
  */
 function visible<Member>(members: readonly Member[]): readonly Member[] {
   return members;
 }
 
-/** The line terminators the schema recognizes, which the page joins with LF. */
-const breaks = /\r\n|[\n\v\f\r\u0085\u2028\u2029]/u;
+/** The help facts one Command carries, which the page reads once per rendering. */
+function commandHelp(command: CommandNode) {
+  return readExtension(command, helpCommand);
+}
+
+/** One example as the graph stores it, read from the descriptor's own output type. */
+type Example = NonNullable<NonNullable<ReturnType<typeof commandHelp>>['examples']>[number];
 
 /** The routed path: the application name, then the route to the node, space-separated. */
 function pathOf(graph: CommandGraph, command: CommandNode): string {
@@ -39,22 +47,27 @@ function masthead(path: string, command: CommandNode): string[] {
 
 /** The routed node's prose, one authored line per page line, each indented two spaces. */
 function details(command: CommandNode): string[] {
-  const prose = readExtension(command, helpCommand)?.details;
+  const prose = commandHelp(command)?.details;
   return prose === undefined ? [] : prose.split(breaks).map((line) => `  ${line}`);
 }
 
 /** The visible required options the action form names: the node's own, then the globals. */
-function requiredOptions(command: CommandNode, graph: CommandGraph): OptionNode[] {
-  return [...visible(command.options), ...visible(graph.globals)].filter(
-    (option) => option.type === 'string' && option.required,
-  );
+function requiredOptions(command: CommandNode, graph: CommandGraph): StringOption[] {
+  const reachable: readonly OptionNode[] = [...visible(command.options), ...visible(graph.globals)];
+  // Core rejects `required` on a Boolean option, so every option this keeps takes a value.
+  return reachable.filter((option) => option.type === 'string').filter((option) => option.required);
 }
 
 /**
- * One line per form. A node with an action prints the action form, and a node with children prints
- * the children form after it, which is the only form a group has.
+ * One line per form. A node with an action prints the action form, and a node with a visible child
+ * prints the children form after it, which is the only form a group has.
  */
-function usage(path: string, command: CommandNode, graph: CommandGraph): string[] {
+function usage(
+  command: CommandNode,
+  graph: CommandGraph,
+  children: readonly CommandNode[],
+): string[] {
+  const path = pathOf(graph, command);
   const forms: string[] = [];
   if (command.hasAction) {
     const parts = [
@@ -65,15 +78,19 @@ function usage(path: string, command: CommandNode, graph: CommandGraph): string[
     ];
     forms.push(`${path} ${parts.join(' ')}`);
   }
-  if (!isEmpty(command.children)) {
+  if (!isEmpty(children)) {
     forms.push(`${path} <command> [options]`);
   }
   return isEmpty(forms) ? [] : ['USAGE', ...forms.map((form) => `  ${form}`)];
 }
 
-/** One child row: its name, the form it answers to, and the right cell it carries. */
+/**
+ * One child row: its name, the form it answers to, and the right cell it carries. A group is a
+ * Command with children and no action, so groupness reads the child's own children and its action,
+ * not the visible ones: a group whose every child is hidden is a group still.
+ */
 function childRow(child: CommandNode): Row {
-  const parent = !isEmpty(visible(child.children));
+  const parent = !isEmpty(child.children);
   const suffix = child.hasAction ? ' [command]' : ' <command>';
   // `deprecated` is this row's one possible fact once the graph carries it.
   return {
@@ -82,8 +99,7 @@ function childRow(child: CommandNode): Row {
   };
 }
 
-function commands(command: CommandNode): string[] {
-  const children = visible(command.children);
+function commands(children: readonly CommandNode[]): string[] {
   return isEmpty(children) ? [] : ['COMMANDS', ...column(children.map(childRow))];
 }
 
@@ -119,12 +135,6 @@ function globalOptions(graph: CommandGraph): string[] {
   return isEmpty(rows) ? [] : ['GLOBAL OPTIONS', ...column(rows)];
 }
 
-/** One example as the graph stores it: read-only, with an omitted note absent. */
-interface Example {
-  readonly command: string;
-  readonly note?: string | undefined;
-}
-
 /** One example: the invocation, then its note on the next line indented two more spaces. */
 function exampleLines(name: string, example: Example): string[] {
   const lines = [`  $ ${name} ${example.command}`];
@@ -135,16 +145,14 @@ function exampleLines(name: string, example: Example): string[] {
 }
 
 function examples(graph: CommandGraph, command: CommandNode): string[] {
-  const listed = readExtension(command, helpCommand)?.examples ?? [];
+  const listed = commandHelp(command)?.examples ?? [];
   const lines = listed.flatMap((example) => exampleLines(graph.name, example));
   return isEmpty(lines) ? [] : ['EXAMPLES', ...lines];
 }
 
 /** The closing hint, which the page prints when it printed COMMANDS. */
-function hint(path: string, command: CommandNode): string[] {
-  return isEmpty(visible(command.children))
-    ? []
-    : [`Run ${path} <command> --help for command details.`];
+function hint(path: string, children: readonly CommandNode[]): string[] {
+  return isEmpty(children) ? [] : [`Run ${path} <command> --help for command details.`];
 }
 
 /**
@@ -154,16 +162,19 @@ function hint(path: string, command: CommandNode): string[] {
  */
 function renderPage(graph: CommandGraph, command: CommandNode): string {
   const path = pathOf(graph, command);
+  // One reading of the visible children answers three questions.
+  // They are the children usage form, the COMMANDS section, and the closing hint.
+  const children = visible(command.children);
   return [
     masthead(path, command),
     details(command),
-    usage(path, command, graph),
-    commands(command),
+    usage(command, graph, children),
+    commands(children),
     args(command),
     options(command, graph),
     globalOptions(graph),
     examples(graph, command),
-    hint(path, command),
+    hint(path, children),
   ]
     .filter((block) => !isEmpty(block))
     .map((block) => block.join('\n'))

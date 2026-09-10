@@ -1,5 +1,6 @@
 - Narrow `CommandGraph.version` from `string | undefined` to `string`. An omitted Application version is `0.0.0`, which means unversioned, so the graph always carries one.
 - Reject a declared version that is blank, holds only whitespace, or holds a line terminator. Build applies the rule in `inspect()` and in `run()`.
+- Change the diagnostic for a version that is not a string to the one sentence every version fault now reports: `The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".`
 
 ### Migration
 
