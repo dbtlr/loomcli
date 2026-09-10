@@ -24,6 +24,14 @@ const rootSummary: string | undefined = root.description;
 const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;
 const optionSummary = (option: OptionNode): string | undefined => option.description;
 
+// Every Command and option node carries the two listing facts, and no argument node does.
+const rootHidden: boolean = root.hidden;
+const rootDeprecated: string | undefined = root.deprecated;
+const optionHidden = (option: OptionNode): boolean => option.hidden;
+const optionDeprecated = (option: OptionNode): string | undefined => option.deprecated;
+// @ts-expect-error TS2339: An argument carries neither listing fact.
+slots.map((slot) => slot.hidden);
+
 // The option union reads by its `type` tag, and each form publishes its own spellings.
 const spelling = (option: OptionNode) =>
   option.type === 'boolean' ? option.negative : option.default;
@@ -63,3 +71,7 @@ void summary;
 void rootSummary;
 void argumentSummary;
 void optionSummary;
+void rootHidden;
+void rootDeprecated;
+void optionHidden;
+void optionDeprecated;

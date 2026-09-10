@@ -3,7 +3,7 @@ import { DeclarationError } from './errors.js';
 import type { FailureRenderer } from './errors.js';
 import { buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
-import { checkDescription, isPlainObject } from './facts.js';
+import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
 import type { OptionValue, PluginOptionConfig } from './types.js';
@@ -198,6 +198,8 @@ function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
     );
   }
   checkDescription(sentence, config.description);
+  checkHidden(sentence, config.hidden);
+  checkDeprecated(sentence, config.deprecated);
 }
 
 /**

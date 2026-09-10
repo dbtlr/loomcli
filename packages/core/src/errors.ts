@@ -9,6 +9,14 @@ function routedSentence(command: readonly string[]): string {
 }
 
 /**
+ * The clause that offers the candidates, which is absent when there are none: every child of the
+ * Command is hidden, so the diagnostic ends after the sentence that names the fault.
+ */
+function offering(candidates: readonly string[]): string {
+  return candidates.length === 0 ? '' : ` Use one of: ${candidates.join(', ')}.`;
+}
+
+/**
  * The two short-group faults. A value option that is not last in its group names that option's
  * spelling; a group that mixes scopes names the whole group and the two letters that disagree.
  * The extra letters shape the sentence alone, so `token` and `reason` are the reported facts.
@@ -148,7 +156,7 @@ export class UnknownCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(token: string, candidates: readonly string[]) {
-    super(`Unknown command "${token}". Use one of: ${candidates.join(', ')}.`);
+    super(`Unknown command "${token}".${offering(candidates)}`);
     this.candidates = candidates;
     this.name = 'UnknownCommandError';
     this.token = token;
@@ -161,9 +169,7 @@ export class NonCallableCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(command: readonly string[], candidates: readonly string[]) {
-    super(
-      `${routedSentence(command)} requires a subcommand. Use one of: ${candidates.join(', ')}.`,
-    );
+    super(`${routedSentence(command)} requires a subcommand.${offering(candidates)}`);
     this.candidates = candidates;
     this.command = command;
     this.name = 'NonCallableCommandError';

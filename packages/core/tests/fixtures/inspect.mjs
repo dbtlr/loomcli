@@ -56,6 +56,19 @@ function described() {
     .action(dispatch);
 }
 
+// A hidden or deprecated member is a fact for the projections, so inspection reports both in place.
+// The root carries neither, so it reads the omitted values every other node reads.
+function listing() {
+  const globals = new GlobalOptions()
+    .option('file', { deprecated: 'Use --path instead.', short: 'f', type: 'string' })
+    .option('quiet', { hidden: true, type: 'boolean' });
+  const fetch = new Command('fetch', { deprecated: 'Use get instead.', globals })
+    .option('raw', { deprecated: 'Use --plain instead.', hidden: true, type: 'string' })
+    .action(dispatch);
+  const debug = new Command('debug', { globals, hidden: true }).action(dispatch);
+  return new Application('listing', { globals }).command(fetch).command(debug).action(dispatch);
+}
+
 function nested() {
   const globals = new GlobalOptions();
   const clear = new Command('clear', { globals }).action(dispatch);
@@ -177,6 +190,7 @@ const graphs = {
   invalid,
   jsonkit,
   'jsonkit-versioned': () => jsonkit('0.0.0'),
+  listing,
   nested,
   omission,
   polarity,
