@@ -13,11 +13,11 @@ The root of one command application: an unnamed root Command plus the applicatio
 _Avoid_: Program, CLI object, app root
 
 **Command**:
-A standalone typed declaration value with a canonical name, its arguments, its local options, its hidden aliases, its children, and at most one action. A Command is not defined by its place in a path; it carries everything it needs as a value.
+A standalone typed declaration value with a canonical name, its arguments, its local options, its aliases, its children, and at most one action. A Command is not defined by its place in a path; it carries everything it needs as a value.
 _Avoid_: Subcommand (in the model; operator diagnostics may still say "subcommand"), verb, handler
 
 **Root Command**:
-The unnamed Command an Application owns. It is the entry point of routing and follows every Command rule except naming and aliasing.
+The unnamed Command an Application owns. It is the entry point of routing and follows every Command rule except naming, aliasing, and the hidden and deprecated facts, which it never carries.
 _Avoid_: Main command, default command
 
 **Child** and **Parent**:
@@ -70,7 +70,7 @@ A token form the parser accepts for an option: the long form, the short form, or
 _Avoid_: Flag name, syntax, alias (for the long form)
 
 **Short alias**:
-The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from a hidden alias.
+The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from a Command's alias.
 _Avoid_: Short flag, shorthand
 
 **Short group**:
@@ -106,16 +106,24 @@ _Avoid_: Rest arguments, trailing arguments, raw args
 The one name a Command is declared with. Every routed path, diagnostic, candidate list, and inspection report uses it, whichever token the operator typed.
 _Avoid_: Primary name, display name, real name
 
-**Hidden alias**:
-Another bare token that routes to a Command and is never advertised. It changes routing alone; it is not a second name and not an option's short alias. Every canonical name and hidden alias under one parent shares one set of names that must not repeat.
-_Avoid_: Alternate command, shortcut. Unqualified "alias" is acceptable where the surrounding text already fixes the sense.
+**Alias**:
+An unadvertised synonym that routes to a Command: another bare token for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
+_Avoid_: Hidden alias, alternate command, shortcut
+
+**Hidden Command**:
+A full Command kept off every listing. It routes, runs, and has its own help page; only the listings omit it. A hidden option follows the same rule: it parses as any other option and no listing shows it.
+_Avoid_: Secret command, unlisted command, alias (for this concept)
+
+**Deprecated member**:
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every listing that includes it shows beside it; a member that is also hidden appears in none.
+_Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:
-The descent from the root through child names or hidden aliases to the selected Command, and the list of canonical names that records it. The root's path is empty.
+The descent from the root through child names or aliases to the selected Command, and the list of canonical names that records it. The root's path is empty.
 _Avoid_: Command chain, breadcrumb
 
 **Candidates**:
-The canonical child names a routing failure offers, in authoring order. A hidden alias never appears among them.
+The canonical child names a routing failure offers, in authoring order. An alias or a hidden Command never appears among them.
 _Avoid_: Suggestions, available commands
 
 ## Compilation and invocation
@@ -232,6 +240,14 @@ One entry in an input error: an omitted required input or a rejected value toget
 A public surface derived from the Command graph, such as help, a manifest, completions, or an agent tool listing. A projection reads the graph and adds nothing the graph does not hold.
 _Avoid_: View, export, output format, adapter
 
+**Help page**:
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members, and examples, as plain text.
+_Avoid_: Usage text, man page, help screen
+
+**Plugin pack**:
+The one first-party package that ships every first-party plugin as its own separately installable subpath export.
+_Avoid_: Bundle, standard library, batteries, default set
+
 **Manifest**:
 The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. It excludes authoring provenance, diagnostics, and implementation history.
 _Avoid_: Schema (for the whole document), spec, descriptor
@@ -265,7 +281,7 @@ A typed fact a plugin defines for one target, Command, option, or argument, and 
 _Avoid_: Metadata, annotation, field, decorator
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed, such as description and version.
+A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, and deprecated.
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin option**:
