@@ -119,7 +119,7 @@ The workflow depends on settings that live outside this repository's files.
 
 - Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
-- The npm trusted publisher for each library names this repository, the workflow file `release.yml`, and the `release` environment, and permits direct `npm publish`.
+- The npm trusted publisher for each library names this repository, the workflow file `release.yml`, and the `release` environment, and permits direct `npm publish`. npm attaches a trusted publisher only to a name that already exists on the registry, so a library joining the release set is first published by the maintainer as a placeholder `0.0.0`, from a directory outside this repository, and its publisher is configured on that record before the cut that carries it merges. The workflow reads only the version the manifests carry, so the placeholder never enters a plan, and the maintainer can deprecate it or unpublish it within npm's window once the first real version is on the registry.
 
 ## Accepted risks
 

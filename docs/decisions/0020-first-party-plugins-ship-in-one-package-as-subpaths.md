@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0020 - First-party plugins ship in one package as separately installable subpaths
 description: Every first-party plugin ships in @loomcli/plugins as its own subpath export with the identity <package>/<plugin>, installed one at a time through the ordinary plugins list. The package has no root export and installs nothing on import.
-status: proposed
+status: accepted
 created: 2026-09-09
 modified: 2026-09-10
 ---
@@ -29,11 +29,9 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 
 `@loomcli/plugins` needs one npm trusted publisher before the release that first carries it, and none after. The package lives at `packages/plugins`, so it joins the synchronized release set the way every library under `packages/` does. A plugin added later is a subpath and an ordinary release under ADR-0012, not a new package. Moving a plugin out of the package later is a breaking change to its import path, so a plugin enters the package only when it is meant to stay first-party.
 
-## Status
-
-Proposed. It moves to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications, and with the packed-consumer check ADR-0014 requires extended to the new package: a consumer installs the packed tarball, imports `@loomcli/plugins/help`, `@loomcli/plugins/help/extension`, and `@loomcli/plugins/version`, compiles against their emitted declarations, and runs under Node and Bun.
-
 ## Changelog
 
+- 2026-09-09: Recorded as proposed. The record was to move to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications, and with the packed-consumer check ADR-0014 requires extended to the new package: a consumer installs the packed tarball, imports `@loomcli/plugins/help`, `@loomcli/plugins/help/extension`, and `@loomcli/plugins/version`, compiles against their emitted declarations, and runs under Node and Bun.
 - 2026-09-10: The package landed at `packages/plugins` with `private: true`. The release plan discovers every non-private manifest under `packages/` and treats a library absent from the registry as a publication to make, so a public manifest would have made every push to `main` refuse publication until the next cut. The flag comes off in the release cut that first carries the package, once its npm trusted publisher exists, and that is when this record moves to accepted.
 - 2026-09-10: The flag comes off ahead of the cut, in an ordinary pull request at the current synchronized version, instead of inside the cut commit. The release guard accepts only version changes in a cut and rejects a library that joins the participating set there, while the ordinary guard admits a library that joins at the current version. From that merge until the 0.2.0 cut merges, every push to `main` refuses publication, because the plan sees the pack absent from the registry at 0.1.1 and a participating tree changed since the 0.1.1 cut; nothing publishes. The record still moves to accepted with the release that publishes the package.
+- 2026-09-10: Accepted. `@loomcli/plugins@0.2.0` published through `release.yml` from the squash merge of the release PR (commit `832c4a636c621ca4dcc7e4cc469ab4399a2fa527`) beside `@loomcli/core@0.2.0`, both as `latest` with provenance naming that commit, under the annotated tag `v0.2.0` and a GitHub Release carrying both tarballs. Both example applications install `help()` and `version()` from the pack, and the packed-consumer check runs both tarballs under Node and Bun on every pull request and in the release build. One correction to the consequences above: npm attaches a trusted publisher only to a name that already exists on the registry, so a package joining the release set is first published as a placeholder `0.0.0` by the maintainer, its publisher is configured on that record, and the release workflow then publishes the first real version. The workflow reads only the version the manifests carry, so the placeholder never enters a plan.
