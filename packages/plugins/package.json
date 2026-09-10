@@ -1,6 +1,6 @@
 {
   "name": "@loomcli/plugins",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "The Loom CLI plugin pack. Ships every first-party plugin as its own subpath export.",
   "license": "MIT",
   "repository": {
