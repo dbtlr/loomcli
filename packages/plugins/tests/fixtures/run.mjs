@@ -191,11 +191,98 @@ function prose() {
   }).action(dispatch);
 }
 
+/** A child of each listing shape: plain, deprecated, hidden, both, and an all-hidden group. */
+function children() {
+  const get = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
+  const fetch = new Command('fetch', {
+    deprecated: 'Use get instead.',
+    description: 'Read one value at a path.',
+  }).action(dispatch);
+  const debug = new Command('debug', { description: 'Dump the document.', hidden: true })
+    .option('depth', { description: 'How deep to walk.', type: 'string' })
+    .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .action(dispatch);
+  const gone = new Command('gone', {
+    deprecated: 'Use get instead.',
+    description: 'Read the old way.',
+    hidden: true,
+  }).action(dispatch);
+  const clear = new Command('clear', { description: 'Empty the cache.', hidden: true }).action(
+    dispatch,
+  );
+  const cache = new Command('cache', { description: 'Manage the cache.' }).command(clear);
+  return new Application('app', { description: 'Do the work.', plugins, version: '1.2.0' })
+    .command(get)
+    .command(fetch)
+    .command(debug)
+    .command(gone)
+    .command(cache)
+    .action(dispatch);
+}
+
+/** A root with an action whose every child is hidden, so no listing of children survives. */
+function unlisted() {
+  const debug = new Command('debug', { description: 'Dump the document.', hidden: true }).action(
+    dispatch,
+  );
+  return new Application('app', { description: 'Do the work.', plugins, version: '1.2.0' })
+    .command(debug)
+    .action(dispatch);
+}
+
+/** A hidden option and a deprecated option in each scope a page prints as its own section. */
+function scoped() {
+  const globals = new GlobalOptions()
+    .option('key', { description: 'The key to use.', required: true, type: 'string' })
+    .option('token', {
+      description: 'The token to use.',
+      hidden: true,
+      required: true,
+      type: 'string',
+    });
+  const run = new Command('run', { description: 'Run one job.', globals }).action(dispatch);
+  return new Application('app', {
+    description: 'Do the work.',
+    globals,
+    plugins,
+    version: '1.2.0',
+  })
+    .option('mode', {
+      default: 'plain',
+      deprecated: 'Use --style instead.',
+      description: 'How to print.',
+      type: 'string',
+    })
+    .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .command(run)
+    .action(dispatch);
+}
+
+/** A hidden option of each scope on a root that folds the globals into its own OPTIONS. */
+function folded() {
+  const globals = new GlobalOptions()
+    .option('key', { description: 'The key to use.', type: 'string' })
+    .option('token', { description: 'The token to use.', hidden: true, type: 'string' });
+  return new Application('app', {
+    description: 'Do the work.',
+    globals,
+    plugins,
+    version: '1.2.0',
+  })
+    .option('mode', { description: 'How to print.', type: 'string' })
+    .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .action(dispatch);
+}
+
 const scenarios = {
   cells,
+  children,
   facts,
+  folded,
   nested,
   prose,
+  scoped,
+  unlisted,
   usage,
   version: () => versioned({ version: '1.2.0' }),
   'version-omitted': () => versioned({}),

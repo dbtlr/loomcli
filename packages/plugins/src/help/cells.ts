@@ -169,14 +169,24 @@ function stringFacts(option: StringOption): string[] {
   ];
 }
 
-/** The facts one option row carries. A Boolean option's absent value is its only possible fact. */
-function optionFacts(option: OptionNode): string[] {
-  // `deprecated: <message>` joins each list below, always last, once the graph carries the fact.
-  if (option.type === 'string') {
-    return stringFacts(option);
-  }
+/** The facts one Boolean option row carries. Its absent value is its only possible one. */
+function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): string[] {
   // A negative polarity means the absent value is `true` and both spellings set it to `false`.
   return option.polarity === 'negative' ? ['default: true'] : [];
+}
+
+/**
+ * The fact a deprecated member contributes: its migration message. The right-cell rule prints it
+ * last, so a reader takes everything after `deprecated: ` as the message.
+ */
+function deprecatedFacts(member: { readonly deprecated: string | undefined }): string[] {
+  return member.deprecated === undefined ? [] : [`deprecated: ${member.deprecated}`];
+}
+
+/** The facts one option row carries, in the order the right-cell rule names them. */
+function optionFacts(option: OptionNode): string[] {
+  const declared = option.type === 'string' ? stringFacts(option) : booleanFacts(option);
+  return [...declared, ...deprecatedFacts(option)];
 }
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */
@@ -200,6 +210,7 @@ export {
   argumentFacts,
   argumentForm,
   column,
+  deprecatedFacts,
   isEmpty,
   optionCell,
   optionFacts,

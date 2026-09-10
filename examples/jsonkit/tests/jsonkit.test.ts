@@ -92,6 +92,34 @@ test('jsonkit ls lists the keys the way jsonkit keys does', () => {
   });
 });
 
+test('jsonkit fetch reads the value the way jsonkit get does', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['fetch', 'nested.deep.value', '--file', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '"found"\n',
+    });
+  });
+});
+
+test('jsonkit debug prints the whole parsed document as indented JSON', () => {
+  withDocuments({ 'doc.json': '{"name":"loom","tags":["a"]}' }, (cwd) => {
+    expect(invoke(main, ['debug', '--file', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '{\n  "name": "loom",\n  "tags": [\n    "a"\n  ]\n}\n',
+    });
+  });
+});
+
+test('jsonkit offers no candidate when every child of the routed Command is hidden', () => {
+  expect(invoke(new URL('fixtures/candidates.mjs', import.meta.url))).toEqual({
+    status: 2,
+    stderr: 'jsonkit: unknown command "nope".\n',
+    stdout: '',
+  });
+});
+
 test('jsonkit lists integer-like keys first, as JavaScript orders them', () => {
   withDocuments({ 'doc.json': '{"b": 1, "2": 2, "a": 3}' }, (cwd) => {
     expect(invoke(main, ['keys', '--file', 'doc.json'], { cwd })).toEqual({
@@ -208,7 +236,7 @@ test.each(['summary', 'gets', 'Get', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: unknown command "${name}"; try get, keys, select.\n`,
+        stderr: `jsonkit: unknown command "${name}"; try get, keys, select, fetch.\n`,
         stdout: '',
       });
     });

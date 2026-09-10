@@ -1198,7 +1198,7 @@ The right-cell rule: the description when the member has one, then, when any fac
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
-The root of jsonkit has an action and three children and declares no local option, so `jsonkit --help` prints:
+The root of jsonkit has an action and five children, of which `fetch` is deprecated and `debug` is hidden, and declares no local option, so `jsonkit --help` prints:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -1213,6 +1213,7 @@ COMMANDS
   get     Read one value at a path.
   keys    List the keys at a path.
   select  Keep the named fields of the document.
+  fetch   Read one value at a path.  (deprecated: Use get instead.)
 
 GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
@@ -1245,7 +1246,7 @@ GLOBAL OPTIONS
       --explain      Explain the selected command and exit.
 ```
 
-textstat is one root Command with a variadic argument, three local options, and no children, so its page folds the globals into OPTIONS, and `textstat --help` prints:
+textstat is one root Command with a variadic argument, five local options, of which `--minimum` is deprecated and `--timing` is hidden, and no children, so its page folds the globals into OPTIONS, and `textstat --help` prints:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -1261,6 +1262,7 @@ ARGUMENTS
 OPTIONS
   -m, --metric <metric>        What each row counts.  (default: bytes)
       --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+      --minimum <minimum>      Drop a source smaller than this many bytes.  (deprecated: Use --min-bytes instead.)
   -t, --total                  Add a total row.
   -h, --help                   Show this help.
   -V, --version                Print the version.
@@ -1271,8 +1273,8 @@ EXAMPLES
   $ textstat --metric words --total *.md
 ```
 
-A deprecated child `fetch` with the description `Read one value at a path.` and the message `Use get instead.` would add the row `fetch   Read one value at a path.  (deprecated: Use get instead.)` to a COMMANDS section, and its own page would open with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
 
 ### Example coverage
 
-The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
+The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, `jsonkit fetch --help` prints the deprecated page and `jsonkit debug --help` the hidden one, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.

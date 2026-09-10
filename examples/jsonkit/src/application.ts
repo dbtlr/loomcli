@@ -7,6 +7,8 @@ import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
 import { summarize } from './actions/summarize.js';
+import { debug } from './commands/debug.js';
+import { fetch } from './commands/fetch.js';
 import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { select } from './commands/select.js';
@@ -39,4 +41,6 @@ export const jsonkit = new Application('jsonkit', {
   .command(get)
   .command(keys)
   .command(select)
+  .command(fetch)
+  .command(debug)
   .action(summarize);

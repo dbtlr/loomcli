@@ -34,6 +34,13 @@ export const inputProblems: Renderer<InputError> = {
 };
 
 export const unknownCommand: Renderer<UnknownCommandError> = {
-  render: (failure) =>
-    `${branded(`unknown command "${failure.token}"; try ${failure.candidates.join(', ')}.`)}\n`,
+  render: (failure) => {
+    const named = `unknown command "${failure.token}"`;
+    const [first] = failure.candidates;
+    // A parent whose children are all hidden offers no candidate.
+    // The line then ends after its first clause rather than pointing at an empty list.
+    const line =
+      first === undefined ? `${named}.` : `${named}; try ${failure.candidates.join(', ')}.`;
+    return `${branded(line)}\n`;
+  },
 };
