@@ -25,6 +25,7 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
       'OPTIONS',
       '  -m, --metric <metric>        What each row counts.  (default: bytes)',
       '      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)',
+      '      --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)',
       '  -t, --total                  Add a total row.',
       '  -h, --help                   Show this help.',
       '  -V, --version                Print the version.',

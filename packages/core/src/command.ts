@@ -8,7 +8,13 @@ import {
 } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry, ExtensionRecords, ExtensionValue } from './extension.js';
-import { checkDescription, isPlainObject } from './facts.js';
+import {
+  checkDeprecated,
+  checkDescription,
+  checkHidden,
+  checkNoListingFacts,
+  isPlainObject,
+} from './facts.js';
 import type { BuiltGlobals, GlobalOptions, OptionOwner } from './globals.js';
 import {
   bindGlobals,
@@ -61,7 +67,7 @@ export interface DispatchInput {
 }
 
 /**
- * One child a bare token reaches, under its canonical name or one of its hidden aliases.
+ * One child a bare token reaches, under its canonical name or one of its aliases.
  * `name` repeats the key `children` holds, because `BuiltCommand.name` is `string | null` for the
  * root and the routed path a child extends holds strings alone.
  */
@@ -73,15 +79,17 @@ export interface RoutedChild {
 /**
  * A group registers no action, so its `dispatch` is `undefined` and selection rejects it.
  * `children` is keyed by canonical name, so every candidate list and every walk of the graph reads
- * it, and `routes` adds the hidden aliases, so routing alone resolves them.
+ * it, and `routes` adds the aliases, so routing alone resolves them.
  */
 export interface BuiltCommand {
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
+  deprecated: string | undefined;
   description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
   extensions: Readonly<Record<string, unknown>>;
+  hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
@@ -206,11 +214,16 @@ export interface CommandState<Args, Options, Globals> {
   aliases: readonly AliasDeclaration[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
+  // The migration message the constructor read out of the options slot, unexamined until build.
+  deprecated: unknown;
   // The description the constructor read out of the options slot, unexamined until build.
   // The Application checks its own slot, so the root carries none here.
   description: unknown;
   // The extension values the same slot carried, read at build against the `command` target.
   extensions: unknown;
+  // Whether every listing omits this Command, read at build like the other core facts.
+  // The Application checks its own slot, so the root carries none here either.
+  hidden: unknown;
   globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
@@ -226,9 +239,11 @@ export interface CommandState<Args, Options, Globals> {
  * passed changes nothing the declaration holds.
  */
 export function freshState<Globals>(declaration: {
+  deprecated: unknown;
   description: unknown;
   extensions: unknown;
   globals: GlobalOptions<Globals> | undefined;
+  hidden: unknown;
   name: string | null;
   options: unknown;
 }): CommandState<{}, {}, Globals> {
@@ -237,9 +252,11 @@ export function freshState<Globals>(declaration: {
     aliases: [],
     bind: () => ({ args: {}, options: {} }),
     children: [],
+    deprecated: declaration.deprecated,
     description: declaration.description,
     extensions: declaration.extensions,
     globals: declaration.globals,
+    hidden: declaration.hidden,
     inputs: [],
     late: [],
     name: declaration.name,
@@ -582,6 +599,8 @@ export function buildCommand<Args, Options, Globals>(
   const subject = commandSubject(name);
   checkCommandOptions(name, state.options);
   const description = checkDescription(commandSentence(name), state.description);
+  const hidden = checkHidden(commandSentence(name), state.hidden);
+  const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
   const extensions = buildExtensions({
     declared: state.extensions,
     descriptors: context.descriptors,
@@ -592,6 +611,12 @@ export function buildCommand<Args, Options, Globals>(
   for (const input of state.inputs) {
     const sentence = `${commandSentence(name)} ${input.kind} "${input.name}"`;
     checkDescription(sentence, input.config.description);
+    if (input.kind === 'argument') {
+      checkNoListingFacts(sentence, input.config);
+    } else {
+      checkHidden(sentence, input.config.hidden);
+      checkDeprecated(sentence, input.config.deprecated);
+    }
     context.extensions.set(
       input,
       buildExtensions({
@@ -645,9 +670,11 @@ export function buildCommand<Args, Options, Globals>(
     aliases,
     arguments: slots,
     children,
+    deprecated,
     description,
     dispatch: action ? bindDispatch(state, action) : undefined,
     extensions,
+    hidden,
     inputs: state.inputs,
     name,
     options,
@@ -728,8 +755,8 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
   }
 
   /**
-   * Hidden aliases are other bare tokens that route to this Command. They invalidate no call, and
-   * the tuple rest parameter rejects a call that names none.
+   * Aliases are other bare tokens that route to this Command. They invalidate no call, and the
+   * tuple rest parameter rejects a call that names none.
    */
   alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State> {
     return new CommandBuilder(declareAlias(this.#state, names));
@@ -776,6 +803,8 @@ export type Command<
 export interface CommandOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   description?: string;
+  hidden?: boolean;
+  deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
 }
 
@@ -795,12 +824,14 @@ interface CommandConstructor {
 class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
   constructor(name: string, options?: CommandOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals`, `description`, and `extensions` of some kind, and `buildCommand` reports it.
+    // `globals`, the core facts, and `extensions` of some kind, and `buildCommand` reports it.
     super(
       freshState({
+        deprecated: options?.deprecated,
         description: options?.description,
         extensions: options?.extensions,
         globals: options?.globals,
+        hidden: options?.hidden,
         name,
         options,
       }),
@@ -819,6 +850,15 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
   ];
 }
 
+/**
+ * The names a routing failure offers: the canonical names of the visible children, in authoring
+ * order. A candidate list is a listing, so a hidden child is absent from it, and a parent whose
+ * children are all hidden offers none.
+ */
+function candidatesOf(command: BuiltCommand): string[] {
+  return [...command.children].filter(([, child]) => !child.hidden).map(([name]) => name);
+}
+
 /** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
@@ -831,7 +871,7 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
     }
     const child = command.routes.get(token);
     if (!child) {
-      throw new UnknownCommandError(token, [...command.children.keys()]);
+      throw new UnknownCommandError(token, candidatesOf(command));
     }
     // An alias routes like the canonical name, and the path it walks reports that name alone.
     command = child.command;
@@ -909,7 +949,7 @@ export async function prepareDispatch(
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
   if (!dispatch) {
-    throw new NonCallableCommandError(path, [...command.children.keys()]);
+    throw new NonCallableCommandError(path, candidatesOf(command));
   }
   const parsed = parseInputs(command.options, routed.tokens);
   const args = bindArguments(command, path, parsed.positionals);

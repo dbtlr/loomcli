@@ -48,6 +48,30 @@ new Command('summarized', { description: 'Reads one value.', globals })
   .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
   .action(() => {});
 new Command('standalone', { description: 'Answers alone.' }).action(() => {});
+
+// The two listing facts belong to a named Command and to an option, in every scope that declares one.
+new Command('fetch', { deprecated: 'Use get instead.', description: 'Reads one value.', globals })
+  .option('raw', { deprecated: 'Use --plain instead.', hidden: true, type: 'string' })
+  .option('plain', { hidden: true, type: 'boolean' })
+  .action(() => {});
+new Command('debug', { globals, hidden: true }).action(() => {});
+new GlobalOptions().option('legacy', {
+  deprecated: 'Use --file instead.',
+  hidden: true,
+  type: 'string',
+});
+
+// Neither fact belongs to the root, which is every page's entry point.
+// @ts-expect-error TS2353: The Application options carry no hidden.
+new Application('hidden-root', { hidden: true });
+// @ts-expect-error TS2353: The Application options carry no deprecated message.
+new Application('deprecated-root', { deprecated: 'Use the other application.' });
+
+// Neither fact belongs to an argument, which cannot leave the grammar it sits in.
+// @ts-expect-error TS2353: An argument config carries no hidden.
+new Command('argument-hidden').argument('path', { hidden: true });
+// @ts-expect-error TS2353: An argument config carries no deprecated message.
+new Command('argument-deprecated').argument('path', { deprecated: 'Use --file instead.' });
 new Application('facts', {
   description: 'Reads a JSON document.',
   globals: new GlobalOptions().option('file', {

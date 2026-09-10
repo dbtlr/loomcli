@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
-import type { ActionHandler, Host } from '@loomcli/core';
+import type { ActionHandler, ActionOptions, Host, Out } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
@@ -37,25 +37,61 @@ function sources(files: readonly string[], host: Host): Source[] {
   }));
 }
 
+/** An omitted deprecated threshold drops nothing, so it never raises the effective minimum. */
+const NO_MINIMUM = 0;
+
 /**
- * Rows are collected while the sources are counted and rendered once at the end, so a read failure
+ * The byte threshold one invocation applies. Two spellings name it while the deprecated one lives,
+ * so the larger of the two rules and neither spelling loosens the other.
+ */
+function threshold(options: ActionOptions<typeof textstat>): number {
+  return Math.max(options['min-bytes'], options.minimum ?? NO_MINIMUM);
+}
+
+/** What one pass over the sources produced: the rows it kept and the total of their counts. */
+interface Counted {
+  rows: Row[];
+  total: number;
+}
+
+/**
+ * Rows are collected while the sources are counted and returned once at the end, so a read failure
  * on any source ends the invocation before a partial table reaches stdout.
  */
-export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
+async function countAll(
+  options: ActionOptions<typeof textstat>,
+  selected: readonly Source[],
+  out: Out,
+): Promise<Counted> {
   const rows: Row[] = [];
+  const minimum = threshold(options);
   let total = 0;
-  for (const source of sources(args.files, host)) {
+  for (const source of selected) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : 'The source could not be read.';
       return out.fatal(`Cannot read ${source.failure}: ${reason}`);
     });
-    if (counts.bytes >= options['min-bytes']) {
+    if (counts.bytes >= minimum) {
       total += counts.counted;
       rows.push({ count: counts.counted, source: source.name });
     }
   }
+  return { rows, total };
+}
+
+/** The whole table is rendered at once, and the hidden timing line follows it on stderr. */
+export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
+  const started = performance.now();
+  const counted = await countAll(options, sources(args.files, host), out);
   await out.render(
-    { metric: options.metric, rows, total: options.total ? total : undefined },
+    {
+      metric: options.metric,
+      rows: counted.rows,
+      total: options.total ? counted.total : undefined,
+    },
     tableRenderer,
   );
+  if (options.timing) {
+    await out.info(`elapsed: ${Math.round(performance.now() - started)}ms`);
+  }
 };

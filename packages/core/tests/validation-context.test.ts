@@ -115,7 +115,7 @@ test('a nested Command reports its whole route and its own supplied inputs', () 
   });
 });
 
-test('a route walked through hidden aliases reports the canonical names', () => {
+test('a route walked through aliases reports the canonical names', () => {
   const argv = ['c', 'cl', '--force', 'yes', '--mode', 'fast'];
   const shared = {
     command: ['cache', 'clear'],

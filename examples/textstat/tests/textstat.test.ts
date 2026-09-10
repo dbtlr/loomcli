@@ -257,6 +257,66 @@ test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
   },
 );
 
+test.each(['-1', '1.5', '10KB'])(
+  'textstat rejects %j on the deprecated spelling by the shared rule',
+  (minimum) => {
+    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
+      `--minimum=${minimum}`,
+      'missing-fixture.txt',
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Option "--minimum":');
+    expect(result.stderr).not.toContain('Cannot read file');
+  },
+);
+
+test.each([
+  [['--minimum', '3'], 'BYTES  SOURCE\n    5  large.txt\n'],
+  [['--min-bytes', '3', '--minimum', '1'], 'BYTES  SOURCE\n    5  large.txt\n'],
+  [['--min-bytes', '1', '--minimum', '6'], 'BYTES  SOURCE\n'],
+] satisfies [string[], string][])(
+  'textstat drops a source below the larger of the two thresholds for %j',
+  (options, stdout) => {
+    const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-minimum-'));
+    try {
+      writeFileSync(join(directory, 'small.txt'), 'é');
+      writeFileSync(join(directory, 'large.txt'), 'hello');
+      expect(
+        invoke(
+          new URL('../dist/src/main.js', import.meta.url),
+          ['small.txt', 'large.txt', ...options],
+          {
+            cwd: directory,
+          },
+        ),
+      ).toEqual({ status: 0, stderr: '', stdout });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  },
+);
+
+test('textstat --timing reports the elapsed time on stderr after the rows', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-timing-'));
+  try {
+    writeFileSync(join(directory, 'one.txt'), 'hello\n');
+    const result = invoke(
+      new URL('../dist/src/main.js', import.meta.url),
+      ['one.txt', '--timing'],
+      {
+        cwd: directory,
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('BYTES  SOURCE\n    6  one.txt\n');
+    // The number is a measurement, so the line shape is the whole assertion.
+    expect(result.stderr).toMatch(/^elapsed: \d+ms\n$/u);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test.each([
   [['--metric', 'words'], 'hello brave world\n', 'WORDS  SOURCE\n    3  stdin\n'],
   [

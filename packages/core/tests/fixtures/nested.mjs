@@ -11,7 +11,7 @@ const clear = new Command('clear', { globals })
   .option('force', { short: 'F', type: 'boolean' })
   .action(report('clear'));
 
-// Hidden aliases route like the canonical name, and a group carries them like any other Command.
+// Aliases route like the canonical name, and a group carries them like any other Command.
 const list = new Command('list', { globals }).alias('ls', 'l').action(report('list'));
 
 // A Command with children and no action is a group; routing requires one of its children.

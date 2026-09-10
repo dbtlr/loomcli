@@ -10,6 +10,16 @@ import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
 import { filesOrStdin } from './files-or-stdin.js';
 
+/**
+ * The byte threshold rule, declared once because two option spellings carry it while the
+ * deprecated one lives. It accepts decimal digits and hands the action a safe integer.
+ */
+const byteThreshold = z
+  .string()
+  .regex(/^[0-9]+$/, 'Use non-negative decimal digits.')
+  .transform(Number)
+  .refine(Number.isSafeInteger, 'Use a number within the safe integer range.');
+
 export const textstat = new Application('textstat', {
   description: 'Count bytes, words, or lines across text sources.',
   extensions: [
@@ -41,11 +51,18 @@ export const textstat = new Application('textstat', {
     default: '0',
     description: 'Drop a source smaller than this many bytes.',
     type: 'string',
-    validate: z
-      .string()
-      .regex(/^[0-9]+$/, 'Use non-negative decimal digits.')
-      .transform(Number)
-      .refine(Number.isSafeInteger, 'Use a number within the safe integer range.'),
+    validate: byteThreshold,
+  })
+  .option('minimum', {
+    deprecated: 'Use --min-bytes instead.',
+    description: 'Drop a source smaller than this many bytes. The larger threshold wins.',
+    type: 'string',
+    validate: byteThreshold,
   })
   .option('total', { description: 'Add a total row.', short: 't', type: 'boolean' })
+  .option('timing', {
+    description: 'Report the elapsed time on stderr.',
+    hidden: true,
+    type: 'boolean',
+  })
   .action(countFiles);

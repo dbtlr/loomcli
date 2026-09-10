@@ -1,14 +1,14 @@
 import { DeclarationError } from './errors.js';
 
 /**
- * One character outside Unicode `White_Space`, so a description holds prose and not only spacing.
+ * One character outside Unicode `White_Space`, so a fact holds prose and not only spacing.
  * The class covers the tab, the space, the line terminators, the no-break space, and every other
  * space separator. A format character such as the zero-width space is outside it, so it is prose.
  */
 const prose = /\P{White_Space}/u;
 
 /**
- * Every character that ends a line, so a description a projection prints on one line holds none.
+ * Every character that ends a line, so a fact a projection prints on one line holds none.
  * The seven are LF, VT, FF, CR, NEL, LS, and PS, each of them `White_Space` too.
  */
 const lineTerminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
@@ -28,6 +28,57 @@ export function checkDescription(subject: string, value: unknown): string | unde
     );
   }
   return value;
+}
+
+/**
+ * The `hidden` core fact: whether a listing omits this member. It is a Boolean, because a listing
+ * asks one question of it, and an omitted declaration reads `false`. Routing selects and parsing
+ * binds without reading it, so a hidden member behaves as any other.
+ */
+export function checkHidden(subject: string, value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  if (typeof value !== 'boolean') {
+    throw new DeclarationError(
+      `${subject} hidden must be a Boolean. Supply true or false, or omit it.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * The `deprecated` core fact: the one-line migration message a listing shows beside the member.
+ * It answers the rule a description answers, because both are one line of prose a projection
+ * prints. A bare `true` is rejected with every other value that is not prose: a deprecation with
+ * no migration path leaves an operator or an agent with nothing to do.
+ */
+export function checkDeprecated(subject: string, value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
+    throw new DeclarationError(
+      `${subject} deprecated message must hold a character other than whitespace and no line terminator. Supply a one-line migration path, such as "Use get instead.".`,
+    );
+  }
+  return value;
+}
+
+/**
+ * The declarations that carry neither listing fact: an argument, which cannot leave the grammar it
+ * sits in, and the root, which is every page's entry point. The types remove both keys there, and
+ * a JavaScript author, or a TypeScript author whose argument config is inferred from a value,
+ * reaches this rule instead.
+ */
+export function checkNoListingFacts(subject: string, declared: object): void {
+  for (const fact of ['hidden', 'deprecated'] as const) {
+    if (fact in declared) {
+      throw new DeclarationError(
+        `${subject} declares ${fact}, which applies to named Commands and options alone. Remove it.`,
+      );
+    }
+  }
 }
 
 /**

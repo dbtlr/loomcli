@@ -24,12 +24,17 @@ interface ArgumentNode {
 /**
  * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms, and
  * `scope` tells an application's own option from a plugin option, which reaches no action.
+ * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
+ * migration message or `undefined`. A listing projection omits a hidden node and marks a
+ * deprecated one; parsing binds without reading either.
  */
 type OptionNode =
   | {
       readonly type: 'string';
       readonly name: string;
       readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
       readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
@@ -44,6 +49,8 @@ type OptionNode =
       readonly type: 'boolean';
       readonly name: string;
       readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
       readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
@@ -54,15 +61,18 @@ type OptionNode =
 
 /**
  * One Command in the graph. `name` is `null` for the root, and `path` is its route from it.
- * `aliases` holds the hidden aliases in declaration order, so a Command appears once, under its
- * canonical name, and `path` never holds an alias. The root reports the Application's description,
- * so a projection that walks nodes never special-cases it.
+ * `aliases` holds the aliases in declaration order, so a Command appears once, under its canonical
+ * name, and `path` never holds an alias. The root reports the Application's description, so a
+ * projection that walks nodes never special-cases it, and it reads `hidden: false` and
+ * `deprecated: undefined`, the two core facts a listing reads on every other node.
  */
 interface CommandNode {
   readonly name: string | null;
   readonly aliases: readonly string[];
   readonly path: readonly string[];
   readonly description: string | undefined;
+  readonly hidden: boolean;
+  readonly deprecated: string | undefined;
   readonly hasAction: boolean;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
@@ -147,8 +157,10 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
   const node: OptionNode =
     config.type === 'boolean'
       ? {
+          deprecated: config.deprecated,
           description: config.description,
           extensions,
+          hidden: config.hidden === true,
           long,
           name,
           negative,
@@ -159,8 +171,10 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
         }
       : {
           default: declaredDefault(config),
+          deprecated: config.deprecated,
           description: config.description,
           extensions,
+          hidden: config.hidden === true,
           long,
           // The parser reads the same test, so a collection reports as one here and there.
           multiple: config.multiple === true,
@@ -212,9 +226,11 @@ function commandNode(
         commandNode(child, { path: Object.freeze([...path, name]), records }),
       ),
     ),
+    deprecated: command.deprecated,
     description: 'description' in place ? place.description : command.description,
     extensions: command.extensions,
     hasAction: command.dispatch !== undefined,
+    hidden: command.hidden,
     name: command.name,
     options: Object.freeze(
       optionNodes(command.inputs, { records, scope: 'application', table: command.options }),

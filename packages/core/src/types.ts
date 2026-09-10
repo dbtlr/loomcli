@@ -52,6 +52,16 @@ type Omission = { validateOmitted: true } | { validateOmitted?: false };
 interface Described {
   description?: string;
 }
+/**
+ * The two core facts a listing reads on a named Command and on an option.
+ * `hidden` keeps the member off every listing, and an omitted one reads `false`.
+ * `deprecated` is the one-line migration message a listing shows beside the member.
+ * Neither belongs to an argument, which cannot leave the grammar it sits in, or to the root.
+ */
+interface Listed {
+  hidden?: boolean;
+  deprecated?: string;
+}
 /** The extension values one option declaration carries, whatever scope declares the option. */
 interface OptionExtensions {
   extensions?: readonly ExtensionValue<'option'>[];
@@ -178,6 +188,7 @@ export type StringOption = OptionSpelling &
   Multiplicity &
   Omission &
   Described &
+  Listed &
   OptionExtensions & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence &
@@ -243,6 +254,7 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
 export type BooleanOption =
   | (OptionSpelling &
       Described &
+      Listed &
       OptionExtensions & {
         type: 'boolean';
         validate?: never;
@@ -253,6 +265,7 @@ export type BooleanOption =
         polarity?: 'positive' | 'negative';
       })
   | (Described &
+      Listed &
       OptionExtensions & {
         type: 'boolean';
         validate?: never;
@@ -274,6 +287,7 @@ export type OptionConfig = StringOption | BooleanOption;
 export type PluginStringOption = OptionSpelling &
   Multiplicity &
   Described &
+  Listed &
   OptionExtensions & {
     type: 'string';
     default?: string | string[];

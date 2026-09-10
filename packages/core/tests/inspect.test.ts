@@ -9,7 +9,7 @@ const none = '#undefined';
 const bare = { extensions: {} };
 
 /** An option the application declared, global or local, reports the application scope. */
-const owned = { extensions: {}, scope: 'application' };
+const owned = { deprecated: none, extensions: {}, hidden: false, scope: 'application' };
 
 function invokeInspect(graph: string, mode = 'json') {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, mode]);
@@ -22,9 +22,11 @@ const leaf = {
   aliases: [],
   arguments: [],
   children: [],
+  deprecated: none,
   description: none,
   extensions: {},
   hasAction: true,
+  hidden: false,
   options: [],
 };
 
@@ -116,9 +118,11 @@ test('inspects a graph of globals, a root action, and three children', () => {
           path: ['select'],
         },
       ],
+      deprecated: none,
       description: none,
       extensions: {},
       hasAction: true,
+      hidden: false,
       name: null,
       options: [],
       path: [],
@@ -169,9 +173,11 @@ test('reports the version and every declared description, and the root reports t
             },
           ],
           children: [],
+          deprecated: none,
           description: 'Reads one value.',
           extensions: {},
           hasAction: true,
+          hidden: false,
           name: 'get',
           options: [
             {
@@ -188,14 +194,89 @@ test('reports the version and every declared description, and the root reports t
           path: ['get'],
         },
       ],
+      deprecated: none,
       description: 'Reads a JSON document.',
       extensions: {},
       hasAction: true,
+      hidden: false,
       name: null,
       options: [],
       path: [],
     },
     version: '1.2.0',
+  });
+});
+
+test('reports hidden and deprecated on every Command and option, and neither on the root', () => {
+  expect(invokeInspect('listing')).toEqual({
+    description: none,
+    globals: [
+      {
+        ...owned,
+        default: none,
+        deprecated: 'Use --path instead.',
+        description: none,
+        long: '--file',
+        multiple: false,
+        name: 'file',
+        required: false,
+        short: '-f',
+        type: 'string',
+        validateOmitted: false,
+        validated: false,
+      },
+      {
+        ...owned,
+        description: none,
+        hidden: true,
+        long: '--quiet',
+        name: 'quiet',
+        negative: null,
+        polarity: 'positive',
+        short: null,
+        type: 'boolean',
+      },
+    ],
+    name: 'listing',
+    root: {
+      aliases: [],
+      arguments: [],
+      children: [
+        {
+          ...leaf,
+          deprecated: 'Use get instead.',
+          name: 'fetch',
+          options: [
+            {
+              ...owned,
+              default: none,
+              deprecated: 'Use --plain instead.',
+              description: none,
+              hidden: true,
+              long: '--raw',
+              multiple: false,
+              name: 'raw',
+              required: false,
+              short: null,
+              type: 'string',
+              validateOmitted: false,
+              validated: false,
+            },
+          ],
+          path: ['fetch'],
+        },
+        { ...leaf, hidden: true, name: 'debug', path: ['debug'] },
+      ],
+      deprecated: none,
+      description: none,
+      extensions: {},
+      hasAction: true,
+      hidden: false,
+      name: null,
+      options: [],
+      path: [],
+    },
+    version: '0.0.0',
   });
 });
 
@@ -215,17 +296,21 @@ test('inspects a group at two named levels below the root', () => {
             { ...leaf, name: 'clear', path: ['cache', 'clear'] },
             { ...leaf, aliases: ['ls', 'l'], name: 'list', path: ['cache', 'list'] },
           ],
+          deprecated: none,
           description: none,
           extensions: {},
           hasAction: false,
+          hidden: false,
           name: 'cache',
           options: [],
           path: ['cache'],
         },
       ],
+      deprecated: none,
       description: none,
       extensions: {},
       hasAction: true,
+      hidden: false,
       name: null,
       options: [],
       path: [],

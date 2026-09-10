@@ -1,6 +1,6 @@
 import { DeclarationError } from './errors.js';
 import { buildExtensions } from './extension.js';
-import { checkDescription } from './facts.js';
+import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
 import { compileOptions } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
 import type {
@@ -117,10 +117,13 @@ interface BuiltGlobals {
   source: unknown;
 }
 
-/** The declarations behind one GlobalOptions value. Only this package reaches them. */
+/**
+ * The declarations behind one GlobalOptions value. Only this package reaches them.
+ * `option()` is the whole authoring surface, so every declaration here is an option.
+ */
 interface GlobalsNode {
   bind: (values: ValidatedInputs) => unknown;
-  inputs: readonly InputDeclaration[];
+  inputs: readonly OptionInput[];
   source: unknown;
 }
 
@@ -130,9 +133,9 @@ const nodes = new WeakMap<object, GlobalsNode>();
 class GlobalOptionsBuilder<Options> {
   declare readonly [declaredTypes]: Options;
   readonly #bind: (values: ValidatedInputs) => Options;
-  readonly #inputs: readonly InputDeclaration[];
+  readonly #inputs: readonly OptionInput[];
 
-  constructor(inputs: readonly InputDeclaration[], bind: (values: ValidatedInputs) => Options) {
+  constructor(inputs: readonly OptionInput[], bind: (values: ValidatedInputs) => Options) {
     this.#bind = bind;
     this.#inputs = inputs;
     nodes.set(this, { bind, inputs, source: this });
@@ -205,6 +208,8 @@ function compileTable(
   for (const input of node.inputs) {
     const sentence = `Global option "${input.name}"`;
     checkDescription(sentence, input.config.description);
+    checkHidden(sentence, input.config.hidden);
+    checkDeprecated(sentence, input.config.deprecated);
     build.extensions.set(
       input,
       buildExtensions({
@@ -216,10 +221,7 @@ function compileTable(
     );
     names.set(input.name, application);
   }
-  const options = compileOptions(
-    node.inputs.filter((input) => input.kind === 'option'),
-    globalSubject,
-  );
+  const options = compileOptions(node.inputs, globalSubject);
   plugins.forEach((installed, order) => {
     join({ identity: installed.identity, kind: 'plugin', order }, installed.inputs, {
       names,

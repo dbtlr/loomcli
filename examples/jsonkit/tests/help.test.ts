@@ -50,6 +50,7 @@ const root = page(
   '  get     Read one value at a path.',
   '  keys    List the keys at a path.',
   '  select  Keep the named fields of the document.',
+  '  fetch   Read one value at a path.  (deprecated: Use get instead.)',
   '',
   'GLOBAL OPTIONS',
   '  -f, --file <path>  The document to read. Omit it to read piped text.',
@@ -127,6 +128,44 @@ test('jsonkit get --help renders while the required path is missing', () => {
 
 test('jsonkit select --bogus --help renders too, because local tokens are never parsed', () => {
   expect(invoke(main, ['select', '--bogus', '--help'])).toEqual(select);
+});
+
+test('jsonkit fetch --help opens with the deprecation message under the masthead', () => {
+  expect(invoke(main, ['fetch', '--help'])).toEqual(
+    page(
+      'jsonkit fetch · Read one value at a path.',
+      '  Deprecated: Use get instead.',
+      '',
+      'USAGE',
+      '  jsonkit fetch <path> [options]',
+      '',
+      'ARGUMENTS',
+      '  path  Dot path to read.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
+      '      --explain      Explain the selected command and exit.',
+    ),
+  );
+});
+
+test('jsonkit debug --help prints the page of a Command no listing shows', () => {
+  expect(invoke(main, ['debug', '--help'])).toEqual(
+    page(
+      'jsonkit debug · Dump the parsed document.',
+      '',
+      'USAGE',
+      '  jsonkit debug [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
+      '      --explain      Explain the selected command and exit.',
+    ),
+  );
 });
 
 test('jsonkit --version prints the name and the declared version', () => {

@@ -51,7 +51,7 @@ test.each([
   [['c', 'ls'], 'list', {}],
   [['c', 'clear', '--force'], 'clear', { force: true }],
 ] satisfies [string[], string, Record<string, unknown>][])(
-  'routes %j through a hidden alias to the Command its canonical name selects',
+  'routes %j through an alias to the Command its canonical name selects',
   (argv, command, options) => {
     expect(report(['--file', 'data.json', ...argv])).toEqual({
       args: {},

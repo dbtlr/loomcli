@@ -5,6 +5,7 @@ import {
   argumentFacts,
   argumentForm,
   column,
+  deprecatedFacts,
   isEmpty,
   optionCell,
   optionFacts,
@@ -16,13 +17,16 @@ import { helpCommand } from './extension.js';
 import { breaks } from './lines.js';
 
 /**
- * The members one page shows. A member is visible when it is not hidden, and `hidden` is not a graph
- * fact yet, so every member is visible and this is the one place the filter lands once it is. Every
- * list the page prints, and every decision about whether it prints one, runs through here. A
- * question about a node's own shape, such as whether it is a group, reads the raw list instead.
+ * The members one page shows. A member is visible when it is not hidden, and this is the one place
+ * that filter lands. Every list the page prints, and every decision about whether it prints one,
+ * runs through here. A question about a node's own shape, such as whether it is a group, reads the
+ * raw list instead. `foldsGlobals` below reads the raw `graph.root.children` for that reason, so an
+ * Application whose only children are hidden still prints GLOBAL OPTIONS as its own section.
  */
-function visible<Member>(members: readonly Member[]): readonly Member[] {
-  return members;
+function visible<Member extends { readonly hidden: boolean }>(
+  members: readonly Member[],
+): readonly Member[] {
+  return members.filter((member) => !member.hidden);
 }
 
 /** The help facts one Command carries, which the page reads once per rendering. */
@@ -38,11 +42,14 @@ function pathOf(graph: CommandGraph, command: CommandNode): string {
   return [graph.name, ...command.path].join(' ');
 }
 
-/** `<path> · <description>`, or `<path>` alone when the node has no description. */
+/**
+ * `<path> · <description>`, or `<path>` alone when the node has no description. A deprecated
+ * Command follows it with its migration message on a second line of the same block.
+ */
 function masthead(path: string, command: CommandNode): string[] {
-  // A `  Deprecated: <message>` line joins this block once the graph carries the fact.
-  const { description } = command;
-  return [description === undefined ? path : `${path} · ${description}`];
+  const { deprecated, description } = command;
+  const opening = description === undefined ? path : `${path} · ${description}`;
+  return deprecated === undefined ? [opening] : [opening, `  Deprecated: ${deprecated}`];
 }
 
 /** The routed node's prose, one authored line per page line, each indented two spaces. */
@@ -60,7 +67,8 @@ function requiredOptions(command: CommandNode, graph: CommandGraph): StringOptio
 
 /**
  * One line per form. A node with an action prints the action form, and a node with a visible child
- * prints the children form after it, which is the only form a group has.
+ * prints the children form after it, which is the only form a group has. Groupness reads the raw
+ * list, so a group whose children are all hidden prints the children form still: it has no other.
  */
 function usage(
   command: CommandNode,
@@ -78,7 +86,8 @@ function usage(
     ];
     forms.push(`${path} ${parts.join(' ')}`);
   }
-  if (!isEmpty(children)) {
+  const group = !command.hasAction && !isEmpty(command.children);
+  if (!isEmpty(children) || group) {
     forms.push(`${path} <command> [options]`);
   }
   return isEmpty(forms) ? [] : ['USAGE', ...forms.map((form) => `  ${form}`)];
@@ -92,10 +101,10 @@ function usage(
 function childRow(child: CommandNode): Row {
   const parent = !isEmpty(child.children);
   const suffix = child.hasAction ? ' [command]' : ' <command>';
-  // `deprecated` is this row's one possible fact once the graph carries it.
+  // `deprecated` is this row's one possible fact.
   return {
     left: `${child.name ?? ''}${parent ? suffix : ''}`,
-    right: rightCell(child.description, []),
+    right: rightCell(child.description, deprecatedFacts(child)),
   };
 }
 

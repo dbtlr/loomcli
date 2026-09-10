@@ -105,26 +105,28 @@ test('a right cell carries the description, then the facts that apply, in one pa
       'app · Show one right cell for each fact.',
       '',
       'USAGE',
-      '  app <path> [depth] --field <field>... --source <source> [options]',
+      '  app <path> [depth] --field <field>... --legacy-field <legacy-field>... --source <source> [options]',
       '',
       'ARGUMENTS',
       '  path   Dot path to read.',
       '  depth  How deep to walk.  (default: 1)',
       '',
       'OPTIONS',
-      '  -F, --field <field>    A field to keep.  (required, repeatable)',
-      '      --mode <mode>      How to print.  (default: plain)',
-      '      --tags <tags>      The tags to keep.  (repeatable, default: one two)',
-      '      --limit <limit>    How many rows.  (default: 3)',
-      String.raw`      --label <label>    The label.  (default: a\nb)`,
-      '      --count <count>    How many items.  (default: 10)',
-      '      --nan <nan>        The unset ratio.  (default: NaN)',
-      '      --inf <inf>        The upper bound.  (default: Infinity)',
-      '      --note <note>      A note.',
-      '      --source <source>  (required)',
+      '  -F, --field <field>                A field to keep.  (required, repeatable)',
+      '      --legacy-field <legacy-field>  A field to keep, the old way.  (required, repeatable, deprecated: Use --field instead.)',
+      '      --mode <mode>                  How to print.  (default: plain)',
+      '      --tags <tags>                  The tags to keep.  (repeatable, default: one two)',
+      '      --limit <limit>                How many rows.  (default: 3)',
+      String.raw`      --label <label>                The label.  (default: a\nb)`,
+      '      --count <count>                How many items.  (default: 10)',
+      '      --nan <nan>                    The unset ratio.  (default: NaN)',
+      '      --inf <inf>                    The upper bound.  (default: Infinity)',
+      '      --note <note>                  A note.',
+      '      --source <source>              (required)',
       '      --plain',
-      '  -h, --help             Show this help.',
-      '  -V, --version          Print the version.',
+      '      --no-legacy-quiet              Print nothing, the old way.  (default: true, deprecated: Use --quiet instead.)',
+      '  -h, --help                         Show this help.',
+      '  -V, --version                      Print the version.',
     ),
   );
 });
@@ -219,6 +221,151 @@ test('a node with no description prints its path alone, with details joined by l
       '  $ app run one',
       '    The first job.',
       '  $ app run two',
+    ),
+  );
+});
+
+test('a hidden child leaves no row in COMMANDS, and a child that is also deprecated leaves none', () => {
+  expect(run('children', ['--help'])).toEqual(
+    page(
+      'app · Do the work.',
+      '',
+      'USAGE',
+      '  app [options]',
+      '  app <command> [options]',
+      '',
+      'COMMANDS',
+      '  get              Read one value at a path.',
+      '  fetch            Read one value at a path.  (deprecated: Use get instead.)',
+      '  cache <command>  Manage the cache.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+      '',
+      'Run app <command> --help for command details.',
+    ),
+  );
+});
+
+test('a deprecated Command carries its message on a second masthead line', () => {
+  expect(run('children', ['fetch', '--help'])).toEqual(
+    page(
+      'app fetch · Read one value at a path.',
+      '  Deprecated: Use get instead.',
+      '',
+      'USAGE',
+      '  app fetch [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});
+
+test('a hidden Command routed to directly prints its own page like any other', () => {
+  expect(run('children', ['debug', '--help'])).toEqual(
+    page(
+      'app debug · Dump the document.',
+      '',
+      'USAGE',
+      '  app debug [options]',
+      '',
+      'OPTIONS',
+      '      --depth <depth>  How deep to walk.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});
+
+test('a group whose children are all hidden prints the children form and no other listing', () => {
+  expect(run('children', ['cache', '--help'])).toEqual(
+    page(
+      'app cache · Manage the cache.',
+      '',
+      'USAGE',
+      '  app cache <command> [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});
+
+test('a root whose children are all hidden prints no children form, no COMMANDS, and no hint', () => {
+  expect(run('unlisted', ['--help'])).toEqual(
+    page(
+      'app · Do the work.',
+      '',
+      'USAGE',
+      '  app [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});
+
+test('a hidden option leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
+  expect(run('scoped', ['--help'])).toEqual(
+    page(
+      'app · Do the work.',
+      '',
+      'USAGE',
+      '  app --key <key> [options]',
+      '  app <command> [options]',
+      '',
+      'COMMANDS',
+      '  run  Run one job.',
+      '',
+      'OPTIONS',
+      '      --mode <mode>  How to print.  (default: plain, deprecated: Use --style instead.)',
+      '',
+      'GLOBAL OPTIONS',
+      '      --key <key>  The key to use.  (required)',
+      '  -h, --help       Show this help.',
+      '  -V, --version    Print the version.',
+      '',
+      'Run app <command> --help for command details.',
+    ),
+  );
+});
+
+test('a hidden global option leaves GLOBAL OPTIONS on a non-root page', () => {
+  expect(run('scoped', ['run', '--help'])).toEqual(
+    page(
+      'app run · Run one job.',
+      '',
+      'USAGE',
+      '  app run --key <key> [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '      --key <key>  The key to use.  (required)',
+      '  -h, --help       Show this help.',
+      '  -V, --version    Print the version.',
+    ),
+  );
+});
+
+test('a hidden option of either scope leaves the folded root OPTIONS', () => {
+  expect(run('folded', ['--help'])).toEqual(
+    page(
+      'app · Do the work.',
+      '',
+      'USAGE',
+      '  app [options]',
+      '',
+      'OPTIONS',
+      '      --mode <mode>  How to print.',
+      '      --key <key>    The key to use.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
     ),
   );
 });

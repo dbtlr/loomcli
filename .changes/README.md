@@ -30,7 +30,7 @@ State what a consumer can do or what behavior changed. Use indented sub-bullets 
 For example, an ordinary fragment named `hidden-command-aliases.md` could contain:
 
 ```markdown
-- Add hidden aliases for named commands. Aliases route to the command while inspection and failures report its canonical name.
+- Add aliases for named commands. Aliases route to the command while inspection and failures report its canonical name.
 ```
 
 Fragments have no frontmatter, package attribution, or kind headings. This is an exception to the repository's ordinary Markdown frontmatter convention.

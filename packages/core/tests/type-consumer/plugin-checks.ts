@@ -40,6 +40,11 @@ const omitted = { level: { type: 'string', validateOmitted: true } } satisfies P
 // @ts-expect-error TS2322: A plugin option declares no presence rule.
 const presence = { level: { required: true, type: 'string' } } satisfies PluginOptions;
 
+// A plugin option carries the two listing facts, as an application's own option does.
+const listed = {
+  level: { deprecated: 'Use --verbosity instead.', hidden: true, type: 'string' },
+} satisfies PluginOptions;
+
 // The installed list holds plugin values alone.
 // @ts-expect-error TS2741: A forged object is not the value plugin() returns.
 const installed: readonly Plugin[] = [forged];
@@ -73,6 +78,7 @@ void misnamed;
 void validated;
 void omitted;
 void presence;
+void listed;
 void installed;
 void wrongNode;
 void reader;

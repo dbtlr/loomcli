@@ -30,7 +30,7 @@ import {
 } from './errors.js';
 import type { FailureRegistry, FailureRenderer, LoomError } from './errors.js';
 import type { ExtensionValue } from './extension.js';
-import { checkDescription, checkVersion, isPlainObject } from './facts.js';
+import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
 import { isGlobalOptions } from './globals.js';
 import type { GlobalOptions } from './globals.js';
 import { captureHost } from './host.js';
@@ -451,10 +451,15 @@ function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFac
       'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
     );
   }
-  if (options !== undefined && !isPlainObject(options)) {
-    throw new DeclarationError(
-      'The Application options must be an object. Supply { globals, failures }.',
-    );
+  if (options !== undefined) {
+    if (!isPlainObject(options)) {
+      throw new DeclarationError(
+        'The Application options must be an object. Supply { globals, failures }.',
+      );
+    }
+    // The root is every page's entry point, so it carries neither listing fact.
+    // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
+    checkNoListingFacts('The Application', options);
   }
   return {
     description: checkDescription('The Application', declared.description),
@@ -471,14 +476,16 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
   constructor(name: string, options?: ApplicationOptions<Globals>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
     // `globals`, `failures`, and the facts of some kind, and `checkOptions` reports it at build.
-    // The root's own slot and description stay empty, because the Application checks its own slot.
+    // The root's own slot and core facts stay empty, because the Application checks its own slot.
     // Its diagnostics name the Application rather than the root Command.
     super(
       name,
       freshState({
+        deprecated: undefined,
         description: undefined,
         extensions: options?.extensions,
         globals: options?.globals,
+        hidden: undefined,
         name: null,
         options: undefined,
       }),
