@@ -38,7 +38,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) | Plugins act on an invocation through one middleware chain between routing and local parsing, with declared activation that defers loading. | accepted |
 | [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md) | One run signal carries cancellation, fed by a caller or by the single plugin that owns the signals slot; core brackets the run and resolves 130 or 143. | accepted |
 | [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | accepted |
-| [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | proposed |
+| [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
 
 ## Adding a record
 

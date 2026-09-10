@@ -28,7 +28,7 @@ Confirm that the previous version, the one the manifests carry at the cut base, 
 
 Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
 
-Each package's trusted publisher on npmjs.com names the workflow file `release.yml` and the `release` environment. A package joining the release for the first time needs that publisher before its cut merges, and only the maintainer can see or set it.
+Each package's trusted publisher on npmjs.com names the workflow file `release.yml` and the `release` environment. A package joining the release for the first time needs that publisher before its cut merges, and only the maintainer can see or set it. npm attaches a publisher only to a name that already exists on the registry, so the maintainer first publishes a placeholder `0.0.0` from outside the repository and configures the publisher on that record; the [release workflow reference](../../../docs/release-workflow.md) describes the step. The package's manifest also joins the participating set in an ordinary pull request at the current synchronized version before the cut, because the release guard rejects a cut that changes the participating set or any manifest field other than `version`.
 
 ## Review the cycle
 
