@@ -17,7 +17,7 @@ A standalone typed declaration value with a canonical name, its arguments, its l
 _Avoid_: Subcommand (in the model; operator diagnostics may still say "subcommand"), verb, handler
 
 **Root Command**:
-The unnamed Command an Application owns. It is the entry point of routing and follows every Command rule except naming and aliasing.
+The unnamed Command an Application owns. It is the entry point of routing and follows every Command rule except naming, aliasing, and the hidden and deprecated facts, which it never carries.
 _Avoid_: Main command, default command
 
 **Child** and **Parent**:
@@ -115,7 +115,7 @@ A full Command kept off every listing. It routes, runs, and has its own help pag
 _Avoid_: Secret command, unlisted command, alias (for this concept)
 
 **Deprecated member**:
-A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every listing shows beside it.
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every listing that includes it shows beside it; a member that is also hidden appears in none.
 _Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:

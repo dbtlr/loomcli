@@ -31,4 +31,4 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 
 ## Status
 
-Proposed. It moves to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications.
+Proposed. It moves to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications, and with the packed-consumer check ADR-0014 requires extended to the new package: a consumer installs the packed tarball, imports `@loomcli/plugins/help`, `@loomcli/plugins/help/extension`, and `@loomcli/plugins/version`, compiles against their emitted declarations, and runs under Node and Bun.
