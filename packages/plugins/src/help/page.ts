@@ -20,7 +20,8 @@ import { breaks } from './lines.js';
  * The members one page shows. A member is visible when it is not hidden, and this is the one place
  * that filter lands. Every list the page prints, and every decision about whether it prints one,
  * runs through here. A question about a node's own shape, such as whether it is a group, reads the
- * raw list instead.
+ * raw list instead. `foldsGlobals` below reads the raw `graph.root.children` for that reason, so an
+ * Application whose only children are hidden still prints GLOBAL OPTIONS as its own section.
  */
 function visible<Member extends { readonly hidden: boolean }>(
   members: readonly Member[],

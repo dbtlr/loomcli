@@ -112,7 +112,7 @@ test('jsonkit debug prints the whole parsed document as indented JSON', () => {
   });
 });
 
-test('jsonkit offers no candidate when every child of the routed Command is hidden', () => {
+test('the unknownCommand renderer ends after the first clause when the candidate list is empty', () => {
   expect(invoke(new URL('fixtures/candidates.mjs', import.meta.url))).toEqual({
     status: 2,
     stderr: 'jsonkit: unknown command "nope".\n',

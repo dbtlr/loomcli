@@ -55,7 +55,7 @@ export const textstat = new Application('textstat', {
   })
   .option('minimum', {
     deprecated: 'Use --min-bytes instead.',
-    description: 'Drop a source smaller than this many bytes.',
+    description: 'Drop a source smaller than this many bytes. The larger threshold wins.',
     type: 'string',
     validate: byteThreshold,
   })

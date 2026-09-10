@@ -93,6 +93,15 @@ function facts() {
         short: 'F',
         type: 'string',
       })
+      // A required multiple option that is also deprecated: `deprecated` follows `required` and
+      // `repeatable` as the right cell's last fact.
+      .option('legacy-field', {
+        deprecated: 'Use --field instead.',
+        description: 'A field to keep, the old way.',
+        multiple: true,
+        required: true,
+        type: 'string',
+      })
       .option('mode', { default: 'plain', description: 'How to print.', type: 'string' })
       .option('tags', {
         default: ['one', 'two'],
@@ -137,6 +146,14 @@ function facts() {
       })
       .option('source', { required: true, type: 'string' })
       .option('plain', { type: 'boolean' })
+      // A deprecated Boolean with negative polarity.
+      // Its absent value is `true`, so its right cell carries `default: true` ahead of `deprecated`.
+      .option('legacy-quiet', {
+        deprecated: 'Use --quiet instead.',
+        description: 'Print nothing, the old way.',
+        polarity: 'negative',
+        type: 'boolean',
+      })
       .action(dispatch)
   );
 }
