@@ -123,8 +123,12 @@ test('inspects a graph of globals, a root action, and three children', () => {
       options: [],
       path: [],
     },
-    version: none,
+    version: '0.0.0',
   });
+});
+
+test('an explicit version of 0.0.0 inspects identically to an omitted version', () => {
+  expect(invokeInspect('jsonkit-versioned')).toEqual(invokeInspect('jsonkit'));
 });
 
 test('reports the version and every declared description, and the root reports the graph one', () => {
@@ -226,7 +230,7 @@ test('inspects a group at two named levels below the root', () => {
       options: [],
       path: [],
     },
-    version: none,
+    version: '0.0.0',
   });
 });
 

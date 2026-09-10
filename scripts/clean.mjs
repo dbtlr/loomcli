@@ -4,6 +4,7 @@ await Promise.all(
   [
     'apps/loom/dist',
     'packages/core/dist',
+    'packages/plugins/dist',
     'examples/explain/dist',
     'examples/textstat/dist',
     'examples/jsonkit/dist',

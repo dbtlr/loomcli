@@ -430,7 +430,7 @@ interface ApplicationConstructor {
 /** The core facts one Application declares, validated at build and reported by `inspect()`. */
 interface ApplicationFacts {
   description: string | undefined;
-  version: string | undefined;
+  version: string;
 }
 
 /** The same facts as the constructor captured them, before any rule has read them. */

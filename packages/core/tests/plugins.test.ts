@@ -170,6 +170,10 @@ const rejected = [
     'The root Command holds an invalid "@fixture/schema/silent" value: The schema rejected this value without an explanation. Correct the value.',
   ],
   [
+    'schema-sentence',
+    'The root Command holds an invalid "@fixture/schema/sentence" value: Supply one word. Correct the value.',
+  ],
+  [
     'schema-thenable',
     'Extension "@fixture/schema/thenable" validates asynchronously. Supply a schema that answers synchronously.',
   ],

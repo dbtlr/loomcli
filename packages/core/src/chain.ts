@@ -157,7 +157,7 @@ interface EntryState {
 /** Everything one invocation needs after its graph is built and its defaults are validated. */
 interface Invocation {
   defaults: DefaultValues;
-  facts: { description: string | undefined; version: string | undefined };
+  facts: { description: string | undefined; version: string };
   graph: BuiltGraph;
   host: Host;
   name: string;
