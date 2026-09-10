@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-09
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -29,3 +29,7 @@ A projection describes the accepted built product: how to construct inputs, and 
 ## Consequences
 
 Help, manifests, completions, and agent tool listings are projections of `inspect()` output, not of the declarations. A fact a consumer needs to call the application correctly is added to the graph, and from there reaches every projection; a fact that explains how the application was built is not. Nothing is read from a Command by a back door.
+
+## Changelog
+
+- 2026-09-09: Terminology. "Hidden aliases" in the context above reads as "aliases"; the glossary retired the name hidden alias when hidden became a separate core fact, the hidden Command, recorded with `docs/core.md` and the dated 2026-09-09 entry of ADR-0019. Two clarifications from the first-party help plugin bind with this record: a hidden Command is omitted from every listing, the candidate list of a routing error included, and an extension key that carries its defining plugin's identity is the fact's name rather than provenance, so `inspect()` may report it. The decision is unchanged.

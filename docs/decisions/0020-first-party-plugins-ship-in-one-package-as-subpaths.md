@@ -13,9 +13,11 @@ modified: 2026-09-09
 
 ADR-0013 makes every first-party capability an ordinary plugin that an Application installs explicitly. The first two, help and version, raise the question of how first-party plugins are packaged and named on npm, which is the one part of a plugin that cannot change without breaking every consumer's imports.
 
-One package, `@loomcli/plugins`, ships every first-party plugin as its own subpath export: `@loomcli/plugins/help`, `@loomcli/plugins/version`, and the plugins that follow. Each subpath is a complete plugin under the public contract, with its entry module at the subpath, its declarations module at `<subpath>/extension` when it defines facts, and a middleware module loaded lazily. A plugin's identity is `<package>/<plugin>`, the convention the plugin contract already gives a package that ships several, so the identity and the import path read the same. A subpath imports nothing from a sibling, and the package has no root export, so an application that installs one plugin bundles one and importing the package installs nothing. The package is released at the synchronized version every first-party library shares under ADR-0012.
+One package, `@loomcli/plugins`, the plugin pack, ships every first-party plugin as its own subpath export: `@loomcli/plugins/help`, `@loomcli/plugins/version`, and the plugins that follow. Each subpath is a complete plugin under the public contract, with its entry module at the subpath, its declarations module at `<subpath>/extension` when it defines facts, and a middleware module loaded lazily. A plugin's identity is `<package>/<plugin>`, the convention the plugin contract already gives a package that ships several, so the identity and the import path read the same. A subpath imports nothing from a sibling, and the package has no root export, so an application that installs one plugin bundles one and importing the package installs nothing. The package is released at the synchronized version every first-party library shares under ADR-0012.
 
-Each plugin stays separately installable so that ADR-0013's replacement rule holds: an application that wants version and its own help page omits `help()` and installs another plugin. Two plugins that act through an option, like two help plugins, already collide on the option table at build, so no plugin in the package claims a slot for the purpose of being the only one of its kind.
+Each plugin stays separately installable so that ADR-0013's replacement rule holds: an application that wants version and its own help page omits `help()` and installs another plugin. No plugin in the package claims a slot for the purpose of being the only one of its kind, because that is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order.
+
+This record refines the identity convention ADR-0013 carries in its dated entry of 2026-09-08, "a first-party plugin identity is the package name by convention": that convention holds for a package that ships one plugin, and a first-party plugin, which ships in the pack, has the identity `<package>/<plugin>`. ADR-0013 carries a dated entry that binds with this record.
 
 ## Considered options
 
@@ -25,7 +27,7 @@ Each plugin stays separately installable so that ADR-0013's replacement rule hol
 
 ## Consequences
 
-`@loomcli/plugins` needs one npm trusted publisher before the release that first carries it, and none after. A plugin added later is a subpath and a minor release, not a new package. Moving a plugin out of the package later is a breaking change to its import path, so a plugin enters the package only when it is meant to stay first-party.
+`@loomcli/plugins` needs one npm trusted publisher before the release that first carries it, and none after. The package lives at `packages/plugins`, so it joins the synchronized release set the way every library under `packages/` does. A plugin added later is a subpath and an ordinary release under ADR-0012, not a new package. Moving a plugin out of the package later is a breaking change to its import path, so a plugin enters the package only when it is meant to stay first-party.
 
 ## Status
 

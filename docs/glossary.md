@@ -111,11 +111,11 @@ An unadvertised synonym that routes to a Command: another bare token for a commo
 _Avoid_: Hidden alias, alternate command, shortcut
 
 **Hidden Command**:
-A full Command kept off every listing. It routes, runs, and has its own help page; only the listings omit it.
+A full Command kept off every listing. It routes, runs, and has its own help page; only the listings omit it. A hidden option follows the same rule: it parses as any other option and no listing shows it.
 _Avoid_: Secret command, unlisted command, alias (for this concept)
 
 **Deprecated member**:
-A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every projection shows beside it.
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every listing shows beside it.
 _Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:
