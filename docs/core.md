@@ -6,7 +6,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 ## Application declarations
 
-`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `globals` shares one `GlobalOptions` value with the root and every attached Command, `plugins` installs the plugins described in [Plugins](#plugins) in composition order, and `failures` registers the renderers described in [Failure renderers](#failure-renderers). `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](#extensions).
+`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `globals` shares one `GlobalOptions` value with the root and every attached Command, `plugins` installs the plugins described in [Plugins](#plugins) in composition order, and `failures` registers the renderers described in [Failure renderers](#failure-renderers). `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](#extensions). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact.
 
 ```ts
 interface ApplicationOptions<Globals = {}> {
@@ -92,7 +92,7 @@ const app = new Application('textstat')
 
 Declarations infer types through fluent calls and `ActionHandler<typeof app>`. The constructor accepts no caller-supplied input types. `StringOption`, `BooleanOption`, and their union `OptionConfig` support extracted configuration with `satisfies`.
 
-Every option and argument config object also accepts `description`, the one-line core fact every projection reads under the rule [Extensions](#extensions) states, and `extensions`, the list of [extension values](#extensions) plugins define for inputs: `ExtensionValue<'option'>` on `StringOption` and `BooleanOption`, and `ExtensionValue<'argument'>` on `ArgumentConfig`. Both keys are optional, both apply to `GlobalOptions` declarations and plugin options alike, and neither changes parsing or validation.
+Every option and argument config object also accepts `description`, the one-line core fact every projection reads under the rule [Extensions](#extensions) states, and `extensions`, the list of [extension values](#extensions) plugins define for inputs: `ExtensionValue<'option'>` on `StringOption` and `BooleanOption`, and `ExtensionValue<'argument'>` on `ArgumentConfig`. Both keys are optional, both apply to `GlobalOptions` declarations and plugin options alike, and neither changes parsing or validation. An option config object, and no argument config, also accepts the two core facts `hidden` and `deprecated` that [Hidden and deprecated members](#hidden-and-deprecated-members) describes.
 
 The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive. A hyphenated name is not a JavaScript identifier, so its action value reads with bracket access: `options['dry-run']`, the way textstat reads `options['min-bytes']`.
 
@@ -196,12 +196,14 @@ export const globals = new GlobalOptions().option('file', {
 
 Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
 
-`new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, { globals }).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. A Command takes one options object like the Application does: `globals` names the shared value, `description` is the one-line core fact every projection reads under the rule [Extensions](#extensions) states, and `extensions` carries the [extension values](#extensions) plugins define. Build rejects the retired positional globals form. Both constructors omit the second argument when the application declares no globals and no other fact.
+`new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, { globals }).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. A Command takes one options object like the Application does: `globals` names the shared value, `description` is the one-line core fact every projection reads under the rule [Extensions](#extensions) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](#extensions) plugins define. Build rejects the retired positional globals form. Both constructors omit the second argument when the application declares no globals and no other fact.
 
 ```ts
 interface CommandOptions<Globals = {}> {
   globals?: GlobalOptions<Globals>;
   description?: string;
+  hidden?: boolean;
+  deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
 }
 ```
@@ -231,9 +233,9 @@ Routing reads a nested graph the way it reads a flat one. Bare tokens descend fr
 
 An invocation that commits to a group fails before local parsing, with code 2. The diagnostic ranks with the routing errors, so `store cache --verbose` reports the missing subcommand rather than the unknown option.
 
-### Hidden aliases
+### Aliases
 
-`alias(...names)` on a named Command declares one or more hidden aliases: other bare tokens that route to that Command. An alias changes routing alone. The routed path, every diagnostic, and the validation context report the canonical name, and the candidate list of an unknown-command or missing-subcommand error holds canonical names alone. A hidden alias is a routing courtesy for a synonym an operator may type, not a second name the application advertises. It is not an option's short alias, which is a spelling of one option and appears in every projection.
+`alias(...names)` on a named Command declares one or more aliases: other bare tokens that route to that Command. An alias changes routing alone. The routed path, every diagnostic, and the validation context report the canonical name, and the candidate list of an unknown-command or missing-subcommand error holds canonical names alone. An alias is an unadvertised synonym for a common mistype or inference, so `get` reaches a Command named `fetch` for an operator or an agent that guessed; it is never a second name the application advertises, and no projection lists it. It is not an option's short alias, which is a spelling of one option and appears in every projection, and it is not a [hidden Command](#hidden-and-deprecated-members), which is a full Command kept off the help page.
 
 Aliases belong to the Command value, so a group carries them like any other named Command, and the unnamed root declares none. The call is variadic and repeatable: `.alias('ls', 'list')` and `.alias('ls').alias('list')` declare the same set, in that order. A call with no names does not compile. An alias follows the child name rule, and every canonical name and alias under one parent shares one namespace, so build rejects an alias that repeats a sibling's name, a sibling's alias, another alias of its own Command, or its own Command's canonical name. Like every other declaration call, `alias()` precedes `action()`.
 
@@ -243,6 +245,19 @@ const cache = new Command('cache', { globals }).command(clear).command(list);
 ```
 
 `store cache ls` and `store cache list` both dispatch `list`, and the validation context reports `['cache', 'list']` for either spelling. `store cache nope` still lists `clear, list`.
+
+### Hidden and deprecated members
+
+A named Command and an option carry two core facts beside `description`, declared on the Command's options object and on the option config. `hidden: true` keeps the member off every listing: a help page, a manifest, a completion script, and the candidate list of a routing error omit it, and the member otherwise behaves as any other. A hidden Command routes, runs, and has its own help page when it is routed to directly, and a hidden option parses and reaches its action. `hidden` is `false` unless declared `true`, and build accepts no other value. A hidden Command's children are reachable through it alone, so a listing never reaches them, while each of them keeps its own page.
+
+`deprecated` marks a member the application still accepts but no longer advertises as the way to do its job, and its value is the migration message: one line that holds a character other than whitespace, under the rule a `description` follows, such as `'Use get instead.'`. Build rejects a bare `true`, because a deprecation with no migration path leaves an operator or an agent with nothing to do. A projection shows the message beside the member, so a reader learns what to use instead at the point where they choose. A member that is both hidden and deprecated is omitted, because hidden decides what a listing shows.
+
+Both facts apply to a local option, to a `GlobalOptions` declaration, and to a plugin option alike. Neither applies to an argument, because a positional cannot leave the grammar it sits in, and neither applies to the root, which is every page's entry point. Routing and parsing read neither fact; they are facts for the projections that read the graph, and `inspect()` reports both on every `CommandNode` and `OptionNode`.
+
+```ts
+const fetch = new Command('fetch', { deprecated: 'Use get instead.', globals }).alias('get').action(readValue);
+const debug = new Command('debug', { description: 'Dump the parsed document.', globals, hidden: true }).action(dump);
+```
 
 ### Modular authoring
 
@@ -290,7 +305,7 @@ export const getValue: ActionHandler<typeof get> = async ({ args, options, out }
 
 Core reads invocation tokens in phases. The pre-scan walks the tokens up to the first bare `--`. A hyphen token whose spelling, the part before any `=`, is a global spelling is consumed with the ordinary value rules: a long spelling accepts its value inline after `=` or in the next token, and a short spelling accepts its value in the next token alone, because `-f=x` is an attached short value. A separately consumed value cannot start with a hyphen. Consumed tokens leave the router stream. A short group is all or nothing. A group of global letters is consumed, and a group with no global letters stays in the stream. A group that mixes a global letter with a letter the globals do not own is an input error: the pre-scan reads the globals alone, so it cannot tell a local option from an undeclared one, and its diagnostic classifies only the global letter. Tokens at and after `--` are never inspected, so a `--file` in the passthrough tail stays in the tail.
 
-Routing then reads the remaining bare tokens from the root downward. A bare token that matches a child's name, or one of its [hidden aliases](#hidden-aliases), descends into that child. A bare token that matches no child, while the current Command has children, is an unknown-command error that lists the children's canonical names. The first hyphen token commits to the current Command. Later bare tokens are positional inputs for that Command, so a root with children reports that it accepts no arguments. A commit to a group is an input error, because a group registers no action of its own. That error ranks with the routing errors above, before any local parsing, and it is judged after the [middleware](#middleware) chain, so a plugin can take over a group invocation before the error is raised.
+Routing then reads the remaining bare tokens from the root downward. A bare token that matches a child's name, or one of its [aliases](#aliases), descends into that child. A bare token that matches no child, while the current Command has children, is an unknown-command error that lists the children's canonical names. The first hyphen token commits to the current Command. Later bare tokens are positional inputs for that Command, so a root with children reports that it accepts no arguments. A commit to a group is an input error, because a group registers no action of its own. That error ranks with the routing errors above, before any local parsing, and it is judged after the [middleware](#middleware) chain, so a plugin can take over a group invocation before the error is raised.
 
 Values win over route names. In `jsonkit --file keys get name`, the value of `--file` is `keys`, and routing sees `get name`. A global supplied more than once fails as a repeated option at any placement.
 
@@ -313,7 +328,7 @@ A missing required input is a validation-phase problem, so it loses to routing a
 
 ### Graph build errors
 
-Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Twelve of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, an options slot holding a positional GlobalOptions value on the Application, the same positional value on a Command, and a version that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Fourteen of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, an options slot holding a positional GlobalOptions value on the Application, the same positional value on a Command, a version that is not a string, a `hidden` value that is not a Boolean, and a `deprecated` value that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, a deprecated message that is blank or holds a line terminator, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -341,6 +356,8 @@ Authoring calls collect declarations; core validates them during `run()` and `in
 | A Command options slot that holds no options object     | `Command "get" options must be an object. Supply { globals }.` |
 | A description that is blank or holds a line terminator  | `Command "get" description must hold a character other than whitespace and no line terminator. Supply a one-line summary.` The same sentence names the Application as `The Application`, a global option as `Global option "file"`, a local option as `Command "get" option "raw"`, and an argument as `The root Command argument "files"`. A description that is not a string reads the same sentence, and a JavaScript author alone can declare one. |
 | A version that is not a string                          | `The Application version must be a string. Supply a string such as "1.2.0".` |
+| A deprecated message that is blank or holds a line terminator | `Command "fetch" deprecated message must hold a character other than whitespace and no line terminator. Supply a one-line migration path, such as "Use get instead.".` The same sentence names a global option as `Global option "raw"` and a local option as `Command "get" option "raw"`. A `deprecated` value that is not a string, `true` included, reads the same sentence, and a JavaScript author alone can declare one. |
+| A hidden value that is not a Boolean                    | `Command "fetch" hidden must be a Boolean. Supply true or omit it.` The same sentence names a global option as `Global option "raw"` and a local option as `Command "get" option "raw"`. A JavaScript author alone can declare one. |
 | Two failure renderers for one class                     | `The Application registers two failure renderers for "InputError". Remove one registration.`                                                                                                                                                                               |
 | A variadic argument that is not last                    | `Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.`                                                                                                                                                          |
 | An optional argument before a required one              | `Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.`                                                                                                                                     |
@@ -354,7 +371,7 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ### Example coverage
 
-[jsonkit](../examples/jsonkit/src/application.ts) declares one optional global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path` and the hidden alias `ls`, and a `select` Command. `jsonkit ls` lists keys exactly as `jsonkit keys` does, and `jsonkit typo` still offers `get, keys, select`. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. A read failure names the file or `stdin`, and a parse failure names the document the same way. The rule that one of the two sources must exist belongs to the `--file` declaration, not to the reader, and the [schema example coverage](#example-coverage-1) describes it.
+[jsonkit](../examples/jsonkit/src/application.ts) declares one optional global `--file`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path` and the alias `ls`, and a `select` Command. `jsonkit ls` lists keys exactly as `jsonkit keys` does, and `jsonkit typo` still offers `get, keys, select`. `select` declares `--field` as a required multiple option with the alias `-F` and the schema `z.array(z.string().nonempty('Supply a nonempty field name.'))`, so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all four read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. A read failure names the file or `stdin`, and a parse failure names the document the same way. The rule that one of the two sources must exist belongs to the `--file` declaration, not to the reader, and the [schema example coverage](#example-coverage-1) describes it.
 
 ## Standard Schema validation
 
@@ -525,7 +542,7 @@ try {
 ```ts
 interface CommandGraph {
   readonly name: string;
-  readonly version: string | undefined;
+  readonly version: string;
   readonly description: string | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
@@ -535,6 +552,8 @@ interface CommandNode {
   readonly aliases: readonly string[];
   readonly path: readonly string[];
   readonly description: string | undefined;
+  readonly hidden: boolean;
+  readonly deprecated: string | undefined;
   readonly hasAction: boolean;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
@@ -556,6 +575,8 @@ type OptionNode =
       readonly type: 'string';
       readonly name: string;
       readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
       readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
@@ -570,6 +591,8 @@ type OptionNode =
       readonly type: 'boolean';
       readonly name: string;
       readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
       readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
@@ -580,11 +603,12 @@ type OptionNode =
 ```
 
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
-- `aliases` holds the Command's [hidden aliases](#hidden-aliases) in declaration order, and `[]` for the root and for a Command that declares none. A Command appears once, under its canonical name, so `path` never holds an alias. A completion or manifest consumer reads `aliases`; a help consumer omits them.
+- `aliases` holds the Command's [aliases](#aliases) in declaration order, and `[]` for the root and for a Command that declares none. A Command appears once, under its canonical name, so `path` never holds an alias. A completion or manifest consumer reads `aliases`; a help consumer omits them.
+- `hidden` and `deprecated` are the core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes: `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared message or `undefined`. The root reads `hidden: false` and `deprecated: undefined`. A listing projection omits a hidden node and marks a deprecated one; routing and parsing read neither.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone.
 - Schema objects stay private. `validated` says whether a schema exists, and `validateOmitted` says whether the declaration sends its omission to that schema. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is a snapshot: arrays and plain objects are copied and frozen to any depth, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are.
-- `version` and every `description` are the core facts the declarations carry, or `undefined` when omitted. The root `CommandNode` reports the Application's description, the value `CommandGraph.description` holds, so a projection that walks nodes never special-cases the root. The graph names no plugin: which plugin contributed an option or defined a fact is provenance, and a projection describes the built product alone.
+- `version` is the string the Application declares, or `0.0.0` when it declares none, so it is never `undefined`. Every `description` is the core fact the declaration carries, or `undefined` when omitted. The root `CommandNode` reports the Application's description, the value `CommandGraph.description` holds, so a projection that walks nodes never special-cases the root. The graph names no plugin: which plugin contributed an option or defined a fact is provenance, and a projection describes the built product alone.
 - `globals` holds the application's global options and every plugin option in one list, in the order the globals table holds them: the application's declarations, then each plugin's in installation order. `scope` is `'application'` for an option the application declared, global or local, and `'plugin'` for a [plugin option](#plugin-options), which reaches no action; it names no plugin. A plugin entry on the string variant always reads `required: false`, `validated: false`, and `validateOmitted: false`, so a projection does not branch on them; the Boolean variant carries none of those fields.
 - `extensions` holds each [extension value](#extensions) the declaration carries, keyed by extension identity, as the frozen plain-data output of its schema. `readExtension(node, descriptor)` is the typed read; the record is the projection-neutral form.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
@@ -747,7 +771,7 @@ Core's default renderers add the category prefixes: `Invalid input: ` for every 
 
 `issuePath(issue)` returns the dotted path an issue names inside a value, such as `1` for the second item of a collection, or `undefined` when the issue names the value itself, so a renderer positions an issue the way core's default text does.
 
-`candidates` on `UnknownCommandError` and `NonCallableCommandError` holds the canonical child names in authoring order. A hidden alias never appears in it.
+`candidates` on `UnknownCommandError` and `NonCallableCommandError` holds the canonical child names in authoring order. An alias never appears in it, and neither does a hidden Command.
 
 `ShortGroupError.reason` is `'value-position'` for a value option that is not last in its group, and `'mixed-scope'` for a group that mixes a global letter with one the globals do not own. `ShortGroupError.token` holds what each reason names: the single option's spelling, such as `-d`, for `'value-position'`, and the whole group, such as `-qZ`, for `'mixed-scope'`.
 
@@ -834,18 +858,18 @@ interface PluginDefinition<Options extends PluginOptions> {
 `Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `failures` holds renderers for different classes. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; it is not the invariant phantom the globals use. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity and the target and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that declares options and loads a middleware exports its options type and annotates its factory's return type. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
 ```ts
-// src/plugin.ts, the package's entry module
+// src/help/plugin.ts, the entry module of the @loomcli/plugins/help subpath
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import Package from '../../package.json' with { type: 'json' };
 import { helpCommand, helpInput } from './extension.js';
 
-const options = { help: { short: 'h', type: 'boolean' } } satisfies PluginOptions;
+const options = { help: { description: 'Show this help.', short: 'h', type: 'boolean' } } satisfies PluginOptions;
 export type HelpOptions = typeof options;
 
 export function help(): Plugin<HelpOptions> {
-  return plugin(Package.name, {
+  return plugin(`${Package.name}/help`, {
     extensions: [helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     options,
@@ -853,7 +877,7 @@ export function help(): Plugin<HelpOptions> {
 }
 ```
 
-A plugin package written outside this repository enables `resolveJsonModule` to import its manifest this way. The compiler copies the manifest into the output directory beside the compiled modules, so the package's `exports` targets stay relative to the package root, and a module inside the output must not import its own package by name. `Package.name` types as `string`, never as a literal, so nothing keys on an identity at the type level.
+A plugin package written outside this repository enables `resolveJsonModule` to import its manifest this way. The compiler copies the manifest into the output directory beside the compiled modules, so the package's `exports` targets stay relative to the package root, and a module inside the output must not import its own package by name. `Package.name` types as `string`, never as a literal, so nothing keys on an identity at the type level. A package that ships one plugin uses `Package.name` alone as the identity; the example above ships several, so it appends the plugin's own name, as [First-party plugins](#first-party-plugins) describes.
 
 ### Identity and installation
 
@@ -863,7 +887,7 @@ An Application installs plugins through `plugins` in its options object. Install
 
 ```ts
 import { Application } from '@loomcli/core';
-import { help } from '@loomcli/help';
+import { help } from '@loomcli/plugins/help';
 
 import Package from '../package.json' with { type: 'json' };
 
@@ -948,19 +972,19 @@ An activation name that is not one of the plugin's declared options is a compile
 An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, `ExtensionValue<Target>`, and a declaration lists those values under `extensions` in its config object. The key is overloaded on purpose: a plugin's own `extensions` lists the descriptors it defines, and every declaration's `extensions` lists the values those descriptors produce. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. Each config object takes the values for its own target: `ApplicationOptions` and `CommandOptions` take `ExtensionValue<'command'>`, `StringOption` and `BooleanOption` take `ExtensionValue<'option'>`, on a `GlobalOptions` declaration and on a plugin option alike, and `ArgumentConfig` takes `ExtensionValue<'argument'>`.
 
 ```ts
-// src/extension.ts in the help package
-import Package from '../package.json' with { type: 'json' };
+// src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
+import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-export const helpCommand = extension(`${Package.name}/command`, {
+export const helpCommand = extension(`${Package.name}/help/command`, {
   schema: z.object({
     details: z.string().optional(),
     examples: z.array(z.object({ command: z.string(), note: z.string().optional() })).optional(),
   }),
   target: 'command',
 });
-export const helpInput = extension(`${Package.name}/input`, {
+export const helpInput = extension(`${Package.name}/help/input`, {
   schema: z.object({ placeholder: z.string().optional() }),
   target: 'option',
 });
@@ -984,7 +1008,7 @@ Build also rejects two values of one extension on one declaration, a value the s
 
 A fact whose plugin is not installed is inert for execution: no middleware acts on it, and core gives it no meaning. It still sits on the graph, `inspect()` reports it, and a projection that imports its descriptor can read it through `readExtension`. A Command library can therefore ship help facts into an application that installs no help plugin, or one that installs a different help plugin.
 
-Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, and `version` on the Application. Each is optional; a description is a string that holds a character other than whitespace and no line terminator, and a version is a string. Whitespace is the Unicode `White_Space` class, which covers the tab, the space, the no-break space, and every line terminator, and a line terminator is LF, VT, FF, CR, NEL, LS, or PS. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. Further facts of the same kind follow the same rule when they are specified. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
+Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, `version` on the Application, and `hidden` and `deprecated` on a Command and on an option, as [Hidden and deprecated members](#hidden-and-deprecated-members) describes. Each is optional in the declaration. A description and a deprecated message are strings that hold a character other than whitespace and no line terminator, `hidden` is a Boolean, and a version is a string that reads `0.0.0` on the graph when the Application declares none. Whitespace is the Unicode `White_Space` class, which covers the tab, the space, the no-break space, and every line terminator, and a line terminator is LF, VT, FF, CR, NEL, LS, or PS. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. Further facts of the same kind follow the same rule when they are specified. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
 
 ### Failure renderers from plugins
 
@@ -1020,43 +1044,212 @@ Every rule below applies in `inspect()` and `run()` alike and returns code 1 thr
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A `plugins` value that is not an array           | `The Application plugins must be an array. Supply a list of plugin values.`                                                                                                             |
 | A `plugins` entry that is not a plugin           | `The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).`                                                                        |
-| An identity installed twice                      | `The Application installs plugin "@loomcli/help" twice. Install each plugin once.`                                                                                                      |
+| An identity installed twice                      | `The Application installs plugin "@loomcli/plugins/help" twice. Install each plugin once.`                                                                                                      |
 | An empty identity                                | `A plugin declares an empty identity. Supply a nonempty string, such as the package name.`                                                                                              |
 | An identity that is not a string                 | `A plugin declares an identity that is not a string. Supply a nonempty string, such as the package name.`                                                                               |
-| A definition that is not an object               | `Plugin "@loomcli/help" declares a definition that is not an object. Supply { options, middleware, extensions, failures }.`                                                             |
+| A definition that is not an object               | `Plugin "@loomcli/plugins/help" declares a definition that is not an object. Supply { options, middleware, extensions, failures }.`                                                             |
 | An `options` value that is not an object         | `Plugin "@loomcli/log" declares options that are not an object. Supply a record of option declarations.`                                                                                |
-| A `middleware` value that is not an object       | `Plugin "@loomcli/help" declares middleware that is not an object. Supply { activate, load }.`                                                                                          |
+| A `middleware` value that is not an object       | `Plugin "@loomcli/plugins/help" declares middleware that is not an object. Supply { activate, load }.`                                                                                          |
 | An option config that is not a declaration       | `Plugin "@loomcli/log" option "level" is not an option declaration. Supply { type, ... }.`                                                                                              |
 | A plugin option with a schema or presence rule   | `Plugin "@loomcli/log" option "level" declares <validate, validateOmitted, or required>. Remove it; a plugin option carries no schema or presence rule, and the middleware interprets the value.` |
-| A plugin option that repeats a global key        | `Option "help" is declared by plugin "@loomcli/help" and as a global option. Rename one declaration.`                                                                                    |
-| A plugin option that repeats a local key         | `Option "help" is declared by plugin "@loomcli/help" and as a local option on Command "get". Rename the local option.`                                                                   |
+| A plugin option that repeats a global key        | `Option "help" is declared by plugin "@loomcli/plugins/help" and as a global option. Rename one declaration.`                                                                                    |
+| A plugin option that repeats a local key         | `Option "help" is declared by plugin "@loomcli/plugins/help" and as a local option on Command "get". Rename the local option.`                                                                   |
 | Two plugins declaring one option key             | `Option "verbose" is declared by plugin "@loomcli/log" and plugin "@acme/trace". Install one of them or rename the option.`                                                              |
-| A plugin option spelling used elsewhere          | `Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.`                                                             |
-| A middleware without activation                  | `Plugin "@loomcli/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`                                                   |
-| An empty activation list                         | `Plugin "@loomcli/help" declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`                                                   |
-| An activation naming an undeclared option        | `Plugin "@loomcli/help" activates middleware on option "hlep", which it does not declare. Name one of the plugin's own options.`                                                         |
-| A middleware without a loader                    | `Plugin "@loomcli/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`                                                                       |
+| A plugin option spelling used elsewhere          | `Option spelling "-h" is used by plugin "@loomcli/plugins/help" option "help" and the global option "host". Change one declaration.`                                                             |
+| A middleware without activation                  | `Plugin "@loomcli/plugins/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`                                                   |
+| An empty activation list                         | `Plugin "@loomcli/plugins/help" declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`                                                   |
+| An activation naming an undeclared option        | `Plugin "@loomcli/plugins/help" activates middleware on option "hlep", which it does not declare. Name one of the plugin's own options.`                                                         |
+| A middleware without a loader                    | `Plugin "@loomcli/plugins/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`                                                                       |
 | A second claim on the signals slot               | `Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.`                                                                       |
 | A signal outside the closed set                  | `Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.`                                                                                                             |
 | A signal claimed twice                           | `Plugin "@loomcli/signals" claims signal "SIGINT" twice. Claim each signal once.`                                                                                                        |
-| A plugin `extensions` entry that is not a descriptor | `Plugin "@loomcli/help" holds a value that is not an extension. Supply the value returned by extension(identity, config).`                                                          |
+| A plugin `extensions` entry that is not a descriptor | `Plugin "@loomcli/plugins/help" holds a value that is not an extension. Supply the value returned by extension(identity, config).`                                                          |
 | An `extensions` entry that is not an extension   | `Command "get" holds a value that is not an extension value. Supply the value returned by calling an extension.`                                                                        |
-| A descriptor that declares no schema             | `Command "get" holds extension "@loomcli/help/command", which declares no schema. Supply a Standard Schema v1 object that answers synchronously.`                                       |
-| An extension value on the wrong target           | `Command "get" holds extension "@loomcli/help/input", which applies to options. Supply an extension that applies to Commands.`                                                          |
-| Two values of one extension on one declaration   | `Command "get" holds extension "@loomcli/help/command" twice. Supply one value.`                                                                                                         |
-| Two descriptors sharing one identity             | `Extension "@loomcli/help/command" is defined twice. Install one copy of the package that defines it.`                                                                                   |
-| An extension value its schema rejects            | `Command "get" holds an invalid "@loomcli/help/command" value: <issue message>. Correct the value.`                                                                                      |
-| An extension schema that answers asynchronously  | `Extension "@loomcli/help/command" validates asynchronously. Supply a schema that answers synchronously.`                                                                                |
-| An extension output that is not plain data       | `Extension "@loomcli/help/command" produced a value that is not plain data on Command "get". Return strings, numbers, booleans, null, arrays, and plain objects.`                       |
-| A `failures` value that is not an array          | `Plugin "@loomcli/help" declares failures that are not an array. Supply a list of renderFailure values.`                                                                                |
-| An `extensions` value that is not an array       | `Plugin "@loomcli/help" declares extensions that are not an array. Supply a list of extension descriptors.`                                                                             |
+| A descriptor that declares no schema             | `Command "get" holds extension "@loomcli/plugins/help/command", which declares no schema. Supply a Standard Schema v1 object that answers synchronously.`                                       |
+| An extension value on the wrong target           | `Command "get" holds extension "@loomcli/plugins/help/input", which applies to options. Supply an extension that applies to Commands.`                                                          |
+| Two values of one extension on one declaration   | `Command "get" holds extension "@loomcli/plugins/help/command" twice. Supply one value.`                                                                                                         |
+| Two descriptors sharing one identity             | `Extension "@loomcli/plugins/help/command" is defined twice. Install one copy of the package that defines it.`                                                                                   |
+| An extension value its schema rejects            | `Command "get" holds an invalid "@loomcli/plugins/help/command" value: <issue message>. Correct the value.`                                                                                      |
+| An extension schema that answers asynchronously  | `Extension "@loomcli/plugins/help/command" validates asynchronously. Supply a schema that answers synchronously.`                                                                                |
+| An extension output that is not plain data       | `Extension "@loomcli/plugins/help/command" produced a value that is not plain data on Command "get". Return strings, numbers, booleans, null, arrays, and plain objects.`                       |
+| A `failures` value that is not an array          | `Plugin "@loomcli/plugins/help" declares failures that are not an array. Supply a list of renderFailure values.`                                                                                |
+| An `extensions` value that is not an array       | `Plugin "@loomcli/plugins/help" declares extensions that are not an array. Supply a list of extension descriptors.`                                                                             |
 | A `signals` value that is not an array           | `Plugin "@loomcli/signals" declares signals that are not an array. Supply a list of signal names.`                                                                                       |
-| A plugin registering two renderers for one class | `Plugin "@loomcli/help" registers two failure renderers for "InputError". Remove one registration.`                                                                                     |
+| A plugin registering two renderers for one class | `Plugin "@loomcli/plugins/help" registers two failure renderers for "InputError". Remove one registration.`                                                                                     |
 
 An `extensions` fault on the Application names the root Command, the declaration that carries the value, so it reads `The root Command holds ...`. A schema that throws where it is called rejected the value the only way it could, so it reports through the invalid-value row with the thrown reason as its message.
 
-Three faults surface at invocation time rather than build, as internal errors with code 1: `Loading plugin "@loomcli/help" failed: <reason>` when `load` throws or rejects, with `the module exports no default middleware function.` as the reason when the loader resolves to a module that exports no default middleware function, `Plugin "@loomcli/help" called next() twice.`, and `Plugin "@loomcli/help" called next() after its middleware returned.` A typed read through a descriptor that did not produce the stored value throws a `DeclarationError`, `Extension "@loomcli/help/command" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.`, which the failure path reports with code 1 when it happens inside a run.
+Three faults surface at invocation time rather than build, as internal errors with code 1: `Loading plugin "@loomcli/plugins/help" failed: <reason>` when `load` throws or rejects, with `the module exports no default middleware function.` as the reason when the loader resolves to a module that exports no default middleware function, `Plugin "@loomcli/plugins/help" called next() twice.`, and `Plugin "@loomcli/plugins/help" called next() after its middleware returned.` A typed read through a descriptor that did not produce the stored value throws a `DeclarationError`, `Extension "@loomcli/plugins/help/command" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.`, which the failure path reports with code 1 when it happens inside a run.
 
 ### Example coverage
 
-The plugin increment is proven when both example applications install a plugin through `plugins` and public APIs alone. The acceptance tests cover the seam with in-repository fixture plugins rather than a published package: one with option-activated middleware whose implementation module records its own evaluation, so a test shows the module is never loaded on an invocation that does not supply its option and never loaded when an earlier middleware takes over; one with always-on middleware that wraps `next()` and observes each outcome value; one whose loader is pending when a caller abort lands, so a test shows the run resolves 130 once the loader settles and the middleware never runs; one that claims the signals slot, with a second claimant failing at build and no listener surviving a run; and one that defines an extension both examples attach to a Command. The first-party help and version plugins are specified separately and land after the seam exists.
+The plugin increment is proven when both example applications install a plugin through `plugins` and public APIs alone. The acceptance tests cover the seam with in-repository fixture plugins rather than a published package: one with option-activated middleware whose implementation module records its own evaluation, so a test shows the module is never loaded on an invocation that does not supply its option and never loaded when an earlier middleware takes over; one with always-on middleware that wraps `next()` and observes each outcome value; one whose loader is pending when a caller abort lands, so a test shows the run resolves 130 once the loader settles and the middleware never runs; one that claims the signals slot, with a second claimant failing at build and no listener surviving a run; and one that defines an extension both examples attach to a Command. The first-party help and version plugins are specified in [First-party plugins](#first-party-plugins) and land after the seam exists.
+
+## First-party plugins
+
+`@loomcli/plugins` is the batteries-included package. Every first-party plugin ships in it as its own subpath export, `@loomcli/plugins/<plugin>`, and each one is an ordinary plugin under the [contract above](#plugins): an entry module with the exported options type and the annotated factory at the subpath, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, and a middleware module the entry loads lazily. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package is released at the one synchronized version every first-party library shares. Two plugins ship first, help and version.
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { version } from '@loomcli/plugins/version';
+
+import Package from '../package.json' with { type: 'json' };
+import { globals } from './globals.js';
+
+export const jsonkit = new Application('jsonkit', {
+  description: 'Read and reshape one JSON document.',
+  globals,
+  plugins: [help(), version()],
+  version: Package.version,
+});
+```
+
+Both factories take no parameters, so an application installs each plugin as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. Neither plugin claims the signals slot, and neither needs a slot of its own: two help plugins collide on the option table at build, which is the single-owner rule for a plugin that acts through an option. Each reads the graph and its own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold.
+
+### Version
+
+`version()` declares one Boolean option, `version`, with the short spelling `V`, so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware prints one line to stdout through `out.print`, `<name> v<version>` from `graph.name` and `graph.version`, and returns without calling `next()`, so the exit code is 0 and nothing after routing runs. `jsonkit --version` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; the rule is presentation alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
+
+`version` is never absent on the graph. An Application that omits it declares `0.0.0`, which means unversioned, so `CommandGraph.version` is a `string` and no projection branches on its absence. An explicit `0.0.0` reads the same, and core keeps no record of which one the author wrote. Core requires a string and otherwise neither validates nor normalizes it.
+
+### Help
+
+`help()` declares one Boolean option, `help`, with the short spelling `h`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command from `graph` and `command` alone, prints it to stdout through `out.print`, and returns without calling `next()`, so the exit code is 0. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the chain runs before the callable check. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. Local tokens are never parsed after the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+
+The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
+
+#### Help extensions
+
+Two descriptors are exported from `@loomcli/plugins/help/extension`, and both are help's own facts; every other fact the page prints is a core fact. Each value is optional, and each is validated at build like any extension value.
+
+```ts
+// The value shapes the two descriptors accept
+interface HelpCommandValue {
+  details?: string;
+  examples?: readonly { command: string; note?: string }[];
+}
+interface HelpInputValue {
+  placeholder?: string;
+}
+```
+
+`helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead as authored, line breaks kept and nothing wrapped; it holds a character other than whitespace. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name, one line that holds a character other than whitespace, and `note` is one line printed under it. `helpInput` targets options, so a local option, a global option, and a plugin option carry it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it is one line with no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean option is accepted and never shown, because a Boolean option takes no value. Arguments carry no help extension: an argument's placeholder is its declared name, and its description is a core fact.
+
+```ts
+import { GlobalOptions, Command } from '@loomcli/core';
+import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
+
+export const globals = new GlobalOptions().option('file', {
+  description: 'The document to read. Omit it to read piped text.',
+  extensions: [helpInput({ placeholder: 'path' })],
+  short: 'f',
+  type: 'string',
+});
+
+const get = new Command('get', {
+  description: 'Read one value at a path.',
+  extensions: [
+    helpCommand({
+      details: 'A path is a dot-separated walk from the root of the document.',
+      examples: [{ command: 'get user.name -f doc.json', note: 'A nested key.' }],
+    }),
+  ],
+  globals,
+}).argument('path', { description: 'Dot path to read.', required: true });
+```
+
+A projection that wants help's prose imports the descriptor module and reads the values with `readExtension`, as [Extensions](#extensions) describes, and never imports the help middleware.
+
+#### The help page
+
+The page is plain text on every host: no color, no glyph, and no terminal fact read, so one invocation prints the same bytes on a terminal, in a pipe, and under a test. The styling a terminal renderer adds is a separate plugin's job, and this page is complete without it because no meaning rides on presentation. Output is UTF-8. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry, and it ends with one newline.
+
+The page is a sequence of blocks separated by one blank line. A block that has nothing to show is omitted. Section titles are upper case at the left margin, and every row under a title is indented two spaces.
+
+1. **Masthead.** `<path> · <description>`, where `<path>` is the application name followed by the routed path, space-separated, `jsonkit`, `jsonkit get`, or `store cache clear`, and the separator is a space, U+00B7, and a space. With no description the masthead is the path alone. When the routed Command is deprecated, a second line `Deprecated: <message>` follows the masthead inside the same block.
+2. **Details.** The routed node's `details`, as authored.
+3. **USAGE.** One line per form, each beginning with `<path>`. A node with an action prints `<path> <arguments> [options]`, where `<arguments>` renders each declared argument in declaration order as `<name>` when required and `[name]` when optional, with `...` inside the brackets for a variadic, so `<path>`, `[path]`, `<files...>`, and `[files...]`; a node with no arguments prints `<path> [options]`. `[options]` is always present, because the help option is one. A node with children prints `<path> <command> [options]`. A node with both prints the action form, then the children form. A group prints the children form alone.
+4. **COMMANDS.** For a node with children, one row per visible child in authoring order: the child's name, then its description when it has one. Aliases and hidden children are omitted, and a deprecated child's description ends with ` (deprecated: <message>)`.
+5. **ARGUMENTS.** For a node with arguments, one row per argument in declaration order: the name, then its description when it has one, then ` (default: <value>)` when it declares a default. A string default prints as it is, a string array prints its elements separated by a space, and any other default prints as JSON.
+6. **OPTIONS.** The routed node's visible local options in declaration order; on the root page, the visible globals follow them in the order `graph.globals` holds, in this one section. A row's left cell is the spellings, then ` <placeholder>` for a string option: `-f, --file <path>` with both spellings, `    --explain` with a long spelling alone, indented four spaces so the long spellings align, and `-m` for a `shortOnly` option. A Boolean option's long spelling follows its polarity: `--total` for `positive`, `--no-total` for `negative`, and `--[no-]total` for `both`. The right cell is the description when it has one, then one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>` under the ARGUMENTS rule, and `deprecated: <message>`. A row with neither description nor facts is the left cell alone.
+7. **GLOBAL OPTIONS.** On a named Command's page, the visible globals in the order `graph.globals` holds, one row each under the OPTIONS rule. The root page has no GLOBAL OPTIONS section, because its OPTIONS section already holds them.
+8. **EXAMPLES.** For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
+9. **Hint.** When the page printed COMMANDS: `Run <path> <command> --help for command details.`
+
+Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
+
+The root of jsonkit has an action and three children, so `jsonkit --help` prints:
+
+```text
+jsonkit · Read and reshape one JSON document.
+
+With no subcommand, jsonkit summarizes the document and its top-level keys.
+
+USAGE
+  jsonkit [options]
+  jsonkit <command> [options]
+
+COMMANDS
+  get     Read one value at a path.
+  keys    List the keys at a path.
+  select  Keep the named fields of the document.
+
+OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.
+  -h, --help         Show this help.
+  -V, --version      Print the version.
+      --explain      Explain the selected command and exit.
+
+EXAMPLES
+  $ jsonkit -f doc.json
+  $ jsonkit get user.name -f doc.json
+
+Run jsonkit <command> --help for command details.
+```
+
+`select` is a leaf with one required multiple option and no `details` or `examples`, so `jsonkit select --help` prints:
+
+```text
+jsonkit select · Keep the named fields of the document.
+
+USAGE
+  jsonkit select [options]
+
+OPTIONS
+  -F, --field <field>  A field to keep. Repeat it for several. (required, repeatable)
+
+GLOBAL OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.
+  -h, --help         Show this help.
+  -V, --version      Print the version.
+      --explain      Explain the selected command and exit.
+```
+
+textstat is one root Command with a variadic argument, three local options, and no children, so `textstat --help` prints:
+
+```text
+textstat · Count bytes, words, or lines across text sources.
+
+With no files, textstat counts the text piped to it and names the source "stdin".
+
+USAGE
+  textstat [files...] [options]
+
+ARGUMENTS
+  files  The files to count. Omit them to read piped text.
+
+OPTIONS
+  -m, --metric <metric>        What each row counts. (default: bytes)
+      --min-bytes <min-bytes>  Drop a source smaller than this many bytes. (default: 0)
+  -t, --total                  Add a total row.
+  -h, --help                   Show this help.
+  -V, --version                Print the version.
+      --explain                Explain the selected command and exit.
+```
+
+A deprecated child `fetch` with the message `Use get instead.` would add the row `fetch   Read one value at a path. (deprecated: Use get instead.)` to the COMMANDS section above, and its own page would open with `jsonkit fetch · Read one value at a path.` followed by `Deprecated: Use get instead.`.
+
+### Example coverage
+
+The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
