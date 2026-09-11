@@ -39,6 +39,9 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md) | One run signal carries cancellation, fed by a caller or by the single plugin that owns the signals slot; core brackets the run and resolves 130 or 143. | accepted |
 | [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | accepted |
 | [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
+| [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one identity-keyed registry of views, and class-keyed failure renderers fold into it as view overrides. | proposed |
+| [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Renderers return marked text carrying semantic tokens and named glyphs, core resolves it for the host, and a theme maps tokens to colors and nothing else. | proposed |
+| [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares its result as graph facts and core resolves the run's presentation, while plugins own format names and encoders. | proposed |
 
 ## Adding a record
 

@@ -174,7 +174,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 ## Output
 
 **Out**:
-The output channel object an action receives. It carries the semantic methods, the neutral render call, and the fatal path.
+The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, every method other than the result call writes to stderr, and none is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -182,12 +182,28 @@ A message written through one of the five purpose-named methods: `print`, `info`
 _Avoid_: Log level, styled output
 
 **Rendered output**:
-Text a Renderer produces from one value and `out.render` writes to stdout verbatim. It has no semantic identity and no destination parameter.
-_Avoid_: Formatted output, view
+Text a Renderer produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and it goes to stderr on a Command that declares a result.
+_Avoid_: Formatted output, verbatim output
 
 **Renderer**:
-A pure, synchronous value that turns one typed value into the exact bytes core writes, trailing newline included.
-_Avoid_: Formatter, serializer, presenter, view
+A pure, synchronous value that turns one typed value into the marked text core resolves and writes, trailing newline included.
+_Avoid_: Formatter, serializer, presenter
+
+**View**:
+A registered presentation unit with an identity, the data shape it presents, a cardinality of document or item, and its default renderer. Core, a plugin, or an application defines one, and an application replaces the renderer of any view through the registry.
+_Avoid_: Template, widget, presenter, renderer (for the registration)
+
+**Token**:
+A semantic color name a renderer applies to text, carried as markup until core resolves it against the installed theme and the host. Core owns seven, and a plugin or an application mints more.
+_Avoid_: Color, style name, class
+
+**Glyph**:
+A named mark from core's inventory, each with a fixed ASCII fallback and a fixed paired token, that a renderer writes by name rather than as a literal character.
+_Avoid_: Icon, symbol, emoji, bullet
+
+**Result**:
+The typed value a Command declares and its action emits once, as one document or one stream of items. Its declaration carries the shape, the views in preference order, and the cardinality, and a declared result owns stdout on that Command.
+_Avoid_: Return value, payload, output value
 
 ## Failures
 
@@ -224,7 +240,7 @@ The text core writes to stderr for one failure: the sentence, its correction, an
 _Avoid_: Error message (when the class is meant), log line
 
 **Failure renderer**:
-A registration that pairs one failure class with a Renderer for its instances, which produces the diagnostic.
+A view override keyed by a failure class rather than by a view identity, which produces the diagnostic for that class and its subclasses. It resolves through the same registry every other view resolves through, along the thrown failure's prototype chain.
 _Avoid_: Error handler, error formatter, catch
 
 **Issue**:
@@ -238,11 +254,19 @@ One entry in an input error: an omitted required input or a rejected value toget
 
 **Projection**:
 A public surface derived from the Command graph, such as help, a manifest, completions, or an agent tool listing. A projection reads the graph and adds nothing the graph does not hold.
-_Avoid_: View, export, output format, adapter
+_Avoid_: Export, output format, adapter
 
 **Help page**:
 The projection of one routed Command that the help plugin prints: its masthead, usage, visible members, and examples, as plain text.
 _Avoid_: Usage text, man page, help screen
+
+**Formatter**:
+A machine encoding of a result value, contributed by a plugin and selected for one run by name. `json` and `jsonl` are formatters, and a formatter never sees a view.
+_Avoid_: Renderer (for an encoding), serializer, view (for a format)
+
+**Theme**:
+The plugin that maps every token to a color, where a color is a named terminal color or a custom value core degrades to the host's capabilities. It carries nothing else, and with none installed output is plain text with glyphs.
+_Avoid_: Color scheme, skin, style sheet, palette (for the plugin)
 
 **Plugin pack**:
 The one first-party package that ships every first-party plugin as its own separately installable subpath export.
