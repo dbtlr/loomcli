@@ -33,7 +33,7 @@ The authoring surface is a style object: `style.highlight('…')` returns marked
 
 ADR-0008 survives and takes a dated entry when this record is accepted. Its rule that a renderer is pure, synchronous, holds no output handle, and owns its trailing newline is unchanged. The one sentence that no longer holds is that a renderer produces the exact bytes core writes: core resolves markup to escapes or strips it before writing, and the byte count of what core writes differs from the length of the string the renderer returned.
 
-Escaping is owned by the style helpers and the resolver, never by a renderer author. What a bare delimiter code point resolves to when it reaches the resolver outside any helper is stated by the phase contract. Color-only meaning is prevented by core owning the glyphs.
+Escaping is owned by the style helpers and the resolver, never by a renderer author. A bare delimiter that reaches the resolver outside any helper resolves under the rule above, literal text unless it opens a registered token or closes an open one, and the phase contract does not reopen that rule. The contract chooses the code points and states whether a pack view routes every cell through a helper, so that unwrapped data never reaches the resolver from a first-party view. Color-only meaning is prevented by core owning the glyphs.
 
 The exact surface is deferred to the phase contract: the sentinel code points, the nesting rule, the per-stream detection rule, the precedence of `NO_COLOR` against `FORCE_COLOR`, the rule that selects a Unicode glyph or its ASCII fallback, and what a lane view receives when a message spans several lines. A tagged-template form is sugar over the same helper and can arrive later without changing this decision.
 
