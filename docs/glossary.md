@@ -174,7 +174,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 ## Output
 
 **Out**:
-The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, every method other than the result call writes to stderr, and none is ever removed.
+The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
