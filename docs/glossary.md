@@ -186,7 +186,7 @@ Text a Renderer produces from one value and `out.render` writes, after core reso
 _Avoid_: Formatted output, verbatim output
 
 **Renderer**:
-A pure, synchronous value that turns one typed value into the marked text core resolves and writes, trailing newline included.
+A pure, synchronous value that turns one typed value and supplied rendering context into the marked text core resolves and writes, trailing newline included.
 _Avoid_: Formatter, serializer, presenter
 
 **View**:
@@ -194,11 +194,11 @@ A registered presentation unit with an identity, the data shape it presents, a c
 _Avoid_: Template, widget, presenter, renderer (for the registration)
 
 **Token**:
-A semantic color name a renderer applies to text, carried as markup until core resolves it against the installed theme and the host. Core owns seven, and a plugin or an application mints more.
+A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
 _Avoid_: Color, style name, class
 
 **Glyph**:
-A named mark from core's inventory, each with a fixed ASCII fallback and a fixed paired token, that a renderer writes by name rather than as a literal character.
+A named, unstyled mark from core's inventory with main and compatibility forms. Glyph identity is independent of theme appearance.
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Result**:
@@ -265,7 +265,7 @@ A machine encoding of a result value, contributed by a plugin and selected for o
 _Avoid_: Renderer (for an encoding), serializer, view (for a format)
 
 **Theme**:
-The plugin that maps every token to a color, where a color is a named terminal color or a custom value core degrades to the host's capabilities. It carries nothing else, and with none installed output is plain text with glyphs.
+The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
 _Avoid_: Color scheme, skin, style sheet, palette (for the plugin)
 
 **Plugin pack**:

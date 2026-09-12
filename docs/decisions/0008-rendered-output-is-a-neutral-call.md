@@ -4,7 +4,7 @@ title: ADR-0008 - Rendered output is a separate neutral call with a pure synchro
 description: out.render(value, renderer) is the one presentation call. A Renderer turns one value into the exact bytes core writes and holds no output handle. The five semantic methods stay string-only with fixed destinations.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-12
 ---
 
 # ADR-0008 - Rendered output is a separate neutral call with a pure synchronous renderer
@@ -27,3 +27,7 @@ A renderer failure rejects only its own call, later output still writes, and cor
 ## Consequences
 
 Formatters, tables, and terminal styling live in the application or in future plugins, not in core. The type parameter is inferred from the value, so a renderer for another type is a compile error.
+
+## Changelog
+
+- 2026-09-12: Proposed [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records the replacement of the value-only renderer input, exact-byte output, and styling-outside-core clauses. Once accepted, core supplies an immutable renderer context and resolves marked text and embedded ANSI policy before writing. Renderer purity, neutral output, newline ownership, ordering, and failure behavior remain. This record binds as written until that transition.
