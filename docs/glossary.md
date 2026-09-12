@@ -173,6 +173,8 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
+The rendering-context and marked-text additions below, including Token and Glyph, describe the [proposed style contract](core.md#styles-and-rendering-policy-proposed). These additions are not yet implemented or exported; Renderer itself already exists.
+
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
 _Avoid_: Logger, console, writer, printer
@@ -193,11 +195,11 @@ _Avoid_: Formatter, serializer, presenter
 A registered presentation unit with an identity, the data shape it presents, a cardinality of document or item, and its default renderer. Core, a plugin, or an application defines one, and an application replaces the renderer of any view through the registry.
 _Avoid_: Template, widget, presenter, renderer (for the registration)
 
-**Token**:
+**Token** (proposed):
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
 _Avoid_: Color, style name, class
 
-**Glyph**:
+**Glyph** (proposed):
 A named, unstyled mark from core's inventory with main and compatibility forms. Glyph identity is independent of theme appearance.
 _Avoid_: Icon, symbol, emoji, bullet
 
@@ -264,7 +266,7 @@ _Avoid_: Usage text, man page, help screen
 A machine encoding of a result value, contributed by a plugin and selected for one run by name. `json` and `jsonl` are formatters, and a formatter never sees a view.
 _Avoid_: Renderer (for an encoding), serializer, view (for a format)
 
-**Theme**:
+**Theme** (proposed under the [style contract](core.md#styles-and-rendering-policy-proposed)):
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
 _Avoid_: Color scheme, skin, style sheet, palette (for the plugin)
 

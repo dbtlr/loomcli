@@ -10,9 +10,11 @@ from pathlib import Path
 REVISION = "a446ea9e273864a3653a26943f59b4fbe8003796"
 SOURCE = f"https://raw.githubusercontent.com/SBoudrias/Inquirer.js/{REVISION}/packages/figures/src/index.ts"
 TARGET = Path(__file__).resolve().parents[1] / "docs" / "glyphs.md"
+SOCKET_TIMEOUT_SECONDS = 30
 
 
 def read_map(source, name):
+    """Parse one pinned upstream map, rejecting entries outside its known shape."""
     block = re.search(rf"const {name} = \{{\n(.*?)\n\}};", source, re.S)
     if block is None:
         raise ValueError(f"Missing upstream map: {name}")
@@ -26,6 +28,7 @@ def read_map(source, name):
 
 
 def reference(source):
+    """Build the canonical catalog from upstream forms and Loom's aliases."""
     common = read_map(source, "common")
     main = common | read_map(source, "specialMainSymbols")
     fallback = common | read_map(source, "specialFallbackSymbols")
@@ -60,6 +63,7 @@ The source is MIT-licensed. Its [license notice](data/inquirer-figures-license.t
 | --- | --- | --- |
 """
     def cell(value):
+        """Keep literal glyphs inside one Markdown table cell."""
         return "`" + value.replace("|", "\\|") + "`"
     return header + "".join(
         f"| `{name}` | {cell(main[name])} | {cell(fallback[name])} |\n"
@@ -68,17 +72,27 @@ The source is MIT-licensed. Its [license notice](data/inquirer-figures-license.t
 
 
 def main():
+    """Fetch the pinned source and check or regenerate the UTF-8 catalog."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    with urllib.request.urlopen(SOURCE, timeout=30) as response:
-        expected = reference(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(SOURCE, timeout=SOCKET_TIMEOUT_SECONDS) as response:
+            source = response.read().decode("utf-8")
+    except OSError as error:
+        raise SystemExit(
+            f"Cannot read {SOURCE} (socket timeout: {SOCKET_TIMEOUT_SECONDS} s): {error}"
+        ) from error
+    expected = reference(source)
     if args.check:
-        if TARGET.read_text() != expected:
-            raise SystemExit("Glyph reference differs; run scripts/check-glyph-catalog.py")
+        if TARGET.read_text(encoding="utf-8") != expected:
+            raise SystemExit(
+                f"{TARGET} differs from the catalog generated from {SOURCE}; "
+                "run scripts/check-glyph-catalog.py"
+            )
         print("Glyph reference matches pinned upstream and semantic aliases")
     else:
-        TARGET.write_text(expected)
+        TARGET.write_text(expected, encoding="utf-8")
         print(f"Wrote {TARGET.relative_to(TARGET.parents[1])}")
 
 

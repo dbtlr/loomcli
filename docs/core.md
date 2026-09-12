@@ -845,6 +845,8 @@ The last row is an unregistered class inside an application that registers other
 
 Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds declarations alone: the options it contributes, one middleware with its activation and a loader, the extensions it defines, the failure renderers it registers, and one optional claim on the signals slot. The value performs no work when it is created and no work when it is installed. An installed plugin costs one small module on an invocation that never reaches it.
 
+This interface describes the implemented SDK. The [proposed `PluginDefinition.theme` field](#proposed-plugindefinitiontheme-field) extends it in the style implementation increment.
+
 ```ts
 interface PluginDefinition<Options extends PluginOptions> {
   options?: Options;
@@ -1372,7 +1374,15 @@ const app = new Application('example', {
 
 `theme(mapping)` supplies a bare theme with exactly the mappings provided. `loomTheme(overrides?)` supplies Loom's seven default mappings and accepts partial overrides. These are two constructors for the pack's theme plugin, whose identity is `@loomcli/plugins/theme`. Importing either installs nothing. The named palette's exact visual values belong to the Loom theme increment; this contract fixes how named palettes behave.
 
-The public `plugin(identity, definition)` contract gains an optional `theme` field containing that same mapping. Supplying the field claims the theme slot, including an empty mapping. Both pack factories use this field; third-party themes use their own plugin identities:
+#### Proposed `PluginDefinition.theme` field
+
+The proposed contract extends the [implemented `PluginDefinition`](#plugins) with this field:
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `theme` | No | A readonly mapping from semantic names to unapplied concrete style chains or `undefined`, retaining its literal keys through the returned plugin type. |
+
+This field and the example below are not yet implemented or exported. Supplying the field claims the theme slot, including an empty mapping. Both pack factories use this field; third-party themes use their own plugin identities:
 
 ```ts
 import { plugin, style } from '@loomcli/core';
