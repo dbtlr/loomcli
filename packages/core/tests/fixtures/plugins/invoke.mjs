@@ -146,7 +146,6 @@ function application() {
   const get = new Command('get', {
     description: 'Read one value at a path.',
     extensions: [commandFact({ details: 'Reads one value.', examples: ['get user.name'] })],
-    globals,
   })
     .argument('path', {
       description: 'Dot path to read.',
@@ -173,8 +172,8 @@ function application() {
     });
   // A group answers no invocation of its own, so the callable check is what rejects it, after
   // The chain has run and only when no middleware took the invocation over.
-  const cache = new Command('cache', { globals }).command(
-    new Command('clear', { globals }).action(({ out }) => out.print('cleared')),
+  const cache = new Command('cache').command(
+    new Command('clear').action(({ out }) => out.print('cleared')),
   );
   return new Application('app', {
     description: 'A fixture application.',

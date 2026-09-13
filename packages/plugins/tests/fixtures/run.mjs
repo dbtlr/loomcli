@@ -163,7 +163,7 @@ function usage() {
   const globals = new GlobalOptions()
     .option('key', { description: 'The key to use.', required: true, type: 'string' })
     .option('file', { description: 'The document to read.', short: 'f', type: 'string' });
-  const run = new Command('run', { description: 'Run one job.', globals })
+  const run = new Command('run', { description: 'Run one job.' })
     .argument('source', { description: 'Where to read.', required: true })
     .argument('target', { description: 'Where to write.' })
     .option('out', {
@@ -180,7 +180,7 @@ function usage() {
     })
     .option('mode', { description: 'How to run.', type: 'string' })
     .action(dispatch);
-  const pack = new Command('pack', { description: 'Pack the files.', globals })
+  const pack = new Command('pack', { description: 'Pack the files.' })
     .argument('files', { description: 'The files to pack.', required: true, variadic: true })
     .action(dispatch);
   return new Application('app', {
@@ -257,7 +257,7 @@ function scoped() {
       required: true,
       type: 'string',
     });
-  const run = new Command('run', { description: 'Run one job.', globals }).action(dispatch);
+  const run = new Command('run', { description: 'Run one job.' }).action(dispatch);
   return new Application('app', {
     description: 'Do the work.',
     globals,

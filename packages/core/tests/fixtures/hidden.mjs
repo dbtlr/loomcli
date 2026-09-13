@@ -28,14 +28,14 @@ const failures = [
 
 /** A hidden Command routes and runs; only a listing, the candidates included, omits it. */
 function graph() {
-  const clear = new Command('clear', { globals }).action(report('clear'));
-  const trace = new Command('trace', { globals, hidden: true }).action(report('trace'));
-  const cache = new Command('cache', { globals }).command(clear).command(trace);
+  const clear = new Command('clear').action(report('clear'));
+  const trace = new Command('trace', { hidden: true }).action(report('trace'));
+  const cache = new Command('cache').command(clear).command(trace);
   // Every child of this group is hidden, so a routing error at it offers no candidates.
-  const secrets = new Command('secrets', { globals }).command(
-    new Command('dump', { globals, hidden: true }).action(report('dump')),
+  const secrets = new Command('secrets').command(
+    new Command('dump', { hidden: true }).action(report('dump')),
   );
-  const debug = new Command('debug', { globals, hidden: true }).action(report('debug'));
+  const debug = new Command('debug', { hidden: true }).action(report('debug'));
   return new Application('hidden', { failures, globals })
     .command(cache)
     .command(secrets)
@@ -46,7 +46,7 @@ function graph() {
 /** The same graph with every child of the root hidden, so the root group offers none either. */
 function rootGraph() {
   return new Application('hidden', { failures, globals }).command(
-    new Command('debug', { globals, hidden: true }).action(report('debug')),
+    new Command('debug', { hidden: true }).action(report('debug')),
   );
 }
 

@@ -101,11 +101,7 @@ test.each([
   ['leaf-actionless', 'Command "clear" has no action. Register an action.'],
   [
     'nested-foreign-globals',
-    'Command "clear" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
-  ],
-  [
-    'nested-missing-globals',
-    'Command "clear" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
+    'Command "clear" declares globals. Declare globals on the Application and register its environment.',
   ],
   [
     'duplicate-nested-children',

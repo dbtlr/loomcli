@@ -4,7 +4,7 @@ import type { clear } from './nested.js';
 
 // A leaf two levels below the root type-imports its own Command.
 // It reads the globals and its own locals; nothing from its group or its sibling reaches it.
-export const clearCache: ActionHandler<typeof clear> = ({ args, options, out }) => {
+const clearCache: ActionHandler<typeof clear> = ({ args, options, out }) => {
   const file: string = options.file;
   const quiet: boolean = options.quiet;
   const force: boolean = options.force;
@@ -14,3 +14,5 @@ export const clearCache: ActionHandler<typeof clear> = ({ args, options, out }) 
   args.path;
   return out.print(`${file}:${String(quiet)}:${String(force)}`);
 };
+
+export { clearCache };

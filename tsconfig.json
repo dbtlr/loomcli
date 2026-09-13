@@ -26,5 +26,11 @@
     "scripts/**/*.ts",
     "apps/**/*.ts"
   ],
-  "exclude": ["**/dist/**", "node_modules"]
+  "exclude": [
+    "**/dist/**",
+    "node_modules",
+    "examples/jsonkit/**",
+    "packages/core/tests/type-consumer/**",
+    "packages/core/tests/runtime-consumer/registered/**"
+  ]
 }

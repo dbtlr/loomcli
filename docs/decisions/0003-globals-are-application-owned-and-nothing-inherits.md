@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0003 - Global options are one application-owned value, and nothing inherits along a path
 description: The globals table lives on the graph once and is consumed in a pre-scan before routing. A local option reaches its own Command's action alone, and the first hyphen token commits routing.
-status: accepted
+status: superseded
 created: 2026-09-07
 modified: 2026-09-09
 ---
@@ -31,3 +31,5 @@ Local options on separate Commands can reuse names and spellings with different 
 
 - 2026-09-08: ADR-0013 and ADR-0017, proposed, add plugin options to the globals table. They share the table, the pre-scan, and the collision rules with the application's global options, and `inspect()` lists both kinds in `globals`, but a plugin option reaches its own plugin's middleware alone and never an action. `OptionNode` gains `scope`, `'application'` or `'plugin'`, so a projection can tell which entries reach an action without the graph naming a plugin. The mixed-scope short group diagnostic keeps saying "global option" for a plugin letter, because the pre-scan reads one table. The two ownership levels, the absence of inheritance, and the routing rules are unchanged. This entry binds when ADR-0017 is accepted.
 - 2026-09-09: ADR-0013 and ADR-0017 are accepted. The entry above binds as written.
+
+- 2026-09-13: Superseded by [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md). That record replaces the affected rules and incorporates the remaining provisions and addenda by reference.

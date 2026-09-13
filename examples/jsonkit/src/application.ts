@@ -1,6 +1,7 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, InputError, renderFailure, UnknownCommandError } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
@@ -16,7 +17,7 @@ import { inputProblems, unknownCommand } from './failures.js';
 import { globals } from './globals.js';
 
 // The root action type-imports this value, so it is registered by the last call.
-export const jsonkit = new Application('jsonkit', {
+const configured = new Application('jsonkit', {
   description: 'Read and reshape one JSON document.',
   extensions: [
     helpCommand({
@@ -37,7 +38,15 @@ export const jsonkit = new Application('jsonkit', {
   globals,
   plugins: [help(), version(), explain()],
   version: Package.version,
-})
+});
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
+export const jsonkit = configured
   .command(get)
   .command(keys)
   .command(select)

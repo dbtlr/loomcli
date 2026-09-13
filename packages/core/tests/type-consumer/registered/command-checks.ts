@@ -38,23 +38,23 @@ const numbered = { description: 42 };
 // @ts-expect-error TS2345: A description is one line of prose, never a number.
 new Command('numbered', numbered);
 const counted = { version: 1 };
-// @ts-expect-error TS2345: A version is an opaque string, never a number.
+// @ts-expect-error TS2769: A version is an opaque string, never a number.
 new Application('counted', counted);
 
 // The core facts are optional, and a Command declares its description with or without globals.
 const described: CommandOptions = { description: 'Reads a value.' };
-new Command('summarized', { description: 'Reads one value.', globals })
+new Command('summarized', { description: 'Reads one value.' })
   .argument('path', { description: 'The path to read.', required: true })
   .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
   .action(() => {});
 new Command('standalone', { description: 'Answers alone.' }).action(() => {});
 
 // The two listing facts belong to a named Command and to an option, in every scope that declares one.
-new Command('fetch', { deprecated: 'Use get instead.', description: 'Reads one value.', globals })
+new Command('fetch', { deprecated: 'Use get instead.', description: 'Reads one value.' })
   .option('raw', { deprecated: 'Use --plain instead.', hidden: true, type: 'string' })
   .option('plain', { hidden: true, type: 'boolean' })
   .action(() => {});
-new Command('debug', { globals, hidden: true }).action(() => {});
+new Command('debug', { hidden: true }).action(() => {});
 new GlobalOptions().option('legacy', {
   deprecated: 'Use --file instead.',
   hidden: true,
@@ -62,9 +62,9 @@ new GlobalOptions().option('legacy', {
 });
 
 // Neither fact belongs to the root, which is every page's entry point.
-// @ts-expect-error TS2353: The Application options carry no hidden.
+// @ts-expect-error TS2769: The Application options carry no hidden.
 new Application('hidden-root', { hidden: true });
-// @ts-expect-error TS2353: The Application options carry no deprecated message.
+// @ts-expect-error TS2769: The Application options carry no deprecated message.
 new Application('deprecated-root', { deprecated: 'Use the other application.' });
 
 // Neither fact belongs to an argument, which cannot leave the grammar it sits in.
@@ -85,13 +85,13 @@ new Application('facts', {
 void described;
 
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
-new Command('collision', { globals }).option('file', { type: 'boolean' });
+new Command('collision').option('file', { type: 'boolean' });
 // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
 new Application('collision', { globals }).option('quiet', { type: 'boolean' });
-// @ts-expect-error TS2322: A globals type argument cannot forge values the declaration lacks.
+// @ts-expect-error TS2769: A globals type argument cannot forge values the declaration lacks.
 new Application<{ forged: number }>('forged', { globals: new GlobalOptions() });
-// @ts-expect-error TS2345: A child must carry the same globals value as its Application.
-new Application('mismatch', { globals }).command(new Command('get').action(() => {}));
+// @ts-expect-error TS2345: An Application must satisfy its Command global types.
+new Application('mismatch').command(new Command('get').action(() => {}));
 
 new Application('plain')
   .argument('files', { required: true, variadic: true })

@@ -104,6 +104,31 @@ try {
   );
   assert.equal(compiled.status, 0, compiled.output);
 
+  // Compile the reusable library first, outside the application's registration program.
+  for (const project of ['library', 'registered']) {
+    const result = run(
+      process.execPath,
+      [compiler, '-p', 'tsconfig.json', '--pretty', 'false'],
+      join(temporary, project),
+    );
+    assert.equal(result.status, 0, result.output);
+  }
+  const registered = join(temporary, 'registered-dist/main.js');
+  for (const name of selected) {
+    for (const { argv, expected } of [
+      { argv: ['greet', 'world', '--trace'], expected: 'hello: world\n' },
+      { argv: ['local', '--trace'], expected: 'true\n' },
+      { argv: ['local'], expected: 'false\n' },
+    ]) {
+      const result = run(runtimes.get(name), [registered, ...argv], temporary);
+      assert.equal(result.status, 0, result.output);
+      assert.equal(result.stdout, expected);
+    }
+    const result = run(runtimes.get(name), [registered, 'greet', '--help'], temporary);
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.stdout, /Application details\./);
+    assert.doesNotMatch(result.stdout, /Library details|greet old/);
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads } of invocations) {

@@ -92,7 +92,7 @@ const scenarios = {
   'exotic-output': () => {
     const descriptor = extension('@fixture/exotic', { schema: exotic, target: 'command' });
     const globals = new GlobalOptions();
-    const get = new Command('get', { extensions: [descriptor({})], globals }).action(dispatch);
+    const get = new Command('get', { extensions: [descriptor({})] }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
   'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
@@ -110,15 +110,12 @@ const scenarios = {
     const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.command({ details: 7 })],
-      globals,
     }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
   'local-key': () => {
     const globals = new GlobalOptions();
-    const get = new Command('get', { globals })
-      .option('help', { type: 'boolean' })
-      .action(dispatch);
+    const get = new Command('get').option('help', { type: 'boolean' }).action(dispatch);
     return new Application('app', {
       globals,
       plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
@@ -139,9 +136,7 @@ const scenarios = {
     new Application('app', { plugins: [{ identity: '@loomcli/help' }] }).action(dispatch),
   'not-an-extension': () => {
     const globals = new GlobalOptions();
-    const get = new Command('get', { extensions: [{ identity: 'forged' }], globals }).action(
-      dispatch,
-    );
+    const get = new Command('get', { extensions: [{ identity: 'forged' }] }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
   'option-boolean-default': () =>
@@ -243,15 +238,12 @@ const scenarios = {
     const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.command({ details: 'one' }), facts.command({ details: 'two' })],
-      globals,
     }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },
   'twin-descriptors': () => {
     const globals = new GlobalOptions();
-    const get = new Command('get', { extensions: [twin({ details: 'one' })], globals }).action(
-      dispatch,
-    );
+    const get = new Command('get', { extensions: [twin({ details: 'one' })] }).action(dispatch);
     return new Application('app', {
       globals,
       plugins: [named('@fixture/facts', { extensions: [facts.command] })],
@@ -270,7 +262,6 @@ const scenarios = {
     const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.option({ placeholder: 'path' })],
-      globals,
     }).action(dispatch);
     return new Application('app', { globals }).command(get).action(dispatch);
   },

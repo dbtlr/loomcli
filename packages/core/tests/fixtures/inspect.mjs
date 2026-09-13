@@ -23,9 +23,9 @@ function jsonkit(version) {
   const globals = new GlobalOptions()
     .option('file', { required: true, short: 'f', type: 'string' })
     .option('quiet', { short: 'q', type: 'boolean' });
-  const get = new Command('get', { globals }).argument('path', { required: true }).action(dispatch);
-  const keys = new Command('keys', { globals }).argument('path', {}).action(dispatch);
-  const select = new Command('select', { globals })
+  const get = new Command('get').argument('path', { required: true }).action(dispatch);
+  const keys = new Command('keys').argument('path', {}).action(dispatch);
+  const select = new Command('select')
     .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
     .action(dispatch);
   return new Application('jsonkit', { globals, version })
@@ -43,7 +43,7 @@ function described() {
     short: 'f',
     type: 'string',
   });
-  const get = new Command('get', { description: 'Reads one value.', globals })
+  const get = new Command('get', { description: 'Reads one value.' })
     .argument('path', { description: 'The path to read.', required: true })
     .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
     .action(dispatch);
@@ -62,18 +62,18 @@ function listing() {
   const globals = new GlobalOptions()
     .option('file', { deprecated: 'Use --path instead.', short: 'f', type: 'string' })
     .option('quiet', { hidden: true, type: 'boolean' });
-  const fetch = new Command('fetch', { deprecated: 'Use get instead.', globals })
+  const fetch = new Command('fetch', { deprecated: 'Use get instead.' })
     .option('raw', { deprecated: 'Use --plain instead.', hidden: true, type: 'string' })
     .action(dispatch);
-  const debug = new Command('debug', { globals, hidden: true }).action(dispatch);
+  const debug = new Command('debug', { hidden: true }).action(dispatch);
   return new Application('listing', { globals }).command(fetch).command(debug).action(dispatch);
 }
 
 function nested() {
   const globals = new GlobalOptions();
-  const clear = new Command('clear', { globals }).action(dispatch);
-  const list = new Command('list', { globals }).alias('ls').alias('l').action(dispatch);
-  const cache = new Command('cache', { globals }).alias('c').command(clear).command(list);
+  const clear = new Command('clear').action(dispatch);
+  const list = new Command('list').alias('ls').alias('l').action(dispatch);
+  const cache = new Command('cache').alias('c').command(clear).command(list);
   return new Application('store', { globals }).command(cache).action(dispatch);
 }
 
@@ -131,9 +131,7 @@ function omission() {
 
 function invalid() {
   const globals = new GlobalOptions();
-  return new Application('invalid', { globals })
-    .command(new Command('get', { globals }))
-    .action(dispatch);
+  return new Application('invalid', { globals }).command(new Command('get')).action(dispatch);
 }
 
 // Each of these builds cleanly, so only the declaration checks can reject it.

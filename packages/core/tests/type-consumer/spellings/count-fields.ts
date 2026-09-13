@@ -2,7 +2,7 @@ import type { ActionHandler } from '@loomcli/core';
 
 import type { count } from './spellings.js';
 
-export const countFields: ActionHandler<typeof count> = ({ options }) => {
+const countFields: ActionHandler<typeof count> = ({ options }) => {
   const field: boolean = options.field;
   const total: boolean = options.total;
   const file: string | undefined = options.file;
@@ -14,3 +14,5 @@ export const countFields: ActionHandler<typeof count> = ({ options }) => {
   options['no-field'];
   return { field, file, names, total };
 };
+
+export { countFields };

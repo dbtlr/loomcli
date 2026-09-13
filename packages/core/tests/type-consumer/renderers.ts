@@ -97,7 +97,7 @@ new Application('renderers-only', { failures }).action(({ options }) => {
   options.file;
 });
 
-// @ts-expect-error TS2559: The positional globals form is retired.
+// @ts-expect-error TS2769: The positional globals form is retired.
 new Application('positional', globals);
 
 export const jsonkit = new Application('jsonkit', configured)

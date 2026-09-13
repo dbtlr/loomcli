@@ -4,15 +4,17 @@ import { clearCache } from './clear-cache.js';
 import { globals } from './commands.js';
 
 // Three named levels share one globals value: the root, the `cache` group, and its leaf Commands.
-export const clear = new Command('clear', { globals })
+const clear = new Command('clear')
   .option('force', { short: 'F', type: 'boolean' })
   .action(clearCache);
 
-export const list = new Command('list', { globals })
+const list = new Command('list')
   .option('long', { short: 'l', type: 'boolean' })
   .action(({ options, out }) => out.print(String(options.long)));
 
 // A group registers no action, so it keeps `option()` and `command()` open.
-export const cache = new Command('cache', { globals }).command(clear).command(list);
+const cache = new Command('cache').command(clear).command(list);
 
-export const nested = new Application('nested', { globals }).command(cache);
+const nested = new Application('nested', { globals }).command(cache);
+
+export { clear, list, cache, nested };

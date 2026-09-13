@@ -16,7 +16,6 @@ const globals = new GlobalOptions().option('file', {
 const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [helpCommand({ examples: [{ command: 'get user.name', note: 'a nested key' }] })],
-  globals,
 })
   .argument('path', { extensions: [helpArgument({ hint: 'a dot path' })], required: true })
   .option('raw', { extensions: [helpInput({ placeholder: 'raw' })], type: 'boolean' })

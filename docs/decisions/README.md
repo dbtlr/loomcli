@@ -19,9 +19,9 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 
 | Record                                                                       | Decision                                                                                                  | Status   |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------- |
-| [ADR-0001](0001-immutable-declarations-with-typed-authoring-order.md)        | Commands are immutable values, and the authoring order is a compile-time rule.                            | accepted |
+| [ADR-0001](0001-immutable-declarations-with-typed-authoring-order.md)        | Commands are immutable values, and the authoring order is a compile-time rule.                            | superseded |
 | [ADR-0002](0002-command-graph-is-a-tree-with-hidden-aliases.md)              | The command graph is a tree; aliases replace multi-parent attachment.                                     | accepted |
-| [ADR-0003](0003-globals-are-application-owned-and-nothing-inherits.md)       | Global options are one application-owned value, and nothing inherits along a path.                        | accepted |
+| [ADR-0003](0003-globals-are-application-owned-and-nothing-inherits.md)       | Global options are one application-owned value, and nothing inherits along a path.                        | superseded |
 | [ADR-0004](0004-arguments-and-children-are-exclusive.md)                     | A Command declares arguments or attaches children, never both.                                            | accepted |
 | [ADR-0005](0005-validation-delegates-to-standard-schema.md)                  | Validation delegates to Standard Schema, with context passed through the standard's channel.              | accepted |
 | [ADR-0006](0006-absence-rules-and-no-lenient-input.md)                       | The declaration decides absence, and invalid input never falls back to a default.                         | accepted |
@@ -37,11 +37,13 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) | A release merge publishes through one idempotent, token-free workflow that reconciles npm, tag, and GitHub Release with the manifest version. | accepted |
 | [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) | Plugins act on an invocation through one middleware chain between routing and local parsing, with declared activation that defers loading. | accepted |
 | [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md) | One run signal carries cancellation, fed by a caller or by the single plugin that owns the signals slot; core brackets the run and resolves 130 or 143. | accepted |
-| [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | accepted |
+| [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | superseded |
 | [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
 | [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one identity-keyed registry of views, and class-keyed failure renderers fold into it as view overrides. | proposed |
 | [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | proposed |
 | [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares its result as graph facts and core resolves the run's presentation, while plugins own format names and encoders. | proposed |
+| [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | accepted |
+| [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
 
 ## Adding a record
 

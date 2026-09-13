@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -34,15 +34,28 @@ function pnpm(args, cwd) {
 }
 
 // Declaration emit proves a consumer can publish its own types for exported declarations.
-async function compile(cwd) {
+async function compile(cwd, keep = false) {
   const result = run(process.execPath, [compiler, '-p', 'tsconfig.json', '--pretty', 'false'], cwd);
-  await rm(join(cwd, 'dist'), { force: true, recursive: true });
+  if (!keep) {
+    await rm(join(cwd, 'dist'), { force: true, recursive: true });
+  }
   return result;
 }
 
 const source = fileURLToPath(new URL('type-consumer', import.meta.url));
-const workspace = await compile(source);
-assert.equal(workspace.status, 0, workspace.output);
+const projects = [
+  'library',
+  '.',
+  'registered',
+  'spellings',
+  'states',
+  'nested-states',
+  'validate-omitted',
+];
+for (const project of projects) {
+  const workspace = await compile(join(source, project), project === 'library');
+  assert.equal(workspace.status, 0, `${project}: ${workspace.output}`);
+}
 
 const temporary = await mkdtemp(join(tmpdir(), 'loom-type-consumer-'));
 try {
@@ -58,34 +71,95 @@ try {
     }),
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
-  const packed = await compile(temporary);
-  assert.equal(packed.status, 0, packed.output);
-
-  const expected = [];
-  const files = await readdir(temporary);
-  for (const file of files.filter((entry) => entry.endsWith('.ts'))) {
-    const path = join(temporary, file);
-    const contents = await readFile(path, 'utf8');
-    const lines = contents.split('\n');
-    for (let index = 0; index < lines.length; index += 1) {
-      const directive = /@ts-expect-error TS(?<code>\d+):/.exec(lines[index]);
-      if (directive) {
-        const { code } = directive.groups;
-        expected.push(`${file}:${index + 2}:TS${code}`);
-        lines[index] = '';
-      }
-    }
-    await writeFile(path, lines.join('\n'));
+  // Invalid augmentation cannot silently erase globals, including with skipLibCheck enabled.
+  const invalid = join(temporary, 'invalid-registration');
+  await mkdir(invalid);
+  for (const skipLibCheck of [false, true]) {
+    await writeFile(
+      join(invalid, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { module: 'NodeNext', noEmit: true, skipLibCheck, strict: true },
+        include: ['*.ts'],
+      }),
+    );
+    await writeFile(
+      join(invalid, 'invalid.ts'),
+      `import { Command } from '@loomcli/core';
+declare module '@loomcli/core' { interface Register { environment: string; } }
+new Command('invalid').action(() => {});
+`,
+    );
+    const rejected = await compile(invalid);
+    assert.notEqual(rejected.status, 0, 'Invalid registration compiled.');
+    assert.match(rejected.output, /invalid.ts\(2,\d+\): error TS2430:/);
   }
-  assert.ok(expected.length > 0, 'No negative declaration assertions found.');
-  const negative = await compile(temporary);
-  assert.notEqual(negative.status, 0, 'Invalid SDK uses unexpectedly compiled.');
-  const actual = [
-    ...negative.output.matchAll(/(?<file>[^\n]+)\((?<line>\d+),\d+\): error TS(?<code>\d+):/g),
-  ].map(({ groups: { file, line, code } }) => `${basename(file)}:${line}:TS${code}`);
-  assert.deepEqual(actual.toSorted(), expected.toSorted(), negative.output);
+  for (const { source: content, diagnostic } of [
+    {
+      diagnostic: /circular|own type annotation/,
+      source: `import { Application, Command, GlobalOptions } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+const configured = new Application('app', { globals: new GlobalOptions().option('quiet', { type: 'boolean' }) });
+const read = new Command('read').action(({ options }) => options.quiet);
+const app = configured.command(read);
+declare module '@loomcli/core' { interface Register { environment: EnvironmentOf<typeof app>; } }
+`,
+    },
+    {
+      diagnostic: /TS7022|TS2502/,
+      source: `import { Command } from '@loomcli/core';
+import type { ActionHandler } from '@loomcli/core';
+const handler: ActionHandler<typeof read> = () => {};
+const read = new Command('read').action(handler).extend();
+`,
+    },
+  ]) {
+    await writeFile(join(invalid, 'invalid.ts'), content);
+    const rejected = await compile(invalid);
+    assert.notEqual(rejected.status, 0, 'A circular registration or action anchor compiled.');
+    assert.match(rejected.output, diagnostic);
+  }
+  let rejectedCount = 0;
+  for (const project of projects) {
+    const directory = join(temporary, project);
+    const packed = await compile(directory, project === 'library');
+    assert.equal(packed.status, 0, `${project}: ${packed.output}`);
+
+    const originals = new Map();
+    const expected = [];
+    const files = await readdir(directory);
+    for (const file of files.filter((entry) => entry.endsWith('.ts'))) {
+      const path = join(directory, file);
+      const contents = await readFile(path, 'utf8');
+      originals.set(path, contents);
+      const lines = contents.split('\n');
+      for (let index = 0; index < lines.length; index += 1) {
+        const directive = /@ts-expect-error TS(?<code>\d+):/.exec(lines[index]);
+        if (directive) {
+          const { code } = directive.groups;
+          expected.push(`${file}:${index + 2}:TS${code}`);
+          lines[index] = '';
+        }
+      }
+      await writeFile(path, lines.join('\n'));
+    }
+    assert.ok(expected.length > 0, 'No negative declaration assertions found.');
+    const negative = await compile(directory, project === 'library');
+    assert.notEqual(negative.status, 0, 'Invalid SDK uses unexpectedly compiled.');
+    const actual = [
+      ...negative.output.matchAll(/(?<file>[^\n]+)\((?<line>\d+),\d+\): error TS(?<code>\d+):/g),
+    ].map(({ groups: { file, line, code } }) => `${basename(file)}:${line}:TS${code}`);
+    assert.deepEqual(actual.toSorted(), expected.toSorted(), negative.output);
+    for (const [path, contents] of originals) {
+      await writeFile(path, contents);
+    }
+    if (project === 'library') {
+      const restored = await compile(directory, true);
+      assert.equal(restored.status, 0, restored.output);
+    }
+    rejectedCount += expected.length;
+  }
   process.stdout.write(
-    `TypeScript ${version}: workspace and packed declarations passed; ${expected.length} rejected SDK uses produced the expected diagnostics.\n`,
+    `TypeScript ${version}: workspace and packed declarations passed; ${rejectedCount} rejected SDK uses produced the expected diagnostics.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

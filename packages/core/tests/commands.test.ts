@@ -307,11 +307,7 @@ test.each([
   ],
   [
     'foreign-globals',
-    'Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
-  ],
-  [
-    'missing-globals',
-    'Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
+    'Command "get" declares globals. Declare globals on the Application and register its environment.',
   ],
   [
     'shared-option-key',

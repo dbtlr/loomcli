@@ -12,9 +12,9 @@ const bare = (entries) => Object.assign(Object.create(null), entries);
 const supplied = {
   'array-options': [],
   'empty-globals': new GlobalOptions(),
-  'null-prototype': bare({ description: 'Reads one value.', globals: declared }),
-  'null-prototype-application': { globals: declared },
-  'options-object': { globals: declared },
+  'null-prototype': bare({ description: 'Reads one value.' }),
+  'null-prototype-application': {},
+  'options-object': { description: 'Reads one value.' },
   'positional-globals': declared,
   'string-options': 'globals',
 };

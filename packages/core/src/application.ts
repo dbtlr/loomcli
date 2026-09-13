@@ -6,12 +6,14 @@ import {
   buildGraph,
   collectInputs,
   declareAction,
+  declareExtensions,
   declareArgument,
   declareOption,
   freshState,
 } from './command.js';
 import type {
   AfterAction,
+  AttachmentConstraint,
   AfterArgument,
   AfterCommand,
   BuiltGraph,
@@ -19,6 +21,7 @@ import type {
   CommandMethod,
   CommandState,
 } from './command.js';
+import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import {
   buildFailures,
   DeclarationError,
@@ -104,10 +107,13 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
  * Everything an application configures beside its declarations: the options every Command shares,
  * and the renderers that answer the failure classes core throws.
  */
-export interface ApplicationOptions<Globals = {}> {
+export interface ApplicationOptions<
+  Globals = {},
+  Plugins extends readonly Plugin[] = readonly Plugin[],
+> {
   globals?: GlobalOptions<Globals>;
   failures?: readonly FailureRenderer[];
-  plugins?: readonly Plugin[];
+  plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
   version?: string;
@@ -122,13 +128,16 @@ class ApplicationBuilder<
   Options,
   Globals,
   State extends ApplicationMethod = ApplicationMethod,
+  Plugins extends readonly Plugin[] = readonly [],
 > {
+  declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
-  readonly #plugins: readonly Plugin[];
+  readonly #plugins: Plugins | undefined;
+  readonly #globals: GlobalOptions<Globals> | undefined;
   // The constructor's raw options argument, kept for the slot's own shape rules.
   // The options-slot rules answer at the same point every other authoring fault does:
   // `inspect()` and `run()`.
@@ -143,7 +152,8 @@ class ApplicationBuilder<
       declared: DeclaredFacts;
       failures: readonly FailureRenderer[];
       options?: unknown;
-      plugins: readonly Plugin[];
+      plugins: Plugins | undefined;
+      globals: GlobalOptions<Globals> | undefined;
     },
   ) {
     this.#declared = config.declared;
@@ -151,6 +161,7 @@ class ApplicationBuilder<
     this.#name = name;
     this.#options = config.options;
     this.#plugins = config.plugins;
+    this.#globals = config.globals;
     this.#root = root;
   }
 
@@ -168,7 +179,8 @@ class ApplicationBuilder<
     Args & Record<Name, ArgumentValue<Config>>,
     Options,
     Globals,
-    AfterArgument<State>
+    AfterArgument<State>,
+    Plugins
   > {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
@@ -186,7 +198,7 @@ class ApplicationBuilder<
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
+  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
@@ -195,16 +207,24 @@ class ApplicationBuilder<
     return this.derive(declareOption(this.#root, input));
   }
 
-  /** The action is the last call, so it returns `AfterAction`: only `run()` and `name` remain. */
-  action(handler: Action<Args, Globals & Options>): Application<Args, Options, Globals> {
+  /** Registering the action closes input authoring; extension configuration remains available. */
+  action(
+    handler: Action<Args, Globals & Options>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins> {
     return this.derive(declareAction(this.#root, handler));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
-  command(
-    child: Command<unknown, unknown, Globals>,
-  ): Application<Args, Options, Globals, AfterCommand<State>> {
+  command<const Child extends Command<unknown, unknown, Globals>>(
+    child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
+  ): Application<Args, Options, Globals, AfterCommand<State>, Plugins> {
     return this.derive(attachChild(this.#root, child));
+  }
+
+  extend(
+    ...values: readonly ExtensionValue<'command'>[]
+  ): Application<Args, Options, Globals, State, Plugins> {
+    return this.derive(declareExtensions(this.#root, values));
   }
 
   /**
@@ -214,10 +234,11 @@ class ApplicationBuilder<
    */
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
-  ): Application<DerivedArgs, DerivedOptions, Globals, Next> {
+  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins> {
     return new ApplicationBuilder(this.#name, root, {
       declared: this.#declared,
       failures: this.#failures,
+      globals: this.#globals,
       options: this.#options,
       plugins: this.#plugins,
     });
@@ -235,7 +256,7 @@ class ApplicationBuilder<
     plugins: readonly BuiltPlugin[];
   } {
     const facts = checkOptions(this.#options, this.#declared);
-    const installed = installPlugins(this.#plugins);
+    const installed = installPlugins(this.#plugins ?? []);
     const application = buildFailures(this.#failures);
     register(application);
     const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
@@ -246,7 +267,7 @@ class ApplicationBuilder<
         ...plugins.map((entry) => buildFailures(entry.failures, pluginSentence(entry.identity))),
       ]),
     );
-    const graph = buildGraph(this.#root, { ...install, plugins });
+    const graph = buildGraph(this.#root, this.#globals, { ...install, plugins });
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
     return { facts, graph, plugins };
   }
@@ -414,17 +435,28 @@ export type Application<
   Options = {},
   Globals = {},
   State extends ApplicationMethod = AfterAction,
+  Plugins extends readonly Plugin[] = readonly Plugin[],
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State>,
-  typeof declaredTypes | 'inspect' | 'name' | 'run' | State
+  ApplicationBuilder<Args, Options, Globals, State, Plugins>,
+  | typeof applicationEnvironment
+  | typeof declaredTypes
+  | 'extend'
+  | 'inspect'
+  | 'name'
+  | 'run'
+  | State
 >;
 
 interface ApplicationConstructor {
-  new (name: string): Application<{}, {}, {}, ApplicationMethod>;
+  new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
   new <Globals = {}>(
     name: string,
-    options: ApplicationOptions<Globals>,
-  ): Application<{}, {}, Globals, ApplicationMethod>;
+    options: ApplicationOptions<Globals, readonly []> & { plugins?: never },
+  ): Application<{}, {}, Globals, ApplicationMethod, readonly []>;
+  new <Globals = {}, const Plugins extends readonly Plugin[] = readonly Plugin[]>(
+    name: string,
+    options: ApplicationOptions<Globals, Plugins>,
+  ): Application<{}, {}, Globals, ApplicationMethod, Plugins>;
 }
 
 /** The core facts one Application declares, validated at build and reported by `inspect()`. */
@@ -472,8 +504,11 @@ function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFac
  * is the type of the value it holds, with `{}` standing in when there is none, which is what each
  * signature of the constructor interface publishes.
  */
-class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Globals> {
-  constructor(name: string, options?: ApplicationOptions<Globals>) {
+class ApplicationDeclaration<
+  Globals = {},
+  const Plugins extends readonly Plugin[] = readonly [],
+> extends ApplicationBuilder<{}, {}, Globals, ApplicationMethod, Plugins> {
+  constructor(name: string, options?: ApplicationOptions<Globals, Plugins>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
     // `globals`, `failures`, and the facts of some kind, and `checkOptions` reports it at build.
     // The root's own slot and core facts stay empty, because the Application checks its own slot.
@@ -484,7 +519,6 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
         deprecated: undefined,
         description: undefined,
         extensions: options?.extensions,
-        globals: options?.globals,
         hidden: undefined,
         name: null,
         options: undefined,
@@ -492,8 +526,9 @@ class ApplicationDeclaration<Globals = {}> extends ApplicationBuilder<{}, {}, Gl
       {
         declared: { description: options?.description, version: options?.version },
         failures: options?.failures ?? [],
+        globals: options?.globals,
         options,
-        plugins: options?.plugins ?? [],
+        plugins: options?.plugins,
       },
     );
   }

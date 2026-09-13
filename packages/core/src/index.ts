@@ -61,3 +61,10 @@ export type {
   ValidationContext,
   VariadicArgument,
 } from './types.js';
+
+export type {
+  ApplicationEnvironment,
+  EnvironmentOf,
+  Register,
+  RegisteredEnvironment,
+} from './environment.js';

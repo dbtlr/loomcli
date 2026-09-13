@@ -115,7 +115,7 @@ test.each(['string-options', 'array-options'])(
   },
 );
 
-test('an options object with globals constructs, inspects, and runs the Application', () => {
+test('an options object with core facts constructs, inspects, and runs the Application', () => {
   expect(withOptions('options-object', 'inspect')).toEqual({
     status: 0,
     stderr: '',
@@ -140,12 +140,12 @@ test.each(['positional-globals', 'empty-globals'])(
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+        'assembled\ndeclaration:1: Command "get" takes an options object. Declare globals on the Application and register its environment.\n',
     });
     expect(withCommandOptions(scenario, 'run')).toEqual({
       status: 1,
       stderr:
-        'Invalid declaration: Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+        'Invalid declaration: Command "get" takes an options object. Declare globals on the Application and register its environment.\n',
       stdout: 'assembled\nresolved:1\n',
     });
   },
@@ -158,17 +158,18 @@ test.each(['string-options', 'array-options'])(
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: Command "get" options must be an object. Supply { globals }.\n',
+        'assembled\ndeclaration:1: Command "get" options must be an object. Supply a Command options object.\n',
     });
     expect(withCommandOptions(scenario, 'run')).toEqual({
       status: 1,
-      stderr: 'Invalid declaration: Command "get" options must be an object. Supply { globals }.\n',
+      stderr:
+        'Invalid declaration: Command "get" options must be an object. Supply a Command options object.\n',
       stdout: 'assembled\nresolved:1\n',
     });
   },
 );
 
-test('an options object with globals constructs, inspects, and runs the Command', () => {
+test('an options object with core facts constructs, inspects, and runs the Command', () => {
   expect(withCommandOptions('options-object', 'inspect')).toEqual({
     status: 0,
     stderr: '',

@@ -21,7 +21,7 @@ const scenarios = {
   },
   'command-blanked': () => {
     const globals = new GlobalOptions();
-    const options = { description: 'One.', globals };
+    const options = { description: 'One.' };
     const get = new Command('get', options).action(dispatch);
     const app = new Application('capture', { globals }).command(get).action(dispatch);
     options.description = '   ';
@@ -29,7 +29,7 @@ const scenarios = {
   },
   'command-description': () => {
     const globals = new GlobalOptions();
-    const options = { description: 'One.', globals };
+    const options = { description: 'One.' };
     const get = new Command('get', options).action(dispatch);
     const app = new Application('capture', { globals }).command(get).action(dispatch);
     options.description = 'Two.';

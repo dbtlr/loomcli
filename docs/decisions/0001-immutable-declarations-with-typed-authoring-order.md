@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0001 - Commands are immutable values with a typed authoring order
 description: Every authoring call returns a new declaration value, and the calls a value still offers are part of its type, so authoring order is a compile-time rule.
-status: accepted
+status: superseded
 created: 2026-09-07
 modified: 2026-09-07
 ---
@@ -25,3 +25,7 @@ A Command is authored in its own module and composed into an Application elsewhe
 ## Consequences
 
 The value a call returns is the only one that holds the call's effect, so an author keeps the returned value. A fourth type parameter on `Command` and `Application` lists the remaining calls, and it defaults to `never` so a declaration in any state is accepted where no state is required.
+
+## Changelog
+
+- 2026-09-13: Superseded by [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md). That record replaces the affected rules and incorporates the remaining provisions and addenda by reference.
