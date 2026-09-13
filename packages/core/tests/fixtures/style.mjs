@@ -15,8 +15,11 @@ const app = new Application('styles', {
     env.FORCE_COLOR = '';
     return out.render(style.red('X'), {
       render: (value, context) => {
-        if (!Object.isFrozen(context) || context.style !== contextual) {
-          throw new Error('Invalid renderer context');
+        if (!Object.isFrozen(context)) {
+          throw new Error(`Scenario "${scenario}": renderer context is not frozen.`);
+        }
+        if (context.style !== contextual) {
+          throw new Error(`Scenario "${scenario}": renderer context does not use the run's style.`);
         }
         return value;
       },
