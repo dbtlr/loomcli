@@ -38,3 +38,4 @@ The named `loomTheme` palette remains proposed under ADR-0022. The view registry
 ## Changelog
 
 - 2026-09-13: Accepted the implemented style seam separately from the named palette.
+- 2026-09-13: Scoped the resource guarantee to linear framing and cached analysis for unchanged nested padding. Arbitrary nesting that changes content at every level can still require quadratic Unicode measurement and transient allocation. Removing that pathological cost is a separate performance increment and does not gate this seam.

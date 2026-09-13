@@ -156,12 +156,12 @@ function padBlock(block: Block, padding: Padding, attributes: Attributes): Block
     if (missing === 0) {
       return content === line.content ? line : { ...line, content };
     }
-    const before =
-      padding.align === 'right'
-        ? missing
-        : padding.align === 'center'
-          ? Math.floor(missing / 2)
-          : 0;
+    let before = 0;
+    if (padding.align === 'right') {
+      before = missing;
+    } else if (padding.align === 'center') {
+      before = Math.floor(missing / 2);
+    }
     const space = (count: number) =>
       leaf({ attributes, kind: 'text', text: ' '.repeat(count) }, count);
     // Re-segment inserted spaces too: a trailing Unicode Prepend character can absorb one.

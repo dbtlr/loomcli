@@ -231,7 +231,12 @@ class AnsiState {
       }
       if (code === 38 || code === 48) {
         const mode = Number(colon.length > 1 ? colon[1] : parameters[index + 1]);
-        const count = mode === 2 ? 3 : mode === 5 ? 1 : 0;
+        let count = 0;
+        if (mode === 2) {
+          count = 3;
+        } else if (mode === 5) {
+          count = 1;
+        }
         const values =
           colon.length > 1
             ? colon.slice(colon.length - count).map(Number)
@@ -246,12 +251,12 @@ class AnsiState {
           continue;
         }
         const [red, green, blue] = values;
-        const color: Color | undefined =
-          mode === 5 && red !== undefined
-            ? ['ansi256', red]
-            : mode === 2 && red !== undefined && green !== undefined && blue !== undefined
-              ? ['rgb', red, green, blue]
-              : undefined;
+        let color: Color | undefined = undefined;
+        if (mode === 5 && red !== undefined) {
+          color = ['ansi256', red];
+        } else if (mode === 2 && red !== undefined && green !== undefined && blue !== undefined) {
+          color = ['rgb', red, green, blue];
+        }
         if (color !== undefined) {
           this[background ? 'background' : 'foreground'] = color;
         }
