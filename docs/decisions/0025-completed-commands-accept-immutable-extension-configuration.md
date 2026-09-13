@@ -25,7 +25,7 @@ An extracted handler that uses `ActionHandler<typeof declaration>` keeps the ini
 
 This decision supersedes ADR-0001's blanket closure of all declaration calls and ADR-0019's rejection of a generic extension call. All other provisions of those records, including their addenda, are incorporated by reference. In particular: declarations are immutable and private; relocation preserves action types; authoring state restricts calls; arguments and children are exclusive; extension values are descriptor-keyed, schema-typed facts with target brands; one identity means one descriptor; build synchronously validates and freezes plain-data output; inspection and typed reads use that output; uninstalled facts remain inert; and core owns the universal graph facts with their established absence rules. Constructor configuration and post-import enrichment are two stages of the same extension mechanism, not separate storage paths.
 
-The final frozen record is registered with its descriptor ownership map so `readExtension()` reads the same values that inspection publishes. Replaced identities retain their first insertion position. Empty enrichment is a useful immutable clone of a declaration; any shared descendants still obey the one-parent rule.
+The final frozen record is registered with its descriptor ownership map so `readExtension()` reads the same values that inspection publishes. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. Empty enrichment is a useful immutable clone of a declaration; any shared descendants still obey the one-parent rule.
 
 ## Scope
 

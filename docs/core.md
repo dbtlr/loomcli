@@ -994,7 +994,7 @@ const customized = build.extend(helpCommand({ details: 'Build this application.'
 const app = configured.command(customized);
 ```
 
-Constructor `extensions` and each `extend()` call form successive layers. A later value from the same descriptor replaces its complete earlier value. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. The final record retains each identity's first insertion position and supports both inspection and `readExtension()`.
+Constructor `extensions` and each `extend()` call form successive layers. A later value from the same descriptor replaces its complete earlier value. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. The final record supports both inspection and `readExtension()`.
 
 An empty call returns an equivalent new declaration. Extending preserves the action, inputs, aliases, children, core facts, Application environment, and authoring state. It never reopens input or action declarations. Core facts such as `description`, `hidden`, and `deprecated`, and option/argument extensions, retain their constructor or input-configuration rules. Hooks and events await their lifecycle design.
 

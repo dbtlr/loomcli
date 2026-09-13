@@ -478,7 +478,7 @@ function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>>
   owners.set(frozen, defined);
   return frozen;
 }
-/** Layers validate in authoring order; replacement retains the identity's first insertion position. */
+/** Layers validate in authoring order; replacement updates existing keys without reinsertion. */
 function buildCommandExtensions(
   slot: Omit<ExtensionSlot, 'declared' | 'target'> & {
     layers: readonly unknown[];
