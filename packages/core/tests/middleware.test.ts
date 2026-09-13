@@ -10,7 +10,7 @@ const fixture = new URL('fixtures/plugins/invoke.mjs', import.meta.url);
 
 /** One invocation of the fixture application under the plugins one scenario installs. */
 function run(scenario: string, argv: string[], env: Record<string, string> = {}) {
-  return invoke(fixture, [scenario, 'run', ...argv], { env });
+  return invoke(fixture, [scenario, 'run', ...argv], { env: { TERM: 'xterm-256color', ...env } });
 }
 
 /**

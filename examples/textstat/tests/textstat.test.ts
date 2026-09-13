@@ -306,6 +306,7 @@ test('textstat --timing reports the elapsed time on stderr after the rows', () =
       ['one.txt', '--timing'],
       {
         cwd: directory,
+        env: { TERM: 'xterm-256color' },
       },
     );
     expect(result.status).toBe(0);
@@ -322,7 +323,16 @@ test.each([
   [{ NO_COLOR: '1', TERM: 'linux' }, /^i elapsed: \d+ms\n$/u],
 ])('textstat timing keeps the captured glyph under %j', (env, diagnostic) => {
   const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['--timing'], {
-    env: { ...env, FORCE_COLOR: '' },
+    env: {
+      CI: '',
+      ConEmuTask: '',
+      FORCE_COLOR: '',
+      TERMINAL_EMULATOR: '',
+      TERMINUS_SUBLIME: '',
+      TERM_PROGRAM: '',
+      WT_SESSION: '',
+      ...env,
+    },
     input: 'x',
   });
   expect(result.status).toBe(0);

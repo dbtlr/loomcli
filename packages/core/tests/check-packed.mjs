@@ -59,8 +59,12 @@ const invocations = [
   { argv: ['--version'], expected: 'greeter v1.0.0\n', reads: 'the version line' },
 ];
 
-function run(command, args, cwd) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
+function run(command, args, cwd, env = {}) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
   assert.ifError(result.error);
   assert.equal(result.signal, null, `${command} received ${result.signal}`);
   return { output: result.stdout + result.stderr, status: result.status, stdout: result.stdout };
@@ -115,13 +119,13 @@ try {
   }
   const registered = join(temporary, 'registered-dist/main.js');
   for (const name of selected) {
-    for (const { argv, expected } of [
+    for (const { argv, env, expected } of [
       { argv: ['greet', 'world', '--trace'], expected: 'hello: world\n' },
       { argv: ['local', '--trace'], expected: 'true\n' },
       { argv: ['local'], expected: 'false\n' },
-      { argv: ['styled'], expected: '◉ ok        :4\n' },
+      { argv: ['styled'], env: { TERM: 'xterm-256color' }, expected: '◉ ok        :4\n' },
     ]) {
-      const result = run(runtimes.get(name), [registered, ...argv], temporary);
+      const result = run(runtimes.get(name), [registered, ...argv], temporary, env);
       assert.equal(result.status, 0, result.output);
       assert.equal(result.stdout, expected);
     }

@@ -6,7 +6,7 @@ import { colors, isColorName } from './style.js';
 import type { Color, Modifier } from './style.js';
 
 interface TextUnit {
-  kind: 'text' | 'control' | 'hyperlink';
+  kind: 'text' | 'control' | 'hyperlink' | 'sgr';
   text: string;
   attributes: Attributes;
 }
@@ -115,6 +115,7 @@ class AnsiState {
   readonly modifiers = new Map<Modifier, boolean>();
 
   private scope: StyleScope;
+  private computed: Attributes | undefined;
   private readonly saved = new WeakMap<StyleScope, Attributes>();
 
   private readonly palette: Palette;
@@ -155,8 +156,12 @@ class AnsiState {
     for (const key of effective.modifiers) {
       this.modifiers.set(key, true);
     }
+    this.computed = undefined;
   }
   attributes(): Attributes {
+    if (this.computed !== undefined) {
+      return this.computed;
+    }
     if (
       this.foreground === undefined &&
       this.background === undefined &&
@@ -172,13 +177,15 @@ class AnsiState {
         modifiers.delete(name);
       }
     }
-    return {
+    this.computed = {
       background: this.background ?? this.base.background,
       foreground: this.foreground ?? this.base.foreground,
       modifiers,
     };
+    return this.computed;
   }
   sgr(body: string): string {
+    this.computed = undefined;
     if (!/^[\d;:]*$/u.test(body)) {
       return '';
     }
@@ -295,7 +302,7 @@ function scanAnsi(parsed: ParsedText, caps: Capabilities): Unit[] {
       if (found.kind === 'sgr') {
         const unknown = state.sgr(found.body);
         if (caps.terminalControls && unknown) {
-          result.push({ attributes: state.attributes(), kind: 'control', text: unknown });
+          result.push({ attributes: state.attributes(), kind: 'sgr', text: unknown });
         }
       } else if (found.kind === 'osc' && found.body.startsWith('8;')) {
         const separator = found.body.indexOf(';', 2);

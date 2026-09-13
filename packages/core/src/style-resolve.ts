@@ -10,11 +10,16 @@ function resolveText(text: string, palette: Palette, caps: Capabilities): string
   const parsed = parseText(text, palette, caps.mainGlyphs);
   const result: string[] = [];
   let previous = emptyAttributes;
+  let preservedSgr = false;
   for (const unit of renderedUnits(layout(scanAnsi(parsed, caps)))) {
+    preservedSgr ||= unit.kind === 'sgr';
     result.push(transition(previous, unit.attributes, caps), unit.text);
     previous = unit.attributes;
   }
   result.push(transition(previous, emptyAttributes, caps));
+  if (preservedSgr) {
+    result.push('\u001b[0m');
+  }
   return result.join('');
 }
 function width(text: string, palette: Palette, caps: Capabilities): number {

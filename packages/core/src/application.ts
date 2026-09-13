@@ -269,9 +269,13 @@ class ApplicationBuilder<
    * Every rule that reads the declarations alone, in the order `run()` reads them: the options
    * slot, the installed list, the application's failure registrations, each plugin's declarations,
    * then the whole Command graph. The registry is published as soon as it is known, so a later
-   * declaration error still reaches the renderers the application registered for it.
+   * declaration error still reaches the renderers the application registered for it. Validated
+   * plugin contributions are published before the remaining preparation can fail.
    */
-  private prepare(register: (registry: FailureRegistry) => void): {
+  private prepare(
+    register: (registry: FailureRegistry) => void,
+    configure: (plugins: readonly BuiltPlugin[]) => void,
+  ): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
     plugins: readonly BuiltPlugin[];
@@ -283,6 +287,7 @@ class ApplicationBuilder<
     register(application);
     const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
     const plugins = buildPlugins(installed, install);
+    configure(plugins);
     register(
       mergeFailures([
         application,
@@ -301,7 +306,10 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    const built = this.prepare(() => undefined);
+    const built = this.prepare(
+      () => undefined,
+      () => undefined,
+    );
     return inspectGraph(this.#name, built.graph, built.facts);
   }
 
@@ -337,20 +345,26 @@ class ApplicationBuilder<
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
-        output = new Output(host);
-        output.configure(
-          { ...renderingPolicy(this.#declared.rendering), ...renderingPolicy(options?.rendering) },
-          new Map(),
-        );
+        const invocationOutput = new Output(host);
+        output = invocationOutput;
+        const policy = {
+          ...renderingPolicy(this.#declared.rendering),
+          ...renderingPolicy(options?.rendering),
+        };
+        invocationOutput.configure(policy, new Map());
         signals = bracketRun(controller, checkSignal(options?.signal));
-        const built = this.prepare((value) => {
-          registry = value;
-        });
-        const { graph } = built;
-        output.configure(
-          { ...renderingPolicy(this.#declared.rendering), ...renderingPolicy(options?.rendering) },
-          built.plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
+        const built = this.prepare(
+          (value) => {
+            registry = value;
+          },
+          (plugins) => {
+            invocationOutput.configure(
+              policy,
+              plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
+            );
+          },
         );
+        const { graph } = built;
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const defaults = await prepareInputs(inputs, host);
         graphBuilt = true;

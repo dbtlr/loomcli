@@ -54,6 +54,17 @@ test('embedded ANSI resets restore enclosing Loom attributes and close at the ca
 
 const bold = (body: string) => `\uE000["style",[["modifier","bold"]]]\uE001${body}\uE002`;
 
+test('preserved unmodeled SGR closes at each output boundary', () => {
+  const rendering = { color: 'always', terminalControls: 'preserve' };
+  expect(resolve('', { rendering, texts: ['\u001b[5mblink', 'plain'] }).stdout).toBe(
+    '\u001b[5mblink\u001b[0mplain',
+  );
+  expect(resolve('\u009b5mX', { rendering }).stdout).toBe('\u001b[5mX\u001b[0m');
+  expect(resolve(redSpan('\u001b[5mX'), { rendering }).stdout).toBe(
+    '\u001b[31m\u001b[5mX\u001b[39m\u001b[0m',
+  );
+});
+
 test('closing a Loom frame restores outer raw and Loom attributes together', () => {
   expect(
     resolve(redSpan(`A${bold('\u001b[34mB')}C`), {
