@@ -2,7 +2,7 @@ import type { ActionHandler } from '@loomcli/core';
 
 import type { set } from './spellings.js';
 
-export const setField: ActionHandler<typeof set> = ({ options }) => {
+const setField: ActionHandler<typeof set> = ({ options }) => {
   const size: number | undefined = options.field;
   const dry: boolean = options.dry;
   const file: string | undefined = options.file;
@@ -12,3 +12,5 @@ export const setField: ActionHandler<typeof set> = ({ options }) => {
   options.raw;
   return { dry, file, size, text };
 };
+
+export { setField };

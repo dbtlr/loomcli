@@ -1,14 +1,16 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
-import type { ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
+import type { EnvironmentOf, ActionArgs, ActionHandler, ActionOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 // Each authoring call publishes only the calls that stay valid after it.
-const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
 
-const freshCommand = new Command('fresh', { globals });
-const freshApplication = new Application('fresh', { globals });
-const partial = new Command('partial', { globals }).argument('path', { required: true });
-const partialOption = new Command('partial-option', { globals }).option('raw', { type: 'boolean' });
-const finished = new Command('get', { globals })
+const freshCommand = new Command('fresh');
+const freshApplication = new Application('fresh').globalOption('file', {
+  required: true,
+  type: 'string',
+});
+const partial = new Command('partial').argument('path', { required: true });
+const partialOption = new Command('partial-option').option('raw', { type: 'boolean' });
+const finished = new Command('get')
   .argument('path', { required: true })
   .option('raw', { type: 'boolean' })
   .action(() => {});
@@ -20,7 +22,9 @@ finished.option;
 // @ts-expect-error TS2339: A Command registers one action, so the call does not return.
 finished.action;
 
-const group = new Application('group', { globals }).command(finished);
+const group = new Application('group')
+  .globalOption('file', { required: true, type: 'string' })
+  .command(finished);
 const openAfterChild = group.option('pretty', { type: 'boolean' }).command(finished);
 const application = openAfterChild.action(({ options, out }) => out.print(options.file));
 
@@ -49,8 +53,11 @@ const withArgument = new Application('sized').argument('files', {
 withArgument.command;
 
 // The declaration helpers read the phantom types, so every state answers them.
-const freshHandler: ActionHandler<typeof freshCommand> = ({ options, out }) =>
+const freshHandler: ActionHandler<typeof freshCommand> = ({ options, out }) => {
+  // @ts-expect-error TS2339: Another project's quiet registration cannot leak into this project.
+  options.quiet;
   out.print(options.file);
+};
 const freshApplicationHandler: ActionHandler<typeof freshApplication> = ({ options, out }) =>
   out.print(options.file);
 const finishedHandler: ActionHandler<typeof finished> = ({ args, options, out }) =>
@@ -77,16 +84,21 @@ const usedFresh = useCommand(freshCommand);
 const usedPartial = useCommand(partial);
 const usedFinished = useCommand(finished);
 
-// One graph holds one globals table, so a child's globals are the Application's own type.
-const wider = new GlobalOptions()
-  .option('file', { required: true, type: 'string' })
-  .option('depth', { type: 'string' });
-const wide = new Command('wide', { globals: wider }).action(() => {});
-// @ts-expect-error TS2345: A child cannot declare globals its Application does not declare.
-new Application('subset', { globals }).command(wide);
-const narrow = new Command('narrow', { globals }).action(() => {});
-// @ts-expect-error TS2345: A child cannot drop globals its Application declares.
-new Application('superset', { globals: wider }).command(narrow);
+// A Command requirement may be satisfied by an Application with additional globals.
+
+new Application('superset')
+  .globalOption('file', { required: true, type: 'string' })
+  .globalOption('depth', { type: 'string' })
+  .command(finished);
+// @ts-expect-error TS2345: The receiving Application must supply the registered globals.
+new Application('missing').command(finished);
+
+const enriched = finished.extend();
+// @ts-expect-error TS2339: Enrichment does not reopen inputs.
+enriched.option;
+// @ts-expect-error TS2339: Enrichment does not reopen action registration.
+enriched.action;
+application.extend().inspect();
 
 void groupRun;
 void applicationName;
@@ -108,4 +120,24 @@ void usedFinished;
 
 // Declaration emit must name a fresh builder's CommandMethod/ApplicationMethod state.
 // Each export below forces one such state through the packed declaration compile.
+
+const configured = new Application('registered').globalOption('file', {
+  required: true,
+  type: 'string',
+});
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
+// @ts-expect-error TS2339: Application globals close at the first child attachment.
+group.globalOption;
+// @ts-expect-error TS2339: Application globals close when its action is registered.
+application.globalOption;
+// @ts-expect-error TS2339: Extension configuration does not reopen global declarations.
+application.extend().globalOption;
+// @ts-expect-error TS2339: Named Commands cannot declare Application globals.
+freshCommand.globalOption;
+
 export { freshApplication, partialOption, group, openAfterChild };

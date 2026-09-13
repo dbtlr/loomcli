@@ -1,3 +1,4 @@
+import type { RegisteredGlobals } from './environment.js';
 import {
   commandSentence,
   commandSubject,
@@ -6,7 +7,7 @@ import {
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
-import { buildExtensions } from './extension.js';
+import { buildCommandExtensions, buildExtensions } from './extension.js';
 import type { DescriptorRegistry, ExtensionRecords, ExtensionValue } from './extension.js';
 import {
   checkDeprecated,
@@ -15,14 +16,8 @@ import {
   checkNoListingFacts,
   isPlainObject,
 } from './facts.js';
-import type { BuiltGlobals, GlobalOptions, OptionOwner } from './globals.js';
-import {
-  bindGlobals,
-  buildGlobals,
-  isGlobalOptions,
-  keyCollision,
-  spellingCollision,
-} from './globals.js';
+import type { BuiltGlobals, GlobalsState, OptionOwner } from './globals.js';
+import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type { OptionValues } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
@@ -100,7 +95,7 @@ export interface BuiltCommand {
 export declare const commandValue: unique symbol;
 
 /**
- * Every authoring call a Command can publish. A Command's type state is a subset of these names,
+ * The input, alias, child, and action calls a Command can publish. Its type state is a subset,
  * and each call removes the names it invalidates. A Command attaches children at any depth, so
  * `command()` belongs to every Command and to the unnamed root alike.
  */
@@ -112,12 +107,13 @@ export type AfterArgument<State> = Exclude<State, 'command'>;
 /** The same rule read from the other side. */
 export type AfterCommand<State> = Exclude<State, 'argument'>;
 
-/** The action is the last declaration call, so no declaration call survives it. */
+/** Registering the action closes input, alias, child, and further action declarations. */
 export type AfterAction = never;
 
-/** A declaration made after the action, kept in authoring order so build reports the first. */
+/** A declaration made after its authoring phase closed; build reports the first in call order. */
 type LateDeclaration =
   | { alias: string; kind: 'alias' }
+  | { name: string; kind: 'global' }
   | { child: object; kind: 'child' }
   | { input: InputDeclaration; kind: 'input' };
 
@@ -161,23 +157,16 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
   return node;
 }
 
-/**
- * The shape of a Command's second argument, read where it is supplied. The retired positional form
- * declares its globals on a value that holds no `globals` key, so without this rule the globals
- * vanish silently and the operator, not the author, meets the consequence as an unknown-option
- * error. It answers before every other rule, because a Command that lost its globals this way would
- * otherwise report the mismatch with its Application instead of the slot that caused it.
- * The facts the slot carried were captured at construction, so this reads the slot's shape alone.
- */
+/** Reject retired globals wiring at graph build, before any invocation reads the options. */
 function checkCommandOptions(name: string | null, options: unknown): void {
-  if (isGlobalOptions(options)) {
-    throw new DeclarationError(
-      `${commandSentence(name)} takes an options object. Supply { globals } instead of a positional GlobalOptions value.`,
-    );
-  }
   if (options !== undefined && !isPlainObject(options)) {
     throw new DeclarationError(
-      `${commandSentence(name)} options must be an object. Supply { globals }.`,
+      `${commandSentence(name)} options must be an object. Supply a Command options object.`,
+    );
+  }
+  if (isPlainObject(options) && 'globals' in options) {
+    throw new DeclarationError(
+      `${commandSentence(name)} declares globals. Declare globals on the Application and register its environment.`,
     );
   }
 }
@@ -207,7 +196,6 @@ function checkAliasName(command: string | null, alias: unknown): void {
 /**
  * Everything one Command declaration holds. The transitions below copy it with fields replaced, and
  * the Command and Application builders share them, so one declaration call has one implementation.
- * Absent globals stay `undefined`, so every declaration without globals agrees on identity.
  */
 export interface CommandState<Args, Options, Globals> {
   actions: readonly Action<Args, Globals & Options>[];
@@ -220,11 +208,10 @@ export interface CommandState<Args, Options, Globals> {
   // The Application checks its own slot, so the root carries none here.
   description: unknown;
   // The extension values the same slot carried, read at build against the `command` target.
-  extensions: unknown;
+  extensions: readonly unknown[];
   // Whether every listing omits this Command, read at build like the other core facts.
   // The Application checks its own slot, so the root carries none here either.
   hidden: unknown;
-  globals: GlobalOptions<Globals> | undefined;
   inputs: readonly InputDeclaration[];
   late: readonly LateDeclaration[];
   name: string | null;
@@ -242,7 +229,6 @@ export function freshState<Globals>(declaration: {
   deprecated: unknown;
   description: unknown;
   extensions: unknown;
-  globals: GlobalOptions<Globals> | undefined;
   hidden: unknown;
   name: string | null;
   options: unknown;
@@ -254,8 +240,7 @@ export function freshState<Globals>(declaration: {
     children: [],
     deprecated: declaration.deprecated,
     description: declaration.description,
-    extensions: declaration.extensions,
-    globals: declaration.globals,
+    extensions: [declaration.extensions],
     hidden: declaration.hidden,
     inputs: [],
     late: [],
@@ -318,6 +303,20 @@ export function declareOption<
   };
 }
 
+/** Globals close when composition starts; retain late calls for the shared build-order check. */
+export function recordGlobalOption<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  name: string,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    late:
+      state.actions.length > 0 || state.children.length > 0
+        ? [...state.late, { kind: 'global', name }]
+        : state.late,
+  };
+}
+
 /** One call's names stay one group, so the empty call the types reject still reports as one. */
 export function declareAlias<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
@@ -331,6 +330,14 @@ export function declareAlias<Args, Options, Globals>(
       names.map((alias): LateDeclaration => ({ alias, kind: 'alias' })),
     ),
   };
+}
+
+/** Extension layers remain open after inputs and the action have been fixed. */
+export function declareExtensions<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  values: readonly ExtensionValue<'command'>[],
+): CommandState<Args, Options, Globals> {
+  return { ...state, extensions: [...state.extensions, values] };
 }
 
 export function declareAction<Args, Options, Globals>(
@@ -364,6 +371,11 @@ function checkDeclarationOrder(state: Declared): void {
   const late = state.late[0];
   if (!late) {
     return;
+  }
+  if (late.kind === 'global') {
+    throw new DeclarationError(
+      `The Application declares global option "${late.name}" after command() or action(). Declare global options before attaching Commands or registering an action.`,
+    );
   }
   if (late.kind === 'input') {
     throw new DeclarationError(
@@ -575,13 +587,19 @@ function checkGroup(state: Declared, children: readonly [string, AttachedCommand
 function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   action: Action<Args, Globals & Options>,
+  globals: BuiltGlobals,
 ) {
   return ({ host, out, passthrough, signal, values }: DispatchInput) => {
     const bound = state.bind(values);
+    // Last resort: no typed path exists. The graph erases the binder's generic relationship.
+    // It holds because attachment checks the global output requirement and graph build rejects
+    // Global/local collisions. This binder returns the Application's validated globals alone.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const globalOptions = globals.bind(values) as Globals;
     return action({
       args: bound.args,
       host,
-      options: { ...bindGlobals(state.globals, values), ...bound.options },
+      options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
       signal,
@@ -601,11 +619,10 @@ export function buildCommand<Args, Options, Globals>(
   const description = checkDescription(commandSentence(name), state.description);
   const hidden = checkHidden(commandSentence(name), state.hidden);
   const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
-  const extensions = buildExtensions({
-    declared: state.extensions,
+  const extensions = buildCommandExtensions({
     descriptors: context.descriptors,
+    layers: state.extensions,
     subject: { phrase: `on ${subject}`, sentence: commandSentence(name) },
-    target: 'command',
   });
   // Each declaration's own facts, in authoring order, before the rules that pair declarations.
   for (const input of state.inputs) {
@@ -625,11 +642,6 @@ export function buildCommand<Args, Options, Globals>(
         subject: { phrase: `on ${subject} ${input.kind} "${input.name}"`, sentence },
         target: input.kind,
       }),
-    );
-  }
-  if (state.globals !== globals.source) {
-    throw new DeclarationError(
-      `${commandSentence(name)} holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.`,
     );
   }
   const attached = collectChildren(state);
@@ -672,7 +684,7 @@ export function buildCommand<Args, Options, Globals>(
     children,
     deprecated,
     description,
-    dispatch: action ? bindDispatch(state, action) : undefined,
+    dispatch: action ? bindDispatch(state, action, globals) : undefined,
     extensions,
     hidden,
     inputs: state.inputs,
@@ -692,12 +704,13 @@ export interface BuiltGraph {
 /** The globals table and the owners record each compile once per invocation and the whole graph shares them. */
 export function buildGraph<Args, Options, Globals>(
   root: CommandState<Args, Options, Globals>,
+  globals: GlobalsState<Globals>,
   install: PluginBuild & { plugins: readonly BuiltPlugin[] },
 ): BuiltGraph {
   const context: BuildContext = {
     descriptors: install.descriptors,
     extensions: install.extensions,
-    globals: buildGlobals(root.globals, install.plugins, install),
+    globals: buildGlobals(globals, install.plugins, install),
     owners: new Map(),
   };
   return {
@@ -763,15 +776,19 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
-  command(
-    child: Command<unknown, unknown, Globals>,
+  command<const Child extends Command<unknown, unknown, Globals>>(
+    child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
   ): Command<Args, Options, Globals, AfterCommand<State>> {
     return new CommandBuilder(attachChild(this.#state, child));
   }
 
-  /** The action is the last declaration call, so the value it returns publishes `AfterAction`. */
+  /** The action closes input authoring; `extend()` remains outside this state transition. */
   action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
     return new CommandBuilder(declareAction(this.#state, handler));
+  }
+
+  extend(...values: readonly ExtensionValue<'command'>[]): Command<Args, Options, Globals, State> {
+    return new CommandBuilder(declareExtensions(this.#state, values));
   }
 
   build(context: BuildContext): BuiltCommand {
@@ -793,44 +810,42 @@ export type Command<
   State extends CommandMethod = AfterAction,
 > = Pick<
   CommandBuilder<Args, Options, Globals, State>,
-  typeof commandValue | typeof declaredTypes | State
+  typeof commandValue | typeof declaredTypes | 'extend' | State
 >;
 
 /**
- * Everything a Command configures beside its declarations: the options value every Command in one
- * application shares, and the core facts the declaration carries.
+ * The core facts and initial extension values a named Command carries.
  */
-export interface CommandOptions<Globals = {}> {
-  globals?: GlobalOptions<Globals>;
+export interface CommandOptions {
   description?: string;
   hidden?: boolean;
   deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
 }
 
-interface CommandConstructor {
-  new (name: string): Command<{}, {}, {}, CommandMethod>;
-  new <Globals = {}>(
-    name: string,
-    options: CommandOptions<Globals>,
-  ): Command<{}, {}, Globals, CommandMethod>;
+/** Collect every union member's known local keys before testing for a global collision. */
+type LocalKeys<Child> = Child extends {
+  readonly [declaredTypes]: { options: infer Options };
 }
+  ? keyof Options
+  : never;
 
-/**
- * The runtime class behind the public constructor. It is generic so that an instance's `Globals`
- * is the type of the value it holds, with `{}` standing in when there is none, which is what each
- * signature of the constructor interface publishes.
- */
-class CommandDeclaration<Globals = {}> extends CommandBuilder<{}, {}, Globals> {
-  constructor(name: string, options?: CommandOptions<Globals>) {
-    // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals`, the core facts, and `extensions` of some kind, and `buildCommand` reports it.
+export type AttachmentConstraint<Globals, Child> =
+  Extract<keyof Globals, LocalKeys<Child>> extends never ? unknown : never;
+
+type CommandConstructor = new (
+  name: string,
+  options?: CommandOptions,
+) => Command<{}, {}, RegisteredGlobals, CommandMethod>;
+
+/** The constructor uses the Application registration; public type defaults stay library-neutral. */
+class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
+  constructor(name: string, options?: CommandOptions) {
     super(
       freshState({
         deprecated: options?.deprecated,
         description: options?.description,
         extensions: options?.extensions,
-        globals: options?.globals,
         hidden: options?.hidden,
         name,
         options,

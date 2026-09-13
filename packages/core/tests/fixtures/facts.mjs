@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, GlobalOptions, plugin } from '@loomcli/core';
+import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
 
 const target = process.argv[2];
 const fact = process.argv[3];
@@ -43,32 +43,22 @@ const targets = {
   argument: (facts) =>
     new Application('facts').argument('files', { ...facts, variadic: true }).action(dispatch),
   'boolean-option': (facts) => {
-    const globals = new GlobalOptions();
-    const get = new Command('get', { globals })
-      .option('quiet', { ...facts, type: 'boolean' })
-      .action(dispatch);
-    return new Application('facts', { globals }).command(get).action(dispatch);
+    const get = new Command('get').option('quiet', { ...facts, type: 'boolean' }).action(dispatch);
+    return new Application('facts').command(get).action(dispatch);
   },
   command: (facts) => {
-    const globals = new GlobalOptions();
-    const get = new Command('get', { ...facts, globals }).action(dispatch);
-    return new Application('facts', { globals }).command(get).action(dispatch);
+    const get = new Command('get', { ...facts }).action(dispatch);
+    return new Application('facts').command(get).action(dispatch);
   },
   'command-argument': (facts) => {
-    const globals = new GlobalOptions();
-    const get = new Command('get', { globals }).argument('path', facts).action(dispatch);
-    return new Application('facts', { globals }).command(get).action(dispatch);
+    const get = new Command('get').argument('path', facts).action(dispatch);
+    return new Application('facts').command(get).action(dispatch);
   },
   'global-option': (facts) =>
-    new Application('facts', {
-      globals: new GlobalOptions().option('file', { ...facts, type: 'string' }),
-    }).action(dispatch),
+    new Application('facts').globalOption('file', { ...facts, type: 'string' }).action(dispatch),
   option: (facts) => {
-    const globals = new GlobalOptions();
-    const get = new Command('get', { globals })
-      .option('raw', { ...facts, type: 'string' })
-      .action(dispatch);
-    return new Application('facts', { globals }).command(get).action(dispatch);
+    const get = new Command('get').option('raw', { ...facts, type: 'string' }).action(dispatch);
+    return new Application('facts').command(get).action(dispatch);
   },
   'plugin-option': (facts) =>
     new Application('facts', {

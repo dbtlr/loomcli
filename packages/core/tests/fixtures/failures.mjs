@@ -3,7 +3,6 @@ import {
   Command,
   DeclarationError,
   FatalError,
-  GlobalOptions,
   InputError,
   InternalError,
   renderFailure,
@@ -90,10 +89,7 @@ const dispatch = ({ out }) => out.print('dispatched');
 
 /** A routed graph, so every token and validation fault of one invocation has a declaration. */
 function routed(failures) {
-  const globals = new GlobalOptions()
-    .option('file', { required: true, short: 'f', type: 'string' })
-    .option('quiet', { short: 'q', type: 'boolean' });
-  const get = new Command('get', { globals })
+  const get = new Command('get')
     .argument('path', { required: true })
     .option('depth', { short: 'd', type: 'string', validate: digits })
     .option('mode', { short: 'm', shortOnly: true, type: 'string', validate: speed })
@@ -104,10 +100,12 @@ function routed(failures) {
       validate: z.array(z.string().min(1, 'Supply a field name.')),
     })
     .action(dispatch);
-  const cache = new Command('cache', { globals }).command(
-    new Command('keys', { globals }).action(dispatch),
-  );
-  return new Application('failures', { failures, globals })
+  const cache = new Command('cache').command(new Command('keys').action(dispatch));
+  return new Application('failures', {
+    failures,
+  })
+    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .globalOption('quiet', { short: 'q', type: 'boolean' })
     .command(get)
     .command(cache)
     .action(dispatch);

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0019 - Plugin facts are descriptor-keyed extension values, and core owns the universal facts
 description: A plugin attaches typed facts to a Command, option, or argument as branded values from a descriptor it defines, listed under extensions on the config object and keyed by the extension's identity. Core owns description and version as graph facts so every projection is minimally useful with no plugin installed.
-status: accepted
+status: superseded
 created: 2026-09-08
 modified: 2026-09-09
 ---
@@ -42,3 +42,5 @@ Accepted 2026-09-09 with the code that validates and stores extension values, ex
 
 - 2026-09-09: Accepted. PR 35 (`8585389`, on `main`) carries `description` and `version` as core graph facts, reported by `inspect()`, so a projection is minimally useful with no plugin installed. PR 36 (branch `feat/lm-60-plugins`) adds the `extension(identity, config)` descriptor factory, the branded extension values a declaration lists under `extensions`, and `readExtension` for a typed read keyed by the descriptor's own identity. The third pull request of LM-60, whose number is not yet assigned, exercises the pair through the shared example plugin that both example applications install: it defines one descriptor, and each application attaches a value of it to a Command that the plugin's middleware reads back.
 - 2026-09-09: Two addenda from shaping the first-party help and version plugins, recorded in `docs/core.md` and binding with this record. First, `version` is never absent on the graph: an Application that omits it declares `0.0.0`, which means unversioned, so `CommandGraph.version` is a `string`, an explicit `0.0.0` reads the same, and core keeps no record of which one the author wrote. A version projection therefore never branches on absence. A declared version follows the one-line, non-whitespace rule every core fact string follows, so the line a version projection prints is one line, and core otherwise neither validates nor normalizes the string. Second, `hidden` and `deprecated` join `description` as core facts on a Command and on an option, under the rule above that a fact every projection reads is core rather than an extension. `hidden` is a Boolean that keeps the member off every listing while it still routes, parses, and runs. `deprecated` is a required one-line migration message under the description rule, and a bare `true` is rejected because a deprecation with no migration path leaves an operator or an agent with nothing to do. Neither applies to an argument or to the root. Routing selects and parsing binds without reading either, and the candidate list of a routing error, being a listing, omits a hidden Command. The help plugin is the first projection to honor both.
+
+- 2026-09-13: Superseded by [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md). That record replaces the affected rules and incorporates the remaining provisions and addenda by reference.

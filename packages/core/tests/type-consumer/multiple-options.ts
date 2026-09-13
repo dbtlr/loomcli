@@ -1,4 +1,4 @@
-import { Application, GlobalOptions } from '@loomcli/core';
+import { Application } from '@loomcli/core';
 import type { StringOption } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -30,7 +30,7 @@ new Application('multiple-schema')
     return { count, defaulted, maybeRequired, required };
   });
 
-new GlobalOptions().option('field', { multiple: true, type: 'string' });
+new Application('globals').globalOption('field', { multiple: true, type: 'string' });
 
 const rawDefault = { default: 'a', multiple: true, type: 'string' } satisfies StringOption;
 // @ts-expect-error TS2345: A raw multiple default is a string array, not one string.

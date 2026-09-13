@@ -2,11 +2,9 @@ import { Command } from '@loomcli/core';
 import { z } from 'zod';
 
 import { selectFields } from '../actions/select-fields.js';
-import { globals } from '../globals.js';
 
 export const select = new Command('select', {
   description: 'Keep the named fields of the document.',
-  globals,
 })
   .option('field', {
     description: 'A field to keep. Repeat it for several.',

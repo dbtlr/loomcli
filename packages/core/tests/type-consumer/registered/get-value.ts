@@ -2,7 +2,7 @@ import type { ActionHandler } from '@loomcli/core';
 
 import type { get } from './commands.js';
 
-export const getValue: ActionHandler<typeof get> = ({ args, options, passthrough }) => {
+const getValue: ActionHandler<typeof get> = ({ args, options, passthrough }) => {
   const path: string = args.path;
   const file: string = options.file;
   const quiet: boolean = options.quiet;
@@ -13,3 +13,5 @@ export const getValue: ActionHandler<typeof get> = ({ args, options, passthrough
   options.pretty;
   return { file, limit, path, quiet, raw, tail };
 };
+
+export { getValue };

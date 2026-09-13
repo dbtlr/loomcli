@@ -478,6 +478,27 @@ function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>>
   owners.set(frozen, defined);
   return frozen;
 }
+/** Layers validate in authoring order; replacement updates existing keys without reinsertion. */
+function buildCommandExtensions(
+  slot: Omit<ExtensionSlot, 'declared' | 'target'> & {
+    layers: readonly unknown[];
+  },
+): Readonly<Record<string, unknown>> {
+  const stored = new Map<string, unknown>();
+  const defined = new Map<string, AnyExtension>();
+  for (const declared of slot.layers) {
+    const layer = buildExtensions({ ...slot, declared, target: 'command' });
+    for (const [identity, value] of Object.entries(layer)) {
+      stored.set(identity, value);
+    }
+    for (const [identity, descriptor] of owners.get(layer) ?? []) {
+      defined.set(identity, descriptor);
+    }
+  }
+  const frozen = Object.freeze(Object.fromEntries(stored));
+  owners.set(frozen, defined);
+  return frozen;
+}
 
 export type {
   AnyExtension,
@@ -489,4 +510,11 @@ export type {
   ExtensionTarget,
   ExtensionValue,
 };
-export { buildExtensions, extension, isDescriptor, readExtension, registerDescriptor };
+export {
+  buildCommandExtensions,
+  buildExtensions,
+  extension,
+  isDescriptor,
+  readExtension,
+  registerDescriptor,
+};

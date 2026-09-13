@@ -4,7 +4,6 @@ import {
   Application,
   Command,
   FatalError,
-  GlobalOptions,
   InputError,
   InternalError,
   plugin,
@@ -137,16 +136,9 @@ const argv = process.argv.slice(4);
  * their descriptors.
  */
 function application() {
-  const globals = new GlobalOptions().option('file', {
-    description: 'The document to read.',
-    extensions: [optionFact({ placeholder: 'path' })],
-    short: 'f',
-    type: 'string',
-  });
   const get = new Command('get', {
     description: 'Read one value at a path.',
     extensions: [commandFact({ details: 'Reads one value.', examples: ['get user.name'] })],
-    globals,
   })
     .argument('path', {
       description: 'Dot path to read.',
@@ -173,18 +165,23 @@ function application() {
     });
   // A group answers no invocation of its own, so the callable check is what rejects it, after
   // The chain has run and only when no middleware took the invocation over.
-  const cache = new Command('cache', { globals }).command(
-    new Command('clear', { globals }).action(({ out }) => out.print('cleared')),
+  const cache = new Command('cache').command(
+    new Command('clear').action(({ out }) => out.print('cleared')),
   );
   return new Application('app', {
     description: 'A fixture application.',
     extensions: [commandFact({ details: 'The whole fixture.' })],
     // The application registers first, so its renderer wins over the plugin's for one class.
     failures: (registered[scenario] ?? (() => []))(),
-    globals,
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
   })
+    .globalOption('file', {
+      description: 'The document to read.',
+      extensions: [optionFact({ placeholder: 'path' })],
+      short: 'f',
+      type: 'string',
+    })
     .command(get)
     .command(cache)
     .action(({ out }) => out.print('root'));

@@ -1,16 +1,16 @@
-import { Application, DeclarationError, GlobalOptions } from '@loomcli/core';
+import { Application, DeclarationError } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
-const declared = new GlobalOptions().option('file', { short: 'f', type: 'string' });
+const declared = new Application('example').globalOption('file', { short: 'f', type: 'string' });
 
 /** The second argument of each scenario: the options object, and the shapes it is mistaken for. */
 const supplied = {
+  'application-value': declared,
   'array-options': [],
-  'empty-globals': new GlobalOptions(),
-  'options-object': { globals: declared },
-  'positional-globals': declared,
+  'empty-application': new Application('example'),
+  'options-object': { description: 'Example application.' },
   'string-options': 'globals',
 };
 

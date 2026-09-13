@@ -32,11 +32,11 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `alias()`, `command()`, and `action()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
 _Avoid_: Builder method, chain step
 
 **Action**:
-The handler a Command registers last, which receives the parsed and validated invocation and performs the work. A Command has at most one action, and registering it closes the declaration.
+The handler a Command registers after its inputs, aliases, and children, which receives the parsed and validated invocation and performs the work. A Command has at most one action, and registering it closes input, alias, child, and action declarations. Command-targeted extension configuration remains open.
 _Avoid_: Handler, run function, executor
 
 **Action context**:
@@ -44,8 +44,16 @@ The single object an action receives, carrying its parsed inputs, the passthroug
 _Avoid_: Request, invocation object, props
 
 **Global options**:
-The one `GlobalOptions` value that every Command in an Application shares. Each global reaches every action with one type.
+The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands.
 _Avoid_: Root options, inherited options, common flags
+
+**Application environment**:
+The shallow type information extracted before Command composition: global output types and the installed plugin tuple. It excludes the Command graph and root-local inputs.
+_Avoid_: Runtime context, global singleton
+
+**Application registration**:
+The Application-owned `Register.environment` module augmentation that supplies its environment to one TypeScript compilation context.
+_Avoid_: Command wiring, plugin installation
 
 ## Inputs
 
@@ -303,7 +311,7 @@ A middleware's declared condition for running and loading: a list of its plugin'
 _Avoid_: Trigger, gate, filter
 
 **Extension**:
-A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity.
+A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity. Command-targeted values can be replaced after action registration through immutable `extend()` calls.
 _Avoid_: Metadata, annotation, field, decorator
 
 **Core fact**:

@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
@@ -20,18 +20,16 @@ const scenarios = {
     return app.inspect().version;
   },
   'command-blanked': () => {
-    const globals = new GlobalOptions();
-    const options = { description: 'One.', globals };
+    const options = { description: 'One.' };
     const get = new Command('get', options).action(dispatch);
-    const app = new Application('capture', { globals }).command(get).action(dispatch);
+    const app = new Application('capture').command(get).action(dispatch);
     options.description = '   ';
     return app.inspect().root.children[0].description;
   },
   'command-description': () => {
-    const globals = new GlobalOptions();
-    const options = { description: 'One.', globals };
+    const options = { description: 'One.' };
     const get = new Command('get', options).action(dispatch);
-    const app = new Application('capture', { globals }).command(get).action(dispatch);
+    const app = new Application('capture').command(get).action(dispatch);
     options.description = 'Two.';
     return app.inspect().root.children[0].description;
   },

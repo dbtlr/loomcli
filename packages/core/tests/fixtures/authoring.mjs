@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const report =
   (command) =>
@@ -20,9 +20,8 @@ const aliased = new Application('aliased')
   .action(report('root'));
 const plain = new Application('plain').command(keys.action(report('keys'))).action(report('root'));
 
-const empty = new GlobalOptions();
-const shared = new Application('empty', { globals: empty })
-  .command(new Command('leaf', { globals: empty }).action(report('leaf')))
+const shared = new Application('empty')
+  .command(new Command('leaf').action(report('leaf')))
   .action(report('root'));
 
 const declarations = { aliased, composed, forked, plain, root, shared };

@@ -3,21 +3,10 @@ import { buildExtensions } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
 import { compileOptions } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
-import type {
-  DefaultConstraint,
-  MultipleConstraint,
-  NameConstraint,
-  OptionConfig,
-  OptionValue,
-  ValidateOmittedConstraint,
-} from './types.js';
+import type { OptionConfig, OptionValue } from './types.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
-import { captureConfig } from './validation.js';
 
 const globalSubject = 'the global options';
-
-/** Phantom key. It keeps the declared option types exact and holds no runtime value. */
-declare const declaredTypes: unique symbol;
 
 /**
  * Who declared one option that shares the globals table, or the Command that declares a local
@@ -110,86 +99,31 @@ function spellingCollision(
  * validated and never reaches an action.
  */
 interface BuiltGlobals {
+  bind: (values: ValidatedInputs) => unknown;
   inputs: readonly InputDeclaration[];
   names: ReadonlyMap<string, OptionOwner>;
   options: ReturnType<typeof compileOptions>;
   plugins: readonly BuiltPlugin[];
-  source: unknown;
 }
 
-/**
- * The declarations behind one GlobalOptions value. Only this package reaches them.
- * `option()` is the whole authoring surface, so every declaration here is an option.
- */
-interface GlobalsNode {
-  bind: (values: ValidatedInputs) => unknown;
+/** The Application's private global declarations and their schema-derived value binder. */
+interface GlobalsState<Globals = unknown> {
+  bind: (values: ValidatedInputs) => Globals;
   inputs: readonly OptionInput[];
-  source: unknown;
 }
 
-/** Authored values register here, so the public type publishes no state to reach or replace. */
-const nodes = new WeakMap<object, GlobalsNode>();
-
-class GlobalOptionsBuilder<Options> {
-  declare readonly [declaredTypes]: Options;
-  readonly #bind: (values: ValidatedInputs) => Options;
-  readonly #inputs: readonly OptionInput[];
-
-  constructor(inputs: readonly OptionInput[], bind: (values: ValidatedInputs) => Options) {
-    this.#bind = bind;
-    this.#inputs = inputs;
-    nodes.set(this, { bind, inputs, source: this });
-  }
-
-  option<const Name extends string, const Config extends OptionConfig>(
-    name: Name,
-    config: Config &
-      NameConstraint<Name> &
-      NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>> &
-      NoInfer<ValidateOmittedConstraint<Config>>,
-  ): GlobalOptions<Options & Record<Name, OptionValue<Config>>> {
-    const input: OptionInput<Name, Config> = {
-      config: captureConfig(config),
-      kind: 'option',
-      name,
-    };
-    const previous = this.#bind;
-    return new GlobalOptionsBuilder([...this.#inputs, input], (values) => ({
-      ...previous(values),
-      ...values.option(input),
-    }));
-  }
+function emptyGlobals(): GlobalsState<{}> {
+  return { bind: () => ({}), inputs: [] };
 }
 
-/**
- * Application-wide options. `option()` is the whole authoring surface: it returns a new value and
- * leaves its receiver unchanged. The value the declarations share is the application's globals.
- * The declarations themselves stay private, so no consumer can read or replace them.
- */
-type GlobalOptions<Options = {}> = Pick<
-  GlobalOptionsBuilder<Options>,
-  typeof declaredTypes | 'option'
->;
-
-/** Reads the declarations behind an authored value; anything else is a declaration error. */
-function nodeOf(globals: object): GlobalsNode {
-  const node = nodes.get(globals);
-  if (!node) {
-    throw new DeclarationError(
-      'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
-    );
-  }
-  return node;
-}
-
-/**
- * Whether a value is an authored GlobalOptions declaration, whichever call produced it. The
- * registry is the test, because `option()` returns a new declaration of its own and the exported
- * constructor is only the first of them.
- */
-function isGlobalOptions(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && nodes.has(value);
+function declareGlobalOption<Globals, Name extends string, Config extends OptionConfig>(
+  state: GlobalsState<Globals>,
+  input: OptionInput<Name, Config>,
+): GlobalsState<Globals & Record<Name, OptionValue<Config>>> {
+  return {
+    bind: (values) => ({ ...state.bind(values), ...values.option(input) }),
+    inputs: [...state.inputs, input],
+  };
 }
 
 /**
@@ -197,8 +131,8 @@ function isGlobalOptions(value: unknown): boolean {
  * installed plugin's options in installation order. Every collision between the two scopes, by key
  * or by spelling, is reported here, so the pre-scan meets a table with one owner per name.
  */
-function compileTable(
-  node: GlobalsNode,
+function buildGlobals(
+  node: GlobalsState,
   plugins: readonly BuiltPlugin[],
   build: PluginBuild,
 ): BuiltGlobals {
@@ -228,7 +162,7 @@ function compileTable(
       options,
     });
   });
-  return { inputs: node.inputs, names, options, plugins, source: node.source };
+  return { bind: node.bind, inputs: node.inputs, names, options, plugins };
 }
 
 /** One plugin's options joining the table the application's globals already hold. */
@@ -258,43 +192,5 @@ function join(
   }
 }
 
-/** Absent globals compile to an empty table whose source is `undefined`, like the declarations. */
-function buildGlobals(
-  globals: object | undefined,
-  plugins: readonly BuiltPlugin[],
-  build: PluginBuild,
-): BuiltGlobals {
-  const node: GlobalsNode =
-    globals === undefined ? { bind: () => ({}), inputs: [], source: undefined } : nodeOf(globals);
-  return compileTable(node, plugins, build);
-}
-
-function bindGlobals<Options>(
-  globals: GlobalOptions<Options> | undefined,
-  values: ValidatedInputs,
-): Options {
-  const bound: unknown = globals === undefined ? {} : nodeOf(globals).bind(values);
-  // Last resort: no typed path exists. The public GlobalOptions type hides its declarations.
-  // The registry is the only bridge from a value to its binder, and a WeakMap cannot carry the
-  // Options type of its key. It holds because the registered binder belongs to this value alone.
-  // Its record composes exactly the declarations that its Options type records.
-  // A declaration without globals publishes `Options = {}`, and the empty record is exactly that.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return bound as Options;
-}
-
-const GlobalOptions: new () => GlobalOptions = class extends GlobalOptionsBuilder<{}> {
-  constructor() {
-    super([], () => ({}));
-  }
-};
-
-export type { BuiltGlobals, OptionOwner, OptionSite };
-export {
-  bindGlobals,
-  buildGlobals,
-  GlobalOptions,
-  isGlobalOptions,
-  keyCollision,
-  spellingCollision,
-};
+export type { BuiltGlobals, GlobalsState, OptionOwner, OptionSite };
+export { buildGlobals, declareGlobalOption, emptyGlobals, keyCollision, spellingCollision };

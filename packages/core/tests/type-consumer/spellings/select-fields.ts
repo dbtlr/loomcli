@@ -2,7 +2,7 @@ import type { ActionHandler } from '@loomcli/core';
 
 import type { select } from './spellings.js';
 
-export const selectFields: ActionHandler<typeof select> = ({ options }) => {
+const selectFields: ActionHandler<typeof select> = ({ options }) => {
   const fields: string[] = options.field;
   const raw: boolean = options.raw;
   const file: string | undefined = options.file;
@@ -14,3 +14,5 @@ export const selectFields: ActionHandler<typeof select> = ({ options }) => {
   options.dry;
   return { field: fields, file, flag, raw };
 };
+
+export { selectFields };

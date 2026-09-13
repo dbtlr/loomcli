@@ -1,8 +1,8 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import type { ActionArgs, ActionHandler, ActionOptions, CommandOptions } from '@loomcli/core';
 import { z } from 'zod';
 
-import { get, globals, jsonkit } from './commands.js';
+import { configured, get, jsonkit } from './commands.js';
 
 const named = (args: ActionArgs<typeof get>, options: ActionOptions<typeof get>) => {
   const path: string = args.path;
@@ -23,15 +23,15 @@ get.children;
 get.actions;
 // @ts-expect-error TS2339: A Command does not publish its build step.
 get.build;
-// @ts-expect-error TS2339: GlobalOptions publishes no declaration list.
-globals.inputs;
+// @ts-expect-error TS2339: An Application publishes no declaration list.
+configured.inputs;
 // @ts-expect-error TS2339: An Application publishes no root Command.
 jsonkit.root;
 
 new Command('optional').argument('path', { required: false });
 
-// @ts-expect-error TS2559: A Command takes an options object, never a positional globals value.
-new Command('positional', globals);
+// @ts-expect-error TS2353: Named Commands do not accept constructor globals wiring.
+new Command('retired', { globals: {} });
 
 // A core fact is typed, so a value of the wrong type never reaches the build rule that rejects it.
 const numbered = { description: 42 };
@@ -43,19 +43,19 @@ new Application('counted', counted);
 
 // The core facts are optional, and a Command declares its description with or without globals.
 const described: CommandOptions = { description: 'Reads a value.' };
-new Command('summarized', { description: 'Reads one value.', globals })
+new Command('summarized', { description: 'Reads one value.' })
   .argument('path', { description: 'The path to read.', required: true })
   .option('raw', { description: 'Prints the value unquoted.', type: 'boolean' })
   .action(() => {});
 new Command('standalone', { description: 'Answers alone.' }).action(() => {});
 
 // The two listing facts belong to a named Command and to an option, in every scope that declares one.
-new Command('fetch', { deprecated: 'Use get instead.', description: 'Reads one value.', globals })
+new Command('fetch', { deprecated: 'Use get instead.', description: 'Reads one value.' })
   .option('raw', { deprecated: 'Use --plain instead.', hidden: true, type: 'string' })
   .option('plain', { hidden: true, type: 'boolean' })
   .action(() => {});
-new Command('debug', { globals, hidden: true }).action(() => {});
-new GlobalOptions().option('legacy', {
+new Command('debug', { hidden: true }).action(() => {});
+new Application('globals').globalOption('legacy', {
   deprecated: 'Use --file instead.',
   hidden: true,
   type: 'string',
@@ -74,24 +74,28 @@ new Command('argument-hidden').argument('path', { hidden: true });
 new Command('argument-deprecated').argument('path', { deprecated: 'Use --file instead.' });
 new Application('facts', {
   description: 'Reads a JSON document.',
-  globals: new GlobalOptions().option('file', {
-    description: 'The document to read.',
-    type: 'string',
-  }),
   version: '1.2.0',
 })
+  .globalOption('file', {
+    description: 'The document to read.',
+    type: 'string',
+  })
   .argument('files', { description: 'The documents to read.', required: true, variadic: true })
   .action(() => {});
 void described;
 
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
-new Command('collision', { globals }).option('file', { type: 'boolean' });
-// @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
-new Application('collision', { globals }).option('quiet', { type: 'boolean' });
-// @ts-expect-error TS2322: A globals type argument cannot forge values the declaration lacks.
-new Application<{ forged: number }>('forged', { globals: new GlobalOptions() });
-// @ts-expect-error TS2345: A child must carry the same globals value as its Application.
-new Application('mismatch', { globals }).command(new Command('get').action(() => {}));
+new Command('collision').option('file', { type: 'boolean' });
+new Application('collision')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
+  // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.
+  .option('quiet', { type: 'boolean' });
+// @ts-expect-error TS2554: The Application constructor has no global output type parameter.
+new Application<{ forged: number }>('forged');
+// @ts-expect-error TS2345: An Application must satisfy its Command global types.
+new Application('mismatch').command(new Command('get').action(() => {}));
 
 new Application('plain')
   .argument('files', { required: true, variadic: true })

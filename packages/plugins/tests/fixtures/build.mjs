@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
@@ -19,12 +19,13 @@ const scenarios = {
   },
   'placeholder-whitespace': () =>
     new Application('app', {
-      globals: new GlobalOptions().option('file', {
+      plugins: [help()],
+    })
+      .globalOption('file', {
         extensions: [helpInput({ placeholder: 'a path' })],
         type: 'string',
-      }),
-      plugins: [help()],
-    }).action(dispatch),
+      })
+      .action(dispatch),
 };
 
 const [name, ...argv] = process.argv.slice(2);

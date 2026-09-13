@@ -322,14 +322,12 @@ export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>)
 export declare const declaredTypes: unique symbol;
 
 /**
- * The three inferred types one declaration carries. The phantom member keeps them exact. Args and
- * options widen, so a child can satisfy a looser reader. The globals appear in both a parameter and
- * a return position, which makes them invariant: a child's globals must be the parent's own type,
- * not a subset and not a superset, because one table serves every Command in the graph.
+ * Arguments and local options describe the action's own inputs. Globals are a requirement on the
+ * Receiving Application: a library that needs none can attach wherever its local keys are disjoint.
  */
 export interface DeclaredTypes<Args, Options, Globals> {
   args: Args;
-  globals: (value: Globals) => Globals;
+  globals: (value: Globals) => void;
   options: Options;
 }
 

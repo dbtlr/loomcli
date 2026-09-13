@@ -299,19 +299,15 @@ test.each([
   ],
   [
     'foreign-globals-value',
-    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
+    'The Application options contain globals. Declare them with globalOption(name, config).',
   ],
   [
     'null-globals',
-    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
+    'The Application options contain globals. Declare them with globalOption(name, config).',
   ],
   [
     'foreign-globals',
-    'Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
-  ],
-  [
-    'missing-globals',
-    'Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.',
+    'Command "get" declares globals. Declare globals on the Application and register its environment.',
   ],
   [
     'shared-option-key',

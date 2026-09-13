@@ -8,12 +8,11 @@ The [style contract](#styles-and-rendering-policy-proposed) records the proposed
 
 ## Application declarations
 
-`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `globals` shares one `GlobalOptions` value with the root and every attached Command, `plugins` installs the plugins described in [Plugins](#plugins) in composition order, and `failures` registers the renderers described in [Failure renderers](#failure-renderers). `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](#extensions). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact.
+`new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `plugins` installs the plugins described in [Plugins](#plugins) in composition order, and `failures` registers the renderers described in [Failure renderers](#failure-renderers). `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](#extensions). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact.
 
 ```ts
-interface ApplicationOptions<Globals = {}> {
-  globals?: GlobalOptions<Globals>;
-  plugins?: readonly Plugin[];
+interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
+  plugins?: Plugins;
   failures?: readonly FailureRenderer[];
   description?: string;
   version?: string;
@@ -31,19 +30,20 @@ const app = new Application('paths')
 await app.run();
 ```
 
-Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `alias()`, `action()`, and `command()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
+Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `globalOption()`, `alias()`, `action()`, `command()`, and `extend()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
 
-A declaration value publishes the authoring calls that are still valid for it. A fresh `Command` publishes `argument()`, `option()`, `alias()`, `command()`, and `action()`; a fresh `Application` publishes `argument()`, `option()`, `command()`, and `action()` for the unnamed root, which has no name to alias; `GlobalOptions` publishes `option()`. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
+A declaration value publishes the authoring calls that are still valid for it. `Command` and `Application` always publish `extend()`, outside the authoring-state parameter. A fresh `Command` publishes `argument()`, `option()`, `alias()`, `command()`, and `action()`; a fresh `Application` publishes `argument()`, `option()`, `command()`, and `action()` for the unnamed root, which has no name to alias. An Application also publishes `globalOption()` until its first `command()` or `action()` call. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
 
-Declare arguments and options, attach the children, then register the action last. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
+Declare global options before attaching children or registering the action. Declare local arguments and options before the action. Command-targeted extensions remain configurable afterward through `extend()`. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
 
 | Call         | Removed from the value it returns                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------------------- |
 | `argument()` | `command()`, because one Command declares arguments or attaches children, never both                        |
-| `command()`  | `argument()`, the same rule read from the other side                                                        |
+| `command()`  | `argument()`; on Application, also `globalOption()`                                                        |
+| `globalOption()` | nothing; available on Application alone |
 | `option()`   | nothing                                                                                                     |
 | `alias()`    | nothing                                                                                                     |
-| `action()`   | every declaration call; an Application keeps `inspect()`, `run()`, and `name`, a Command its inferred types |
+| `action()`   | `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, and `action()`; both declarations keep `extend()` |
 
 Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available. Only an `Application` publishes `inspect()`, `run()`, and `name`, in every state; a named `Command` publishes its authoring calls alone. The type states do not read what a group holds, so build rejects an option declared on a Command that registers no action: a local option never reaches a child's action. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
 
@@ -51,7 +51,7 @@ Arguments and children exclude each other at the second call, so `.argument('fil
 
 JavaScript authors reach the same rules at graph build, which reports a declaration made after the action, and arguments declared beside children. Both are listed in [Graph build errors](#graph-build-errors).
 
-TypeScript requires one statically known name for each `argument()` and `option()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. A rejected name reports the missing property `'Declaration names must be one literal string'`. JavaScript declarations still undergo graph validation during `run()`.
+TypeScript requires one statically known name for each `argument()`, `option()`, and `globalOption()` declaration. Literal-typed constants such as `const name = 'metric'` are valid. Widened `string` types, unions such as `'left' | 'right'`, and open template types are rejected. One declaration creates one handler key, so its type cannot promise several possible keys at once. A rejected name reports the missing property `'Declaration names must be one literal string'`. JavaScript declarations still undergo graph validation during `run()`.
 
 A Command accepts arguments in declaration order. A scalar argument, with optional `variadic: false`, binds one token and produces one `string`, or the schema output when validated. A variadic argument, `{ variadic: true }`, must be last and takes the remaining tokens.
 
@@ -60,7 +60,7 @@ A scalar argument is optional when it omits `required` or declares `required: fa
 A variadic argument follows the presence rules of a [multiple option](#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the schema output, and never `undefined`: an empty tail is an accurate empty collection, so it enters the schema like a supplied one. A default is a `string[]`, or the schema's input type when the declaration validates, and it reaches each invocation as its own copy.
 
 ```ts
-const keys = new Command('keys', { globals }).argument('path', {}).action(({ args, out }) => {
+const keys = new Command('keys').argument('path', {}).action(({ args, out }) => {
   const path: string | undefined = args.path;
   return out.print(path ?? 'the root');
 });
@@ -94,7 +94,7 @@ const app = new Application('textstat')
 
 Declarations infer types through fluent calls and `ActionHandler<typeof app>`. The constructor accepts no caller-supplied input types. `StringOption`, `BooleanOption`, and their union `OptionConfig` support extracted configuration with `satisfies`.
 
-Every option and argument config object also accepts `description`, the one-line core fact every projection reads under the rule [Extensions](#extensions) states, and `extensions`, the list of [extension values](#extensions) plugins define for inputs: `ExtensionValue<'option'>` on `StringOption` and `BooleanOption`, and `ExtensionValue<'argument'>` on `ArgumentConfig`. Both keys are optional, both apply to `GlobalOptions` declarations and plugin options alike, and neither changes parsing or validation. An option config object, and no argument config, also accepts the two core facts `hidden` and `deprecated` that [Hidden and deprecated members](#hidden-and-deprecated-members) describes.
+Every option and argument config object also accepts `description`, the one-line core fact every projection reads under the rule [Extensions](#extensions) states, and `extensions`, the list of [extension values](#extensions) plugins define for inputs: `ExtensionValue<'option'>` on `StringOption` and `BooleanOption`, and `ExtensionValue<'argument'>` on `ArgumentConfig`. Both keys are optional, both apply to global option declarations and plugin options alike, and neither changes parsing or validation. An option config object, and no argument config, also accepts the two core facts `hidden` and `deprecated` that [Hidden and deprecated members](#hidden-and-deprecated-members) describes.
 
 The long spelling uses the exact declared name. `dryRun` produces `--dryRun`; `dry-run` produces `--dry-run`. Names are case-sensitive. They cannot be empty, start with a hyphen, or contain whitespace or `=`. A `short` alias is one ASCII letter and is case-sensitive. A hyphenated name is not a JavaScript identifier, so its action value reads with bracket access: `options['dry-run']`, the way textstat reads `options['min-bytes']`.
 
@@ -184,25 +184,22 @@ Passthrough is always available and is empty when no tail exists. It does not sa
 
 ## Commands and global options
 
-`new GlobalOptions()` declares the options that every Command in one application shares. It has `option()` alone; it declares no arguments and no action. Like every authoring call, `option()` returns a new value and leaves its receiver unchanged; the value the declarations receive is the application's globals. An empty `GlobalOptions` value is legal, and every Command in that graph then declares its own options.
+`Application.globalOption(name, config)` declares an option shared by every action. It accepts the same config as `option()` and returns a new Application with the global output type added. Keep the returned value; the receiver is unchanged. Declare all globals before the first `command()` or `action()` call. An Application with no global declarations has no application-owned global options.
 
 ```ts
-import { GlobalOptions } from '@loomcli/core';
+import { Application } from '@loomcli/core';
 
-export const globals = new GlobalOptions().option('file', {
-  required: true,
-  short: 'f',
-  type: 'string',
-});
+const configured = new Application('jsonkit')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { type: 'boolean' });
 ```
 
 Global names, aliases, polarity, defaults, and schemas follow the local-option rules above. A global value reaches every action, so `options.file` has one type in the root action and in each Command action.
 
-`new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, and `action()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `new Application(name, { globals }).command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. A Command takes one options object like the Application does: `globals` names the shared value, `description` is the one-line core fact every projection reads under the rule [Extensions](#extensions) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](#extensions) plugins define. Build rejects the retired positional globals form. Both constructors omit the second argument when the application declares no globals and no other fact.
+`new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, `action()`, and `extend()`. A command name is a nonempty string without a leading hyphen, whitespace, or `=`. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth. A Command takes one options object like the Application does: `description` is the one-line core fact every projection reads under the rule [Extensions](#extensions) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](#extensions) plugins define. Build rejects globals passed to a named Command, through its constructor options. Declare globals on the Application and register its environment as shown below.
 
 ```ts
-interface CommandOptions<Globals = {}> {
-  globals?: GlobalOptions<Globals>;
+interface CommandOptions {
   description?: string;
   hidden?: boolean;
   deprecated?: string;
@@ -210,11 +207,11 @@ interface CommandOptions<Globals = {}> {
 }
 ```
 
-The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own, both at compile time and during graph build.
+The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own. `.globalOption()` rejects a name already declared as a root-local option. Both checks apply at compile time and during graph build.
 
 ### Nested Commands and groups
 
-`command()` belongs to a named Command and to the unnamed root alike, so children attach at any depth. A child holds the same `GlobalOptions` value as its Application wherever it sits, and build walks the whole tree: it checks that value, the child names of each parent, and every per-Command rule at every level. A diagnostic that names a parent names the Command that holds the fault, so a nested parent reads as `Command "cache"`. The graph is a tree: one Command value attaches at one point in an Application's graph, and build rejects a value attached under two parents, so a Command that belongs in two places comes from a function that returns a fresh value for each placement. A separate Application may attach the same value, because each build claims its nodes anew.
+`command()` belongs to a named Command and to the unnamed root alike, so children attach at any depth. The Application supplies its globals throughout the graph. Build walks the whole tree and checks each Command, the child names of each parent, and every per-Command rule at every level. A diagnostic that names a parent names the Command that holds the fault, so a nested parent reads as `Command "cache"`. The graph is a tree: one Command value attaches at one point in an Application's graph, and build rejects a value attached under two parents, so a Command that belongs in two places comes from a function that returns a fresh value for each placement. A separate Application may attach the same value, because each build claims its nodes anew.
 
 A Command with children and no action is a group. The unnamed root may be a group too. A group holds children alone: a local option on it reaches no handler, because locals never inherit, so build rejects the declaration. A Command with children and an action keeps its options for that action and runs it when routing selects no child. A Command with neither children nor an action keeps the no-action build error.
 
@@ -222,13 +219,15 @@ A Command with children and no action is a group. The unnamed root may be a grou
 import { Application, Command } from '@loomcli/core';
 
 import { clearCache, listCache, summarize } from './actions.js';
-import { globals } from './globals.js';
 
-const clear = new Command('clear', { globals }).option('force', { type: 'boolean' }).action(clearCache);
-const list = new Command('list', { globals }).action(listCache);
-const cache = new Command('cache', { globals }).command(clear).command(list);
+const clear = new Command('clear').option('force', { type: 'boolean' }).action(clearCache);
+const list = new Command('list').action(listCache);
+const cache = new Command('cache').command(clear).command(list);
 
-export const store = new Application('store', { globals }).command(cache).action(summarize);
+export const store = new Application('store')
+  .globalOption('file', { type: 'string' })
+  .command(cache)
+  .action(summarize);
 ```
 
 Routing reads a nested graph the way it reads a flat one. Bare tokens descend from the root, and the first hyphen token commits to the Command they reach, so `store cache clear --force` dispatches `clear` with the global values and its own locals. An unknown child lists the children of the Command that holds it, at every depth.
@@ -242,8 +241,8 @@ An invocation that commits to a group fails before local parsing, with code 2. T
 Aliases belong to the Command value, so a group carries them like any other named Command, and the unnamed root declares none. The call is variadic and repeatable: `.alias('ls', 'list')` and `.alias('ls').alias('list')` declare the same set, in that order. A call with no names does not compile. An alias follows the child name rule, and every canonical name and alias under one parent shares one namespace, so build rejects an alias that repeats a sibling's name, a sibling's alias, another alias of its own Command, or its own Command's canonical name. Like every other declaration call, `alias()` precedes `action()`.
 
 ```ts
-const list = new Command('list', { globals }).alias('ls').action(listCache);
-const cache = new Command('cache', { globals }).command(clear).command(list);
+const list = new Command('list').alias('ls').action(listCache);
+const cache = new Command('cache').command(clear).command(list);
 ```
 
 `store cache ls` and `store cache list` both dispatch `list`, and the validation context reports `['cache', 'list']` for either spelling. `store cache nope` still lists `clear, list`.
@@ -254,38 +253,48 @@ A named Command and an option carry two core facts beside `description`, declare
 
 `deprecated` marks a member the application still accepts but no longer advertises as the way to do its job, and its value is the migration message: one line that holds a character other than whitespace, under the rule a `description` follows, such as `'Use get instead.'`. Build rejects a bare `true`, because a deprecation with no migration path leaves an operator or an agent with nothing to do. A projection shows the message beside the member, so a reader learns what to use instead at the point where they choose. A member that is both hidden and deprecated is omitted, because hidden decides what a listing shows.
 
-Both facts apply to a local option, to a `GlobalOptions` declaration, and to a plugin option alike. Neither applies to an argument, because a positional cannot leave the grammar it sits in, and neither applies to the root, which is every page's entry point; build rejects either fact on an argument config or on the Application options, because an argument config is inferred from its value and the compiler checks it for no excess key. Routing selects and parsing binds without reading either fact. They are facts for the projections that read the graph, and `inspect()` reports both on every `CommandNode` and `OptionNode`.
+Both facts apply to a local option, to a global option declaration, and to a plugin option alike. Neither applies to an argument, because a positional cannot leave the grammar it sits in, and neither applies to the root, which is every page's entry point; build rejects either fact on an argument config or on the Application options, because an argument config is inferred from its value and the compiler checks it for no excess key. Routing selects and parsing binds without reading either fact. They are facts for the projections that read the graph, and `inspect()` reports both on every `CommandNode` and `OptionNode`.
 
 ```ts
-const fetch = new Command('fetch', { deprecated: 'Use get instead.', description: 'Read one value at a path.', globals }).action(readValue);
-const debug = new Command('debug', { description: 'Dump the parsed document.', globals, hidden: true }).action(dump);
+const fetch = new Command('fetch', { deprecated: 'Use get instead.', description: 'Read one value at a path.' }).action(readValue);
+const debug = new Command('debug', { description: 'Dump the parsed document.', hidden: true }).action(dump);
 ```
 
 ### Modular authoring
 
-Globals are a value, so a Command in its own module knows the global types without importing the application. Module dependencies flow one way: globals, then commands, then the application. The `jsonkit` example uses this layout.
+The Application declares globals once and registers its shallow environment in the same TypeScript project. Commands import neither the Application nor its globals. Registration supplies their global output types, including schema transformations.
 
-| Module                                                                  | Contents                                                                                                                                        |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/globals.ts`                                                        | the shared `GlobalOptions` value                                                                                                                |
-| `src/commands/get.ts`, `src/commands/keys.ts`, `src/commands/select.ts` | one `Command` each                                                                                                                              |
-| `src/actions/*.ts`                                                      | one `ActionHandler<typeof declaration>` each                                                                                                    |
-| `src/failures.ts`                                                       | one `Renderer` per branded failure class                                                                                                        |
-| `src/application.ts`                                                    | the root: the options object with `globals` and the failure registrations, then `.command(get).command(keys).command(select).action(summarize)` |
-| `src/main.ts`                                                           | `await jsonkit.run()`                                                                                                                           |
+```ts
+// src/application.ts
+import { Application } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+import { get } from './commands/get.js';
 
-The application module is the root's authoring file. It declares the root action and attaches the children, and it is the declaration the root action type-imports. One Application value exists, so there is no separate root value to run by mistake.
+const configured = new Application('jsonkit')
+  .globalOption('file', { required: true, type: 'string' });
 
-An action type-imports its own declaration. The import is erased, so the cycle between a Command and its action exists only in types. The types register that action with the last call in the chain: `action()` returns a value with no declaration call left, so a later `argument()`, `option()`, `alias()`, or `command()` does not compile. The rule also keeps a type-imported handler resolvable. TypeScript resolves the declared type of a variable from its outermost call without checking that call's arguments, but it checks the arguments of every inner call, so a type-imported handler passed to an inner call reports a circular reference.
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
+export const jsonkit = configured.command(get);
+```
+
+Register the configured Application before attaching Commands or registering its action. Registering the completed Application creates a circular dependency through the Commands that consume its types. `EnvironmentOf` reads a type-only marker containing global outputs and the installed plugin tuple. It contains no Command graph or root-local inputs and exposes no runtime property.
+
+Keep one registration per TypeScript compilation context. Separate applications with different registrations need separate compiler projects, including examples and tests. Ensure the registration module is included in each application's project. A reusable library compiles without the consumer's registration. Its emitted Commands retain their own action types and can attach when the Application satisfies their global requirements and their local keys do not collide. Public `Command` type annotations have neutral defaults; only construction reads the registration.
+
+An extracted action type-imports its own declaration. Keep that declaration's initializer ending in `action(handler)`: TypeScript resolves its outermost call before checking the handler. Appending `extend()` in the same self-referencing initializer makes that action call an inner call and creates circular inference. Derive an enriched value from the completed declaration instead. Inline handlers have no such self-reference.
 
 ```ts
 // src/commands/get.ts
 import { Command } from '@loomcli/core';
 
 import { getValue } from '../actions/get-value.js';
-import { globals } from '../globals.js';
 
-export const get = new Command('get', { globals })
+export const get = new Command('get')
   .argument('path', { required: true })
   .action(getValue);
 
@@ -330,7 +339,7 @@ A missing required input is a validation-phase problem, so it loses to routing a
 
 ### Graph build errors
 
-Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Fifteen of them reach JavaScript authors alone, because the types already remove the call that breaks them: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, a globals value that is not a GlobalOptions, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, an options slot holding a positional GlobalOptions value on the Application, the same positional value on a Command, a version that is not a string, a description that is not a string, a `hidden` value that is not a Boolean, and a `deprecated` value that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, a deprecated message that is blank or holds a line terminator, a version that is blank or holds a line terminator, a `hidden` or `deprecated` fact on the root or on an argument, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a child holding another GlobalOptions value, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the failure renderer registrations, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Many reach JavaScript authors alone, because the types already reject the invalid declaration: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, constructor options that contain a retired `globals` property, a `failures` entry that is not a `renderFailure` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, a global option declared after Command attachment or action registration, a version that is not a string, a description that is not a string, a `hidden` value that is not a Boolean, and a `deprecated` value that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, a deprecated message that is blank or holds a line terminator, a version that is blank or holds a line terminator, a `hidden` or `deprecated` fact on the root or on an argument, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two failure renderers for one class, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -344,18 +353,17 @@ Authoring calls collect declarations; core validates them during `run()` and `in
 | An alias declared twice on one Command                  | `Command "keys" declares alias "ls" twice. Remove the repeated alias.`                                                                                                                                                                                                     |
 | An invalid alias name                                   | `Command "keys" declares an alias named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                                                                                     |
 | An invalid argument name                                | `The root Command declares an argument named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".`                                                                                                                                                |
-| A child with another globals value                      | `Command "get" holds a different GlobalOptions value than its Application. Share one GlobalOptions value across the declarations.` A child whose globals type differs is also a compile error at `command()`.                                                              |
+| Globals declared on a named Command                      | `Command "get" declares globals. Declare globals on the Application and register its environment.` Attachment separately rejects an unsatisfied global type requirement or a known global/local key collision.                                                              |
 | A global and a local option with one key                | `Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.`                                                                                                                                                            |
 | A global and a local option with one spelling           | `Option spelling "-f" is used by the global option "file" and the local option "force" on Command "get". Change one declaration.`                                                                                                                                          |
 | A Command with neither children nor an action           | `Command "get" has no action. Register an action.`                                                                                                                                                                                                                         |
 | A group that declares a local option                    | `Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.` The root form reads `The root Command declares option "verbose" ...`.                                                                          |
 | A Command with several actions                          | `Command "get" has multiple actions. Register one action.`                                                                                                                                                                                                                 |
 | An attached value that is not a Command                 | `The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).`                                                                                                                                                                 |
-| A globals value that is not a GlobalOptions             | `The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().`                                                                                                                                                 |
-| An options slot that holds no options object            | `The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.` for the retired positional form, and `The Application options must be an object. Supply { globals, failures }.` for any other value that is not a plain object. |
+| Retired constructor globals configuration | `The Application options contain globals. Declare them with globalOption(name, config).` |
+| An options slot that holds no options object | `The Application options must be an object. Supply an Application options object.` |
 | A failures entry that is not a registration             | `The Application holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).`                                                                                                                                                |
-| A positional globals value on a Command                 | `Command "get" takes an options object. Supply { globals } instead of a positional GlobalOptions value.` |
-| A Command options slot that holds no options object     | `Command "get" options must be an object. Supply { globals }.` |
+| A Command options slot that holds no options object     | `Command "get" options must be an object. Supply a Command options object.` |
 | A description that is blank or holds a line terminator  | `Command "get" description must hold a character other than whitespace and no line terminator. Supply a one-line summary.` The same sentence names the Application as `The Application`, a global option as `Global option "file"`, a local option as `Command "get" option "raw"`, a plugin option as `Plugin "@loomcli/log" option "level"`, and an argument as `The root Command argument "files"`. A description that is not a string reads the same sentence, and a JavaScript author alone can declare one. |
 | A version that is not a string, or is blank or holds a line terminator | `The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".` A JavaScript author alone can declare a version that is not a string. |
 | A deprecated message that is blank or holds a line terminator | `Command "fetch" deprecated message must hold a character other than whitespace and no line terminator. Supply a one-line migration path, such as "Use get instead.".` The same sentence names a global option as `Global option "raw"`, a local option as `Command "get" option "raw"`, and a plugin option as `Plugin "@loomcli/log" option "level"`. A `deprecated` value that is not a string, `true` included, reads the same sentence, and a JavaScript author alone can declare one. |
@@ -471,7 +479,7 @@ An omitted Boolean reads as `undefined` here, because the polarity value is the 
 A scalar rule about omission, such as "a file or piped stdin", cannot live in a schema by itself, because an omitted optional value never reaches one. `validateOmitted: true` is how that rule reads omission: core calls the schema with `undefined` as the value, in the invocation phase, with the full [validation context](#validation-context). A returned issue is an input issue like any other and returns code 2. No token was supplied, so it names the declaration by the spelling an operator would type: an option under its long form, as in `Option "--file": Supply a file or pipe JSON to stdin.`, a `shortOnly` option under its short spelling, and an argument under its name. The action value is the schema output alone, because the schema always runs.
 
 ```ts
-import { GlobalOptions, validationContext } from '@loomcli/core';
+import { Application, validationContext } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
 /** The rule answers omission too, so the schema's input type accepts `undefined`. */
@@ -491,7 +499,7 @@ const fileOrStdin: StandardSchemaV1<string | undefined, string | undefined> = {
   },
 };
 
-const globals = new GlobalOptions().option('file', {
+const configured = new Application('jsonkit').globalOption('file', {
   short: 'f',
   type: 'string',
   validate: fileOrStdin,
@@ -523,7 +531,7 @@ A validator that throws, rejects its promise, or returns a malformed result prod
 
 `files` is an optional variadic argument with a custom Standard Schema. Its validator reads the validation context: a nonempty list passes, and an empty list passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false. Otherwise it returns the issue `Supply file arguments or pipe text to stdin.`, which core reports as an input error. The action never reads the terminal. It counts each supplied file, or `host.stdin` when no file is supplied, and prints the row name `stdin` for the piped text. Every source is counted incrementally over its chunks, so a word or a multibyte character that a chunk boundary splits is counted once.
 
-[jsonkit](../examples/jsonkit/src/globals.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with code 2 before any action runs. The application registers its own `InputError` renderer, so the operator reads `jsonkit: --file: Supply a file or pipe JSON to stdin.` where core's default text would read `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
+[jsonkit](../examples/jsonkit/src/application.ts) declares the same rule for one scalar. Its global `--file` carries a hand-written schema and `validateOmitted: true`, so the rule reads omission too. A supplied path passes unchanged. Omission passes only when the invocation phase reports that `host.terminal.stdin.isTTY` is false; otherwise the schema returns the issue `Supply a file or pipe JSON to stdin.`, so a terminal invocation with no file fails with code 2 before any action runs. The application registers its own `InputError` renderer, so the operator reads `jsonkit: --file: Supply a file or pipe JSON to stdin.` where core's default text would read `Invalid input: Option "--file": Supply a file or pipe JSON to stdin.` The shared reader then selects between the file and `host.stdin` and reads no terminal fact of its own.
 
 ## Graph inspection
 
@@ -791,14 +799,12 @@ import { Application, InputError, renderFailure, UnknownCommandError } from '@lo
 
 import { summarize } from './actions/summarize.js';
 import { inputProblems, unknownCommand } from './failures.js';
-import { globals } from './globals.js';
 
 export const jsonkit = new Application('jsonkit', {
   failures: [
     renderFailure(InputError, inputProblems),
     renderFailure(UnknownCommandError, unknownCommand),
   ],
-  globals,
 }).action(summarize);
 ```
 
@@ -860,7 +866,7 @@ interface PluginDefinition<Options extends PluginOptions> {
 }
 ```
 
-`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `failures` holds renderers for different classes. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; it is not the invariant phantom the globals use. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity and the target and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that declares options and loads a middleware exports its options type and annotates its factory's return type. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
+`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `failures` holds renderers for different classes. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity and the target and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that declares options and loads a middleware exports its options type and annotates its factory's return type. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
 ```ts
 // src/help/plugin.ts, the entry module of the @loomcli/plugins/help subpath
@@ -897,7 +903,6 @@ import { help } from '@loomcli/plugins/help';
 import Package from '../package.json' with { type: 'json' };
 
 export const jsonkit = new Application('jsonkit', {
-  globals,
   plugins: [help()],
   version: Package.version,
 });
@@ -974,7 +979,22 @@ An activation name that is not one of the plugin's declared options is a compile
 
 ### Extensions
 
-An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, `ExtensionValue<Target>`, and a declaration lists those values under `extensions` in its config object. The key is overloaded on purpose: a plugin's own `extensions` lists the descriptors it defines, and every declaration's `extensions` lists the values those descriptors produce. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. Each config object takes the values for its own target: `ApplicationOptions` and `CommandOptions` take `ExtensionValue<'command'>`, `StringOption` and `BooleanOption` take `ExtensionValue<'option'>`, on a `GlobalOptions` declaration and on a plugin option alike, and `ArgumentConfig` takes `ExtensionValue<'argument'>`.
+`Command.extend(...values)` and `Application.extend(...values)` return new declarations and remain available after `action()`. They accept command-targeted extension values, including help details and examples on an imported library Command:
+
+```ts
+import { helpCommand } from '@loomcli/plugins/help/extension';
+import { build } from 'command-library';
+
+const customized = build.extend(helpCommand({ details: 'Build this application.' }));
+const app = configured.command(customized);
+```
+
+Constructor `extensions` and each `extend()` call form successive layers. A later value from the same descriptor replaces its complete earlier value. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. The final record supports both inspection and `readExtension()`.
+
+An empty call returns an equivalent new declaration. Extending preserves the action, inputs, aliases, children, core facts, Application environment, and authoring state. It never reopens input or action declarations. Core facts such as `description`, `hidden`, and `deprecated`, and option/argument extensions, retain their constructor or input-configuration rules. Hooks and events await their lifecycle design.
+
+
+An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, `ExtensionValue<Target>`, and a declaration lists those values under `extensions` in its config object. The key is overloaded on purpose: a plugin's own `extensions` lists the descriptors it defines, and every declaration's `extensions` lists the values those descriptors produce. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. Each config object takes the values for its own target: `ApplicationOptions` and `CommandOptions` take `ExtensionValue<'command'>`, `StringOption` and `BooleanOption` take `ExtensionValue<'option'>`, on a global option declaration and on a plugin option alike, and `ArgumentConfig` takes `ExtensionValue<'argument'>`.
 
 ```ts
 // src/help/extension.ts, abbreviated: the shipped module in First-party plugins adds the value rules
@@ -999,7 +1019,6 @@ export const helpInput = extension(`${Package.name}/help/input`, {
 const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [helpCommand({ examples: [{ command: 'get user.name', note: 'a nested key' }] })],
-  globals,
 }).argument('path', { required: true, description: 'Dot path to read.' });
 ```
 
@@ -1100,11 +1119,9 @@ import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
-import { globals } from './globals.js';
 
 export const jsonkit = new Application('jsonkit', {
   description: 'Read and reshape one JSON document.',
-  globals,
   plugins: [help(), version()],
   version: Package.version,
 });
@@ -1158,10 +1175,10 @@ export const helpInput = extension(`${Package.name}/help/input`, {
 `helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead, one authored line per page line, each indented two spaces, with line breaks kept and nothing wrapped; every line of it holds a character other than whitespace, so it adds no blank line of its own to the page and no line terminator at either end. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option, a global option, and a plugin option carry it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean option is accepted and never shown, because a Boolean option takes no value. Arguments carry no help extension: an argument's placeholder is its declared name, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
 
 ```ts
-import { GlobalOptions, Command } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
-export const globals = new GlobalOptions().option('file', {
+export const configured = new Application('jsonkit').globalOption('file', {
   description: 'The document to read. Omit it to read piped text.',
   extensions: [helpInput({ placeholder: 'path' })],
   short: 'f',
@@ -1176,7 +1193,6 @@ const get = new Command('get', {
       examples: [{ command: 'get user.name -f doc.json', note: 'A nested key.' }],
     }),
   ],
-  globals,
 }).argument('path', { description: 'Dot path to read.', required: true });
 ```
 
@@ -1407,7 +1423,7 @@ The mapping's custom keys introduce one flat semantic vocabulary for the Applica
 
 The Application derives this vocabulary from its installed theme and publishes it through one Application-owned type registration. Independently authored Commands, extracted action handlers, and `Renderer<Data>` values receive those names automatically. A misspelled name fails compilation. There is no per-Command theme argument, manual token generic, or Application-owned Command factory.
 
-The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. The restoration increment owns its exact registration API and compatibility checks. Its acceptance must precede style implementation. Existing explicit globals wiring remains the implemented baseline until that prerequisite lands.
+The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. ADR-0024 supplies this registration API and its compatibility checks. Style implementation can derive its contribution types from that environment; theme configuration and rendering contexts remain part of the style increment.
 
 Core supplies `style` on the action context and in the second renderer argument. The imported `style` supplies concrete styles and core semantic names; theme authoring needs no Application instance.
 

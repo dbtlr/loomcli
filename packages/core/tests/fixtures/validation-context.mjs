@@ -1,10 +1,4 @@
-import {
-  Application,
-  Command,
-  GlobalOptions,
-  validationContext,
-  validationContextKey,
-} from '@loomcli/core';
+import { Application, Command, validationContext, validationContextKey } from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -43,11 +37,11 @@ const print = ({ host, out }) => out.print(encode({ records, sameHost: last?.hos
 let app = undefined;
 switch (scenario) {
   case 'root': {
-    const globals = new GlobalOptions().option('mode', {
-      type: 'string',
-      validate: echo('mode'),
-    });
-    app = new Application('context', { globals })
+    app = new Application('context')
+      .globalOption('mode', {
+        type: 'string',
+        validate: echo('mode'),
+      })
       .argument('name', { required: true, validate: echo('name') })
       .argument('files', { validate: echo('files'), variadic: true })
       .option('single', { type: 'string', validate: echo('single') })
@@ -61,13 +55,15 @@ switch (scenario) {
     break;
   }
   case 'nested': {
-    const globals = new GlobalOptions().option('mode', { type: 'string', validate: echo('mode') });
-    const clear = new Command('clear', { globals })
+    const clear = new Command('clear')
       .alias('cl')
       .option('force', { type: 'string', validate: echo('force') })
       .action(print);
-    const cache = new Command('cache', { globals }).alias('c').command(clear);
-    app = new Application('context', { globals }).command(cache).action(print);
+    const cache = new Command('cache').alias('c').command(clear);
+    app = new Application('context')
+      .globalOption('mode', { type: 'string', validate: echo('mode') })
+      .command(cache)
+      .action(print);
     break;
   }
   case 'default': {
