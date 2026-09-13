@@ -59,9 +59,6 @@ function build() {
       // Only an omitted argument means no globals; null is a value, and not a declaration.
       return new Application('graph', { globals: null }).action(dispatch);
     }
-    case 'missing-globals': {
-      return app.command(new Command('get').action(dispatch)).action(dispatch);
-    }
     case 'shared-option-key': {
       return app
         .command(new Command('get').option('file', { type: 'boolean' }).action(dispatch))

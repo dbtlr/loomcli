@@ -1024,7 +1024,6 @@ export const helpInput = extension(`${Package.name}/help/input`, {
 const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [helpCommand({ examples: [{ command: 'get user.name', note: 'a nested key' }] })],
-  globals,
 }).argument('path', { required: true, description: 'Dot path to read.' });
 ```
 
@@ -1432,7 +1431,7 @@ The mapping's custom keys introduce one flat semantic vocabulary for the Applica
 
 The Application derives this vocabulary from its installed theme and publishes it through one Application-owned type registration. Independently authored Commands, extracted action handlers, and `Renderer<Data>` values receive those names automatically. A misspelled name fails compilation. There is no per-Command theme argument, manual token generic, or Application-owned Command factory.
 
-The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. The restoration increment owns its exact registration API and compatibility checks. Its acceptance must precede style implementation. Existing explicit globals wiring remains the implemented baseline until that prerequisite lands.
+The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. ADR-0024 supplies this registration API and its compatibility checks. Style implementation can derive its contribution types from that environment; theme configuration and rendering contexts remain part of the style increment.
 
 Core supplies `style` on the action context and in the second renderer argument. The imported `style` supplies concrete styles and core semantic names; theme authoring needs no Application instance.
 

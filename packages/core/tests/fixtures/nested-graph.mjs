@@ -36,11 +36,6 @@ function build() {
         )
         .action(dispatch);
     }
-    case 'nested-missing-globals': {
-      return app
-        .command(new Command('cache').command(new Command('clear').action(dispatch)))
-        .action(dispatch);
-    }
     case 'duplicate-nested-children': {
       return app
         .command(new Command('cache').command(leaf('clear')).command(leaf('clear')))
