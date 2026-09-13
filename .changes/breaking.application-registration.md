@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** Named Command constructors that receive `globals`, and TypeScript Commands whose actions read Application globals.
+**Affected surface.** Named Command constructors that receive `globals`, explicit Command constructor type arguments, `CommandOptions<Globals>`, and TypeScript Commands whose actions read Application globals.
 
 **Why.** Application ownership should require one declaration, with global types available throughout its compiler project.
 
@@ -35,7 +35,7 @@ The Command module now uses `new Command('read').action(handler)` without import
 
 **Steps.**
 
-1. Remove `globals` from named Command constructor options and remove unused globals imports.
+1. Remove `globals` from named Command constructor options and remove unused globals imports. Remove Command constructor type arguments and use `CommandOptions` without a type argument.
 2. Keep the runtime globals declaration on the Application. Register its configured value before attaching Commands or registering the root action.
 3. Include the registration module in that application's TypeScript project. Use separate projects for applications with different registrations; reusable libraries omit consumer registration.
 4. To customize an imported Command, derive `command.extend(extensionValue)` and attach the returned value. Keep a self-typed extracted handler's original initializer ending in `action()`.
