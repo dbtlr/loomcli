@@ -4,7 +4,7 @@ title: ADR-0020 - First-party plugins ship in one package as separately installa
 description: Every first-party plugin ships in @loomcli/plugins as its own subpath export with the identity <package>/<plugin>, installed one at a time through the ordinary plugins list. The package has no root export and installs nothing on import.
 status: accepted
 created: 2026-09-09
-modified: 2026-09-10
+modified: 2026-09-12
 ---
 
 # ADR-0020 - First-party plugins ship in one package as separately installable subpaths
@@ -30,6 +30,8 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 `@loomcli/plugins` needs one npm trusted publisher before the release that first carries it, and none after. The package lives at `packages/plugins`, so it joins the synchronized release set the way every library under `packages/` does. A plugin added later is a subpath and an ordinary release under ADR-0012, not a new package. Moving a plugin out of the package later is a breaking change to its import path, so a plugin enters the package only when it is meant to stay first-party.
 
 ## Changelog
+
+- 2026-09-12: Proposed [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records an exception to the prohibition on exclusive plugin-kind slots. One theme owner becomes a core invariant. The `theme` and `loomTheme` factories construct that same plugin from `@loomcli/plugins/theme`, with the same identity. This replacement binds when ADR-0022 becomes accepted; other plugins retain the packaging rules here.
 
 - 2026-09-09: Recorded as proposed. The record was to move to accepted with the code that publishes `@loomcli/plugins` carrying the help and version plugins, installed by both example applications, and with the packed-consumer check ADR-0014 requires extended to the new package: a consumer installs the packed tarball, imports `@loomcli/plugins/help`, `@loomcli/plugins/help/extension`, and `@loomcli/plugins/version`, compiles against their emitted declarations, and runs under Node and Bun.
 - 2026-09-10: The package landed at `packages/plugins` with `private: true`. The release plan discovers every non-private manifest under `packages/` and treats a library absent from the registry as a publication to make, so a public manifest would have made every push to `main` refuse publication until the next cut. The flag comes off in the release cut that first carries the package, once its npm trusted publisher exists, and that is when this record moves to accepted.

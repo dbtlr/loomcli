@@ -4,6 +4,8 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
+The [style contract](#styles-and-rendering-policy-proposed) records the proposed rendering additions. Those APIs are not implemented in the current package. The other implementation sections continue to describe the shipped SDK.
+
 ## Application declarations
 
 `new Application(name)` creates an application with an unnamed root Command. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `globals` shares one `GlobalOptions` value with the root and every attached Command, `plugins` installs the plugins described in [Plugins](#plugins) in composition order, and `failures` registers the renderers described in [Failure renderers](#failure-renderers). `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](#extensions). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact.
@@ -843,6 +845,8 @@ The last row is an unregistered class inside an application that registers other
 
 Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds declarations alone: the options it contributes, one middleware with its activation and a loader, the extensions it defines, the failure renderers it registers, and one optional claim on the signals slot. The value performs no work when it is created and no work when it is installed. An installed plugin costs one small module on an invocation that never reaches it.
 
+This interface describes the implemented SDK. The [proposed `PluginDefinition.theme` field](#proposed-plugindefinitiontheme-field) extends it in the style implementation increment.
+
 ```ts
 interface PluginDefinition<Options extends PluginOptions> {
   options?: Options;
@@ -1278,3 +1282,265 @@ The deprecated child `fetch` carries its message as the last fact of its row, an
 ### Example coverage
 
 The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, `jsonkit fetch --help` prints the deprecated page and `jsonkit debug --help` the hidden one, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
+
+## Styles and rendering policy (proposed)
+
+This section is the contract for the next rendering increment. Its helpers, theme factories, context additions, and rendering options are not yet exported. The current [rendered output](#rendered-output) and [Host](#host) sections remain the implemented baseline until this increment lands. [ADR-0022](decisions/0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records the changes to that baseline.
+
+### Strings and composition
+
+Core exports `style`, `glyph`, and `pad`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step.
+
+```ts
+import { glyph, pad, style } from '@loomcli/core';
+
+const first = style.yellow.bold('Ready');
+const second = style.bold(style.yellow('Ready'));
+const status = `${style.green(glyph.success)} ${first}`;
+const cell = pad(status, 24);
+```
+
+Both chaining and nesting are first-class. Chains apply from left to right. A later foreground or background replaces only that attribute; unrelated modifiers accumulate. An inner span overrides the attributes it supplies and restores its enclosing style afterward. The chain never mutates its receiver.
+
+For a `warning` token mapped to yellow and bold, `style.warning.red(text)` is red and bold. `style.red.warning(text)` is yellow and bold. A token without a mapping leaves the surrounding style unchanged.
+
+`style.escape(text)` returns a string that displays Loom's internal delimiters literally. Normal style calls preserve markup rather than escaping it. `String(value)` performs coercion and does not escape markup. The escape helper does not remove ANSI sequences; rendering policy governs them.
+
+First-party renderers escape raw data they interpolate, such as a filename taken from a data object. A string supplied to an `out.*` message method is already authored text and can contain deliberate styles. Lane renderers preserve that text, including its markup. Escaping a complete message would break ordinary composition.
+
+The [wire contract](style-wire.md) fixes the delimiters, framing, literal-data rules, and malformed-input behavior. The wire form is internal and is not a persistent interchange format.
+
+### Default styles and custom colors
+
+The foreground catalog has all sixteen terminal colors:
+
+| Base | Bright |
+| --- | --- |
+| `black` | `brightBlack` |
+| `red` | `brightRed` |
+| `green` | `brightGreen` |
+| `yellow` | `brightYellow` |
+| `blue` | `brightBlue` |
+| `magenta` | `brightMagenta` |
+| `cyan` | `brightCyan` |
+| `white` | `brightWhite` |
+
+Every foreground has a background counterpart: `bgBlack` through `bgWhite`, and `bgBrightBlack` through `bgBrightWhite`. Terminal palette settings determine the actual appearance of these named colors. Loom's own views do not paint backgrounds; SDK authors can use them.
+
+The modifier catalog is `bold`, `faint`, `italic`, `underline`, `inverse`, `hidden`, `strikethrough`, and `overline`. There is no blink helper. `faint` is a terminal modifier; `dim` is a semantic theme token.
+
+Custom colors return the same callable chain:
+
+```ts
+style.hex('#C97B36').bold('Ready');
+style.rgb(201, 123, 54)('Ready');
+style.ansi256(172)('Ready');
+style.bgHex('#123').white('Ready');
+style.bgRgb(17, 34, 51)('Ready');
+style.bgAnsi256(17)('Ready');
+```
+
+Hex strings use `#RGB` or `#RRGGBB`, case-insensitively. RGB channels and ANSI palette indices are integers from 0 through 255. Alpha channels, clamping, and rounding are not supported. Invalid arguments throw when the helper is called, before a marked string is produced. Helpers do not coerce non-string text or invalid numeric input.
+
+Three scoped resets are chainable:
+
+| Helper | Effect inside its span |
+| --- | --- |
+| `reset` | Clear foreground, background, and modifiers |
+| `resetForeground` | Use the terminal's foreground default; retain other attributes |
+| `resetBackground` | Use the terminal's background default; retain other attributes |
+
+`style.reset.red(text)` clears inherited styling and then applies red. Closing the span restores the enclosing style. A token mapped to `style.reset` explicitly clears inherited styling. An omitted mapping does not clear anything.
+
+### Theme plugins and typed names
+
+The core semantic names are `dim`, `primary`, `highlight`, `success`, `warning`, `error`, and `info`. These are names, not built-in appearances.
+
+The plugin pack exposes two factories from `@loomcli/plugins/theme`:
+
+```ts
+import { Application, style } from '@loomcli/core';
+import { theme, loomTheme } from '@loomcli/plugins/theme';
+
+const app = new Application('example', {
+	plugins: [
+		loomTheme({
+			highlight: style.yellow.bold,
+			identifier: style.cyan,
+		}),
+	],
+});
+```
+
+`theme(mapping)` supplies a bare theme with exactly the mappings provided. `loomTheme(overrides?)` supplies Loom's seven default mappings and accepts partial overrides. These are two constructors for the pack's theme plugin, whose identity is `@loomcli/plugins/theme`. Importing either installs nothing. The named palette's exact visual values belong to the Loom theme increment; this contract fixes how named palettes behave.
+
+#### Proposed `PluginDefinition.theme` field
+
+The proposed contract extends the [implemented `PluginDefinition`](#plugins) with this field:
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `theme` | No | A readonly mapping from semantic names to unapplied concrete style chains or `undefined`, retaining its literal keys through the returned plugin type. |
+
+This field and the example below are not yet implemented or exported. Supplying the field claims the theme slot, including an empty mapping. Both pack factories use this field; third-party themes use their own plugin identities:
+
+```ts
+import { plugin, style } from '@loomcli/core';
+
+export const dusk = () => plugin('@example/dusk', {
+	theme: {
+		highlight: style.magenta.bold,
+		identifier: style.cyan,
+	},
+});
+```
+
+The contribution retains its literal keys in the returned plugin type and through Application installation. A broad annotation must not erase the vocabulary along the framework's internal path. Theme declarations require no middleware and perform no output or capability detection during construction. They follow the same mapping validation and single-owner rule as the pack factories.
+
+One Application installs at most one theme plugin. A second claim on the theme slot is a build-time `DeclarationError` that names both claimants. Zero themes is valid. Without a mapping, semantic tokens inherit their enclosing style; direct colors and modifiers still work under rendering policy.
+
+A supplied token mapping replaces its entire named-theme default. It does not merge individual attributes. An omitted or undefined override retains the named theme's mapping. In a bare theme, an omitted or undefined mapping contributes no style. An explicitly declared custom key with an undefined value still introduces that name.
+
+Mapping values are unapplied concrete style chains: named terminal colors, modifiers, resets, custom colors, or their combinations. A mapping cannot reference any semantic token, including a core token. For example, `highlight: style.info.bold` fails the type contract. Shared concrete chain constants are valid. Build repeats these checks for JavaScript declarations.
+
+The mapping's custom keys introduce one flat semantic vocabulary for the Application. The same key always names the same token within that Application. There are no public token descriptors, style groups, per-renderer namespaces, or group override methods. A custom key cannot shadow a built-in style member, including callable-function members. Core semantic keys are valid mapping keys because they configure those tokens.
+
+The Application derives this vocabulary from its installed theme and publishes it through one Application-owned type registration. Independently authored Commands, extracted action handlers, and `Renderer<Data>` values receive those names automatically. A misspelled name fails compilation. There is no per-Command theme argument, manual token generic, or Application-owned Command factory.
+
+The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. The restoration increment owns its exact registration API and compatibility checks. Its acceptance must precede style implementation. Existing explicit globals wiring remains the implemented baseline until that prerequisite lands.
+
+Core supplies `style` on the action context and in the second renderer argument. The imported `style` supplies concrete styles and core semantic names; theme authoring needs no Application instance.
+
+```ts
+import type { Renderer } from '@loomcli/core';
+
+interface Item {
+	name: string;
+}
+
+export const item: Renderer<Item> = {
+	render: (data, { style, width }) => {
+		const text = style.identifier(style.escape(data.name));
+		return `${text} (${width(text)} columns)\n`;
+	},
+};
+```
+
+This example belongs to the Application compilation context that declares `identifier`. The renderer context is immutable and supplies `style` and destination-aware `width(text)`. Existing one-argument renderers can ignore it. A renderer remains pure and synchronous and receives no output handle. It owns its trailing newline. Core resolves its returned markup and ANSI policy before writing, so returned strings no longer promise exact output bytes.
+
+### Glyphs
+
+`glyph` contains the complete [glyph catalog](glyphs.md), derived from a pinned Inquirer figures inventory. Each property is an unstyled marked string. `success` aliases `tick`, and `error` aliases `cross`; `info` and `warning` retain the upstream names. A glyph carries no theme token or automatic color.
+
+```ts
+style.success(glyph.success);
+style.cyan(glyph.success);
+glyph.success;
+```
+
+The first two expressions style the glyph explicitly; the last inherits its surroundings. The inventory preserves upstream compatibility forms, which can contain Unicode or multiple characters. There is no separate strict ASCII mode. For example, `tick` selects `✔` or `√`, `cross` selects `✘` or `×`, and `radioOn` selects `◉` or `(*)`.
+
+Core applies the pinned Inquirer detection rule to captured facts on each run. A captured `host.platform` supplies the process platform string. On non-Windows platforms, main forms apply unless `TERM` is `linux`. On Windows, main forms apply if any of these conditions holds:
+
+- `CI`, `WT_SESSION`, or `TERMINUS_SUBLIME` is nonempty.
+- `ConEmuTask` is `{cmd::Cmder}`.
+- `TERM_PROGRAM` is `Terminus-Sublime` or `vscode`.
+- `TERM` is `xterm-256color` or `alacritty`.
+- `TERMINAL_EMULATOR` is `JetBrains-JediTerm`.
+
+Otherwise, core selects compatibility forms. It reads the captured environment case-sensitively. Piping, `NO_COLOR`, `FORCE_COLOR`, and theme installation do not select glyph forms. Only marked glyphs participate; core does not search and replace arbitrary Unicode characters in data.
+
+### Rendering policies
+
+Both Application options and `run()` options accept `rendering`:
+
+```ts
+const app = new Application('example', {
+	rendering: {
+		color: 'auto',
+		modifiers: 'auto',
+		hyperlinks: 'auto',
+		terminalControls: 'strip',
+	},
+});
+
+await app.run({ rendering: { color: 'never' } });
+```
+
+`color`, `modifiers`, and `hyperlinks` each accept `'auto'`, `'always'`, or `'never'`. Their default is `'auto'`. `terminalControls` accepts `'strip'` or `'preserve'`, defaulting to `'strip'`. Undefined fields act as omitted fields. Invalid values are declaration errors and name the field and accepted values.
+
+There is one policy for both streams. No field accepts a stdout/stderr map. Core evaluates automatic capabilities separately for each destination. Redirecting stdout therefore does not turn off capable stderr output.
+
+Invocation overrides replace only supplied rendering fields. Omitted fields retain the Application setting. Explicit `'auto'` restores automatic behavior for that field. This merge applies to rendering policy alone: `host` overrides still replace whole fields under [ADR-0009](decisions/0009-core-captures-the-host-and-resolves-an-exit-code.md).
+
+Explicit `'always'` or `'never'` wins for its policy. With color set to `'auto'`, precedence is nonempty `FORCE_COLOR`, nonempty `NO_COLOR`, then terminal detection. Empty values make no override. The string `"0"` is nonempty and therefore active for either variable. A nonempty `FORCE_COLOR` wins when both variables are active. Numeric values do not select a color depth.
+
+These rules follow [NO_COLOR](https://no-color.org/) and [FORCE_COLOR](https://force-color.org/), including user configuration precedence. They deliberately differ from Node's numeric `FORCE_COLOR` interpretation. Core owns the behavior under both Node and Bun.
+
+| Automatic case | Colors | Modifiers | Hyperlinks |
+| --- | --- | --- | --- |
+| Capable TTY | On | On | Preserve |
+| Capable TTY with `NO_COLOR` | Off | On | Preserve |
+| Pipe or file | Off | Off | Strip, retaining visible text |
+| Pipe or file with `FORCE_COLOR` | On | On | Strip, retaining visible text |
+
+For ANSI color and modifier detection, a capable TTY has `isTTY: true` and `TERM` other than `dumb`. Automatic modifiers follow that detection or a nonempty `FORCE_COLOR`; `NO_COLOR` never disables them. Automatic hyperlinks require `isTTY: true`. Explicit policy values override each column independently. Setting color to `'always'` alone does not change the modifier or hyperlink policy.
+
+When colors are enabled, core determines depth from captured hints in this order:
+
+| Captured hint | Depth |
+| --- | --- |
+| `COLORTERM` is `truecolor` or `24bit` | Truecolor |
+| `TERM` is `xterm-kitty`, `xterm-ghostty`, or `wezterm` | Truecolor |
+| `TERM_PROGRAM` is `iTerm.app` and its version starts with a decimal major of at least 3 | Truecolor |
+| `TERM_PROGRAM` is `iTerm.app` otherwise | 256 |
+| `TERM_PROGRAM` is `Apple_Terminal` | 256 |
+| `TERM` ends in `-256` or `-256color`, case-insensitively | 256 |
+| No matching hint | 16 |
+
+The iTerm version field is `TERM_PROGRAM_VERSION`. These are a portable subset of [supports-color's detection rules](https://github.com/chalk/supports-color/blob/e2a4cd3c44eb384b075161ef32859cd29ce1aa7f/index.js), with enablement handled separately. Core does not read CLI flags or live process globals during resolution, and does not reuse upstream numeric forcing semantics. Forced color without a depth hint uses sixteen colors. A future detector update needs equivalent Node and Bun evidence.
+
+RGB colors remain RGB at truecolor depth. At lower depth, core chooses the closest available color by squared RGB distance, with the lower palette index breaking ties. The 256-color target is the conventional xterm palette. The sixteen-color target uses that palette's first sixteen entries. Named colors retain their terminal palette indices; they do not acquire hard-coded RGB values on a richer terminal. ANSI-256 colors retain their index at 256 or truecolor depth and approximate to sixteen colors at basic depth. A terminal can customize its palette, so approximation does not promise an exact visual match.
+
+The same policies apply to ANSI styling already embedded in supplied strings. Color suppression removes foreground and background colors, not unrelated modifiers or text. An embedded reset restores the enclosing Loom style. Core closes remaining style and hyperlink state at the end of each rendered string.
+
+General terminal controls include cursor movement, screen erasure, title changes, and the bell. The default removes those commands while retaining ordinary text, tabs, and line breaks. `'preserve'` permits them without bypassing color, modifier, or hyperlink policy. OSC 8 hyperlinks have their own policy even though their encoding uses terminal control sequences. Disabling hyperlinks preserves the label exactly and does not append the destination URL. No hyperlink authoring helper is added by this contract.
+
+For filtered control strings such as OSC, core removes the complete sequence through its terminator, including its payload. An unterminated control string is removed through the end of the rendered string. When controls are preserved, complete unrecognized controls pass through; recognized styling and hyperlinks still obey their own policies. The resolver must not misclassify a control-string payload as ordinary text or as another output command.
+
+Core discards an incomplete ANSI sequence at the end of each rendered string, including in preserve mode. Commands cannot span separate output calls. For example, separate renderer results containing `ESC[3` and `1mX` emit only the literal `1mX`, not a red-color command. Within one rendered string, ANSI recognition spans adjacent Loom frames, as the [wire contract](style-wire.md#parsing-order) specifies.
+
+### Width, padding, and multiline lanes
+
+The renderer context supplies `width(text): number`. It resolves glyph forms for that destination, ignores styling and hyperlink envelopes, and counts Unicode terminal columns. Combining marks add no column; wide characters occupy two. Emoji sequences follow the selected Unicode width implementation. Ambiguous-width characters count as one column. The implementation must use one established width algorithm for both measurement and padding, with its Unicode data version pinned by the lockfile. It does not promise identical font rendering in every terminal.
+
+`width()` returns the widest line's width. Tabs advance to the next multiple of eight columns, starting each input line at column zero. Thus `width('a\tb')` is 9. CRLF is one line break; LF is a line break. Preserved cursor operations do not turn width measurement into a terminal emulator.
+
+`pad(text, minimumWidth, options?)` returns a marked string. `options.align` is `'left'`, `'right'`, or `'center'`, defaulting to `'left'`. Padding uses spaces only. It supplies a minimum width, never truncates text, and puts an odd extra space on the right for center alignment. Width arguments are nonnegative safe integers.
+
+```ts
+pad('cat', 8);
+pad('cat', 8, { align: 'right' });
+pad('cat', 8, { align: 'center' });
+```
+
+These produce five spaces after `cat`, five spaces before it, or two before and three after it. Core defers actual padding until glyph selection, so a compatibility form such as `(*)` occupies its real width. Padding expands tabs within each input line before adding alignment spaces. Ordinary output outside padding preserves tabs.
+
+Padding applies to each line independently and preserves line breaks. A trailing newline does not create a padded extra empty line. Interior blank lines are lines and receive the requested padding. For example, `pad('cat\ndog', 5)` resolves to `cat  \ndog  `, while `pad('cat\n', 5)` resolves to `cat  \n`. CRLF remains CRLF. The empty string has width zero; padding it produces the requested number of spaces.
+
+Lane renderers receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane renderer owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. A continuation line need not repeat the glyph. The semantic methods retain their string-only call shape and newline contract; registry registration and replaceability belong to the view-registry increment.
+
+### Implementation acceptance
+
+The style implementation must prove the following through public APIs and packed declarations:
+
+- Chaining, nesting, each reset, whole-token replacement, no-theme inheritance, and rejection of token references in theme mappings.
+- Every foreground, background, modifier, and custom-color helper, including invalid arguments and capability degradation.
+- The complete pinned glyph catalog, semantic aliases, multi-character compatibility forms, and independence from themes and ANSI policy.
+- Automatic custom-name inference in detached Commands and renderers after the registration prerequisite, with typo and reserved-name rejection.
+- Every rendering-policy field, invocation override behavior, nonempty `"0"` environment values, conflicting variables, and independent destinations under one policy.
+- Embedded ANSI colors and resets, separate hyperlink and terminal-control policies, and malformed control strings.
+- Literal marker data, nested deferred padding, Unicode width, tabs, multiline strings, and the adversarial cases in the wire contract.
+- Fresh host capture on repeated runs, no import-time capability capture, and equivalent output under Node and Bun.
+
+The contract review checks these obligations before implementation. It does not replace the implementation evidence or certify Windows support.
