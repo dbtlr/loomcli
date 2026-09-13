@@ -1,4 +1,4 @@
-import { Application, GlobalOptions, readExtension } from '@loomcli/core';
+import { Application, readExtension } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
@@ -7,9 +7,8 @@ import { greet } from '../library/dist/command.js';
 import { local } from './local.js';
 
 const configured = new Application('registered', {
-  globals: new GlobalOptions().option('trace', { type: 'boolean' }),
   plugins: [help()],
-});
+}).globalOption('trace', { type: 'boolean' });
 declare module '@loomcli/core' {
   interface Register {
     environment: EnvironmentOf<typeof configured>;

@@ -299,11 +299,11 @@ test.each([
   ],
   [
     'foreign-globals-value',
-    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
+    'The Application options contain globals. Declare them with globalOption(name, config).',
   ],
   [
     'null-globals',
-    'The Application holds a value that is not a GlobalOptions declaration. Supply the value returned by new GlobalOptions().',
+    'The Application options contain globals. Declare them with globalOption(name, config).',
   ],
   [
     'foreign-globals',

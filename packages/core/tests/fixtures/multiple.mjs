@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -98,13 +98,15 @@ switch (scenario) {
     break;
   }
   case 'global': {
-    const globals = new GlobalOptions().option('field', {
-      multiple: true,
-      short: 'F',
-      type: 'string',
-    });
     const show = new Command('show').option('local', { type: 'boolean' }).action(report);
-    app = new Application('multiple', { globals }).command(show).action(report);
+    app = new Application('multiple')
+      .globalOption('field', {
+        multiple: true,
+        short: 'F',
+        type: 'string',
+      })
+      .command(show)
+      .action(report);
     break;
   }
   case 'boolean-multiple': {

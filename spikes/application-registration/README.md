@@ -11,4 +11,4 @@ The preliminary compiler model has been replaced by checks against the actual SD
 - `packages/core/tests/automatic-globals.test.ts` checks validated Application globals at a detached action.
 - `packages/core/tests/extended-command.test.ts` checks immutable replacement, typed reads, retained facts, invocation, and invalid layers.
 
-The governing contracts are [ADR-0024](../../docs/decisions/0024-application-registration-provides-globals-to-standalone-commands.md) and [ADR-0025](../../docs/decisions/0025-completed-commands-accept-immutable-extension-configuration.md).
+The governing contracts are [ADR-0026](../../docs/decisions/0026-applications-declare-global-options-through-a-fluent-method.md) and [ADR-0025](../../docs/decisions/0025-completed-commands-accept-immutable-extension-configuration.md).

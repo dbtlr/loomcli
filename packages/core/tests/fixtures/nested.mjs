@@ -1,6 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
-
-const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
+import { Application, Command } from '@loomcli/core';
 
 const report =
   (command) =>
@@ -26,7 +24,8 @@ const store = new Command('store')
   .command(put)
   .action(report('store'));
 
-const app = new Application('nested', { globals })
+const app = new Application('nested')
+  .globalOption('file', { short: 'f', type: 'string' })
   .command(cache)
   .command(store)
   .action(report('root'));

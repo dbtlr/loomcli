@@ -10,6 +10,7 @@ import {
   declareArgument,
   declareOption,
   freshState,
+  recordGlobalOption,
 } from './command.js';
 import type {
   AfterAction,
@@ -34,8 +35,8 @@ import {
 import type { FailureRegistry, FailureRenderer, LoomError } from './errors.js';
 import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
-import { isGlobalOptions } from './globals.js';
-import type { GlobalOptions } from './globals.js';
+import { declareGlobalOption, emptyGlobals } from './globals.js';
+import type { GlobalsState } from './globals.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
@@ -69,7 +70,7 @@ import { captureConfig, checkDeclarations, prepareInputs } from './validation.js
  * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
  * to no bare token, so it has no name to alias.
  */
-export type ApplicationMethod = Exclude<CommandMethod, 'alias'>;
+export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noRegistrations: FailureRegistry = new Map();
@@ -103,15 +104,7 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
   return signal;
 }
 
-/**
- * Everything an application configures beside its declarations: the options every Command shares,
- * and the renderers that answer the failure classes core throws.
- */
-export interface ApplicationOptions<
-  Globals = {},
-  Plugins extends readonly Plugin[] = readonly Plugin[],
-> {
-  globals?: GlobalOptions<Globals>;
+export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   failures?: readonly FailureRenderer[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
@@ -137,7 +130,7 @@ class ApplicationBuilder<
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #failures: readonly FailureRenderer[];
   readonly #plugins: Plugins | undefined;
-  readonly #globals: GlobalOptions<Globals> | undefined;
+  readonly #globals: GlobalsState<Globals>;
   // The constructor's raw options argument, kept for the slot's own shape rules.
   // The options-slot rules answer at the same point every other authoring fault does:
   // `inspect()` and `run()`.
@@ -153,7 +146,7 @@ class ApplicationBuilder<
       failures: readonly FailureRenderer[];
       options?: unknown;
       plugins: Plugins | undefined;
-      globals: GlobalOptions<Globals> | undefined;
+      globals: GlobalsState<Globals>;
     },
   ) {
     this.#declared = config.declared;
@@ -207,6 +200,31 @@ class ApplicationBuilder<
     return this.derive(declareOption(this.#root, input));
   }
 
+  globalOption<const Name extends string, const Config extends OptionConfig>(
+    name: Name,
+    config: Config &
+      NameConstraint<Name> &
+      (Name extends keyof Options
+        ? { 'This option name is already declared as a local option': Name }
+        : unknown) &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
+  ): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins> {
+    const input: OptionInput<Name, Config> = {
+      config: captureConfig(config),
+      kind: 'option',
+      name,
+    };
+    return new ApplicationBuilder(this.#name, recordGlobalOption(this.#root, name), {
+      declared: this.#declared,
+      failures: this.#failures,
+      globals: declareGlobalOption(this.#globals, input),
+      options: this.#options,
+      plugins: this.#plugins,
+    });
+  }
+
   /** Registering the action closes input authoring; extension configuration remains available. */
   action(
     handler: Action<Args, Globals & Options>,
@@ -217,7 +235,7 @@ class ApplicationBuilder<
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Application<Args, Options, Globals, AfterCommand<State>, Plugins> {
+  ): Application<Args, Options, Globals, AfterCommand<Exclude<State, 'globalOption'>>, Plugins> {
     return this.derive(attachChild(this.#root, child));
   }
 
@@ -228,7 +246,7 @@ class ApplicationBuilder<
   }
 
   /**
-   * One wrapper for every declaration call, so the Application keeps its name. The next state
+   * Root declaration calls preserve the Application configuration. The next state
    * travels through this call: each method names its transition in its return type, and the
    * wrapper publishes the same runtime value in exactly that state.
    */
@@ -449,14 +467,10 @@ export type Application<
 
 interface ApplicationConstructor {
   new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
-  new <Globals = {}>(
+  new <const Plugins extends readonly Plugin[] = readonly []>(
     name: string,
-    options: ApplicationOptions<Globals, readonly []> & { plugins?: never },
-  ): Application<{}, {}, Globals, ApplicationMethod, readonly []>;
-  new <Globals = {}, const Plugins extends readonly Plugin[] = readonly Plugin[]>(
-    name: string,
-    options: ApplicationOptions<Globals, Plugins>,
-  ): Application<{}, {}, Globals, ApplicationMethod, Plugins>;
+    options: ApplicationOptions<Plugins>,
+  ): Application<{}, {}, {}, ApplicationMethod, Plugins>;
 }
 
 /** The core facts one Application declares, validated at build and reported by `inspect()`. */
@@ -471,22 +485,17 @@ interface DeclaredFacts {
   version: unknown;
 }
 
-/**
- * The second argument, read where it is supplied. The retired positional form declares its globals
- * on a value that holds no `globals` key, so without this rule the globals vanish silently and the
- * operator, not the author, meets the consequence as an unknown-option error. The slot's own shape
- * settles first, because a slot that is not an options object carries no facts to report.
- */
+/** Reject obsolete wiring before silently losing options that invocations depend on. */
 function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFacts {
-  if (isGlobalOptions(options)) {
-    throw new DeclarationError(
-      'The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.',
-    );
-  }
   if (options !== undefined) {
     if (!isPlainObject(options)) {
       throw new DeclarationError(
-        'The Application options must be an object. Supply { globals, failures }.',
+        'The Application options must be an object. Supply an Application options object.',
+      );
+    }
+    if ('globals' in options) {
+      throw new DeclarationError(
+        'The Application options contain globals. Declare them with globalOption(name, config).',
       );
     }
     // The root is every page's entry point, so it carries neither listing fact.
@@ -499,18 +508,13 @@ function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFac
   };
 }
 
-/**
- * The runtime class behind the public constructor. It is generic so that an instance's `Globals`
- * is the type of the value it holds, with `{}` standing in when there is none, which is what each
- * signature of the constructor interface publishes.
- */
+/** Constructor inference preserves the installed plugin tuple; globals start empty. */
 class ApplicationDeclaration<
-  Globals = {},
   const Plugins extends readonly Plugin[] = readonly [],
-> extends ApplicationBuilder<{}, {}, Globals, ApplicationMethod, Plugins> {
-  constructor(name: string, options?: ApplicationOptions<Globals, Plugins>) {
+> extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
+  constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `globals`, `failures`, and the facts of some kind, and `checkOptions` reports it at build.
+    // `failures` and the facts of some kind, and `checkOptions` reports it at build.
     // The root's own slot and core facts stay empty, because the Application checks its own slot.
     // Its diagnostics name the Application rather than the root Command.
     super(
@@ -526,7 +530,7 @@ class ApplicationDeclaration<
       {
         declared: { description: options?.description, version: options?.version },
         failures: options?.failures ?? [],
-        globals: options?.globals,
+        globals: emptyGlobals(),
         options,
         plugins: options?.plugins,
       },
@@ -534,8 +538,4 @@ class ApplicationDeclaration<
   }
 }
 
-/**
- * The public constructor takes a name and one options object. The globals type narrows to the
- * supplied value, and the failure renderers configure the application the way its commands do.
- */
 export const Application: ApplicationConstructor = ApplicationDeclaration;

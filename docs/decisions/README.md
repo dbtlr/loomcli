@@ -42,8 +42,9 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one identity-keyed registry of views, and class-keyed failure renderers fold into it as view overrides. | proposed |
 | [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | proposed |
 | [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares its result as graph facts and core resolves the run's presentation, while plugins own format names and encoders. | proposed |
-| [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | accepted |
+| [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | superseded |
 | [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
+| [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
 
 ## Adding a record
 

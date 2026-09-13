@@ -32,7 +32,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `alias()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -44,7 +44,7 @@ The single object an action receives, carrying its parsed inputs, the passthroug
 _Avoid_: Request, invocation object, props
 
 **Global options**:
-The Application-owned `GlobalOptions` declaration. Its validated values reach every action; Application registration supplies their types to independently authored Commands.
+The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands.
 _Avoid_: Root options, inherited options, common flags
 
 **Application environment**:

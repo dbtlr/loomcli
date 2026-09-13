@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
@@ -160,9 +160,6 @@ function facts() {
 
 /** Arguments, variadics, and required options from two scopes, on a root that has both forms. */
 function usage() {
-  const globals = new GlobalOptions()
-    .option('key', { description: 'The key to use.', required: true, type: 'string' })
-    .option('file', { description: 'The document to read.', short: 'f', type: 'string' });
   const run = new Command('run', { description: 'Run one job.' })
     .argument('source', { description: 'Where to read.', required: true })
     .argument('target', { description: 'Where to write.' })
@@ -185,10 +182,11 @@ function usage() {
     .action(dispatch);
   return new Application('app', {
     description: 'Do the work.',
-    globals,
     plugins,
     version: '1.2.0',
   })
+    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('file', { description: 'The document to read.', short: 'f', type: 'string' })
     .command(run)
     .command(pack)
     .action(dispatch);
@@ -249,21 +247,19 @@ function unlisted() {
 
 /** A hidden option and a deprecated option in each scope a page prints as its own section. */
 function scoped() {
-  const globals = new GlobalOptions()
-    .option('key', { description: 'The key to use.', required: true, type: 'string' })
-    .option('token', {
+  const run = new Command('run', { description: 'Run one job.' }).action(dispatch);
+  return new Application('app', {
+    description: 'Do the work.',
+    plugins,
+    version: '1.2.0',
+  })
+    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('token', {
       description: 'The token to use.',
       hidden: true,
       required: true,
       type: 'string',
-    });
-  const run = new Command('run', { description: 'Run one job.' }).action(dispatch);
-  return new Application('app', {
-    description: 'Do the work.',
-    globals,
-    plugins,
-    version: '1.2.0',
-  })
+    })
     .option('mode', {
       default: 'plain',
       deprecated: 'Use --style instead.',
@@ -277,15 +273,13 @@ function scoped() {
 
 /** A hidden option of each scope on a root that folds the globals into its own OPTIONS. */
 function folded() {
-  const globals = new GlobalOptions()
-    .option('key', { description: 'The key to use.', type: 'string' })
-    .option('token', { description: 'The token to use.', hidden: true, type: 'string' });
   return new Application('app', {
     description: 'Do the work.',
-    globals,
     plugins,
     version: '1.2.0',
   })
+    .globalOption('key', { description: 'The key to use.', type: 'string' })
+    .globalOption('token', { description: 'The token to use.', hidden: true, type: 'string' })
     .option('mode', { description: 'How to print.', type: 'string' })
     .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
     .action(dispatch);

@@ -3,7 +3,7 @@ import { explainCommand } from '@loom/explain/extension';
 import { Application, InputError, renderFailure, UnknownCommandError } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
-import { helpCommand } from '@loomcli/plugins/help/extension';
+import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
@@ -14,7 +14,7 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { select } from './commands/select.js';
 import { inputProblems, unknownCommand } from './failures.js';
-import { globals } from './globals.js';
+import { fileOrStdin } from './file-or-stdin.js';
 
 // The root action type-imports this value, so it is registered by the last call.
 const configured = new Application('jsonkit', {
@@ -35,9 +35,15 @@ const configured = new Application('jsonkit', {
     renderFailure(InputError, inputProblems),
     renderFailure(UnknownCommandError, unknownCommand),
   ],
-  globals,
   plugins: [help(), version(), explain()],
   version: Package.version,
+}).globalOption('file', {
+  description: 'The document to read. Omit it to read piped text.',
+  extensions: [helpInput({ placeholder: 'path' })],
+  short: 'f',
+  type: 'string',
+  validate: fileOrStdin,
+  validateOmitted: true,
 });
 
 declare module '@loomcli/core' {

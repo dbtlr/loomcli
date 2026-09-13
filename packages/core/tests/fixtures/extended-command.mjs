@@ -1,4 +1,4 @@
-import { Application, Command, extension, GlobalOptions, readExtension } from '@loomcli/core';
+import { Application, Command, extension, readExtension } from '@loomcli/core';
 import { z } from 'zod';
 
 const examples = z.array(z.string()).optional();
@@ -16,8 +16,11 @@ const original = new Command('read', {
   .option('raw', { type: 'boolean' })
   .action(({ args, options, out }) => out.print(JSON.stringify({ args, options })));
 const enriched = original.extend(help({ details: 'Application help.' }));
-const globals = new GlobalOptions().option('quiet', { type: 'boolean' });
-const app = new Application('example', { globals }).command(enriched).extend(other('root'));
+
+const app = new Application('example')
+  .globalOption('quiet', { type: 'boolean' })
+  .command(enriched)
+  .extend(other('root'));
 const mode = process.argv[2];
 if (mode === 'invoke') {
   await app.run({ host: { argv: ['r', 'document', '--raw', '--quiet'] } });

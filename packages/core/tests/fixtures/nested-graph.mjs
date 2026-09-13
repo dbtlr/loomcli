@@ -1,9 +1,9 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const scenario = process.argv[2];
-const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
+
 const dispatch = ({ out }) => out.print('dispatched');
 
 function leaf(name) {
@@ -15,7 +15,7 @@ function aliased(name, ...aliases) {
 }
 
 function build() {
-  const app = new Application('nested-graph', { globals });
+  const app = new Application('nested-graph').globalOption('file', { short: 'f', type: 'string' });
   switch (scenario) {
     case 'group-option': {
       return app
@@ -29,7 +29,7 @@ function build() {
       return app.command(new Command('cache').command(new Command('clear'))).action(dispatch);
     }
     case 'nested-foreign-globals': {
-      const other = new GlobalOptions().option('file', { type: 'string' });
+      const other = {};
       return app
         .command(
           new Command('cache').command(new Command('clear', { globals: other }).action(dispatch)),

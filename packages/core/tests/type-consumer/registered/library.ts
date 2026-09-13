@@ -3,16 +3,22 @@ import type { ActionHandler, EnvironmentOf, OptionsOf } from '@loomcli/core';
 import { z } from 'zod';
 
 import { build, colliding, direct, factory } from '../library/dist/library.js';
-import { globals } from './commands.js';
 
 const help = extension('consumer/help', { schema: z.string(), target: 'command' });
 const enriched = build.extend(help('Application help.'));
-const app = new Application('consumer', { globals })
+const app = new Application('consumer')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .command(enriched)
   .command(direct.extend(help('Direct help.')))
   .command(factory().extend(help('Factory help.')));
-// @ts-expect-error TS2345: A library local key cannot collide with an Application global key.
-new Application('collision', { globals }).command(colliding);
+new Application('collision')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
+  // @ts-expect-error TS2345: A library local key cannot collide with an Application global key.
+  .command(colliding);
 
 const read: ActionHandler<typeof enriched> = ({ args, options }) => {
   const path: string = args.path;
@@ -45,15 +51,34 @@ void wrongName;
 type Invalid = EnvironmentOf<typeof build>;
 
 const chosen = Math.random() > 0.5 ? build : colliding;
-// @ts-expect-error TS2345: Every possible branch must have disjoint local keys.
-new Application('union', { globals }).command(chosen);
-new Application<{ file: string }>('explicit', { globals, plugins: [vocabulary] });
+new Application('union')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
+  // @ts-expect-error TS2345: Every possible branch must have disjoint local keys.
+  .command(chosen);
+new Application('explicit', {
+  plugins: [vocabulary],
+})
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 
 function acceptApplication(value: Application<{}, {}, EnvironmentOf<typeof app>['globals']>) {
   return value;
 }
-acceptApplication(new Application('annotation', { globals, plugins: [vocabulary] }));
-// @ts-expect-error TS2769: Runtime globals configuration must agree with explicit output types.
-new Application<{ file: number }>('wrong-output', { globals });
+acceptApplication(
+  new Application('annotation', {
+    plugins: [vocabulary],
+  })
+    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .globalOption('quiet', { short: 'q', type: 'boolean' })
+    .globalOption('limit', { type: 'string', validate: z.string().transform(Number) }),
+);
+// @ts-expect-error TS2554: Constructor type parameters cannot forge global outputs.
+new Application<{ file: number }>('wrong-output')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 
 export { enriched, app, read, neutral, neutralFactory, type Invalid };

@@ -77,7 +77,7 @@ The result prints as JSON text. Objects and arrays use two-space indentation, an
 
 `--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
 
-The [Application](examples/jsonkit/src/application.ts) declares and registers its [globals](examples/jsonkit/src/globals.ts) once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and registers its own [failure renderers](examples/jsonkit/src/failures.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
+The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and registers its own [failure renderers](examples/jsonkit/src/failures.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
 
 ## Verify the package
 

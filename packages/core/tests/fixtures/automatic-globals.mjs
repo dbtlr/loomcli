@@ -1,12 +1,13 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const read = new Command('read')
   .argument('path', { required: true })
   .option('raw', { type: 'boolean' })
   .action(({ args, options, out }) => out.print(JSON.stringify({ args, options })));
 
-const app = new Application('example', {
-  globals: new GlobalOptions().option('quiet', { type: 'boolean' }).option('limit', {
+const app = new Application('example')
+  .globalOption('quiet', { type: 'boolean' })
+  .globalOption('limit', {
     type: 'string',
     validate: {
       '~standard': {
@@ -15,7 +16,7 @@ const app = new Application('example', {
         version: 1,
       },
     },
-  }),
-}).command(read);
+  })
+  .command(read);
 
 await app.run({ host: { argv: process.argv.slice(2) } });

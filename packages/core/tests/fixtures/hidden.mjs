@@ -1,13 +1,10 @@
 import {
   Application,
   Command,
-  GlobalOptions,
   NonCallableCommandError,
   renderFailure,
   UnknownCommandError,
 } from '@loomcli/core';
-
-const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
 
 const report =
   (command) =>
@@ -36,7 +33,10 @@ function graph() {
     new Command('dump', { hidden: true }).action(report('dump')),
   );
   const debug = new Command('debug', { hidden: true }).action(report('debug'));
-  return new Application('hidden', { failures, globals })
+  return new Application('hidden', {
+    failures,
+  })
+    .globalOption('file', { short: 'f', type: 'string' })
     .command(cache)
     .command(secrets)
     .command(debug)
@@ -45,9 +45,11 @@ function graph() {
 
 /** The same graph with every child of the root hidden, so the root group offers none either. */
 function rootGraph() {
-  return new Application('hidden', { failures, globals }).command(
-    new Command('debug', { hidden: true }).action(report('debug')),
-  );
+  return new Application('hidden', {
+    failures,
+  })
+    .globalOption('file', { short: 'f', type: 'string' })
+    .command(new Command('debug', { hidden: true }).action(report('debug')));
 }
 
 const build = process.argv[2] === 'root' ? rootGraph : graph;

@@ -79,19 +79,19 @@ function withOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/application-options.mjs', import.meta.url), [scenario, mode]);
 }
 
-test.each(['positional-globals', 'empty-globals'])(
-  'the retired positional globals form %s is a declaration error at build, not construction',
+test.each(['application-value', 'empty-application'])(
+  'an Application value (%s) used as an options object is a declaration error at build, not construction',
   (scenario) => {
     expect(withOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+        'assembled\ndeclaration:1: The Application options must be an object. Supply an Application options object.\n',
     });
     expect(withOptions(scenario, 'run')).toEqual({
       status: 1,
       stderr:
-        'Invalid declaration: The Application takes an options object. Supply { globals } instead of a positional GlobalOptions value.\n',
+        'Invalid declaration: The Application options must be an object. Supply an Application options object.\n',
       stdout: 'assembled\nresolved:1\n',
     });
   },
@@ -104,12 +104,12 @@ test.each(['string-options', 'array-options'])(
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: The Application options must be an object. Supply { globals, failures }.\n',
+        'assembled\ndeclaration:1: The Application options must be an object. Supply an Application options object.\n',
     });
     expect(withOptions(scenario, 'run')).toEqual({
       status: 1,
       stderr:
-        'Invalid declaration: The Application options must be an object. Supply { globals, failures }.\n',
+        'Invalid declaration: The Application options must be an object. Supply an Application options object.\n',
       stdout: 'assembled\nresolved:1\n',
     });
   },
@@ -133,19 +133,19 @@ function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/command-options.mjs', import.meta.url), [scenario, mode]);
 }
 
-test.each(['positional-globals', 'empty-globals'])(
-  'the retired positional globals form %s on a Command is a declaration error at build',
+test.each(['application-value', 'empty-application'])(
+  'an Application value (%s) used as an options object on a Command is a declaration error at build',
   (scenario) => {
     expect(withCommandOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: Command "get" takes an options object. Declare globals on the Application and register its environment.\n',
+        'assembled\ndeclaration:1: Command "get" options must be an object. Supply a Command options object.\n',
     });
     expect(withCommandOptions(scenario, 'run')).toEqual({
       status: 1,
       stderr:
-        'Invalid declaration: Command "get" takes an options object. Declare globals on the Application and register its environment.\n',
+        'Invalid declaration: Command "get" options must be an object. Supply a Command options object.\n',
       stdout: 'assembled\nresolved:1\n',
     });
   },

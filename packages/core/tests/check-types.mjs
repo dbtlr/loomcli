@@ -96,9 +96,9 @@ new Command('invalid').action(() => {});
   for (const { source: content, diagnostic } of [
     {
       diagnostic: /circular|own type annotation/,
-      source: `import { Application, Command, GlobalOptions } from '@loomcli/core';
+      source: `import { Application, Command } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
-const configured = new Application('app', { globals: new GlobalOptions().option('quiet', { type: 'boolean' }) });
+const configured = new Application('app').globalOption('quiet', { type: 'boolean' });
 const read = new Command('read').action(({ options }) => options.quiet);
 const app = configured.command(read);
 declare module '@loomcli/core' { interface Register { environment: EnvironmentOf<typeof app>; } }

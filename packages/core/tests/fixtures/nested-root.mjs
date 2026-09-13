@@ -1,6 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
-
-const globals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
+import { Application, Command } from '@loomcli/core';
 
 const report =
   (command) =>
@@ -12,6 +10,9 @@ const get = new Command('get').argument('path', { required: true }).action(repor
 const keys = new Command('keys').action(report('keys'));
 
 // The unnamed root is a group too: it attaches children and registers no action of its own.
-const app = new Application('nested-root', { globals }).command(get).command(keys);
+const app = new Application('nested-root')
+  .globalOption('file', { short: 'f', type: 'string' })
+  .command(get)
+  .command(keys);
 
 await app.run({ host: { argv: process.argv.slice(3) } });

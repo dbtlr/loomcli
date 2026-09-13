@@ -3,7 +3,6 @@ import {
   Command,
   DeclarationError,
   extension,
-  GlobalOptions,
   InputError,
   plugin,
   renderFailure,
@@ -91,9 +90,9 @@ const scenarios = {
   'empty-identity': () => withPlugin(plugin('', {})),
   'exotic-output': () => {
     const descriptor = extension('@fixture/exotic', { schema: exotic, target: 'command' });
-    const globals = new GlobalOptions();
+
     const get = new Command('get', { extensions: [descriptor({})] }).action(dispatch);
-    return new Application('app', { globals }).command(get).action(dispatch);
+    return new Application('app').command(get).action(dispatch);
   },
   'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
   'failures-not-array': () =>
@@ -107,17 +106,14 @@ const scenarios = {
       plugins: [named('@loomcli/help', {}), named('@loomcli/help', {})],
     }).action(dispatch),
   'invalid-value': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.command({ details: 7 })],
     }).action(dispatch);
-    return new Application('app', { globals }).command(get).action(dispatch);
+    return new Application('app').command(get).action(dispatch);
   },
   'local-key': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get').option('help', { type: 'boolean' }).action(dispatch);
     return new Application('app', {
-      globals,
       plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
     })
       .command(get)
@@ -135,17 +131,17 @@ const scenarios = {
   'not-a-plugin': () =>
     new Application('app', { plugins: [{ identity: '@loomcli/help' }] }).action(dispatch),
   'not-an-extension': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get', { extensions: [{ identity: 'forged' }] }).action(dispatch);
-    return new Application('app', { globals }).command(get).action(dispatch);
+    return new Application('app').command(get).action(dispatch);
   },
   'option-boolean-default': () =>
     withPlugin(named('@loomcli/log', { options: { level: { default: 'warn', type: 'boolean' } } })),
   'option-global-key': () =>
     new Application('app', {
-      globals: new GlobalOptions().option('help', { type: 'boolean' }),
       plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
-    }).action(dispatch),
+    })
+      .globalOption('help', { type: 'boolean' })
+      .action(dispatch),
   'option-not-declaration': () => withPlugin(named('@loomcli/log', { options: { level: null } })),
   'option-raw-default': () =>
     withPlugin(named('@loomcli/log', { options: { level: { default: 7, type: 'string' } } })),
@@ -153,9 +149,10 @@ const scenarios = {
     withPlugin(named('@loomcli/log', { options: { level: { required: true, type: 'string' } } })),
   'option-spelling': () =>
     new Application('app', {
-      globals: new GlobalOptions().option('host', { short: 'h', type: 'string' }),
       plugins: [named('@loomcli/help', { options: { help: { short: 'h', type: 'boolean' } } })],
-    }).action(dispatch),
+    })
+      .globalOption('host', { short: 'h', type: 'string' })
+      .action(dispatch),
   'option-validate': () =>
     withPlugin(
       named('@loomcli/log', {
@@ -235,17 +232,14 @@ const scenarios = {
       ],
     }).action(dispatch),
   'twice-on-one': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.command({ details: 'one' }), facts.command({ details: 'two' })],
     }).action(dispatch);
-    return new Application('app', { globals }).command(get).action(dispatch);
+    return new Application('app').command(get).action(dispatch);
   },
   'twin-descriptors': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get', { extensions: [twin({ details: 'one' })] }).action(dispatch);
     return new Application('app', {
-      globals,
       plugins: [named('@fixture/facts', { extensions: [facts.command] })],
     })
       .command(get)
@@ -259,11 +253,10 @@ const scenarios = {
       ],
     }).action(dispatch),
   'wrong-target': () => {
-    const globals = new GlobalOptions();
     const get = new Command('get', {
       extensions: [facts.option({ placeholder: 'path' })],
     }).action(dispatch);
-    return new Application('app', { globals }).command(get).action(dispatch);
+    return new Application('app').command(get).action(dispatch);
   },
 };
 

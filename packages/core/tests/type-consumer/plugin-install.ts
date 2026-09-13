@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions, readExtension } from '@loomcli/core';
+import { Application, Command, readExtension } from '@loomcli/core';
 import type { ArgumentNode, CommandNode, OptionNode } from '@loomcli/core';
 
 import { help } from './plugin-entry.js';
@@ -7,11 +7,6 @@ import { timer } from './plugin-timer.js';
 
 // Extension values sit on a global option, a Command, a local option, and an argument alike, and
 // The plugin option in `plugin-entry.ts` carries one too.
-const globals = new GlobalOptions().option('file', {
-  extensions: [helpInput({ placeholder: 'path' })],
-  short: 'f',
-  type: 'string',
-});
 
 const get = new Command('get', {
   description: 'Read one value at a path.',
@@ -23,10 +18,14 @@ const get = new Command('get', {
 
 const app = new Application('consumer', {
   extensions: [helpCommand({ details: 'The whole application.' })],
-  globals,
   plugins: [help(), timer()],
   version: '1.0.0',
 })
+  .globalOption('file', {
+    extensions: [helpInput({ placeholder: 'path' })],
+    short: 'f',
+    type: 'string',
+  })
   .command(get)
   .action(() => undefined);
 

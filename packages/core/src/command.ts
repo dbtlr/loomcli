@@ -16,8 +16,8 @@ import {
   checkNoListingFacts,
   isPlainObject,
 } from './facts.js';
-import type { BuiltGlobals, GlobalOptions, OptionOwner } from './globals.js';
-import { buildGlobals, isGlobalOptions, keyCollision, spellingCollision } from './globals.js';
+import type { BuiltGlobals, GlobalsState, OptionOwner } from './globals.js';
+import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type { OptionValues } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
@@ -110,9 +110,10 @@ export type AfterCommand<State> = Exclude<State, 'argument'>;
 /** Registering the action closes input, alias, child, and further action declarations. */
 export type AfterAction = never;
 
-/** A declaration made after the action, kept in authoring order so build reports the first. */
+/** A declaration made after its authoring phase closed; build reports the first in call order. */
 type LateDeclaration =
   | { alias: string; kind: 'alias' }
+  | { name: string; kind: 'global' }
   | { child: object; kind: 'child' }
   | { input: InputDeclaration; kind: 'input' };
 
@@ -158,11 +159,6 @@ function nodeOf(parent: string | null, child: object): AttachedCommand {
 
 /** Reject retired globals wiring at graph build, before any invocation reads the options. */
 function checkCommandOptions(name: string | null, options: unknown): void {
-  if (isGlobalOptions(options)) {
-    throw new DeclarationError(
-      `${commandSentence(name)} takes an options object. Declare globals on the Application and register its environment.`,
-    );
-  }
   if (options !== undefined && !isPlainObject(options)) {
     throw new DeclarationError(
       `${commandSentence(name)} options must be an object. Supply a Command options object.`,
@@ -307,6 +303,20 @@ export function declareOption<
   };
 }
 
+/** Globals close when composition starts; retain late calls for the shared build-order check. */
+export function recordGlobalOption<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  name: string,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    late:
+      state.actions.length > 0 || state.children.length > 0
+        ? [...state.late, { kind: 'global', name }]
+        : state.late,
+  };
+}
+
 /** One call's names stay one group, so the empty call the types reject still reports as one. */
 export function declareAlias<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
@@ -361,6 +371,11 @@ function checkDeclarationOrder(state: Declared): void {
   const late = state.late[0];
   if (!late) {
     return;
+  }
+  if (late.kind === 'global') {
+    throw new DeclarationError(
+      `The Application declares global option "${late.name}" after command() or action(). Declare global options before attaching Commands or registering an action.`,
+    );
   }
   if (late.kind === 'input') {
     throw new DeclarationError(
@@ -689,7 +704,7 @@ export interface BuiltGraph {
 /** The globals table and the owners record each compile once per invocation and the whole graph shares them. */
 export function buildGraph<Args, Options, Globals>(
   root: CommandState<Args, Options, Globals>,
-  globals: GlobalOptions<Globals> | undefined,
+  globals: GlobalsState<Globals>,
   install: PluginBuild & { plugins: readonly BuiltPlugin[] },
 ): BuiltGraph {
   const context: BuildContext = {

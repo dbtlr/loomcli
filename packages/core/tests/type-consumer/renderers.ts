@@ -1,7 +1,6 @@
 import {
   Application,
   FatalError,
-  GlobalOptions,
   InputError,
   issuePath,
   renderFailure,
@@ -84,22 +83,26 @@ const usageFailure: Renderer<UsageError> = {
 };
 renderFailure(InputError, usageFailure);
 
-const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
-const configured: ApplicationOptions<{ file: string }> = { failures, globals };
+const configured: ApplicationOptions = { failures };
 
-new Application('inline', { failures, globals }).action(({ options }) => {
-  const file: string = options.file;
-  return file;
-});
+new Application('inline', {
+  failures,
+})
+  .globalOption('file', { required: true, type: 'string' })
+  .action(({ options }) => {
+    const file: string = options.file;
+    return file;
+  });
 
 new Application('renderers-only', { failures }).action(({ options }) => {
   // @ts-expect-error TS2339: An Application without globals gains no global keys.
   options.file;
 });
 
-// @ts-expect-error TS2769: The positional globals form is retired.
-new Application('positional', globals);
+// @ts-expect-error TS2353: Constructor globals wiring is retired.
+new Application('retired', { globals: {} });
 
 export const jsonkit = new Application('jsonkit', configured)
+  .globalOption('file', { required: true, type: 'string' })
   .option('pretty', { type: 'boolean' })
   .action(({ options, out }) => out.print(`${options.file}:${String(options.pretty)}`));

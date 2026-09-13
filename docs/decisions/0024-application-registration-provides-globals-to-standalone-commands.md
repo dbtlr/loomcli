@@ -2,7 +2,8 @@
 type: adr
 title: ADR-0024 - Application registration provides globals to standalone Commands
 description: One shallow Application environment registration supplies global types across modules; the Application alone supplies global values at invocation.
-status: accepted
+status: superseded
+superseded_by: ADR-0026
 created: 2026-09-13
 modified: 2026-09-13
 ---
@@ -36,3 +37,7 @@ Plugin literal types survive this boundary for the later ADR-0022 rendering work
 ## Status
 
 Accepted 2026-09-13 with Application registration in the public SDK. `pnpm verify` passes 937 tests and the workspace/packed declaration checks. The same 937 tests pass with `LOOM_TEST_RUNTIME=bun`. `pnpm check:packed` compiles an independent library and a registered Application, then verifies automatic globals and customized library help under Node and Bun. Type checks reject unknown globals, incompatible attachments, union collisions, invalid registration, wrong extension targets, and reopened input/action methods.
+
+## Changelog
+
+- 2026-09-13: Superseded by [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md). Global declarations move to `Application.globalOption()`; automatic registration and library contracts remain in force.

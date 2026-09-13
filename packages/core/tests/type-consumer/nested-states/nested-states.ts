@@ -1,8 +1,7 @@
 import type { EnvironmentOf } from '@loomcli/core';
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 // A named Command attaches children under the rules the unnamed root follows.
-const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
 
 const leaf = new Command('clear').alias('cl').action(() => {});
 const group = new Command('cache').alias('c', 'store').alias('depot').command(leaf);
@@ -32,7 +31,10 @@ new Command('cache').command({ name: 'clear' });
 
 // Declaration emit must name a group's state, which keeps `command()` and `option()`.
 
-const configured = new Application('registered', { globals });
+const configured = new Application('registered').globalOption('file', {
+  required: true,
+  type: 'string',
+});
 declare module '@loomcli/core' {
   interface Register {
     environment: EnvironmentOf<typeof configured>;

@@ -4,7 +4,6 @@ import {
   Application,
   Command,
   FatalError,
-  GlobalOptions,
   InputError,
   InternalError,
   plugin,
@@ -137,12 +136,6 @@ const argv = process.argv.slice(4);
  * their descriptors.
  */
 function application() {
-  const globals = new GlobalOptions().option('file', {
-    description: 'The document to read.',
-    extensions: [optionFact({ placeholder: 'path' })],
-    short: 'f',
-    type: 'string',
-  });
   const get = new Command('get', {
     description: 'Read one value at a path.',
     extensions: [commandFact({ details: 'Reads one value.', examples: ['get user.name'] })],
@@ -180,10 +173,15 @@ function application() {
     extensions: [commandFact({ details: 'The whole fixture.' })],
     // The application registers first, so its renderer wins over the plugin's for one class.
     failures: (registered[scenario] ?? (() => []))(),
-    globals,
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
   })
+    .globalOption('file', {
+      description: 'The document to read.',
+      extensions: [optionFact({ placeholder: 'path' })],
+      short: 'f',
+      type: 'string',
+    })
     .command(get)
     .command(cache)
     .action(({ out }) => out.print('root'));

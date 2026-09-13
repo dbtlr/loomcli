@@ -1,11 +1,9 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const scenario = process.argv[2];
-const globals = new GlobalOptions()
-  .option('file', { short: 'f', type: 'string' })
-  .option('total', { polarity: 'both', type: 'boolean' });
+
 const dispatch = ({ out }) => out.print('dispatched');
 
 function child(name) {
@@ -13,7 +11,9 @@ function child(name) {
 }
 
 function build() {
-  const app = new Application('graph', { globals });
+  const app = new Application('graph')
+    .globalOption('file', { short: 'f', type: 'string' })
+    .globalOption('total', { polarity: 'both', type: 'boolean' });
   switch (scenario) {
     case 'arguments-and-children': {
       return app
@@ -46,7 +46,7 @@ function build() {
       return app.command(new Command('get').argument(1, {}).action(dispatch)).action(dispatch);
     }
     case 'foreign-globals': {
-      const other = new GlobalOptions().option('file', { type: 'string' });
+      const other = {};
       return app.command(new Command('get', { globals: other }).action(dispatch)).action(dispatch);
     }
     case 'foreign-child': {

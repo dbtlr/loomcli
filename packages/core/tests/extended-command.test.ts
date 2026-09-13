@@ -36,6 +36,6 @@ test.each([
   ],
   ['target', 'which applies to options'],
   ['late', 'declares option "extra" after its action'],
-])('extension layering rejects %s without hiding earlier declarations', (scenario, message) => {
+])('extension layering rejects %s', (scenario, message) => {
   expect(run(scenario)).toContain(message);
 });

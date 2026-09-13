@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 /** Every supplied value fails, so the diagnostic lines report the validation order alone. */
 const reject = (label) => ({
@@ -8,10 +8,6 @@ const reject = (label) => ({
     version: 1,
   },
 });
-
-const globals = new GlobalOptions()
-  .option('alpha', { type: 'string', validate: reject('alpha') })
-  .option('beta', { type: 'string', validate: reject('beta') });
 
 const order = new Command('order')
   .option('local', { type: 'string', validate: reject('local') })
@@ -23,7 +19,9 @@ const pair = new Command('pair')
   .argument('two', { required: true })
   .action(({ args, out }) => out.print(JSON.stringify(args)));
 
-await new Application('order', { globals })
+await new Application('order')
+  .globalOption('alpha', { type: 'string', validate: reject('alpha') })
+  .globalOption('beta', { type: 'string', validate: reject('beta') })
   .command(order)
   .command(pair)
   .action(({ out }) => out.print('root'))

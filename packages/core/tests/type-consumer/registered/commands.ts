@@ -1,14 +1,9 @@
 import type { EnvironmentOf } from '@loomcli/core';
-import { Application, Command, GlobalOptions, plugin } from '@loomcli/core';
+import { Application, Command, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
 import { getValue } from './get-value.js';
 import { summary } from './summary.js';
-
-const globals = new GlobalOptions()
-  .option('file', { required: true, short: 'f', type: 'string' })
-  .option('quiet', { short: 'q', type: 'boolean' })
-  .option('limit', { type: 'string', validate: z.string().transform(Number) });
 
 const get = new Command('get')
   .argument('path', { required: true })
@@ -27,20 +22,25 @@ const keys = new Command('keys').action(({ args, options, passthrough }) => {
   return { file, limit, quiet, tail };
 });
 
-const jsonkit = new Application('jsonkit', { globals })
+const jsonkit = new Application('jsonkit')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .option('pretty', { short: 'p', type: 'boolean' })
   .command(get)
   .command(keys)
   .action(summary);
 
 const configured = new Application('registered', {
-  globals,
   plugins: [plugin('registered/vocabulary', { options: { identifier: { type: 'boolean' } } })],
-});
+})
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 declare module '@loomcli/core' {
   interface Register {
     environment: EnvironmentOf<typeof configured>;
   }
 }
 
-export { globals, get, keys, jsonkit };
+export { configured, get, keys, jsonkit };

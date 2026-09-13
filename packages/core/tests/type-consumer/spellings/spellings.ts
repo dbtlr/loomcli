@@ -1,5 +1,5 @@
 import type { EnvironmentOf } from '@loomcli/core';
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { z } from 'zod';
 
 import { countFields } from './count-fields.js';
@@ -7,7 +7,10 @@ import { selectFields } from './select-fields.js';
 import { setField } from './set-field.js';
 
 // One local name and one local alias, declared with a different value shape on each Command.
-const spellingGlobals = new GlobalOptions().option('file', { short: 'f', type: 'string' });
+const spellingGlobals = new Application('globals').globalOption('file', {
+  short: 'f',
+  type: 'string',
+});
 
 const select = new Command('select')
   .option('field', { multiple: true, short: 'F', type: 'string' })
@@ -30,7 +33,8 @@ const set = new Command('set')
 
 const cache = new Command('cache').command(set);
 
-const spellings = new Application('spellings', { globals: spellingGlobals })
+const spellings = new Application('spellings')
+  .globalOption('file', { short: 'f', type: 'string' })
   .command(select)
   .command(count)
   .command(cache)
@@ -41,7 +45,10 @@ const spellings = new Application('spellings', { globals: spellingGlobals })
     return file;
   });
 
-const configured = new Application('registered', { globals: spellingGlobals });
+const configured = new Application('registered').globalOption('file', {
+  short: 'f',
+  type: 'string',
+});
 declare module '@loomcli/core' {
   interface Register {
     environment: EnvironmentOf<typeof configured>;

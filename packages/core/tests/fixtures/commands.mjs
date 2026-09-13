@@ -1,4 +1,4 @@
-import { Application, Command, GlobalOptions } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 
 const digits = {
   '~standard': {
@@ -10,11 +10,6 @@ const digits = {
     version: 1,
   },
 };
-
-const globals = new GlobalOptions()
-  .option('file', { required: true, short: 'f', type: 'string' })
-  .option('quiet', { short: 'q', type: 'boolean' })
-  .option('limit', { type: 'string', validate: digits });
 
 const report =
   (command) =>
@@ -28,7 +23,10 @@ const get = new Command('get')
 
 const keys = new Command('keys').action(report('keys'));
 
-const app = new Application('jsonkit', { globals })
+const app = new Application('jsonkit')
+  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('quiet', { short: 'q', type: 'boolean' })
+  .globalOption('limit', { type: 'string', validate: digits })
   .option('pretty', { short: 'p', type: 'boolean' })
   .command(get)
   .command(keys)

@@ -1,4 +1,4 @@
-import { Application, GlobalOptions } from '@loomcli/core';
+import { Application } from '@loomcli/core';
 
 const mode = process.argv[2];
 
@@ -13,13 +13,12 @@ const marks = ['m'];
 const paths = ['a'];
 const shape = { list: ['a'], nested: { key: 'value' } };
 
-const globals = new GlobalOptions().option('tag', {
-  default: tags,
-  multiple: true,
-  type: 'string',
-});
-
-const app = new Application('copies', { globals })
+const app = new Application('copies')
+  .globalOption('tag', {
+    default: tags,
+    multiple: true,
+    type: 'string',
+  })
   // The schema returns the declared array itself, so only a copy keeps the next invocation clean.
   .argument('files', { default: paths, validate: anyValue, variadic: true })
   .option('field', { default: fields, multiple: true, type: 'string' })

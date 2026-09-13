@@ -19,7 +19,6 @@ export {
   renderFailure,
 } from './errors.js';
 export { extension, readExtension } from './extension.js';
-export { GlobalOptions } from './globals.js';
 export { plugin } from './plugin.js';
 export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
