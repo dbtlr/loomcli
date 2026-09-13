@@ -1,3 +1,4 @@
+import { style } from '@loomcli/core';
 import type { ActionHandler, OptionsOf, RegisteredEnvironment, Renderer } from '@loomcli/core';
 
 import type { get } from './commands.js';
@@ -10,9 +11,9 @@ const action: ActionHandler<typeof get> = ({ options }) => {
   const name: Vocabulary = 'identifier';
   // @ts-expect-error TS2322: Registered plugin literal names reach an independently authored action.
   const wrong: Vocabulary = 'identifer';
-  return { file: options.file, rendered: render.render(name), wrong };
+  return { file: options.file, rendered: render.render(name, { style, width: () => 0 }), wrong };
 };
 // @ts-expect-error TS2345: A renderer using the same registered vocabulary rejects unknown names.
-render.render('identifer');
+render.render('identifer', { style, width: () => 0 });
 
 export { action, render };

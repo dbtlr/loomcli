@@ -119,6 +119,7 @@ try {
       { argv: ['greet', 'world', '--trace'], expected: 'hello: world\n' },
       { argv: ['local', '--trace'], expected: 'true\n' },
       { argv: ['local'], expected: 'false\n' },
+      { argv: ['styled'], expected: '◉ ok        :4\n' },
     ]) {
       const result = run(runtimes.get(name), [registered, ...argv], temporary);
       assert.equal(result.status, 0, result.output);

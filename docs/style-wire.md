@@ -1,10 +1,10 @@
 ---
-description: Proposed internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, and deferred padding.
+description: Internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, and deferred padding.
 ---
 
 # Marked-string wire contract
 
-This is the internal representation behind the [proposed style API](core.md#styles-and-rendering-policy-proposed).
+This is the internal representation behind the [style API](core.md#styles-and-rendering-policy).
 It is an implementation contract, not an authoring API or a format for persistent storage.
 SDK authors use the helpers and keep ordinary strings. They do not construct headers.
 
@@ -130,4 +130,4 @@ Implementation acceptance includes these cases through both width measurement an
 - Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked formatting.
 - Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames, under disabled styling policies.
 
-These constructions are obligations for implementation. This document does not claim that a resolver currently passes them.
+Public process fixtures in `packages/core/tests/style.test.ts` exercise these constructions on Node and Bun.

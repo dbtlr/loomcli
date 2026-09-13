@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
+import { style } from '@loomcli/core';
 import type { ActionHandler, ActionOptions, Host, Out } from '@loomcli/core';
 
 import type { textstat } from './application.js';
@@ -69,7 +70,7 @@ async function countAll(
   for (const source of selected) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : 'The source could not be read.';
-      return out.fatal(`Cannot read ${source.failure}: ${reason}`);
+      return out.fatal(style.escape(`Cannot read ${source.failure}: ${reason}`));
     });
     if (counts.bytes >= minimum) {
       total += counts.counted;

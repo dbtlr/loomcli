@@ -311,7 +311,33 @@ test('textstat --timing reports the elapsed time on stderr after the rows', () =
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('BYTES  SOURCE\n    6  one.txt\n');
     // The number is a measurement, so the line shape is the whole assertion.
-    expect(result.stderr).toMatch(/^elapsed: \d+ms\n$/u);
+    expect(result.stderr).toMatch(/^ℹ elapsed: \d+ms\n$/u);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test.each([
+  [{ NO_COLOR: '1', TERM: 'xterm-256color' }, /^ℹ elapsed: \d+ms\n$/u],
+  [{ NO_COLOR: '1', TERM: 'linux' }, /^i elapsed: \d+ms\n$/u],
+])('textstat timing keeps the captured glyph under %j', (env, diagnostic) => {
+  const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['--timing'], {
+    env: { ...env, FORCE_COLOR: '' },
+    input: 'x',
+  });
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('BYTES  SOURCE\n    1  stdin\n');
+  expect(result.stderr).toMatch(diagnostic);
+});
+
+test('textstat preserves a filename that resembles valid style markup', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-markers-'));
+  const name = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
+  try {
+    writeFileSync(join(directory, name), 'x');
+    expect(
+      invoke(new URL('../dist/src/main.js', import.meta.url), [name], { cwd: directory }),
+    ).toEqual({ status: 0, stderr: '', stdout: `BYTES  SOURCE\n    1  ${name}\n` });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

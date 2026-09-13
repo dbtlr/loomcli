@@ -4,6 +4,8 @@ import type { Readable, Writable } from 'node:stream';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ExtensionValue } from './extension.js';
+import type { RenderingPolicy } from './rendering.js';
+import type { ContextualStyle } from './style.js';
 
 type LowercaseLetter =
   | 'a'
@@ -114,6 +116,7 @@ export interface OutputTerminal extends InputTerminal {
   rows: number | undefined;
 }
 export interface Host {
+  platform: string;
   argv: string[];
   cwd: string;
   env: Record<string, string | undefined>;
@@ -123,6 +126,7 @@ export interface Host {
   stderr: Writable;
 }
 export interface RunOptions {
+  rendering?: RenderingPolicy;
   host?: Partial<Host>;
   /**
    * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
@@ -165,13 +169,14 @@ export type ValidationContext =
       passthrough: readonly string[];
       supplied: SuppliedInputs;
     };
-/**
- * One value turned into the exact text core writes. A renderer owns every byte, the trailing
- * newline included. It is synchronous and pure: it receives the value alone, returns a string, and
- * holds no output handle. A throw or a non-string return is a renderer failure.
- */
+/** Immutable authoring and measurement context for one renderer destination. */
+export interface RendererContext {
+  readonly style: ContextualStyle;
+  readonly width: (text: string) => number;
+}
+/** A pure synchronous renderer owns its newline; core resolves its returned marked text. */
 export interface Renderer<Data> {
-  render: (data: Readonly<Data>) => string;
+  render: (data: Readonly<Data>, context: RendererContext) => string;
 }
 export interface Out {
   print(message: string): Promise<void>;
@@ -308,6 +313,7 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
   : boolean;
 
 export interface ActionContext<Args, Options = {}> {
+  readonly style: ContextualStyle;
   args: Args;
   options: Options;
   passthrough: string[];

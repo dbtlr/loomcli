@@ -2,7 +2,20 @@ import type { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
 import { FatalError, notTextReason } from './errors.js';
-import type { Host, Out, Renderer } from './types.js';
+import { glyph } from './glyphs.generated.js';
+import { capabilities } from './rendering.js';
+import type { RenderingPolicy } from './rendering.js';
+import { resolveText, width } from './style-resolve.js';
+import type { Palette } from './style-state.js';
+import { createStyle, tokens } from './style.js';
+import type { Host, Out, Renderer, RendererContext } from './types.js';
+
+function stringValue(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error(notTextReason(value));
+  }
+  return value;
+}
 
 type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
@@ -89,7 +102,11 @@ export class Output {
   private renderFault: { cause: unknown } | undefined = undefined;
   readonly out: Out;
 
-  constructor(readonly host: Pick<Host, 'stdout' | 'stderr'>) {
+  private palette: Palette = new Map();
+  private policy: RenderingPolicy = {};
+  style = createStyle();
+
+  constructor(readonly host: Host) {
     this.out = {
       error: (message) => this.emit('error', message),
       fatal: (message) => {
@@ -98,35 +115,71 @@ export class Output {
       info: (message) => this.emit('info', message),
       print: (message) => this.emit('print', message),
       render: <Data>(data: Data, renderer: Renderer<Data>): Promise<void> =>
-        this.rendered(() => renderer.render(data)),
+        this.rendered(() => renderer.render(data, this.context('stdout'))),
       success: (message) => this.emit('success', message),
       warn: (message) => this.emit('warn', message),
     };
   }
 
+  configure(policy: RenderingPolicy, palette: Palette): void {
+    this.policy = policy;
+    this.palette = palette;
+    this.style = createStyle(new Set([...tokens, ...palette.keys()]));
+  }
+
+  context(destination: 'stdout' | 'stderr'): RendererContext {
+    const caps = capabilities(this.host, destination, this.policy);
+    return Object.freeze({
+      style: this.style,
+      width: (text: string) => width(text, this.palette, caps),
+    });
+  }
+
   /** A semantic message is one line on its destination; only `print` writes to stdout. */
   emit(kind: Purpose, message: string): Promise<void> {
-    return this.write(kind === 'print' ? this.host.stdout : this.host.stderr, `${message}\n`);
+    const destination = kind === 'print' ? 'stdout' : 'stderr';
+    return this.rendered(() => {
+      if (typeof message !== 'string') {
+        throw new TypeError('Output messages must be strings.');
+      }
+      if (kind === 'print') {
+        return `${message}\n`;
+      }
+      const name = kind === 'warn' ? 'warning' : kind;
+      const mark = glyph[name];
+      const context = this.context(destination);
+      const gutter = ' '.repeat(context.width(mark) + 1);
+      return `${context.style[name](mark)} ${message.replace(/(?<newline>\r?\n)(?!$)/gu, `$<newline>${gutter}`)}\n`;
+    }, destination);
   }
 
   /**
    * The failure report of one invocation. Like `render`, the text is queued on its destination
-   * exactly as given: the caller already carries its own trailing newline, whether that text came
+   * after style resolution: the caller already carries its own trailing newline, whether that text came
    * from a registered renderer or from core's own default text.
    */
   report(text: string): Promise<void> {
-    return this.write(this.host.stderr, text);
+    return this.rendered(() => text, 'stderr');
   }
 
   /**
-   * The renderer owns every byte, so its text is queued on stdout exactly as returned. A throw or
+   * The renderer owns its newline; core resolves its marked text before queuing it. A throw or
    * a non-string return rejects this call alone: nothing is written for it, later output still
    * writes, and the recorded cause ends the invocation once the action has completed.
    */
-  private rendered(produce: () => unknown): Promise<void> {
-    const rendered = renderText(produce);
+  private rendered(
+    produce: () => unknown,
+    destination: 'stdout' | 'stderr' = 'stdout',
+  ): Promise<void> {
+    const rendered = renderText(() =>
+      resolveText(
+        stringValue(produce()),
+        this.palette,
+        capabilities(this.host, destination, this.policy),
+      ),
+    );
     return 'text' in rendered
-      ? this.write(this.host.stdout, rendered.text)
+      ? this.write(this.host[destination], rendered.text)
       : this.renderFailed(rendered.failed);
   }
 

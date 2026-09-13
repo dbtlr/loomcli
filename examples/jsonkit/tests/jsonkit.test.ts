@@ -14,6 +14,13 @@ const summary = [
   '',
 ].join('\n');
 
+test('jsonkit preserves JSON strings that resemble recognized style markup', () => {
+  const literal = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
+  const contents = JSON.stringify({ value: literal });
+  const result = invoke(main, ['get', 'value'], { input: contents });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: `${JSON.stringify(literal)}\n` });
+});
+
 test('jsonkit summarizes an object with one kind line per key', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json'], { cwd })).toEqual({

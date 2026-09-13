@@ -45,7 +45,10 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | superseded |
 | [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
 | [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
+| [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a Renderer context and one optional theme contribution; the named palette remains separate. | accepted |
 
 ## Adding a record
+
+ADR-0007, ADR-0008, and ADR-0020 remain accepted except for the specific clauses superseded by [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md).
 
 Number the file after the highest existing record. Use the frontmatter fields the existing records carry: `type`, `title`, `description`, `status`, `created`, `modified`, and `superseded_by` when it applies. A record needs a context section; add considered options or consequences only when they carry information a reader would otherwise have to rediscover. A `proposed` record adds a status section stating what would move it to accepted. Record later status changes and addenda as dated entries in a closing changelog section rather than editing the decision text.

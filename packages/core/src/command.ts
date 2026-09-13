@@ -21,6 +21,7 @@ import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type { OptionValues } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
+import type { ContextualStyle } from './style.js';
 import type {
   Action,
   ArgumentConfig,
@@ -54,6 +55,7 @@ export interface ArgumentSlot {
 }
 
 export interface DispatchInput {
+  style: ContextualStyle;
   host: Host;
   out: Out;
   passthrough: string[];
@@ -589,7 +591,7 @@ function bindDispatch<Args, Options, Globals>(
   action: Action<Args, Globals & Options>,
   globals: BuiltGlobals,
 ) {
-  return ({ host, out, passthrough, signal, values }: DispatchInput) => {
+  return ({ host, out, passthrough, signal, style, values }: DispatchInput) => {
     const bound = state.bind(values);
     // Last resort: no typed path exists. The graph erases the binder's generic relationship.
     // It holds because attachment checks the global output requirement and graph build rejects
@@ -603,6 +605,7 @@ function bindDispatch<Args, Options, Globals>(
       out,
       passthrough,
       signal,
+      style,
     });
   };
 }
@@ -958,7 +961,13 @@ export function routeInvocation(graph: BuiltGraph, argv: readonly string[]): Rou
 export async function prepareDispatch(
   graph: BuiltGraph,
   routed: RoutedInvocation,
-  invocation: { defaults: DefaultValues; host: Host; out: Out; signal: AbortSignal },
+  invocation: {
+    defaults: DefaultValues;
+    host: Host;
+    out: Out;
+    signal: AbortSignal;
+    style: ContextualStyle;
+  },
 ): Promise<() => unknown> {
   const { command, path, scan } = routed;
   const { dispatch } = command;
@@ -982,6 +991,7 @@ export async function prepareDispatch(
       out: invocation.out,
       passthrough: parsed.passthrough,
       signal: invocation.signal,
+      style: invocation.style,
       values,
     });
 }

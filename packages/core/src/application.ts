@@ -43,6 +43,8 @@ import type { CommandGraph } from './inspect.js';
 import { Output, reportPlainly } from './output.js';
 import { buildPlugins, installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
+import { renderingPolicy } from './rendering.js';
+import type { RenderingPolicy } from './rendering.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
 import type {
@@ -105,6 +107,7 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
 }
 
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
+  rendering?: RenderingPolicy;
   failures?: readonly FailureRenderer[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
@@ -274,6 +277,7 @@ class ApplicationBuilder<
     plugins: readonly BuiltPlugin[];
   } {
     const facts = checkOptions(this.#options, this.#declared);
+    renderingPolicy(this.#declared.rendering);
     const installed = installPlugins(this.#plugins ?? []);
     const application = buildFailures(this.#failures);
     register(application);
@@ -334,11 +338,19 @@ class ApplicationBuilder<
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
         output = new Output(host);
+        output.configure(
+          { ...renderingPolicy(this.#declared.rendering), ...renderingPolicy(options?.rendering) },
+          new Map(),
+        );
         signals = bracketRun(controller, checkSignal(options?.signal));
         const built = this.prepare((value) => {
           registry = value;
         });
         const { graph } = built;
+        output.configure(
+          { ...renderingPolicy(this.#declared.rendering), ...renderingPolicy(options?.rendering) },
+          built.plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
+        );
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const defaults = await prepareInputs(inputs, host);
         graphBuilt = true;
@@ -358,6 +370,7 @@ class ApplicationBuilder<
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
             signal: controller.signal,
+            style: output.style,
           });
         }
         // The fault check covers the same window the write accounting covers.
@@ -372,12 +385,16 @@ class ApplicationBuilder<
         try {
           const failure = toFailure(error);
           code = failure.exitCode;
-          output ??= new Output({ stderr, stdout: process.stdout });
+          output ??= new Output(captureHost(undefined, stderr));
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
-            const report = describeFailure(registry ?? noRegistrations, failure);
+            const report = describeFailure(
+              registry ?? noRegistrations,
+              failure,
+              output.context('stderr'),
+            );
             if (report.kind === 'rendered') {
-              // The renderer already owns every byte, trailing newline included: pass it through.
+              // The renderer owns the trailing newline; output resolves its marked text.
               await output.report(report.text);
             } else {
               code = 1;
@@ -400,7 +417,11 @@ class ApplicationBuilder<
         if (!silenced(fault, controller.signal, cancellation())) {
           code = code === 0 ? 1 : code;
           try {
-            const report = describeFailure(registry ?? noRegistrations, fault);
+            const report = describeFailure(
+              registry ?? noRegistrations,
+              fault,
+              output?.context('stderr'),
+            );
             if (report.kind === 'rendered') {
               await output?.report(report.text);
             } else {
@@ -481,6 +502,7 @@ interface ApplicationFacts {
 
 /** The same facts as the constructor captured them, before any rule has read them. */
 interface DeclaredFacts {
+  rendering: unknown;
   description: unknown;
   version: unknown;
 }
@@ -528,7 +550,13 @@ class ApplicationDeclaration<
         options: undefined,
       }),
       {
-        declared: { description: options?.description, version: options?.version },
+        declared: {
+          description: options?.description,
+          rendering: isPlainObject(options?.rendering)
+            ? { ...options.rendering }
+            : options?.rendering,
+          version: options?.version,
+        },
         failures: options?.failures ?? [],
         globals: emptyGlobals(),
         options,

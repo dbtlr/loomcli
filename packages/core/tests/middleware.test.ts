@@ -90,7 +90,7 @@ test('the callable check still rejects a group when no middleware takes over', (
   const result = run('wrapped', ['cache']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'outer:start\ninner:start\ninner:rejected:Command "cache" requires a subcommand. Use one of: clear.\ninner:cleanup\nouter:rejected:Command "cache" requires a subcommand. Use one of: clear.\nouter:cleanup\nInvalid input: Command "cache" requires a subcommand. Use one of: clear.\n',
+    'ℹ outer:start\nℹ inner:start\nℹ inner:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ inner:cleanup\nℹ outer:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ outer:cleanup\nInvalid input: Command "cache" requires a subcommand. Use one of: clear.\n',
   );
 });
 
@@ -98,13 +98,13 @@ test('two always-on wrappers unwind in reverse installation order', () => {
   const result = run('wrapped', ['get', 'a.b']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe(
-    'outer:start\ninner:start\ninner:dispatched\ninner:cleanup\nouter:dispatched\nouter:cleanup\n',
+    'ℹ outer:start\nℹ inner:start\nℹ inner:dispatched\nℹ inner:cleanup\nℹ outer:dispatched\nℹ outer:cleanup\n',
   );
 });
 
 test('a wrapper reads a later takeover as its own outcome', () => {
   const result = run('wrapped-help', ['--help', 'get']);
-  expect(result.stderr).toBe('outer:start\nouter:taken-over\nouter:cleanup\n');
+  expect(result.stderr).toBe('ℹ outer:start\nℹ outer:taken-over\nℹ outer:cleanup\n');
   expect(result.stdout).toBe('help:get\nresolved:0\n');
 });
 
@@ -112,7 +112,7 @@ test('calling next() twice rejects, dispatches nothing more, and turns a 0 into 
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'misuse:Plugin "@fixture/misuse" called next() twice.\nInternal error: Plugin "@fixture/misuse" called next() twice.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\nInternal error: Plugin "@fixture/misuse" called next() twice.\n',
   );
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
@@ -128,7 +128,7 @@ test('calling next() after the middleware returned rejects with its own sentence
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'after-return' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\nInternal error: Plugin "@fixture/misuse" called next() after its middleware returned.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\nInternal error: Plugin "@fixture/misuse" called next() after its middleware returned.\n',
   );
 });
 
@@ -136,7 +136,7 @@ test('a chain fault reaches the renderer the application registered for its clas
   const result = run('misuse-rendered', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'misuse:Plugin "@fixture/misuse" called next() twice.\napp internal: Plugin "@fixture/misuse" called next() twice.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\napp internal: Plugin "@fixture/misuse" called next() twice.\n',
   );
 });
 
@@ -144,7 +144,7 @@ test('a next() a middleware kept and called after it returned rejects and dispat
   const result = run('stashed', ['get', 'a.b']);
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'stashing:taken-over\ncaller:taken-over\ncaller:Plugin "@fixture/stashing" called next() after its middleware returned.\nInternal error: Plugin "@fixture/stashing" called next() after its middleware returned.\n',
+    'ℹ stashing:taken-over\nℹ caller:taken-over\nℹ caller:Plugin "@fixture/stashing" called next() after its middleware returned.\nInternal error: Plugin "@fixture/stashing" called next() after its middleware returned.\n',
   );
   expect(result.stdout).toBe('resolved:1\n');
 });
@@ -153,7 +153,7 @@ test('a middleware that throws its own failure while unwinding leaves the caught
   const result = run('recatching', ['get']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'recatching:Argument "path" requires a value. Supply a value for "path".\nInvalid input: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
+    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\nInvalid input: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
   );
   expect(result.stdout).toBe('resolved:2\n');
 });
@@ -162,7 +162,7 @@ test('a wrapper reads a caught failure as taken-over when the action never ran',
   const result = run('wrapped-catching', ['get']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'outer:start\ncatching:caught:Argument "path" requires a value. Supply a value for "path".\nouter:taken-over\nouter:cleanup\nInvalid input: Argument "path" requires a value. Supply a value for "path".\n',
+    'ℹ outer:start\nℹ catching:caught:Argument "path" requires a value. Supply a value for "path".\nℹ outer:taken-over\nℹ outer:cleanup\nInvalid input: Argument "path" requires a value. Supply a value for "path".\n',
   );
 });
 
@@ -170,7 +170,7 @@ test('a wrapper reads a caught failure as dispatched when the action ran and thr
   const result = run('wrapped-catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'outer:start\ncatching:caught:the action stopped the invocation\nouter:dispatched\nouter:cleanup\nthe action stopped the invocation\n',
+    'ℹ outer:start\nℹ catching:caught:the action stopped the invocation\nℹ outer:dispatched\nℹ outer:cleanup\nthe action stopped the invocation\n',
   );
 });
 
@@ -179,7 +179,7 @@ test('a next() queued as a microtask lands before the middleware result settles'
   // The chain and the action dispatches under the wrapper that observes the outcome.
   const result = run('microtask', ['get', 'a.b']);
   expect(result.status).toBe(0);
-  expect(result.stderr).toBe('outer:start\nouter:dispatched\nouter:cleanup\n');
+  expect(result.stderr).toBe('ℹ outer:start\nℹ outer:dispatched\nℹ outer:cleanup\n');
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:0\n');
 });
 
@@ -200,7 +200,7 @@ test('a throw during unwinding is reported after the primary outcome and turns a
   const result = run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'throwing:dispatched\nInternal error: the plugin failed while unwinding\n',
+    'ℹ throwing:dispatched\nInternal error: the plugin failed while unwinding\n',
   );
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
@@ -218,7 +218,7 @@ test('a caught rejection changes the middleware control flow and not the exit co
   const result = run('catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'catching:caught:the action stopped the invocation\nthe action stopped the invocation\n',
+    'ℹ catching:caught:the action stopped the invocation\nthe action stopped the invocation\n',
   );
   expect(result.stdout).toBe('resolved:1\n');
 });

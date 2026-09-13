@@ -23,6 +23,10 @@
     "./version": {
       "types": "./dist/src/version/plugin.d.ts",
       "import": "./dist/src/version/plugin.js"
+    },
+    "./theme": {
+      "types": "./dist/src/theme/plugin.d.ts",
+      "import": "./dist/src/theme/plugin.js"
     }
   },
   "dependencies": {

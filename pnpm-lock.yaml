@@ -184,6 +184,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@rockorager/uucode':
+        specifier: 2.2.1
+        version: 2.2.1
       '@standard-schema/spec':
         specifier: ^1.1.0
         version: 1.1.0
@@ -554,6 +557,9 @@ packages:
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
+
+  '@rockorager/uucode@2.2.1':
+    resolution: {integrity: sha512-1jXmmlmZVenBrj0yZhxIDAwd8MNsQlgDex4zxXf+Gug3x6sYzPqibBTwCfAsuATI/IUAjjy0EcgnsueXIXP6Rw==}
 
   '@rolldown/binding-android-arm-eabi@1.2.7':
     resolution: {integrity: sha512-EypzgnYCwyVY4NDHKzGmNJT5b+XaQEBniHxsMdeIQLB/tcCzZnhqrzHpZFbX9iaxx+5RiB8caATBtfvZP7zVxQ==}
@@ -1756,6 +1762,8 @@ snapshots:
     optional: true
 
   '@polka/url@1.0.0-next.29': {}
+
+  '@rockorager/uucode@2.2.1': {}
 
   '@rolldown/binding-android-arm-eabi@1.2.7':
     optional: true

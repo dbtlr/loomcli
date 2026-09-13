@@ -20,6 +20,10 @@ export {
 } from './errors.js';
 export { extension, readExtension } from './extension.js';
 export { plugin } from './plugin.js';
+export { glyph } from './glyphs.generated.js';
+export type { RenderingPolicy } from './rendering.js';
+export type { RendererContext } from './types.js';
+export { pad, style } from './style.js';
 export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application.js';
@@ -67,3 +71,5 @@ export type {
   Register,
   RegisteredEnvironment,
 } from './environment.js';
+
+export type { ConcreteStyle, Style, ThemeMapping, ThemeConstraint } from './style.js';

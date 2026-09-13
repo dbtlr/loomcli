@@ -29,7 +29,7 @@ test('jsonkit warns about a missing field and prints the fields it found', () =>
       }),
     ).toEqual({
       status: 0,
-      stderr: 'Field not found: gone\n',
+      stderr: '⚠ Field not found: gone\n',
       stdout: '{\n  "name": "loom"\n}\n',
     });
   });
@@ -41,7 +41,7 @@ test('jsonkit prints an empty object when every requested field is missing', () 
       invoke(main, ['--file', 'doc.json', 'select', '-F', 'gone', '-F', 'lost'], { cwd }),
     ).toEqual({
       status: 0,
-      stderr: 'Field not found: gone\nField not found: lost\n',
+      stderr: '⚠ Field not found: gone\n⚠ Field not found: lost\n',
       stdout: '{}\n',
     });
   });

@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { InputIdentity, Renderer } from './types.js';
+import { escapeText } from './style.js';
+import type { InputIdentity, Renderer, RendererContext } from './types.js';
 
 /** The routed path names the Command a token fault belongs to; an empty path is the root. */
 function routedSentence(command: readonly string[]): string {
@@ -66,7 +67,7 @@ function chainOf(failure: LoomError): unknown[] {
 interface Registration {
   name: string;
   prototype: unknown;
-  render: (failure: LoomError) => unknown;
+  render: (failure: LoomError, context: RendererContext) => unknown;
 }
 
 /** Authored registrations register here, so the public type publishes nothing to reach. */
@@ -314,7 +315,8 @@ export function renderFailure<Failure extends LoomError>(
     name: 'name' in type && typeof type.name === 'string' ? type.name : 'a failure class',
     prototype: 'prototype' in type ? type.prototype : undefined,
     // Resolution reaches this registration through the same class, so the test always holds.
-    render: (failure) => (failure instanceof type ? renderer.render(failure) : undefined),
+    render: (failure, context) =>
+      failure instanceof type ? renderer.render(failure, context) : undefined,
   });
 }
 
@@ -372,15 +374,25 @@ export type FailureReport =
  * derived first through the application's registrations, then falls to core's own text, so a
  * registration for a base class brands every failure below it.
  */
-export function describeFailure(registry: FailureRegistry, failure: LoomError): FailureReport {
+export function describeFailure(
+  registry: FailureRegistry,
+  failure: LoomError,
+  context?: RendererContext,
+): FailureReport {
   const registration = chainOf(failure)
     .map((prototype) => registry.get(prototype))
     .find((entry) => entry !== undefined);
   if (!registration) {
-    return { kind: 'rendered', text: defaultText(failure) };
+    return {
+      kind: 'rendered',
+      text: failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure)),
+    };
   }
   try {
-    const text = registration.render(failure);
+    if (context === undefined) {
+      throw new Error('Missing rendering context.');
+    }
+    const text = registration.render(failure, context);
     return typeof text === 'string'
       ? { kind: 'rendered', text }
       : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };

@@ -46,7 +46,7 @@ const listed = {
 } satisfies PluginOptions;
 
 // The installed list holds plugin values alone.
-// @ts-expect-error TS2741: A forged object is not the value plugin() returns.
+// @ts-expect-error TS2739: A forged object is not the value plugin() returns.
 const installed: readonly Plugin[] = [forged];
 
 const [option] = app.inspect().globals;

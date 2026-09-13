@@ -1,3 +1,4 @@
+import { style } from '@loomcli/core';
 import type { ActionHandler, Out } from '@loomcli/core';
 
 import type { select } from '../commands/select.js';
@@ -18,7 +19,7 @@ async function collect(record: Record<string, unknown>, fields: readonly string[
       if (Object.hasOwn(record, field)) {
         selected.set(field, record[field]);
       } else {
-        await out.warn(`Field not found: ${field}`);
+        await out.warn(`Field not found: ${style.escape(field)}`);
       }
     }
   }
@@ -30,5 +31,6 @@ export const selectFields: ActionHandler<typeof select> = async ({ options, host
   const record = isRecord(document)
     ? document
     : out.fatal(`Expected an object at the root; found ${describeKind(document)}`);
-  await out.print(formatJson(await collect(record, options.field, out)));
+  const selected = await collect(record, options.field, out);
+  await out.print(style.escape(formatJson(selected)));
 };

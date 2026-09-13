@@ -12,11 +12,12 @@ function dimension(value: number | undefined): number | undefined {
 }
 
 export function captureHost(overrides: RunOptions['host'], stderr: Writable): Host {
-  const { argv, cwd, env, stdin, stdout, terminal } = overrides ?? {};
+  const { argv, cwd, env, platform, stdin, stdout, terminal } = overrides ?? {};
   return {
     argv: [...(argv ?? process.argv.slice(2))],
     cwd: cwd ?? process.cwd(),
     env: { ...(env ?? process.env) },
+    platform: platform ?? process.platform,
     stderr,
     stdin: stdin ?? process.stdin,
     stdout: stdout ?? process.stdout,

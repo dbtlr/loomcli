@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
+import { style } from '@loomcli/core';
 import type { Host, Out } from '@loomcli/core';
 
 /** One document source: the subject each failure names, and the connection it reads. */
@@ -38,14 +39,20 @@ function select(file: string | undefined, host: Host): Source {
 export async function readJson(file: string | undefined, host: Host, out: Out): Promise<unknown> {
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) =>
-    out.fatal(`Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`),
+    out.fatal(
+      style.escape(
+        `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`,
+      ),
+    ),
   );
   try {
     const document: unknown = JSON.parse(contents);
     return document;
   } catch (error: unknown) {
     return out.fatal(
-      `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')}`,
+      style.escape(
+        `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')}`,
+      ),
     );
   }
 }

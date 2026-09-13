@@ -6,6 +6,9 @@ import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './exten
 import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
+import type { Palette } from './style-state.js';
+import type { ThemeConstraint, ThemeMapping } from './style.js';
+import { buildTheme } from './theme.js';
 import type { OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { OptionInput } from './validation.js';
@@ -24,6 +27,7 @@ type PluginOptionValues<Options extends PluginOptions> = {
 
 /** Phantom key. It carries a plugin's declared options in a read position and holds no value. */
 declare const pluginOptions: unique symbol;
+declare const pluginTheme: unique symbol;
 
 /**
  * One plugin's declarations as the registry holds them, with the generic parts erased. Build reads
@@ -31,6 +35,7 @@ declare const pluginOptions: unique symbol;
  * shape is what the rules below read and no declaration is claimed to be well formed here.
  */
 interface DeclaredPlugin {
+  theme?: unknown;
   options?: PluginOptions;
   middleware?: { activate?: unknown; load?: unknown };
   extensions?: readonly AnyExtension[];
@@ -52,7 +57,8 @@ const nodes = new WeakMap<object, PluginNode>();
  * covariant: a `plugins` list holds plugins with different options the way `failures` holds
  * renderers for different classes, and `Middleware` and `load` accept a narrower plugin.
  */
-class PluginDeclaration<Options extends PluginOptions> {
+class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMapping> {
+  declare readonly [pluginTheme]: Theme;
   declare readonly [pluginOptions]: () => Options;
 
   constructor(node: PluginNode) {
@@ -65,9 +71,9 @@ class PluginDeclaration<Options extends PluginOptions> {
  * One plugin, as the opaque value `plugin()` returns. The declarations behind it stay private to
  * this package, so no consumer can read or replace them.
  */
-type Plugin<Options extends PluginOptions = PluginOptions> = Pick<
-  PluginDeclaration<Options>,
-  typeof pluginOptions
+type Plugin<Options extends PluginOptions = PluginOptions, Theme extends ThemeMapping = {}> = Pick<
+  PluginDeclaration<Options, Theme>,
+  typeof pluginOptions | typeof pluginTheme
 >;
 
 /** The declared options of a plugin, or of the factory that returns one. */
@@ -84,7 +90,11 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
 ) => Promise<void> | void;
 
 /** Everything a plugin declares. It holds declarations alone and performs no work. */
-interface PluginDefinition<Options extends PluginOptions = PluginOptions> {
+interface PluginDefinition<
+  Options extends PluginOptions = PluginOptions,
+  Theme extends ThemeMapping = ThemeMapping,
+> {
+  theme?: Theme & ThemeConstraint<Theme>;
   options?: Options;
   middleware?: {
     activate: 'always' | readonly (keyof Options & string)[];
@@ -100,11 +110,20 @@ interface PluginDefinition<Options extends PluginOptions = PluginOptions> {
  * is created and none when it is installed, so an installed plugin an invocation never reaches
  * costs that invocation nothing.
  */
-function plugin<Options extends PluginOptions = PluginOptions>(
+function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(
   identity: string,
-  definition: PluginDefinition<Options>,
-): Plugin<Options> {
-  return new PluginDeclaration<Options>({ definition, identity });
+  definition: PluginDefinition<Options, Theme>,
+): Plugin<NoInfer<Options>, NoInfer<Theme>> {
+  const captured = {
+    ...definition,
+    ...(definition?.theme === undefined
+      ? {}
+      : { theme: isPlainObject(definition.theme) ? { ...definition.theme } : definition.theme }),
+  };
+  return new PluginDeclaration<Options, Theme>({
+    definition: isPlainObject(definition) ? captured : definition,
+    identity,
+  });
 }
 
 /** One installed plugin, with the declarations build reads out of it in installation order. */
@@ -346,6 +365,7 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
 
 /** One installed plugin's declarations, read once per build in installation order. */
 interface BuiltPlugin {
+  theme: Palette | undefined;
   failures: readonly FailureRenderer[];
   identity: string;
   inputs: readonly OptionInput[];
@@ -407,7 +427,18 @@ function buildPlugins(
    * diagnostic. An empty claim leaves the slot free.
    */
   let owner: string | undefined = undefined;
+  let themeOwner: string | undefined = undefined;
   return installed.map(({ declaration, identity }) => {
+    let theme: Palette | undefined = undefined;
+    if (declaration.theme !== undefined) {
+      if (themeOwner !== undefined) {
+        throw new DeclarationError(
+          `${pluginSentence(identity)} claims the theme slot, which plugin "${themeOwner}" already holds. Install one owner.`,
+        );
+      }
+      theme = buildTheme(declaration.theme, identity);
+      themeOwner = identity;
+    }
     defineExtensions(identity, declaration, build);
     const inputs = readOptions(identity, declaration.options, build);
     const names = new Set(inputs.map((input) => input.name));
@@ -426,6 +457,7 @@ function buildPlugins(
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),
       signals,
+      theme,
     };
   });
 }
@@ -435,7 +467,14 @@ function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ProcessSignal[]
   return plugins.find((entry) => entry.signals.length > 0)?.signals ?? [];
 }
 
+type ThemeOf<Contributor> = [Contributor] extends [never]
+  ? {}
+  : Contributor extends Plugin<PluginOptions, infer Theme>
+    ? Theme
+    : {};
+
 export type {
+  ThemeOf,
   BuiltPlugin,
   InstalledPlugin,
   Middleware,

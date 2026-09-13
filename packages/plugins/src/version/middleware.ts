@@ -1,3 +1,4 @@
+import { style } from '@loomcli/core';
 import type { CommandGraph, Middleware } from '@loomcli/core';
 
 import type { version } from './plugin.js';
@@ -17,6 +18,7 @@ function line(graph: CommandGraph): string {
  * after routing runs and the exit code is 0. The routed Command never changes the line, because the
  * version is a fact of the Application.
  */
-const middleware: Middleware<typeof version> = ({ graph, out }) => out.print(line(graph));
+const middleware: Middleware<typeof version> = ({ graph, out }) =>
+  out.print(style.escape(line(graph)));
 
 export default middleware;
