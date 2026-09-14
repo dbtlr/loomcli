@@ -184,7 +184,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, Presentation name, and `ResultError` follow the [results contract](core.md#results) under proposed ADR-0023 and are not implemented.
 
 **Out**:
-The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the fatal path, and on an action alone the result call. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -192,11 +192,11 @@ A message written through one of the five purpose-named methods: `print`, `info`
 _Avoid_: Log level, styled output
 
 **Rendered output**:
-Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and it goes to stderr on a Command that declares a result.
+Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
 _Avoid_: Formatted output, verbatim output
 
 **View**:
-A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
+A pure, synchronous value whose view functions turn typed data and the supplied view context into the marked text core resolves and writes, in one of two shapes: a whole view renders one value through `render`, and a row view renders a sequence one row at a time through `row`. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site or named in a result's views. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
 _Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
 
 **Declared view**:
@@ -204,8 +204,12 @@ The value `view(identity, definition)` returns: a view that carries an identity,
 _Avoid_: Named renderer, registered view, view id
 
 **View function**:
-The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.
+The `render` function of a whole view, or the `row`, `head`, and `tail` functions of a row view: data and context in, marked text out. A default view supplies them, and a replacement view of the same shape supersedes them.
 _Avoid_: Renderer, render callback
+
+**Pack view**:
+A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against, and its plain-data configuration is a graph fact under the plugin's descriptor.
+_Avoid_: Built-in view, formatter (for a pack view), widget
 
 **Row view**:
 The second structural shape of a view, which renders a sequence one row at a time: a `row` function over one row, its index, and the context, with optional `head` and `tail` functions that open and close the sequence. Every function is pure and synchronous. Core tells a row view from a whole view by the function present, and feeds a row view as the source yields while it buffers a sequence for a whole view.
@@ -232,7 +236,7 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Result**:
-What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable. The author states the type, the declaration carries a record of named views with the first as the default, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
+What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable. The author states the type, the declaration carries a record of views keyed by presentation name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
 _Avoid_: Return value, payload, output value, document, stream (for the declaration)
 
 **Presentation name**:
