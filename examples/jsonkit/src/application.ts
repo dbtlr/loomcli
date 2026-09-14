@@ -1,12 +1,6 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
-import {
-  Application,
-  FatalError,
-  InputError,
-  renderFailure,
-  UnknownCommandError,
-} from '@loomcli/core';
+import { Application, FatalError, InputError, override, UnknownCommandError } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
@@ -19,8 +13,8 @@ import { fetch } from './commands/fetch.js';
 import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { select } from './commands/select.js';
-import { fatalError, inputProblems, unknownCommand } from './failures.js';
 import { fileOrStdin } from './file-or-stdin.js';
+import { fatalError, inputProblems, unknownCommand } from './views.js';
 
 // The root action type-imports this value, so it is registered by the last call.
 const configured = new Application('jsonkit', {
@@ -35,13 +29,13 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  failures: [
-    renderFailure(FatalError, fatalError),
-    renderFailure(InputError, inputProblems),
-    renderFailure(UnknownCommandError, unknownCommand),
-  ],
   plugins: [help(), version(), explain()],
   version: Package.version,
+  views: [
+    override(FatalError, fatalError),
+    override(InputError, inputProblems),
+    override(UnknownCommandError, unknownCommand),
+  ],
 }).globalOption('file', {
   description: 'The document to read. Omit it to read piped text.',
   extensions: [helpInput({ placeholder: 'path' })],

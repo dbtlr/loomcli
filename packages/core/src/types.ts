@@ -169,14 +169,14 @@ export type ValidationContext =
       passthrough: readonly string[];
       supplied: SuppliedInputs;
     };
-/** Immutable authoring and measurement context for one renderer destination. */
-export interface RendererContext {
+/** Immutable authoring and measurement context for one view destination. */
+export interface ViewContext {
   readonly style: ContextualStyle;
   readonly width: (text: string) => number;
 }
-/** A pure synchronous renderer owns its newline; core resolves its returned marked text. */
-export interface Renderer<Data> {
-  render: (data: Readonly<Data>, context: RendererContext) => string;
+/** A pure synchronous view turns one typed value into the marked text core resolves. */
+export interface View<Data> {
+  render: (data: Readonly<Data>, context: ViewContext) => string;
 }
 export interface Out {
   print(message: string): Promise<void>;
@@ -185,7 +185,7 @@ export interface Out {
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
   /** The neutral presentation call: a rendered value has no purpose and no destination. */
-  render<Data>(data: Data, renderer: Renderer<Data>): Promise<void>;
+  render<Data>(data: Data, view: View<Data>): Promise<void>;
   fatal(message: string): never;
 }
 export type StringOption = OptionSpelling &

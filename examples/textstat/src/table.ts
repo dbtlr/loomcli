@@ -1,4 +1,4 @@
-import type { Renderer } from '@loomcli/core';
+import type { View } from '@loomcli/core';
 
 import type { Metric } from './count-source.js';
 
@@ -19,12 +19,12 @@ export interface Table {
 }
 
 /**
- * The whole table as text, with literal source names and renderer-owned newlines. The header names the
+ * The whole table as text, with literal source names and view-owned newlines. The header names the
  * metric, the counts right-align under it in a column as wide as the header or the widest count,
  * and the total, when the invocation asked for one, is the last row. The header prints even for an
  * empty selection, so a filtered run still reports the metric it counted.
  */
-export const tableRenderer: Renderer<Table> = {
+export const tableView: View<Table> = {
   render: ({ metric, rows, total }, { style }) => {
     const heading = metric.toUpperCase();
     const printed = total === undefined ? rows : [...rows, { count: total, source: 'total' }];

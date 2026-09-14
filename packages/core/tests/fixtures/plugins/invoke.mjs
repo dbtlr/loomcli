@@ -6,8 +6,8 @@ import {
   FatalError,
   InputError,
   InternalError,
+  override,
   plugin,
-  renderFailure,
 } from '@loomcli/core';
 
 import { argumentFact, commandFact, optionFact } from './extensions.mjs';
@@ -29,9 +29,9 @@ const plugins = {
     }),
   failures: () =>
     plugin('@fixture/failures', {
-      failures: [
-        renderFailure(InputError, { render: (failure) => `plugin input: ${failure.message}\n` }),
-        renderFailure(FatalError, { render: (failure) => `plugin fatal: ${failure.message}\n` }),
+      views: [
+        override(InputError, { render: (failure) => `plugin input: ${failure.message}\n` }),
+        override(FatalError, { render: (failure) => `plugin fatal: ${failure.message}\n` }),
       ],
     }),
   help: () =>
@@ -114,15 +114,15 @@ const installed = {
 };
 
 /**
- * The renderers the application itself registers. The failure scenarios show how one class resolves
- * between contributors, and the misuse one shows that a chain fault reaches a registered renderer.
+ * The overrides the application itself lists. The failure scenarios show how one class resolves
+ * between contributors, and the misuse one shows that a chain fault reaches an override.
  */
 const registered = {
   'failures-both': () => [
-    renderFailure(InputError, { render: (failure) => `app input: ${failure.message}\n` }),
+    override(InputError, { render: (failure) => `app input: ${failure.message}\n` }),
   ],
   'misuse-rendered': () => [
-    renderFailure(InternalError, { render: (failure) => `app internal: ${failure.message}\n` }),
+    override(InternalError, { render: (failure) => `app internal: ${failure.message}\n` }),
   ],
 };
 
@@ -171,10 +171,10 @@ function application() {
   return new Application('app', {
     description: 'A fixture application.',
     extensions: [commandFact({ details: 'The whole fixture.' })],
-    // The application registers first, so its renderer wins over the plugin's for one class.
-    failures: (registered[scenario] ?? (() => []))(),
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
+    // The application resolves first, so its override wins over the plugin's for one class.
+    views: (registered[scenario] ?? (() => []))(),
   })
     .globalOption('file', {
       description: 'The document to read.',

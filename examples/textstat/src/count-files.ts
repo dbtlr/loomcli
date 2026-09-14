@@ -7,7 +7,7 @@ import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
-import { tableRenderer } from './table.js';
+import { tableView } from './table.js';
 import type { Row } from './table.js';
 
 /**
@@ -89,7 +89,7 @@ export const countFiles: ActionHandler<typeof textstat> = async ({ args, options
       rows: counted.rows,
       total: options.total ? counted.total : undefined,
     },
-    tableRenderer,
+    tableView,
   );
   if (options.timing) {
     await out.info(`elapsed: ${Math.round(performance.now() - started)}ms`);

@@ -352,7 +352,7 @@ async function validate(
 
 /**
  * The dotted path an issue names inside a value, or `undefined` when the issue names the value
- * itself. Core's default text and an application's own renderer read a position through this one
+ * itself. Core's default text and an application's own view read a position through this one
  * helper, so a rejected item reads alike wherever its diagnostic is written.
  */
 export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
@@ -365,7 +365,7 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
 /**
  * The issues one rejection reports. A schema that returned none still rejected the value, so the
  * placeholder stands in for its silence. Reporting takes this list once: the reported problem
- * carries it and the default text is derived from it, so a renderer and core read the same issues.
+ * carries it and the default text is derived from it, so a view and core read the same issues.
  */
 function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
   return issues.length === 0

@@ -111,7 +111,7 @@ test("a wrapper reads 'cancelled' whether the chain took over or continued", () 
   expect(run('wrapped', { LOOM_FIXTURE_CANCEL: 'continue' })).toEqual(takenOver);
 });
 
-test('a cancelled run whose failure renderer throws still resolves the cancellation code', () => {
+test('a cancelled run whose failure view throws still resolves the cancellation code', () => {
   expect(run('broken-renderer', { LOOM_FIXTURE_THROW: 'fatal' })).toEqual({
     status: 130,
     stderr:

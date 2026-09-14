@@ -7,9 +7,16 @@ const source = new URL('../src/', import.meta.url);
 /**
  * The seams where validated `unknown` values meet declaration-inferred types. Nothing else.
  * `extension.ts` reads a stored output back from the record the graph keys by string identity,
- * after the descriptor that produced it has been compared by reference.
+ * after the descriptor that produced it has been compared by reference. `view.ts` reads one stored
+ * view function back under the key `override()` typed it against.
  */
-const allowed = { 'command.ts': 1, 'extension.ts': 1, 'style.ts': 1, 'validation.ts': 1 };
+const allowed = {
+  'command.ts': 1,
+  'extension.ts': 1,
+  'style.ts': 1,
+  'validation.ts': 1,
+  'view.ts': 1,
+};
 
 /**
  * Any lint disable that would let an unsafe assertion through: one that names the rule, or one

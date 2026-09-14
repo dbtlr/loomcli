@@ -7,7 +7,7 @@ const rows = [
   { count: 2, source: 'two words.txt' },
 ];
 
-// The renderer owns every byte, so these two differ only in the newlines they return.
+// The view owns every byte, so these two differ only in the newlines they return.
 const table = { render: (data) => data.map((row) => `${row.count}  ${row.source}\n`).join('') };
 const bare = { render: (data) => data.map((row) => row.source).join(' ') };
 const breaks = {
@@ -16,7 +16,7 @@ const breaks = {
   },
 };
 const counted = { render: (data) => data.length };
-// A renderer is synchronous, so a returned promise is a non-string return.
+// A view is synchronous, so a returned promise is a non-string return.
 // Core observes its rejection, which would otherwise end the process before `run()` resolves.
 const rejects = { render: () => Promise.reject(new Error('Cannot render the table.')) };
 

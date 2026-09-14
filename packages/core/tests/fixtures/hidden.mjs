@@ -2,7 +2,7 @@ import {
   Application,
   Command,
   NonCallableCommandError,
-  renderFailure,
+  override,
   UnknownCommandError,
 } from '@loomcli/core';
 
@@ -12,12 +12,12 @@ const report =
     out.print(command);
 
 /** The routing failures serialize their own facts, so a test reads the candidates they carry. */
-const failures = [
-  renderFailure(UnknownCommandError, {
+const views = [
+  override(UnknownCommandError, {
     render: ({ candidates, message, token }) =>
       `${JSON.stringify({ candidates, message, token })}\n`,
   }),
-  renderFailure(NonCallableCommandError, {
+  override(NonCallableCommandError, {
     render: ({ candidates, command, message }) =>
       `${JSON.stringify({ candidates, command, message })}\n`,
   }),
@@ -34,7 +34,7 @@ function graph() {
   );
   const debug = new Command('debug', { hidden: true }).action(report('debug'));
   return new Application('hidden', {
-    failures,
+    views,
   })
     .globalOption('file', { short: 'f', type: 'string' })
     .command(cache)
@@ -46,7 +46,7 @@ function graph() {
 /** The same graph with every child of the root hidden, so the root group offers none either. */
 function rootGraph() {
   return new Application('hidden', {
-    failures,
+    views,
   })
     .globalOption('file', { short: 'f', type: 'string' })
     .command(new Command('debug', { hidden: true }).action(report('debug')));

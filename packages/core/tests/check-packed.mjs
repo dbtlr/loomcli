@@ -55,8 +55,14 @@ const invocations = [
     expected: 'packed: world\n',
     reads: 'the action line',
   },
-  { argv: ['--help'], expected: page, reads: 'the help page' },
-  { argv: ['--version'], expected: 'greeter v1.0.0\n', reads: 'the version line' },
+  // The consumer overrides both declared views the packed plugins publish.
+  // Each branded line proves the registry resolved through the installed tarballs.
+  { argv: ['--help'], expected: `greeter help\n${page}`, reads: 'the overridden help page' },
+  {
+    argv: ['--version'],
+    expected: 'greeter build\ngreeter v1.0.0\n',
+    reads: 'the overridden version line',
+  },
 ];
 
 function run(command, args, cwd, env = {}) {
@@ -147,7 +153,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the help page, and the version line.\n`,
+    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, and the overridden version line.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

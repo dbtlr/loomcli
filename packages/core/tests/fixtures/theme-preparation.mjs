@@ -1,25 +1,18 @@
-import {
-  Application,
-  Command,
-  DeclarationError,
-  plugin,
-  renderFailure,
-  style,
-} from '@loomcli/core';
+import { Application, Command, DeclarationError, override, plugin, style } from '@loomcli/core';
 
 const scenario = process.argv[2];
-const renderer = renderFailure(DeclarationError, {
+const invalid = override(DeclarationError, {
   render: (_failure, context) => `${context.style.issue('invalid')}\n`,
 });
 const app = new Application('theme-preparation', {
-  failures: [renderer],
   plugins: [
     plugin('palette', { theme: { issue: style.cyan } }),
-    ...(scenario === 'failure-registry'
-      ? [plugin('invalid-registry', { failures: [renderer, renderer] })]
+    ...(scenario === 'view-registry'
+      ? [plugin('invalid-registry', { views: [invalid, invalid] })]
       : []),
   ],
   rendering: { color: 'always' },
+  views: [invalid],
 });
 const configured =
   scenario === 'graph'

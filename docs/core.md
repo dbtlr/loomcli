@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is the written contract of a proposed increment, ADR-0021, which moves to accepted with the implementation that replaces `failures`; until it lands, the shipped package still exports `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext`. The named Loom palette and the results lane remain separate proposed increments.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette and the results lane remain separate proposed increments.
 
 ## Application declarations
 
@@ -766,7 +766,7 @@ type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) =
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function override<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride;
 function override<Failure extends LoomError>(key: FailureClass<Failure>, replacement: View<Failure>): ViewOverride;
-type ViewContribution = AnyDeclaredView | ViewOverride; // ViewOverride is opaque and branded, as FailureRenderer was
+type ViewContribution = AnyDeclaredView | ViewOverride; // ViewOverride is opaque and branded
 ```
 
 `view(identity, definition)` declares a view: an identity and its default function. The identity follows the plugin-identity convention, the package name with a suffix, so the help page is `@loomcli/plugins/help/page`; core's own views take `@loomcli/core/` as their prefix by the same convention, so the lanes are `@loomcli/core/lanes/<name>`. The data type is inferred from the function's first parameter when that parameter is an object type or a `readonly` array, and is stated for a primitive or a union, `view<string>(…)`, because inference runs through `Readonly<Data>`: a union parameter is either rejected or silently inferred as part of the union, so a union is always stated in full, and a view function's array parameter is always `readonly`, so a mutable array parameter is a compile error under any type argument. The value it returns satisfies `View<Data>`, so `out.render(page, helpPage)` type-checks the same way a bare view does, and the identity travels on the value. `DeclaredView` is invariant in `Data` through a private witness, so a declared view is never reassigned as a declared view of another data type, and a replacement that requires data the key does not carry is a compile error; a replacement that accepts wider data is valid, since it accepts the key's data, and a bare `View<Data>` keeps its ordinary assignability. The value is branded the way an extension value is, so a hand-built object with an `identity` field is a bare view to core: `out.render` renders it through its own function and consults no override.
@@ -802,7 +802,7 @@ const app = new Application('quiet', {
 });
 ```
 
-Every identity on the graph is compared the way an extension identity is: across every declared view core exports, every declared view a plugin lists, and every declared-view key an override carries, whether or not the view is declared by an installed plugin. Two distinct objects that share one identity are a `DeclarationError` at build, so an application that imports `helpPage` from one copy of the package while the installed plugin declares it from a second copy is told to deduplicate rather than left with a silent miss, the rule a second copy of an extension descriptor already meets. An override whose identity matches no declaration is inert: it is not a build error, it applies the moment a view with that object is rendered, and it never applies otherwise. An application can therefore brand a help page ahead of installing the plugin, and a shared override list holds in an application that omits it. A failure class never meets either case, because every failure class descends from `LoomError`, core declares a view for each class it exports, and an application's own subclass is answered by the chain walk at throw time.
+Every identity on the graph is compared the way an extension identity is: across every declared view core exports, every declared view a plugin lists, and every declared-view key an override carries, whether or not the view is declared by an installed plugin. Two distinct objects that share one identity are a `DeclarationError` at build, so an application that imports `helpPage` from one copy of the package while the installed plugin declares it from a second copy is told to deduplicate rather than left with a silent miss, the rule a second copy of an extension descriptor already meets. An override whose identity matches no declaration is inert: it is not a build error, it applies the moment a view with that object is rendered, and it never applies otherwise. An application can therefore brand a help page ahead of installing the plugin, and a shared override list holds in an application that omits it. A failure class never meets either case, because every failure class descends from `LoomError`, core keys each class's default text function as that class's default view, which carries no identity, and an application's own subclass is answered by the chain walk at throw time.
 
 Every declared view in this contract is a document view: it renders one whole value in one call. The cardinality field that distinguishes an item view, which renders one item of a stream as it arrives, belongs to the results lane and is not part of `view()` here. When it arrives it is optional and defaults to `document`, so no declaration in this contract changes.
 
@@ -859,7 +859,7 @@ Core's default views add the category prefixes: `Invalid input: ` for every `Usa
 
 ### Failure views
 
-Core declares one view per failure class it exports, keyed by the class, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
+Core keys each failure class's default text function as that class's default view, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
 
 ```ts
 import { Application, InputError, override, UnknownCommandError } from '@loomcli/core';
@@ -917,7 +917,7 @@ BYTES  SOURCE
     8  total
 ```
 
-[jsonkit](../examples/jsonkit/src/failures.ts) overrides three failure views and keeps core's text for every other class: two branded views and the literal `FatalError` view above. The branded views prefix the application name. The `InputError` view writes one line per problem, `jsonkit: <spelling>: <issue message>`, with ` at <path>` after the spelling when an issue carries a path, and `jsonkit: <spelling>: required` for an omission. The `UnknownCommandError` view writes `jsonkit: unknown command "<token>"; try <candidates>.`, and when the candidate list is empty it ends after the first clause, `jsonkit: unknown command "nope".` The module moves to `views.ts` with the implementation.
+[jsonkit](../examples/jsonkit/src/views.ts) overrides three failure views and keeps core's text for every other class: two branded views and the literal `FatalError` view above. The branded views prefix the application name. The `InputError` view writes one line per problem, `jsonkit: <spelling>: <issue message>`, with ` at <path>` after the spelling when an issue carries a path, and `jsonkit: <spelling>: required` for an omission. The `UnknownCommandError` view writes `jsonkit: unknown command "<token>"; try <candidates>.`, and when the candidate list is empty it ends after the first clause, `jsonkit: unknown command "nope".`
 
 | Invocation                              | stderr                                                    | Code |
 | --------------------------------------- | --------------------------------------------------------- | ---- |

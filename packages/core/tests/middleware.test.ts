@@ -132,7 +132,7 @@ test('calling next() after the middleware returned rejects with its own sentence
   );
 });
 
-test('a chain fault reaches the renderer the application registered for its class', () => {
+test('a chain fault reaches the view the application registered for its class', () => {
   const result = run('misuse-rendered', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(

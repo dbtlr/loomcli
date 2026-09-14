@@ -1,0 +1,416 @@
+import { DeclarationError, defaultText, FatalError, notTextReason, reasonOf } from './errors.js';
+import type { LoomError } from './errors.js';
+import { escapeText } from './style.js';
+import type { View, ViewContext } from './types.js';
+
+/** Phantom key. It brands a declared view and holds no runtime value. */
+declare const declaredView: unique symbol;
+
+/** Phantom key. It makes a declared view invariant in its data type and holds no runtime value. */
+declare const invariant: unique symbol;
+
+/** Phantom key. It brands a view override and holds no runtime value. */
+declare const viewOverride: unique symbol;
+
+/** The brand one declared view carries, as an extension value carries its own. */
+interface DeclaredViewBrand {
+  readonly [declaredView]: true;
+}
+
+/**
+ * One declared view: the identity a diagnostic names it by, and the default view function an
+ * override replaces. The witness makes `Data` invariant, so a declared view is never reassigned as
+ * a declared view of another data type and a replacement that requires data the key does not carry
+ * is a compile error.
+ */
+interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
+  readonly identity: string;
+  readonly [invariant]: (data: Data) => Data;
+}
+
+/**
+ * The supertype a contribution list uses. It keeps the identity, the brand, and a view function
+ * over `never`, and drops the invariance witness, because a list cannot carry one type parameter
+ * per element and an invariant type has no common supertype across data types.
+ */
+type AnyDeclaredView = View<never> & DeclaredViewBrand & { readonly identity: string };
+
+/** A failure class as an override key, so `UsageError` and an application's subclass both fit. */
+type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
+
+/**
+ * One stored view function, with the data type erased. A registry holds one entry per key and
+ * cannot carry a type parameter per entry, so `override(key, replacement)` is where the
+ * replacement is typed against the key it answers.
+ */
+type ViewFunction = (data: never, context: ViewContext) => unknown;
+
+/** Authored declarations register here, so a hand-built object with an identity is a bare view. */
+const declarations = new WeakMap<object, AnyDeclaredView>();
+
+/** The runtime value `view()` returns. Its identity and its default function are public. */
+class ViewDeclaration<Data> implements DeclaredView<Data> {
+  declare readonly [declaredView]: true;
+  declare readonly [invariant]: (data: Data) => Data;
+  readonly identity: string;
+  readonly render: (data: Readonly<Data>, context: ViewContext) => string;
+
+  constructor(identity: string, definition: View<Data>) {
+    this.identity = identity;
+    this.render = definition.render;
+    declarations.set(this, this);
+    Object.freeze(this);
+  }
+}
+
+/**
+ * One declared view: an identity and its default function. The data type is inferred from the
+ * function's first parameter when that parameter is an object type or a `readonly` array, and is
+ * stated for a primitive or a union, because inference runs through `Readonly<Data>`.
+ */
+function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data> {
+  return new ViewDeclaration<Data>(identity, definition);
+}
+
+/**
+ * What one override replaces: a declared view, a failure class read as its prototype, or a value
+ * that is neither, which build reports as the entry fault of the list that holds it.
+ */
+type OverrideKey =
+  | { kind: 'view'; view: AnyDeclaredView }
+  | { kind: 'failure'; name: string; prototype: object }
+  | { kind: 'invalid' };
+
+/** One override: the key it answers and the view function that supersedes the default. */
+interface OverrideRecord {
+  key: OverrideKey;
+  render: ViewFunction;
+}
+
+/** Authored overrides register here, so the public type publishes nothing to reach. */
+const overrides = new WeakMap<object, OverrideRecord>();
+
+/** The runtime value `override()` returns. Its pair lives in the registry above. */
+class OverrideDeclaration {
+  declare readonly [viewOverride]: true;
+
+  constructor(record: OverrideRecord) {
+    overrides.set(this, record);
+    Object.freeze(this);
+  }
+}
+
+/** An opaque override pairing one key with the view function that replaces its default. */
+type ViewOverride = Pick<OverrideDeclaration, typeof viewOverride>;
+
+/** What a plugin's own list holds: the views it declares and the overrides it makes. */
+type ViewContribution = AnyDeclaredView | ViewOverride;
+
+/**
+ * One override pairing a key with a replacement view. Under a declared view the replacement is
+ * typed from the view's data; under a failure class it is typed from the class's instances, which
+ * is the typed path for a class-keyed list, because an array literal cannot carry a different type
+ * parameter per element.
+ */
+function override<Data>(key: DeclaredView<Data>, replacement: NoInfer<View<Data>>): ViewOverride;
+function override<Failure extends LoomError>(
+  // The brand is excluded so a declared view never satisfies this overload's key.
+  key: FailureClass<Failure> & { readonly [declaredView]?: never },
+  replacement: NoInfer<View<Failure>>,
+): ViewOverride;
+function override(key: object, replacement: { render: ViewFunction }): ViewOverride {
+  const declared = declarations.get(key);
+  if (declared) {
+    return new OverrideDeclaration({
+      key: { kind: 'view', view: declared },
+      render: replacement.render,
+    });
+  }
+  return new OverrideDeclaration({ key: failureKey(key), render: replacement.render });
+}
+
+/**
+ * The key one failure-class override answers. A class is a function whose `prototype` is the
+ * object a thrown failure's chain holds, so anything else is no key at all and build reports it as
+ * the entry fault of the list that holds it, rather than colliding with every other such value.
+ */
+function failureKey(key: object): OverrideKey {
+  if (typeof key !== 'function' || !('prototype' in key)) {
+    return { kind: 'invalid' };
+  }
+  const prototype: unknown = key.prototype;
+  if (typeof prototype !== 'object' || prototype === null) {
+    return { kind: 'invalid' };
+  }
+  const name =
+    'name' in key && typeof key.name === 'string' && key.name !== '' ? key.name : 'a failure class';
+  return { kind: 'failure', name, prototype };
+}
+
+/** One contributor's overrides, read once per build and consulted in contributor order. */
+interface ViewContributions {
+  failures: Map<unknown, ViewFunction>;
+  views: Map<AnyDeclaredView, ViewFunction>;
+}
+
+/**
+ * Every contributor in resolution order: the application's overrides, then each installed plugin's
+ * in installation order. The declaring view's own default answers when no contributor does.
+ */
+type ViewRegistry = readonly ViewContributions[];
+
+/** The identities one build has met, so a second object under one identity is visible. */
+type ViewIdentities = Map<string, AnyDeclaredView>;
+
+/** How one contributor's diagnostics name it, and whether its list may declare a view. */
+interface ViewSubject {
+  /** A plugin declares views beside its overrides; an application overrides alone. */
+  declares: boolean;
+  sentence: string;
+}
+
+/** The identity register one build starts from, holding the views core itself declares. */
+function viewIdentities(declared: readonly AnyDeclaredView[]): ViewIdentities {
+  const identities: ViewIdentities = new Map();
+  for (const value of declared) {
+    registerIdentity(identities, value);
+  }
+  return identities;
+}
+
+/** One identity means one declared view, wherever on the graph that view appears. */
+function registerIdentity(identities: ViewIdentities, declared: AnyDeclaredView): void {
+  const known = identities.get(declared.identity);
+  if (known === undefined) {
+    identities.set(declared.identity, declared);
+    return;
+  }
+  if (known !== declared) {
+    throw new DeclarationError(
+      `View "${declared.identity}" is declared by two distinct objects. Install one copy of the package that declares it.`,
+    );
+  }
+}
+
+/** The sentence one contributor's list reports for a value it cannot read. */
+function entryFault(subject: ViewSubject): string {
+  return subject.declares
+    ? `${subject.sentence} holds a value that is not a view. Supply the value returned by view(identity, definition) or override(key, view).`
+    : `${subject.sentence} holds a value that is not a view override. Supply the value returned by override(key, view).`;
+}
+
+/** A `views` slot holds a list, so anything else is the same declaration fault. */
+function readContributions(subject: ViewSubject, declared: unknown): readonly unknown[] {
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared)) {
+    throw new DeclarationError(
+      subject.declares
+        ? `${subject.sentence} declares views that are not an array. Supply a list of declared views and override values.`
+        : entryFault(subject),
+    );
+  }
+  return declared;
+}
+
+/** The override one entry carries; anything else is a declaration fault of the slot. */
+function overrideOf(subject: ViewSubject, entry: unknown): OverrideRecord {
+  const record = typeof entry === 'object' && entry !== null ? overrides.get(entry) : undefined;
+  if (!record) {
+    throw new DeclarationError(entryFault(subject));
+  }
+  return record;
+}
+
+/** One contributor's build in progress: what it is filling, and how its diagnostics name it. */
+interface ViewBuild {
+  contributions: ViewContributions;
+  identities: ViewIdentities;
+  subject: ViewSubject;
+}
+
+/**
+ * One override recorded under the key it answers. One key answers to one override inside one
+ * contributor, so a second override for it is a declaration fault; the same key overridden by two
+ * contributors resolves first-in-wins. A key that is neither a declared view nor a failure class
+ * is the entry fault of the list that holds it, reported here rather than at the `override()` call.
+ */
+function recordOverride(build: ViewBuild, { key, render }: OverrideRecord): void {
+  if (key.kind === 'invalid') {
+    throw new DeclarationError(entryFault(build.subject));
+  }
+  if (key.kind === 'failure') {
+    recordFailureOverride(build, key, render);
+    return;
+  }
+  recordViewOverride(build, key.view, render);
+}
+
+/** One failure class answers to one override inside one contributor, keyed by its prototype. */
+function recordFailureOverride(
+  { contributions, subject }: ViewBuild,
+  key: { name: string; prototype: object },
+  render: ViewFunction,
+): void {
+  if (contributions.failures.has(key.prototype)) {
+    throw new DeclarationError(
+      `${subject.sentence} overrides the view for "${key.name}" twice. Remove one override.`,
+    );
+  }
+  contributions.failures.set(key.prototype, render);
+}
+
+/** Naming a declared view as a key registers its identity, as listing the declaration does. */
+function recordViewOverride(
+  { contributions, identities, subject }: ViewBuild,
+  key: AnyDeclaredView,
+  render: ViewFunction,
+): void {
+  registerIdentity(identities, key);
+  if (contributions.views.has(key)) {
+    throw new DeclarationError(
+      `${subject.sentence} overrides view "${key.identity}" twice. Remove one override.`,
+    );
+  }
+  contributions.views.set(key, render);
+}
+
+/**
+ * One contributor's own overrides, with the identity of every declared view it lists or names as a
+ * key registered. Listing a declared view is what puts its identity on the graph; an application
+ * lists overrides alone, so a declaration in its list is the same fault as any other value.
+ */
+function buildViews(
+  subject: ViewSubject,
+  declared: unknown,
+  identities: ViewIdentities,
+): ViewContributions {
+  const contributions: ViewContributions = { failures: new Map(), views: new Map() };
+  for (const entry of readContributions(subject, declared)) {
+    const listed =
+      typeof entry === 'object' && entry !== null ? declarations.get(entry) : undefined;
+    if (listed && !subject.declares) {
+      throw new DeclarationError(entryFault(subject));
+    }
+    if (listed) {
+      registerIdentity(identities, listed);
+    } else {
+      recordOverride({ contributions, identities, subject }, overrideOf(subject, entry));
+    }
+  }
+  return contributions;
+}
+
+/** One stored view function, read back over the data its own key carries. */
+function callView(render: ViewFunction): (data: unknown, context: ViewContext) => unknown {
+  // Last resort: no typed path exists.
+  // A registry holds one entry per key and cannot carry a type parameter per entry, so a stored
+  // View function reads back with its data type erased.
+  // It holds because `override(key, replacement)` typed the replacement against its key's data.
+  // Resolution reaches a stored function through that key alone.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return render as (data: unknown, context: ViewContext) => unknown;
+}
+
+/** Every prototype in a failure's chain, most derived first, so one walk reads one contributor. */
+function chainOf(failure: LoomError): unknown[] {
+  const chain: unknown[] = [];
+  let prototype: unknown = Object.getPrototypeOf(failure);
+  while (prototype !== null) {
+    chain.push(prototype);
+    prototype = Object.getPrototypeOf(prototype);
+  }
+  return chain;
+}
+
+/**
+ * The view function one declared view resolves to: the first contributor that overrides it, then
+ * its own default. A bare view is never overridden, so it resolves to its own function.
+ */
+function resolveView<Data>(
+  registry: ViewRegistry,
+  value: View<Data>,
+): (data: Data, context: ViewContext) => unknown {
+  const declared = declarations.get(value);
+  if (declared) {
+    for (const contributor of registry) {
+      const replacement = contributor.views.get(declared);
+      if (replacement) {
+        return callView(replacement);
+      }
+    }
+  }
+  return (data, context) => value.render(data, context);
+}
+
+/**
+ * The override one failure resolves to, or nothing when core's own text answers it. The chain is
+ * walked in full at each contributor before the next is consulted, so an application's override
+ * for a base class beats a plugin's override for a subclass.
+ */
+function resolveFailure(registry: ViewRegistry, failure: LoomError): ViewFunction | undefined {
+  const chain = chainOf(failure);
+  for (const contributor of registry) {
+    for (const prototype of chain) {
+      const replacement = contributor.failures.get(prototype);
+      if (replacement) {
+        return replacement;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The report of one failure: the text core writes, and whether a view produced it. An unrendered
+ * report carries core's own text, which the plain fallback path writes beside the diagnostic
+ * naming the view that could not answer.
+ */
+type FailureReport =
+  | { kind: 'rendered'; text: string }
+  | { kind: 'unrendered'; text: string; reason: string };
+
+/**
+ * The text core writes for one failure. Resolution walks the registry as `resolveFailure` defines
+ * it and falls to core's own default text, which escapes the raw facts it interpolates. A
+ * `FatalError` keeps the authored marked message it was given.
+ */
+function describeFailure(
+  registry: ViewRegistry,
+  failure: LoomError,
+  context?: ViewContext,
+): FailureReport {
+  const replacement = resolveFailure(registry, failure);
+  if (!replacement) {
+    return {
+      kind: 'rendered',
+      text: failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure)),
+    };
+  }
+  try {
+    if (context === undefined) {
+      throw new Error('Missing rendering context.');
+    }
+    const text = callView(replacement)(failure, context);
+    return typeof text === 'string'
+      ? { kind: 'rendered', text }
+      : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };
+  } catch (error) {
+    return { kind: 'unrendered', reason: reasonOf(error), text: defaultText(failure) };
+  }
+}
+
+export type {
+  AnyDeclaredView,
+  DeclaredView,
+  DeclaredViewBrand,
+  FailureClass,
+  FailureReport,
+  ViewContribution,
+  ViewContributions,
+  ViewIdentities,
+  ViewOverride,
+  ViewRegistry,
+};
+export { buildViews, describeFailure, override, resolveView, view, viewIdentities };

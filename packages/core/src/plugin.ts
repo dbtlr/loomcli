@@ -1,6 +1,5 @@
 import type { MiddlewareContext } from './chain.js';
 import { DeclarationError } from './errors.js';
-import type { FailureRenderer } from './errors.js';
 import { buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
@@ -12,6 +11,7 @@ import { buildTheme } from './theme.js';
 import type { OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { OptionInput } from './validation.js';
+import type { ViewContribution } from './view.js';
 
 /**
  * The declaration record a plugin contributes its options under: the parsing part of an option
@@ -39,7 +39,7 @@ interface DeclaredPlugin {
   options?: PluginOptions;
   middleware?: { activate?: unknown; load?: unknown };
   extensions?: readonly AnyExtension[];
-  failures?: readonly FailureRenderer[];
+  views?: unknown;
   signals?: unknown;
 }
 
@@ -54,8 +54,8 @@ const nodes = new WeakMap<object, PluginNode>();
 
 /**
  * The runtime value `plugin()` returns. `Options` appears in a read position alone, which makes it
- * covariant: a `plugins` list holds plugins with different options the way `failures` holds
- * renderers for different classes, and `Middleware` and `load` accept a narrower plugin.
+ * covariant: a `plugins` list holds plugins with different options the way `views` holds
+ * overrides for different keys, and `Middleware` and `load` accept a narrower plugin.
  */
 class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMapping> {
   declare readonly [pluginTheme]: Theme;
@@ -101,7 +101,7 @@ interface PluginDefinition<
     load: () => Promise<{ default: Middleware<Plugin<Options>> }>;
   };
   extensions?: readonly AnyExtension[];
-  failures?: readonly FailureRenderer[];
+  views?: readonly ViewContribution[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
 }
 
@@ -174,7 +174,7 @@ function definitionOf(identity: string, node: PluginNode): DeclaredPlugin {
   const { definition } = node;
   if (!isPlainObject(definition)) {
     throw new DeclarationError(
-      `${pluginSentence(identity)} declares a definition that is not an object. Supply { options, middleware, extensions, failures }.`,
+      `${pluginSentence(identity)} declares a definition that is not an object. Supply { options, middleware, extensions, views }.`,
     );
   }
   return definition;
@@ -366,7 +366,8 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
 /** One installed plugin's declarations, read once per build in installation order. */
 interface BuiltPlugin {
   theme: Palette | undefined;
-  failures: readonly FailureRenderer[];
+  /** The plugin's own `views` slot, read once the validated theme is in place. */
+  views: unknown;
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
@@ -395,22 +396,6 @@ function defineExtensions(identity: string, declaration: DeclaredPlugin, build: 
     }
     registerDescriptor(build.descriptors, descriptor);
   }
-}
-
-/** One plugin's failure registrations, which are a list before any of them is read. */
-function readFailures(
-  identity: string,
-  declared: readonly FailureRenderer[] | undefined,
-): readonly FailureRenderer[] {
-  if (declared === undefined) {
-    return [];
-  }
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares failures that are not an array. Supply a list of renderFailure values.`,
-    );
-  }
-  return declared;
 }
 
 /**
@@ -452,12 +437,12 @@ function buildPlugins(
       owner = identity;
     }
     return {
-      failures: readFailures(identity, declaration.failures),
       identity,
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),
       signals,
       theme,
+      views: declaration.views,
     };
   });
 }

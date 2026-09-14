@@ -3,6 +3,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
 import { helpCommand, helpInput } from './extension.js';
+import { helpPage } from './views.js';
 
 const options = {
   help: { description: 'Show this help.', short: 'h', type: 'boolean' },
@@ -20,5 +21,6 @@ export function help(): Plugin<HelpOptions> {
     extensions: [helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     options,
+    views: [helpPage],
   });
 }

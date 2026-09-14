@@ -6,7 +6,7 @@ function invokeHidden(argv: string[], graph: 'graph' | 'root' = 'graph') {
   return invoke(new URL('fixtures/hidden.mjs', import.meta.url), [graph, ...argv]);
 }
 
-/** The registered renderer serializes the routing failure, so a test reads its candidate list. */
+/** The registered view serializes the routing failure, so a test reads its candidate list. */
 function reported(argv: string[], graph: 'graph' | 'root' = 'graph'): unknown {
   const result = invokeHidden(argv, graph);
   expect(result.stdout).toBe('resolved:2\n');

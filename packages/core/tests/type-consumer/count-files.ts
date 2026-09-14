@@ -1,4 +1,4 @@
-import type { ActionHandler, Renderer } from '@loomcli/core';
+import type { ActionHandler, View } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 
@@ -13,8 +13,8 @@ interface Table {
   total: number | undefined;
 }
 
-/** The example renders its whole table through one application-owned renderer. */
-const tableRenderer: Renderer<Table> = {
+/** The example renders its whole table through one application-owned view. */
+const tableView: View<Table> = {
   render: ({ metric, rows, total }) =>
     [
       metric ?? 'bytes',
@@ -34,6 +34,6 @@ export const countFiles: ActionHandler<typeof textstat> = async ({
   const total: boolean = options.total;
   const tail: string[] = passthrough;
   const rows: Row[] = files.map((source) => ({ count: source.length, source }));
-  await out.render({ metric, rows, total: total ? rows.length : undefined }, tableRenderer);
+  await out.render({ metric, rows, total: total ? rows.length : undefined }, tableView);
   return { files, metric, tail, total };
 };

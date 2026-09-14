@@ -10,7 +10,10 @@ import { main } from './documents.js';
 /** The same application, started behind the hook that records each plugin module it loads. */
 const loads = new URL('fixtures/loads.mjs', import.meta.url);
 
-/** A page as its lines, ending with the single newline `out.print` appends. */
+/** The same help plugin installed, with the page branded through the view registry. */
+const branded = new URL('fixtures/branded-page.mjs', import.meta.url);
+
+/** A page as its lines, ending with the single newline the declared view appends. */
 function page(...lines: string[]) {
   return { status: 0, stderr: '', stdout: `${lines.join('\n')}\n` };
 }
@@ -181,5 +184,21 @@ test('jsonkit get --version prints the same line, because the version is an Appl
     status: 0,
     stderr: '',
     stdout: 'jsonkit v0.0.0\n',
+  });
+});
+
+test('an override of helpPage changes jsonkit --help while help() stays installed', () => {
+  expect(invoke(branded, ['branded'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'jsonkit: Read and reshape one JSON document.\n',
+  });
+});
+
+test('a broken helpPage override reports one diagnostic on stderr and returns 1', () => {
+  expect(invoke(branded, ['broken'])).toEqual({
+    status: 1,
+    stderr: 'Internal error: Cannot render the page.\n',
+    stdout: '',
   });
 });

@@ -5,7 +5,7 @@ import {
   FatalError,
   InputError,
   InternalError,
-  renderFailure,
+  override,
   UsageError,
 } from '@loomcli/core';
 import { z } from 'zod';
@@ -38,10 +38,10 @@ const breaks = {
   },
 };
 const counted = { render: (failure) => failure.exitCode };
-// A renderer is synchronous, so a returned promise is a non-string return.
+// A view is synchronous, so a returned promise is a non-string return.
 // Core observes its rejection, which would otherwise end the process before `run()` resolves.
 const rejects = { render: () => Promise.reject(new Error('Cannot render the failure.')) };
-/** Every issue the reported problems carry, so a test reads the list a renderer receives. */
+/** Every issue the reported problems carry, so a test reads the list a view receives. */
 const issueMessages = {
   render: (failure) =>
     `${failure.problems
@@ -50,7 +50,7 @@ const issueMessages = {
       .join('\n')}\n`,
 };
 
-/** An application's own fatal type, so registering it implies the renderer for it. */
+/** An application's own fatal type, so overriding it implies the view for it. */
 class ConfigError extends FatalError {
   constructor(message) {
     super(message);
@@ -88,7 +88,7 @@ const silent = {
 const dispatch = ({ out }) => out.print('dispatched');
 
 /** A routed graph, so every token and validation fault of one invocation has a declaration. */
-function routed(failures) {
+function routed(views) {
   const get = new Command('get')
     .argument('path', { required: true })
     .option('depth', { short: 'd', type: 'string', validate: digits })
@@ -101,9 +101,7 @@ function routed(failures) {
     })
     .action(dispatch);
   const cache = new Command('cache').command(new Command('keys').action(dispatch));
-  return new Application('failures', {
-    failures,
-  })
+  return new Application('failures', { views })
     .globalOption('file', { required: true, short: 'f', type: 'string' })
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .command(get)
@@ -111,45 +109,39 @@ function routed(failures) {
     .action(dispatch);
 }
 
-function ending(failures, action) {
-  return new Application('failures', { failures }).action(action);
+function ending(views, action) {
+  return new Application('failures', { views }).action(action);
 }
 
 function build() {
   switch (scenario) {
     case 'usage': {
-      return routed([renderFailure(UsageError, facts)]);
+      return routed([override(UsageError, facts)]);
     }
     case 'derived': {
-      return routed([
-        renderFailure(UsageError, brand('usage')),
-        renderFailure(InputError, brand('input')),
-      ]);
+      return routed([override(UsageError, brand('usage')), override(InputError, brand('input'))]);
     }
     case 'duplicate': {
-      return routed([
-        renderFailure(InputError, brand('one')),
-        renderFailure(InputError, brand('two')),
-      ]);
+      return routed([override(InputError, brand('one')), override(InputError, brand('two'))]);
     }
     case 'foreign': {
       return routed([{}]);
     }
     case 'fatal': {
-      return ending([renderFailure(ConfigError, brand('config'))], () => {
+      return ending([override(ConfigError, brand('config'))], () => {
         throw new ConfigError('Config is unreadable.');
       });
     }
     case 'fatal-base': {
-      return ending([renderFailure(ConfigError, brand('config'))], ({ out }) =>
+      return ending([override(ConfigError, brand('config'))], ({ out }) =>
         out.fatal('Expected failure.'),
       );
     }
     case 'render-failure': {
-      // The action returns without the rejection, so the renderer failure is reported after it.
+      // The action returns without the rejection, so the view failure is reported after it.
       return ending(
         [
-          renderFailure(InternalError, {
+          override(InternalError, {
             render: (failure) => `internal: ${failure.message} (cause: ${failure.cause.message})\n`,
           }),
         ],
@@ -159,13 +151,13 @@ function build() {
       );
     }
     case 'internal': {
-      return ending([renderFailure(InternalError, brand('internal'))], () => {
+      return ending([override(InternalError, brand('internal'))], () => {
         throw new Error('Unexpected failure.');
       });
     }
     case 'declaration': {
       return new Application('failures', {
-        failures: [renderFailure(DeclarationError, brand('declaration'))],
+        views: [override(DeclarationError, brand('declaration'))],
       })
         .argument('files', { required: true, variadic: true })
         .argument('extras', { required: true, variadic: true })
@@ -173,30 +165,24 @@ function build() {
     }
     case 'empty-issues': {
       return new Application('failures', {
-        failures: [renderFailure(InputError, issueMessages)],
+        views: [override(InputError, issueMessages)],
       })
         .option('tag', { type: 'string', validate: silent })
         .action(dispatch);
     }
     case 'broken':
     case 'broken-fallback': {
-      return ending([renderFailure(FatalError, breaks)], ({ out }) =>
-        out.fatal('Expected failure.'),
-      );
+      return ending([override(FatalError, breaks)], ({ out }) => out.fatal('Expected failure.'));
     }
     case 'broken-nonstring': {
-      return ending([renderFailure(FatalError, counted)], ({ out }) =>
-        out.fatal('Expected failure.'),
-      );
+      return ending([override(FatalError, counted)], ({ out }) => out.fatal('Expected failure.'));
     }
     case 'broken-rejecting': {
-      return ending([renderFailure(FatalError, rejects)], ({ out }) =>
-        out.fatal('Expected failure.'),
-      );
+      return ending([override(FatalError, rejects)], ({ out }) => out.fatal('Expected failure.'));
     }
-    // A broken renderer on a usage class: the default text of the failure, then the diagnostic.
+    // A broken view on a usage class: the default text of the failure, then the diagnostic.
     case 'broken-usage': {
-      return routed([renderFailure(UsageError, breaks)]);
+      return routed([override(UsageError, breaks)]);
     }
     default: {
       throw new Error(`Unknown scenario: ${scenario}`);

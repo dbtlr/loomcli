@@ -3,8 +3,8 @@ import type {
   FatalError,
   InputError,
   InputProblem,
-  Renderer,
   UnknownCommandError,
+  View,
 } from '@loomcli/core';
 
 /** Every diagnostic this application writes names the application first. */
@@ -32,15 +32,15 @@ function describe(problem: InputProblem): string[] {
 }
 
 /**
- * The whole validation phase, in the authoring order the failure collected it. The renderer owns
- * every byte core writes, so the joined lines end in the trailing newline core no longer adds.
+ * The whole validation phase, in the authoring order the failure collected it. The view owns every
+ * byte core writes, so the joined lines end in the trailing newline core no longer adds.
  */
-export const inputProblems: Renderer<InputError> = {
+export const inputProblems: View<InputError> = {
   render: (failure, { style }) =>
     `${style.escape(failure.problems.flatMap(describe).join('\n'))}\n`,
 };
 
-export const unknownCommand: Renderer<UnknownCommandError> = {
+export const unknownCommand: View<UnknownCommandError> = {
   render: (failure, { style }) => {
     const named = `unknown command "${failure.token}"`;
     const [first] = failure.candidates;
@@ -52,6 +52,6 @@ export const unknownCommand: Renderer<UnknownCommandError> = {
   },
 };
 
-export const fatalError: Renderer<FatalError> = {
+export const fatalError: View<FatalError> = {
   render: (failure, { style }) => `${style.escape(failure.message)}\n`,
 };

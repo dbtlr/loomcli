@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is written under a proposed record, ADR-0021, which moves to accepted with its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
 
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
@@ -198,6 +198,10 @@ _Avoid_: Formatted output, verbatim output
 **View**:
 A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
 _Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
+
+**Declared view**:
+The value `view(identity, definition)` returns: a view that carries an identity, holds its default view function, and is invariant in the data it presents, so it names one data type alone. It is the unit an override keys on, and an application or a plugin names it by reference, the way it names an extension descriptor, never by spelling its identity.
+_Avoid_: Named renderer, registered view, view id
 
 **View function**:
 The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.

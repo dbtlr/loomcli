@@ -135,7 +135,7 @@ test('jsonkit debug prints the whole parsed document as indented JSON', () => {
   });
 });
 
-test('the unknownCommand renderer ends after the first clause when the candidate list is empty', () => {
+test('the unknownCommand view ends after the first clause when the candidate list is empty', () => {
   expect(invoke(new URL('fixtures/candidates.mjs', import.meta.url))).toEqual({
     status: 2,
     stderr: 'jsonkit: unknown command "nope".\n',
@@ -276,7 +276,7 @@ test('jsonkit names the omitted path argument by its own spelling', () => {
   });
 });
 
-test('jsonkit keeps the default text for a failure class it registers no renderer for', () => {
+test('jsonkit keeps the default text for a failure class it registers no view for', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
       status: 2,
