@@ -23,16 +23,8 @@ import type {
   CommandState,
 } from './command.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import {
-  buildFailures,
-  DeclarationError,
-  describeFailure,
-  InternalError,
-  mergeFailures,
-  reasonOf,
-  toFailure,
-} from './errors.js';
-import type { FailureRegistry, FailureRenderer, LoomError } from './errors.js';
+import { DeclarationError, InternalError, reasonOf, toFailure } from './errors.js';
+import type { LoomError } from './errors.js';
 import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
 import { declareGlobalOption, emptyGlobals } from './globals.js';
@@ -40,6 +32,7 @@ import type { GlobalsState } from './globals.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
+import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import { buildPlugins, installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
@@ -65,6 +58,8 @@ import type {
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
 import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
+import { buildViews, describeFailure, viewIdentities } from './view.js';
+import type { ViewOverride, ViewRegistry } from './view.js';
 
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
@@ -75,7 +70,7 @@ import { captureConfig, checkDeclarations, prepareInputs } from './validation.js
 export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
 
 /** The registry a failure is reported through when the application's own could not be built. */
-const noRegistrations: FailureRegistry = new Map();
+const noViews: ViewRegistry = [];
 
 /**
  * Whether one failure is the cancellation the run already reports, which core does not report a
@@ -108,7 +103,7 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
 
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
-  failures?: readonly FailureRenderer[];
+  views?: readonly ViewOverride[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
@@ -131,7 +126,7 @@ class ApplicationBuilder<
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
-  readonly #failures: readonly FailureRenderer[];
+  readonly #views: readonly ViewOverride[];
   readonly #plugins: Plugins | undefined;
   readonly #globals: GlobalsState<Globals>;
   // The constructor's raw options argument, kept for the slot's own shape rules.
@@ -146,14 +141,14 @@ class ApplicationBuilder<
     root: CommandState<Args, Options, Globals>,
     config: {
       declared: DeclaredFacts;
-      failures: readonly FailureRenderer[];
+      views: readonly ViewOverride[];
       options?: unknown;
       plugins: Plugins | undefined;
       globals: GlobalsState<Globals>;
     },
   ) {
     this.#declared = config.declared;
-    this.#failures = config.failures;
+    this.#views = config.views;
     this.#name = name;
     this.#options = config.options;
     this.#plugins = config.plugins;
@@ -221,10 +216,10 @@ class ApplicationBuilder<
     };
     return new ApplicationBuilder(this.#name, recordGlobalOption(this.#root, name), {
       declared: this.#declared,
-      failures: this.#failures,
       globals: declareGlobalOption(this.#globals, input),
       options: this.#options,
       plugins: this.#plugins,
+      views: this.#views,
     });
   }
 
@@ -258,22 +253,23 @@ class ApplicationBuilder<
   ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins> {
     return new ApplicationBuilder(this.#name, root, {
       declared: this.#declared,
-      failures: this.#failures,
       globals: this.#globals,
       options: this.#options,
       plugins: this.#plugins,
+      views: this.#views,
     });
   }
 
   /**
    * Every rule that reads the declarations alone, in the order `run()` reads them: the options
-   * slot, the installed list, the application's failure registrations, each plugin's declarations,
-   * then the whole Command graph. The registry is published as soon as it is known, so a later
-   * declaration error still reaches the renderers the application registered for it. Validated
-   * plugin contributions are published before the remaining preparation can fail.
+   * slot, the installed list, the application's view overrides, each plugin's declarations, then
+   * the whole Command graph. The registry is published as soon as it is known, so a later
+   * declaration error still reaches the overrides the application listed for it, while a fault in
+   * that list itself reports through core's own text. Validated plugin contributions are published
+   * before the remaining preparation can fail.
    */
   private prepare(
-    register: (registry: FailureRegistry) => void,
+    register: (registry: ViewRegistry) => void,
     configure: (plugins: readonly BuiltPlugin[]) => void,
   ): {
     facts: ApplicationFacts;
@@ -283,17 +279,26 @@ class ApplicationBuilder<
     const facts = checkOptions(this.#options, this.#declared);
     renderingPolicy(this.#declared.rendering);
     const installed = installPlugins(this.#plugins ?? []);
-    const application = buildFailures(this.#failures);
-    register(application);
+    const identities = viewIdentities(coreViews);
+    const application = buildViews(
+      { declares: false, sentence: 'The Application' },
+      this.#views,
+      identities,
+    );
+    register([application]);
     const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
     const plugins = buildPlugins(installed, install);
     configure(plugins);
-    register(
-      mergeFailures([
-        application,
-        ...plugins.map((entry) => buildFailures(entry.failures, pluginSentence(entry.identity))),
-      ]),
-    );
+    register([
+      application,
+      ...plugins.map((entry) =>
+        buildViews(
+          { declares: true, sentence: pluginSentence(entry.identity) },
+          entry.views,
+          identities,
+        ),
+      ),
+    ]);
     const graph = buildGraph(this.#root, this.#globals, { ...install, plugins });
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
     return { facts, graph, plugins };
@@ -319,7 +324,7 @@ class ApplicationBuilder<
     let code: ExitCode = 0;
     let reportingFailed = false;
     // A registry that could not be built reports through core's defaults, not through itself.
-    let registry: FailureRegistry | undefined = undefined;
+    let registry: ViewRegistry | undefined = undefined;
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
     // One private controller per run, subscribed to the caller's signal at run entry.
@@ -356,6 +361,7 @@ class ApplicationBuilder<
         const built = this.prepare(
           (value) => {
             registry = value;
+            invocationOutput.useViews(value);
           },
           (plugins) => {
             invocationOutput.configure(
@@ -392,7 +398,7 @@ class ApplicationBuilder<
         await output.settle();
         const fault = output.fault;
         if (fault) {
-          // The action returned, so the renderer failure is this invocation's own failure.
+          // The action returned, so the view failure is this invocation's own failure.
           throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
         }
       } catch (error) {
@@ -402,13 +408,9 @@ class ApplicationBuilder<
           output ??= new Output(captureHost(undefined, stderr));
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
-            const report = describeFailure(
-              registry ?? noRegistrations,
-              failure,
-              output.context('stderr'),
-            );
+            const report = describeFailure(registry ?? noViews, failure, output.context('stderr'));
             if (report.kind === 'rendered') {
-              // The renderer owns the trailing newline; output resolves its marked text.
+              // The view owns the trailing newline; output resolves its marked text.
               await output.report(report.text);
             } else {
               code = 1;
@@ -425,17 +427,13 @@ class ApplicationBuilder<
         }
       }
       // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
-      // The primary outcome keeps its code, the way a renderer failure leaves it alone.
-      // It is reported the way the primary failure is, so a registered renderer answers its class.
+      // The primary outcome keeps its code, the way a view failure leaves it alone.
+      // It is reported the way the primary failure is, so an override answers its class.
       for (const fault of faults) {
         if (!silenced(fault, controller.signal, cancellation())) {
           code = code === 0 ? 1 : code;
           try {
-            const report = describeFailure(
-              registry ?? noRegistrations,
-              fault,
-              output?.context('stderr'),
-            );
+            const report = describeFailure(registry ?? noViews, fault, output?.context('stderr'));
             if (report.kind === 'rendered') {
               await output?.report(report.text);
             } else {
@@ -463,7 +461,7 @@ class ApplicationBuilder<
       }
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
-       * failure renderer or destination in that run is reported as text without changing it. The
+       * failure view or destination in that run is reported as text without changing it. The
        * signal decides the code whatever the action did afterward, so this reading comes last.
        */
       code = cancellation() ?? code;
@@ -534,6 +532,11 @@ function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFac
         'The Application options contain globals. Declare them with globalOption(name, config).',
       );
     }
+    if ('failures' in options) {
+      throw new DeclarationError(
+        'The Application options contain failures. Declare view overrides under views with override(key, view).',
+      );
+    }
     // The root is every page's entry point, so it carries neither listing fact.
     // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
     checkNoListingFacts('The Application', options);
@@ -550,7 +553,7 @@ class ApplicationDeclaration<
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The options slot is read defensively, never inspected: an invalid value still yields
-    // `failures` and the facts of some kind, and `checkOptions` reports it at build.
+    // `views` and the facts of some kind, and `checkOptions` reports it at build.
     // The root's own slot and core facts stay empty, because the Application checks its own slot.
     // Its diagnostics name the Application rather than the root Command.
     super(
@@ -571,10 +574,10 @@ class ApplicationDeclaration<
             : options?.rendering,
           version: options?.version,
         },
-        failures: options?.failures ?? [],
         globals: emptyGlobals(),
         options,
         plugins: options?.plugins,
+        views: options?.views ?? [],
       },
     );
   }

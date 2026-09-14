@@ -47,7 +47,7 @@ const rejected = [
   ],
   [
     'definition-not-object',
-    'Plugin "@loomcli/help" declares a definition that is not an object. Supply { options, middleware, extensions, failures }.',
+    'Plugin "@loomcli/help" declares a definition that is not an object. Supply { options, middleware, extensions, views }.',
   ],
   [
     'options-not-object',
@@ -58,8 +58,8 @@ const rejected = [
     'Plugin "@loomcli/log" option "level" is not an option declaration. Supply { type, ... }.',
   ],
   [
-    'failures-not-array',
-    'Plugin "@loomcli/help" declares failures that are not an array. Supply a list of renderFailure values.',
+    'views-not-array',
+    'Plugin "@loomcli/help" declares views that are not an array. Supply a list of declared views and override values.',
   ],
   [
     'extensions-not-array',
@@ -206,8 +206,8 @@ const rejected = [
     'Extension "@fixture/output/cycle" produced a value that is not plain data on the root Command. Return strings, numbers, booleans, null, arrays, and plain objects.',
   ],
   [
-    'plugin-renderers',
-    'Plugin "@loomcli/help" registers two failure renderers for "InputError". Remove one registration.',
+    'plugin-overrides',
+    'Plugin "@loomcli/help" overrides the view for "InputError" twice. Remove one override.',
   ],
 ] satisfies [string, string][];
 
@@ -224,7 +224,7 @@ test.each(rejected)('inspect() and run() reject the %s declaration alike', (scen
   });
 });
 
-/** The same graph under the renderers one scenario's contributors registered. */
+/** The same graph under the views one scenario's contributors contributed. */
 function rendered(scenario: string, argv: string[], env: Record<string, string> = {}) {
   return invoke(
     new URL('fixtures/plugins/invoke.mjs', import.meta.url),
@@ -233,7 +233,7 @@ function rendered(scenario: string, argv: string[], env: Record<string, string> 
   );
 }
 
-test("a plugin's failure renderers answer the classes the application leaves to them", () => {
+test("a plugin's failure views answer the classes the application leaves to them", () => {
   expect(rendered('failures', ['get'])).toEqual({
     status: 2,
     stderr: 'plugin input: Argument "path" requires a value. Supply a value for "path".\n',
@@ -246,7 +246,7 @@ test("a plugin's failure renderers answer the classes the application leaves to 
   });
 });
 
-test('one class registered by the application and by a plugin resolves first-in-wins', () => {
+test('one class overridden by the application and by a plugin resolves first-in-wins', () => {
   expect(rendered('failures-both', ['get'])).toEqual({
     status: 2,
     stderr: 'app input: Argument "path" requires a value. Supply a value for "path".\n',

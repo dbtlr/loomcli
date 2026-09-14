@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is written under a proposed record, ADR-0021, which moves to accepted with its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
 
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.

@@ -20,9 +20,17 @@
       "types": "./dist/src/help/extension.d.ts",
       "import": "./dist/src/help/extension.js"
     },
+    "./help/views": {
+      "types": "./dist/src/help/views.d.ts",
+      "import": "./dist/src/help/views.js"
+    },
     "./version": {
       "types": "./dist/src/version/plugin.d.ts",
       "import": "./dist/src/version/plugin.js"
+    },
+    "./version/views": {
+      "types": "./dist/src/version/views.d.ts",
+      "import": "./dist/src/version/views.js"
     },
     "./theme": {
       "types": "./dist/src/theme/plugin.d.ts",

@@ -8,7 +8,7 @@ function render(scenario: string) {
 
 const internal = 'Internal error: Rendering output failed: Cannot render the table.\n';
 
-test('a rendered value writes the renderer text to stdout', () => {
+test('a rendered value writes the view text to stdout', () => {
   expect(render('bytes')).toEqual({
     status: 0,
     stderr: '',
@@ -16,7 +16,7 @@ test('a rendered value writes the renderer text to stdout', () => {
   });
 });
 
-test('the renderer owns every byte, so core adds no newline of its own', () => {
+test('the view owns every byte, so core adds no newline of its own', () => {
   expect(render('exact')).toEqual({
     status: 0,
     stderr: '',
@@ -32,7 +32,7 @@ test('a rendered value and a plain message keep the order the action issued them
   });
 });
 
-test('a failing renderer writes nothing for its call and lets later output through', () => {
+test('a failing view writes nothing for its call and lets later output through', () => {
   expect(render('unawaited')).toEqual({
     status: 1,
     stderr: internal,
@@ -40,7 +40,7 @@ test('a failing renderer writes nothing for its call and lets later output throu
   });
 });
 
-test('a failing renderer rejects its own call and still ends the invocation', () => {
+test('a failing view rejects its own call and still ends the invocation', () => {
   expect(render('caught')).toEqual({
     status: 1,
     stderr: internal,
@@ -48,8 +48,8 @@ test('a failing renderer rejects its own call and still ends the invocation', ()
   });
 });
 
-test('a renderer that returns a non-string fails the call with a stated reason', () => {
-  const reason = 'The renderer returned number instead of a string.';
+test('a view that returns a non-string fails the call with a stated reason', () => {
+  const reason = 'The view returned number instead of a string.';
   expect(render('non-string')).toEqual({
     status: 1,
     stderr: `Internal error: Rendering output failed: ${reason}\n`,
@@ -57,11 +57,11 @@ test('a renderer that returns a non-string fails the call with a stated reason',
   });
 });
 
-test('a renderer that returns a rejecting promise fails the call without ending the process', () => {
+test('a view that returns a rejecting promise fails the call without ending the process', () => {
   expect(render('rejecting')).toEqual({
     status: 1,
     stderr:
-      'Internal error: Rendering output failed: The renderer returned object instead of a string.\n',
+      'Internal error: Rendering output failed: The view returned object instead of a string.\n',
     stdout: 'after\nresolved:1\n',
   });
 });
@@ -74,7 +74,7 @@ test('a render failure raised after the action returned still ends the invocatio
   });
 });
 
-test('two failing renderers report the first failure once', () => {
+test('two failing views report the first failure once', () => {
   expect(render('twice')).toEqual({
     status: 1,
     stderr: internal,
@@ -82,7 +82,7 @@ test('two failing renderers report the first failure once', () => {
   });
 });
 
-test('an action failure stays primary over a renderer failure', () => {
+test('an action failure stays primary over a view failure', () => {
   expect(render('action-failure')).toEqual({
     status: 1,
     stderr: 'Internal error: The action failed.\n',

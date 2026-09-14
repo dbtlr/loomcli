@@ -1,7 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { escapeText } from './style.js';
-import type { InputIdentity, Renderer, RendererContext } from './types.js';
+import type { InputIdentity } from './types.js';
 
 /** The routed path names the Command a token fault belongs to; an empty path is the root. */
 function routedSentence(command: readonly string[]): string {
@@ -34,12 +33,12 @@ function shortGroupMessage(fault: ShortGroupFault): string {
 
 /**
  * Core's own text for one failure: its message under the category prefix its class carries, with
- * the trailing newline every renderer's text carries. The four categories are disjoint branches of
- * the hierarchy, so one ordered test reads every class, and a class without a prefix of its own
- * writes the sentence alone. A default rendering is the same kind of value as a custom one, so
- * nothing downstream composes the newline for it.
+ * the trailing newline every view's text carries. The four categories are disjoint branches of the
+ * hierarchy, so one ordered test reads every class, and a class without a prefix of its own writes
+ * the sentence alone. It is the default view of every failure class and the text the plain
+ * fallback path writes, so it runs no application code and nothing downstream composes its newline.
  */
-function defaultText(failure: LoomError): string {
+export function defaultText(failure: LoomError): string {
   if (failure instanceof UsageError) {
     return `Invalid input: ${failure.message}\n`;
   }
@@ -50,50 +49,6 @@ function defaultText(failure: LoomError): string {
     return `Internal error: ${failure.message}\n`;
   }
   return `${failure.message}\n`;
-}
-
-/** Every prototype in a failure's chain, most derived first, so one walk reads the registry. */
-function chainOf(failure: LoomError): unknown[] {
-  const chain: unknown[] = [];
-  let prototype: unknown = Object.getPrototypeOf(failure);
-  while (prototype !== null) {
-    chain.push(prototype);
-    prototype = Object.getPrototypeOf(prototype);
-  }
-  return chain;
-}
-
-/** One registration: the class it names, read as the prototype and the name that class holds. */
-interface Registration {
-  name: string;
-  prototype: unknown;
-  render: (failure: LoomError, context: RendererContext) => unknown;
-}
-
-/** Authored registrations register here, so the public type publishes nothing to reach. */
-const nodes = new WeakMap<object, Registration>();
-
-/** Phantom key. It marks a failure registration and holds no runtime value. */
-declare const failureRegistration: unique symbol;
-
-/** The runtime value `renderFailure` returns. Its pair lives in the registry above. */
-class RegisteredFailure {
-  declare readonly [failureRegistration]: true;
-
-  constructor(registration: Registration) {
-    nodes.set(this, registration);
-  }
-}
-
-/** Reads the pair behind a registered value; anything else is a declaration error. */
-function nodeOf(value: object, subject: string): Registration {
-  const registration = nodes.get(value);
-  if (!registration) {
-    throw new DeclarationError(
-      `${subject} holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).`,
-    );
-  }
-  return registration;
 }
 
 /** How a diagnostic names one Command inside a sentence: by name, or as the unnamed root. */
@@ -109,9 +64,9 @@ export function commandSentence(name: string | null): string {
 
 /**
  * Every failure `run()` reports is an instance of a public class. Each class carries the facts its
- * sentence interpolates, so a renderer reads them instead of parsing prose, and the exit status is
+ * sentence interpolates, so a view reads them instead of parsing prose, and the exit status is
  * a field of the base, so a subclass inherits it. `message` never carries a category prefix; the
- * default renderers add it.
+ * default views add it.
  */
 export abstract class LoomError extends Error {
   readonly exitCode: 1 | 2;
@@ -268,7 +223,7 @@ export class FatalError extends LoomError {
   }
 }
 
-/** Exit 1: an unexpected exception, a non-error throw, or a renderer that could not answer. */
+/** Exit 1: an unexpected exception, a non-error throw, or a view that could not answer. */
 export class InternalError extends LoomError {
   readonly cause: unknown;
 
@@ -285,118 +240,16 @@ export function reasonOf(thrown: unknown): string {
 }
 
 /**
- * Why a returned value is not the text a renderer owes. A renderer is synchronous, so a returned
- * promise is a non-string return like any other, and its rejection is adopted and swallowed here:
- * an unobserved rejection would end the process before the invocation could report anything.
+ * Why a returned value is not the text a view owes. A view is synchronous, so a returned promise is
+ * a non-string return like any other, and its rejection is adopted and swallowed here: an
+ * unobserved rejection would end the process before the invocation could report anything.
  */
 export function notTextReason(value: unknown): string {
   void Promise.resolve(value).catch(() => undefined);
-  return `The renderer returned ${typeof value} instead of a string.`;
+  return `The view returned ${typeof value} instead of a string.`;
 }
 
 /** Every thrown value reaches reporting as a failure class; anything else is internal. */
 export function toFailure(thrown: unknown): LoomError {
   return thrown instanceof LoomError ? thrown : new InternalError(reasonOf(thrown), thrown);
-}
-
-/** An opaque registration pairing one failure class with a renderer for its instances. */
-export type FailureRenderer = Pick<RegisteredFailure, typeof failureRegistration>;
-
-/**
- * A registration pairing one failure class with a renderer for its instances. The helper is the
- * typed path for a class-keyed list, because an array literal cannot carry a different type
- * parameter per element.
- */
-export function renderFailure<Failure extends LoomError>(
-  type: abstract new (...args: never[]) => Failure,
-  renderer: Renderer<Failure>,
-): FailureRenderer {
-  return new RegisteredFailure({
-    name: 'name' in type && typeof type.name === 'string' ? type.name : 'a failure class',
-    prototype: 'prototype' in type ? type.prototype : undefined,
-    // Resolution reaches this registration through the same class, so the test always holds.
-    render: (failure, context) =>
-      failure instanceof type ? renderer.render(failure, context) : undefined,
-  });
-}
-
-/** The renderers one application registered, keyed by the class each one names. */
-export type FailureRegistry = ReadonlyMap<unknown, Registration>;
-
-/**
- * One class answers to one renderer inside one contributor, so a second registration for it is a
- * declaration fault. The subject names the contributor: the Application, or an installed plugin.
- */
-export function buildFailures(
-  failures: readonly FailureRenderer[],
-  subject = 'The Application',
-): FailureRegistry {
-  const registry = new Map<unknown, Registration>();
-  for (const failure of failures) {
-    const registration = nodeOf(failure, subject);
-    if (registry.has(registration.prototype)) {
-      throw new DeclarationError(
-        `${subject} registers two failure renderers for "${registration.name}". Remove one registration.`,
-      );
-    }
-    registry.set(registration.prototype, registration);
-  }
-  return registry;
-}
-
-/**
- * One registry from every contributor's own, resolving first-in-wins: the application's
- * registrations, then each installed plugin's in installation order, then core's text.
- */
-export function mergeFailures(registries: readonly FailureRegistry[]): FailureRegistry {
-  const merged = new Map<unknown, Registration>();
-  for (const registry of registries) {
-    for (const [type, registration] of registry) {
-      if (!merged.has(type)) {
-        merged.set(type, registration);
-      }
-    }
-  }
-  return merged;
-}
-
-/**
- * The report of one failure: the text core writes, and whether a registered renderer produced it.
- * An unrendered report carries core's own text, which the plain fallback path writes beside the
- * diagnostic naming the renderer that could not answer.
- */
-export type FailureReport =
-  | { kind: 'rendered'; text: string }
-  | { kind: 'unrendered'; text: string; reason: string };
-
-/**
- * The text core writes for one failure. Resolution walks the failure's prototype chain most
- * derived first through the application's registrations, then falls to core's own text, so a
- * registration for a base class brands every failure below it.
- */
-export function describeFailure(
-  registry: FailureRegistry,
-  failure: LoomError,
-  context?: RendererContext,
-): FailureReport {
-  const registration = chainOf(failure)
-    .map((prototype) => registry.get(prototype))
-    .find((entry) => entry !== undefined);
-  if (!registration) {
-    return {
-      kind: 'rendered',
-      text: failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure)),
-    };
-  }
-  try {
-    if (context === undefined) {
-      throw new Error('Missing rendering context.');
-    }
-    const text = registration.render(failure, context);
-    return typeof text === 'string'
-      ? { kind: 'rendered', text }
-      : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };
-  } catch (error) {
-    return { kind: 'unrendered', reason: reasonOf(error), text: defaultText(failure) };
-  }
 }

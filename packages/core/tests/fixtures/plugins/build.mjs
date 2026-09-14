@@ -4,8 +4,8 @@ import {
   DeclarationError,
   extension,
   InputError,
+  override,
   plugin,
-  renderFailure,
 } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -95,10 +95,6 @@ const scenarios = {
     return new Application('app').command(get).action(dispatch);
   },
   'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
-  'failures-not-array': () =>
-    withPlugin(
-      named('@loomcli/help', { failures: renderFailure(InputError, { render: () => 'one\n' }) }),
-    ),
   'identity-not-string': () => withPlugin(plugin(7, {})),
   installed: () => withPlugin(named('@loomcli/help', {})),
   'installed-twice': () =>
@@ -188,12 +184,12 @@ const scenarios = {
   // oxlint-disable-next-line eslint/no-sparse-arrays
   'output-sparse': () => withOutput('@fixture/output/sparse', output([, 'read'])),
   'output-symbol': () => withOutput('@fixture/output/symbol', output({ [Symbol('note')]: 'read' })),
-  'plugin-renderers': () =>
+  'plugin-overrides': () =>
     withPlugin(
       named('@loomcli/help', {
-        failures: [
-          renderFailure(InputError, { render: () => 'one\n' }),
-          renderFailure(InputError, { render: () => 'two\n' }),
+        views: [
+          override(InputError, { render: () => 'one\n' }),
+          override(InputError, { render: () => 'two\n' }),
         ],
       }),
     ),
@@ -252,6 +248,8 @@ const scenarios = {
         named('@acme/trace', { options: { verbose: { type: 'boolean' } } }),
       ],
     }).action(dispatch),
+  'views-not-array': () =>
+    withPlugin(named('@loomcli/help', { views: override(InputError, { render: () => 'one\n' }) })),
   'wrong-target': () => {
     const get = new Command('get', {
       extensions: [facts.option({ placeholder: 'path' })],

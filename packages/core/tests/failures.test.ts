@@ -6,7 +6,7 @@ function failures(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/failures.mjs', import.meta.url), [scenario, ...argv]);
 }
 
-/** The registered renderer serializes the failure, so a test reads the facts it received. */
+/** The override serializes the failure, so a test reads the facts it received. */
 function reported(argv: string[], status = 2): unknown {
   const result = failures('usage', argv);
   expect(result.stdout).toBe(`resolved:${status}\n`);
@@ -14,7 +14,7 @@ function reported(argv: string[], status = 2): unknown {
   return JSON.parse(result.stderr);
 }
 
-test('an unknown command reaches the renderer with its token and the callable names', () => {
+test('an unknown command reaches the view with its token and the callable names', () => {
   expect(reported(['-f', 'x', 'nope'])).toEqual({
     candidates: ['get', 'cache'],
     exitCode: 2,
@@ -101,7 +101,7 @@ test.each([
     },
   ],
 ] satisfies [string[], Record<string, unknown>][])(
-  'a token fault reaches the renderer with the facts its sentence names for %j',
+  'a token fault reaches the view with the facts its sentence names for %j',
   (argv, expected) => {
     expect(reported(argv)).toEqual({ exitCode: 2, ...expected });
   },
@@ -176,7 +176,7 @@ test('a rejected item in a collection keeps the path its schema reported', () =>
   });
 });
 
-test('resolution takes the most derived registration and falls back to the base one', () => {
+test('resolution takes the most derived override and falls back to the base one', () => {
   expect(failures('derived', ['get'])).toEqual({
     status: 2,
     stderr:
@@ -190,7 +190,7 @@ test('resolution takes the most derived registration and falls back to the base 
   });
 });
 
-test('a registration for a fatal subclass answers it without answering the base', () => {
+test('an override for a fatal subclass answers it without answering the base', () => {
   expect(failures('fatal')).toEqual({
     status: 1,
     stderr: 'config: Config is unreadable.\n',
@@ -209,11 +209,11 @@ test.each([
     'declaration',
     'declaration: Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.\n',
   ],
-])('an author-facing %s failure reaches its registered renderer', (scenario, stderr) => {
+])('an author-facing %s failure reaches its override', (scenario, stderr) => {
   expect(failures(scenario)).toEqual({ status: 1, stderr, stdout: 'resolved:1\n' });
 });
 
-test('a renderer failure inside the action is reported through the registry with its cause', () => {
+test('a view failure inside the action is reported through the registry with its cause', () => {
   expect(failures('render-failure')).toEqual({
     status: 1,
     stderr:
@@ -222,21 +222,21 @@ test('a renderer failure inside the action is reported through the registry with
   });
 });
 
-test('two registrations for one class are a declaration error in core rendering', () => {
+test('two overrides for one class are a declaration error in core rendering', () => {
   expect(failures('duplicate', ['get'])).toEqual({
     status: 1,
     stderr:
-      'Invalid declaration: The Application registers two failure renderers for "InputError". Remove one registration.\n',
+      'Invalid declaration: The Application overrides the view for "InputError" twice. Remove one override.\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('a value that is not a registration is a declaration error', () => {
+test('a value that is not an override is a declaration error', () => {
   const result = failures('foreign', ['get']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('resolved:1\n');
   expect(result.stderr).toBe(
-    'Invalid declaration: The Application holds a value that is not a failure renderer. Supply the value returned by renderFailure(type, renderer).\n',
+    'Invalid declaration: The Application holds a value that is not a view override. Supply the value returned by override(key, view).\n',
   );
 });
 
@@ -248,7 +248,7 @@ test('a schema that rejects without an explanation reports the placeholder issue
   });
 });
 
-test('a broken renderer on a usage class writes the default text and returns 1', () => {
+test('a broken view on a usage class writes the default text and returns 1', () => {
   expect(failures('broken-usage', ['-f', 'x', 'nope'])).toEqual({
     status: 1,
     stderr:
@@ -259,18 +259,15 @@ test('a broken renderer on a usage class writes the default text and returns 1',
 
 test.each([
   ['broken', 'Cannot render the failure.'],
-  ['broken-nonstring', 'The renderer returned number instead of a string.'],
-  ['broken-rejecting', 'The renderer returned object instead of a string.'],
-])(
-  'a failure renderer that %s falls back to the default text and a diagnostic',
-  (scenario, reason) => {
-    expect(failures(scenario)).toEqual({
-      status: 1,
-      stderr: `Expected failure.\nInternal error: Rendering the failure failed: ${reason}\n`,
-      stdout: 'resolved:1\n',
-    });
-  },
-);
+  ['broken-nonstring', 'The view returned number instead of a string.'],
+  ['broken-rejecting', 'The view returned object instead of a string.'],
+])('a failure view that %s falls back to the default text and a diagnostic', (scenario, reason) => {
+  expect(failures(scenario)).toEqual({
+    status: 1,
+    stderr: `Expected failure.\nInternal error: Rendering the failure failed: ${reason}\n`,
+    stdout: 'resolved:1\n',
+  });
+});
 
 test('an unusable fallback destination still resolves the failure status', () => {
   expect(failures('broken-fallback')).toEqual({

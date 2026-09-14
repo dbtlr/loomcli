@@ -16,22 +16,30 @@ export {
   UnknownCommandError,
   UnknownOptionError,
   UsageError,
-  renderFailure,
 } from './errors.js';
 export { extension, readExtension } from './extension.js';
+export { lanes } from './lanes.js';
+export { override, view } from './view.js';
 export { plugin } from './plugin.js';
 export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';
-export type { RendererContext } from './types.js';
+export type { ViewContext } from './types.js';
 export { pad, style } from './style.js';
 export { issuePath } from './validation.js';
 export type { StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
-export type { FailureRenderer, InputProblem } from './errors.js';
+export type { InputProblem } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
+export type {
+  AnyDeclaredView,
+  DeclaredView,
+  FailureClass,
+  ViewContribution,
+  ViewOverride,
+} from './view.js';
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 export type {
   Middleware,
@@ -56,13 +64,13 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
-  Renderer,
   RunOptions,
   ScalarArgument,
   StringOption,
   SuppliedInputs,
   ValidationContext,
   VariadicArgument,
+  View,
 } from './types.js';
 
 export type {

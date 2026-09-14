@@ -1,7 +1,9 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
+import { helpPage } from '@loomcli/plugins/help/views';
 import { version } from '@loomcli/plugins/version';
+import { versionLine } from '@loomcli/plugins/version/views';
 import { z } from 'zod';
 
 import { recordLoads } from '../../../../scripts/record-loads.mjs';
@@ -10,6 +12,27 @@ const dispatch = ({ out }) => out.print('dispatched');
 
 /** Every scenario installs the pack in the order the examples do, so help wins a tie. */
 const plugins = [help(), version()];
+
+/** The same pack under the view overrides one scenario lists, so the plugins stay installed. */
+function branded(views, declared = {}) {
+  const child = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
+  return new Application('app', {
+    description: 'A fixture application.',
+    plugins,
+    version: '1.2.0',
+    views,
+    ...declared,
+  })
+    .command(child)
+    .action(dispatch);
+}
+
+/** A view that cannot answer, so a test reads the one diagnostic a broken override produces. */
+const breaks = {
+  render: () => {
+    throw new Error('Cannot render the page.');
+  },
+};
 
 /** One application whose declared version is the scenario, so the printed line is the only rule. */
 function versioned(declared) {
@@ -286,10 +309,21 @@ function folded() {
 }
 
 const scenarios = {
+  'branded-line': () =>
+    branded([override(versionLine, { render: (graph) => `<${graph.name}@${graph.version}>\n` })]),
+  'branded-page': () =>
+    branded([
+      override(helpPage, {
+        render: ({ command, graph }) => `${graph.name}:${command.name ?? 'root'}\n`,
+      }),
+    ]),
+  'broken-page': () => branded([override(helpPage, breaks)]),
   cells,
   children,
   facts,
   folded,
+  marked: () =>
+    versioned({ description: 'A \uE001fixture\uE002 application.', version: '1.2.0\uE003' }),
   nested,
   prose,
   scoped,

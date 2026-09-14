@@ -2,6 +2,7 @@ import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
+import { versionLine } from './views.js';
 
 const options = {
   version: { description: 'Print the version.', short: 'V', type: 'boolean' },
@@ -17,5 +18,6 @@ export function version(): Plugin<VersionOptions> {
   return plugin(`${Package.name}/version`, {
     middleware: { activate: ['version'], load: () => import('./middleware.js') },
     options,
+    views: [versionLine],
   });
 }

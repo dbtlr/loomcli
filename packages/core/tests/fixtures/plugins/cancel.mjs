@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 
-import { Application, FatalError, plugin, renderFailure } from '@loomcli/core';
+import { Application, FatalError, override, plugin } from '@loomcli/core';
 
 import { callerReason, controller } from './caller.mjs';
 
@@ -171,7 +171,7 @@ const callerSignal = new Set([
 /** The renderer a cancelled run meets when the scenario asks for a broken one. */
 const registered = {
   'broken-renderer': () => [
-    renderFailure(FatalError, {
+    override(FatalError, {
       render: () => {
         throw new Error('the failure renderer could not answer');
       },
@@ -279,8 +279,8 @@ const actions = { absorbing, finishing, flushing, ignoring, racing, refusing, wa
 
 function application() {
   const declared = new Application('app', {
-    failures: (registered[scenario] ?? (() => []))(),
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
+    views: (registered[scenario] ?? (() => []))(),
   });
   // A declared default its schema rejects is the one build rule that runs after the graph is built.
   const withDefault =
