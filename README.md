@@ -59,7 +59,7 @@ node examples/jsonkit/dist/src/main.js --file package.json
 
 The first line names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. One member reads as `1 key` or `1 item`. For an object, one `key<TAB>kind` line per top-level key follows in JavaScript property order, which lists integer-like keys first in ascending order and every other key in document order. The `keys` command uses the same order.
 
-`--file` is a required global option, so it accepts a value before, between, or after the command name:
+`--file` is a global option, so it accepts a value before, between, or after the command name:
 
 ```sh
 node examples/jsonkit/dist/src/main.js get name --file package.json

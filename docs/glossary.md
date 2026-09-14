@@ -184,7 +184,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, Presentation name, and `ResultError` follow the [results contract](core.md#results) under proposed ADR-0023 and are not implemented.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` takes no value, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -270,7 +270,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception, a broken view, or a broken destination, or raises for a result a Command promised and its action did not deliver. It exits 1.
+A failure core wraps around an unexpected exception, a broken view, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Diagnostic**:
