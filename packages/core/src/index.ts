@@ -36,6 +36,7 @@ export type { CancellationReason } from './signals.js';
 export type {
   AnyDeclaredView,
   DeclaredView,
+  DeclaredViewBrand,
   FailureClass,
   ViewContribution,
   ViewOverride,

@@ -69,6 +69,43 @@ test("a build fault reaches the application's own overrides", () => {
   });
 });
 
+test.each([
+  [
+    'build-fault-plugins',
+    'The Application plugins must be an array. Supply a list of plugin values.',
+  ],
+  ['build-fault-rendering', 'The rendering policy must be an object.'],
+  [
+    'build-fault-options',
+    'The Application options contain globals. Declare them with globalOption(name, config).',
+  ],
+  [
+    'build-fault-global',
+    'Option name "-file" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+  ],
+  [
+    'build-fault-graph-branded',
+    'Command "two" attaches child "shared", which Command "one" also attaches. Attach a Command value at one point; create a new Command for each placement.',
+  ],
+] satisfies [string, string][])(
+  "the %s fault reaches the application's own overrides",
+  (scenario, message) => {
+    expect(views(scenario)).toEqual({
+      status: 1,
+      stderr: `app declaration: ${message}\n`,
+      stdout: 'resolved:1\n',
+    });
+  },
+);
+
+test("a graph-build fault does not consult a plugin's overrides", () => {
+  expect(views('build-fault-graph')).toEqual(
+    rejected(
+      'Command "two" attaches child "shared", which Command "one" also attaches. Attach a Command value at one point; create a new Command for each placement.',
+    ),
+  );
+});
+
 test("a build fault does not consult a plugin's overrides", () => {
   expect(views('build-fault-unbranded')).toEqual(
     rejected(
@@ -137,6 +174,14 @@ test.each([
   [
     'retired',
     'The Application options contain failures. Declare view overrides under views with override(key, view).',
+  ],
+  [
+    'app-junk-key',
+    'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
+  ],
+  [
+    'app-junk-keys',
+    'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
   ],
 ] satisfies [string, string][])('build rejects the %s declaration', (scenario, message) => {
   expect(views(scenario)).toEqual(rejected(message));

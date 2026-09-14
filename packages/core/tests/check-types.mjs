@@ -93,9 +93,11 @@ new Command('invalid').action(() => {});
     const rejected = await compile(invalid);
     assert.notEqual(rejected.status, 0, 'Invalid registration compiled.');
     // The compiler reports the fault once, on the first declaration of the merged interface.
-    // With library checking on, that is the package's own `Register`.
+    // With library checking on, that is the package's own `Register`, in `environment.d.ts`.
     // With it off, that is the augmentation itself, the declaration the consumer wrote.
-    const site = skipLibCheck ? /invalid.ts\(2,\d+\): error TS2430:/ : /error TS2430:/;
+    const site = skipLibCheck
+      ? /invalid\.ts\(2,\d+\): error TS2430:/
+      : /environment\.d\.ts\(\d+,\d+\): error TS2430:/;
     assert.match(rejected.output, site);
   }
   for (const { source: content, diagnostic } of [

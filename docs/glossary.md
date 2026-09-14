@@ -199,6 +199,10 @@ _Avoid_: Formatted output, verbatim output
 A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
 _Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
 
+**Declared view**:
+The value `view(identity, definition)` returns: a view that carries an identity, holds its default view function, and is invariant in the data it presents, so it names one data type alone. It is the unit an override keys on, and an application or a plugin names it by reference, the way it names an extension descriptor, never by spelling its identity.
+_Avoid_: Named renderer, registered view, view id
+
 **View function**:
 The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.
 _Avoid_: Renderer, render callback

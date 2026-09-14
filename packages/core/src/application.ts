@@ -73,6 +73,20 @@ export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption'
 const noViews: ViewRegistry = [];
 
 /**
+ * What one preparation hands back as each stage of the build passes, in the order it passes them.
+ * `inspect()` ignores every stage; `run()` uses them to configure the invocation's output as soon
+ * as the declarations that decide it have been validated.
+ */
+interface PrepareStage {
+  /** Each registry as it is published: the application's alone, then the merged one. */
+  views: (registry: ViewRegistry) => void;
+  /** The validated declared rendering policy, before any other declaration is read. */
+  rendering: (policy: RenderingPolicy) => void;
+  /** The built plugins, which carry the theme the view context resolves styles through. */
+  plugins: (plugins: readonly BuiltPlugin[]) => void;
+}
+
+/**
  * Whether one failure is the cancellation the run already reports, which core does not report a
  * second time. Any other failure after cancellation is rendered as usual.
  */
@@ -261,46 +275,42 @@ class ApplicationBuilder<
   }
 
   /**
-   * Every rule that reads the declarations alone, in the order `run()` reads them: the options
-   * slot, the installed list, the application's view overrides, each plugin's declarations, then
-   * the whole Command graph. The registry is published as soon as it is known, so a later
-   * declaration error still reaches the overrides the application listed for it, while a fault in
-   * that list itself reports through core's own text. Validated plugin contributions are published
-   * before the remaining preparation can fail.
+   * Every rule that reads the declarations alone, in the order `run()` reads them: the
+   * application's own view overrides, the options slot, the installed list, each plugin's
+   * declarations, then the whole Command graph. The application's overrides are read and published
+   * first, because they need core's identities and nothing else, so every later declaration error
+   * reaches them, while a fault in that list itself reports through core's own text. The merged
+   * registry is published once the whole build has succeeded, so a build-time fault never resolves
+   * through a plugin's overrides, which build has not yet validated.
    */
-  private prepare(
-    register: (registry: ViewRegistry) => void,
-    configure: (plugins: readonly BuiltPlugin[]) => void,
-  ): {
+  private prepare(stage: PrepareStage): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
     plugins: readonly BuiltPlugin[];
   } {
-    const facts = checkOptions(this.#options, this.#declared);
-    renderingPolicy(this.#declared.rendering);
-    const installed = installPlugins(this.#plugins ?? []);
     const identities = viewIdentities(coreViews);
     const application = buildViews(
       { declares: false, sentence: 'The Application' },
       this.#views,
       identities,
     );
-    register([application]);
+    stage.views([application]);
+    stage.rendering(renderingPolicy(this.#declared.rendering));
+    const facts = checkOptions(this.#options, this.#declared);
+    const installed = installPlugins(this.#plugins ?? []);
     const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
     const plugins = buildPlugins(installed, install);
-    configure(plugins);
-    register([
-      application,
-      ...plugins.map((entry) =>
-        buildViews(
-          { declares: true, sentence: pluginSentence(entry.identity) },
-          entry.views,
-          identities,
-        ),
+    stage.plugins(plugins);
+    const contributors = plugins.map((entry) =>
+      buildViews(
+        { declares: true, sentence: pluginSentence(entry.identity) },
+        entry.views,
+        identities,
       ),
-    ]);
+    );
     const graph = buildGraph(this.#root, this.#globals, { ...install, plugins });
     checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
+    stage.views([application, ...contributors]);
     return { facts, graph, plugins };
   }
 
@@ -311,10 +321,11 @@ class ApplicationBuilder<
    * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    const built = this.prepare(
-      () => undefined,
-      () => undefined,
-    );
+    const built = this.prepare({
+      plugins: () => undefined,
+      rendering: () => undefined,
+      views: () => undefined,
+    });
     return inspectGraph(this.#name, built.graph, built.facts);
   }
 
@@ -352,24 +363,26 @@ class ApplicationBuilder<
         const host = captureHost(overrides, stderr);
         const invocationOutput = new Output(host);
         output = invocationOutput;
-        const policy = {
-          ...renderingPolicy(this.#declared.rendering),
-          ...renderingPolicy(options?.rendering),
-        };
-        invocationOutput.configure(policy, new Map());
+        // The policy is read inside the build, after the application's own overrides are published.
+        // A faulty rendering declaration then reports through the view the application listed.
+        let policy: RenderingPolicy = {};
         signals = bracketRun(controller, checkSignal(options?.signal));
-        const built = this.prepare(
-          (value) => {
-            registry = value;
-            invocationOutput.useViews(value);
-          },
-          (plugins) => {
+        const built = this.prepare({
+          plugins: (plugins) => {
             invocationOutput.configure(
               policy,
               plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
             );
           },
-        );
+          rendering: (declared) => {
+            policy = { ...declared, ...renderingPolicy(options?.rendering) };
+            invocationOutput.configure(policy, new Map());
+          },
+          views: (value) => {
+            registry = value;
+            invocationOutput.useViews(value);
+          },
+        });
         const { graph } = built;
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const defaults = await prepareInputs(inputs, host);

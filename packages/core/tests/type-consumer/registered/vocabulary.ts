@@ -13,7 +13,7 @@ const action: ActionHandler<typeof get> = ({ options }) => {
   const wrong: Vocabulary = 'identifer';
   return { file: options.file, rendered: render.render(name, { style, width: () => 0 }), wrong };
 };
-// @ts-expect-error TS2345: A renderer using the same registered vocabulary rejects unknown names.
+// @ts-expect-error TS2345: A view using the same registered vocabulary rejects unknown names.
 render.render('identifer', { style, width: () => 0 });
 
 export { action, render };

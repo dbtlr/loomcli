@@ -50,6 +50,12 @@ const summary: DeclaredView<readonly Row[]> = view<readonly Row[]>('@fixture/row
 view<readonly Row[]>('@fixture/mutable', { render: (rows: Row[]) => String(rows.length) });
 // @ts-expect-error TS2322: The inferred data type reads through Readonly, so the same rule holds.
 view('@fixture/inferred', { render: (rows: Row[]) => String(rows.length) });
+// @ts-expect-error TS2322: A mutable array parameter is rejected under any type argument.
+view<Row[]>('@fixture/mutable-argument', { render: (rows: Row[]) => String(rows.length) });
+// @ts-expect-error TS2322: A primitive parameter is stated, because inference runs through Readonly.
+view('@fixture/primitive', { render: (message: string) => message });
+// @ts-expect-error TS2322: A union parameter is stated in full, for the same reason.
+view('@fixture/union', { render: (value: number | string) => String(value) });
 
 /** An application's own fatal type, so overriding it implies the view for it. */
 class ConfigError extends FatalError {
@@ -97,6 +103,8 @@ override(UnknownCommandError, problems);
 override(UsageError, problems);
 // @ts-expect-error TS2769: A replacement cannot require data the key does not carry.
 override(lanes.warn, table);
+// @ts-expect-error TS2769: A replacement for another data type cannot answer this declared view.
+override(summary, counts);
 
 const usageFailure: View<UsageError> = {
   render: (failure) => `${String(failure.exitCode)}: ${failure.message}`,
@@ -123,6 +131,9 @@ new Application('views-only', { views }).action(({ options }) => {
   // @ts-expect-error TS2339: An Application without globals gains no global keys.
   options.file;
 });
+
+// @ts-expect-error TS2741: An application overrides and does not declare, so views holds overrides.
+new Application('declaring', { views: [summary] });
 
 // @ts-expect-error TS2353: Constructor globals wiring is retired.
 new Application('retired', { globals: {} });

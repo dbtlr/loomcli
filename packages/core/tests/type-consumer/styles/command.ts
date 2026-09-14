@@ -14,7 +14,7 @@ const action: ActionHandler<typeof command> = ({ out, style }) => {
 };
 const command = new Command('styled').action(action);
 const invalid: View<string> = {
-  // @ts-expect-error TS2551: Detached renderers share the same exact Application vocabulary.
+  // @ts-expect-error TS2551: Detached views share the same exact Application vocabulary.
   render: (value, { style }) => style.identifer(value),
 };
 export { command, renderer, invalid };

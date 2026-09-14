@@ -1,5 +1,6 @@
 import {
   Application,
+  Command,
   DeclarationError,
   InputError,
   lanes,
@@ -54,6 +55,14 @@ function failing(views, plugins = []) {
     .globalOption('file', { required: true, short: 'f', type: 'string' })
     .action(dispatch);
 }
+
+/** The application's own brand for a declaration failure, listed wherever one is expected. */
+const declarationBrand = [override(DeclarationError, brand('app declaration'))];
+
+/** A plugin that brands a declaration failure, which a build-time fault never reaches. */
+const pluginBrand = plugin('@fixture/branding', {
+  views: [override(DeclarationError, brand('plugin declaration'))],
+});
 
 function build() {
   switch (scenario) {
@@ -112,24 +121,55 @@ function build() {
       return failing([], [usage, inputs]);
     }
     case 'build-fault': {
-      // The application's overrides are published before the plugins build, so a build fault
-      // Reaches them; a plugin's overrides are not consulted, because build has not read them.
-      const branding = plugin('@fixture/branding', {
-        views: [override(DeclarationError, brand('plugin declaration'))],
-      });
+      // The application's overrides are published before anything else builds.
+      // A plugin's overrides are not consulted, because build has not validated them.
       const twice = plugin('@fixture/twice', {
         views: [override(InputError, brand('one')), override(InputError, brand('two'))],
       });
-      return failing([override(DeclarationError, brand('app declaration'))], [branding, twice]);
+      return failing(declarationBrand, [pluginBrand, twice]);
     }
     case 'build-fault-unbranded': {
-      const branding = plugin('@fixture/branding', {
-        views: [override(DeclarationError, brand('plugin declaration'))],
-      });
       const twice = plugin('@fixture/twice', {
         views: [override(InputError, brand('one')), override(InputError, brand('two'))],
       });
-      return failing([], [branding, twice]);
+      return failing([], [pluginBrand, twice]);
+    }
+    case 'build-fault-plugins': {
+      return new Application('views', { plugins: 'help', views: declarationBrand }).action(
+        dispatch,
+      );
+    }
+    case 'build-fault-rendering': {
+      return new Application('views', { rendering: 'never', views: declarationBrand }).action(
+        dispatch,
+      );
+    }
+    case 'build-fault-options': {
+      return new Application('views', { globals: {}, views: declarationBrand }).action(dispatch);
+    }
+    case 'build-fault-global': {
+      return new Application('views', { views: declarationBrand })
+        .globalOption('-file', { type: 'string' })
+        .action(dispatch);
+    }
+    case 'build-fault-graph': {
+      // The graph builds after the plugins, and its fault still reports through core's own text.
+      const shared = new Command('shared').action(dispatch);
+      return new Application('views', { plugins: [pluginBrand], views: [] })
+        .command(new Command('one').command(shared).action(dispatch))
+        .command(new Command('two').command(shared).action(dispatch));
+    }
+    case 'build-fault-graph-branded': {
+      const shared = new Command('shared').action(dispatch);
+      return new Application('views', { plugins: [pluginBrand], views: declarationBrand })
+        .command(new Command('one').command(shared).action(dispatch))
+        .command(new Command('two').command(shared).action(dispatch));
+    }
+    case 'app-junk-key': {
+      return rendering(page, [override({}, branded('app'))]);
+    }
+    case 'app-junk-keys': {
+      return rendering(page, [override({}, branded('one')), override({}, branded('two'))]);
     }
     case 'lane-warn': {
       return new Application('views', {

@@ -72,10 +72,14 @@ function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data
   return new ViewDeclaration<Data>(identity, definition);
 }
 
-/** What one override replaces: a declared view, or a failure class read as its prototype. */
+/**
+ * What one override replaces: a declared view, a failure class read as its prototype, or a value
+ * that is neither, which build reports as the entry fault of the list that holds it.
+ */
 type OverrideKey =
   | { kind: 'view'; view: AnyDeclaredView }
-  | { kind: 'failure'; name: string; prototype: unknown };
+  | { kind: 'failure'; name: string; prototype: object }
+  | { kind: 'invalid' };
 
 /** One override: the key it answers and the view function that supersedes the default. */
 interface OverrideRecord {
@@ -108,10 +112,11 @@ type ViewContribution = AnyDeclaredView | ViewOverride;
  * is the typed path for a class-keyed list, because an array literal cannot carry a different type
  * parameter per element.
  */
-function override<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride;
+function override<Data>(key: DeclaredView<Data>, replacement: NoInfer<View<Data>>): ViewOverride;
 function override<Failure extends LoomError>(
-  key: FailureClass<Failure>,
-  replacement: View<Failure>,
+  // The brand is excluded so a declared view never satisfies this overload's key.
+  key: FailureClass<Failure> & { readonly [declaredView]?: never },
+  replacement: NoInfer<View<Failure>>,
 ): ViewOverride;
 function override(key: object, replacement: { render: ViewFunction }): ViewOverride {
   const declared = declarations.get(key);
@@ -121,14 +126,25 @@ function override(key: object, replacement: { render: ViewFunction }): ViewOverr
       render: replacement.render,
     });
   }
-  return new OverrideDeclaration({
-    key: {
-      kind: 'failure',
-      name: 'name' in key && typeof key.name === 'string' ? key.name : 'a failure class',
-      prototype: 'prototype' in key ? key.prototype : undefined,
-    },
-    render: replacement.render,
-  });
+  return new OverrideDeclaration({ key: failureKey(key), render: replacement.render });
+}
+
+/**
+ * The key one failure-class override answers. A class is a function whose `prototype` is the
+ * object a thrown failure's chain holds, so anything else is no key at all and build reports it as
+ * the entry fault of the list that holds it, rather than colliding with every other such value.
+ */
+function failureKey(key: object): OverrideKey {
+  if (typeof key !== 'function' || !('prototype' in key)) {
+    return { kind: 'invalid' };
+  }
+  const prototype: unknown = key.prototype;
+  if (typeof prototype !== 'object' || prototype === null) {
+    return { kind: 'invalid' };
+  }
+  const name =
+    'name' in key && typeof key.name === 'string' && key.name !== '' ? key.name : 'a failure class';
+  return { kind: 'failure', name, prototype };
 }
 
 /** One contributor's overrides, read once per build and consulted in contributor order. */
@@ -217,26 +233,47 @@ interface ViewBuild {
 /**
  * One override recorded under the key it answers. One key answers to one override inside one
  * contributor, so a second override for it is a declaration fault; the same key overridden by two
- * contributors resolves first-in-wins.
+ * contributors resolves first-in-wins. A key that is neither a declared view nor a failure class
+ * is the entry fault of the list that holds it, reported here rather than at the `override()` call.
  */
 function recordOverride(build: ViewBuild, { key, render }: OverrideRecord): void {
-  const { contributions, identities, subject } = build;
+  if (key.kind === 'invalid') {
+    throw new DeclarationError(entryFault(build.subject));
+  }
   if (key.kind === 'failure') {
-    if (contributions.failures.has(key.prototype)) {
-      throw new DeclarationError(
-        `${subject.sentence} overrides the view for "${key.name}" twice. Remove one override.`,
-      );
-    }
-    contributions.failures.set(key.prototype, render);
+    recordFailureOverride(build, key, render);
     return;
   }
-  registerIdentity(identities, key.view);
-  if (contributions.views.has(key.view)) {
+  recordViewOverride(build, key.view, render);
+}
+
+/** One failure class answers to one override inside one contributor, keyed by its prototype. */
+function recordFailureOverride(
+  { contributions, subject }: ViewBuild,
+  key: { name: string; prototype: object },
+  render: ViewFunction,
+): void {
+  if (contributions.failures.has(key.prototype)) {
     throw new DeclarationError(
-      `${subject.sentence} overrides view "${key.view.identity}" twice. Remove one override.`,
+      `${subject.sentence} overrides the view for "${key.name}" twice. Remove one override.`,
     );
   }
-  contributions.views.set(key.view, render);
+  contributions.failures.set(key.prototype, render);
+}
+
+/** Naming a declared view as a key registers its identity, as listing the declaration does. */
+function recordViewOverride(
+  { contributions, identities, subject }: ViewBuild,
+  key: AnyDeclaredView,
+  render: ViewFunction,
+): void {
+  registerIdentity(identities, key);
+  if (contributions.views.has(key)) {
+    throw new DeclarationError(
+      `${subject.sentence} overrides view "${key.identity}" twice. Remove one override.`,
+    );
+  }
+  contributions.views.set(key, render);
 }
 
 /**

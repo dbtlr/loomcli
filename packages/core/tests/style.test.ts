@@ -8,7 +8,7 @@ function styled(scenario: string) {
   return invoke(new URL('fixtures/style.mjs', import.meta.url), [scenario]);
 }
 
-test('each run captures fresh capability facts and supplies one immutable renderer context', () => {
+test('each run captures fresh capability facts and supplies one immutable view context', () => {
   expect(styled('fresh')).toEqual({ status: 0, stderr: '', stdout: '\u001b[31mX\u001b[39mX' });
 });
 

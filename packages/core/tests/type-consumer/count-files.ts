@@ -13,7 +13,7 @@ interface Table {
   total: number | undefined;
 }
 
-/** The example renders its whole table through one application-owned renderer. */
+/** The example renders its whole table through one application-owned view. */
 const tableView: View<Table> = {
   render: ({ metric, rows, total }) =>
     [

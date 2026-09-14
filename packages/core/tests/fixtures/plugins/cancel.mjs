@@ -168,7 +168,7 @@ const callerSignal = new Set([
   'wrapped',
 ]);
 
-/** The renderer a cancelled run meets when the scenario asks for a broken one. */
+/** The view a cancelled run meets when the scenario asks for a broken one. */
 const registered = {
   'broken-renderer': () => [
     override(FatalError, {
