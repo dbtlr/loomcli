@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-09
+modified: 2026-09-14
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -33,3 +33,5 @@ Help, manifests, completions, and agent tool listings are projections of `inspec
 ## Changelog
 
 - 2026-09-09: Terminology. "Hidden aliases" in the context above reads as "aliases"; the glossary retired the name hidden alias when hidden became a separate core fact, the hidden Command, recorded with `docs/core.md` and the dated 2026-09-09 entry of ADR-0019. Two clarifications from the first-party help plugin bind with this record: a hidden Command is omitted from every listing, the candidate list of a routing error included, and an extension key that carries its defining plugin's identity is the fact's name rather than provenance, so `inspect()` may report it. The decision is unchanged.
+
+- 2026-09-14: The results-lane contract in [Results](../core.md#results) adds one frozen graph fact per Command, `result`, published by `inspect()` as `null` or `{ kind, views, default }`, the presentation names in record order. Runtime and every projection read the same fact, under this record. A pack view's configuration is not a core fact.

@@ -32,7 +32,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -181,10 +181,10 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, Presentation name, and `ResultError` follow the [results contract](core.md#results) under proposed ADR-0023 and are not implemented.
 
 **Out**:
-The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -192,11 +192,11 @@ A message written through one of the five purpose-named methods: `print`, `info`
 _Avoid_: Log level, styled output
 
 **Rendered output**:
-Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and it goes to stderr on a Command that declares a result.
+Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
 _Avoid_: Formatted output, verbatim output
 
 **View**:
-A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
+A pure, synchronous value whose view functions turn typed data and the supplied view context into the marked text core resolves and writes, in one of two shapes: a whole view renders one value through `render`, and a row view renders a sequence one row at a time through `row`. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site or named in a result's views. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
 _Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
 
 **Declared view**:
@@ -204,8 +204,20 @@ The value `view(identity, definition)` returns: a view that carries an identity,
 _Avoid_: Named renderer, registered view, view id
 
 **View function**:
-The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.
+The `render` function of a whole view, or the `row`, `head`, and `tail` functions of a row view: data and context in, marked text out. A default view supplies them, and a replacement view of the same shape supersedes them.
 _Avoid_: Renderer, render callback
+
+**Pack view**:
+A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against; whether the plugin publishes its configuration as a graph fact is that plugin's contract.
+_Avoid_: Built-in view, formatter (for a pack view), widget
+
+**Row view**:
+The second structural shape of a view, which renders a sequence one row at a time: a `row` function over one row, its index, and the context, with optional `head` and `tail` functions that open and close the sequence. Every function is pure and synchronous. Core tells a row view from a whole view by the function present, and feeds a row view as the source yields while it buffers a sequence for a whole view.
+_Avoid_: Item view, stream view, incremental renderer
+
+**Whole view**:
+A view with a `render` function, named in contrast to a row view when both are in play. Under a rows result core buffers the whole sequence before calling it.
+_Avoid_: Document view, buffered view
 
 **View override**:
 The pairing of a key, a declared view or a failure class, with a replacement view whose view function supersedes the default, listed under `views` on an Application or a plugin. Resolution runs the application's overrides, then each plugin's in installation order, then the declaring contributor's default, walking a failure-class key's prototype chain in full at each contributor.
@@ -224,8 +236,12 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Result**:
-The typed value a Command declares and its action emits once, as one document or one stream of items. Its declaration carries the shape, the views in preference order, and the cardinality, and a declared result owns stdout on that Command.
-_Avoid_: Return value, payload, output value
+What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable or async iterable. The author states the type, the declaration carries a record of views keyed by presentation name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
+_Avoid_: Return value, payload, output value, document, stream (for the declaration)
+
+**Presentation name**:
+A key in a result's `views` record: the bare-token name by which a formatter plugin's `--format` selects that view, and by which `views()` replaces it. Names are unique by construction and belong to the Command, not to the view.
+_Avoid_: Format name, view identity, encoding name
 
 ## Failures
 
@@ -254,7 +270,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception, a broken view, or a broken destination. It exits 1.
+A failure core wraps around an unexpected exception, a broken view, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Diagnostic**:
@@ -283,8 +299,8 @@ The projection of one routed Command that the help plugin prints: its masthead, 
 _Avoid_: Usage text, man page, help screen
 
 **Formatter**:
-A machine encoding of a result value, contributed by a plugin and selected for one run by name. `json` and `jsonl` are formatters, and a formatter never sees a view.
-_Avoid_: View (for an encoding), serializer
+The plugin that lets a run select a result's presentation by name through `--format`, and that declares the `json` and `jsonl` views as configured factories, one per result unit, whose map reshapes one row under `rows()` and the whole value under `result()`. There is no encoding outside the view model: a machine presentation is a view like a table is.
+_Avoid_: Encoder, serializer, format (for the view), output mode
 
 **Theme**:
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
