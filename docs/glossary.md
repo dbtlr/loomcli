@@ -9,7 +9,7 @@ Loom CLI is a framework for defining a typed command application once and servin
 ## Authoring
 
 **Application**:
-The root of one command application: an unnamed root Command plus the application's name, its global options, and its failure renderers. One Application value exists per application, and it alone can run or be inspected.
+The root of one command application: an unnamed root Command plus the application's name, its global options, and its view overrides. One Application value exists per application, and it alone can run or be inspected.
 _Avoid_: Program, CLI object, app root
 
 **Command**:
@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-Renderer, Token, Glyph, and Theme follow the implemented [style contract](core.md#styles-and-rendering-policy). View and Result remain proposed; their registration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is written under a proposed record, ADR-0021, which moves to accepted with its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
 
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
@@ -192,16 +192,24 @@ A message written through one of the five purpose-named methods: `print`, `info`
 _Avoid_: Log level, styled output
 
 **Rendered output**:
-Text a Renderer produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and it goes to stderr on a Command that declares a result.
+Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and it goes to stderr on a Command that declares a result.
 _Avoid_: Formatted output, verbatim output
 
-**Renderer**:
-A pure, synchronous value that turns one typed value and supplied rendering context into the marked text core resolves and writes, trailing newline included.
-_Avoid_: Formatter, serializer, presenter
-
 **View**:
-A registered presentation unit with an identity, the data shape it presents, a cardinality of document or item, and its default renderer. Core, a plugin, or an application defines one, and an application replaces the renderer of any view through the registry.
-_Avoid_: Template, widget, presenter, renderer (for the registration)
+A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
+_Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
+
+**View function**:
+The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.
+_Avoid_: Renderer, render callback
+
+**View override**:
+The pairing of a key, a declared view or a failure class, with a replacement view whose view function supersedes the default, listed under `views` on an Application or a plugin. Resolution runs the application's overrides, then each plugin's in installation order, then the declaring contributor's default, walking a failure-class key's prototype chain in full at each contributor.
+_Avoid_: Failure renderer, registration, hook
+
+**Lane view**:
+The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
+_Avoid_: Channel, log level, stream (for the lane view)
 
 **Token**:
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
@@ -218,7 +226,7 @@ _Avoid_: Return value, payload, output value
 ## Failures
 
 **Failure**:
-Any outcome `run()` reports as unsuccessful. Every failure is an instance of a public class that carries the facts its sentence interpolates, so a renderer reads facts instead of parsing prose.
+Any outcome `run()` reports as unsuccessful. Every failure is an instance of a public class that carries the facts its sentence interpolates, so a view reads facts instead of parsing prose.
 _Avoid_: Exception (as the model term), error object
 
 **Usage error**:
@@ -242,16 +250,16 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception, a broken renderer, or a broken destination. It exits 1.
+A failure core wraps around an unexpected exception, a broken view, or a broken destination. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Diagnostic**:
-The text core writes to stderr for one failure: the sentence, its correction, and the category prefix the renderer chooses.
+The text core writes to stderr for one failure: the sentence, its correction, and the category prefix the view chooses.
 _Avoid_: Error message (when the class is meant), log line
 
-**Failure renderer**:
-A class-keyed Renderer registered on an Application or plugin that produces diagnostics for that class and its subclasses. Resolution follows the thrown failure's prototype chain. The proposed view-registry increment will represent this registration as a view override.
-_Avoid_: Error handler, error formatter, catch
+**Failure view**:
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the stderr view context. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first.
+_Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Issue**:
 One Standard Schema rejection returned by a schema, with its message and optional path inside the value.
@@ -272,7 +280,7 @@ _Avoid_: Usage text, man page, help screen
 
 **Formatter**:
 A machine encoding of a result value, contributed by a plugin and selected for one run by name. `json` and `jsonl` are formatters, and a formatter never sees a view.
-_Avoid_: Renderer (for an encoding), serializer, view (for a format)
+_Avoid_: View (for an encoding), serializer
 
 **Theme**:
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
@@ -287,7 +295,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor
 
 **Plugin**:
-A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, extensions, failure renderers, or a slot claim through the same public contract first-party packages use. Core installs none by default.
+A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, extensions, views and view overrides, or a slot claim through the same public contract first-party packages use. Core installs none by default.
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Plugin identity**:
@@ -295,7 +303,7 @@ The nonempty string that names a plugin, fixed where the plugin is defined. By c
 _Avoid_: Plugin name (when the key is meant), id (in prose)
 
 **Contribution**:
-One thing a plugin adds to an Application: an option, a middleware, an extension, a failure renderer, or a slot claim. Contributions compose in installation order.
+One thing a plugin adds to an Application: an option, a middleware, an extension, a declared view, a view override, or a slot claim. Contributions compose in installation order.
 _Avoid_: Hook, registration, feature
 
 **Slot**:

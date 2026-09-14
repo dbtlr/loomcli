@@ -4,7 +4,7 @@ title: ADR-0023 - A Command declares its result and core resolves its presentati
 description: A Command declares its result as graph facts, a schema, views in preference order, and a cardinality, and its action emits once through out.results. Core resolves which presentation the run uses and knows no format name; plugins own format names and encoders, and a declared result owns stdout.
 status: proposed
 created: 2026-09-11
-modified: 2026-09-11
+modified: 2026-09-14
 ---
 
 # ADR-0023 - A Command declares its result and core resolves its presentation, and formatters are plugins
@@ -48,3 +48,7 @@ Typing `out.results` from the declaration extends the pattern the action handler
 ## Status
 
 Proposed. It moves to accepted with the phase implementations of the result declaration and the formatter plugin, proved through the example applications: textstat declares and emits its table as a result and prints byte-identical output, a hidden jsonkit Command exercises the stream path, `textstat --format json` prints one JSON document on stdout with its warnings on stderr, and `--format jsonl` on the stream Command prints one line per item.
+
+## Changelog
+
+- 2026-09-14: The view registry contract in [Views](../core.md#views) settles that a declared view is named by reference and its identity string is not an operator-facing name. The per-Command presentation name a `--format` selection uses, and its collision rule against encoding names, are a separate declaration the results-lane contract defines, not the view's identity.

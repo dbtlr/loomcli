@@ -39,13 +39,13 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md) | One run signal carries cancellation, fed by a caller or by the single plugin that owns the signals slot; core brackets the run and resolves 130 or 143. | accepted |
 | [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | superseded |
 | [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
-| [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one identity-keyed registry of views, and class-keyed failure renderers fold into it as view overrides. | proposed |
+| [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one registry of declared views named by reference, and class-keyed failure views fold into it as view overrides; the phase contract is written. | proposed |
 | [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | proposed |
 | [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares its result as graph facts and core resolves the run's presentation, while plugins own format names and encoders. | proposed |
 | [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | superseded |
 | [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
 | [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
-| [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a Renderer context and one optional theme contribution; the named palette remains separate. | accepted |
+| [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a view context and one optional theme contribution; the named palette remains separate. | accepted |
 
 ## Adding a record
 

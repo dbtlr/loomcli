@@ -4,7 +4,7 @@ title: ADR-0017 - Plugins participate through one middleware chain with declared
 description: Every plugin that acts on an invocation does so through one middleware seam between routing and local parsing, taking over by not calling next() or wrapping the rest of the chain. A middleware declares what activates it, and core loads its implementation only when the activation matches.
 status: accepted
 created: 2026-09-08
-modified: 2026-09-09
+modified: 2026-09-14
 ---
 
 # ADR-0017 - Plugins participate through one middleware chain with declared activation
@@ -42,3 +42,4 @@ Accepted 2026-09-09 with the code that runs the chain and enforces the activatio
 ## Changelog
 
 - 2026-09-09: Accepted. PR 36 (branch `feat/lm-60-plugins`) runs the one middleware chain between routing and the callable check, with declared activation and a per-middleware loader; its tests prove an unused plugin's implementation module is never loaded and that a takeover never loads a later plugin. The third pull request of LM-60, whose number is not yet assigned, adds the chain's cancellation boundary: `packages/core/tests/cancellation.test.ts` shows that a caller signal already aborted at entry loads no plugin at all, that a loader already in flight settles and its middleware is skipped, and that a wrapping middleware reads `'cancelled'` from its own `next()`. Both example applications install a plugin through `plugins` and public APIs alone.
+- 2026-09-14: The view registry contract in [Views](../core.md#views) narrows the per-invocation cost promise, binding when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted. An installed plugin's middleware module still loads only when the chain reaches it. Its entry module and the declarations it imports, declared views and their default functions included, load at install whatever the invocation.
