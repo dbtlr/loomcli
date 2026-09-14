@@ -9,7 +9,7 @@ const source = new URL('../src/', import.meta.url);
  * `extension.ts` reads a stored output back from the record the graph keys by string identity,
  * after the descriptor that produced it has been compared by reference.
  */
-const allowed = { 'command.ts': 1, 'extension.ts': 1, 'validation.ts': 1 };
+const allowed = { 'command.ts': 1, 'extension.ts': 1, 'style.ts': 1, 'validation.ts': 1 };
 
 /**
  * Any lint disable that would let an unsafe assertion through: one that names the rule, or one

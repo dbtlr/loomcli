@@ -1,10 +1,10 @@
 ---
-description: Complete proposed core glyph inventory, with the pinned Inquirer main and compatibility forms and Loom semantic aliases.
+description: Complete core glyph inventory, with the pinned Inquirer main and compatibility forms and Loom semantic aliases.
 ---
 
 # Glyph reference
 
-This catalog belongs to the [proposed style contract](core.md#styles-and-rendering-policy-proposed).
+This catalog belongs to the [style contract](core.md#styles-and-rendering-policy).
 Core exposes every name below as an unstyled marked string under `glyph`.
 Compatibility forms are not restricted to ASCII. Glyphs never select a theme token.
 

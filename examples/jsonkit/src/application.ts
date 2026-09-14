@@ -1,6 +1,12 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
-import { Application, InputError, renderFailure, UnknownCommandError } from '@loomcli/core';
+import {
+  Application,
+  FatalError,
+  InputError,
+  renderFailure,
+  UnknownCommandError,
+} from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
@@ -13,7 +19,7 @@ import { fetch } from './commands/fetch.js';
 import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { select } from './commands/select.js';
-import { inputProblems, unknownCommand } from './failures.js';
+import { fatalError, inputProblems, unknownCommand } from './failures.js';
 import { fileOrStdin } from './file-or-stdin.js';
 
 // The root action type-imports this value, so it is registered by the last call.
@@ -29,9 +35,8 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  // The two failures an operator meets most carry this application's own wording.
-  // Every other class keeps core's text.
   failures: [
+    renderFailure(FatalError, fatalError),
     renderFailure(InputError, inputProblems),
     renderFailure(UnknownCommandError, unknownCommand),
   ],

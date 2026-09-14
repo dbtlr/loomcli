@@ -1,5 +1,11 @@
 import { issuePath } from '@loomcli/core';
-import type { InputError, InputProblem, Renderer, UnknownCommandError } from '@loomcli/core';
+import type {
+  FatalError,
+  InputError,
+  InputProblem,
+  Renderer,
+  UnknownCommandError,
+} from '@loomcli/core';
 
 /** Every diagnostic this application writes names the application first. */
 const NAME = 'jsonkit';
@@ -30,17 +36,22 @@ function describe(problem: InputProblem): string[] {
  * every byte core writes, so the joined lines end in the trailing newline core no longer adds.
  */
 export const inputProblems: Renderer<InputError> = {
-  render: (failure) => `${failure.problems.flatMap(describe).join('\n')}\n`,
+  render: (failure, { style }) =>
+    `${style.escape(failure.problems.flatMap(describe).join('\n'))}\n`,
 };
 
 export const unknownCommand: Renderer<UnknownCommandError> = {
-  render: (failure) => {
+  render: (failure, { style }) => {
     const named = `unknown command "${failure.token}"`;
     const [first] = failure.candidates;
     // A parent whose children are all hidden offers no candidate.
     // The line then ends after its first clause rather than pointing at an empty list.
     const line =
       first === undefined ? `${named}.` : `${named}; try ${failure.candidates.join(', ')}.`;
-    return `${branded(line)}\n`;
+    return `${style.escape(branded(line))}\n`;
   },
+};
+
+export const fatalError: Renderer<FatalError> = {
+  render: (failure, { style }) => `${style.escape(failure.message)}\n`,
 };

@@ -21,7 +21,7 @@ test('unawaited writes finish in destination order before run resolves', () => {
 test('semantic output preserves whitespace and nonfatal errors do not change success', () => {
   expect(invoke(new URL('fixtures/output.mjs', import.meta.url), ['semantics'])).toEqual({
     status: 0,
-    stderr: 'info\nsuccess\nwarn\nerror\n',
+    stderr: 'ℹ info\n✔ success\n⚠ warn\n✘ error\n',
     stdout: '{"code":0,"events":[" \\ntext\\t\\n"],"listeners":0}\n',
   });
 });

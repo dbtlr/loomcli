@@ -14,6 +14,29 @@ const summary = [
   '',
 ].join('\n');
 
+test('jsonkit preserves JSON strings that resemble recognized style markup', () => {
+  const literal = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
+  const contents = JSON.stringify({ value: literal });
+  const result = invoke(main, ['get', 'value'], { input: contents });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: `${JSON.stringify(literal)}\n` });
+});
+
+test('jsonkit renders document error messages literally', () => {
+  const path = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
+  for (const command of ['get', 'keys']) {
+    expect(invoke(main, [command, path], { input: '{}' })).toEqual({
+      status: 1,
+      stderr: `Path not found: ${path}\n`,
+      stdout: '',
+    });
+  }
+  expect(invoke(main, ['keys', path], { input: JSON.stringify({ [path]: 1 }) })).toEqual({
+    status: 1,
+    stderr: `Expected an object at ${path}; found number\n`,
+    stdout: '',
+  });
+});
+
 test('jsonkit summarizes an object with one kind line per key', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json'], { cwd })).toEqual({

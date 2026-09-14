@@ -1,10 +1,10 @@
 ---
-description: Proposed internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, and deferred padding.
+description: Internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, and deferred padding.
 ---
 
 # Marked-string wire contract
 
-This is the internal representation behind the [proposed style API](core.md#styles-and-rendering-policy-proposed).
+This is the internal representation behind the [style API](core.md#styles-and-rendering-policy).
 It is an implementation contract, not an authoring API or a format for persistent storage.
 SDK authors use the helpers and keep ordinary strings. They do not construct headers.
 
@@ -112,7 +112,10 @@ It treats CRLF as one line break. LF starts a new line; a lone CR is a cursor co
 Tabs remain text except inside a padding frame, where they expand under the tab rule before alignment.
 
 The parser scans each input segment once. A rejected header cannot trigger rescans from every embedded opening delimiter.
-Output allocation is proportional to input and requested padding, with no implicit small limit on valid strings.
+Emitted output is proportional to input and requested padding, with no implicit small limit on valid strings.
+Deep padding around unchanged content reuses its Unicode analysis. Arbitrary nested padding that changes its content at every level can require quadratic measurement work and transient allocation, including repeated appends of combining marks.
+Eliminating that pathological cost is a separate performance increment. The current resolver does not promise linear work for every nested composition.
+Run `node packages/core/tests/fixtures/padding-growth.mjs concatenated` after building to reproduce it; `unchanged` exercises cached wrappers.
 Numeric validation prevents negative, fractional, infinite, and unsafe widths before a padding frame is produced.
 Allocation failure follows the ordinary renderer failure path; core does not silently truncate output.
 
@@ -126,8 +129,8 @@ Implementation acceptance includes these cases through both width measurement an
 - A known token without a mapping, a custom undefined mapping, and a literal string resembling a complete registered frame.
 - Nested styles, reset variants, embedded ANSI resets, and an ANSI reset inside a padded frame.
 - A multi-character compatibility glyph inside nested padding and escaped delimiters inside a measured value.
-- Large malformed headers and deep valid nesting, without recursive-stack failure or quadratic rescanning.
+- Large malformed headers without quadratic header rescanning, and deep unchanged padding without recursive-stack failure or repeated Unicode analysis.
 - Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked formatting.
 - Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames, under disabled styling policies.
 
-These constructions are obligations for implementation. This document does not claim that a resolver currently passes them.
+Public process fixtures in `packages/core/tests/style.test.ts` exercise these constructions on Node and Bun.

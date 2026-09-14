@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-The [style contract](#styles-and-rendering-policy-proposed) records the proposed rendering additions. Those APIs are not implemented in the current package. The other implementation sections continue to describe the shipped SDK.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The named Loom palette, view registry, and results lane remain separate proposed increments.
 
 ## Application declarations
 
@@ -13,6 +13,7 @@ The [style contract](#styles-and-rendering-policy-proposed) records the proposed
 ```ts
 interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   plugins?: Plugins;
+  rendering?: RenderingPolicy;
   failures?: readonly FailureRenderer[];
   description?: string;
   version?: string;
@@ -657,7 +658,7 @@ Each invocation follows this order:
 
 Error precedence follows these phases. A global structure error comes before a routing error, a routing error comes before a local structure error, and a local structure error comes before a schema issue. Unknown-command, missing-value, repetition, and unexpected-argument diagnostics return code 2.
 
-An action receives `{ args, options, passthrough, out, host, signal }`. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals.
+An action receives `{ args, options, passthrough, out, host, signal, style }`. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals.
 
 The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()`, consume stdin, or track unrelated background work. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
 
@@ -668,6 +669,7 @@ The application can run again. Each call captures host facts and builds from its
 | Field              | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |
 | `argv`             | Application tokens without the runtime and script prefix      |
+| `platform`         | Captured process platform string, such as `linux` or `win32` |
 | `cwd`              | Working directory                                             |
 | `env`              | Map of environment names to strings or `undefined`            |
 | `stdin`            | Node `Readable` connection                                    |
@@ -694,7 +696,7 @@ The public declarations include Node stream types. The package supplies their ty
 | `out.render(data, renderer)` | stdout              | `Promise<void>` |
 | `out.fatal(message)`         | Failure path        | `never`         |
 
-Messages are strings. The five semantic methods append one newline and preserve all supplied whitespace. Semantic method identity remains distinct inside core. `out.render` is the neutral presentation call, and [Rendered output](#rendered-output) describes it.
+Messages are marked strings. The five semantic methods resolve markup and append one newline. `print` has no prefix. The other methods add their matching glyph and one space, and indent continuation lines by the selected glyph width plus one. They do not repeat the glyph. Semantic method identity remains distinct inside core. `out.render` is the neutral presentation call, and [Rendered output](#rendered-output) describes it.
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. Catching that rejection does not make the invocation successful.
 
@@ -708,11 +710,11 @@ A broken output pipe returns code 1 through the failure path below.
 
 ```ts
 interface Renderer<Data> {
-  render: (data: Readonly<Data>) => string;
+  render: (data: Readonly<Data>, context: RendererContext) => string;
 }
 ```
 
-`out.render(data, renderer)` writes the renderer's text to stdout. A renderer turns one value into the exact bytes core writes, the trailing newline included: core appends nothing and strips nothing. It is synchronous and pure. It receives the value alone, returns a string, and holds no output handle, so an application owns its presentation without owning the destination.
+`out.render(data, renderer)` resolves the renderer's marked text for stdout, then writes it without adding a newline. A renderer is synchronous and pure. Its second argument is an immutable context with `style` and `width(text)`. It holds no output handle. Existing one-argument renderers remain valid. Escape raw data with `style.escape()` before interpolating it into authored text.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -724,7 +726,7 @@ interface Row {
 }
 
 const table: Renderer<readonly Row[]> = {
-  render: (rows) => rows.map((row) => `${String(row.count)}  ${row.source}\n`).join(''),
+  render: (rows, { style }) => rows.map((row) => `${String(row.count)}  ${style.escape(row.source)}\n`).join(''),
 };
 
 const app = new Application('counts')
@@ -808,9 +810,23 @@ export const jsonkit = new Application('jsonkit', {
 }).action(summarize);
 ```
 
-The renderer receives the failure instance and returns the diagnostic core writes to stderr. Like `out.render`, the renderer owns every byte core writes, the trailing newline included: core appends nothing and strips nothing. A working renderer cannot change the exit code, which is a fact of the class. A renderer that throws or returns a non-string is itself an internal failure, so that invocation returns 1 whichever code the original failure carried, except in a cancelled run, which keeps its signal's code under [Signals and cancellation](#signals-and-cancellation) and reports the renderer fault as text.
+The renderer receives the failure instance and the stderr rendering context. It returns marked text that core resolves for stderr without adding a newline. Core's default diagnostics escape raw facts; `FatalError` retains the authored marked message supplied to `out.fatal()`. A working renderer cannot change the exit code, which is a fact of the class. A renderer that throws or returns a non-string is itself an internal failure, so that invocation returns 1 whichever code the original failure carried, except in a cancelled run, which keeps its signal's code under [Signals and cancellation](#signals-and-cancellation) and reports the renderer fault as text.
 
 Resolution walks the thrown failure's prototype chain, most derived first, through the application's registrations, then through each installed plugin's registrations in installation order, and falls to core's default text when none answers. A registration for `UsageError` therefore brands every exit-2 failure at once, and a registration for a `FatalError` subclass beats one for `FatalError`. `DeclarationError` and `InternalError` reach registered renderers too, because an author-facing diagnostic is still output the application owns. Two registrations for one class by one contributor are a `DeclarationError` at build, reported through core's default rendering; the same class registered by the application and a plugin, or by two plugins, resolves first-in-wins, as [Failure renderers from plugins](#failure-renderers-from-plugins) describes.
+
+An application can treat fatal messages as literal error text with one renderer:
+
+```ts
+import { Application, FatalError, renderFailure } from '@loomcli/core';
+
+const app = new Application('reader', {
+  failures: [renderFailure(FatalError, {
+    render: (failure, { style }) => `${style.escape(failure.message)}\n`,
+  })],
+});
+```
+
+Its actions call `out.fatal(message)`, and its helpers throw `new FatalError(message)`. Both pass unescaped messages. The renderer escapes once, so helpers need no output or style context. Jsonkit and textstat use this pattern. The registration applies to those applications; core's default `FatalError` renderer still accepts authored marked text.
 
 ### Failure contract
 
@@ -851,10 +867,11 @@ The last row is an unregistered class inside an application that registers other
 
 Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds declarations alone: the options it contributes, one middleware with its activation and a loader, the extensions it defines, the failure renderers it registers, and one optional claim on the signals slot. The value performs no work when it is created and no work when it is installed. An installed plugin costs one small module on an invocation that never reaches it.
 
-This interface describes the implemented SDK. The [proposed `PluginDefinition.theme` field](#proposed-plugindefinitiontheme-field) extends it in the style implementation increment.
+The optional [theme contribution](#plugindefinitiontheme-field) claims the single theme slot.
 
 ```ts
-interface PluginDefinition<Options extends PluginOptions> {
+interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
+  theme?: Theme & ThemeConstraint<Theme>;
   options?: Options;
   middleware?: {
     activate: 'always' | readonly (keyof Options & string)[];
@@ -1299,9 +1316,9 @@ The deprecated child `fetch` carries its message as the last fact of its row, an
 
 The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, `jsonkit fetch --help` prints the deprecated page and `jsonkit debug --help` the hidden one, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
 
-## Styles and rendering policy (proposed)
+## Styles and rendering policy
 
-This section is the contract for the next rendering increment. Its helpers, theme factories, context additions, and rendering options are not yet exported. The current [rendered output](#rendered-output) and [Host](#host) sections remain the implemented baseline until this increment lands. [ADR-0022](decisions/0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records the changes to that baseline.
+Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named `loomTheme` palette remains proposed under ADR-0022.
 
 ### Strings and composition
 
@@ -1372,15 +1389,15 @@ Three scoped resets are chainable:
 
 The core semantic names are `dim`, `primary`, `highlight`, `success`, `warning`, `error`, and `info`. These are names, not built-in appearances.
 
-The plugin pack exposes two factories from `@loomcli/plugins/theme`:
+The plugin pack exports the bare `theme(mapping)` factory from `@loomcli/plugins/theme`:
 
 ```ts
 import { Application, style } from '@loomcli/core';
-import { theme, loomTheme } from '@loomcli/plugins/theme';
+import { theme } from '@loomcli/plugins/theme';
 
 const app = new Application('example', {
 	plugins: [
-		loomTheme({
+		theme({
 			highlight: style.yellow.bold,
 			identifier: style.cyan,
 		}),
@@ -1388,17 +1405,19 @@ const app = new Application('example', {
 });
 ```
 
-`theme(mapping)` supplies a bare theme with exactly the mappings provided. `loomTheme(overrides?)` supplies Loom's seven default mappings and accepts partial overrides. These are two constructors for the pack's theme plugin, whose identity is `@loomcli/plugins/theme`. Importing either installs nothing. The named palette's exact visual values belong to the Loom theme increment; this contract fixes how named palettes behave.
+`theme(mapping)` supplies exactly the mappings provided. Its plugin identity is `@loomcli/plugins/theme`. Importing it installs nothing.
 
-#### Proposed `PluginDefinition.theme` field
+The proposed `loomTheme(overrides?)` factory is not exported yet. It will supply Loom's seven default mappings and accept partial overrides. A supplied override will replace the complete token mapping; an omitted or undefined override will retain the named default. Its palette belongs to the named Loom theme increment.
 
-The proposed contract extends the [implemented `PluginDefinition`](#plugins) with this field:
+#### `PluginDefinition.theme` field
+
+A [PluginDefinition](#plugins) can contribute this field:
 
 | Field | Required | Value |
 | --- | --- | --- |
 | `theme` | No | A readonly mapping from semantic names to unapplied concrete style chains or `undefined`, retaining its literal keys through the returned plugin type. |
 
-This field and the example below are not yet implemented or exported. Supplying the field claims the theme slot, including an empty mapping. Both pack factories use this field; third-party themes use their own plugin identities:
+Supplying the field claims the theme slot, including an empty mapping. The pack factory uses this field; third-party themes use their own plugin identities:
 
 ```ts
 import { plugin, style } from '@loomcli/core';
@@ -1415,7 +1434,7 @@ The contribution retains its literal keys in the returned plugin type and throug
 
 One Application installs at most one theme plugin. A second claim on the theme slot is a build-time `DeclarationError` that names both claimants. Zero themes is valid. Without a mapping, semantic tokens inherit their enclosing style; direct colors and modifiers still work under rendering policy.
 
-A supplied token mapping replaces its entire named-theme default. It does not merge individual attributes. An omitted or undefined override retains the named theme's mapping. In a bare theme, an omitted or undefined mapping contributes no style. An explicitly declared custom key with an undefined value still introduces that name.
+In a bare theme, an omitted or undefined mapping contributes no style. An explicitly declared custom key with an undefined value still introduces that name.
 
 Mapping values are unapplied concrete style chains: named terminal colors, modifiers, resets, custom colors, or their combinations. A mapping cannot reference any semantic token, including a core token. For example, `highlight: style.info.bold` fails the type contract. Shared concrete chain constants are valid. Build repeats these checks for JavaScript declarations.
 
@@ -1423,9 +1442,21 @@ The mapping's custom keys introduce one flat semantic vocabulary for the Applica
 
 The Application derives this vocabulary from its installed theme and publishes it through one Application-owned type registration. Independently authored Commands, extracted action handlers, and `Renderer<Data>` values receive those names automatically. A misspelled name fails compilation. There is no per-Command theme argument, manual token generic, or Application-owned Command factory.
 
-The prerequisite is automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. ADR-0024 supplies this registration API and its compatibility checks. Style implementation can derive its contribution types from that environment; theme configuration and rendering contexts remain part of the style increment.
+Custom names use automatic Application environment registration. It registers a shallow configuration type rather than a completed command tree, avoiding a circular dependency through handlers. One compilation context has one default registration; reusable libraries express their requirements without registering a consumer's Application. ADR-0026 supplies this registration API and its compatibility checks. Style derives custom names from the installed plugins in that environment, including when ordinary plugins accompany the theme.
 
 Core supplies `style` on the action context and in the second renderer argument. The imported `style` supplies concrete styles and core semantic names; theme authoring needs no Application instance.
+
+Actions use the supplied `style` to access the installed theme's custom names. Pass that style to helpers that compose action output.
+
+```ts
+import { Command } from '@loomcli/core';
+
+export const show = new Command('show')
+	.argument('name', { required: true })
+	.action(({ args, out, style }) => out.print(style.identifier(style.escape(args.name))));
+```
+
+This action belongs to the Application compilation context that declares `identifier`, as does the renderer below.
 
 ```ts
 import type { Renderer } from '@loomcli/core';
@@ -1528,9 +1559,11 @@ Core discards an incomplete ANSI sequence at the end of each rendered string, in
 
 ### Width, padding, and multiline lanes
 
-The renderer context supplies `width(text): number`. It resolves glyph forms for that destination, ignores styling and hyperlink envelopes, and counts Unicode terminal columns. Combining marks add no column; wide characters occupy two. Emoji sequences follow the selected Unicode width implementation. Ambiguous-width characters count as one column. The implementation must use one established width algorithm for both measurement and padding, with its Unicode data version pinned by the lockfile. It does not promise identical font rendering in every terminal.
+The renderer context supplies `width(text): number`. It resolves glyph forms for that destination, ignores styling and hyperlink envelopes, and counts Unicode terminal columns. Combining marks add no column; wide characters occupy two. Emoji sequences follow the selected Unicode width implementation. Ambiguous-width characters count as one column. Measurement and padding use `@rockorager/uucode` 2.2.1 with bundled Unicode 17 data, pinned in the manifest and lockfile. It does not promise identical font rendering in every terminal.
 
 `width()` returns the widest line's width. Tabs advance to the next multiple of eight columns, starting each input line at column zero. Thus `width('a\tb')` is 9. CRLF is one line break; LF is a line break. Preserved cursor operations do not turn width measurement into a terminal emulator.
+
+Deep padding around unchanged content reuses measurement. Nested padding that changes the content at every level can still require quadratic Unicode measurement, such as appending one combining mark per level. This pathological optimization is deferred; the [wire contract](style-wire.md#resolution) includes a reproducible probe.
 
 `pad(text, minimumWidth, options?)` returns a marked string. `options.align` is `'left'`, `'right'`, or `'center'`, defaulting to `'left'`. Padding uses spaces only. It supplies a minimum width, never truncates text, and puts an odd extra space on the right for center alignment. Width arguments are nonnegative safe integers.
 
@@ -1544,13 +1577,13 @@ These produce five spaces after `cat`, five spaces before it, or two before and 
 
 Padding applies to each line independently and preserves line breaks. A trailing newline does not create a padded extra empty line. Interior blank lines are lines and receive the requested padding. For example, `pad('cat\ndog', 5)` resolves to `cat  \ndog  `, while `pad('cat\n', 5)` resolves to `cat  \n`. CRLF remains CRLF. The empty string has width zero; padding it produces the requested number of spaces.
 
-Lane renderers receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane renderer owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. A continuation line need not repeat the glyph. The semantic methods retain their string-only call shape and newline contract; registry registration and replaceability belong to the view-registry increment.
+Lane renderers receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane renderer owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. Continuation lines use spaces for that gutter without repeating the glyph. `print` remains prefix-free. The semantic methods retain their string-only call shape and newline contract; registry registration and replaceability belong to the view-registry increment.
 
 ### Implementation acceptance
 
-The style implementation must prove the following through public APIs and packed declarations:
+The style tests and packed consumers cover these obligations:
 
-- Chaining, nesting, each reset, whole-token replacement, no-theme inheritance, and rejection of token references in theme mappings.
+- Chaining, nesting, each reset, no-theme inheritance, and rejection of token references in theme mappings.
 - Every foreground, background, modifier, and custom-color helper, including invalid arguments and capability degradation.
 - The complete pinned glyph catalog, semantic aliases, multi-character compatibility forms, and independence from themes and ANSI policy.
 - Automatic custom-name inference in detached Commands and renderers after the registration prerequisite, with typo and reserved-name rejection.
@@ -1559,4 +1592,4 @@ The style implementation must prove the following through public APIs and packed
 - Literal marker data, nested deferred padding, Unicode width, tabs, multiline strings, and the adversarial cases in the wire contract.
 - Fresh host capture on repeated runs, no import-time capability capture, and equivalent output under Node and Bun.
 
-The contract review checks these obligations before implementation. It does not replace the implementation evidence or certify Windows support.
+Process fixtures run on Node and Bun. Captured Windows facts test glyph selection; these fixtures do not certify native Windows support. Named-theme whole-token replacement belongs to the separate palette increment.

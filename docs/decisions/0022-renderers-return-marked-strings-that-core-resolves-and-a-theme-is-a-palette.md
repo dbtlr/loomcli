@@ -29,7 +29,7 @@ Application and invocation options contain `rendering`. One policy covers both s
 
 Explicit policy takes precedence over environment defaults. Nonempty `FORCE_COLOR` wins over nonempty `NO_COLOR`; either treats `"0"` as nonempty. Numeric forcing values do not select color depth. `NO_COLOR` suppresses foreground and background colors, including embedded ANSI colors, without removing modifiers or hyperlinks. General terminal controls and hyperlinks have independently configurable policies. ANSI resets restore enclosing Loom styles instead of breaking composition.
 
-The [core reference](../core.md#styles-and-rendering-policy-proposed) defines the inventories, public syntax, detection rules, degradation, and acceptance cases. A lane renderer receives the original message string and owns its gutter and continuation layout. No structured multiline message type is introduced.
+The [core reference](../core.md#styles-and-rendering-policy) defines the inventories, public syntax, detection rules, degradation, and acceptance cases. A lane renderer receives the original message string and owns its gutter and continuation layout. No structured multiline message type is introduced.
 
 ## Considered options
 
@@ -61,3 +61,5 @@ The view registry and results lane remain separate increments under ADR-0021 and
 
 - 2026-09-11: Recorded the initial proposed marked-string and theme-palette direction.
 - 2026-09-12: Replaced the initial proposal with the style contract. Tokens can combine colors and modifiers; themes use flat inferred names; glyphs are independent and retain upstream compatibility forms. Added ordinary-string composition, explicit escaping, scoped resets, destination-aware width, deferred padding, embedded ANSI handling, and configurable rendering policies. Removed the paired-token, strict-ASCII, descriptor-group, and mandatory automatic-escaping proposals. Recorded the pending replacements of the affected ADR-0008 and ADR-0020 clauses and the separate prerequisite for automatic Application type propagation.
+
+- 2026-09-13: [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) accepts the implemented resolver and exclusive theme seam independently. It replaces the affected ADR-0008 and ADR-0020 clauses now. This proposal retains the named `loomTheme` palette and its acceptance gate.

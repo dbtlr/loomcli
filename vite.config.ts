@@ -178,6 +178,22 @@ export default defineConfig({
           'vitest/require-top-level-describe': 'off',
         },
       },
+      {
+        files: [
+          'packages/core/src/style*.ts',
+          'packages/core/src/rendering.ts',
+          'packages/core/src/theme.ts',
+        ],
+        // ANSI codes, palette indices, framing, and tab stops are protocol constants.
+        // Keep scanners and their ordered state transitions together.
+        rules: {
+          'eslint/max-statements': 'off',
+          'eslint/no-continue': 'off',
+          'eslint/no-magic-numbers': 'off',
+          'eslint/no-nested-ternary': 'off',
+          'typescript/consistent-indexed-object-style': 'off',
+        },
+      },
     ],
     plugins: ['typescript', 'import', 'eslint', 'unicorn', 'oxc', 'promise', 'node'],
     rules: {

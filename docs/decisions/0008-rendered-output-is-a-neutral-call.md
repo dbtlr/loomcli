@@ -31,3 +31,5 @@ Formatters, tables, and terminal styling live in the application or in future pl
 ## Changelog
 
 - 2026-09-12: Proposed [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records the replacement of the value-only renderer input, exact-byte output, and styling-outside-core clauses. Once accepted, core supplies an immutable renderer context and resolves marked text and embedded ANSI policy before writing. Renderer purity, neutral output, newline ownership, ordering, and failure behavior remain. This record binds as written until that transition.
+
+- 2026-09-13: Accepted [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) supersedes the renderer-context, exact-byte, and styling-ownership clauses of ADR-0008 and the no-exclusive-theme-slot clause of ADR-0020. All other clauses remain in force.

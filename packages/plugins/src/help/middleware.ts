@@ -1,3 +1,4 @@
+import { style } from '@loomcli/core';
 import type { Middleware } from '@loomcli/core';
 
 import { renderPage } from './page.js';
@@ -9,6 +10,6 @@ import type { help } from './plugin.js';
  * line terminator of its own, so stdout ends with the one newline `out.print` appends.
  */
 const middleware: Middleware<typeof help> = ({ command, graph, out }) =>
-  out.print(renderPage(graph, command));
+  out.print(style.escape(renderPage(graph, command)));
 
 export default middleware;

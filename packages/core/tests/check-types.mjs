@@ -47,6 +47,7 @@ const projects = [
   'library',
   '.',
   'registered',
+  'styles',
   'spellings',
   'states',
   'nested-states',

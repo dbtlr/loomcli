@@ -8,6 +8,7 @@ import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
+import type { ContextualStyle } from './style.js';
 import type { Host, Out } from './types.js';
 import type { DefaultValues, OptionInput } from './validation.js';
 
@@ -156,6 +157,7 @@ interface EntryState {
 
 /** Everything one invocation needs after its graph is built and its defaults are validated. */
 interface Invocation {
+  style: ContextualStyle;
   defaults: DefaultValues;
   facts: { description: string | undefined; version: string };
   graph: BuiltGraph;
