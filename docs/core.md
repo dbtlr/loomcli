@@ -1432,6 +1432,18 @@ Custom names use automatic Application environment registration. It registers a 
 
 Core supplies `style` on the action context and in the second renderer argument. The imported `style` supplies concrete styles and core semantic names; theme authoring needs no Application instance.
 
+Actions use the supplied `style` to access the installed theme's custom names. Pass that style to helpers that compose action output.
+
+```ts
+import { Command } from '@loomcli/core';
+
+export const show = new Command('show')
+	.argument('name', { required: true })
+	.action(({ args, out, style }) => out.print(style.identifier(style.escape(args.name))));
+```
+
+This action belongs to the Application compilation context that declares `identifier`, as does the renderer below.
+
 ```ts
 import type { Renderer } from '@loomcli/core';
 

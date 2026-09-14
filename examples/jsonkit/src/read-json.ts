@@ -3,8 +3,7 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
-import { style } from '@loomcli/core';
-import type { Host, Out } from '@loomcli/core';
+import type { ActionContext, Host } from '@loomcli/core';
 
 /** One document source: the subject each failure names, and the connection it reads. */
 interface Source {
@@ -36,7 +35,10 @@ function select(file: string | undefined, host: Host): Source {
 }
 
 /** Every action reads its document here, so read and parse failures read the same everywhere. */
-export async function readJson(file: string | undefined, host: Host, out: Out): Promise<unknown> {
+export async function readJson(
+  file: string | undefined,
+  { host, out, style }: Pick<ActionContext<unknown>, 'host' | 'out' | 'style'>,
+): Promise<unknown> {
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) =>
     out.fatal(

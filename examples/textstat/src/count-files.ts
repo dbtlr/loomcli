@@ -2,8 +2,7 @@ import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
-import { style } from '@loomcli/core';
-import type { ActionHandler, ActionOptions, Host, Out } from '@loomcli/core';
+import type { ActionContext, ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
@@ -62,7 +61,7 @@ interface Counted {
 async function countAll(
   options: ActionOptions<typeof textstat>,
   selected: readonly Source[],
-  out: Out,
+  { out, style }: Pick<ActionContext<unknown>, 'out' | 'style'>,
 ): Promise<Counted> {
   const rows: Row[] = [];
   const minimum = threshold(options);
@@ -81,9 +80,15 @@ async function countAll(
 }
 
 /** The whole table is rendered at once, and the hidden timing line follows it on stderr. */
-export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
+export const countFiles: ActionHandler<typeof textstat> = async ({
+  args,
+  options,
+  host,
+  out,
+  style,
+}) => {
   const started = performance.now();
-  const counted = await countAll(options, sources(args.files, host), out);
+  const counted = await countAll(options, sources(args.files, host), { out, style });
   await out.render(
     {
       metric: options.metric,
