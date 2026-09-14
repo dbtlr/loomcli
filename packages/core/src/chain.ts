@@ -167,6 +167,8 @@ interface Invocation {
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
+  /** The routed path, published where routing resolved it, which output names in its own line. */
+  route: (path: readonly string[]) => void;
   signal: AbortSignal;
 }
 
@@ -399,6 +401,7 @@ async function runChain(
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = routeInvocation(invocation.graph, invocation.host.argv);
+  invocation.route(routed.path);
   const entries = activatedEntries(invocation.plugins, routed.scan);
   const raised = await runChain(invocation, routed, entries);
   if (raised) {

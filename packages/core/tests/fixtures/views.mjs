@@ -18,6 +18,12 @@ const page = view('@fixture/page', { render: (data) => `page: ${data.title}\n` }
 /** A second object under the declared identity, which is what a second package copy looks like. */
 const copy = view('@fixture/page', { render: (data) => `copy: ${data.title}\n` });
 
+/** The row view one plugin declares, which an application replaces by reference like any other. */
+const records = view('@fixture/records', {
+  head: () => 'ROWS\n',
+  row: (row, index) => `${index}: ${row.title}\n`,
+});
+
 /** A view no installed plugin declares, so an override for it applies where it is rendered. */
 const detached = view('@fixture/detached', { render: (data) => `detached: ${data.title}\n` });
 
@@ -40,6 +46,13 @@ const dispatch = ({ out }) => out.print('dispatched');
 /** The plugin that declares the page, under the overrides one scenario hands it. */
 function declaring(views = []) {
   return plugin('@fixture/pages', { views: [page, ...views] });
+}
+
+/** An application that renders a sequence through the row view a scenario hands it. */
+function streaming(views, plugins = []) {
+  return new Application('views', { plugins, views }).action(({ out }) =>
+    out.render([{ title: 'one' }, { title: 'two' }], records),
+  );
 }
 
 /** An application that renders one value through the view a scenario hands it. */
@@ -76,6 +89,14 @@ function build() {
     case 'shared-key': {
       const plugins = [declaring([override(page, branded('plugin'))])];
       return rendering(page, [override(page, branded('app'))], plugins);
+    }
+    case 'row-declared': {
+      return streaming([], [plugin('@fixture/records', { views: [records] })]);
+    }
+    case 'row-override': {
+      const rows = plugin('@fixture/records', { views: [records] });
+      const replacement = override(records, { row: (row) => `app: ${row.title}\n` });
+      return streaming([replacement], [rows]);
     }
     case 'inert': {
       return failing([override(detached, branded('app'))]);

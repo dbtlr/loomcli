@@ -338,6 +338,8 @@ class ApplicationBuilder<
     let registry: ViewRegistry | undefined = undefined;
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
+    // The failure this run reports as its primary outcome, so nothing reports it a second time.
+    let primary: unknown = undefined;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -361,7 +363,7 @@ class ApplicationBuilder<
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
-        const invocationOutput = new Output(host);
+        const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
         // The policy is read inside the build, after the application's own overrides are published.
         // A faulty rendering declaration then reports through the view the application listed.
@@ -402,6 +404,9 @@ class ApplicationBuilder<
             out: output.out,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
+            route: (path) => {
+              invocationOutput.useRoute(path);
+            },
             signal: controller.signal,
             style: output.style,
           });
@@ -415,10 +420,11 @@ class ApplicationBuilder<
           throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
         }
       } catch (error) {
+        primary = error;
         try {
           const failure = toFailure(error);
           code = failure.exitCode;
-          output ??= new Output(captureHost(undefined, stderr));
+          output ??= new Output(captureHost(undefined, stderr), controller.signal);
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             const report = describeFailure(registry ?? noViews, failure, output.context('stderr'));
@@ -437,6 +443,16 @@ class ApplicationBuilder<
         } catch {
           code = 1;
           reportingFailed = true;
+        }
+      }
+      /**
+       * A sequence that stopped on its own source reports the same way: the call the action never
+       * awaited observed nothing, and a failure the action let propagate is the primary outcome
+       * already, so the one it raised is not reported twice.
+       */
+      for (const cause of output?.stopped ?? []) {
+        if (cause !== primary) {
+          faults.push(toFailure(cause));
         }
       }
       // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.

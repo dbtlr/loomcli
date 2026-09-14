@@ -2,15 +2,16 @@ import type { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
 import { FatalError, notTextReason } from './errors.js';
-import { lanes } from './lanes.js';
-import type { Lane } from './lanes.js';
+import { incompleteResult, lanes } from './lanes.js';
+import type { IncompleteResult, Lane } from './lanes.js';
 import { capabilities } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
+import { writeSequence } from './sequence.js';
 import { resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { createStyle, tokens } from './style.js';
-import type { Host, Out, View, ViewContext } from './types.js';
-import { resolveView } from './view.js';
+import type { Host, Out, RowView, View, ViewContext } from './types.js';
+import { resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 
 function stringValue(value: unknown): string {
@@ -24,6 +25,18 @@ type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;
+
+/** The two streams every write site names. */
+type Stream = 'stdout' | 'stderr';
+
+/** The opener a reservation holds until its own gate publishes the real one. */
+const unopened = (): void => undefined;
+
+/** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
+interface Reservation {
+  write: (text: string) => Promise<void>;
+  close: () => void;
+}
 
 class Destination {
   tail: Promise<void> = Promise.resolve();
@@ -40,15 +53,45 @@ class Destination {
   };
 
   write(text: string): Promise<void> {
-    const pending = this.tail.then(() => {
-      if (this.state.kind === 'failed') {
-        throw this.state.error;
-      }
-      return this.writeText(text);
-    });
+    const pending = this.tail.then(() => this.accept(text));
     // Keep the returned rejection observable, while accounting for calls without await.
     this.tail = pending.catch(this.onError);
     return pending;
+  }
+
+  /** One text queued behind whatever preceded it, on a destination that has not failed. */
+  private accept(text: string): Promise<void> {
+    if (this.state.kind === 'failed') {
+      throw this.state.error;
+    }
+    return this.writeText(text);
+  }
+
+  /**
+   * One place held in this destination's order from the moment a sequence is issued until it
+   * closes. Later calls queue behind the gate, so they write after the sequence's last piece
+   * whether or not their caller awaited the sequence, and the gate keeps the destination undrained
+   * while the sequence is live, which is what makes a pending sequence open output.
+   */
+  reserve(): Reservation {
+    const previous = this.tail;
+    let open: (pieces: Promise<void>) => void = unopened;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    this.tail = previous.then(() => gate);
+    // The sequence's own pieces queue on each other, ahead of the gate that holds its place.
+    let pieces = previous;
+    return {
+      close: () => {
+        open(pieces);
+      },
+      write: (text) => {
+        const pending = pieces.then(() => this.accept(text));
+        pieces = pending.catch(this.onError);
+        return pending;
+      },
+    };
   }
 
   private writeText(text: string): Promise<void> {
@@ -90,6 +133,13 @@ class Destination {
   }
 }
 
+/** The sentence one view value of the wrong shape reports, which is the fault of its call. */
+function shapeReason(both: boolean): string {
+  return both
+    ? 'The view carries render and row. Supply one of the two.'
+    : 'The view carries neither render nor row. Supply a view with render or a row view with row.';
+}
+
 /** The text a view produced, or the value that stands for its failure to produce text. */
 function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
   try {
@@ -103,6 +153,10 @@ function renderText(produce: () => unknown): { text: string } | { failed: unknow
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
   private renderFault: { cause: unknown } | undefined = undefined;
+  // Every source failure a sequence stopped on, reported after this invocation's primary outcome.
+  private readonly stops: unknown[] = [];
+  // The routed Command an incomplete sequence names, published once routing resolved it.
+  private route: readonly string[] = [];
   readonly out: Out;
 
   private palette: Palette = new Map();
@@ -111,7 +165,10 @@ export class Output {
   private registry: ViewRegistry = [];
   style = createStyle();
 
-  constructor(readonly host: Host) {
+  constructor(
+    readonly host: Host,
+    private readonly signal: AbortSignal,
+  ) {
     this.out = {
       error: (message) => this.emit('error', message),
       fatal: (message) => {
@@ -119,8 +176,10 @@ export class Output {
       },
       info: (message) => this.emit('info', message),
       print: (message) => this.emit('print', message),
-      render: <Data>(data: Data, value: View<Data>): Promise<void> =>
-        this.rendered(() => resolveView(this.registry, value)(data, this.context('stdout'))),
+      // The data type is erased here, as it is in the registry: one call dispatches on the shape of
+      // The view it was handed, and every view function reads its data back through its own key.
+      render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
+        this.renderValue(data, value),
       success: (message) => this.emit('success', message),
       warn: (message) => this.emit('warn', message),
     };
@@ -131,13 +190,23 @@ export class Output {
     this.registry = registry;
   }
 
+  /** The routed path, published once routing resolved it, which an incomplete sequence names. */
+  useRoute(path: readonly string[]): void {
+    this.route = path;
+  }
+
+  /** What a sequence's source failed with during this invocation, in the order they stopped. */
+  get stopped(): readonly unknown[] {
+    return this.stops;
+  }
+
   configure(policy: RenderingPolicy, palette: Palette): void {
     this.policy = policy;
     this.palette = palette;
     this.style = createStyle(new Set([...tokens, ...palette.keys()]));
   }
 
-  context(destination: 'stdout' | 'stderr'): ViewContext {
+  context(destination: Stream): ViewContext {
     const caps = capabilities(this.host, destination, this.policy);
     return Object.freeze({
       style: this.style,
@@ -171,13 +240,74 @@ export class Output {
   }
 
   /**
+   * One `out.render` call, dispatched on the shape of the view it was handed. The two shapes are
+   * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
+   * fault of this call and nothing is written for it.
+   */
+  private renderValue(data: never, value: View<never> | RowView<never>): Promise<void> {
+    const rows = typeof value.row === 'function';
+    if (rows === (typeof value.render === 'function')) {
+      return this.renderFailed(new Error(shapeReason(rows)));
+    }
+    if (typeof value.row === 'function') {
+      return this.sequence(data, value, 'stdout');
+    }
+    return this.rendered(() => resolveView(this.registry, value)(data, this.context('stdout')));
+  }
+
+  /**
+   * One sequence, which holds its place on the destination from here until its last piece is
+   * written. The returned rejection is observed here as well, because an action that never awaits
+   * the call must not end the process with an unhandled rejection.
+   */
+  private sequence(source: never, value: RowView<never>, destination: Stream): Promise<void> {
+    const place = this.destination(this.host[destination]).reserve();
+    const pending = writeSequence({
+      close: place.close,
+      context: this.context(destination),
+      incomplete: (facts) => {
+        this.incomplete(facts);
+      },
+      path: this.route,
+      piece: (produce) => this.rendered(produce, destination, place.write),
+      signal: this.signal,
+      source,
+      stopped: (cause) => {
+        this.stops.push(cause);
+      },
+      view: resolveRowView(this.registry, value),
+    });
+    void pending.catch(() => undefined);
+    return pending;
+  }
+
+  /**
+   * The line one incomplete sequence writes on stderr, ahead of the fault's own report. It resolves
+   * through the registry like any other rendered output, so an override that returns the empty
+   * string silences it and one that throws is a view fault. A stderr that has failed already takes
+   * the plain fallback path and no further.
+   */
+  private incomplete(facts: IncompleteResult): void {
+    const context = this.context('stderr');
+    if (this.destinations.get(this.host.stderr)?.state.kind === 'failed') {
+      void reportPlainly(this.host.stderr, incompleteResult.render(facts, context));
+      return;
+    }
+    void this.rendered(
+      () => resolveView(this.registry, incompleteResult)(facts, context),
+      'stderr',
+    ).catch(() => undefined);
+  }
+
+  /**
    * The write site owns its newline; core resolves the view's marked text before queuing it. A
    * throw or a non-string return rejects this call alone: nothing is written for it, later output
    * still writes, and the recorded cause ends the invocation once the action has completed.
    */
   private rendered(
     produce: () => unknown,
-    destination: 'stdout' | 'stderr' = 'stdout',
+    destination: Stream = 'stdout',
+    write?: (text: string) => Promise<void>,
   ): Promise<void> {
     const rendered = renderText(() =>
       resolveText(
@@ -186,9 +316,10 @@ export class Output {
         capabilities(this.host, destination, this.policy),
       ),
     );
-    return 'text' in rendered
-      ? this.write(this.host[destination], rendered.text)
-      : this.renderFailed(rendered.failed);
+    if (!('text' in rendered)) {
+      return this.renderFailed(rendered.failed);
+    }
+    return write ? write(rendered.text) : this.write(this.host[destination], rendered.text);
   }
 
   /**
@@ -208,13 +339,18 @@ export class Output {
     return this.renderFault;
   }
 
-  private write(stream: Writable, text: string): Promise<void> {
+  /** The queue one stream writes through, opened the first time this invocation reaches it. */
+  private destination(stream: Writable): Destination {
     let destination = this.destinations.get(stream);
     if (!destination) {
       destination = new Destination(stream);
       this.destinations.set(stream, destination);
     }
-    return destination.write(text);
+    return destination;
+  }
+
+  private write(stream: Writable, text: string): Promise<void> {
+    return this.destination(stream).write(text);
   }
 
   async settle(): Promise<WriteState> {

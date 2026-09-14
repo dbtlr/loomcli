@@ -18,7 +18,7 @@ export {
   UsageError,
 } from './errors.js';
 export { extension, readExtension } from './extension.js';
-export { lanes } from './lanes.js';
+export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
 export { glyph } from './glyphs.generated.js';
@@ -33,8 +33,10 @@ export type { InputProblem } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
+export type { IncompleteResult } from './lanes.js';
 export type {
   AnyDeclaredView,
+  DeclaredRowView,
   DeclaredView,
   DeclaredViewBrand,
   FailureClass,
@@ -69,6 +71,7 @@ export type {
   ScalarArgument,
   StringOption,
   SuppliedInputs,
+  RowView,
   ValidationContext,
   VariadicArgument,
   View,

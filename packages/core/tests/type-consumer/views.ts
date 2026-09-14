@@ -12,9 +12,11 @@ import {
 } from '@loomcli/core';
 import type {
   ApplicationOptions,
+  DeclaredRowView,
   DeclaredView,
   InputProblem,
   LoomError,
+  RowView,
   View,
   ViewOverride,
 } from '@loomcli/core';
@@ -29,16 +31,35 @@ const table: View<readonly Row[]> = {
 };
 const counts: View<number> = { render: (value) => String(value) };
 
+/** The row view shape: one function per row, and the two that open and close the sequence. */
+const lines: RowView<Row> = {
+  head: () => 'COUNT  SOURCE\n',
+  row: (row, index) => `${String(index)}  ${String(row.count)}  ${row.source}\n`,
+};
+
+/** An asynchronous source, which the sequence overload accepts beside a synchronous one. */
+async function* walk(): AsyncGenerator<Row> {
+  yield { count: 6, source: 'one.txt' };
+}
+
 new Application('render').action(async ({ out }) => {
   const rows: readonly Row[] = [{ count: 6, source: 'one.txt' }];
   await out.render(rows, table);
   await out.render(rows.length, counts);
   // A declared view renders through the same call a bare view does.
   await out.render('ready', lanes.print);
-  // @ts-expect-error TS2345: A view for another value type cannot read these rows.
+  // The second overload takes a row view over an iterable or an asynchronous iterable.
+  await out.render(rows, lines);
+  await out.render(walk(), lines);
+  await out.render(rows, paths);
+  // @ts-expect-error TS2769: A view for another value type cannot read these rows.
   await out.render(rows, counts);
-  // @ts-expect-error TS2322: A view returns the text core writes, never another value.
+  // @ts-expect-error TS2769: A view returns the text core writes, never another value.
   await out.render(rows, { render: (data) => data.length });
+  // @ts-expect-error TS2769: A view has one shape, so a value with render and row is neither.
+  await out.render(rows, { render: () => '', row: () => '' });
+  // @ts-expect-error TS2769: A row view for another row type cannot read these rows.
+  await out.render(rows, { row: (row: { name: string }) => row.name });
 });
 
 /** A declared view of the application's own data, named by reference wherever it is used. */
@@ -46,15 +67,20 @@ const summary: DeclaredView<readonly Row[]> = view<readonly Row[]>('@fixture/row
   render: (rows) => `${String(rows.length)}\n`,
 });
 
-// @ts-expect-error TS2322: A view function's array parameter is always readonly.
+/** A declared row view, which carries the same brand and invariance a declared view carries. */
+const paths: DeclaredRowView<Row> = view<Row>('@fixture/paths', {
+  row: (row) => `${row.source}\n`,
+});
+
+// @ts-expect-error TS2769: A view function's array parameter is always readonly.
 view<readonly Row[]>('@fixture/mutable', { render: (rows: Row[]) => String(rows.length) });
-// @ts-expect-error TS2322: The inferred data type reads through Readonly, so the same rule holds.
+// @ts-expect-error TS2769: The inferred data type reads through Readonly, so the same rule holds.
 view('@fixture/inferred', { render: (rows: Row[]) => String(rows.length) });
-// @ts-expect-error TS2322: A mutable array parameter is rejected under any type argument.
+// @ts-expect-error TS2769: A mutable array parameter is rejected under any type argument.
 view<Row[]>('@fixture/mutable-argument', { render: (rows: Row[]) => String(rows.length) });
-// @ts-expect-error TS2322: A primitive parameter is stated, because inference runs through Readonly.
+// @ts-expect-error TS2769: A primitive parameter is stated, because inference runs through Readonly.
 view('@fixture/primitive', { render: (message: string) => message });
-// @ts-expect-error TS2322: A union parameter is stated in full, for the same reason.
+// @ts-expect-error TS2769: A union parameter is stated in full, for the same reason.
 view('@fixture/union', { render: (value: number | string) => String(value) });
 
 /** An application's own fatal type, so overriding it implies the view for it. */
@@ -93,6 +119,7 @@ const views: readonly ViewOverride[] = [
   override(ConfigError, { render: (failure) => failure.message }),
   override(lanes.warn, { render: (message) => message.toUpperCase() }),
   override(summary, table),
+  override(paths, lines),
 ];
 
 // @ts-expect-error TS2769: A class outside the failure hierarchy has no failure to render.
@@ -105,6 +132,8 @@ override(UsageError, problems);
 override(lanes.warn, table);
 // @ts-expect-error TS2769: A replacement for another data type cannot answer this declared view.
 override(summary, counts);
+// @ts-expect-error TS2769: A declared row view takes a row view as its replacement.
+override(paths, table);
 
 const usageFailure: View<UsageError> = {
   render: (failure) => `${String(failure.exitCode)}: ${failure.message}`,
@@ -113,7 +142,7 @@ override(InputError, usageFailure);
 
 /** A plugin lists the views it declares and the overrides it makes in one list. */
 const branding = plugin('@fixture/branding', {
-  views: [summary, override(summary, table), override(InputError, problems)],
+  views: [summary, paths, override(summary, table), override(InputError, problems)],
 });
 
 const configured: ApplicationOptions = { plugins: [branding], views };
@@ -145,5 +174,5 @@ export const jsonkit = new Application('jsonkit', configured)
   .option('pretty', { type: 'boolean' })
   .action(({ options, out }) => out.print(`${options.file}:${String(options.pretty)}`));
 
-// @ts-expect-error TS2322: A declared view is invariant, so it names one data type alone.
+// @ts-expect-error TS2375: A declared view is invariant, so it names one data type alone.
 export const reassigned: DeclaredView<number> = summary;

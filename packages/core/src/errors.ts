@@ -2,10 +2,10 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { InputIdentity } from './types.js';
 
-/** The routed path names the Command a token fault belongs to; an empty path is the root. */
+/** The same subject at the start of a sentence, where a token fault names its Command. */
 function routedSentence(command: readonly string[]): string {
-  const name = command.at(-1);
-  return name === undefined ? 'The root Command' : commandSentence(name);
+  const subject = routedSubject(command);
+  return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
 }
 
 /**
@@ -54,6 +54,12 @@ export function defaultText(failure: LoomError): string {
 /** How a diagnostic names one Command inside a sentence: by name, or as the unnamed root. */
 export function commandSubject(name: string | null): string {
   return name === null ? 'the root Command' : `Command "${name}"`;
+}
+
+/** The routed path names the Command a sentence speaks of; an empty path is the root. */
+export function routedSubject(command: readonly string[]): string {
+  const name = command.at(-1);
+  return name === undefined ? 'the root Command' : commandSubject(name);
 }
 
 /** The same subject at the start of a sentence. */

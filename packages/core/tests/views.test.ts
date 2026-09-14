@@ -28,6 +28,14 @@ test('one key overridden by the application and by a plugin resolves to the appl
   expect(views('shared-key')).toEqual(rendered('app: one\nresolved:0\n'));
 });
 
+test("a declared row view in a plugin's list resolves through its own default functions", () => {
+  expect(views('row-declared')).toEqual(rendered('ROWS\n0: one\n1: two\nresolved:0\n'));
+});
+
+test('an override keyed by a declared row view supersedes its whole shape', () => {
+  expect(views('row-override')).toEqual(rendered('app: one\napp: two\nresolved:0\n'));
+});
+
 test('an override for a view no installed plugin declares is inert', () => {
   expect(views('inert')).toEqual({
     status: 2,

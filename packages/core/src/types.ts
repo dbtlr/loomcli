@@ -177,6 +177,20 @@ export interface ViewContext {
 /** A pure synchronous view turns one typed value into the marked text core resolves. */
 export interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
+  /** A view has one shape; the row view of Results is the other. */
+  row?: never;
+}
+/**
+ * A row view renders a sequence one row at a time.
+ * `head` and `tail` open and close the sequence, and each defaults to the empty string.
+ * Every function is pure and synchronous and owns the newlines in the text it returns.
+ */
+export interface RowView<Row> {
+  row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
+  head?: (context: ViewContext) => string;
+  tail?: (context: ViewContext) => string;
+  /** A row view has one shape; the whole view of Rendered output is the other. */
+  render?: never;
 }
 export interface Out {
   print(message: string): Promise<void>;
@@ -186,6 +200,8 @@ export interface Out {
   error(message: string): Promise<void>;
   /** The neutral presentation call: a rendered value has no purpose and no destination. */
   render<Data>(data: Data, view: View<Data>): Promise<void>;
+  /** The same call over a sequence: core writes each row's text as the source yields it. */
+  render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
   fatal(message: string): never;
 }
 export type StringOption = OptionSpelling &
