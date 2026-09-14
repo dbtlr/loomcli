@@ -2,7 +2,8 @@ import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
-import type { ActionContext, ActionHandler, ActionOptions, Host } from '@loomcli/core';
+import { FatalError } from '@loomcli/core';
+import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
@@ -61,7 +62,6 @@ interface Counted {
 async function countAll(
   options: ActionOptions<typeof textstat>,
   selected: readonly Source[],
-  { out, style }: Pick<ActionContext<unknown>, 'out' | 'style'>,
 ): Promise<Counted> {
   const rows: Row[] = [];
   const minimum = threshold(options);
@@ -69,7 +69,7 @@ async function countAll(
   for (const source of selected) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : 'The source could not be read.';
-      return out.fatal(style.escape(`Cannot read ${source.failure}: ${reason}`));
+      throw new FatalError(`Cannot read ${source.failure}: ${reason}`);
     });
     if (counts.bytes >= minimum) {
       total += counts.counted;
@@ -80,15 +80,9 @@ async function countAll(
 }
 
 /** The whole table is rendered at once, and the hidden timing line follows it on stderr. */
-export const countFiles: ActionHandler<typeof textstat> = async ({
-  args,
-  options,
-  host,
-  out,
-  style,
-}) => {
+export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
   const started = performance.now();
-  const counted = await countAll(options, sources(args.files, host), { out, style });
+  const counted = await countAll(options, sources(args.files, host));
   await out.render(
     {
       metric: options.metric,

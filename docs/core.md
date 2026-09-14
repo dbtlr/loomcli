@@ -814,6 +814,20 @@ The renderer receives the failure instance and the stderr rendering context. It 
 
 Resolution walks the thrown failure's prototype chain, most derived first, through the application's registrations, then through each installed plugin's registrations in installation order, and falls to core's default text when none answers. A registration for `UsageError` therefore brands every exit-2 failure at once, and a registration for a `FatalError` subclass beats one for `FatalError`. `DeclarationError` and `InternalError` reach registered renderers too, because an author-facing diagnostic is still output the application owns. Two registrations for one class by one contributor are a `DeclarationError` at build, reported through core's default rendering; the same class registered by the application and a plugin, or by two plugins, resolves first-in-wins, as [Failure renderers from plugins](#failure-renderers-from-plugins) describes.
 
+An application can treat fatal messages as literal error text with one renderer:
+
+```ts
+import { Application, FatalError, renderFailure } from '@loomcli/core';
+
+const app = new Application('reader', {
+  failures: [renderFailure(FatalError, {
+    render: (failure, { style }) => `${style.escape(failure.message)}\n`,
+  })],
+});
+```
+
+Its actions call `out.fatal(message)`, and its helpers throw `new FatalError(message)`. Both pass unescaped messages. The renderer escapes once, so helpers need no output or style context. Jsonkit and textstat use this pattern. The registration applies to those applications; core's default `FatalError` renderer still accepts authored marked text.
+
 ### Failure contract
 
 Renderer and destination failures are internal errors and return code 1, except in a cancelled run as [Signals and cancellation](#signals-and-cancellation) defines it, where the code stays the signal's and the fault is reported as text; every row below reads with that one carve-out.

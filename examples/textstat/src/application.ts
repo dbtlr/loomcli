@@ -1,6 +1,6 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
-import { Application } from '@loomcli/core';
+import { Application, FatalError, renderFailure } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
+import { fatalError } from './failures.js';
 import { filesOrStdin } from './files-or-stdin.js';
 
 /**
@@ -32,6 +33,7 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
+  failures: [renderFailure(FatalError, fatalError)],
   plugins: [help(), version(), explain()],
   version: Package.version,
 })

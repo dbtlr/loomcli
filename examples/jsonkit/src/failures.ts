@@ -1,5 +1,11 @@
 import { issuePath } from '@loomcli/core';
-import type { InputError, InputProblem, Renderer, UnknownCommandError } from '@loomcli/core';
+import type {
+  FatalError,
+  InputError,
+  InputProblem,
+  Renderer,
+  UnknownCommandError,
+} from '@loomcli/core';
 
 /** Every diagnostic this application writes names the application first. */
 const NAME = 'jsonkit';
@@ -44,4 +50,8 @@ export const unknownCommand: Renderer<UnknownCommandError> = {
       first === undefined ? `${named}.` : `${named}; try ${failure.candidates.join(', ')}.`;
     return `${style.escape(branded(line))}\n`;
   },
+};
+
+export const fatalError: Renderer<FatalError> = {
+  render: (failure, { style }) => `${style.escape(failure.message)}\n`,
 };

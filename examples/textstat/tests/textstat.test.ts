@@ -353,6 +353,21 @@ test('textstat preserves a filename that resembles valid style markup', () => {
   }
 });
 
+test('textstat renders an unreadable source name literally', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-error-markers-'));
+  const name = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
+  try {
+    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [name], {
+      cwd: directory,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Cannot read file: ${name}: `);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test.each([
   [['--metric', 'words'], 'hello brave world\n', 'WORDS  SOURCE\n    3  stdin\n'],
   [

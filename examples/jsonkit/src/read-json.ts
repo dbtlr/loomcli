@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
-import type { ActionContext, Host } from '@loomcli/core';
+import { FatalError } from '@loomcli/core';
+import type { Host } from '@loomcli/core';
 
 /** One document source: the subject each failure names, and the connection it reads. */
 interface Source {
@@ -35,26 +36,19 @@ function select(file: string | undefined, host: Host): Source {
 }
 
 /** Every action reads its document here, so read and parse failures read the same everywhere. */
-export async function readJson(
-  file: string | undefined,
-  { host, out, style }: Pick<ActionContext<unknown>, 'host' | 'out' | 'style'>,
-): Promise<unknown> {
+export async function readJson(file: string | undefined, host: Host): Promise<unknown> {
   const source = select(file, host);
-  const contents = await text(source.stream).catch((error: unknown) =>
-    out.fatal(
-      style.escape(
-        `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`,
-      ),
-    ),
-  );
+  const contents = await text(source.stream).catch((error: unknown) => {
+    throw new FatalError(
+      `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`,
+    );
+  });
   try {
     const document: unknown = JSON.parse(contents);
     return document;
   } catch (error: unknown) {
-    return out.fatal(
-      style.escape(
-        `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')}`,
-      ),
+    throw new FatalError(
+      `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')}`,
     );
   }
 }
