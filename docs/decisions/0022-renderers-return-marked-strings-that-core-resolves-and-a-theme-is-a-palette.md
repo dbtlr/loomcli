@@ -4,7 +4,7 @@ title: ADR-0022 - Renderers return marked strings, and a theme maps semantic nam
 description: Ordinary strings carry composable terminal styles, semantic tokens, glyphs, and deferred padding. Core resolves them under one rendering policy, and one optional theme plugin supplies concrete token mappings.
 status: proposed
 created: 2026-09-11
-modified: 2026-09-12
+modified: 2026-09-14
 ---
 
 # ADR-0022 - Renderers return marked strings, and a theme maps semantic names to concrete styles
@@ -63,3 +63,4 @@ The view registry and results lane remain separate increments under ADR-0021 and
 - 2026-09-12: Replaced the initial proposal with the style contract. Tokens can combine colors and modifiers; themes use flat inferred names; glyphs are independent and retain upstream compatibility forms. Added ordinary-string composition, explicit escaping, scoped resets, destination-aware width, deferred padding, embedded ANSI handling, and configurable rendering policies. Removed the paired-token, strict-ASCII, descriptor-group, and mandatory automatic-escaping proposals. Recorded the pending replacements of the affected ADR-0008 and ADR-0020 clauses and the separate prerequisite for automatic Application type propagation.
 
 - 2026-09-13: [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) accepts the implemented resolver and exclusive theme seam independently. It replaces the affected ADR-0008 and ADR-0020 clauses now. This proposal retains the named `loomTheme` palette and its acceptance gate.
+- 2026-09-14: The view registry contract in [Views](../core.md#views) renames `Renderer` to `View` and `RendererContext` to `ViewContext`, and states newline ownership per write site: a view rendered through `out.render` or a failure diagnostic returns its own newline, and a lane view returns none because the semantic method appends one. The palette this record proposes is unaffected. This entry binds when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted with the registry implementation.

@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is accepted and awaits its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is written under a proposed record, ADR-0021, which moves to accepted with its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
 
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
@@ -209,7 +209,7 @@ _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
 The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
-_Avoid_: Channel, log level, stream (for the lane)
+_Avoid_: Channel, log level, stream (for the lane view)
 
 **Token**:
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
