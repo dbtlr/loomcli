@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette and the results lane remain separate proposed increments.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane is specified under [Results](#results) for proposed ADR-0023 and is not implemented: `result()`, `rows()`, `views()`, `out.results`, `RowView`, and `ResultError` are contract, not package surface, until that increment lands.
 
 ## Application declarations
 
@@ -31,9 +31,9 @@ const app = new Application('paths')
 await app.run();
 ```
 
-Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `globalOption()`, `alias()`, `action()`, `command()`, and `extend()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
+Every authoring call returns a new declaration value and never changes its receiver. `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `action()`, `command()`, and `extend()` all follow this rule, so `const forked = base.option('verbose', { type: 'boolean' })` leaves `base` without `verbose`, and `base.command(child)` leaves both `base` and `forked` without the child. Keep the value each call returns. An extracted handler uses `ActionHandler<typeof app>` and a type-only import of its declaration. That helper reads the declared types, so it answers for a fresh declaration, a partly declared one, and one that already registered its action.
 
-A declaration value publishes the authoring calls that are still valid for it. `Command` and `Application` always publish `extend()`, outside the authoring-state parameter. A fresh `Command` publishes `argument()`, `option()`, `alias()`, `command()`, and `action()`; a fresh `Application` publishes `argument()`, `option()`, `command()`, and `action()` for the unnamed root, which has no name to alias. An Application also publishes `globalOption()` until its first `command()` or `action()` call. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
+A declaration value publishes the authoring calls that are still valid for it. `Command` and `Application` always publish `extend()`, outside the authoring-state parameter. A fresh `Command` publishes `argument()`, `option()`, `alias()`, `result()`, `rows()`, `command()`, and `action()`; a fresh `Application` publishes `argument()`, `option()`, `result()`, `rows()`, `command()`, and `action()` for the unnamed root, which has no name to alias. An Application also publishes `globalOption()` until its first `command()` or `action()` call. A declaration that carries a result publishes `views()` in every state, as [Results](#results) describes. An `Application` keeps `inspect()`, `run()`, and its `name` in every state. The collected declarations stay private, so no consumer can read or replace them.
 
 Declare global options before attaching children or registering the action. Declare local arguments and options before the action. Command-targeted extensions remain configurable afterward through `extend()`. Each call removes the calls it invalidates, so this order is a compile-time rule and not advice.
 
@@ -44,7 +44,10 @@ Declare global options before attaching children or registering the action. Decl
 | `globalOption()` | nothing; available on Application alone |
 | `option()`   | nothing                                                                                                     |
 | `alias()`    | nothing                                                                                                     |
-| `action()`   | `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, and `action()`; both declarations keep `extend()` |
+| `result()`   | `result()` and `rows()`; the value gains `views()`                                                          |
+| `rows()`     | `result()` and `rows()`; the value gains `views()`                                                          |
+| `views()`    | nothing; available on a declaration that carries a result, in every state                                   |
+| `action()`   | `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `command()`, and `action()`; both declarations keep `extend()` and `views()` |
 
 Arguments and children exclude each other at the second call, so `.argument('files', config).command(child)` does not compile. A declaration that registers no action stays open, so a group keeps `option()` and `command()` available. Only an `Application` publishes `inspect()`, `run()`, and `name`, in every state; a named `Command` publishes its authoring calls alone. The type states do not read what a group holds, so build rejects an option declared on a Command that registers no action: a local option never reaches a child's action. A Command with children and no action is a group, and routing sends its invocations on to one of its children. A Command with neither children nor an action is a build error. `command()` accepts a Command in any state, because a child's own `action()` is the call that finished it.
 
@@ -340,7 +343,7 @@ A missing required input is a validation-phase problem, so it loses to routing a
 
 ### Graph build errors
 
-Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the view overrides, the options object's own shape, the order of the declaration calls, and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Many reach JavaScript authors alone, because the types already reject the invalid declaration: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, constructor options that contain a retired `globals` or `failures` property, a `views` entry that is not an `override` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, a global option declared after Command attachment or action registration, a version that is not a string, a description that is not a string, a `hidden` value that is not a Boolean, and a `deprecated` value that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, a deprecated message that is blank or holds a line terminator, a version that is blank or holds a line terminator, a `hidden` or `deprecated` fact on the root or on an argument, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two view overrides for one key inside one contributor, since the same key overridden across contributors resolves first-in-wins, an override key whose identity a distinct declared-view object already carries, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
+Authoring calls collect declarations; core validates them during `run()` and `inspect()`, before either one reads or dispatches any invocation token. This covers the globals table, every Command's spellings, every declared default, the view overrides, the options object's own shape, the order of the declaration calls, every result declaration, whose rules are listed under [Result build errors](#result-build-errors), and every installed plugin's declarations, whose rules are listed under [Plugin build errors](#plugin-build-errors). Each rule below returns code 1 and names both sides with a correction. Many reach JavaScript authors alone, because the types already reject the invalid declaration: arguments beside children in either declaration order, a local option that repeats a global option's key, a Command with several actions, an attached value that is not a Command, constructor options that contain a retired `globals` or `failures` property, a `views` entry that is not an `override` value, an argument, option, or alias declared after the action, a child attached after the action, an `alias()` call with no names, a global option declared after Command attachment or action registration, a version that is not a string, a description that is not a string, a `hidden` value that is not a Boolean, and a `deprecated` value that is not a string. The rest surface only at build time, for TypeScript and JavaScript authors alike: a description that is blank or holds a line terminator, a deprecated message that is blank or holds a line terminator, a version that is blank or holds a line terminator, a `hidden` or `deprecated` fact on the root or on an argument, two children with one name, a Command value attached under two parents, an invalid child name, an alias that repeats a name or alias under the same parent, an alias that repeats its own Command's name or another of its aliases, an invalid alias name, an invalid argument name, a global and a local option that share one spelling, a Command with neither children nor an action, a local option on a group, a variadic argument that is not last, two view overrides for one key inside one contributor, since the same key overridden across contributors resolves first-in-wins, an override key whose identity a distinct declared-view object already carries, an options slot on the Application or on a Command holding a value that is not a plain object even when it satisfies the options type structurally, and the two argument-order rules below. Build applies every rule at every depth, and a diagnostic names the Command that holds the fault. [`inspect()`](#graph-inspection) applies every one of these rules, and every rule a single declaration carries, so the only fault it leaves to `run()` is a declared default that its schema rejects.
 
 | Rejected declaration                                    | Diagnostic                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -696,9 +699,10 @@ The public declarations include Node stream types. The package supplies their ty
 | `out.warn(message)`          | stderr              | `Promise<void>` |
 | `out.error(message)`         | stderr              | `Promise<void>` |
 | `out.render(data, view)`     | stdout              | `Promise<void>` |
+| `out.results(value)`         | stdout              | `Promise<void>` |
 | `out.fatal(message)`         | Failure path        | `never`         |
 
-Messages are marked strings. The five semantic methods render through core's lane views, described under [Views](#views), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, and indent continuation lines by the selected glyph width plus one, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Semantic method identity remains distinct inside core. `out.render` is the neutral presentation call, and [Rendered output](#rendered-output) describes it.
+On a Command that declares a result, `print` and `render` write to stderr and `results` owns stdout, as [Results](#results) describes; on every other Command `results` is typed away and the table above holds. Messages are marked strings. The five semantic methods render through core's lane views, described under [Views](#views), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, and indent continuation lines by the selected glyph width plus one, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Semantic method identity remains distinct inside core. `out.render` is the neutral presentation call, and [Rendered output](#rendered-output) describes it.
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. Catching that rejection does not make the invocation successful.
 
@@ -720,7 +724,7 @@ A view is a pure synchronous value that turns one typed value into marked text. 
 
 Newline ownership belongs to the write site, not to the view type. `out.render` and a failure diagnostic append nothing, so a view rendered through either owns its trailing newline. A semantic method appends one newline after its lane view, so a lane view returns none. Each write site below states which rule it follows.
 
-`out.render(data, view)` resolves the view's marked text for stdout, then writes it without adding a newline. The second argument is either a bare view, as below, or a [declared view](#views) that a plugin or core exported. A bare view is a presentation the action chose at the call site, and nothing can replace it. A declared view carries an identity, so an application can replace its function through `views` without touching the call site.
+`out.render(data, view)` resolves the view's marked text for stdout, then writes it without adding a newline. The second argument is either a bare view, as below, or a [declared view](#views) that a plugin or core exported. A bare view is a presentation the action chose at the call site, and nothing can replace it. A declared view carries an identity, so an application can replace its function through `views` without touching the call site. `out.render` also accepts an iterable with a row view, the shape [Row views](#row-views) defines, and writes the sequence as the iterable yields it.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -804,7 +808,7 @@ const app = new Application('quiet', {
 
 Every identity on the graph is compared the way an extension identity is: across every declared view core exports, every declared view a plugin lists, and every declared-view key an override carries, whether or not the view is declared by an installed plugin. Two distinct objects that share one identity are a `DeclarationError` at build, so an application that imports `helpPage` from one copy of the package while the installed plugin declares it from a second copy is told to deduplicate rather than left with a silent miss, the rule a second copy of an extension descriptor already meets. An override whose identity matches no declaration is inert: it is not a build error, it applies the moment a view with that object is rendered, and it never applies otherwise. An application can therefore brand a help page ahead of installing the plugin, and a shared override list holds in an application that omits it. A failure class never meets either case, because every failure class descends from `LoomError`, core keys each class's default text function as that class's default view, which carries no identity, and an application's own subclass is answered by the chain walk at throw time.
 
-Every declared view in this contract is a document view: it renders one whole value in one call. The cardinality field that distinguishes an item view, which renders one item of a stream as it arrives, belongs to the results lane and is not part of `view()` here. When it arrives it is optional and defaults to `document`, so no declaration in this contract changes.
+Every view declared in this section renders one whole value in one call. A second structural shape, the row view of [Row views](#row-views), renders a sequence one row at a time through a `row` function, with optional `head` and `tail`, and `view()` declares either shape; the two are told apart by the function present, so no declaration in this section changes and no cardinality field exists.
 
 Build applies three rules to the registry, each a `DeclarationError` at build, reported the way [Failure views](#failure-views) describes for a build-time fault: two overrides for one key inside one contributor, two distinct declared-view objects that share one identity, and a `views` entry that is not an override on the Application, or neither a declared view nor an override on a plugin, which the types already reject and a JavaScript author alone reaches. [Graph build errors](#graph-build-errors) and [Plugin build errors](#plugin-build-errors) list the diagnostics. The registry is not an `inspect()` fact in this contract.
 
@@ -842,8 +846,9 @@ type InputProblem =
 | `DeclarationError`        | `LoomError`  | 1    | the declaration sentence alone         |
 | `FatalError`              | `LoomError`  | 1    | the message `out.fatal()` received     |
 | `InternalError`           | `LoomError`  | 1    | `cause`, the thrown value core wrapped |
+| `ResultError`             | `LoomError`  | 1    | `path`, `kind`; see [Results](#results) |
 
-Core's default views add the category prefixes: `Invalid input: ` for every `UsageError`, `Invalid declaration: ` for `DeclarationError`, `Internal error: ` for `InternalError`, and none for `FatalError`.
+Core's default views add the category prefixes: `Invalid input: ` for every `UsageError`, `Invalid declaration: ` for `DeclarationError`, `Internal error: ` for `InternalError` and `ResultError`, and none for `FatalError`.
 
 `InputError.problems` carries the whole validation phase in authoring order: each required input the invocation omitted, and each value a schema rejected with the issues that schema returned. `spelling` is the token an operator would type: `--file` for an option, `-F` for a `shortOnly` option, and the declared name for an argument. An omitted required argument is a `missing` problem like an omitted required option, so omission has one class whichever kind of input it names. An `invalid` problem always carries at least one issue: a schema that rejected a value and returned none reports `The schema rejected this value without an explanation.`, the sentence core's own text uses. Error precedence is unchanged, because routing and token errors still precede validation.
 
@@ -930,6 +935,145 @@ The last row renders through the literal `FatalError` view, which escapes the me
 
 The registry increment is proven when jsonkit's three failure overrides produce the bytes above unchanged, and when an override of `helpPage` in a test application changes `jsonkit --help` while `help()` stays installed. The acceptance tests cover the resolution order with one application override and one plugin override for a shared key, an application override for `UsageError` beside a plugin override for `InputError` resolving to the application's, an earlier plugin's `UsageError` override beside a later plugin's `InputError` override resolving to the earlier plugin's, a declared-view key from a second copy of a package rejected at build, an inert override for a view no plugin declares, an override of `lanes.warn` observed through `out.warn` with one newline, a hand-built object with an `identity` field rendered as a bare view, a help page and a version line whose graph facts carry marker characters printed literally, each build rule above, a broken lane view, a broken `helpPage` override under `jsonkit --help` returning 1 with one diagnostic on stderr, an action that throws an `InputError` after an unawaited broken `out.render` returning 2 with one diagnostic, and a broken failure view under the fallback path. The negative type checks gain the invariance cases, a replacement that requires data the key lacks and a declared view reassigned to another data type, and the retired `Renderer` cases move to `View`. Each case runs under Node and Bun.
 
+### Results
+
+A result is the typed value a Command produces for its consumer, as distinct from the messages it writes about its work. The results lane is opt-in in four steps, and each step pays for itself alone: a pack view rendered inside the action with no declaration, one declared result with a default view, a formatter plugin that lets a run select another view by name, and rows that render as they arrive. Nothing in the first step needs the rest, and a Command that declares no result behaves exactly as [Output and failures](#output-and-failures) describes.
+
+```ts
+interface View<Data> {
+  render: (data: Readonly<Data>, context: ViewContext) => string;
+}
+interface RowView<Row> {
+  row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
+  head?: (context: ViewContext) => string;
+  tail?: (context: ViewContext) => string;
+}
+type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
+type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
+
+interface ResultDeclaration<Value> { views: ResultViews<Value> }
+interface RowsDeclaration<Row> { views: RowViews<Row> }
+interface ViewsCall { default?: string }
+
+// On Command and Application, before action().
+result<Value>(declaration: ResultDeclaration<Value>): …
+rows<Row>(declaration: RowsDeclaration<Row>): …
+// On a declaration that carries a result, in every state.
+views(replacements: ResultViews<Value> | RowViews<Row>, options?: ViewsCall): …
+
+interface Out<Result> {
+  results(value: Value): Promise<void>; // under result<Value>
+  results(rows: Iterable<Row> | AsyncIterable<Row>): Promise<void>; // under rows<Row>
+  results(value: never): Promise<void>; // with no declared result
+}
+```
+
+#### Row views
+
+A view renders one whole value in one call, as [Rendered output](#rendered-output) defines it. A row view renders a sequence one row at a time: `row` receives one row, its zero-based index, and the view context, and returns the text for that row; `head` and `tail` return the text that opens and closes the sequence, and each defaults to the empty string. Every function is pure and synchronous, holds no output handle, and owns the newlines in the text it returns, because the write site appends nothing. The two shapes are told apart by the function present, `render` or `row`, so a JavaScript author is checked the same way. `view(identity, definition)` declares either shape, and an override of a declared row view supplies a row view.
+
+`out.render` accepts a row view with an iterable. `out.render(rows, records)` renders `head`, then each row as the iterable yields it, then `tail`, and writes each piece in order on stdout. The returned promise resolves when the last piece is written. A synchronous or an asynchronous iterable is accepted, and core awaits each write before requesting the next row, so a slow destination applies back-pressure to the source. This is the first step of the lane: an action renders through a table or records view from the plugin pack with no declaration, no `--format`, and no change to its stdout.
+
+```ts
+import { records } from '@loomcli/plugins/records';
+import { table } from '@loomcli/plugins/table';
+
+.action(async ({ out }) => {
+  await out.render(rows, table({ columns: ['source', { key: 'count', header: 'Bytes', align: 'right' }] }));
+  await out.render(walk(document), records({ identifier: 'path', fields: ['path', 'kind'] }));
+});
+```
+
+A pack view is a configured factory. Its configuration is typed from the row type, so a column that names a field the rows do not carry is a compile error on that string, and the row type is inferred from the data `out.render` receives. A `columns` or `fields` list is an ordered list whose entries are a bare key or `{ key, header?, align?, format? }`, where a bare key is `{ key }`, the list order is the column order, a header defaults to the key spelled as written, a key may appear twice, and `format` is a function that renders one cell. When the list is omitted every own key that appears in the rows is a column in first-seen order, cells stringify with `String(value)`, and an empty sequence prints nothing, because no key is known. Each factory's full configuration is its own plugin's contract, and the table's choice between a row view with fixed widths and a whole view that measures every row belongs there too.
+
+#### Declaring a result
+
+`result<Value>(declaration)` declares that the Command produces one value, and `rows<Row>(declaration)` declares that it produces a sequence of rows. Both are authoring calls on `Command` and on `Application` for its root action, both return a new value like every other authoring call, and `action()` removes both, because the handler's `out.results` is typed from the declaration and a handler registered before the type exists cannot be checked against it. Calling either removes the other. The type parameter is stated by the author and is the value under `result` and one row under `rows`.
+
+```ts
+// src/commands/count.ts
+import { Command } from '@loomcli/core';
+import { json } from '@loomcli/plugins/format';
+import { table } from '@loomcli/plugins/table';
+
+import { countFiles } from '../actions/count-files.js';
+
+export const count = new Command('count')
+  .argument('files', { required: true, variadic: true })
+  .rows<Row>({ views: { table: table({ columns: ['source', 'count'] }), json: json() } })
+  .action(countFiles);
+```
+
+`views` is a record keyed by presentation name. The first key is the default view, the one core renders when nothing selects another, and every key is the name a `--format` selection uses once a formatter plugin is installed, so the names are unique by construction and fixed before any such plugin exists. A key is a bare token under the rule Application names meet, and the record holds at least one entry. Under `result<Value>` every entry is a `View<Value>`. Under `rows<Row>` an entry is a `View<readonly Row[]>`, which core buffers the whole sequence for, or a `RowView<Row>`, which core feeds as rows arrive. The stated type flows into each entry by contextual typing, so `table({ columns: ['source', 'count'] })` is checked against `Row` with no type argument of its own, and an application's own view under a key is typed the same way. Core knows no presentation name of its own, not even `text`: `json` and `jsonl` are views the format plugin declares, each a factory whose optional `map` reshapes one row, or the whole value under `result`, before encoding. They render as ordinary views with the plugin uninstalled, and the plugin's contract states what installing it adds.
+
+The `views()` call reshapes presentation after the fact. It is published in every state on a declaration that carries a result, and never on one that carries none, so an importing application can add a wide table or a mapped `json` to a Command it did not author without touching its action. It merges by key: an existing key is replaced in place and keeps its position, and a new key is appended. `default` names the key that becomes the default view, and naming a key the record does not hold after the merge is a build error. Like `extend()`, it returns a new immutable value, and an extracted handler keeps its initializer ending in `action()` for the reason [Modular authoring](#modular-authoring) gives.
+
+```ts
+import { json } from '@loomcli/plugins/format';
+import { table } from '@loomcli/plugins/table';
+
+import { count } from './commands/count.js';
+
+const wide = table({ columns: ['source', 'count', { key: 'count', header: 'Share', format: share }] });
+export const branded = count.views({ wide, json: json({ map: toWire }) }, { default: 'wide' });
+```
+
+The declaration is a graph fact. `inspect()` publishes `result` on every node: `null` where none is declared, and otherwise `{ kind: 'value' | 'rows', views: readonly string[], default: string }`, the names in record order. The configuration a pack view stores as plain data is published under that plugin's own descriptor, which its contract defines, and a function inside a configuration is never a graph fact. No schema is part of the declaration; a projection that needs the shape of a result reads a fact the plugin that needs it defines.
+
+#### Emitting a result
+
+An action emits its result once through `out.results`. Under `result<Value>` the argument is the value, and core renders the resolved view over it and writes the text to stdout. Under `rows<Row>` the argument is any `Iterable<Row>` or `AsyncIterable<Row>`, an array included, so an action holds no opinion about whether its consumer wants a buffer or a stream. Under a row view core writes `head`, then each row's text as the source yields it, awaiting each write before requesting the next row, then `tail`. Under a whole view core collects every row and renders once at the end of the source, so a whole view over an unbounded source never completes, which is the author's choice and not a build error. An empty sequence still writes `head` and `tail`, and renders a whole view over an empty array. On a Command with no declared result, `out.results` is typed with a `never` argument, and a JavaScript caller reaches an internal error naming the Command.
+
+The returned promise resolves when the last byte of the result is written and rejects on a view or a write failure. It is the ordering anchor for anything the action writes afterwards, so `await out.results(rows); await out.info('done')` puts the summary after the last row. The optional-await contract holds: an action that returns without awaiting the call still has its result written and accounted for before the invocation completes, and the rows source is still drained.
+
+A declared result is a promise the Command makes, and core holds the action to it. An action that returns normally without calling `out.results` fails with `ResultError`, an internal error with exit 1 naming the Command. A failure raised before the call is that failure, because a failure is the outcome, not a missing result. A second call rejects with `ResultError` and turns a would-be 0 into 1, the rule a second `next()` follows in a middleware chain. The `ResultError` class carries the Command's `path` and a `kind` of `missing`, `repeated`, or `undeclared`, and its diagnostic is overridden like any failure class.
+
+```ts
+class ResultError extends LoomError {
+  readonly path: readonly string[];
+  readonly kind: 'missing' | 'repeated' | 'undeclared';
+} // exit 1
+```
+
+| Fault                                                       | Diagnostic                                                                                                  |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| The action returned without emitting                        | `Command "count" declares a result and its action returned without emitting one. Call out.results() once.` |
+| The action emitted twice                                    | `Command "count" emitted its result twice. Call out.results() once.`                                        |
+| `out.results` on a Command with no declared result          | `Command "get" declares no result. Declare one with result() or rows() before action().`                    |
+
+The root Command is named `the root Command` in each sentence, as every diagnostic names it.
+
+#### Stdout belongs to the result
+
+On a Command that declares a result, the result is the only thing on stdout. `print` and `render` keep their signatures and write to stderr, decided at graph build from the declaration and never at run time from the selected view, so a script that captures stdout receives the result and nothing else whichever presentation ran. `info`, `success`, `warn`, and `error` already write to stderr, and `fatal` still throws without writing. No method is removed, because an author denied a lane works around the framework rather than through it. On a Command with no declared result every method keeps the destination the table in [Output and failures](#output-and-failures) states. The redirect belongs to the action's `out`. A middleware's `out` keeps the default destinations, so a help page rendered for a result Command still reaches stdout, and a middleware that prints after `next()` on a result Command owns that choice.
+
+#### A source that fails partway
+
+A rows source that throws after yielding some rows ends the invocation with that failure's exit code and its diagnostic on stderr, and nothing retracts a written byte. Under a row view the rows already written stay on stdout and `tail` is not written. Under a whole view nothing was written, so stdout is empty. In both cases core writes one line on stderr before the failure's diagnostic, through the declared view `@loomcli/core/results/incomplete` over `{ path, written }`, so an application restyles or silences it with one override:
+
+```text
+Output is incomplete: Command "count" stopped after 3 rows.
+```
+
+The line prints with `0 rows` too, because an empty stdout and a failed stdout must not read the same. A failure the action raises after `out.results` resolved is an ordinary failure, and the result it already wrote stands.
+
+#### Result build errors
+
+Build applies the rules below at every depth, each a `DeclarationError` with exit 1 under [Graph build errors](#graph-build-errors). The types already reject most of them, so they reach a JavaScript author alone: a `result()` or `rows()` call after `action()`, a second `result()` or `rows()` call, a row view under `result()`, and a `views` entry that is neither shape. The rest surface for every author at build: a key that is not a bare token, an empty record, and a `default` that names no key.
+
+| Rejected declaration                          | Diagnostic                                                                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A result declared after the action            | `Command "count" declares its result after its action. Declare result() or rows() before action().`                    |
+| A second result declaration                   | `Command "count" declares two results. Declare one result() or rows() call.`                                           |
+| A row view on a value result                  | `Command "get" names row view "records" on a value result. Supply a view with render, or declare the result with rows().` |
+| A views entry that is not a view              | `Command "count" names view "table" with a value that is not a view. Supply a view with render or a row view with row.`  |
+| A presentation name that is not a bare token  | `Command "count" names view "wide table". Use a nonempty name without whitespace, a leading hyphen, or "=".`             |
+| An empty views record                         | `Command "count" declares a result with no views. Name at least one view.`                                             |
+| A default that names no key                   | `Command "count" selects default view "wide", which it does not name. Name the view or select a named one.`             |
+
+#### Example coverage
+
+The results increment is proven when [textstat](../examples/textstat/src/application.ts) declares its table as `result<Table>` with its own whole view under the key `table` and prints the bytes in the [failure example coverage](#example-coverage-2) unchanged, with its `--timing` line still on stderr, and when a hidden jsonkit Command declares `rows<Entry>` over the document's paths with an application-authored row view as its default and a whole view under a second key, writes each row as an async generator yields it, and leaves a partial list and the incomplete line behind when the generator throws. The acceptance tests cover both shapes of `out.render` with a row view under a synchronous and an asynchronous iterable, `out.results` under each declaration with an array, a generator, and an async generator, back-pressure observed as at most one pending write while a source is paused, `print` and `render` reaching stderr on a result Command and stdout on a plain one, an unawaited `out.results` drained before completion, each `ResultError` kind with its exit code, a partial failure under a row view and under a whole view with the incomplete line before the diagnostic and an override of it, an empty sequence under each view shape, `views()` replacing a key in place, appending a key, and moving the default, `inspect()` publishing the fact, and each build rule above. The negative type checks cover an iterable passed under `result`, a value passed under `rows`, `out.results` on a Command with no result, a column that names a missing field through the declaration and through `out.render`, a row view under `result`, and `result()` or `rows()` called after `action()`. Editor latency on `ActionHandler` over a declaration with a result is measured against the current baseline before the increment merges. Each case runs under Node and Bun.
 ## Plugins
 
 Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds declarations alone: the options it contributes, one middleware with its activation and a loader, the extensions it defines, the views it declares and overrides, and one optional claim on the signals slot. The value performs no work when it is created and no work when it is installed. An installed plugin costs its entry module and the declarations that module imports on an invocation that never reaches it; its middleware module loads only when the chain reaches it.
