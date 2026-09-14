@@ -991,7 +991,7 @@ type ResultInput<Result> = Result extends { kind: 'value'; value: infer Value }
 interface Out<Result = unknown> {
   render<Data>(data: Data, view: View<Data>): Promise<void>;
   render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
-  results(value: ResultInput<Result>): Promise<void>;
+  results: (value: ResultInput<Result>) => Promise<void>; // property syntax: contravariant, so a neutral Out never stands in for a specific one
 }
 ```
 
