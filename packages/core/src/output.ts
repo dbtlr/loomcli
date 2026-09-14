@@ -10,7 +10,7 @@ import { writeSequence } from './sequence.js';
 import { resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { createStyle, tokens } from './style.js';
-import type { Host, Out, RowView, View, ViewContext } from './types.js';
+import type { Host, OpenResult, Out, RowView, View, ViewContext } from './types.js';
 import { resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 
@@ -150,6 +150,16 @@ function renderText(produce: () => unknown): { text: string } | { failed: unknow
   }
 }
 
+/**
+ * The result channel before the lane emits. It rejects rather than writing, and it observes its own
+ * rejection, so a caller that never awaits the call still leaves the process alone.
+ */
+function emptyLane(): Promise<void> {
+  const rejected = Promise.reject(new Error('The results lane does not emit yet.'));
+  void rejected.catch(() => undefined);
+  return rejected;
+}
+
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
   private renderFault: { cause: unknown } | undefined = undefined;
@@ -157,7 +167,11 @@ export class Output {
   private readonly stops: unknown[] = [];
   // The routed Command an incomplete sequence names, published once routing resolved it.
   private route: readonly string[] = [];
-  readonly out: Out;
+  /**
+   * The channel every caller writes through. It is typed with the result left open, because the
+   * declaration a call answers to is checked where the action was authored.
+   */
+  readonly out: Out<OpenResult>;
 
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
@@ -180,6 +194,7 @@ export class Output {
       // The view it was handed, and every view function reads its data back through its own key.
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
         this.renderValue(data, value),
+      results: () => emptyLane(),
       success: (message) => this.emit('success', message),
       warn: (message) => this.emit('warn', message),
     };

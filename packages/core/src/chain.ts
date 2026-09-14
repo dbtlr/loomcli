@@ -9,7 +9,7 @@ import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
 import type { ContextualStyle } from './style.js';
-import type { Host, Out } from './types.js';
+import type { Host, OpenResult, Out } from './types.js';
 import type { DefaultValues, OptionInput } from './validation.js';
 
 /**
@@ -163,7 +163,11 @@ interface Invocation {
   graph: BuiltGraph;
   host: Host;
   name: string;
-  out: Out;
+  /**
+   * The invocation's own channel. A middleware reads it as the neutral `Out`, and the action
+   * receives the channel the results lane builds for the Command that was routed.
+   */
+  out: Out<OpenResult>;
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;

@@ -2,7 +2,7 @@ import { Application, extension, plugin } from '@loomcli/core';
 import type { ActionHandler, EnvironmentOf, OptionsOf } from '@loomcli/core';
 import { z } from 'zod';
 
-import { build, colliding, direct, factory } from '../library/dist/library.js';
+import { build, colliding, direct, factory, summarize } from '../library/dist/library.js';
 
 const help = extension('consumer/help', { schema: z.string(), target: 'command' });
 const enriched = build.extend(help('Application help.'));
@@ -12,7 +12,9 @@ const app = new Application('consumer')
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .command(enriched)
   .command(direct.extend(help('Direct help.')))
-  .command(factory().extend(help('Factory help.')));
+  .command(factory().extend(help('Factory help.')))
+  // A library Command that declares a result attaches like any other.
+  .command(summarize);
 new Application('collision')
   .globalOption('file', { required: true, short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })

@@ -43,7 +43,7 @@ export type {
   ViewContribution,
   ViewOverride,
 } from './view.js';
-export type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
+export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 export type {
   Middleware,
   OptionsOf,
@@ -67,11 +67,14 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
+  ResultInput,
+  ResultViews,
   RunOptions,
   ScalarArgument,
   StringOption,
   SuppliedInputs,
   RowView,
+  RowViews,
   ValidationContext,
   VariadicArgument,
   View,

@@ -192,7 +192,49 @@ export interface RowView<Row> {
   /** A row view has one shape; the whole view of Rendered output is the other. */
   render?: never;
 }
-export interface Out {
+/** The presentation record of a value result: every entry renders the whole value. */
+export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
+/**
+ * The presentation record of a rows result: a whole view over the collected rows, which core
+ * buffers the sequence for, or a row view, which core feeds as the rows arrive.
+ */
+export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
+
+/**
+ * One presentation a result names, with its data type erased, as the view registry erases a
+ * declared view's. The write site reads each function back through the key that resolved it.
+ */
+export type ResultView = View<never> | RowView<never>;
+
+/**
+ * What `out.results` accepts for one declared result. The declaration rides in the declared types
+ * as a closed discriminant, so a Command that declares none carries the neutral `unknown` and its
+ * `out.results` takes `never`. The parameter is never a union, so distribution reaches one member.
+ */
+export type ResultInput<Result> = Result extends { kind: 'value'; value: infer Value }
+  ? Value
+  : Result extends { kind: 'rows'; row: infer Row }
+    ? Iterable<Row> | AsyncIterable<Row>
+    : never;
+
+/**
+ * The result an `out` carries where the declaration is not in hand. Its `results` accepts any
+ * value, because the authoring call already checked what the Command declares, and the channel
+ * core builds for an action carries that declaration at run time.
+ */
+export interface OpenResult {
+  kind: 'value';
+  value: unknown;
+}
+
+/** The record a `views()` call takes, which is the shape the carried result names. */
+export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer Value }
+  ? ResultViews<Value>
+  : Result extends { kind: 'rows'; row: infer Row }
+    ? RowViews<Row>
+    : never;
+
+export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
   success(message: string): Promise<void>;
@@ -202,6 +244,11 @@ export interface Out {
   render<Data>(data: Data, view: View<Data>): Promise<void>;
   /** The same call over a sequence: core writes each row's text as the source yields it. */
   render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
+  /**
+   * The Command's own result, emitted once. Property syntax keeps the parameter contravariant, so
+   * a neutral `Out` never stands in for one that carries a declaration.
+   */
+  results: (value: ResultInput<Result>) => Promise<void>;
   fatal(message: string): never;
 }
 export type StringOption = OptionSpelling &
@@ -328,17 +375,19 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
             : undefined)
   : boolean;
 
-export interface ActionContext<Args, Options = {}> {
+export interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly style: ContextualStyle;
   args: Args;
   options: Options;
   passthrough: string[];
-  out: Out;
+  out: Out<Result>;
   host: Host;
   /** The run's cancellation signal, which a caller or an installed signals owner aborts. */
   signal: AbortSignal;
 }
-export type Action<Args, Options = {}> = (context: ActionContext<Args, Options>) => unknown;
+export type Action<Args, Options = {}, Result = unknown> = (
+  context: ActionContext<Args, Options, Result>,
+) => unknown;
 
 /** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
 export declare const declaredTypes: unique symbol;
@@ -347,10 +396,15 @@ export declare const declaredTypes: unique symbol;
  * Arguments and local options describe the action's own inputs. Globals are a requirement on the
  * Receiving Application: a library that needs none can attach wherever its local keys are disjoint.
  */
-export interface DeclaredTypes<Args, Options, Globals> {
+export interface DeclaredTypes<Args, Options, Globals, Result = unknown> {
   args: Args;
   globals: (value: Globals) => void;
   options: Options;
+  /**
+   * The result the Command declares, or `unknown` where it declares none. A plain field keeps it
+   * covariant, so a child that carries one still satisfies a neutral `Command` annotation.
+   */
+  result: Result;
 }
 
 /**
@@ -358,9 +412,9 @@ export interface DeclaredTypes<Args, Options, Globals> {
  * holds on a fresh declaration, on a partly declared one, and on one that registered its action.
  */
 export type ActionHandler<Declaration> = Declaration extends {
-  [declaredTypes]: DeclaredTypes<infer Args, infer Options, infer Globals>;
+  [declaredTypes]: DeclaredTypes<infer Args, infer Options, infer Globals, infer Result>;
 }
-  ? Action<Args, Globals & Options>
+  ? Action<Args, Globals & Options, Result>
   : never;
 /** The args object an extracted handler receives for this declaration. */
 export type ActionArgs<Declaration> =

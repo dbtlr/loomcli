@@ -78,6 +78,21 @@ function nested() {
   return new Application('store').command(cache).action(dispatch);
 }
 
+// A declared result is a graph fact, so inspection reports its unit, its names in record order,
+// And the default a later `views()` call moved.
+function results() {
+  const table = { render: (value) => `${String(value.count)}\n` };
+  const wide = { render: (value) => `${String(value.count)} rows\n` };
+  const list = { row: (row) => `${row.path}\n` };
+  const count = new Command('count').result({ views: { table } }).action(dispatch);
+  const paths = new Command('paths')
+    .rows({ views: { list, table } })
+    .views({ wide }, { default: 'wide' })
+    .action(dispatch);
+  const plain = new Command('plain').action(dispatch);
+  return new Application('results').command(count).command(paths).command(plain).action(dispatch);
+}
+
 function polarity() {
   return new Application('flags')
     .option('total', { polarity: 'both', short: 't', type: 'boolean' })
@@ -192,6 +207,7 @@ const graphs = {
   nested,
   omission,
   polarity,
+  results,
   roles,
   tails,
   ...faults,

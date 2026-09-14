@@ -9,6 +9,8 @@ import {
   declareExtensions,
   declareArgument,
   declareOption,
+  declareResult,
+  declareResultViews,
   freshState,
   recordGlobalOption,
 } from './command.js';
@@ -17,10 +19,12 @@ import type {
   AttachmentConstraint,
   AfterArgument,
   AfterCommand,
+  AfterResult,
   BuiltGraph,
   Command,
   CommandMethod,
   CommandState,
+  ResultMethod,
 } from './command.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import { DeclarationError, InternalError, reasonOf, toFailure } from './errors.js';
@@ -53,6 +57,9 @@ import type {
   ExitCode,
   OptionConfig,
   OptionValue,
+  ResultViews,
+  ResultViewsOf,
+  RowViews,
   RunOptions,
   ValidateOmittedConstraint,
 } from './types.js';
@@ -134,13 +141,15 @@ class ApplicationBuilder<
   Globals,
   State extends ApplicationMethod = ApplicationMethod,
   Plugins extends readonly Plugin[] = readonly [],
+  Result = unknown,
 > {
   declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
-  readonly #views: readonly ViewOverride[];
+  // The override list the constructor read out of the options slot, unexamined until build.
+  readonly #views: unknown;
   readonly #plugins: Plugins | undefined;
   readonly #globals: GlobalsState<Globals>;
   // The constructor's raw options argument, kept for the slot's own shape rules.
@@ -155,7 +164,7 @@ class ApplicationBuilder<
     root: CommandState<Args, Options, Globals>,
     config: {
       declared: DeclaredFacts;
-      views: readonly ViewOverride[];
+      views: unknown;
       options?: unknown;
       plugins: Plugins | undefined;
       globals: GlobalsState<Globals>;
@@ -185,7 +194,8 @@ class ApplicationBuilder<
     Options,
     Globals,
     AfterArgument<State>,
-    Plugins
+    Plugins,
+    Result
   > {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
@@ -203,7 +213,14 @@ class ApplicationBuilder<
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins> {
+  ): Application<
+    Args,
+    Options & Record<Name, OptionValue<Config>>,
+    Globals,
+    State,
+    Plugins,
+    Result
+  > {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
@@ -222,13 +239,27 @@ class ApplicationBuilder<
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins> {
+  ): Application<
+    Args,
+    Options,
+    Globals & Record<Name, OptionValue<Config>>,
+    State,
+    Plugins,
+    Result
+  > {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
       name,
     };
-    return new ApplicationBuilder(this.#name, recordGlobalOption(this.#root, name), {
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals & Record<Name, OptionValue<Config>>,
+      State,
+      Plugins,
+      Result
+    >(this.#name, recordGlobalOption(this.#root, name), {
       declared: this.#declared,
       globals: declareGlobalOption(this.#globals, input),
       options: this.#options,
@@ -239,21 +270,64 @@ class ApplicationBuilder<
 
   /** Registering the action closes input authoring; extension configuration remains available. */
   action(
-    handler: Action<Args, Globals & Options>,
-  ): Application<Args, Options, Globals, AfterAction, Plugins> {
+    handler: Action<Args, Globals & Options, Result>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins, Result> {
     return this.derive(declareAction(this.#root, handler));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Application<Args, Options, Globals, AfterCommand<Exclude<State, 'globalOption'>>, Plugins> {
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    AfterCommand<Exclude<State, 'globalOption'>>,
+    Plugins,
+    Result
+  > {
     return this.derive(attachChild(this.#root, child));
+  }
+
+  /**
+   * The value the root action produces for its consumer. The type argument is stated by the
+   * author, as it is on a Command.
+   */
+  result<Value>(declaration: {
+    views: ResultViews<NoInfer<Value>>;
+  }): Application<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    Plugins,
+    { kind: 'value'; value: Value }
+  > {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
+      declareResult(this.#root, 'value', declaration),
+    );
+  }
+
+  /** The same declaration over a sequence, whose type argument is one row. */
+  rows<Row>(declaration: {
+    views: RowViews<NoInfer<Row>>;
+  }): Application<Args, Options, Globals, AfterResult<State>, Plugins, { kind: 'rows'; row: Row }> {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
+      declareResult(this.#root, 'rows', declaration),
+    );
+  }
+
+  /** Presentation after the fact, merged by key, as it is on a Command. */
+  views(
+    replacements: ResultViewsOf<Result>,
+    options?: { default?: string },
+  ): Application<Args, Options, Globals, State, Plugins, Result> {
+    return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Application<Args, Options, Globals, State, Plugins> {
+  ): Application<Args, Options, Globals, State, Plugins, Result> {
     return this.derive(declareExtensions(this.#root, values));
   }
 
@@ -262,16 +336,20 @@ class ApplicationBuilder<
    * travels through this call: each method names its transition in its return type, and the
    * wrapper publishes the same runtime value in exactly that state.
    */
-  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
+  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
-  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins> {
-    return new ApplicationBuilder(this.#name, root, {
-      declared: this.#declared,
-      globals: this.#globals,
-      options: this.#options,
-      plugins: this.#plugins,
-      views: this.#views,
-    });
+  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared> {
+    return new ApplicationBuilder<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared>(
+      this.#name,
+      root,
+      {
+        declared: this.#declared,
+        globals: this.#globals,
+        options: this.#options,
+        plugins: this.#plugins,
+        views: this.#views,
+      },
+    );
   }
 
   /**
@@ -516,8 +594,9 @@ export type Application<
   Globals = {},
   State extends ApplicationMethod = AfterAction,
   Plugins extends readonly Plugin[] = readonly Plugin[],
+  Result = unknown,
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State, Plugins>,
+  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>,
   | typeof applicationEnvironment
   | typeof declaredTypes
   | 'extend'
@@ -525,6 +604,7 @@ export type Application<
   | 'name'
   | 'run'
   | State
+  | ResultMethod<Result>
 >;
 
 interface ApplicationConstructor {
@@ -606,7 +686,8 @@ class ApplicationDeclaration<
         globals: emptyGlobals(),
         options,
         plugins: options?.plugins,
-        views: options?.views ?? [],
+        // An options slot that is no plain object carries no override list, and its own rule reports it.
+        views: isPlainObject(options) ? options.views : undefined,
       },
     );
   }
