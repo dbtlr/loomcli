@@ -4,7 +4,7 @@ title: ADR-0025 - Completed Commands accept immutable extension configuration
 description: Command and Application extend calls remain available after action registration and replace complete values by descriptor while preserving the action and input contract.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-13
+modified: 2026-09-14
 ---
 
 # ADR-0025 - Completed Commands accept immutable extension configuration
@@ -34,3 +34,5 @@ Core facts and input-targeted extension configuration retain their existing cons
 ## Status
 
 Accepted 2026-09-13 with immutable extension configuration in the public SDK. `pnpm verify` passes 937 tests and the workspace/packed declaration checks. The same 937 tests pass with `LOOM_TEST_RUNTIME=bun`. `pnpm check:packed` compiles an independent library and a registered Application, then verifies automatic globals and customized library help under Node and Bun. Type checks reject unknown globals, incompatible attachments, union collisions, invalid registration, wrong extension targets, and reopened input/action methods.
+
+- 2026-09-14: The results-lane contract in [Results](../core.md#results) adds `views()` beside `extend()` as a second call published outside the state-dependent method union, on a declaration that carries a result, in every state including after `action()`. It reshapes presentation alone and reopens no input or action declaration, the same split this record made for extension configuration. The type closes with the action; the views stay open.

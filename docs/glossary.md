@@ -32,7 +32,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -184,7 +184,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, Presentation name, and `ResultError` follow the [results contract](core.md#results) under proposed ADR-0023 and are not implemented.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the fatal path, and on an action alone the result call. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` takes no value, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -208,7 +208,7 @@ The `render` function of a whole view, or the `row`, `head`, and `tail` function
 _Avoid_: Renderer, render callback
 
 **Pack view**:
-A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against, and its plain-data configuration is a graph fact under the plugin's descriptor.
+A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against; whether the plugin publishes its configuration as a graph fact is that plugin's contract.
 _Avoid_: Built-in view, formatter (for a pack view), widget
 
 **Row view**:
@@ -270,7 +270,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception, a broken view, or a broken destination. It exits 1.
+A failure core wraps around an unexpected exception, a broken view, or a broken destination, or raises for a result a Command promised and its action did not deliver. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Diagnostic**:
@@ -299,7 +299,7 @@ The projection of one routed Command that the help plugin prints: its masthead, 
 _Avoid_: Usage text, man page, help screen
 
 **Formatter**:
-The plugin that lets a run select a result's presentation by name through `--format`, and that declares the `json` and `jsonl` views as configured factories with a per-row map. There is no encoding outside the view model: a machine presentation is a view like a table is.
+The plugin that lets a run select a result's presentation by name through `--format`, and that declares the `json` and `jsonl` views as configured factories, one per result unit, whose map reshapes one row under `rows()` and the whole value under `result()`. There is no encoding outside the view model: a machine presentation is a view like a table is.
 _Avoid_: Encoder, serializer, format (for the view), output mode
 
 **Theme**:
