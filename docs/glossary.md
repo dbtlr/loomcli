@@ -236,7 +236,7 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Result**:
-What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable. The author states the type, the declaration carries a record of views keyed by presentation name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
+What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable or async iterable. The author states the type, the declaration carries a record of views keyed by presentation name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
 _Avoid_: Return value, payload, output value, document, stream (for the declaration)
 
 **Presentation name**:
