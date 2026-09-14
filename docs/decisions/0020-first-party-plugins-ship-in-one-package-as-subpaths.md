@@ -4,7 +4,7 @@ title: ADR-0020 - First-party plugins ship in one package as separately installa
 description: Every first-party plugin ships in @loomcli/plugins as its own subpath export with the identity <package>/<plugin>, installed one at a time through the ordinary plugins list. The package has no root export and installs nothing on import.
 status: accepted
 created: 2026-09-09
-modified: 2026-09-12
+modified: 2026-09-14
 ---
 
 # ADR-0020 - First-party plugins ship in one package as separately installable subpaths
@@ -41,3 +41,4 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 - 2026-09-13: Accepted [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) supersedes the renderer-context, exact-byte, and styling-ownership clauses of ADR-0008 and the no-exclusive-theme-slot clause of ADR-0020. All other clauses remain in force.
 
 - 2026-09-13: ADR-0027 also supersedes the unconditional middleware-module requirement. A plugin that contributes middleware loads it lazily; a mapping-only theme requires none. The remaining packaging rules stand.
+- 2026-09-14: The view registry contract in [Views](../core.md#views) adds a third module kind, binding when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted: a plugin that declares views ships them from `<subpath>/views`, separate from the `<subpath>/extension` descriptor module that stays declarations alone. The pack gains `./help/views` and `./version/views`. The replacement rule stands for a capability; a page or line is restyled by overriding its declared view with the plugin installed.

@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy) and routes every rendered byte through one [view registry](#views). The named Loom palette and the results lane remain separate proposed increments.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is the accepted contract of its increment and awaits the implementation that replaces `failures`; until it lands, the shipped package still exports `renderFailure`, `Renderer`, and `RendererContext`. The named Loom palette and the results lane remain separate proposed increments.
 
 ## Application declarations
 
@@ -715,7 +715,9 @@ interface View<Data> {
 }
 ```
 
-A view is a pure synchronous value that turns one typed value into marked text. Its `render` function receives the data and an immutable context with `style` and `width(text)`. It holds no output handle and owns its trailing newline. Existing one-argument view functions remain valid. Escape raw data with `style.escape()` before interpolating it into authored text.
+A view is a pure synchronous value that turns one typed value into marked text. Its `render` function, the view function, receives the data and an immutable context with `style` and `width(text)`. It holds no output handle. Existing one-argument view functions remain valid. Escape raw data with `style.escape()` before interpolating it into authored text.
+
+Newline ownership belongs to the write site, not to the view type. `out.render` and a failure diagnostic append nothing, so a view rendered through either owns its trailing newline. A semantic method appends one newline after its lane view, so a lane view returns none. Each write site below states which rule it follows.
 
 `out.render(data, view)` resolves the view's marked text for stdout, then writes it without adding a newline. The second argument is either a bare view, as below, or a [declared view](#views) that a plugin or core exported. A bare view is a presentation the action chose at the call site, and nothing can replace it. A declared view carries an identity, so an application can replace its function through `views` without touching the call site.
 
@@ -742,7 +744,7 @@ const app = new Application('counts')
 
 A rendered value has no semantic identity: no purpose parameter and no destination parameter. The five semantic methods keep their string-only signatures and their own destinations.
 
-Core calls the view function synchronously inside the `out.render` call, then queues its text on stdout. Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and catching that rejection changes the action's control flow, not the invocation result.
+Core calls the view function synchronously inside the `out.render` call, then queues its text on stdout. Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and catching that rejection changes the caller's control flow, not the invocation result.
 
 The type parameter is inferred from the value, so `out.render(rows, table)` checks the view against the rows it receives. A view for another value type, and one that returns anything but a string, are compile errors.
 
@@ -753,23 +755,28 @@ Every byte core or a plugin renders passes through one registry of views. A fail
 ```ts
 interface DeclaredView<Data> extends View<Data> {
   readonly identity: string;
+  // A private brand, as on ExtensionValue, and a phantom member that makes Data invariant.
 }
+type AnyDeclaredView = DeclaredView<never>;
+type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function override<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride;
 function override<Failure extends LoomError>(key: FailureClass<Failure>, replacement: View<Failure>): ViewOverride;
 type ViewContribution = AnyDeclaredView | ViewOverride;
 ```
 
-`view(identity, definition)` declares a view: an identity and its default function. The identity follows the plugin-identity convention, the package name with a suffix, so the help page is `@loomcli/plugins/help/page` and core's lanes are `@loomcli/core/lanes/<name>`. The data type is inferred from the function's first parameter, or stated as `view<Page>(…)`. The value it returns satisfies `View<Data>`, so `out.render(page, helpPage)` type-checks the same way a bare view does, and the identity travels on the value. The identity string reaches diagnostics and nothing else: an application never spells it, because a view is named by reference, exactly as an [extension descriptor](#extensions) is. `AnyDeclaredView` is the supertype a contribution list uses; it publishes the identity and erases the data type, because a list cannot carry one type parameter per element.
+`view(identity, definition)` declares a view: an identity and its default function. The identity follows the plugin-identity convention, the package name with a suffix, so the help page is `@loomcli/plugins/help/page`; core's own views take `@loomcli/core/` as their prefix by the same convention, so the lanes are `@loomcli/core/lanes/<name>`. The data type is inferred from the function's first parameter when that parameter is an object or an array, and is stated for any other data type, `view<string>(…)`, because inference through `Readonly<Data>` does not reduce to a primitive or a union. The value it returns satisfies `View<Data>`, so `out.render(page, helpPage)` type-checks the same way a bare view does, and the identity travels on the value. `DeclaredView` is invariant in `Data`, so an override for a narrower or wider data type is a compile error, while a bare `View<Data>` keeps its ordinary assignability. The value is branded the way an extension value is, so a hand-built object with an `identity` field is a bare view to core: `out.render` renders it through its own function and consults no override.
 
-A declared view is exported from the declarations module of the plugin that declares it, next to its extension descriptors, so an application that overrides the help page imports `helpPage` from `@loomcli/plugins/help/extension` and never the middleware. The default function loads with that module, which is the one cost this design accepts: a plugin's middleware module stays lazy under [Activation](#activation), and its default view functions are part of its entry cost. A plugin whose default function is heavy keeps the heavy part behind its own lazy import; help's page function is pure string building and needs none.
+The identity string reaches diagnostics and nothing else: an application never spells it, because a view is named by reference, exactly as an [extension descriptor](#extensions) is. `AnyDeclaredView` is the supertype a contribution list uses; it is `DeclaredView<never>`, which keeps `render` and erases the data type, because a list cannot carry one type parameter per element. `override` typing is compile-time alone. Core stores a replacement without a run-time witness for a declared-view key, so a JavaScript author's mismatched replacement surfaces through the output-view row of the [Failure contract](#failure-contract) when it throws.
 
-`override(key, replacement)` pairs a key with a replacement function and returns a `ViewOverride`. The key is a declared view or a failure class. Under a declared view the replacement is typed from the view's data, so a function for another data type is a compile error. Under a failure class the replacement is typed from the class's instances, as [Failure views](#failure-views) describes. An application lists its overrides under `views`; a plugin lists its declarations and its overrides together under its own `views`, as [Views from plugins](#views-from-plugins) describes.
+A declared view is exported from a declarations module of the plugin that declares it, `<subpath>/views`, beside the `<subpath>/extension` module that holds its descriptors, so an application that overrides the help page imports `helpPage` from `@loomcli/plugins/help/views` and never the middleware. The two modules are separate because a declared view carries its default function and the modules it needs, while a descriptor module stays declarations alone, which is the promise a projection that imports another plugin's facts relies on. The default function loads with the entry module, which is the one cost this design accepts: a plugin's middleware module stays lazy under [Activation](#activation), and its default view functions are part of its entry cost. A plugin whose default function is heavy keeps the heavy part behind a lazy import of its own; help's page function is pure string building and needs none.
+
+`override(key, replacement)` pairs a key with a replacement view and returns a `ViewOverride`. The key is a declared view or a failure class. Under a declared view the replacement is typed from the view's data, so a view for another data type is a compile error. Under a failure class, `FailureClass<Failure>` is an abstract constructor type, so `UsageError` and `LoomError` are valid keys and the replacement is typed from the class's instances, as [Failure views](#failure-views) describes. The replacement is any `View<Data>`; a declared view passed as the replacement contributes its function alone, and its own identity plays no part. An application lists its overrides under `views`; a plugin lists its declarations and its overrides together under its own `views`, as [Views from plugins](#views-from-plugins) describes. In this contract an application overrides and does not declare: `ApplicationOptions.views` is `readonly ViewOverride[]`, and an application's own declared views arrive with the results lane, where a Command's result names them.
 
 ```ts
 import { Application, InputError, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
-import { helpPage } from '@loomcli/plugins/help/extension';
+import { helpPage } from '@loomcli/plugins/help/views';
 
 import { brandedPage, inputProblems } from './views.js';
 
@@ -779,9 +786,9 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-Resolution is one walk over one list of contributors: the application's overrides first, then each installed plugin's overrides in installation order, then the default function of the view that was declared. A declared-view key matches by reference. A failure-class key matches the thrown failure's prototype chain, most derived first, and the chain is walked in full at each contributor before the next contributor is consulted, so an application's override for `UsageError` beats a plugin's override for `InputError`. First-in-wins across contributors keeps the rule the plugin contract already sets. The write site decides the destination and a view carries none: `out.render` writes stdout, a lane writes its own destination, and a failure writes stderr.
+Resolution is one walk over one list of contributors: the application's overrides first, then each installed plugin's overrides in installation order, then the default function of the view that was declared. A declared-view key matches by reference. A failure-class key matches the thrown failure's prototype chain, most derived first, and the chain is walked in full at each contributor before the next contributor is consulted, so an application's override for `UsageError` beats a plugin's override for `InputError`. This is a deliberate correction to the 0.2.0 resolver, which merged every contributor's registrations into one class-keyed table before walking the chain, so that a plugin's more specific class won over the application's base class; the application owns its diagnostics, and installation order breaks ties among plugins alone. The write site decides the destination and a view carries none: `out.render` writes stdout, a lane writes its own destination, and a failure writes stderr directly, never through a lane.
 
-Core declares the five lane views and exports them as `lanes`, one `DeclaredView<string>` per semantic method. Each receives the original message string, line breaks and authored styles included, under the rules in [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). The default for `lanes.print` returns its message unchanged. The other four add their matching glyph and one space and indent continuation lines by the measured gutter. An application that overrides `lanes.warn` owns that gutter for every `out.warn` call in the run, and core still appends the one newline the semantic methods promise.
+Core declares the five lane views and exports them as `lanes`, one `DeclaredView<string>` per semantic method, declared as `view<string>(…)`. Each receives the original message string, line breaks and authored styles included, under the rules in [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes), with the view context of its destination: stdout for `print` and stderr for the other four. The default for `lanes.print` returns its message unchanged. The other four add their matching glyph and one space and indent continuation lines by the measured gutter; that gutter is the default, not a rule outside the view, so an application that overrides `lanes.warn` owns it for every `out.warn` call in the run. The semantic method appends its one newline after the view, so a lane view returns none, and an override that returns the empty string still writes one newline. The `emit` argument check runs before the view, so a non-string message is still rejected as today.
 
 ```ts
 import { Application, lanes, override } from '@loomcli/core';
@@ -791,11 +798,11 @@ const app = new Application('quiet', {
 });
 ```
 
-An override whose declared view no installed contributor declares is inert: it sits in the list and never resolves, the rule an [extension value](#extensions) of an uninstalled plugin follows. An application can therefore brand a help page ahead of installing the plugin, and a shared override list holds in an application that omits it. A failure class never meets this case, because core declares a view for every failure class and the chain walk answers a subclass at throw time.
+Every identity on the graph is compared the way an extension identity is: across every declared view a plugin lists and every declared-view key an override carries, whether or not the view is declared by an installed plugin. Two distinct objects that share one identity are a `DeclarationError` at build, so an application that imports `helpPage` from one copy of the package while the installed plugin declares it from a second copy is told to deduplicate rather than left with a silent miss, the rule a second copy of an extension descriptor already meets. An override whose identity matches no declaration is inert: it is not a build error, it applies the moment a view with that object is rendered, and it never applies otherwise. An application can therefore brand a help page ahead of installing the plugin, and a shared override list holds in an application that omits it. A failure class never meets either case, because every failure class descends from `LoomError`, core declares a view for each class it exports, and an application's own subclass is answered by the chain walk at throw time.
 
 Every declared view in this contract is a document view: it renders one whole value in one call. The cardinality field that distinguishes an item view, which renders one item of a stream as it arrives, belongs to the results lane and is not part of `view()` here. When it arrives it is optional and defaults to `document`, so no declaration in this contract changes.
 
-Build applies four rules to the registry, each a `DeclarationError` at build reported through core's default text: two overrides for one key inside one contributor, two distinct declared-view objects that share one identity, an entry in `views` that is neither a declared view nor an override, and a declared view that is not a plain frozen value. [Graph build errors](#graph-build-errors) and [Plugin build errors](#plugin-build-errors) list the diagnostics. The registry is not an `inspect()` fact in this contract.
+Build applies three rules to the registry, each a `DeclarationError` at build reported through core's default text: two overrides for one key inside one contributor, two distinct declared-view objects that share one identity, and a `views` entry that is neither a declared view nor an override, which the types already reject and a JavaScript author alone reaches. [Graph build errors](#graph-build-errors) and [Plugin build errors](#plugin-build-errors) list the diagnostics. The registry is not an `inspect()` fact in this contract.
 
 ### Failure classes
 
@@ -848,7 +855,7 @@ Core's default views add the category prefixes: `Invalid input: ` for every `Usa
 
 ### Failure views
 
-Core declares one view per failure class, keyed by the class, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
+Core declares one view per failure class it exports, keyed by the class, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
 
 ```ts
 import { Application, InputError, override, UnknownCommandError } from '@loomcli/core';
@@ -861,9 +868,11 @@ export const jsonkit = new Application('jsonkit', {
 }).action(summarize);
 ```
 
-The view receives the failure instance and the stderr view context. It returns marked text that core resolves for stderr without adding a newline. Core's default diagnostics escape raw facts; `FatalError` retains the authored marked message supplied to `out.fatal()`. A working view cannot change the exit code, which is a fact of the class. A view that throws or returns a non-string is itself an internal failure, so that invocation returns 1 whichever code the original failure carried, except in a cancelled run, which keeps its signal's code under [Signals and cancellation](#signals-and-cancellation) and reports the view fault as text.
+The view receives the failure instance and the stderr view context. It returns marked text that core resolves for stderr without adding a newline, so the view owns its trailing newline. Core's default diagnostics escape raw facts; `FatalError` retains the authored marked message supplied to `out.fatal()`. A working view cannot change the exit code, which is a fact of the class. A view that throws or returns a non-string is itself an internal failure, so that invocation returns 1 whichever code the original failure carried, except in a cancelled run, which keeps its signal's code under [Signals and cancellation](#signals-and-cancellation) and reports the view fault as text.
 
-Resolution walks the thrown failure's prototype chain, most derived first, through the application's overrides, then through each installed plugin's overrides in installation order, and falls to core's default text when none answers. An override for `UsageError` therefore brands every exit-2 failure at once, and an override for a `FatalError` subclass beats one for `FatalError`. `DeclarationError` and `InternalError` reach overrides too, because an author-facing diagnostic is still output the application owns. Two overrides for one class by one contributor are a `DeclarationError` at build, reported through core's default text; the same class overridden by the application and a plugin, or by two plugins, resolves first-in-wins, as [Views from plugins](#views-from-plugins) describes.
+Resolution follows the one walk [Views](#views) defines: the application's overrides, then each installed plugin's overrides in installation order, then core's default text, with the thrown failure's prototype chain walked in full, most derived first, at each contributor before the next is consulted. An override for `UsageError` therefore brands every exit-2 failure at once, whatever any plugin registers beneath it, and within one contributor an override for a `FatalError` subclass beats one for `FatalError`. `DeclarationError` and `InternalError` reach overrides too, because an author-facing diagnostic is still output the application owns; the one exception is a `DeclarationError` build raises before the registry exists, which the build rules report through core's default text. Two overrides for one class by one contributor are such a build error; the same class overridden by the application and a plugin, or by two plugins, resolves first-in-wins, as [Views from plugins](#views-from-plugins) describes.
+
+Core's default text for each class is a plain function that runs no application code. The class's default view is that function, and the plain fallback path in the [Failure contract](#failure-contract) calls it directly, so a broken override can never leave a failure unreported.
 
 An application can treat fatal messages as literal error text with one override:
 
@@ -881,17 +890,17 @@ Its actions call `out.fatal(message)`, and its helpers throw `new FatalError(mes
 
 ### Failure contract
 
-View and destination failures are internal errors and return code 1, except in a cancelled run as [Signals and cancellation](#signals-and-cancellation) defines it, where the code stays the signal's and the fault is reported as text; every row below reads with that one carve-out.
+View and destination failures are internal errors and return code 1, except in a cancelled run as [Signals and cancellation](#signals-and-cancellation) defines it, where the code stays the signal's and the fault is reported as text; every row below reads with that one carve-out. The rows speak of the chain, because a middleware calls `out.render` and the semantic methods under the same output contract an action has, and the help page is rendered by one.
 
-| Failure                                           | Observation                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An output view throws or returns a non-string     | The `out.render` call rejects with the view's error, and nothing is written for that call. Later output still writes. After the action completes, core reports one `InternalError` through the registry, `Rendering output failed: <reason>`, and returns 1. An action failure stays primary over it.   |
-| A lane view throws or returns a non-string        | The semantic call rejects with the view's error, and nothing is written for that call. The rest of the row above applies: later output still writes, and core reports one `InternalError` after the action and returns 1.                                                                              |
-| A destination write fails                         | The call rejects, later writes to that destination reject, core attempts one plain stderr fallback, and returns 1.                                                                                                                                                                                      |
-| A failure view throws or returns a non-string     | Core writes the default text of the original failure, then `Internal error: Rendering the failure failed: <reason>`, through the plain fallback path on stderr, bypassing every override, and returns 1. The original failure stays primary.                                                            |
-| The fallback write fails                          | Reporting stops. `run()` still resolves 1.                                                                                                                                                                                                                                                              |
+| Failure                                           | Observation                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An output view throws or returns a non-string     | The `out.render` call rejects with the view's error, and nothing is written for that call. Later output still writes. After the chain settles, core reports one `InternalError` through the registry, `Rendering output failed: <reason>`, and returns 1. A failure the chain raised stays primary over it. A takeover that would have returned 0 returns 1. |
+| A lane view throws or returns a non-string        | The semantic call rejects with the view's error, and nothing is written for that call. The rest of the row above applies: later output still writes, and core reports one `InternalError` after the chain settles and returns 1.                                                                                |
+| A destination write fails                         | The call rejects, later writes to that destination reject, core attempts one plain stderr fallback, and returns 1.                                                                                                                                                                                                |
+| A failure view throws or returns a non-string     | Core writes the default text of the original failure, then `Internal error: Rendering the failure failed: <reason>`, through the plain fallback path on stderr, bypassing every override whichever contributor made it, and returns 1. The original failure stays primary.                                       |
+| The fallback write fails                          | Reporting stops. `run()` still resolves 1.                                                                                                                                                                                                                                                                        |
 
-Successful completion requires output completion. A view failure during the action makes the invocation unsuccessful even when the action returned normally and even when it caught the rejection. The fallback path calls no view. A thenable a view returned receives a rejection handler and is otherwise ignored.
+Successful completion requires output completion. A view failure during the chain makes the invocation unsuccessful even when the action or middleware returned normally and even when it caught the rejection. The fallback path calls no override and no lane; it calls core's default text function. A thenable a view returned receives a rejection handler and is otherwise ignored.
 
 ### Example coverage
 
@@ -904,7 +913,7 @@ BYTES  SOURCE
     8  total
 ```
 
-[jsonkit](../examples/jsonkit/src/views.ts) overrides two failure views and keeps core's text for every other class. Both prefix the application name. The `InputError` view writes one line per problem, `jsonkit: <spelling>: <issue message>`, with ` at <path>` after the spelling when an issue carries a path, and `jsonkit: <spelling>: required` for an omission. The `UnknownCommandError` view writes `jsonkit: unknown command "<token>"; try <candidates>.`, and when the candidate list is empty it ends after the first clause, `jsonkit: unknown command "nope".`
+[jsonkit](../examples/jsonkit/src/failures.ts) overrides three failure views and keeps core's text for every other class: two branded views and the literal `FatalError` view above. The branded views prefix the application name. The `InputError` view writes one line per problem, `jsonkit: <spelling>: <issue message>`, with ` at <path>` after the spelling when an issue carries a path, and `jsonkit: <spelling>: required` for an omission. The `UnknownCommandError` view writes `jsonkit: unknown command "<token>"; try <candidates>.`, and when the candidate list is empty it ends after the first clause, `jsonkit: unknown command "nope".` The module moves to `views.ts` with the implementation.
 
 | Invocation                              | stderr                                                    | Code |
 | --------------------------------------- | --------------------------------------------------------- | ---- |
@@ -913,9 +922,9 @@ BYTES  SOURCE
 | `jsonkit typo -f doc.json`              | `jsonkit: unknown command "typo"; try get, keys, select, fetch.` | 2    |
 | `jsonkit get missing -f doc.json`       | `Path not found: missing`                                 | 1    |
 
-The last row is a class with no override inside an application that overrides others: the fatal path keeps core's text.
+The last row renders through the literal `FatalError` view, which escapes the message and adds nothing, so its bytes match core's text for a message that carries no marker.
 
-The registry increment is proven when jsonkit's two failure overrides produce the bytes above unchanged, and when an override of `helpPage` in a test application changes `jsonkit --help` while `help()` stays installed. The acceptance tests cover the resolution order with one application override and one plugin override for a shared key, an application override for `UsageError` beside a plugin override for `InputError`, an inert override for a view no plugin declares, an override of `lanes.warn` observed through `out.warn`, each build rule above, a broken lane view, and a broken failure view under the fallback path. Each case runs under Node and Bun.
+The registry increment is proven when jsonkit's three failure overrides produce the bytes above unchanged, and when an override of `helpPage` in a test application changes `jsonkit --help` while `help()` stays installed. The acceptance tests cover the resolution order with one application override and one plugin override for a shared key, an application override for `UsageError` beside a plugin override for `InputError` resolving to the application's, a declared-view key from a second copy of a package rejected at build, an inert override for a view no plugin declares, an override of `lanes.warn` observed through `out.warn` with one newline, a hand-built object with an `identity` field rendered as a bare view, a help page and a version line whose graph facts carry marker characters printed literally, each build rule above, a broken lane view, a broken `helpPage` override under `jsonkit --help` returning 1, and a broken failure view under the fallback path. Each case runs under Node and Bun.
 
 ## Plugins
 
@@ -946,6 +955,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
 import { helpCommand, helpInput } from './extension.js';
+import { helpPage } from './views.js';
 
 const options = { help: { description: 'Show this help.', short: 'h', type: 'boolean' } } satisfies PluginOptions;
 export type HelpOptions = typeof options;
@@ -955,6 +965,7 @@ export function help(): Plugin<HelpOptions> {
     extensions: [helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     options,
+    views: [helpPage],
   });
 }
 ```
@@ -1021,6 +1032,7 @@ A `FatalError` or other failure a middleware throws before its `next()` has sett
 import type { Middleware } from '@loomcli/core';
 
 import type { help } from './plugin.js';
+import { helpPage } from './views.js';
 
 const middleware: Middleware<typeof help> = ({ command, graph, out }) => out.render({ command, graph }, helpPage);
 
@@ -1107,13 +1119,16 @@ Core owns the facts every projection needs: `description` on the Application, on
 
 ### Views from plugins
 
-A plugin's `views` list holds the views it declares and the overrides it makes, in one list, the way `extensions` holds descriptors on a plugin and values on a declaration. A declared view is the value `view(identity, definition)` returned, and listing it is what lets build detect two copies of one package declaring one identity; an override is the value `override(key, view)` returned, and it enters the resolution [Views](#views) describes: the application's overrides first, then each plugin's in installation order, then the declaring contributor's default. A plugin can override a view another plugin declares, and a plugin that overrides its own declared view has declared the wrong default. Two overrides for one key inside one contributor are a build error; the same key overridden by the application and by a plugin, or by two plugins, resolves first-in-wins.
+A plugin's `views` list holds the views it declares and the overrides it makes, in one list, the way `extensions` holds descriptors on a plugin and values on a declaration. A declared view is the value `view(identity, definition)` returned, and listing it is what puts its identity on the graph for the duplicate rule; an override is the value `override(key, view)` returned, and it enters the resolution [Views](#views) describes: the application's overrides first, then each plugin's in installation order, then the declaring contributor's default. A plugin can override a view another plugin declares. A plugin can list an override for its own declared view, and it resolves like any other, but the declared default is the place for that function. Two overrides for one key inside one contributor are a build error; the same key overridden by the application and by a plugin, or by two plugins, resolves first-in-wins.
+
+Overriding a plugin's view is presentation replacement: the plugin stays installed and its middleware, options, and facts are unchanged. Replacing the capability itself still means omitting the plugin and installing another, the rule the [first-party plugins](#first-party-plugins) follow.
 
 ```ts
 // src/help/plugin.ts
 import { plugin } from '@loomcli/core';
 
-import { helpCommand, helpInput, helpPage } from './extension.js';
+import { helpCommand, helpInput } from './extension.js';
+import { helpPage } from './views.js';
 
 export function help(): Plugin<HelpOptions> {
   return plugin(`${Package.name}/help`, {
@@ -1149,7 +1164,7 @@ The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switch
 
 ### Plugin build errors
 
-Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Sixteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `extensions` list, `views` list, and `signals` list; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
+Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Seventeen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
 
 | Rejected declaration                             | Diagnostic                                                                                                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1200,7 +1215,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the exported options type and the annotated factory at the subpath, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts or declares views, and a middleware module the entry loads lazily. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. Two plugins ship first, help and version.
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the exported options type and the annotated factory at the subpath, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. Two plugins ship first, help and version.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -1216,30 +1231,29 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-Both factories take no parameters, so an application installs each plugin as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. Neither plugin claims the signals slot, and neither needs a slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin. Each plugin reads the graph and its own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold.
+Both factories take no parameters, so an application installs each plugin as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. Neither plugin claims the signals slot, and neither needs a slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Each plugin reads the graph and its own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold.
 
 ### Version
 
-`version()` declares one Boolean option, `version`, with the short spelling `V` and the description `Print the version.`, so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<CommandGraph>` exported from `@loomcli/plugins/version/extension` and listed in the plugin's `views`. Its default function returns `<name> v<version>\n` from `graph.name` and `graph.version`, and the middleware calls `out.render(graph, versionLine)` and returns without calling `next()`, so the exit code is 0 and nothing after routing runs. An application overrides `versionLine` to restyle the line while `version()` stays installed. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is presentation alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
+`version()` declares one Boolean option, `version`, with the short spelling `V` and the description `Print the version.`, so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<CommandGraph>` exported from `@loomcli/plugins/version/views` and listed in the plugin's `views`. Its default function returns `<name> v<version>\n` from `graph.name` and `graph.version`, escaped the way the middleware escaped the line before this contract, and the middleware calls `out.render(graph, versionLine)` and returns without calling `next()`, so the exit code is 0 and nothing after routing runs. An application overrides `versionLine` to restyle the line while `version()` stays installed. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is presentation alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
 
 `version` is never absent on the graph. An Application that omits it declares `0.0.0`, which means unversioned, so `CommandGraph.version` is a `string` and no projection branches on its absence. An explicit `0.0.0` reads the same, and core keeps no record of which one the author wrote. A declared version follows the one-line rule every core fact string follows, so the line the plugin prints is one line; core otherwise neither validates nor normalizes it.
 
 ### Help
 
-`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page from `graph` and `command` alone and ends it with exactly one newline, so stdout holds the page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, and a structured page model is a decision for the help restyle increment. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the chain runs before the callable check. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. Local tokens are never parsed after the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page from `graph` and `command` alone, escapes it, and ends it with exactly one newline, so stdout holds the page and one line terminator, the bytes `out.print` produced before this contract. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping and newline, and a structured page model is a decision for the help restyle increment. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the chain runs before the callable check. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. Local tokens are never parsed after the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
 
 The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
 
 #### Help extensions
 
-Two descriptors and one declared view are exported from `@loomcli/plugins/help/extension`. Both descriptors are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view imports the page module, so the page code loads with the plugin's entry module and the middleware module holds nothing but the call.
+Two descriptors are exported from `@loomcli/plugins/help/extension`, and both are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. The default function escapes the page it derives, the step the middleware performed before this contract, so a graph fact that carries a marker character prints literally; a replacement owns that escaping obligation.
 
 ```ts
-// src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
+// src/help/views.ts, the view declarations module of the @loomcli/plugins/help subpath
 import Package from '../../package.json' with { type: 'json' };
-import { extension, view } from '@loomcli/core';
+import { style, view } from '@loomcli/core';
 import type { CommandGraph, CommandNode } from '@loomcli/core';
-import { z } from 'zod';
 
 import { renderPage } from './page.js';
 
@@ -1249,8 +1263,15 @@ export interface HelpPage {
 }
 
 export const helpPage = view<HelpPage>(`${Package.name}/help/page`, {
-  render: ({ command, graph }) => `${renderPage(graph, command)}\n`,
+  render: ({ command, graph }) => `${style.escape(renderPage(graph, command))}\n`,
 });
+```
+
+```ts
+// src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
+import Package from '../../package.json' with { type: 'json' };
+import { extension } from '@loomcli/core';
+import { z } from 'zod';
 
 const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
 const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {

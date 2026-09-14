@@ -71,7 +71,7 @@ This implicit close restores the prior style and ends any deferred padding frame
 Private-use characters are valid string data. A balanced recognized frame can therefore appear in arbitrary data by coincidence or by construction.
 `style.escape()` is the explicit way to display that data literally.
 Normal style calls preserve existing markup so nested styling remains possible.
-First-party renderers escape raw data values they interpolate, but preserve a message that the output API already accepts as authored marked text.
+First-party views escape raw data values they interpolate, but preserve a message that the output API already accepts as authored marked text.
 
 ## Resolution
 
@@ -117,7 +117,7 @@ Deep padding around unchanged content reuses its Unicode analysis. Arbitrary nes
 Eliminating that pathological cost is a separate performance increment. The current resolver does not promise linear work for every nested composition.
 Run `node packages/core/tests/fixtures/padding-growth.mjs concatenated` after building to reproduce it; `unchanged` exercises cached wrappers.
 Numeric validation prevents negative, fractional, infinite, and unsafe widths before a padding frame is produced.
-Allocation failure follows the ordinary renderer failure path; core does not silently truncate output.
+Allocation failure follows the ordinary view failure path; core does not silently truncate output.
 
 ## Required constructions
 

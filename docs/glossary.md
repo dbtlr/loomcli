@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). Result remains proposed; its declaration and stdout-routing additions are not implemented.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry contract is accepted and awaits its implementation, so the shipped package still spells a view `Renderer`. Result remains proposed; its declaration and stdout-routing additions are not implemented.
 
 **Out**:
 The output channel object an action receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; no method is ever removed.
@@ -196,19 +196,19 @@ Text a view produces from one value and `out.render` writes, after core resolves
 _Avoid_: Formatted output, verbatim output
 
 **View**:
-A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes, trailing newline included. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
+A pure, synchronous value whose view function turns one typed value and the supplied view context into the marked text core resolves and writes. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
 _Avoid_: Renderer, template, widget, presenter, formatter (for a view), serializer
 
 **View function**:
-The `render` function inside a view: data and context in, marked text out. It is what an override replaces and what a default supplies.
+The `render` function inside a view: data and context in, marked text out. A default view supplies one, and a replacement view supersedes it.
 _Avoid_: Renderer, render callback
 
 **View override**:
-The pairing of a key, a declared view or a failure class, with a replacement view function, listed under `views` on an Application or a plugin. Resolution runs the application's overrides, then each plugin's in installation order, then the declaring contributor's default; a failure-class key follows the thrown failure's prototype chain.
+The pairing of a key, a declared view or a failure class, with a replacement view whose view function supersedes the default, listed under `views` on an Application or a plugin. Resolution runs the application's overrides, then each plugin's in installation order, then the declaring contributor's default, walking a failure-class key's prototype chain in full at each contributor.
 _Avoid_: Failure renderer, registration, hook
 
-**Lane**:
-One of the five semantic methods seen as a declared view core exports under `lanes`, each over the message string. An override of a lane owns its glyph gutter, and the newline the method appends is outside the view.
+**Lane view**:
+The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level, stream (for the lane)
 
 **Token**:
@@ -226,7 +226,7 @@ _Avoid_: Return value, payload, output value
 ## Failures
 
 **Failure**:
-Any outcome `run()` reports as unsuccessful. Every failure is an instance of a public class that carries the facts its sentence interpolates, so a renderer reads facts instead of parsing prose.
+Any outcome `run()` reports as unsuccessful. Every failure is an instance of a public class that carries the facts its sentence interpolates, so a view reads facts instead of parsing prose.
 _Avoid_: Exception (as the model term), error object
 
 **Usage error**:

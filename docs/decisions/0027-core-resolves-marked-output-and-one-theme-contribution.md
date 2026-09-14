@@ -4,7 +4,7 @@ title: ADR-0027 - Core resolves marked output and one theme contribution
 description: Accept the implemented style seam independently of the proposed named Loom palette, replacing the affected renderer and plugin-slot clauses.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-13
+modified: 2026-09-14
 ---
 
 # ADR-0027 - Core resolves marked output and one theme contribution
@@ -39,3 +39,4 @@ The named `loomTheme` palette remains proposed under ADR-0022. The view registry
 
 - 2026-09-13: Accepted the implemented style seam separately from the named palette.
 - 2026-09-13: Scoped the resource guarantee to linear framing and cached analysis for unchanged nested padding. Arbitrary nesting that changes content at every level can still require quadratic Unicode measurement and transient allocation. Removing that pathological cost is a separate performance increment and does not gate this seam.
+- 2026-09-14: The view registry contract in [Views](../core.md#views) renames `Renderer` to `View` and `RendererContext` to `ViewContext`, and makes the semantic methods' glyph gutter the default of a lane view that an application can override, binding when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted. The semantic method still appends its one newline outside the view. Every other clause stands.
