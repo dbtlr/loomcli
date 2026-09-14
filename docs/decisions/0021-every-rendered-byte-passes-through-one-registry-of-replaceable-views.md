@@ -4,7 +4,7 @@ title: ADR-0021 - Every rendered byte passes through one registry of replaceable
 description: Core keeps one identity-keyed registry of views, where a view is an identity, the data shape it presents, its cardinality, and its default renderer. Core, plugins, and applications register views, and one Application option replaces the renderer of any view by identity or by failure class, retiring the separate failures option.
 status: proposed
 created: 2026-09-11
-modified: 2026-09-11
+modified: 2026-09-14
 ---
 
 # ADR-0021 - Every rendered byte passes through one registry of replaceable views
@@ -33,3 +33,7 @@ The exact surface is deferred to the phase contract: the Application option's na
 ## Status
 
 Proposed. It moves to accepted with the phase implementation that replaces `failures` with the registry and proves it through the example applications: jsonkit's two failure renderers become view overrides that produce byte-identical diagnostics, and an override of the help page's view identity changes `jsonkit --help` without replacing the help plugin. ADR-0007 takes a dated entry at that point recording that its class-keyed registration is a view override.
+
+## Changelog
+
+- 2026-09-14: The phase contract is written in [Views](../core.md#views). One word, view, names both the pure function value and the declared unit an override replaces; `Renderer` becomes `View`. A view is declared with `view(identity, definition)`, carries its default function, and is named by reference, so `out.render(data, declaredView)` is the write call. `override(key, view)` takes a declared view or a failure class and is listed under `views` on the Application, replacing `failures`, and under `views` on a plugin beside its declarations. Core exports the five lanes. An override no installed contributor declares is inert. The cardinality field waits for the results lane. A declared view loads with its plugin entry module, and the lazy-loading promise names the middleware module precisely. The status above stands until the implementation lands.

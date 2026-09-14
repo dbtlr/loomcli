@@ -4,7 +4,7 @@ title: ADR-0008 - Rendered output is a separate neutral call with a pure synchro
 description: out.render(value, renderer) is the one presentation call. A Renderer turns one value into the exact bytes core writes and holds no output handle. The five semantic methods stay string-only with fixed destinations.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-12
+modified: 2026-09-14
 ---
 
 # ADR-0008 - Rendered output is a separate neutral call with a pure synchronous renderer
@@ -33,3 +33,5 @@ Formatters, tables, and terminal styling live in the application or in future pl
 - 2026-09-12: Proposed [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) records the replacement of the value-only renderer input, exact-byte output, and styling-outside-core clauses. Once accepted, core supplies an immutable renderer context and resolves marked text and embedded ANSI policy before writing. Renderer purity, neutral output, newline ownership, ordering, and failure behavior remain. This record binds as written until that transition.
 
 - 2026-09-13: Accepted [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) supersedes the renderer-context, exact-byte, and styling-ownership clauses of ADR-0008 and the no-exclusive-theme-slot clause of ADR-0020. All other clauses remain in force.
+
+- 2026-09-14: The view registry contract in [Views](../core.md#views) renames `Renderer<Data>` to `View<Data>` and `RendererContext` to `ViewContext`, and lets the second argument of `out.render` be a declared view whose function an application replaces by identity. The neutral call, purity, newline ownership, ordering, and failure behavior are unchanged, and a bare view at the call site keeps working. This entry binds when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted with the registry implementation.

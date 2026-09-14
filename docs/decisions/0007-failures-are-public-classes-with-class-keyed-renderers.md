@@ -4,7 +4,7 @@ title: ADR-0007 - Failures are public classes with typed facts, rendered by clas
 description: Every failure run() reports is an instance of a public class carrying the facts its sentence interpolates and its exit code. Renderers are registered per class on the constructor, resolved along the prototype chain. A working renderer cannot change the exit code, and a broken one is an internal failure that never escapes.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-09
+modified: 2026-09-14
 ---
 
 # ADR-0007 - Failures are public classes with typed facts, rendered by class-keyed renderers registered on the Application
@@ -34,3 +34,4 @@ An application registers renderers through the constructor's `failures` option a
 - 2026-09-09: ADR-0018 and ADR-0013 are accepted. The entry above binds as written: cancellation ranks above the broken-renderer rule, and plugin renderers resolve after the application's and before core's default text.
 
 - 2026-09-13: Accepted [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) supersedes the exact-byte promise for working failure renderers. Core resolves their marked text for stderr. Class-keyed registration, precedence, exit codes, and plain fallback behavior remain unchanged.
+- 2026-09-14: The view registry contract in [Views](../core.md#views) records that class-keyed registration is one kind of view override. `failures` and `renderFailure` retire in favor of `views` and `override(key, view)`, and `Renderer` becomes `View`. Resolution, precedence, exit codes, and the plain fallback path are unchanged. This entry binds when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted with the registry implementation.
