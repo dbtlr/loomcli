@@ -9,6 +9,8 @@ import {
   declareExtensions,
   declareArgument,
   declareOption,
+  declareResult,
+  declareResultViews,
   freshState,
   recordGlobalOption,
 } from './command.js';
@@ -17,10 +19,12 @@ import type {
   AttachmentConstraint,
   AfterArgument,
   AfterCommand,
+  AfterResult,
   BuiltGraph,
   Command,
   CommandMethod,
   CommandState,
+  ResultMethod,
 } from './command.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import { DeclarationError, InternalError, reasonOf, toFailure } from './errors.js';
@@ -53,6 +57,9 @@ import type {
   ExitCode,
   OptionConfig,
   OptionValue,
+  ResultViews,
+  ResultViewsOf,
+  RowViews,
   RunOptions,
   ValidateOmittedConstraint,
 } from './types.js';
@@ -99,6 +106,31 @@ function silenced(
 }
 
 /**
+ * The stand-in for "this run has no primary failure", which is a value no thrown value can be.
+ * `undefined` is itself throwable, so the absence is spelled here rather than borrowed from it.
+ */
+const noPrimary = Symbol('no primary');
+
+/**
+ * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
+ * that wraps it at any depth, which an action that caught a source failure and rethrew its own
+ * produces. Such a cause is reported once, through the primary outcome that carries it.
+ */
+function carried(primary: unknown, cause: unknown): boolean {
+  const seen = new Set<unknown>();
+  let value = primary;
+  while (value !== noPrimary && !seen.has(value)) {
+    if (value === cause) {
+      return true;
+    }
+    seen.add(value);
+    // A failure wraps its own cause under `cause`, and one that declares none ends the walk.
+    value = value instanceof Error && 'cause' in value ? value.cause : noPrimary;
+  }
+  return false;
+}
+
+/**
  * The caller's own signal, read where it enters. A JavaScript caller reaches the slot with any
  * value, and a value that is not an `AbortSignal` would otherwise escape as a raw TypeError.
  */
@@ -134,13 +166,15 @@ class ApplicationBuilder<
   Globals,
   State extends ApplicationMethod = ApplicationMethod,
   Plugins extends readonly Plugin[] = readonly [],
+  Result = unknown,
 > {
   declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
-  readonly #views: readonly ViewOverride[];
+  // The override list the constructor read out of the options slot, unexamined until build.
+  readonly #views: unknown;
   readonly #plugins: Plugins | undefined;
   readonly #globals: GlobalsState<Globals>;
   // The constructor's raw options argument, kept for the slot's own shape rules.
@@ -155,7 +189,7 @@ class ApplicationBuilder<
     root: CommandState<Args, Options, Globals>,
     config: {
       declared: DeclaredFacts;
-      views: readonly ViewOverride[];
+      views: unknown;
       options?: unknown;
       plugins: Plugins | undefined;
       globals: GlobalsState<Globals>;
@@ -185,7 +219,8 @@ class ApplicationBuilder<
     Options,
     Globals,
     AfterArgument<State>,
-    Plugins
+    Plugins,
+    Result
   > {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
@@ -203,7 +238,14 @@ class ApplicationBuilder<
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins> {
+  ): Application<
+    Args,
+    Options & Record<Name, OptionValue<Config>>,
+    Globals,
+    State,
+    Plugins,
+    Result
+  > {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
@@ -222,13 +264,27 @@ class ApplicationBuilder<
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins> {
+  ): Application<
+    Args,
+    Options,
+    Globals & Record<Name, OptionValue<Config>>,
+    State,
+    Plugins,
+    Result
+  > {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
       name,
     };
-    return new ApplicationBuilder(this.#name, recordGlobalOption(this.#root, name), {
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals & Record<Name, OptionValue<Config>>,
+      State,
+      Plugins,
+      Result
+    >(this.#name, recordGlobalOption(this.#root, name), {
       declared: this.#declared,
       globals: declareGlobalOption(this.#globals, input),
       options: this.#options,
@@ -239,21 +295,64 @@ class ApplicationBuilder<
 
   /** Registering the action closes input authoring; extension configuration remains available. */
   action(
-    handler: Action<Args, Globals & Options>,
-  ): Application<Args, Options, Globals, AfterAction, Plugins> {
+    handler: Action<Args, Globals & Options, Result>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins, Result> {
     return this.derive(declareAction(this.#root, handler));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Application<Args, Options, Globals, AfterCommand<Exclude<State, 'globalOption'>>, Plugins> {
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    AfterCommand<Exclude<State, 'globalOption'>>,
+    Plugins,
+    Result
+  > {
     return this.derive(attachChild(this.#root, child));
+  }
+
+  /**
+   * The value the root action produces for its consumer. The type argument is stated by the
+   * author, as it is on a Command.
+   */
+  result<Value>(declaration: {
+    views: ResultViews<NoInfer<Value>>;
+  }): Application<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    Plugins,
+    { kind: 'value'; value: Value }
+  > {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
+      declareResult(this.#root, 'value', declaration),
+    );
+  }
+
+  /** The same declaration over a sequence, whose type argument is one row. */
+  rows<Row>(declaration: {
+    views: RowViews<NoInfer<Row>>;
+  }): Application<Args, Options, Globals, AfterResult<State>, Plugins, { kind: 'rows'; row: Row }> {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
+      declareResult(this.#root, 'rows', declaration),
+    );
+  }
+
+  /** Presentation after the fact, merged by key, as it is on a Command. */
+  views(
+    replacements: ResultViewsOf<Result>,
+    options?: { default?: string },
+  ): Application<Args, Options, Globals, State, Plugins, Result> {
+    return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Application<Args, Options, Globals, State, Plugins> {
+  ): Application<Args, Options, Globals, State, Plugins, Result> {
     return this.derive(declareExtensions(this.#root, values));
   }
 
@@ -262,16 +361,20 @@ class ApplicationBuilder<
    * travels through this call: each method names its transition in its return type, and the
    * wrapper publishes the same runtime value in exactly that state.
    */
-  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod>(
+  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
-  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins> {
-    return new ApplicationBuilder(this.#name, root, {
-      declared: this.#declared,
-      globals: this.#globals,
-      options: this.#options,
-      plugins: this.#plugins,
-      views: this.#views,
-    });
+  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared> {
+    return new ApplicationBuilder<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared>(
+      this.#name,
+      root,
+      {
+        declared: this.#declared,
+        globals: this.#globals,
+        options: this.#options,
+        plugins: this.#plugins,
+        views: this.#views,
+      },
+    );
   }
 
   /**
@@ -338,6 +441,8 @@ class ApplicationBuilder<
     let registry: ViewRegistry | undefined = undefined;
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
+    // The failure this run reports as its primary outcome, so nothing reports it a second time.
+    let primary: unknown = noPrimary;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -361,7 +466,7 @@ class ApplicationBuilder<
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
-        const invocationOutput = new Output(host);
+        const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
         // The policy is read inside the build, after the application's own overrides are published.
         // A faulty rendering declaration then reports through the view the application listed.
@@ -394,6 +499,7 @@ class ApplicationBuilder<
            */
           signals.install(ownedSignals(built.plugins));
           await runInvocation({
+            channel: (binding) => invocationOutput.channel(binding),
             defaults,
             facts: built.facts,
             graph,
@@ -402,6 +508,9 @@ class ApplicationBuilder<
             out: output.out,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
+            route: (path) => {
+              invocationOutput.useRoute(path);
+            },
             signal: controller.signal,
             style: output.style,
           });
@@ -415,10 +524,11 @@ class ApplicationBuilder<
           throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
         }
       } catch (error) {
+        primary = error;
         try {
           const failure = toFailure(error);
           code = failure.exitCode;
-          output ??= new Output(captureHost(undefined, stderr));
+          output ??= new Output(captureHost(undefined, stderr), controller.signal);
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             const report = describeFailure(registry ?? noViews, failure, output.context('stderr'));
@@ -437,6 +547,16 @@ class ApplicationBuilder<
         } catch {
           code = 1;
           reportingFailed = true;
+        }
+      }
+      /**
+       * A sequence that stopped on its own source reports the same way: the call the action never
+       * awaited observed nothing, and a failure the action let propagate is the primary outcome
+       * already, so the one it raised is not reported twice.
+       */
+      for (const cause of output?.stopped ?? []) {
+        if (!carried(primary, cause)) {
+          faults.push(toFailure(cause));
         }
       }
       // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
@@ -500,8 +620,9 @@ export type Application<
   Globals = {},
   State extends ApplicationMethod = AfterAction,
   Plugins extends readonly Plugin[] = readonly Plugin[],
+  Result = unknown,
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State, Plugins>,
+  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>,
   | typeof applicationEnvironment
   | typeof declaredTypes
   | 'extend'
@@ -509,6 +630,7 @@ export type Application<
   | 'name'
   | 'run'
   | State
+  | ResultMethod<Result>
 >;
 
 interface ApplicationConstructor {
@@ -565,8 +687,9 @@ class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
-    // The options slot is read defensively, never inspected: an invalid value still yields
-    // `views` and the facts of some kind, and `checkOptions` reports it at build.
+    // The options slot is read defensively, never inspected.
+    // An invalid value still yields `views` and the facts of some kind.
+    // `checkOptions` reports such a value at build.
     // The root's own slot and core facts stay empty, because the Application checks its own slot.
     // Its diagnostics name the Application rather than the root Command.
     super(
@@ -590,7 +713,11 @@ class ApplicationDeclaration<
         globals: emptyGlobals(),
         options,
         plugins: options?.plugins,
-        views: options?.views ?? [],
+        // The read is loose because the slot is reachable from JavaScript with any value at all.
+        // An Application value passed here answers `views` with its own authoring method.
+        // The public `ApplicationOptions.views` stays exactly `readonly ViewOverride[]`.
+        // An options slot that is no plain object carries no override list, and its own rule reports it.
+        views: isPlainObject(options) ? options.views : undefined,
       },
     );
   }

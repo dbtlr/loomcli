@@ -1,3 +1,4 @@
+import { routedSubject } from './errors.js';
 import { glyph } from './glyphs.generated.js';
 import type { ViewContext } from './types.js';
 import { view } from './view.js';
@@ -45,8 +46,30 @@ const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
   warn: lane('warn', marked('warning')),
 };
 
-/** Every view core declares, so one build register holds their identities from the start. */
-const coreViews: readonly AnyDeclaredView[] = Object.values(lanes);
+/**
+ * What one sequence that stopped early reports: the Command it belongs to, the rows its source
+ * produced before the stop, and the rows core wrote. `head` is no row, so it is not counted.
+ */
+interface IncompleteResult {
+  path: readonly string[];
+  yielded: number;
+  written: number;
+}
 
-export type { Lane };
-export { coreViews, lanes };
+/**
+ * The line a sequence writes on stderr when it stopped before its end, so an empty result and a
+ * truncated one never read alike. An override that returns the empty string silences it.
+ */
+const incompleteResult: DeclaredView<IncompleteResult> = view<IncompleteResult>(
+  `${core}/results/incomplete`,
+  {
+    render: ({ path, written, yielded }) =>
+      `Output is incomplete: ${routedSubject(path)} stopped after ${yielded} rows, ${written} written.\n`,
+  },
+);
+
+/** Every view core declares, so one build register holds their identities from the start. */
+const coreViews: readonly AnyDeclaredView[] = [...Object.values(lanes), incompleteResult];
+
+export type { IncompleteResult, Lane };
+export { coreViews, incompleteResult, lanes };

@@ -4,6 +4,7 @@ import {
   commandSubject,
   DeclarationError,
   NonCallableCommandError,
+  ResultError,
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
@@ -24,19 +25,30 @@ import type { BuiltPlugin, PluginBuild } from './plugin.js';
 import type { ContextualStyle } from './style.js';
 import type {
   Action,
+  ActionChannel,
+  ActionContext,
   ArgumentConfig,
   ArgumentValue,
   declaredTypes,
+  DeclaredResult,
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
   Host,
   MultipleConstraint,
   NameConstraint,
+  OpenResult,
   OptionConfig,
   OptionValue,
   Out,
+  ResultBinding,
+  ResultView,
+  ResultViews,
+  ResultViewsOf,
+  RowView,
+  RowViews,
   ValidateOmittedConstraint,
+  View,
 } from './types.js';
 import { captureConfig, validateValues } from './validation.js';
 import type {
@@ -57,7 +69,8 @@ export interface ArgumentSlot {
 export interface DispatchInput {
   style: ContextualStyle;
   host: Host;
-  out: Out;
+  /** The action's channel, whose `results` accepts whatever the routed declaration named. */
+  out: Out<OpenResult>;
   passthrough: string[];
   signal: AbortSignal;
   values: ValidatedInputs;
@@ -90,6 +103,9 @@ export interface BuiltCommand {
   inputs: readonly InputDeclaration[];
   name: string | null;
   options: ReturnType<typeof compileOptions>;
+  /** The result the Command declares, or nothing where it declares none. */
+  /** The built declaration is the shape the write site reads, so the channel carries it. */
+  result: DeclaredResult | undefined;
   routes: ReadonlyMap<string, RoutedChild>;
 }
 
@@ -101,13 +117,23 @@ export declare const commandValue: unique symbol;
  * and each call removes the names it invalidates. A Command attaches children at any depth, so
  * `command()` belongs to every Command and to the unnamed root alike.
  */
-export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option';
+export type CommandMethod =
+  | 'action'
+  | 'alias'
+  | 'argument'
+  | 'command'
+  | 'option'
+  | 'result'
+  | 'rows';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
 export type AfterArgument<State> = Exclude<State, 'command'>;
 
 /** The same rule read from the other side. */
 export type AfterCommand<State> = Exclude<State, 'argument'>;
+
+/** One Command declares one result, so either call removes both. */
+export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
 
 /** Registering the action closes input, alias, child, and further action declarations. */
 export type AfterAction = never;
@@ -117,6 +143,7 @@ type LateDeclaration =
   | { alias: string; kind: 'alias' }
   | { name: string; kind: 'global' }
   | { child: object; kind: 'child' }
+  | { kind: 'result' }
   | { input: InputDeclaration; kind: 'input' };
 
 /**
@@ -199,8 +226,22 @@ function checkAliasName(command: string | null, alias: unknown): void {
  * Everything one Command declaration holds. The transitions below copy it with fields replaced, and
  * the Command and Application builders share them, so one declaration call has one implementation.
  */
+/**
+ * One call of the results lane, in the order it was made. A `result()` or `rows()` call declares
+ * the unit, and a `views()` call reshapes the presentation of whichever declaration it follows.
+ * Each record arrives unexamined, because build owns every rule the lane carries.
+ */
+export type ResultCall =
+  | { kind: 'value' | 'rows'; views: unknown }
+  | { default: unknown; kind: 'views'; views: unknown };
+
 export interface CommandState<Args, Options, Globals> {
-  actions: readonly Action<Args, Globals & Options>[];
+  /**
+   * The registered actions, with the declared result erased. An action is stored under the widest
+   * result, so a handler typed from its own declaration stores here and the channel that carries
+   * the result is built for it at dispatch.
+   */
+  actions: readonly Action<Args, Globals & Options, OpenResult>[];
   aliases: readonly AliasDeclaration[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly object[];
@@ -220,6 +261,8 @@ export interface CommandState<Args, Options, Globals> {
   // The constructor's raw options argument, kept for the slot's own shape rules.
   // Those rules answer at the same point every other authoring fault does.
   options: unknown;
+  // Every results-lane call in call order, which build reads as one declaration.
+  results: readonly ResultCall[];
 }
 
 /**
@@ -248,6 +291,7 @@ export function freshState<Globals>(declaration: {
     late: [],
     name: declaration.name,
     options: declaration.options,
+    results: [],
   };
 }
 
@@ -342,11 +386,59 @@ export function declareExtensions<Args, Options, Globals>(
   return { ...state, extensions: [...state.extensions, values] };
 }
 
-export function declareAction<Args, Options, Globals>(
+/**
+ * The same channel, read as the result the handler's own declaration names. The value one call
+ * emits is checked where the action was authored, and the channel core hands an action accepts
+ * whatever the routed declaration named, so this reading adds no promise the run does not keep.
+ */
+function declaredChannel<Result>(out: Out<OpenResult>): Out<Result> {
+  return { ...out, results: (value) => out.results(value) };
+}
+
+/**
+ * The handler is typed against the result its own declaration carries, and the state holds one
+ * list for every declaration, so the context each handler receives is read back at the call.
+ */
+export function declareAction<Args, Options, Globals, Result>(
   state: CommandState<Args, Options, Globals>,
-  handler: Action<Args, Globals & Options>,
+  handler: Action<Args, Globals & Options, Result>,
 ): CommandState<Args, Options, Globals> {
-  return { ...state, actions: [...state.actions, handler] };
+  const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
+    handler({ ...context, out: declaredChannel(context.out) });
+  return { ...state, actions: [...state.actions, stored] };
+}
+
+/** The result declaration, which closes both result calls and reports lateness like the rest. */
+export function declareResult<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  kind: 'value' | 'rows',
+  declaration: unknown,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    late: recordLate(state, [{ kind: 'result' }]),
+    results: [...state.results, { kind, views: recordOf(declaration, 'views') }],
+  };
+}
+
+/** A `views()` call reshapes presentation and closes nothing, so it is never a late declaration. */
+export function declareResultViews<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  replacements: unknown,
+  options: unknown,
+): CommandState<Args, Options, Globals> {
+  return {
+    ...state,
+    results: [
+      ...state.results,
+      { default: recordOf(options, 'default'), kind: 'views', views: replacements },
+    ],
+  };
+}
+
+/** One property of an authoring argument, read defensively: build reports whatever it holds. */
+function recordOf(declaration: unknown, key: 'default' | 'views'): unknown {
+  return isPlainObject(declaration) ? declaration[key] : undefined;
 }
 
 /** Attaching is a declaration call too, so the receiver keeps the children it already had. */
@@ -364,7 +456,7 @@ export function attachChild<Args, Options, Globals>(
 /** The untyped part of a declaration, which every build check reads regardless of its generics. */
 type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'aliases' | 'children' | 'inputs' | 'late' | 'name'
+  'aliases' | 'children' | 'inputs' | 'late' | 'name' | 'results'
 >;
 
 /** The types remove a late call for TypeScript authors; JavaScript authors read it here. */
@@ -387,6 +479,11 @@ function checkDeclarationOrder(state: Declared): void {
   if (late.kind === 'alias') {
     throw new DeclarationError(
       `${commandSentence(name)} declares alias "${late.alias}" after its action. Declare aliases before action().`,
+    );
+  }
+  if (late.kind === 'result') {
+    throw new DeclarationError(
+      `${commandSentence(name)} declares its result after its action. Declare result() or rows() before action().`,
     );
   }
   // Child identity and names are settled before this call, so the node and its name are valid.
@@ -585,6 +682,141 @@ function checkGroup(state: Declared, children: readonly [string, AttachedCommand
   }
 }
 
+/**
+ * A presentation name is a bare token the way a child name is, and never an array index, because
+ * an integer-like key does not keep the position the author gave it.
+ */
+function isPresentationName(name: string): boolean {
+  return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
+}
+
+/** One entry read back as the whole view its own `render` function names. */
+function isWholeView(entry: unknown): entry is View<never> {
+  return (
+    typeof entry === 'object' &&
+    entry !== null &&
+    'render' in entry &&
+    typeof entry.render === 'function'
+  );
+}
+
+/** The same reading for the row shape, which core feeds one row at a time. */
+function isRowView(entry: unknown): entry is RowView<never> {
+  return (
+    typeof entry === 'object' && entry !== null && 'row' in entry && typeof entry.row === 'function'
+  );
+}
+
+/**
+ * The key one `views()` call selected, spelled the way its own diagnostic names it. A call that
+ * names none keeps whichever key an earlier call named.
+ */
+function selectedKey(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return typeof value === 'string' ? value : (JSON.stringify(value) ?? 'undefined');
+}
+
+/** The entries one authored `views` record holds, in record order; anything else holds none. */
+function recordEntries(record: unknown): [string, unknown][] {
+  return isPlainObject(record) ? Object.entries(record) : [];
+}
+
+/**
+ * One `views` entry under the unit its declaration named, read back as the shape its own functions
+ * name. The two shapes are exclusive, and a row view answers a rows declaration alone.
+ */
+function resultView(
+  declaration: { kind: 'value' | 'rows'; sentence: string },
+  name: string,
+  entry: unknown,
+): ResultView {
+  const { kind, sentence } = declaration;
+  const whole = isWholeView(entry);
+  const row = isRowView(entry);
+  if (whole && row) {
+    throw new DeclarationError(
+      `${sentence} names view "${name}" with render and row. Supply one of the two.`,
+    );
+  }
+  if (row) {
+    if (kind === 'value') {
+      throw new DeclarationError(
+        `${sentence} names row view "${name}" on a value result. Supply a view with render, or declare the result with rows().`,
+      );
+    }
+    return entry;
+  }
+  if (whole) {
+    return entry;
+  }
+  throw new DeclarationError(
+    `${sentence} names view "${name}" with a value that is not a view. Supply a view with render or a row view with row.`,
+  );
+}
+
+/**
+ * Every rule the results lane carries, applied to one Command's calls in the order it made them.
+ * The merged record is what the rules read: a later `views()` call replaces a key in place and
+ * appends a new one, so each name keeps the position the call that first named it gave it. A
+ * `default` once named persists through later calls that name none, and the first key answers
+ * until one is named.
+ */
+function buildResult(state: Declared, hasAction: boolean): DeclaredResult | undefined {
+  const sentence = commandSentence(state.name);
+  const declarations = state.results.filter((call) => call.kind !== 'views');
+  if (declarations.length > 1) {
+    throw new DeclarationError(
+      `${sentence} declares two results. Declare one result() or rows() call.`,
+    );
+  }
+  const declaration = declarations[0];
+  // A `views()` call reshapes a result's presentation, so one with no result reshapes nothing.
+  // The types publish the call where a result is carried, so this reaches a JavaScript author.
+  if (!declaration) {
+    if (state.results.length > 0) {
+      throw new DeclarationError(
+        `${sentence} reshapes its views and declares no result. Declare result() or rows() before action().`,
+      );
+    }
+    return undefined;
+  }
+  if (!hasAction) {
+    throw new DeclarationError(
+      `${sentence} declares a result and no action. Register an action or remove the result.`,
+    );
+  }
+  const views = new Map<string, ResultView>();
+  let selected: string | undefined = undefined;
+  for (const call of state.results) {
+    for (const [name, entry] of recordEntries(call.views)) {
+      const view = resultView({ kind: declaration.kind, sentence }, name, entry);
+      if (!isPresentationName(name)) {
+        throw new DeclarationError(
+          `${sentence} names view "${name}". Use a nonempty name without whitespace, a leading hyphen, or "=", and not a number.`,
+        );
+      }
+      views.set(name, view);
+    }
+    if (call.kind === 'views') {
+      selected = selectedKey(call.default) ?? selected;
+    }
+  }
+  const first = views.keys().next();
+  if (first.done === true) {
+    throw new DeclarationError(
+      `${sentence} declares a result with no views. Name at least one view.`,
+    );
+  }
+  if (selected !== undefined && !views.has(selected)) {
+    throw new DeclarationError(
+      `${sentence} selects default view "${selected}", which it does not name. Name the view or select a named one.`,
+    );
+  }
+  return { default: selected ?? first.value, kind: declaration.kind, views };
+}
+
 /** Binds one Command's declarations to its action, so an action reads only validated values. */
 function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
@@ -593,9 +825,11 @@ function bindDispatch<Args, Options, Globals>(
 ) {
   return ({ host, out, passthrough, signal, style, values }: DispatchInput) => {
     const bound = state.bind(values);
-    // Last resort: no typed path exists. The graph erases the binder's generic relationship.
-    // It holds because attachment checks the global output requirement and graph build rejects
-    // Global/local collisions. This binder returns the Application's validated globals alone.
+    // Last resort: no typed path exists.
+    // The graph erases the binder's generic relationship.
+    // It holds because attachment checks the global output requirement.
+    // Graph build rejects a collision between a global and a local.
+    // This binder returns the Application's validated globals alone.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const globalOptions = globals.bind(values) as Globals;
     return action({
@@ -664,6 +898,7 @@ export function buildCommand<Args, Options, Globals>(
     );
   }
   const action = actions[0];
+  const result = buildResult(state, action !== undefined);
   if (!action) {
     checkGroup(state, attached);
   }
@@ -693,6 +928,7 @@ export function buildCommand<Args, Options, Globals>(
     inputs: state.inputs,
     name,
     options,
+    result,
     routes,
   };
 }
@@ -723,9 +959,15 @@ export function buildGraph<Args, Options, Globals>(
   };
 }
 
-export class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod> {
+export class CommandBuilder<
+  Args,
+  Options,
+  Globals,
+  State extends CommandMethod = CommandMethod,
+  Result = unknown,
+> {
   declare readonly [commandValue]: true;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
 
   readonly #state: CommandState<Args, Options, Globals>;
 
@@ -744,13 +986,19 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>> {
+  ): Command<
+    Args & Record<Name, ArgumentValue<Config>>,
+    Options,
+    Globals,
+    AfterArgument<State>,
+    Result
+  > {
     const input: ArgumentInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'argument',
       name,
     };
-    return new CommandBuilder(declareArgument(this.#state, input));
+    return this.derive(declareArgument(this.#state, input));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
@@ -761,41 +1009,87 @@ export class CommandBuilder<Args, Options, Globals, State extends CommandMethod 
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<MultipleConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State> {
+  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result> {
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
       name,
     };
-    return new CommandBuilder(declareOption(this.#state, input));
+    return this.derive(declareOption(this.#state, input));
   }
 
   /**
    * Aliases are other bare tokens that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
-  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State> {
-    return new CommandBuilder(declareAlias(this.#state, names));
+  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {
+    return this.derive(declareAlias(this.#state, names));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Command<Args, Options, Globals, AfterCommand<State>> {
-    return new CommandBuilder(attachChild(this.#state, child));
+  ): Command<Args, Options, Globals, AfterCommand<State>, Result> {
+    return this.derive(attachChild(this.#state, child));
+  }
+
+  /**
+   * The value this Command produces for its consumer. The type argument is stated by the author,
+   * so the views record states no type of its own and an omitted argument names none either.
+   */
+  result<Value>(declaration: {
+    views: ResultViews<NoInfer<Value>>;
+  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'value'; value: Value }> {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
+      declareResult(this.#state, 'value', declaration),
+    );
+  }
+
+  /** The same declaration over a sequence, whose type argument is one row. */
+  rows<Row>(declaration: {
+    views: RowViews<NoInfer<Row>>;
+  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'rows'; row: Row }> {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
+      declareResult(this.#state, 'rows', declaration),
+    );
+  }
+
+  /**
+   * Presentation after the fact. It merges by key, so an existing name is replaced in place and a
+   * new one is appended, and `default` names the key core renders when nothing selects another.
+   */
+  views(
+    replacements: ResultViewsOf<Result>,
+    options?: { default?: string },
+  ): Command<Args, Options, Globals, State, Result> {
+    return this.derive(declareResultViews(this.#state, replacements, options));
   }
 
   /** The action closes input authoring; `extend()` remains outside this state transition. */
-  action(handler: Action<Args, Globals & Options>): Command<Args, Options, Globals> {
-    return new CommandBuilder(declareAction(this.#state, handler));
+  action(
+    handler: Action<Args, Globals & Options, Result>,
+  ): Command<Args, Options, Globals, AfterAction, Result> {
+    return this.derive(declareAction(this.#state, handler));
   }
 
-  extend(...values: readonly ExtensionValue<'command'>[]): Command<Args, Options, Globals, State> {
-    return new CommandBuilder(declareExtensions(this.#state, values));
+  extend(
+    ...values: readonly ExtensionValue<'command'>[]
+  ): Command<Args, Options, Globals, State, Result> {
+    return this.derive(declareExtensions(this.#state, values));
   }
 
   build(context: BuildContext): BuiltCommand {
     return buildCommand(this.#state, context);
+  }
+
+  /**
+   * The same runtime value in the state the calling method's return type names. Each call states
+   * its own transition, and the declared result travels with it unless the call replaces it.
+   */
+  private derive<DerivedArgs, DerivedOptions, Next extends CommandMethod, DerivedResult = Result>(
+    state: CommandState<DerivedArgs, DerivedOptions, Globals>,
+  ): Command<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult> {
+    return new CommandBuilder<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult>(state);
   }
 }
 
@@ -811,10 +1105,18 @@ export type Command<
   Options = {},
   Globals = {},
   State extends CommandMethod = AfterAction,
+  Result = unknown,
 > = Pick<
-  CommandBuilder<Args, Options, Globals, State>,
-  typeof commandValue | typeof declaredTypes | 'extend' | State
+  CommandBuilder<Args, Options, Globals, State, Result>,
+  typeof commandValue | typeof declaredTypes | 'extend' | State | ResultMethod<Result>
 >;
+
+/**
+ * `views()` is published in every state on a declaration that carries a result, and on none that
+ * carries none. It is a key of the picked surface rather than a member of the state union, because
+ * the state union answers the calls a declaration closes and this one closes nothing.
+ */
+export type ResultMethod<Result> = unknown extends Result ? never : 'views';
 
 /**
  * The core facts and initial extension values a named Command carries.
@@ -962,9 +1264,10 @@ export async function prepareDispatch(
   graph: BuiltGraph,
   routed: RoutedInvocation,
   invocation: {
+    /** The channel the action receives, which the results lane builds from the routed node. */
+    channel: (binding: ResultBinding) => ActionChannel;
     defaults: DefaultValues;
     host: Host;
-    out: Out;
     signal: AbortSignal;
     style: ContextualStyle;
   },
@@ -985,13 +1288,31 @@ export async function prepareDispatch(
     passthrough: parsed.passthrough,
     supplied: { args, options: mergeValues(scan, parsed.options) },
   });
-  return () =>
-    dispatch({
-      host: invocation.host,
-      out: invocation.out,
-      passthrough: parsed.passthrough,
-      signal: invocation.signal,
-      style: invocation.style,
-      values,
-    });
+  const channel = invocation.channel({ path, result: command.result });
+  return async () => {
+    try {
+      await dispatch({
+        host: invocation.host,
+        out: channel.out,
+        passthrough: parsed.passthrough,
+        signal: invocation.signal,
+        style: invocation.style,
+        values,
+      });
+      /**
+       * A declared result is a promise the Command makes, so an action that returned normally
+       * without emitting one broke it. A failure raised before the call is that failure, and a
+       * cancelled run raises none, because an action that reads its signal and returns is the
+       * sanctioned path.
+       */
+      if (command.result && !channel.emitted() && !invocation.signal.aborted) {
+        throw new ResultError('missing', path);
+      }
+    } catch (error) {
+      // The action's failure is the invocation's outcome.
+      // A sequence it left pending is stopped where it stands rather than drained to its end.
+      channel.stop();
+      throw error;
+    }
+  };
 }

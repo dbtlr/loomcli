@@ -2,7 +2,7 @@ import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
 import type { compileOptions } from './options.js';
-import type { ArgumentConfig, OptionConfig } from './types.js';
+import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { validatesOmission } from './validation.js';
 
@@ -74,10 +74,21 @@ interface CommandNode {
   readonly hidden: boolean;
   readonly deprecated: string | undefined;
   readonly hasAction: boolean;
+  readonly result: ResultNode | null;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
   readonly children: readonly CommandNode[];
   readonly extensions: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The result one Command declares: the unit its action emits, the presentation names in record
+ * order, and the name of the view core renders when nothing selects another.
+ */
+interface ResultNode {
+  readonly kind: 'value' | 'rows';
+  readonly views: readonly string[];
+  readonly default: string;
 }
 
 /**
@@ -236,8 +247,21 @@ function commandNode(
       optionNodes(command.inputs, { records, scope: 'application', table: command.options }),
     ),
     path,
+    result: resultNode(command.result),
   };
   return Object.freeze(node);
+}
+
+/** The declared result as plain data, or `null` on a Command that declares none. */
+function resultNode(result: DeclaredResult | undefined): ResultNode | null {
+  if (!result) {
+    return null;
+  }
+  return Object.freeze({
+    default: result.default,
+    kind: result.kind,
+    views: Object.freeze([...result.views.keys()]),
+  });
 }
 
 /**
@@ -271,5 +295,5 @@ function inspectGraph(
   return Object.freeze(inspected);
 }
 
-export type { ArgumentNode, CommandGraph, CommandNode, OptionNode };
+export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
 export { inspectGraph };

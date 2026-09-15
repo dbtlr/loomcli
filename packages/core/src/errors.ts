@@ -2,10 +2,24 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { InputIdentity } from './types.js';
 
-/** The routed path names the Command a token fault belongs to; an empty path is the root. */
+/** The same subject at the start of a sentence, where a token fault names its Command. */
 function routedSentence(command: readonly string[]): string {
-  const name = command.at(-1);
-  return name === undefined ? 'The root Command' : commandSentence(name);
+  const subject = routedSubject(command);
+  return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
+}
+
+/** The sentence one results-lane fault reports, which names the Command that holds it. */
+function resultMessage(kind: ResultFault, command: readonly string[]): string {
+  if (kind === 'missing') {
+    return `${routedSentence(command)} declares a result and its action returned without emitting one. Call out.results() once.`;
+  }
+  if (kind === 'repeated') {
+    return `${routedSentence(command)} emitted its result twice. Call out.results() once.`;
+  }
+  if (kind === 'undeclared') {
+    return `${routedSentence(command)} declares no result. Declare one with result() or rows() before action().`;
+  }
+  return `A middleware called out.results() on ${routedSubject(command)}. Only the action emits a result.`;
 }
 
 /**
@@ -54,6 +68,12 @@ export function defaultText(failure: LoomError): string {
 /** How a diagnostic names one Command inside a sentence: by name, or as the unnamed root. */
 export function commandSubject(name: string | null): string {
   return name === null ? 'the root Command' : `Command "${name}"`;
+}
+
+/** The routed path names the Command a sentence speaks of; an empty path is the root. */
+export function routedSubject(command: readonly string[]): string {
+  const name = command.at(-1);
+  return name === undefined ? 'the root Command' : commandSubject(name);
 }
 
 /** The same subject at the start of a sentence. */
@@ -231,6 +251,28 @@ export class InternalError extends LoomError {
     super(message, 1);
     this.cause = cause;
     this.name = 'InternalError';
+  }
+}
+
+/** The four ways the results lane is broken, each named where core meets it. */
+export type ResultFault = 'missing' | 'repeated' | 'undeclared' | 'middleware';
+
+/**
+ * Exit 1: the promise a declared result makes was not kept. It wraps no thrown value, so its
+ * `cause` is `undefined`, and it extends `InternalError`, so an override of that class brands it
+ * and its default text carries the same prefix, while an override keyed by this class reaches it
+ * alone.
+ */
+export class ResultError extends InternalError {
+  readonly path: readonly string[];
+  readonly kind: ResultFault;
+  declare readonly cause: undefined;
+
+  constructor(kind: ResultFault, path: readonly string[]) {
+    super(resultMessage(kind, path), undefined);
+    this.kind = kind;
+    this.name = 'ResultError';
+    this.path = path;
   }
 }
 

@@ -405,3 +405,10 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+test('the inspected graph reports the declared table as the root result', () => {
+  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(inspected.status).toBe(0);
+  const graph: { root: { result: unknown } } = JSON.parse(inspected.stdout);
+  expect(graph.root.result).toEqual({ default: 'table', kind: 'value', views: ['table'] });
+});

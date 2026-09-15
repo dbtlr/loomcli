@@ -28,6 +28,7 @@ const leaf = {
   hasAction: true,
   hidden: false,
   options: [],
+  result: null,
 };
 
 test('inspects a graph of globals, a root action, and three children', () => {
@@ -79,6 +80,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           ],
           name: 'get',
           path: ['get'],
+          result: null,
         },
         {
           ...leaf,
@@ -96,6 +98,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           ],
           name: 'keys',
           path: ['keys'],
+          result: null,
         },
         {
           ...leaf,
@@ -116,6 +119,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
             },
           ],
           path: ['select'],
+          result: null,
         },
       ],
       deprecated: none,
@@ -126,6 +130,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
       name: null,
       options: [],
       path: [],
+      result: null,
     },
     version: '0.0.0',
   });
@@ -192,6 +197,7 @@ test('reports the version and every declared description, and the root reports t
             },
           ],
           path: ['get'],
+          result: null,
         },
       ],
       deprecated: none,
@@ -202,6 +208,7 @@ test('reports the version and every declared description, and the root reports t
       name: null,
       options: [],
       path: [],
+      result: null,
     },
     version: '1.2.0',
   });
@@ -264,6 +271,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
             },
           ],
           path: ['fetch'],
+          result: null,
         },
         { ...leaf, hidden: true, name: 'debug', path: ['debug'] },
       ],
@@ -275,6 +283,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
       name: null,
       options: [],
       path: [],
+      result: null,
     },
     version: '0.0.0',
   });
@@ -304,6 +313,7 @@ test('inspects a group at two named levels below the root', () => {
           name: 'cache',
           options: [],
           path: ['cache'],
+          result: null,
         },
       ],
       deprecated: none,
@@ -314,9 +324,24 @@ test('inspects a group at two named levels below the root', () => {
       name: null,
       options: [],
       path: [],
+      result: null,
     },
     version: '0.0.0',
   });
+});
+
+test('reports the declared result on every Command, and null where none is declared', () => {
+  const children = invokeInspect('results').root.children.map(
+    (child: { name: string; result: unknown }) => [child.name, child.result],
+  );
+  expect(children).toEqual([
+    ['count', { default: 'table', kind: 'value', views: ['table'] }],
+    // The names keep their record order.
+    // The later views() call appended one name and moved the default to it.
+    ['paths', { default: 'wide', kind: 'rows', views: ['list', 'table', 'wide'] }],
+    ['plain', null],
+  ]);
+  expect(invokeInspect('results').root.result).toBeNull();
 });
 
 test('reports the accepted spellings of each polarity and of a short-only option', () => {

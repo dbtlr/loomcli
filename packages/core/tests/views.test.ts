@@ -16,6 +16,23 @@ function rejected(message: string) {
   return { status: 1, stderr: `Invalid declaration: ${message}\n`, stdout: 'resolved:1\n' };
 }
 
+test.each([
+  ['probe/both', 'View "probe/both" carries render and row. Supply one of the two.'],
+  [
+    'probe/none',
+    'View "probe/none" carries neither render nor row. Supply a view with render or a row view with row.',
+  ],
+] satisfies [string, string][])(
+  'view() rejects the %s definition at the call',
+  (scenario, message) => {
+    expect(views(scenario)).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `declaration:1: ${message}\n`,
+    });
+  },
+);
+
 test('a declared view with no override renders through its own default function', () => {
   expect(views('declared-default')).toEqual(rendered('page: one\nresolved:0\n'));
 });
@@ -26,6 +43,14 @@ test("a plugin's override of the view it declares supersedes that default", () =
 
 test('one key overridden by the application and by a plugin resolves to the application', () => {
   expect(views('shared-key')).toEqual(rendered('app: one\nresolved:0\n'));
+});
+
+test("a declared row view in a plugin's list resolves through its own default functions", () => {
+  expect(views('row-declared')).toEqual(rendered('ROWS\n0: one\n1: two\nresolved:0\n'));
+});
+
+test('an override keyed by a declared row view supersedes its whole shape', () => {
+  expect(views('row-override')).toEqual(rendered('app: one\napp: two\nresolved:0\n'));
 });
 
 test('an override for a view no installed plugin declares is inert', () => {

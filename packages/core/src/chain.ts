@@ -9,7 +9,7 @@ import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
 import type { ContextualStyle } from './style.js';
-import type { Host, Out } from './types.js';
+import type { ActionChannel, Host, OpenResult, Out, ResultBinding } from './types.js';
 import type { DefaultValues, OptionInput } from './validation.js';
 
 /**
@@ -158,15 +158,23 @@ interface EntryState {
 /** Everything one invocation needs after its graph is built and its defaults are validated. */
 interface Invocation {
   style: ContextualStyle;
+  /** The action's own channel, built from the routed Command's declaration when it dispatches. */
+  channel: (binding: ResultBinding) => ActionChannel;
   defaults: DefaultValues;
   facts: { description: string | undefined; version: string };
   graph: BuiltGraph;
   host: Host;
   name: string;
-  out: Out;
+  /**
+   * The invocation's own channel. A middleware reads it as the neutral `Out`, and the action
+   * receives the channel the results lane builds for the Command that was routed.
+   */
+  out: Out<OpenResult>;
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
+  /** The routed path, published where routing resolved it, which output names in its own line. */
+  route: (path: readonly string[]) => void;
   signal: AbortSignal;
 }
 
@@ -236,8 +244,9 @@ function nextOf(turn: EntryTurn): () => Promise<ChainOutcome> {
       },
     );
     state.downstream = pending;
-    // Core awaits the downstream promise itself, so a middleware that never awaits `next()` still
-    // Holds the chain open and never ends the run with an unobserved rejection.
+    // Core awaits the downstream promise itself.
+    // A middleware that never awaits `next()` still holds the chain open.
+    // The run therefore never ends with an unobserved rejection.
     void pending.catch(() => undefined);
     return pending;
   };
@@ -284,8 +293,8 @@ async function settle(
     return reported(chain, 'taken-over');
   }
   await quiet(state.downstream);
-  // A middleware that caught the rejection reports what the chain reached; the recorded failure
-  // Still decides the exit code.
+  // A middleware that caught the rejection reports what the chain reached.
+  // The recorded failure still decides the exit code.
   return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 
@@ -399,11 +408,13 @@ async function runChain(
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = routeInvocation(invocation.graph, invocation.host.argv);
+  invocation.route(routed.path);
   const entries = activatedEntries(invocation.plugins, routed.scan);
   const raised = await runChain(invocation, routed, entries);
   if (raised) {
-    // The chain resolved because a middleware caught the rejection. The failure it caught still
-    // Decides the exit code, the rule an action's caught output rejection already follows.
+    // The chain resolved because a middleware caught the rejection.
+    // The failure it caught still decides the exit code.
+    // That is the rule an action's caught output rejection already follows.
     throw raised;
   }
 }
