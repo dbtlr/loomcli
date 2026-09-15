@@ -1,16 +1,28 @@
 import type { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
-import { FatalError, notTextReason } from './errors.js';
+import { FatalError, notTextReason, ResultError } from './errors.js';
+import type { ResultFault } from './errors.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
 import { capabilities } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
+import type { SequenceView } from './sequence.js';
 import { resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { createStyle, tokens } from './style.js';
-import type { Host, OpenResult, Out, RowView, View, ViewContext } from './types.js';
+import type {
+  ActionChannel,
+  Host,
+  OpenResult,
+  Out,
+  ResultBinding,
+  ResultView,
+  RowView,
+  View,
+  ViewContext,
+} from './types.js';
 import { resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 
@@ -151,19 +163,30 @@ function renderText(produce: () => unknown): { text: string } | { failed: unknow
 }
 
 /**
- * The result channel before the lane emits. It rejects rather than writing, and it observes its own
- * rejection, so a caller that never awaits the call still leaves the process alone.
+ * The data one view reads back through the key that resolved it. A result's presentations are
+ * stored with their data type erased, as the view registry erases a declared view's, so the write
+ * site hands each function the value its own declaration checked.
  */
-function emptyLane(): Promise<void> {
-  const rejected = Promise.reject(new Error('The results lane does not emit yet.'));
-  void rejected.catch(() => undefined);
-  return rejected;
+function erased(value: unknown): never {
+  // Last resort: no typed path exists.
+  // A views record holds one entry per presentation and carries no type parameter per entry, so
+  // Every view it stores reads its data as the erased type the registry uses.
+  // It holds because the authoring call checked the value against the declaration the record
+  // Answers to, and build proved every entry in that record renders the declared type.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return value as never;
+}
+
+/** What one action's channel has emitted, which the missing rule reads after the action returned. */
+interface Emission {
+  calls: number;
 }
 
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
   private renderFault: { cause: unknown } | undefined = undefined;
-  // Every source failure a sequence stopped on, reported after this invocation's primary outcome.
+  // Every fault the output path raised beside its calls, a source a sequence stopped on and a
+  // Results-lane fault alike, reported after this invocation's primary outcome.
   private readonly stops: unknown[] = [];
   // The routed Command an incomplete sequence names, published once routing resolved it.
   private route: readonly string[] = [];
@@ -184,20 +207,90 @@ export class Output {
     private readonly signal: AbortSignal,
   ) {
     this.out = {
-      error: (message) => this.emit('error', message),
+      error: (message) => this.emit('error', message, 'stderr'),
       fatal: (message) => {
         throw new FatalError(message);
       },
-      info: (message) => this.emit('info', message),
-      print: (message) => this.emit('print', message),
+      info: (message) => this.emit('info', message, 'stderr'),
+      print: (message) => this.emit('print', message, 'stdout'),
       // The data type is erased here, as it is in the registry: one call dispatches on the shape of
       // The view it was handed, and every view function reads its data back through its own key.
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
-        this.renderValue(data, value),
-      results: () => emptyLane(),
-      success: (message) => this.emit('success', message),
-      warn: (message) => this.emit('warn', message),
+        this.renderValue(data, value, 'stdout'),
+      // Only the action emits a result, so this call is the middleware fault whatever was declared.
+      results: () => this.resultFault('middleware'),
+      success: (message) => this.emit('success', message, 'stderr'),
+      warn: (message) => this.emit('warn', message, 'stderr'),
     };
+  }
+
+  /**
+   * The channel one action receives. On a Command that declares a result nothing the action writes
+   * but the result reaches stdout: `print` and `render` move to stderr, and they move the view
+   * context with the destination, so capability detection follows the stream the bytes reach. The
+   * destination is decided here, from the declaration, and never from the view a run selected.
+   */
+  channel(binding: ResultBinding): ActionChannel {
+    const destination: Stream = binding.result ? 'stderr' : 'stdout';
+    const emission: Emission = { calls: 0 };
+    return {
+      emitted: () => emission.calls > 0,
+      out: {
+        ...this.out,
+        print: (message) => this.emit('print', message, destination),
+        // The data type is erased here, as it is in the registry: one call dispatches on the shape
+        // Of the view it was handed, and every view function reads its data back through its key.
+        render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
+          this.renderValue(data, value, destination),
+        results: (value) => this.results(binding, emission, value),
+      },
+    };
+  }
+
+  /**
+   * One `out.results` call on the action's channel. The declaration decides the unit, its default
+   * view decides the presentation, and stdout carries the result under either one. A call the
+   * declaration does not answer for is a fault of the lane and writes nothing.
+   */
+  private results(binding: ResultBinding, emission: Emission, value: unknown): Promise<void> {
+    const { path, result } = binding;
+    if (!result) {
+      return this.resultFault('undeclared', path);
+    }
+    if (emission.calls > 0) {
+      return this.resultFault('repeated', path);
+    }
+    emission.calls += 1;
+    const view = result.views.get(result.default);
+    if (!view) {
+      // Build proved the default names a view the record holds, so this is core's own fault.
+      return this.renderFailed(new Error(`The view "${result.default}" is not declared.`));
+    }
+    if (result.kind === 'rows') {
+      return this.sequence(erased(value), this.sequenceView(view), 'stdout');
+    }
+    if (typeof view.row === 'function') {
+      // Build rejects a row view on a value result, so reaching one here is core's own fault.
+      return this.renderFailed(
+        new Error(`The view "${result.default}" renders rows, not a value.`),
+      );
+    }
+    return this.rendered(() =>
+      resolveView(this.registry, view)(erased(value), this.context('stdout')),
+    );
+  }
+
+  /**
+   * One fault of the results lane: the call rejects, and the same failure is reported after this
+   * invocation's primary outcome, so a call the action never awaited still turns a would-be 0 into
+   * 1 and one the action let propagate is reported once.
+   */
+  private resultFault(kind: ResultFault, path: readonly string[] = this.route): Promise<void> {
+    const fault = new ResultError(kind, path);
+    this.stops.push(fault);
+    const rejected = Promise.reject(fault);
+    void rejected.catch(() => undefined);
+    return rejected;
   }
 
   /** The registry one invocation resolves through, republished as each contributor is read. */
@@ -210,7 +303,7 @@ export class Output {
     this.route = path;
   }
 
-  /** What a sequence's source failed with during this invocation, in the order they stopped. */
+  /** What this invocation's output raised beside its calls, in the order it was raised. */
   get stopped(): readonly unknown[] {
     return this.stops;
   }
@@ -234,8 +327,7 @@ export class Output {
    * is checked before the lane view runs, and this call appends the one newline after it, so a
    * lane view returns none and an override that returns the empty string still writes one.
    */
-  emit(kind: Purpose, message: string): Promise<void> {
-    const destination = kind === 'print' ? 'stdout' : 'stderr';
+  emit(kind: Purpose, message: string, destination: Stream): Promise<void> {
     return this.rendered(() => {
       if (typeof message !== 'string') {
         throw new TypeError('Output messages must be strings.');
@@ -259,15 +351,35 @@ export class Output {
    * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
    * fault of this call and nothing is written for it.
    */
-  private renderValue(data: never, value: View<never> | RowView<never>): Promise<void> {
+  private renderValue(
+    data: never,
+    value: View<never> | RowView<never>,
+    destination: Stream,
+  ): Promise<void> {
     const rows = typeof value.row === 'function';
     if (rows === (typeof value.render === 'function')) {
       return this.renderFailed(new Error(shapeReason(rows)));
     }
     if (typeof value.row === 'function') {
-      return this.sequence(data, value, 'stdout');
+      return this.sequence(
+        data,
+        { kind: 'rows', view: resolveRowView(this.registry, value) },
+        destination,
+      );
     }
-    return this.rendered(() => resolveView(this.registry, value)(data, this.context('stdout')));
+    return this.rendered(
+      () => resolveView(this.registry, value)(data, this.context(destination)),
+      destination,
+    );
+  }
+
+  /** The resolved presentation one result writes through, in the shape its own view carries. */
+  private sequenceView(value: ResultView): SequenceView<never> {
+    if (typeof value.row === 'function') {
+      return { kind: 'rows', view: resolveRowView(this.registry, value) };
+    }
+    const render = resolveView(this.registry, value);
+    return { kind: 'whole', render: (rows, context) => render(erased(rows), context) };
   }
 
   /**
@@ -275,7 +387,7 @@ export class Output {
    * written. The returned rejection is observed here as well, because an action that never awaits
    * the call must not end the process with an unhandled rejection.
    */
-  private sequence(source: never, value: RowView<never>, destination: Stream): Promise<void> {
+  private sequence(source: never, view: SequenceView<never>, destination: Stream): Promise<void> {
     const place = this.destination(this.host[destination]).reserve();
     const pending = writeSequence({
       close: place.close,
@@ -290,7 +402,7 @@ export class Output {
       stopped: (cause) => {
         this.stops.push(cause);
       },
-      view: resolveRowView(this.registry, value),
+      view,
     });
     void pending.catch(() => undefined);
     return pending;

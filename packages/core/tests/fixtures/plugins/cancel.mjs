@@ -150,6 +150,7 @@ const installed = {
   owner: ['owner'],
   'pending-loader': ['pending'],
   'pre-aborted': ['reporting'],
+  'result-unemitted': [],
   'slow-flush': ['owner'],
   twice: ['owner'],
   'two-runs': ['bracket'],
@@ -165,6 +166,7 @@ const callerSignal = new Set([
   'first-cause',
   'pending-loader',
   'pre-aborted',
+  'result-unemitted',
   'wrapped',
 ]);
 
@@ -213,6 +215,15 @@ async function ignoring({ out }) {
   await out.print('ready');
   await after(20_000);
   await out.print('slept');
+}
+
+/**
+ * A cooperative action of a Command that declares a result: it stops the run and returns without
+ * emitting one, which is the sanctioned path and raises no missing-result fault.
+ */
+async function abandoning({ signal }) {
+  controller.abort(callerReason);
+  await cancelled(signal);
 }
 
 /** An action that runs to completion, for the scenarios that watch the listener bracket alone. */
@@ -275,7 +286,7 @@ async function flushing({ out }) {
   void out.print('ready');
 }
 
-const actions = { absorbing, finishing, flushing, ignoring, racing, refusing, waiting };
+const actions = { abandoning, absorbing, finishing, flushing, ignoring, racing, refusing, waiting };
 
 function application() {
   const declared = new Application('app', {
@@ -287,7 +298,12 @@ function application() {
     scenario === 'default-fault'
       ? declared.option('level', { default: 'loud', type: 'string', validate: rejecting })
       : declared;
-  return withDefault.action(actions[process.env.LOOM_FIXTURE_ACTION ?? 'waiting']);
+  // The one scenario that declares a result emits none, so the cancelled run answers for it.
+  const declaring =
+    scenario === 'result-unemitted'
+      ? withDefault.result({ views: { text: { render: () => 'emitted\n' } } })
+      : withDefault;
+  return declaring.action(actions[process.env.LOOM_FIXTURE_ACTION ?? 'waiting']);
 }
 
 /** The host one scenario runs under, which is where a refusing or a slow destination enters. */

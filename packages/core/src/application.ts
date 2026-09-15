@@ -474,6 +474,7 @@ class ApplicationBuilder<
            */
           signals.install(ownedSignals(built.plugins));
           await runInvocation({
+            channel: (binding) => invocationOutput.channel(binding),
             defaults,
             facts: built.facts,
             graph,

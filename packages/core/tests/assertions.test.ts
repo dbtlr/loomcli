@@ -8,11 +8,13 @@ const source = new URL('../src/', import.meta.url);
  * The seams where validated `unknown` values meet declaration-inferred types. Nothing else.
  * `extension.ts` reads a stored output back from the record the graph keys by string identity,
  * after the descriptor that produced it has been compared by reference. `view.ts` reads one stored
- * view function back under the key `override()` typed it against.
+ * view function back under the key `override()` typed it against. `output.ts` hands one result to
+ * the view its own declaration named, out of the record that erased the data type on the way in.
  */
 const allowed = {
   'command.ts': 1,
   'extension.ts': 1,
+  'output.ts': 1,
   'style.ts': 1,
   'validation.ts': 1,
   'view.ts': 1,

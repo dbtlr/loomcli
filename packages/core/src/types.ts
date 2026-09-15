@@ -207,6 +207,16 @@ export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowVi
 export type ResultView = View<never> | RowView<never>;
 
 /**
+ * One declared result as the write site reads it: the unit the action emits, the presentations it
+ * names in record order, and the key core renders when nothing selects another.
+ */
+export interface DeclaredResult {
+  default: string;
+  kind: 'value' | 'rows';
+  views: ReadonlyMap<string, ResultView>;
+}
+
+/**
  * What `out.results` accepts for one declared result. The declaration rides in the declared types
  * as a closed discriminant, so a Command that declares none carries the neutral `unknown` and its
  * `out.results` takes `never`. The parameter is never a union, so distribution reaches one member.
@@ -250,6 +260,23 @@ export interface Out<Result = unknown> {
    */
   results: (value: ResultInput<Result>) => Promise<void>;
   fatal(message: string): never;
+}
+
+/**
+ * What the action's channel answers to: the routed path its diagnostics name, and the result the
+ * routed Command declared. The declaration decides the destinations the channel carries, so the
+ * redirect is read from the graph once and never from the view a run selected.
+ */
+export interface ResultBinding {
+  path: readonly string[];
+  result: DeclaredResult | undefined;
+}
+
+/** The channel one action receives, with the emission the results lane holds it to. */
+export interface ActionChannel {
+  out: Out<OpenResult>;
+  /** Whether the action emitted its result, which the missing rule reads after it returned. */
+  emitted: () => boolean;
 }
 export type StringOption = OptionSpelling &
   Presence &

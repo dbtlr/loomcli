@@ -4,6 +4,7 @@ import {
   commandSubject,
   DeclarationError,
   NonCallableCommandError,
+  ResultError,
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
@@ -24,10 +25,12 @@ import type { BuiltPlugin, PluginBuild } from './plugin.js';
 import type { ContextualStyle } from './style.js';
 import type {
   Action,
+  ActionChannel,
   ActionContext,
   ArgumentConfig,
   ArgumentValue,
   declaredTypes,
+  DeclaredResult,
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
@@ -38,6 +41,7 @@ import type {
   OptionConfig,
   OptionValue,
   Out,
+  ResultBinding,
   ResultView,
   ResultViews,
   ResultViewsOf,
@@ -84,13 +88,10 @@ export interface RoutedChild {
 
 /**
  * One built result declaration: the unit the action emits, the presentations it names in record
- * order, and the key core renders when nothing selects another.
+ * order, and the key core renders when nothing selects another. It is the shape the write site
+ * reads, so the channel an action receives carries the built value itself.
  */
-export interface BuiltResult {
-  default: string;
-  kind: 'value' | 'rows';
-  views: ReadonlyMap<string, ResultView>;
-}
+export type BuiltResult = DeclaredResult;
 
 /**
  * A group registers no action, so its `dispatch` is `undefined` and selection rejects it.
@@ -1262,10 +1263,10 @@ export async function prepareDispatch(
   graph: BuiltGraph,
   routed: RoutedInvocation,
   invocation: {
+    /** The channel the action receives, which the results lane builds from the routed node. */
+    channel: (binding: ResultBinding) => ActionChannel;
     defaults: DefaultValues;
     host: Host;
-    /** The channel the action receives, which the results lane builds from the routed node. */
-    out: Out<OpenResult>;
     signal: AbortSignal;
     style: ContextualStyle;
   },
@@ -1286,13 +1287,24 @@ export async function prepareDispatch(
     passthrough: parsed.passthrough,
     supplied: { args, options: mergeValues(scan, parsed.options) },
   });
-  return () =>
-    dispatch({
+  const channel = invocation.channel({ path, result: command.result });
+  return async () => {
+    await dispatch({
       host: invocation.host,
-      out: invocation.out,
+      out: channel.out,
       passthrough: parsed.passthrough,
       signal: invocation.signal,
       style: invocation.style,
       values,
     });
+    /**
+     * A declared result is a promise the Command makes, so an action that returned normally
+     * without emitting one broke it. A failure raised before the call is that failure, and a
+     * cancelled run raises none, because an action that reads its signal and returns is the
+     * sanctioned path.
+     */
+    if (command.result && !channel.emitted() && !invocation.signal.aborted) {
+      throw new ResultError('missing', path);
+    }
+  };
 }

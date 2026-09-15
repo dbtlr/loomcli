@@ -26,6 +26,14 @@ interface Counts {
   yielded: number;
 }
 
+/**
+ * The presentation one sequence writes through. A row view writes each row as the source yields
+ * it; a whole view collects every row and renders once at the end of the source.
+ */
+type SequenceView<Row> =
+  | { kind: 'rows'; view: ResolvedRowView<Row> }
+  | { kind: 'whole'; render: (rows: readonly Row[], context: ViewContext) => unknown };
+
 /** What one sequence writes through, supplied by the output that reserved its place. */
 interface SequenceWriter<Row> {
   /** The context of the destination the pieces reach. */
@@ -41,7 +49,7 @@ interface SequenceWriter<Row> {
   source: Iterable<Row> | AsyncIterable<Row>;
   /** Records a source failure, which this invocation reports after its primary outcome. */
   stopped: (cause: unknown) => void;
-  view: ResolvedRowView<Row>;
+  view: SequenceView<Row>;
 }
 
 /** The steps one source answers with. A value that iterates neither way fails as the source. */
@@ -64,11 +72,17 @@ async function pull<Row>(steps: Steps<Row>): Promise<IteratorResult<Row>> {
   }
 }
 
+/** One reading of one source: the steps it answers with, and what it has produced so far. */
+interface Reading<Row> {
+  counts: Counts;
+  steps: Steps<Row>;
+}
+
 /** One step, counted where the source produced a row. */
-async function step<Row>(steps: Steps<Row>, counts: Counts): Promise<IteratorResult<Row>> {
-  const result = await pull(steps);
+async function step<Row>(reading: Reading<Row>): Promise<IteratorResult<Row>> {
+  const result = await pull(reading.steps);
   if (result.done !== true) {
-    counts.yielded += 1;
+    reading.counts.yielded += 1;
   }
   return result;
 }
@@ -111,39 +125,78 @@ async function writeEdge<Row>(
  */
 async function writeEachRow<Row>(
   writer: SequenceWriter<Row>,
-  steps: Steps<Row>,
-  counts: Counts,
+  view: ResolvedRowView<Row>,
+  reading: Reading<Row>,
 ): Promise<void> {
-  await writeEdge(writer, writer.view.head);
+  await writeEdge(writer, view.head);
   for (;;) {
-    const next = await step(steps, counts);
+    const next = await step(reading);
     if (next.done === true) {
       return;
     }
-    const index = counts.yielded - 1;
-    await writer.piece(() => writer.view.row(next.value, index, writer.context));
-    counts.written += 1;
+    const index = reading.counts.yielded - 1;
+    await writer.piece(() => view.row(next.value, index, writer.context));
+    reading.counts.written += 1;
+  }
+}
+
+/** Every row the source produced, which a whole view renders once at the end of the source. */
+async function collectRows<Row>(reading: Reading<Row>): Promise<Row[]> {
+  const collected: Row[] = [];
+  for (;;) {
+    const next = await step(reading);
+    if (next.done === true) {
+      return collected;
+    }
+    collected.push(next.value);
   }
 }
 
 /**
- * The sequence itself: `head`, then each row as the source yields it, then `tail`. Every piece is
- * awaited before the next row is requested, so a slow destination applies back-pressure to the
- * source. A run cancelled before the source ended never writes `tail`, so a truncated result never
- * reads as a complete one.
+ * Every piece the source decides, and the closing piece a complete sequence ends with: `head` and
+ * each row under a row view, whose closing piece is `tail`, and the collected rows under a whole
+ * view, whose closing piece is its one render. A whole view queues nothing before the source ends,
+ * so `written` counts no row under it.
  */
-async function writeRows<Row>(writer: SequenceWriter<Row>, counts: Counts): Promise<boolean> {
-  const steps = stepsOf(writer.source);
+async function writePieces<Row>(
+  writer: SequenceWriter<Row>,
+  reading: Reading<Row>,
+): Promise<() => Promise<void>> {
+  if (writer.view.kind === 'whole') {
+    const { render } = writer.view;
+    const collected = await collectRows(reading);
+    return () => writer.piece(() => render(collected, writer.context));
+  }
+  const { view } = writer.view;
+  await writeEachRow(writer, view, reading);
+  return () => writeEdge(writer, view.tail);
+}
+
+/** The same pieces, with the source told to stop where one of them raised. */
+async function closingPiece<Row>(
+  writer: SequenceWriter<Row>,
+  reading: Reading<Row>,
+): Promise<() => Promise<void>> {
   try {
-    await writeEachRow(writer, steps, counts);
+    return await writePieces(writer, reading);
   } catch (error) {
-    await endSteps(steps);
+    await endSteps(reading.steps);
     throw error;
   }
+}
+
+/**
+ * The sequence itself: every piece the source decides, then the closing piece. Every piece is
+ * awaited before the next row is requested, so a slow destination applies back-pressure to the
+ * source. A run cancelled before the source ended never writes the closing piece, so a truncated
+ * result never reads as a complete one.
+ */
+async function writeRows<Row>(writer: SequenceWriter<Row>, counts: Counts): Promise<boolean> {
+  const close = await closingPiece(writer, { counts, steps: stepsOf(writer.source) });
   if (writer.signal.aborted) {
     return false;
   }
-  await writeEdge(writer, writer.view.tail);
+  await close();
   return true;
 }
 
@@ -170,5 +223,5 @@ async function writeSequence<Row>(writer: SequenceWriter<Row>): Promise<void> {
   }
 }
 
-export type { SequenceWriter };
+export type { SequenceView, SequenceWriter };
 export { writeSequence };

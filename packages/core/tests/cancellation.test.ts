@@ -30,6 +30,15 @@ test('a caller abort during a run resolves 130 with the caller as its source', (
   });
 });
 
+test('a cancelled run with an unemitted result resolves the signal code and reports nothing', () => {
+  // An action that reads its signal and returns is the sanctioned path, so it owes no result.
+  expect(run('result-unemitted', { LOOM_FIXTURE_ACTION: 'abandoning' })).toEqual({
+    status: 130,
+    stderr: '',
+    stdout: 'before:0:0\nafter:0:0\nresolved:130\n',
+  });
+});
+
 test('a caller signal already aborted at entry resolves 130 having loaded nothing', () => {
   /**
    * The graph still builds and validates, so a declaration fault would still be reported; the

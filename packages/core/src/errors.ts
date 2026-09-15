@@ -8,6 +8,20 @@ function routedSentence(command: readonly string[]): string {
   return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
 }
 
+/** The sentence one results-lane fault reports, which names the Command that holds it. */
+function resultMessage(kind: ResultFault, command: readonly string[]): string {
+  if (kind === 'missing') {
+    return `${routedSentence(command)} declares a result and its action returned without emitting one. Call out.results() once.`;
+  }
+  if (kind === 'repeated') {
+    return `${routedSentence(command)} emitted its result twice. Call out.results() once.`;
+  }
+  if (kind === 'undeclared') {
+    return `${routedSentence(command)} declares no result. Declare one with result() or rows() before action().`;
+  }
+  return `A middleware called out.results() on ${routedSubject(command)}. Only the action emits a result.`;
+}
+
 /**
  * The clause that offers the candidates, which is absent when there are none: every child of the
  * Command is hidden, so the diagnostic ends after the sentence that names the fault.
@@ -237,6 +251,28 @@ export class InternalError extends LoomError {
     super(message, 1);
     this.cause = cause;
     this.name = 'InternalError';
+  }
+}
+
+/** The four ways the results lane is broken, each named where core meets it. */
+export type ResultFault = 'missing' | 'repeated' | 'undeclared' | 'middleware';
+
+/**
+ * Exit 1: the promise a declared result makes was not kept. It wraps no thrown value, so its
+ * `cause` is `undefined`, and it extends `InternalError`, so an override of that class brands it
+ * and its default text carries the same prefix, while an override keyed by this class reaches it
+ * alone.
+ */
+export class ResultError extends InternalError {
+  readonly path: readonly string[];
+  readonly kind: ResultFault;
+  declare readonly cause: undefined;
+
+  constructor(kind: ResultFault, path: readonly string[]) {
+    super(resultMessage(kind, path), undefined);
+    this.kind = kind;
+    this.name = 'ResultError';
+    this.path = path;
   }
 }
 

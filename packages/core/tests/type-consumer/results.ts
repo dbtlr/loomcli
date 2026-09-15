@@ -1,5 +1,12 @@
 import { Application, Command } from '@loomcli/core';
-import type { ActionHandler, ResultViews, RowView, RowViews, View } from '@loomcli/core';
+import type {
+  ActionHandler,
+  MiddlewareContext,
+  ResultViews,
+  RowView,
+  RowViews,
+  View,
+} from '@loomcli/core';
 
 interface Row {
   count: number;
@@ -80,6 +87,11 @@ const noResult: ActionHandler<typeof plain> = async ({ out }) => {
 };
 
 const whole: Table = { rows: [], total: 0 };
+const fromMiddleware = async ({ out }: MiddlewareContext) => {
+  // @ts-expect-error TS2345: Only the action emits a result, so a middleware's out takes never.
+  await out.results(whole);
+};
+
 const wrongValue: ActionHandler<typeof count> = async ({ out }) => {
   // @ts-expect-error TS2739: A value result takes the declared value, never a sequence of it.
   await out.results(walk());
@@ -119,6 +131,7 @@ void attached;
 void valueRecord;
 void rowRecord;
 void noResult;
+void fromMiddleware;
 void wrongValue;
 void wrongRows;
 void rowsRoot;

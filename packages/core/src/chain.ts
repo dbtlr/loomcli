@@ -9,7 +9,7 @@ import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
 import type { ContextualStyle } from './style.js';
-import type { Host, OpenResult, Out } from './types.js';
+import type { ActionChannel, Host, OpenResult, Out, ResultBinding } from './types.js';
 import type { DefaultValues, OptionInput } from './validation.js';
 
 /**
@@ -158,6 +158,8 @@ interface EntryState {
 /** Everything one invocation needs after its graph is built and its defaults are validated. */
 interface Invocation {
   style: ContextualStyle;
+  /** The action's own channel, built from the routed Command's declaration when it dispatches. */
+  channel: (binding: ResultBinding) => ActionChannel;
   defaults: DefaultValues;
   facts: { description: string | undefined; version: string };
   graph: BuiltGraph;
