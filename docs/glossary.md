@@ -32,11 +32,11 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
 _Avoid_: Builder method, chain step
 
 **Action**:
-The handler a Command registers after its inputs, aliases, and children, which receives the parsed and validated invocation and performs the work. A Command has at most one action, and registering it closes input, alias, child, and action declarations. Command-targeted extension configuration remains open.
+The handler a Command registers after its inputs, aliases, and children, which receives the parsed and validated invocation and performs the work. A Command has at most one action, and registering it closes input, alias, child, and action declarations for the author. Command-targeted extension configuration and a result's `views()` remain open, and a plugin's lifecycle hook is exempt from the closure.
 _Avoid_: Handler, run function, executor
 
 **Action context**:
