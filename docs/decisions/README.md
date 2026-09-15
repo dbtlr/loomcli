@@ -35,17 +35,18 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0014](0014-acceptance-evidence-runs-against-the-packed-package.md)      | Acceptance evidence runs against the packed package through the public API.                               | accepted |
 | [ADR-0015](0015-publication-retries-reuse-retained-artifacts.md)             | Publication retries reuse one retained artifact set and stop on artifact loss.                            | deprecated |
 | [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md) | A release merge publishes through one idempotent, token-free workflow that reconciles npm, tag, and GitHub Release with the manifest version. | accepted |
-| [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) | Plugins act on an invocation through one middleware chain between routing and local parsing, with declared activation that defers loading. | accepted |
+| [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) | Plugins act on an invocation through one middleware chain after routing, with declared activation that defers loading; proposed ADR-0028 moves the chain behind local parsing. | accepted |
 | [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md) | One run signal carries cancellation, fed by a caller or by the single plugin that owns the signals slot; core brackets the run and resolves 130 or 143. | accepted |
 | [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | superseded |
 | [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
 | [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one registry of declared views named by reference, and class-keyed failure views fold into it as view overrides; the registry is implemented. | accepted |
 | [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | proposed |
-| [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares one value or a sequence of rows with views keyed by presentation name, stdout belongs to the result, and `json` and `jsonl` are views the formatter plugin declares. | accepted |
+| [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares one value or a sequence of rows with views keyed by view name, stdout belongs to the result, and `json` and `jsonl` are views the formatter plugin declares. | accepted |
 | [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | superseded |
 | [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
 | [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
 | [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a view context and one optional theme contribution; the named palette remains separate. | accepted |
+| [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) | Plugins run code at named lifecycle hooks, beginning with `onCommandAttach`, and middleware wraps the parsed invocation and selects a result's view by name. | proposed |
 
 ## Adding a record
 

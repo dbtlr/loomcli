@@ -6,7 +6,7 @@
 
 **Affected surface.** View output, semantic output snapshots, embedded ANSI, marker-bearing raw data, and complete `Host` values.
 
-**Why.** Core now resolves presentation for the destination. The write site owns the newline, while core controls terminal capabilities and prevents formatting from leaking across calls. `out.render` and a failure diagnostic add none, so a view rendered through either owns its trailing newline; a semantic method appends one after its lane view, so a lane view returns none.
+**Why.** Core now resolves marked output for the destination. The write site owns the newline, while core controls terminal capabilities and prevents formatting from leaking across calls. `out.render` and a failure diagnostic add none, so a view rendered through either owns its trailing newline; a semantic method appends one after its lane view, so a lane view returns none.
 
 **Before and after.**
 
