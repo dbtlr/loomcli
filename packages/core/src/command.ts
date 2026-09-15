@@ -778,9 +778,16 @@ function buildResult(state: Declared, hasAction: boolean): BuiltResult | undefin
     );
   }
   const declaration = declarations[0];
-  // A `views()` call on a declaration that carries no result reshapes nothing, and the types
-  // Publish the call where a result is carried alone.
+  // A `views()` call reshapes the presentation of a result, so a declaration that carries none has
+  // Nothing to reshape.
+  // The types publish the call where a result is carried alone, so this reaches a JavaScript
+  // Author.
   if (!declaration) {
+    if (state.results.length > 0) {
+      throw new DeclarationError(
+        `${sentence} reshapes its views and declares no result. Declare result() or rows() before action().`,
+      );
+    }
     return undefined;
   }
   if (!hasAction) {

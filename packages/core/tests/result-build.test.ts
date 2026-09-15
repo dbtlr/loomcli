@@ -16,6 +16,10 @@ const rules = [
   ['two-results', 'declares two results. Declare one result() or rows() call.'],
   ['no-action', 'declares a result and no action. Register an action or remove the result.'],
   [
+    'views-no-result',
+    'reshapes its views and declares no result. Declare result() or rows() before action().',
+  ],
+  [
     'row-view-on-value',
     'names row view "records" on a value result. Supply a view with render, or declare the result with rows().',
   ],

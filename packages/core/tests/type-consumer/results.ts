@@ -67,7 +67,10 @@ const rootAction: ActionHandler<typeof valueRoot> = ({ out }) =>
 
 // `views()` is published in every state on a declaration that carries a result.
 const branded = count.views({ wide }, { default: 'wide' });
+// The record of a views() call takes the shape its own declaration carries, so a rows declaration
+// Accepts either view shape under any key.
 const brandedRows = paths.views({ collected });
+const relisted = paths.views({ list }, { default: 'list' });
 const brandedRoot = valueRoot.views({ wide });
 
 // A neutral annotation and an attachment accept a declaration that carries a result.
@@ -125,6 +128,7 @@ void pathsAction;
 void rootAction;
 void branded;
 void brandedRows;
+void relisted;
 void brandedRoot;
 void neutral;
 void attached;

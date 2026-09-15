@@ -1103,6 +1103,7 @@ Build applies the rules below at every depth, each a `DeclarationError` with exi
 | A result declared after the action            | `Command "count" declares its result after its action. Declare result() or rows() before action().`                          |
 | A second result declaration                   | `Command "count" declares two results. Declare one result() or rows() call.`                                                 |
 | A result on a Command with no action          | `Command "count" declares a result and no action. Register an action or remove the result.`                                  |
+| A views() call on a declaration with no result | `Command "get" reshapes its views and declares no result. Declare result() or rows() before action().`                      |
 | A row view on a value result                  | `Command "get" names row view "records" on a value result. Supply a view with render, or declare the result with rows().`    |
 | A views entry that is not a view              | `Command "count" names view "table" with a value that is not a view. Supply a view with render or a row view with row.`      |
 | A views entry that carries both shapes        | `Command "count" names view "both" with render and row. Supply one of the two.`                                              |

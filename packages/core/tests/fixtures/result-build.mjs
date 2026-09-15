@@ -29,6 +29,7 @@ const scenarios = {
   'row-view-on-value': (target) => target.result({ views: { records: list } }).action(dispatch),
   'two-results': (target) =>
     target.result({ views: { table } }).rows({ views: { list } }).action(dispatch),
+  'views-no-result': (target) => target.views({ table }).action(dispatch),
 };
 
 // The same declaration reads on the unnamed root and on a named Command, and each diagnostic
