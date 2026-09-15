@@ -41,7 +41,7 @@ _Avoid_: Handler, run function, executor
 
 **Action context**:
 The single object an action receives, carrying its parsed inputs, the passthrough tail, the output channel, and the host.
-_Avoid_: Request, invocation object, props
+_Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
 The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands.
@@ -66,7 +66,7 @@ A named input introduced by a hyphen spelling. A string option consumes a value;
 _Avoid_: Flag, switch, parameter
 
 **Local option**:
-An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the parsed invocation a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -152,9 +152,9 @@ _Avoid_: Introspection, reflection, dump
 One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, validation, the middleware chain, the action, and the exit status.
 _Avoid_: Execution, call, request
 
-**Parsed invocation**:
-The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `input` before the action runs. `input` is `null` while core holds a fault.
-_Avoid_: Request object, parsed args, raw input (which is the pre-validation form)
+**Request**:
+The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `request` before the action runs. It is `null` while core holds a fault.
+_Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
 The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view and dispatches the action. A takeover never reaches it.
@@ -310,9 +310,9 @@ _Avoid_: Export, output format, adapter
 The projection of one routed Command that the help plugin prints: its masthead, usage, visible members, and examples, as plain text.
 _Avoid_: Usage text, man page, help screen
 
-**Format plugin**:
-The first-party plugin that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships the `json` and `jsonl` views as configured factories, one per result unit: `json()` and `jsonl()` under `result()`, whose map reshapes the whole value, and `jsonRows()` and `jsonlRows()` under `rows()`, whose map reshapes one row. There is no encoding outside the view model: a machine view is a view like a table is.
-_Avoid_: Formatter, encoder, serializer, format (for the view), output mode
+**Formatter**:
+The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`. There is no encoding outside the view model: a machine view is a view like a table is.
+_Avoid_: Format plugin, encoder, serializer, format (for the view), output mode
 
 **Theme**:
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
@@ -347,7 +347,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the parsed invocation, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:

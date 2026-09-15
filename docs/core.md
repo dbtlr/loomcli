@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [format plugin](#format), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `input`, typed by the exported `ParsedInput`, and `view` are contract under proposed ADR-0028 until the format increment lands, and the invocation order in [Invocation](#invocation) describes that increment.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `input`, typed by the exported `Request`, and `view` are contract under proposed ADR-0028 until the format increment lands, and the invocation order in [Invocation](#invocation) describes that increment.
 
 ## Application declarations
 
@@ -662,7 +662,7 @@ Each invocation follows this order:
 4. Consume global options and plugin options in a pre-scan that stops at the first bare `--`.
 5. Route the remaining bare tokens to the selected Command.
 6. Prepare the dispatch and hold its fault, raising nothing yet. A selected Command that is a group holds the missing-subcommand error, with the rank the routing errors have, and no token is parsed. Otherwise core parses the remaining tokens with that Command's own spellings, then validates the globals in authoring order and that Command's inputs in authoring order, and holds the first fault by the precedence below, a validator's own developer error included, so a takeover swallows a broken validator as it swallows an input fault.
-7. Run the [middleware](#middleware) of each installed plugin whose activation matched, in installation order, loading each one as the chain reaches it. Each middleware reads the parsed invocation. A middleware that takes over ends the invocation here, and a held fault is never raised. When the chain continues past its last middleware it reaches the dispatch boundary, where core raises the held fault, or reads the selected view and dispatches the action.
+7. Run the [middleware](#middleware) of each installed plugin whose activation matched, in installation order, loading each one as the chain reaches it. Each middleware reads the request. A middleware that takes over ends the invocation here, and a held fault is never raised. When the chain continues past its last middleware it reaches the dispatch boundary, where core raises the held fault, or reads the selected view and dispatches the action.
 8. Await its action.
 9. Unwind the middleware chain, finish pending core output, remove any process listeners, and set the exit status.
 
@@ -949,7 +949,7 @@ The registry increment is proven when jsonkit's three failure overrides produce 
 
 ### Results
 
-A result is the typed value a Command produces for its consumer, as distinct from the messages it writes about its work. The results lane is opt-in in four steps, and each step pays for itself alone: a pack view rendered inside the action with no declaration, one declared result with a default view, the [format plugin](#format) that lets a run select another view by name, and rows that render as they arrive. Nothing in the first step needs the rest, and a Command that declares no result behaves exactly as [Output and failures](#output-and-failures) describes.
+A result is the typed value a Command produces for its consumer, as distinct from the messages it writes about its work. The results lane is opt-in in four steps, and each step pays for itself alone: a pack view rendered inside the action with no declaration, one declared result with a default view, the [formatter](#formatter) that lets a run select another view by name, and rows that render as they arrive. Nothing in the first step needs the rest, and a Command that declares no result behaves exactly as [Output and failures](#output-and-failures) describes.
 
 The block restates `View` from [Rendered output](#rendered-output) beside the shapes and calls this section adds. The `views()` lines describe one method whose record type and presence follow the carried result: the implementation adds the member to the picked surface where a result is carried, so a declaration with none has no `views` member at all, and it may expose one signature per call with internal dispatch where overloads would make a rejection read as a complaint about the last overload.
 
@@ -1020,7 +1020,7 @@ A pack view is a configured factory, and what it returns is a bare view: it carr
 ```ts
 // src/commands/count.ts
 import { Command } from '@loomcli/core';
-import { jsonRows } from '@loomcli/plugins/format';
+import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
 import { countFiles } from '../actions/count-files.js';
@@ -1028,23 +1028,23 @@ import type { Row } from '../table.js';
 
 export const count = new Command('count')
   .argument('files', { required: true, variadic: true })
-  .rows<Row>({ views: { table: table({ columns: ['source', 'count'] }), json: jsonRows() } })
+  .rows<Row>({ views: { table: table({ columns: ['source', 'count'] }), json: json() } })
   .action(countFiles);
 ```
 
-`views` is a record keyed by view name, and its values are views in the sense [Views](#views) gives the word, reached by a name rather than by a reference. The first key is the default view, the one core renders when nothing selects another, and every key the record holds when the [format plugin](#format)'s hook runs is a name `--format` accepts, so the names are unique by construction. A key is a bare token under the rule Application names meet and is not an integer-like string, because such a key does not keep its authored position, and the record holds at least one entry. Under `result<Value>` every entry is a `View<Value>`. Under `rows<Row>` an entry is a `View<readonly Row[]>`, which core buffers the whole sequence for, or a `RowView<Row>`, which core feeds as rows arrive. Core knows no view name of its own, not even `text`: `json` and `jsonl` are views the format plugin declares as factories with an optional `map` that reshapes what the view receives before encoding. The two units receive different arguments, one row under `rows` and the whole value under `result`, and a type argument cannot tell them apart at run time, so the plugin offers one factory per unit: `json()` and `jsonl()` under `result`, `jsonRows()` and `jsonlRows()` under `rows`. They render as ordinary views with the plugin uninstalled. Installing the plugin adds `--format` to every Command that declares a result and the two views to every record that lacks them, through its `onCommandAttach` hook, as [Format](#format) states.
+`views` is a record keyed by view name, and its values are views in the sense [Views](#views) gives the word, reached by a name rather than by a reference. The first key is the default view, the one core renders when nothing selects another, and every key the record holds when the [formatter](#formatter)'s hook runs is a name `--format` accepts, so the names are unique by construction. A key is a bare token under the rule Application names meet and is not an integer-like string, because such a key does not keep its authored position, and the record holds at least one entry. Under `result<Value>` every entry is a `View<Value>`. Under `rows<Row>` an entry is a `View<readonly Row[]>`, which core buffers the whole sequence for, or a `RowView<Row>`, which core feeds as rows arrive. Core knows no view name of its own, not even `text`: `json()` and `jsonl()` are whole views the [formatter](#formatter) ships, with an optional `map` that reshapes what the view receives before encoding, the value under `result` and the collected rows under `rows`. They render as ordinary views with the plugin uninstalled. Installing the plugin adds `--format` to every Command that declares a result and the two views to every record that lacks them, through its `onCommandAttach` hook.
 
 The `views()` call reshapes the views after the fact. It is published in every state on a declaration that carries a result, and never on one that carries none, so an importing application can add a wide table or a mapped `json` to a Command it did not author without touching its action. Its record takes the shape the declaration carries, so a row view under a value result is the same compile error there as in the declaration. It merges by key: an existing key is replaced in place and keeps its position, and a new key is appended. `default` names the key that becomes the default view; a default once named persists through later calls that name none, and until one is named the first key is the default. Naming a key the record does not hold after the merge is a build error. Like `extend()`, `views()` returns a new immutable value. A result's view is replaced by name alone: the Application's override list reaches failures, lanes, and declared views by reference, and never a result's views, which carry no identity.
 
 ```ts
-import { jsonRows } from '@loomcli/plugins/format';
+import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
 import { count } from './commands/count.js';
 import type { Row } from './table.js';
 
 const wide = table<Row>({ columns: ['source', 'count', { key: 'count', header: 'Share', format: share }] });
-export const branded = count.views({ wide, json: jsonRows({ map: toWire }) }, { default: 'wide' });
+export const branded = count.views({ wide, json: json({ map: toWire }) }, { default: 'wide' });
 ```
 
 The declaration is a graph fact. `inspect()` publishes `result` on every node, as [Graph inspection](#graph-inspection) lists it: `null` where none is declared, and otherwise `{ kind: 'value' | 'rows', views: readonly string[], default: string }`, the names in record order. No schema is part of the declaration; a projection that needs the shape of a result reads a fact the plugin that needs it defines.
@@ -1188,14 +1188,14 @@ Plugin options share the globals table with the application's global options: th
 
 ### Middleware
 
-An invocation runs one chain. After the global pre-scan and routing have selected a Command, and after core has parsed that Command's local tokens and validated the invocation, holding any fault it found, core runs the middleware of each installed plugin whose activation matched, in installation order. The selected Command's action terminates the chain. A middleware surrounds the whole request: it reads the parsed invocation before the action runs, it can set the view the result renders through, and its code after `await next()` runs after the action. A middleware receives:
+An invocation runs one chain. After the global pre-scan and routing have selected a Command, and after core has parsed that Command's local tokens and validated the invocation, holding any fault it found, core runs the middleware of each installed plugin whose activation matched, in installation order. The selected Command's action terminates the chain. A middleware surrounds the whole request: it reads the request before the action runs, it can set the view the result renders through, and its code after `await next()` runs after the action. A middleware receives:
 
 ```ts
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: PluginOptionValues<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
-  readonly input: ParsedInput | null;
+  readonly request: Request | null;
   get view(): string | null;
   set view(name: string);
   readonly host: Host;
@@ -1203,7 +1203,7 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly signal: AbortSignal;
   readonly next: () => Promise<ChainOutcome>;
 }
-interface ParsedInput {
+interface Request {
   readonly args: Readonly<Record<string, unknown>>;
   readonly options: Readonly<Record<string, unknown>>;
   readonly passthrough: readonly string[];
@@ -1216,9 +1216,9 @@ type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
 
 - `options` holds the plugin's own option values, typed from its declaration. `Middleware` accepts the plugin type or its factory's type, with or without parameters, and the exported `OptionsOf` extracts the declared options from either, so `Middleware<typeof help>` reads them from the factory's annotated return type.
 - `graph` is the frozen graph `inspect()` returns, and `command` is the routed node inside it, so `jsonkit get --help` renders help for `get`, `jsonkit --help` for the root, and `jsonkit cache --help` for the `cache` group. An unknown command fails in routing before any middleware runs, as it does today. The callable check on a group keeps its rank among the routing errors but is held and raised at the dispatch boundary, so a middleware can take over a group invocation and `jsonkit cache --verbose` still reports the missing subcommand when no middleware takes over.
-- `input` is the parsed and validated invocation of the routed Command, the exported `ParsedInput`: the argument values under `args`, the local option values under `options`, each as the schema output an action receives, and the passthrough tokens. It is distinct from `SuppliedInputs`, the raw form a validation context reads. It is `null` when core holds a fault, so a middleware never reads a half-parsed invocation, and `null` on a group. The records are untyped, because a middleware runs ahead of every action and the graph carries no type for a value, so a middleware checks the shape of what it reads and treats a value it cannot use as its own diagnostic. The records are frozen: a middleware reads the invocation and contributes nothing to what the action receives, which is a later contract, as [Lifecycle hooks](#lifecycle-hooks) states. Global and plugin option values are not here: a plugin reads its own under `options`, and an application's globals reach the action alone.
-- `view` names the view the result renders through, on a Command that declares a [result](#results). It reads as the declaration's default view name until a middleware assigns one, and as `null` on a Command that declares none; it accepts a string alone, so `null` is not a way to clear a selection, and a middleware that wants the default assigns the `default` the routed node's `result` fact carries, after checking that fact is not `null`. It is one value per run: every middleware reads the current value, and the last assignment before the dispatch boundary wins, whichever middleware made it and whether or not that middleware had already called `next()`. The dispatch boundary is the point the chain reaches when the last middleware's `next()` continues past it: there core raises a held fault, or else reads `view` and dispatches the action, so a held fault ranks ahead of a bad assignment and leaves it unobserved. An assignment after that point changes nothing. Assigning a name the Command's `views` record does not hold, assigning on a Command with no result, or assigning a value that is not a string is an internal error raised at the boundary, exit 1, naming the plugin that made the assignment, because a plugin that selects a view checks the name against `command.result.views` or has it checked for it, as the [format plugin](#format) does through its option's validator; the rejection reaches every awaiting `next()` in turn. Core spells no view name of its own.
-- `next()` continues the invocation: every later middleware, then, at the dispatch boundary, the held fault or the action. A held fault is raised at the boundary and not before, so a wrapper installed ahead of help still reaches help's takeover on an invalid invocation, exactly as it does today; when the chain reaches the boundary with a fault held, the innermost `next()` rejects with it, the rejection propagates outward through every awaiting `next()`, and the fault keeps its exit code and rank, so a wrapping plugin sees a schema issue the way it sees an action failure. Otherwise it resolves when the rest of the chain has settled, with `'dispatched'` when the action ran, `'taken-over'` when a later middleware returned without calling its own `next()`, and `'cancelled'` when the run was cancelled before the action ran, so a wrapping plugin knows what it wrapped. `'cancelled'` wins over `'taken-over'`, so a later middleware that returns because it saw the abort reports as cancelled, the order the exit codes follow. It rejects with the failure the rest of the chain raised. Core records that failure when it is raised, so a middleware that catches the rejection changes its own control flow and not the exit code, the rule an action's caught output rejection already follows. A later middleware that catches the failure the rest of the chain raised and returns reports to its callers as `'taken-over'` when the action never ran and `'dispatched'` when it did, and the recorded failure still decides the exit code.
+- `request` is the routed Command's invocation after parsing and validation, the exported `Request`: the argument values under `args`, the local option values under `options`, each as the schema output an action receives, and the passthrough tokens. It is `null` while core holds a fault and on a group, so a middleware never reads a half-parsed invocation. The records are untyped and frozen: a middleware runs ahead of every action and the graph carries no type for a value, so it checks what it reads, and it contributes nothing to what the action receives, which is a later contract. Global and plugin option values are not here; a plugin reads its own under `options`.
+- `view` names the view the result renders through, on a Command that declares a [result](#results). It reads as the declaration's default until a middleware assigns one, and as `null` on a Command that declares none; it accepts a string alone. It is one value per run: the last assignment before the dispatch boundary wins, whichever middleware made it and whether or not that middleware had already called `next()`, and an assignment after the boundary changes nothing. A name the record does not hold, a non-string, or an assignment on a Command with no result is an internal error raised at the boundary, exit 1, naming the plugin, because a plugin that selects a view has the name checked first, as the [formatter](#formatter) does through its option's validator. Core spells no view name of its own.
+- `next()` continues the invocation: every later middleware, then the dispatch boundary. The dispatch boundary is the point the chain reaches when its last middleware continues: there core raises a held fault, or else reads `view` and dispatches the action, so a held fault ranks ahead of a bad assignment. A held fault is raised there and not before, so a wrapper installed ahead of help still reaches help's takeover; the innermost `next()` rejects with it, the rejection propagates outward through every awaiting `next()`, and the fault keeps its exit code and rank, so a wrapping plugin sees a schema issue the way it sees an action failure. Otherwise it resolves when the rest of the chain has settled, with `'dispatched'` when the action ran, `'taken-over'` when a later middleware returned without calling its own `next()`, and `'cancelled'` when the run was cancelled before the action ran, so a wrapping plugin knows what it wrapped. `'cancelled'` wins over `'taken-over'`, so a later middleware that returns because it saw the abort reports as cancelled, the order the exit codes follow. It rejects with the failure the rest of the chain raised. Core records that failure when it is raised, so a middleware that catches the rejection changes its own control flow and not the exit code, the rule an action's caught output rejection already follows. A later middleware that catches the failure the rest of the chain raised and returns reports to its callers as `'taken-over'` when the action never ran and `'dispatched'` when it did, and the recorded failure still decides the exit code.
 - `next` is live until the middleware's own result settles. Calling it twice, or calling it after the middleware has returned, is an internal error: the call rejects and nothing is parsed or dispatched. While the run is live the fault is reported after the primary outcome and turns a would-be 0 into 1; once `run()` has resolved, the call only rejects.
 - A middleware that returns without calling `next()` has taken over the invocation. A held fault is never raised, nothing later in the chain runs, and the exit code is 0 unless the middleware throws, its output fails, or the run was cancelled, under the precedence in [Signals and cancellation](#signals-and-cancellation). So `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too, as they did when the chain ran ahead of parsing. Because the chain runs in installation order, `jsonkit --help --version` prints help when help is installed first.
 - Core calls a plugin's `load` at the moment the chain reaches that plugin, not before. A takeover earlier in the chain therefore never loads a later plugin, and `jsonkit --help --version` never imports the version middleware module.
@@ -1258,155 +1258,65 @@ A middleware declares what activates it, and there is no default. `activate` is 
 
 Activation is evaluated from the pre-scan core has already run, before any middleware module loads. Core calls `load` only for a middleware whose activation matched and only when the chain reaches it, so an invocation of `jsonkit get -f doc.json` with help, version, and manifest plugins installed imports none of their middleware modules. Each plugin's entry module and the declarations it imports, its declared views included, load at install whatever the invocation. A plugin whose middleware must observe every invocation, such as a logging or color policy, declares `'always'` and pays for its module on every run that reaches it; a plugin that only acts on a request declares the options that make the request. The plugin author chooses, and the choice is visible in the descriptor.
 
-An activation name that is not one of the plugin's declared options is a compile error when the plugin declares options, because the list is typed from the declaration. Build applies the same rule for JavaScript authors and for a plugin that declares no options at all, and it also rejects a middleware without `activate`, an empty list, and a middleware without `load`. A local option a plugin's `onCommandAttach` hook declared is not one of the plugin's options and cannot activate it: a middleware that reads such an option declares `'always'`, as the [format plugin](#format) does. A `load` that throws, rejects, or resolves to a module with no default middleware function, is an internal error with code 1.
+An activation name that is not one of the plugin's declared options is a compile error when the plugin declares options, because the list is typed from the declaration. Build applies the same rule for JavaScript authors and for a plugin that declares no options at all, and it also rejects a middleware without `activate`, an empty list, and a middleware without `load`. A local option a plugin's `onCommandAttach` hook declared is not one of the plugin's options and cannot activate it: a middleware that reads such an option declares `'always'`, as the [formatter](#formatter) does. A `load` that throws, rejects, or resolves to a module with no default middleware function, is an internal error with code 1.
 
 ### Lifecycle hooks
 
-A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the event's subject named where it carries meaning and omitted where it does not, so the first hook is `onCommandAttach` and a later hook that observes every log line would be `onLog`. A hook is a plugin's code, run by core, and it is not a middleware: middleware wraps an invocation and keeps its own name for that reason, while a hook runs in sequence at its point. Every hook runs in installation order, so the application source shows precedence, and the definition lists the hooks a plugin implements the way it lists its options. The two directions this contract names and does not specify are contributions from a middleware into the context an action receives and a hook that runs after the action with its outcome; each waits for a plugin that needs it.
-
-`onCommandAttach` runs at graph build, once for every Command in the graph, the root first and then each child depth first in authoring order, after the author's declarations are complete and before the build rules run, with one exception: core resolves each declaration's result record first, merging its `views()` calls and settling its default under [Result build errors](#result-build-errors), so the `result` fact a hook reads is exact, and a declaration those rules reject fails before any hook runs. Core passes the declaration unlocked, through the exported `AttachedCommand`: the authoring calls a hook may use, with their types erased, beside the facts a hook reads before it reshapes anything. A hook is synchronous. Both the root and a named Command arrive through this one surface, the root with `name` `null` and `path` `[]`, so a hook never tells an `Application` from a `Command`; `option()` on the root declares a root-local option, and the surface publishes no `globalOption`, because globals are the Application's own. Each call returns a new `AttachedCommand` derived from the one it was called on, so a hook returns the value the last call returned, and each hook receives what the previous plugin's hook returned.
+A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach` now, `onLog` later. A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context and a hook after the action are direction, not contract, and wait for a plugin that needs them.
 
 ```ts
+interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
+  onCommandAttach?: CommandAttachHook;
+  // ...
+}
+type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
+
 interface AttachedCommand {
   readonly [attachedCommand]: true; // an unexported unique symbol, the brand a Command carries under another name
-  readonly name: string | null;
+  readonly name: string | null; // null for the root
   readonly path: readonly string[];
   readonly hasAction: boolean;
-  readonly arguments: readonly string[];
-  readonly options: readonly string[];
-  readonly result: ResultNode | null;
+  readonly arguments: readonly string[]; // declared names, in order
+  readonly options: readonly string[]; // declared local option names, in order
+  readonly result: ResultNode | null; // as inspect() publishes it
   argument(name: string, config: ArgumentConfig): AttachedCommand;
   option(name: string, config: OptionConfig): AttachedCommand;
   views(replacements: Readonly<Record<string, ResultView>>, options?: { default?: string }): AttachedCommand;
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
 }
-type ResultView = View<never> | RowView<never>; // the erased view a result names, exported with this increment
-type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
+type ResultView = View<never> | RowView<never>; // the erased view a result names
 ```
 
-The facts are the ones `inspect()` publishes for the declaration as it stands when the hook runs, the earlier hooks' additions and the value's own earlier calls included: `result` is the `ResultNode` of [Graph inspection](#graph-inspection), so `result.views` lists the names in record order and `result.default` is the default the declaration settled, and `arguments` and `options` list the Command's own declared names, so a hook sees a key collision with them before it causes one; a collision with a global or another plugin's option is not visible here and surfaces at build. The value is branded the way a `Command` is, so a hand-built object is neither an `AttachedCommand` to the types nor to build. The name is new to the public surface; the private build handle the command module spells `AttachedCommand` today is renamed with the increment, so the package carries one type of that name. The four calls are the ones a hook may use, with the data types erased: `argument`, `option`, and `extend` as an author writes them, and `views()` over `ResultView`, the erased view every factory's return satisfies, so `json()` with no type argument is accepted under any key, and the shape rules of the record still apply at build. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape, which no plugin reshapes. A call a hook issues is never a late declaration: the order rules of [Graph build errors](#graph-build-errors) are judged against the author's own calls, because they exist to keep the action's types true to its declaration, and nothing a hook adds reaches the types. The action was compiled against the author's declaration, so an option a hook declares is absent from the action's typed `options` and present in the value at run time, and a middleware reads it through `input`, which is untyped for that reason. Every other build rule then applies to the result at every depth, and a rule the types reject for an author is reached by a hook's erased call, so every "JavaScript author alone" rule on a Command's declarations in this reference reads "or a plugin's hook", and its diagnostic names the Command as it does for an author. Across the graph the loop is one: for each Command in the order above, each installed plugin's hook in installation order. An input a hook declares whose key or spelling the Command, the Application's globals, or another plugin's options already use meets the hook-collision diagnostic of [Plugin build errors](#plugin-build-errors), which names the plugin and the Command so the developer knows which two declarations to choose between; the result rules of [Result build errors](#result-build-errors) run again over the reshaped record, so a hook's bad key or default meets the same diagnostics an author's does; and an argument on a Command that has children is still rejected. A rule the types alone carry, such as the schema shape a `multiple` option's validator must accept, is not checked by an erased call, and a hook that breaks it meets the run-time consequence the rule guards against. Hooks compose in sequence, not first-in-wins: a later plugin's hook sees and can replace what an earlier one added, `views()` replacing by name included, and the application's installation order is the only precedence. A hook that returns the value it received changes nothing. A hook costs one call per Command on every build, and the graph builds on every invocation, so an installed plugin with a hook pays that on an invocation that never reaches its middleware; the cost sentence of [Plugins](#plugins) counts it.
-
 ```ts
-// src/format/plugin.ts, the entry module of the @loomcli/plugins/format subpath
-import { plugin } from '@loomcli/core';
-import type { Plugin } from '@loomcli/core';
+// src/formatter/attach.ts, the hook of the @loomcli/plugins/format subpath
+import type { CommandAttachHook } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
-import { attachFormat } from './attach.js';
+import { formatName } from './names.js';
+import { json, jsonl } from './views.js';
 
-export function format(): Plugin<{}> {
-  return plugin(`${Package.name}/format`, {
-    middleware: { activate: 'always', load: () => import('./middleware.js') },
-    onCommandAttach: attachFormat,
+export const attachFormat: CommandAttachHook = (command) => {
+  const result = command.result;
+  if (result === null) {
+    return command;
+  }
+  const machine = { json: json(), jsonl: jsonl() };
+  const missing = Object.entries(machine).filter(([name]) => !result.views.includes(name));
+  const reshaped = command.views(Object.fromEntries(missing));
+  const names = reshaped.result?.views ?? [];
+  return reshaped.option('format', {
+    description: `Select the output format: ${names.join(', ')}.`,
+    type: 'string',
+    validate: formatName(names),
   });
-}
+};
 ```
 
-The factory is annotated `Plugin<{}>`, not bare `Plugin`, because `Plugin`'s default is the open options record, under which `context.options.anything` compiles and is always `undefined`; `Plugin<{}>` rejects it, and every plugin that loads a middleware annotates its factory, whether or not it declares options.
-
-Build rejects a hook that is not a function, a hook that returns a value that is not an `AttachedCommand` derived from the one it received, and a hook that throws, each a `DeclarationError` naming the plugin and the Command under [Plugin build errors](#plugin-build-errors). A thrown `DeclarationError` from an authoring call inside the hook reports as that error, since it names the fault an author corrects.
-
-### Extensions
-
-`Command.extend(...values)` and `Application.extend(...values)` return new declarations and remain available after `action()`. They accept command-targeted extension values, including help details and examples on an imported library Command:
-
-```ts
-import { helpCommand } from '@loomcli/plugins/help/extension';
-import { build } from 'command-library';
-
-const customized = build.extend(helpCommand({ details: 'Build this application.' }));
-const app = configured.command(customized);
-```
-
-Constructor `extensions` and each `extend()` call form successive layers. A later value from the same descriptor replaces its complete earlier value. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. The final record supports both inspection and `readExtension()`.
-
-An empty call returns an equivalent new declaration. Extending preserves the action, inputs, aliases, children, core facts, Application environment, and authoring state. It never reopens input or action declarations. Core facts such as `description`, `hidden`, and `deprecated`, and option/argument extensions, retain their constructor or input-configuration rules. A plugin reaches a completed declaration only through `onCommandAttach` under [Lifecycle hooks](#lifecycle-hooks), where `extend()` is one of the calls it may make.
-
-
-An extension is a typed fact a plugin defines and a declaration carries. `extension(identity, config)` returns a descriptor that is also a factory: calling it with a value returns a branded extension value, `ExtensionValue<Target>`, and a declaration lists those values under `extensions` in its config object. The key is overloaded on purpose: a plugin's own `extensions` lists the descriptors it defines, and every declaration's `extensions` lists the values those descriptors produce. An extension names one target, `'command'`, `'option'`, or `'argument'`, and one Standard Schema for its value. Each config object takes the values for its own target: `ApplicationOptions` and `CommandOptions` take `ExtensionValue<'command'>`, `StringOption` and `BooleanOption` take `ExtensionValue<'option'>`, on a global option declaration and on a plugin option alike, and `ArgumentConfig` takes `ExtensionValue<'argument'>`.
-
-```ts
-// src/help/extension.ts, abbreviated: the shipped module in First-party plugins adds the value rules
-import Package from '../../package.json' with { type: 'json' };
-import { extension } from '@loomcli/core';
-import { z } from 'zod';
-
-export const helpCommand = extension(`${Package.name}/help/command`, {
-  schema: z.object({
-    details: z.string().optional(),
-    examples: z.array(z.object({ command: z.string(), note: z.string().optional() })).optional(),
-  }),
-  target: 'command',
-});
-export const helpInput = extension(`${Package.name}/help/input`, {
-  schema: z.object({ placeholder: z.string().optional() }),
-  target: 'option',
-});
-```
-
-```ts
-const get = new Command('get', {
-  description: 'Read one value at a path.',
-  extensions: [helpCommand({ examples: [{ command: 'get user.name', note: 'a nested key' }] })],
-}).argument('path', { required: true, description: 'Dot path to read.' });
-```
-
-An extension value is keyed by its extension's identity and branded with its target, so it needs no field name and collides with no core key, and a value on the wrong target is a compile error at the config object. The call is typed from the schema's input type, so an unresolved descriptor or an ill-typed value fails to compile; identity strings and the remaining rules are checked at build. The value carries the input the author supplied and a private reference to the descriptor that produced it. Build validates the input once against the descriptor's schema, which must answer synchronously, and stores a copy of the output on the graph node under the identity, frozen to any depth, the way a declared default is stored, so a later change to the author's object changes nothing. `readExtension(node, descriptor)` takes the node kind the descriptor targets, `CommandNode`, `OptionNode`, or `ArgumentNode`, so a read against the wrong node kind is a compile error, and returns the stored output as a deeply read-only value, or `undefined` when the node carries no value for that identity. It compares the descriptor by reference with the one that produced the value and throws a `DeclarationError` when they differ, so a read never returns output another schema produced. It runs no schema.
-
-The stored output must be plain data: `string`, finite `number`, `boolean`, `null`, arrays, and objects whose prototype is `Object.prototype` or `null` with no accessors and no non-enumerable properties, to any depth and without cycles, with `undefined` property values dropped. That is the form the node can freeze and `inspect()` can report as the projection-neutral form. A schema that produces anything else, a `Date`, a `Map`, a class instance, a `bigint`, a `symbol`, or a function, is rejected at build; a date travels as a string and a map as an array of pairs.
-
-One identity means one descriptor. Every descriptor on a graph, whether an installed plugin defines it or a carried value references it, is compared by reference, and build rejects two distinct descriptor objects that share an identity, because a read through one would return a value another schema produced. A second copy of one plugin package in `node_modules`, installed or not, trips this rule, which is the intended signal to deduplicate. A projection that reads another plugin's facts imports that plugin's descriptor module, which is declarations alone and never its middleware, and it never imports the plugin's implementation.
-
-Build also rejects two values of one extension on one declaration, a value the schema rejects, a schema that returns a promise, and an `extensions` entry that is not an extension value.
-
-A fact whose plugin is not installed is inert for execution: no middleware acts on it, and core gives it no meaning. It still sits on the graph, `inspect()` reports it, and a projection that imports its descriptor can read it through `readExtension`. A Command library can therefore ship help facts into an application that installs no help plugin, or one that installs a different help plugin.
-
-Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, `version` on the Application, and `hidden` and `deprecated` on a Command and on an option, as [Hidden and deprecated members](#hidden-and-deprecated-members) describes. Each is optional in the declaration, and each states how an omitted declaration reads: `undefined` for a description and a deprecated message, `false` for `hidden`, and `0.0.0` for `version`, the one fact with a conventional sentinel for "unversioned". A description, a deprecated message, and a declared version are strings that hold a character other than whitespace and no line terminator, and `hidden` is a Boolean. Whitespace is the Unicode `White_Space` class, which covers the tab, the space, the no-break space, and every line terminator, and a line terminator is LF, VT, FF, CR, NEL, LS, or PS. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. A further fact of the same kind follows the same rule when it is specified, and states its own omitted reading. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
-
-### Views from plugins
-
-A plugin's `views` list holds the views it declares and the overrides it makes, in one list, the way `extensions` holds descriptors on a plugin and values on a declaration. A declared view is the value `view(identity, definition)` returned, and listing it is what puts its identity on the graph for the duplicate rule; an override is the value `override(key, view)` returned, and it enters the resolution [Views](#views) describes: the application's overrides first, then each plugin's in installation order, then the declaring contributor's default. A plugin can override a view another plugin declares. A plugin can list an override for its own declared view, and it resolves like any other, but the declared default is the place for that function. Two overrides for one key inside one contributor are a build error; the same key overridden by the application and by a plugin, or by two plugins, resolves first-in-wins.
-
-Overriding a plugin's view replaces its function alone: the plugin stays installed and its middleware, options, and facts are unchanged. Replacing the capability itself still means omitting the plugin and installing another, the rule the [first-party plugins](#first-party-plugins) follow.
-
-```ts
-// src/help/plugin.ts
-import { plugin } from '@loomcli/core';
-
-import { helpCommand, helpInput } from './extension.js';
-import { helpPage } from './views.js';
-
-export function help(): Plugin<HelpOptions> {
-  return plugin(`${Package.name}/help`, {
-    extensions: [helpCommand, helpInput],
-    middleware: { activate: ['help'], load: () => import('./middleware.js') },
-    options,
-    views: [helpPage],
-  });
-}
-```
-
-### Signals and cancellation
-
-Every run creates one private cancellation controller and exposes its signal to each middleware and to the action context as `signal`. Two things can abort it. A caller passes `signal` in the run options, which is the path for an embedding host or a test; core subscribes to it at run entry and honors an abort at every phase boundary from then on. Or one installed plugin claims the signals slot by listing the signals it owns, `SIGINT`, `SIGTERM`, or both, and core installs a process listener for each once the graph has built and validated, and removes it on every exit path of that run, so an Application can run again and a test leaks no listener. The slot has one owner: a second claim is a build error naming both plugins, a signal outside the closed set is a build error, and a signal claimed twice is a build error, because core installs one listener per entry. An empty list claims nothing and leaves the slot free. With no owner and no run signal, core installs nothing.
-
-```ts
-export function signals() {
-  return plugin(Package.name, { signals: ['SIGINT', 'SIGTERM'] });
-}
-```
-
-The first cause to abort the controller fixes the run's cancellation reason and code: 130 for `SIGINT`, 143 for `SIGTERM`, and 130 for a caller-supplied abort. A later cause changes neither. Core keeps awaiting the chain: a middleware or action already running reads `signal` and finishes on its own terms, and core never ends the process on a first signal. Core starts nothing new after cancellation: a middleware the chain has not reached and an action not yet dispatched are skipped, a loader already in flight settles and its middleware is skipped, and the entries already running unwind in order. A loader has the standing an action has: a module import cannot be aborted, so core awaits it, and a loader that never settles holds the run open exactly as an action that ignores the signal does, until the force path or a supervisor ends the process. A cancelled run resolves its cancellation code whenever it ends after graph build with no declaration or internal failure raised before the chain starts, whether or not the chain was reached; such a failure ends the run with its own code, an abort that lands during build included. A run whose caller signal is already aborted at entry still builds and validates the graph, installs no process listeners, and otherwise resolves 130 having loaded no plugin and run no middleware or action.
-
-Work that must happen at the moment of the signal, such as restoring the cursor or leaving raw mode, belongs in a synchronous listener the plugin adds to `signal` before it changes terminal state; it runs even when the action ignores the abort. For a run with a slot owner, any process signal that arrives after the run is cancelled, by any cause, is the force path: core removes its own listeners for that run and re-raises the signal. The default disposition then ends the process with the conventional status when no other listener remains. Core does not own the process. A re-raised signal reaches every listener still installed. An embedding host's own listener sees it. A second run in the same process that owns the slot receives the original signal and the re-raise alike, and applies its own rule to each: not yet cancelled, it cancels and absorbs the signal; already cancelled, it removes its listeners and re-raises in turn. The force path is defined for one slot-owning run per process. With several, each run applies its own rule to each signal it receives: a run not yet cancelled cancels and absorbs the signal, and a cancelled run removes its listeners and re-raises, so the process ends only once no run's listener remains. When a listener outside core keeps the process alive, the run that re-raised observes no further signals and keeps awaiting the chain. An embedding host that runs several Applications in one process supplies `run({ signal })` and installs no slot owner; with no owner, core holds no listener, and a process signal has its default effect. A listener that blocks the event loop delays the second signal's handling until it yields, as it delays everything else.
-
-The signal decides the code whatever the action did afterward, because a script that sees 0 after an interrupt carries on as if the work finished. Core aborts the private signal with a reason it owns, the exported `CancellationReason`, `{ source: 'SIGINT' | 'SIGTERM' | 'caller', cause?: unknown }`, where `cause` carries the caller's own `signal.reason` when the caller aborted, so a middleware reads `source` and never infers a signal name. An API that rejects with `signal.reason`, as `fetch` does, throws that reason itself; a thrown value that is the reason, or an error named `AbortError`, is silent. Any other failure after cancellation is rendered as usual, and the code stays the signal's. A first signal that arrives after the chain has settled, while core is rendering a failure or finishing output, still cancels the run and decides its code; a further signal in that window changes the code no further, and for a slot owner the force path still applies until `run()` resolves. One rule orders every code: a cancelled run, as defined above, resolves its signal's code, and a broken failure view or destination in that run is reported as text without changing it; otherwise a broken failure view or destination forces 1 over the primary outcome, the accepted view rule; otherwise the primary failure or the action decides, and a throw during unwinding turns a would-be 0 into 1.
-
-```ts
-type ExitCode = 0 | 1 | 2 | 130 | 143;
-```
-
-The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switches exhaustively on it gains two cases.
+- **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. Core resolves each result record under [Result build errors](#result-build-errors) before the hooks, so `result` is exact, and runs those rules again over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
+- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes and the four calls above. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
+- **What it returns.** The value it received or one derived from it by those calls. Build rejects a hook that is not a function, one that returns anything else, and one that throws, under [Plugin build errors](#plugin-build-errors); a thrown `DeclarationError` reports as itself.
+- **Types.** Nothing a hook adds reaches the action's types: a hook-declared option is in `options` at run time and absent from the typed `options`, and a middleware reads it through `request`, which is untyped for that reason. A rule the types reject for an author is reached by a hook's erased call and reported at build as it is for a JavaScript author.
+- **Rules.** A hook's calls are exempt from the four closures `action()` applies, to arguments, options, aliases, and children, and from nothing else. An input a hook declares whose key or spelling the Command, the Application's globals, or another plugin's options already use is the hook-collision error, naming the plugin and the Command; `arguments` and `options` show the Command's own names, so a hook sees that case before it causes it, and the other two surface at build. Hooks compose in sequence, not first-in-wins: a later hook sees and can replace what an earlier one added, `views()` by name included.
+- **Names.** `AttachedCommand`, `CommandAttachHook`, and `ResultView` are exported. The private build handle the command module spells `AttachedCommand` today is renamed with the increment.
 
 ### Plugin build errors
 
@@ -1465,7 +1375,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the exported options type and the annotated factory at the subpath, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and format, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` factories of [Row views](#row-views) under their own contract.
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the exported options type and the annotated factory at the subpath, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and the formatter, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` factories of [Row views](#row-views) under their own contract.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -1481,7 +1391,7 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-The help and version factories take no parameters, so an application installs each as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help and version each read the graph and their own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. Format is not one: its hook adds an option and two views to the graph, and its middleware reads the parsed invocation, as [Format](#format) states.
+The help and version factories take no parameters, so an application installs each as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help and version each read the graph and their own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. The formatter is not one: its hook adds an option and two views to the graph, and its middleware reads the request, as [Formatter](#formatter) states.
 
 ### Version
 
@@ -1638,7 +1548,7 @@ GLOBAL OPTIONS
       --explain      Explain the selected command and exit.
 ```
 
-textstat is one root Command with a variadic argument, five local options, of which `--minimum` is deprecated and `--timing` is hidden, a sixth local option `--format` that the [format plugin](#format) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS, and `textstat --help` prints:
+textstat is one root Command with a variadic argument, five local options, of which `--minimum` is deprecated and `--timing` is hidden, a sixth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS, and `textstat --help` prints:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -1668,42 +1578,50 @@ EXAMPLES
 
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
 
-### Format
+### Formatter
 
-`format()` takes no parameters, declares no option in the globals table, and claims no slot. It ships four view factories, one `onCommandAttach` hook that puts `--format` on every Command that declares a [result](#results) and the two machine views on every such record that lacks them, and one always-on middleware that copies a supplied name into `view`. The plugin owns the encodings and the option; core owns the selection.
+The formatter is `@loomcli/plugins/format`. Its factory `format()` takes no parameters, declares no option in the globals table, and claims no slot. It ships two views, `json()` and `jsonl()`, one hook that puts `--format` on every Command that declares a [result](#results), and one always-on middleware that copies a supplied name into `view`. The plugin owns the encodings and the option; core owns the selection.
 
 ```ts
 // @loomcli/plugins/format
-function json<Value>(config?: { map?: (value: Readonly<Value>) => unknown }): View<Value>;
-function jsonl<Value>(config?: { map?: (value: Readonly<Value>) => unknown }): View<Value>;
-function jsonRows<Row>(config?: { map?: (row: Readonly<Row>, index: number) => unknown }): RowView<Row>;
-function jsonlRows<Row>(config?: { map?: (row: Readonly<Row>, index: number) => unknown }): RowView<Row>;
 function format(): Plugin<{}>;
+function json<Data>(config?: { map?: (data: Readonly<Data>) => unknown }): View<Data>;
+function jsonl<Data>(config?: { map?: (data: Readonly<Data>) => unknown }): View<Data>;
 ```
 
-The four factories return bare views under the rules [Row views](#row-views) gives a pack view: no identity, typed from the data by contextual typing inside a `views` record, and stated as `json<Summary>()` when hoisted or written as the second argument of `out.render`, where the row type is inferred from the iterable and does not reach an unannotated `map`. Each takes an optional `map` that reshapes what the view receives before encoding, the way a column list reshapes a table, and the identity map is the default. `json()` and `jsonl()` are whole views for `result<Value>`, and `jsonRows()` and `jsonlRows()` are row views for `rows<Row>`, so a rows Command streams under either encoding and a whole view over its rows is never needed; a factory of the wrong unit is the ordinary shape error of the record, a row view under `result` at compile time and a whole view under `rows` that buffers by design. They render as ordinary views with the plugin uninstalled, so a Command that names `json: json()` first in its record prints JSON by default with no `--format` anywhere.
+```ts
+import { Application } from '@loomcli/core';
+import { format } from '@loomcli/plugins/format';
+import { help } from '@loomcli/plugins/help';
+import { version } from '@loomcli/plugins/version';
 
-The encodings are `JSON.stringify` and nothing else. `json()` writes the mapped value as one document indented by two spaces, `JSON.stringify(mapped, null, 2)`, followed by one newline. `jsonRows()` writes one JSON array with one row per line. Its head is `[`; its first row is a newline, two spaces, and the row in compact form, `JSON.stringify(mapped)`; every later row is a comma, a newline, two spaces, and the row in compact form; its tail is a newline, `]`, and a newline. So an empty sequence prints `[` and `]` on two lines, and a complete run's document is valid JSON whatever the count; a sequence that stops early writes no tail, so the truncated document is not, and the incomplete line on stderr says so. `jsonl()` writes the mapped value in compact form, `JSON.stringify(mapped)`, followed by one newline, and `jsonlRows()` writes each mapped row the same way, the compact form followed by one newline, with no head and no tail, so an empty sequence prints nothing. The text is data, and it must reach the destination unchanged under every [rendering policy](#rendering-policies): every function escapes the encoded text through `style.escape`, so a marker character inside the data prints literally, and replaces every character from U+007F to U+009F in it with its `\uXXXX` escape, four lowercase hex digits as `JSON.stringify` spells its own, which JSON permits anywhere inside a string and which is the only place such a character can appear in `JSON.stringify` output, so neither DEL nor a C1 control reaches the resolver that would strip it or read it as a terminal control; C0 controls are already escaped by `JSON.stringify`. None applies a style, so the bytes are the same under every capability. `toJSON` is honored and an `undefined`, function, or symbol property is dropped, as `JSON.stringify` does; a value that encodes to nothing at all, `undefined` at the top, and a value `JSON.stringify` throws on, a `bigint` or a cycle, makes the view throw, which core reports through the output-view row of the [Failure contract](#failure-contract) under the rules for a sequence that stops early.
-
-`onCommandAttach` leaves a Command with no result untouched and reshapes one that declares a result in two steps. First it appends `json` and then `jsonl` to the `views` record where the record lacks the key, with the unit's factory and the identity map, so an author's own `json: json({ map })` or `json: myTable` is kept as written and the default is unchanged. Then it declares the local string option `format` on the Command, with no short spelling and no default, after the author's own options, whose description is `Select the output format: ` followed by the record's keys in record order, comma-separated, and a full stop, and whose validator accepts each key of the record as it stands and returns the issue `Supply one of <names>.` for anything else, where `<names>` is the same list. The option declares no default, so an omitted `--format` leaves the value `undefined` and the middleware assigns nothing, and the view the declaration or an earlier plugin selected stands. The validator also accepts `ndjson` and transforms it to `jsonl` when the record holds no `ndjson` key; when it does, that key is an ordinary view name and no alias applies. `ndjson` is an unadvertised alias under the rule [Aliases](#aliases) gives the word: accepted everywhere, listed nowhere. The option is an ordinary local option in every respect. It is parsed at local placement with the value rules string options follow, it sits in OPTIONS on the Command's help page as `--format <format>` with its description, so the page lists the available names without the help plugin knowing the plugin exists, it appears under `options` on the node `inspect()` publishes with `scope: 'application'`, and its value reaches the action at run time under `options.format`, absent from the action's types. A key or spelling collision with an option the Command or the Application already declares, or with another plugin's option, is the hook-collision build error of [Plugin build errors](#plugin-build-errors), naming the plugin and the Command, and the developer resolves it by renaming their own option or omitting the plugin; the plugin offers no rename, because a second spelling for one thing is what an agent would then have to guess between. The hook reads the record as it stands when it runs, so a plugin installed after `format()` whose hook adds a view adds a name `--format` does not accept: install such a plugin ahead of it.
-
-The middleware declares `activate: 'always'`, because a hook-declared option cannot activate it, and does one thing: when the routed Command declares a result and `input` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so a plugin installed ahead of it that selected a view keeps its selection. A held fault leaves `input` at `null`, and the fault is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` reports through the validator's issue, exit 2, before any view is selected, and `--format yaml --help` with help installed after format still prints the page. `--format` on a Command that declares no result is an unknown option there, because nothing declared it, and it reports as the ordinary unknown-option error, exit 2, naming the spelling and ranking ahead of any schema issue. `--format` supplied twice or with no value reports through the repetition and missing-value rules every string option follows.
+export const textstat = new Application('textstat', { plugins: [help(), version(), format()] })
+  // ...
+  .result<Table>({ views: { table: tableView } })
+  .action(countFiles);
+```
 
 ```text
+$ textstat --format json one.txt      # the Table as one JSON document on stdout, warnings on stderr
 $ textstat --format yaml one.txt
 Invalid input: Option "--format": Supply one of table, json, jsonl.
 $ jsonkit get --format json user.name -f doc.json
 Invalid input: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".
 ```
 
+- **Views.** `json()` and `jsonl()` are whole views: under `result<Value>` they receive the value, and under `rows<Row>` core collects the sequence and they receive the array. `map` reshapes what they receive, identity by default. They are bare pack views under [Row views](#row-views), typed by contextual typing inside a `views` record and stated, `json<Summary>()`, when hoisted or written as the second argument of `out.render`. They render as ordinary views with the plugin uninstalled, so a Command that names `json: json()` first prints JSON by default with no `--format` anywhere.
+- **Bytes.** `json()` writes `JSON.stringify(mapped, null, 2)` and one newline. `jsonl()` writes one line per element when the mapped value is an array, each `JSON.stringify(element)` and one newline, and one such line otherwise; an empty array prints nothing. `toJSON` is honored and an `undefined`, function, or symbol property is dropped, as `JSON.stringify` does. A value that encodes to nothing, `undefined` at the top, or that `JSON.stringify` throws on, a `bigint` or a cycle, makes the view throw, reported through the output-view row of the [Failure contract](#failure-contract). The text is data: each view escapes it through `style.escape` and replaces every character from U+007F to U+009F with its `\uXXXX` escape, four lowercase hex digits, so nothing the [rendering policy](#rendering-policies) would strip or read as a terminal control reaches it, and applies no style, so the bytes are the same under every capability.
+- **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with no short spelling and no default, the description `Select the output format: ` followed by the record's keys in record order, comma-separated, and a full stop, and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>` with its description, under `options` in `inspect()` with `scope: 'application'`, reaching the action at run time under `options.format` and absent from its types. A key or spelling collision with an option the Command, the Application, or another plugin declares is the hook-collision build error, naming the plugin and the Command, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name.
+- **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and `request` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault leaves `request` at `null` and is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` is the validator's issue, exit 2, and `--format yaml --help` with help installed after the formatter still prints the page. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
+
 ```ts
-// src/format/middleware.ts, loaded on every invocation that reaches it
+// src/formatter/middleware.ts, loaded on every invocation that reaches it
 import type { Middleware } from '@loomcli/core';
 
 import type { format } from './plugin.js';
 
 const middleware: Middleware<typeof format> = async (context) => {
-  const selected = context.input?.options.format;
+  const selected = context.request?.options.format;
   if (context.view !== null && typeof selected === 'string') {
     context.view = selected;
   }
@@ -1713,9 +1631,9 @@ const middleware: Middleware<typeof format> = async (context) => {
 export default middleware;
 ```
 
-#### Format example coverage
+#### Formatter example coverage
 
-The format increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the behavior below. `textstat --format json one.txt` prints textstat's `Table` value as one indented JSON document on stdout, with any warning and the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints it on one line, and `textstat one.txt` prints the table it printed before. `jsonkit paths --format jsonl -f doc.json` prints one compact line per `Entry` as the walk yields it, `--format ndjson` prints the same bytes, `--format json` prints one array with one row per line, and `--format table` selects the whole view by name. `textstat --help` prints the page above with the `--format` row, and `jsonkit paths --help` lists `list, table, json, jsonl` on its row. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`, with `--format` under each node's `options`. The acceptance tests cover each factory under both runtimes with an empty sequence and with a map, a map that returns `undefined` and a `bigint` value each reported as a view fault with the incomplete line under `rows`, a string value holding U+009B and U+001B printed as their escapes under `color: 'never'` and `'always'` alike, a record whose author-declared `json` keeps its map and its position, a record with its own `ndjson` key that the alias no longer serves, `--format yaml` as the validator's issue, `--format` on a no-result Command as the unknown-option error, `--format` twice and with no value, an omitted `--format` leaving a view an earlier plugin selected in place, `--format yaml --help` printing the page with help installed after format, the hook-collision build error against an author-declared local `format`, a global `format`, and another plugin's `format` option, and the bytes of every page above. The lifecycle coverage lives with the [plugin example coverage](#example-coverage-3): a fixture hook that declares an option the action then reads at run time and that `input` carries, the hook receiving the root with `name` `null`, the facts `result` and `hasAction` read from a hook, hook order across two plugins with the later one replacing a view the earlier one added, each hook build error above, a hook returning a value not derived from the one it received, `input` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault exiting 0 with no diagnostic, a takeover under a validator that throws exiting 0 with the page and no diagnostic, a held fault ranking ahead of a bad `view` assignment at the boundary, an always-on wrapper installed ahead of help reaching help's takeover on an invalid invocation, the held fault raised at the dispatch boundary with code 2 and its rank and rejecting each awaiting `next()`, a missing-subcommand fault held for a group, a run cancelled inside a validator resolving the signal's code with no fault raised, `view` starting at the declaration's default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault above raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the `Table` as one indented document with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints it on one line, `textstat one.txt` prints the table it printed before, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, and `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
 
 ### Example coverage
 
