@@ -101,6 +101,13 @@ function request(method, params) {
   const id = sequence;
   const started = performance.now();
   return new Promise((resolve, reject) => {
+    // A server that already exited has emitted its close event, so a listener would never fire.
+    if (server.exitCode !== null || server.signalCode !== null) {
+      reject(
+        new Error(`The server exited (${server.exitCode ?? server.signalCode}) before ${method}.`),
+      );
+      return;
+    }
     // A server that exits before replying settles the request instead of leaving it waiting.
     const onClose = (code, signal) => {
       reject(new Error(`The server exited (${code ?? signal}) before replying to ${method}.`));
