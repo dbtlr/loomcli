@@ -66,7 +66,7 @@ A named input introduced by a hyphen spelling. A string option consumes a value;
 _Avoid_: Flag, switch, parameter
 
 **Local option**:
-An option declared on one Command, visible to that Command's action alone. Local options never inherit along a path, so a group cannot declare one.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the parsed invocation a middleware reads. Local options never inherit along a path, so a group cannot declare one.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -149,8 +149,16 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` call: host capture, graph build, global pre-scan, routing, the middleware chain, local parsing, validation, the action, and the exit status.
+One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, validation, the middleware chain, the action, and the exit status.
 _Avoid_: Execution, call, request
+
+**Parsed invocation**:
+The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `input` before the action runs. It is absent while core holds a fault.
+_Avoid_: Request object, parsed args, raw input (which is the pre-validation form)
+
+**Dispatch boundary**:
+The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view and dispatches the action. A takeover never reaches it.
+_Avoid_: Terminal step, end of chain, action phase
 
 **Pre-scan**:
 The invocation phase that consumes global options from the tokens before routing, stopping at the passthrough delimiter.
@@ -244,7 +252,7 @@ A key in a result's `views` record: the bare-token name by which `--format` sele
 _Avoid_: Presentation, presentation name, format name, view identity, encoding name
 
 **Selected view**:
-The view a result renders through on one run: the view name a middleware assigned to `view` on its context before the action dispatched, or the declaration's default when none did.
+The view a result renders through on one run: the view name a middleware assigned to `view` on its context before the dispatch boundary, or the declaration's default when none did.
 _Avoid_: Active view, current format, output mode
 
 ## Failures
@@ -331,7 +339,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's unlocked declaration at graph build and returns the declaration to build. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
@@ -355,7 +363,7 @@ A declaration fact core owns and every projection reads without any plugin insta
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin option**:
-An option a plugin contributes. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action.
+An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
 _Avoid_: Global option (for a plugin's option), flag
 
 **Core**:
