@@ -9,6 +9,8 @@ import { z } from 'zod';
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
 import { filesOrStdin } from './files-or-stdin.js';
+import { tableView } from './table.js';
+import type { Table } from './table.js';
 import { fatalError } from './views.js';
 
 /**
@@ -67,4 +69,7 @@ export const textstat = new Application('textstat', {
     hidden: true,
     type: 'boolean',
   })
+  // The table is the result this application produces, and its own view is its one presentation.
+  // Stdout therefore carries the table and nothing else the action writes.
+  .result<Table>({ views: { table: tableView } })
   .action(countFiles);

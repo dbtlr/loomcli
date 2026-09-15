@@ -12,6 +12,7 @@ import { debug } from './commands/debug.js';
 import { fetch } from './commands/fetch.js';
 import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
+import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
 import { fileOrStdin } from './file-or-stdin.js';
 import { fatalError, inputProblems, unknownCommand } from './views.js';
@@ -57,4 +58,5 @@ export const jsonkit = configured
   .command(select)
   .command(fetch)
   .command(debug)
+  .command(paths)
   .action(summarize);
