@@ -39,8 +39,10 @@ const before = text.slice(0, index);
 const line = before.split('\n').length - 1;
 const character = index - before.lastIndexOf('\n') - 1;
 const at = { character, line };
-// The completion point sits right after "out." so the member list is what the editor shows.
-const member = { character: character + 'out.'.length, line };
+// The completion point sits right after the needle's last dot, so the member list is what the editor shows.
+// A needle with no dot is completed at its end.
+const dot = needle.lastIndexOf('.');
+const member = { character: character + (dot === -1 ? needle.length : dot + 1), line };
 
 // The server logs a cancelled context on exit, which is noise here, so its stderr is dropped.
 const server = spawn(compiler, ['--lsp', '-stdio'], { stdio: ['pipe', 'pipe', 'ignore'] });

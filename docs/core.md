@@ -780,7 +780,9 @@ interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
 type AnyDeclaredView = (View<never> | RowView<never>) & DeclaredViewBrand & { readonly identity: string }; // the brand without the witness, either shape
 type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
+function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>; // both row-view shapes are defined in Results
 function override<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride;
+function override<Row>(key: DeclaredRowView<Row>, replacement: RowView<Row>): ViewOverride;
 function override<Failure extends LoomError>(key: FailureClass<Failure>, replacement: View<Failure>): ViewOverride;
 type ViewContribution = AnyDeclaredView | ViewOverride; // ViewOverride is opaque and branded
 ```
