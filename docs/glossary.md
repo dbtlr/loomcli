@@ -66,7 +66,7 @@ A named input introduced by a hyphen spelling. A string option consumes a value;
 _Avoid_: Flag, switch, parameter
 
 **Local option**:
-An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the parsed invocation a middleware reads. Local options never inherit along a path, so a group cannot declare one.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the parsed invocation a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -153,7 +153,7 @@ One `run()` call: host capture, graph build, global pre-scan, routing, local par
 _Avoid_: Execution, call, request
 
 **Parsed invocation**:
-The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `input` before the action runs. It is absent while core holds a fault.
+The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `input` before the action runs. `input` is `null` while core holds a fault.
 _Avoid_: Request object, parsed args, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
@@ -311,7 +311,7 @@ The projection of one routed Command that the help plugin prints: its masthead, 
 _Avoid_: Usage text, man page, help screen
 
 **Format plugin**:
-The first-party plugin that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships the `json` and `jsonl` views as configured factories, one per result unit, whose map reshapes one row under `rows()` and the whole value under `result()`. There is no encoding outside the view model: a machine view is a view like a table is.
+The first-party plugin that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships the `json` and `jsonl` views as configured factories, one per result unit: `json()` and `jsonl()` under `result()`, whose map reshapes the whole value, and `jsonRows()` and `jsonlRows()` under `rows()`, whose map reshapes one row. There is no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Formatter, encoder, serializer, format (for the view), output mode
 
 **Theme**:
