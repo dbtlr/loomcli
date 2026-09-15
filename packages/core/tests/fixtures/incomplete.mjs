@@ -220,6 +220,7 @@ const declarations = {
   'cancel-row': 'row',
   'cancel-whole': 'whole',
   'cancelled-echo': 'row',
+  'cancelled-echo-unawaited': 'row',
   'cancelled-fault': 'row',
   'cancelled-returns': 'row',
   'cleanup-hangs': 'row',
@@ -332,6 +333,11 @@ async function act({ out }) {
     }
     case 'cancelled-echo': {
       await out.results(echoing());
+      break;
+    }
+    case 'cancelled-echo-unawaited': {
+      // The call is not awaited, so the echo reaches the run only as a deferred stop.
+      out.results(echoing());
       break;
     }
     case 'cancelled-fault': {

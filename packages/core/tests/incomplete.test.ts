@@ -147,6 +147,14 @@ test('a cancellation echo the source throws is silent and keeps the signal code'
   });
 });
 
+test('the same echo under a call the action never awaited is silent too', () => {
+  expect(incomplete('cancelled-echo-unawaited')).toEqual({
+    status: 130,
+    stderr: line('Command "count"', 1, 1),
+    stdout: `${partial}resolved:130\n`,
+  });
+});
+
 test('any other failure after cancellation is reported and the code stays the signal', () => {
   expect(incomplete('cancelled-fault')).toEqual({
     status: 130,

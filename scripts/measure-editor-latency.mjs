@@ -45,7 +45,11 @@ const dot = needle.lastIndexOf('.');
 const member = { character: character + (dot === -1 ? needle.length : dot + 1), line };
 
 // The server logs a cancelled context on exit, which is noise here, so its stderr is dropped.
-const server = spawn(compiler, ['--lsp', '-stdio'], { stdio: ['pipe', 'pipe', 'ignore'] });
+// A server that stalls is killed after the timeout, so a hung measurement fails instead of waiting.
+const server = spawn(compiler, ['--lsp', '-stdio'], {
+  stdio: ['pipe', 'pipe', 'ignore'],
+  timeout: 120_000,
+});
 let sequence = 0;
 const waiting = new Map();
 let buffer = Buffer.alloc(0);
@@ -97,7 +101,13 @@ function request(method, params) {
   const id = sequence;
   const started = performance.now();
   return new Promise((resolve, reject) => {
+    // A server that exits before replying settles the request instead of leaving it waiting.
+    const onClose = (code, signal) => {
+      reject(new Error(`The server exited (${code ?? signal}) before replying to ${method}.`));
+    };
+    server.once('close', onClose);
     waiting.set(id, (response) => {
+      server.removeListener('close', onClose);
       if (response.error) {
         reject(new Error(`${method}: ${response.error.message}`));
         return;

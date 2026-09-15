@@ -410,15 +410,18 @@ function readStored(stored: StoredView): ResolvedView {
  * The stand-in for a function the stored shape does not carry. A JavaScript author's replacement
  * of the wrong shape reaches it, and the throw is the output-view fault of the write site.
  */
-function missing(name: 'render' | 'row'): () => never {
+function missing(name: 'render' | 'row', key: string): () => never {
   return () => {
-    throw new Error(`The replacement view supplies no ${name} function.`);
+    throw new Error(`The replacement view for "${key}" supplies no ${name} function.`);
   };
 }
 
-/** One stored whole view, read back as the function the write site calls. */
-function callView(stored: StoredView): (data: unknown, context: ViewContext) => unknown {
-  return readStored(stored).render ?? missing('render');
+/** One stored whole view, read back as the function the write site calls, named by its key. */
+function callView(
+  stored: StoredView,
+  key: string,
+): (data: unknown, context: ViewContext) => unknown {
+  return readStored(stored).render ?? missing('render', key);
 }
 
 /** Every prototype in a failure's chain, most derived first, so one walk reads one contributor. */
@@ -445,7 +448,7 @@ function resolveView<Data>(
     for (const contributor of registry) {
       const replacement = contributor.views.get(declared);
       if (replacement) {
-        return callView(replacement);
+        return callView(replacement, declared.identity);
       }
     }
   }
@@ -470,7 +473,8 @@ function resolveRowView<Row>(registry: ViewRegistry, value: RowView<Row>): Resol
       const replacement = contributor.views.get(declared);
       if (replacement) {
         const resolved = readStored(replacement);
-        return { head: resolved.head, row: resolved.row ?? missing('row'), tail: resolved.tail };
+        const row = resolved.row ?? missing('row', declared.identity);
+        return { head: resolved.head, row, tail: resolved.tail };
       }
     }
   }
@@ -525,7 +529,7 @@ function describeFailure(
     if (context === undefined) {
       throw new Error('Missing rendering context.');
     }
-    const text = callView(replacement)(failure, context);
+    const text = callView(replacement, failure.name)(failure, context);
     return typeof text === 'string'
       ? { kind: 'rendered', text }
       : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };
