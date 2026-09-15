@@ -181,7 +181,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, Presentation name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023.
 
 **Out**:
 The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
@@ -236,12 +236,16 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Result**:
-What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable or async iterable. The author states the type, the declaration carries a record of views keyed by presentation name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
+What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable or async iterable. The author states the type, the declaration carries a record of views keyed by view name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
 _Avoid_: Return value, payload, output value, document, stream (for the declaration)
 
-**Presentation name**:
-A key in a result's `views` record: the bare-token name by which a formatter plugin's `--format` selects that view, and by which `views()` replaces it. Names are unique by construction and belong to the Command, not to the view.
-_Avoid_: Format name, view identity, encoding name
+**View name**:
+A key in a result's `views` record: the bare-token name by which `--format` selects that view and by which `views()` replaces it. Names are unique by construction and belong to the Command, not to the view.
+_Avoid_: Presentation, presentation name, format name, view identity, encoding name
+
+**Selected view**:
+The view a result renders through on one run: the view name a middleware assigned to `view` on its context before the action dispatched, or the declaration's default when none did.
+_Avoid_: Active view, current format, output mode
 
 ## Failures
 
@@ -298,9 +302,9 @@ _Avoid_: Export, output format, adapter
 The projection of one routed Command that the help plugin prints: its masthead, usage, visible members, and examples, as plain text.
 _Avoid_: Usage text, man page, help screen
 
-**Formatter**:
-The plugin that lets a run select a result's presentation by name through `--format`, and that declares the `json` and `jsonl` views as configured factories, one per result unit, whose map reshapes one row under `rows()` and the whole value under `result()`. There is no encoding outside the view model: a machine presentation is a view like a table is.
-_Avoid_: Encoder, serializer, format (for the view), output mode
+**Format plugin**:
+The first-party plugin that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships the `json` and `jsonl` views as configured factories, one per result unit, whose map reshapes one row under `rows()` and the whole value under `result()`. There is no encoding outside the view model: a machine view is a view like a table is.
+_Avoid_: Formatter, encoder, serializer, format (for the view), output mode
 
 **Theme**:
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
@@ -315,7 +319,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor
 
 **Plugin**:
-A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, extensions, views and view overrides, or a slot claim through the same public contract first-party packages use. Core installs none by default.
+A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Plugin identity**:
@@ -323,15 +327,19 @@ The nonempty string that names a plugin, fixed where the plugin is defined. By c
 _Avoid_: Plugin name (when the key is meant), id (in prose)
 
 **Contribution**:
-One thing a plugin adds to an Application: an option, a middleware, an extension, a declared view, a view override, or a slot claim. Contributions compose in installation order.
-_Avoid_: Hook, registration, feature
+One thing a plugin adds to an Application: an option, a middleware, a lifecycle hook, an extension, a declared view, a view override, or a slot claim. Contributions compose in installation order.
+_Avoid_: Registration, feature
+
+**Lifecycle hook**:
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's unlocked declaration at graph build and returns the declaration to build. A hook runs in sequence at its point, and middleware is not one.
+_Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
 A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The signals slot is the first.
 _Avoid_: Singleton, capability (for the position)
 
 **Middleware**:
-A plugin's participation in an invocation, run between routing and local parsing. It receives its own options and the routed node, and it either takes over by returning or continues the chain by calling `next()`.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the parsed invocation, and the selected view, and it either takes over by returning or continues the chain by calling `next()`, which raises the fault core held.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
