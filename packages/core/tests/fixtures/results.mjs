@@ -11,6 +11,7 @@ import {
   plugin,
   ResultError,
   style,
+  view,
 } from '@loomcli/core';
 
 const scenario = process.argv[2];
@@ -32,6 +33,23 @@ const collected = { render: (all) => `${all.length} rows\n` };
 
 /** The whole view of a value result. */
 const table = { render: ({ total }) => `total ${total}\n` };
+
+/** A row view over plain string rows, so a string source reads one character per row. */
+const letters = { row: (row, index) => `${index}:${row}\n` };
+
+/** A source that carries the asynchronous key with nothing under it and iterates synchronously. */
+const halfAsync = {
+  [Symbol.asyncIterator]: undefined,
+  *[Symbol.iterator]() {
+    yield* rows;
+  },
+};
+
+/** A declared whole view a result names, which the Application's override list also names. */
+const declaredTable = view('@fixture/results/table', { render: () => 'original\n' });
+
+/** A declared row view a result names, which the Application's override list also names. */
+const declaredList = view('@fixture/results/list', { row: () => 'original\n' });
 
 /** The same rows from a synchronous source. */
 function* walk() {
@@ -71,9 +89,12 @@ const shared = scenario === 'order' ? capture() : undefined;
 const declarations = {
   array: 'row',
   async: 'row',
+  'declared-rows': 'row',
+  'declared-value': 'value',
   'empty-row': 'row',
   'empty-whole': 'whole',
   'failure-first': 'value',
+  'half-async': 'row',
   'internal-override': 'value',
   'middleware-no-dispatch': 'value',
   'middleware-print': 'value',
@@ -87,6 +108,7 @@ const declarations = {
   repeated: 'value',
   'repeated-awaited': 'value',
   'result-override': 'value',
+  'string-source': 'row',
   sync: 'row',
   unawaited: 'row',
   undeclared: 'none',
@@ -127,6 +149,23 @@ async function act({ out }) {
     case 'empty-row':
     case 'empty-whole': {
       await out.results([]);
+      break;
+    }
+    case 'string-source': {
+      // A string iterates synchronously and answers no `in` check for either protocol key.
+      await out.results('ab');
+      break;
+    }
+    case 'half-async': {
+      await out.results(halfAsync);
+      break;
+    }
+    case 'declared-value': {
+      await out.results({ total: 1 });
+      break;
+    }
+    case 'declared-rows': {
+      await out.results([rows[0]]);
       break;
     }
     case 'order': {
@@ -216,6 +255,12 @@ function views() {
   const branded = override(InternalError, {
     render: (failure) => `branded:${failure.message}\n`,
   });
+  if (scenario === 'declared-value') {
+    return [override(declaredTable, { render: () => 'replaced\n' })];
+  }
+  if (scenario === 'declared-rows') {
+    return [override(declaredList, { row: () => 'replaced\n' })];
+  }
   if (scenario === 'internal-override') {
     return [branded];
   }
@@ -231,6 +276,23 @@ function views() {
   return [];
 }
 
+/** The presentation record one scenario declares, keyed by the name its own default takes. */
+function presentations(declared) {
+  if (scenario === 'declared-value') {
+    return { table: declaredTable };
+  }
+  if (scenario === 'declared-rows') {
+    return { list: declaredList };
+  }
+  if (scenario === 'string-source') {
+    return { letters };
+  }
+  if (declared === 'value') {
+    return { table };
+  }
+  return declared === 'row' ? { list } : { collected };
+}
+
 /** The Command one scenario routes to, declared as the unit the scenario names. */
 function routed() {
   const declared = declarations[scenario];
@@ -238,10 +300,9 @@ function routed() {
     return new Command('plain').action(act);
   }
   const command = new Command('count');
+  const record = presentations(declared);
   const withResult =
-    declared === 'value'
-      ? command.result({ views: { table } })
-      : command.rows({ views: declared === 'row' ? { list } : { collected } });
+    declared === 'value' ? command.result({ views: record }) : command.rows({ views: record });
   return withResult.action(act);
 }
 

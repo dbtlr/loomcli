@@ -37,6 +37,29 @@ test('an empty sequence still writes head and tail under a row view', () => {
   });
 });
 
+test('a string source iterates one character per row, as every synchronous iterable does', () => {
+  expect(results('string-source')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '0:a\n1:b\nresolved:0\n',
+  });
+});
+
+test('a source that carries an undefined async iterator falls to its synchronous one', () => {
+  expect(results('half-async')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${sequence}resolved:0\n`,
+  });
+});
+
+test.each(['declared-value', 'declared-rows'])(
+  "the Application's override list never reaches a %s result's views",
+  (scenario) => {
+    expect(results(scenario)).toEqual({ status: 0, stderr: '', stdout: 'original\nresolved:0\n' });
+  },
+);
+
 test('an empty sequence renders a whole view over an empty array', () => {
   expect(results('empty-whole')).toEqual({ status: 0, stderr: '', stdout: '0 rows\nresolved:0\n' });
 });

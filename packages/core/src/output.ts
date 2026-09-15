@@ -23,7 +23,7 @@ import type {
   View,
   ViewContext,
 } from './types.js';
-import { resolveRowView, resolveView } from './view.js';
+import { resolveRowView, resolveView, shapeOf } from './view.js';
 import type { ViewRegistry } from './view.js';
 
 function stringValue(value: unknown): string {
@@ -152,6 +152,12 @@ function shapeReason(both: boolean): string {
     : 'The view carries neither render nor row. Supply a view with render or a row view with row.';
 }
 
+/**
+ * No contributor at all. A result's presentation is replaced by name alone, so the Application's
+ * override list never reaches a result's views, which carry no identity.
+ */
+const bare: ViewRegistry = [];
+
 /** The text a view produced, or the value that stands for its failure to produce text. */
 function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
   try {
@@ -169,10 +175,10 @@ function renderText(produce: () => unknown): { text: string } | { failed: unknow
  */
 function erased(value: unknown): never {
   // Last resort: no typed path exists.
-  // A views record holds one entry per presentation and carries no type parameter per entry, so
+  // A views record holds one entry per presentation and carries no type parameter per entry.
   // Every view it stores reads its data as the erased type the registry uses.
-  // It holds because the authoring call checked the value against the declaration the record
-  // Answers to, and build proved every entry in that record renders the declared type.
+  // It holds because the authoring call checked the value against the declaration the record answers.
+  // Build proved every entry in that record renders the declared type.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return value as never;
 }
@@ -202,8 +208,8 @@ interface Target {
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
   private renderFault: { cause: unknown } | undefined = undefined;
-  // Every fault the output path raised beside its calls, a source a sequence stopped on and a
-  // Results-lane fault alike, reported after this invocation's primary outcome.
+  // Every fault the output path raised beside its calls, reported after the primary outcome.
+  // A source a sequence stopped on and a results-lane fault are both such faults.
   private readonly stops: unknown[] = [];
   // The routed Command an incomplete sequence names, published once routing resolved it.
   private route: readonly string[] = [];
@@ -230,8 +236,9 @@ export class Output {
       },
       info: (message) => this.emit('info', message, 'stderr'),
       print: (message) => this.emit('print', message, 'stdout'),
-      // The data type is erased here, as it is in the registry: one call dispatches on the shape of
-      // The view it was handed, and every view function reads its data back through its own key.
+      // The data type is erased here, as it is in the registry.
+      // One call dispatches on the shape of the view it was handed.
+      // Every view function reads its data back through its own key.
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
         this.renderValue(data, value, { destination: 'stdout' }),
       // Only the action emits a result, so this call is the middleware fault whatever was declared.
@@ -256,8 +263,9 @@ export class Output {
       out: {
         ...this.out,
         print: (message) => this.emit('print', message, destination),
-        // The data type is erased here, as it is in the registry: one call dispatches on the shape
-        // Of the view it was handed, and every view function reads its data back through its key.
+        // The data type is erased here, as it is in the registry.
+        // One call dispatches on the shape of the view it was handed.
+        // Every view function reads its data back through its own key.
         render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
           this.renderValue(data, value, target),
         results: (value) => this.results(binding, emission, value),
@@ -290,7 +298,7 @@ export class Output {
       return this.renderFailed(new Error(`The view "${result.default}" is not declared.`));
     }
     if (result.kind === 'rows') {
-      return this.sequence(erased(value), this.sequenceView(view), {
+      return this.sequence(erased(value), this.sequenceView(view, bare), {
         destination: 'stdout',
         live: emission.live,
       });
@@ -301,9 +309,7 @@ export class Output {
         new Error(`The view "${result.default}" renders rows, not a value.`),
       );
     }
-    return this.rendered(() =>
-      resolveView(this.registry, view)(erased(value), this.context('stdout')),
-    );
+    return this.rendered(() => resolveView(bare, view)(erased(value), this.context('stdout')));
   }
 
   /**
@@ -382,29 +388,31 @@ export class Output {
     value: View<never> | RowView<never>,
     target: Target,
   ): Promise<void> {
-    const rows = typeof value.row === 'function';
-    if (rows === (typeof value.render === 'function')) {
-      return this.renderFailed(new Error(shapeReason(rows)));
+    const shape = shapeOf(value);
+    if (shape === 'both' || shape === 'neither') {
+      return this.renderFailed(new Error(shapeReason(shape === 'both')));
     }
-    if (typeof value.row === 'function') {
-      return this.sequence(
-        data,
-        { kind: 'rows', view: resolveRowView(this.registry, value) },
-        target,
+    // The shape was named above, so this second read narrows the value rather than deciding it.
+    if (typeof value.render === 'function') {
+      return this.rendered(
+        () => resolveView(this.registry, value)(data, this.context(target.destination)),
+        target.destination,
       );
     }
-    return this.rendered(
-      () => resolveView(this.registry, value)(data, this.context(target.destination)),
-      target.destination,
-    );
+    return this.sequence(data, this.sequenceView(value, this.registry), target);
   }
 
-  /** The resolved presentation one result writes through, in the shape its own view carries. */
-  private sequenceView(value: ResultView): SequenceView<never> {
+  /**
+   * The presentation one sequence writes through, in the shape its own view carries. The caller
+   * supplies the contributors the view resolves through: `out.render`'s call-site view resolves
+   * through this invocation's registry, as ADR-0021 requires, and a result's view resolves through
+   * none, because a result's presentation is replaced by name alone.
+   */
+  private sequenceView(value: ResultView, registry: ViewRegistry): SequenceView<never> {
     if (typeof value.row === 'function') {
-      return { kind: 'rows', view: resolveRowView(this.registry, value) };
+      return { kind: 'rows', view: resolveRowView(registry, value) };
     }
-    const render = resolveView(this.registry, value);
+    const render = resolveView(registry, value);
     return { kind: 'whole', render: (rows, context) => render(erased(rows), context) };
   }
 

@@ -87,13 +87,6 @@ export interface RoutedChild {
 }
 
 /**
- * One built result declaration: the unit the action emits, the presentations it names in record
- * order, and the key core renders when nothing selects another. It is the shape the write site
- * reads, so the channel an action receives carries the built value itself.
- */
-export type BuiltResult = DeclaredResult;
-
-/**
  * A group registers no action, so its `dispatch` is `undefined` and selection rejects it.
  * `children` is keyed by canonical name, so every candidate list and every walk of the graph reads
  * it, and `routes` adds the aliases, so routing alone resolves them.
@@ -111,7 +104,8 @@ export interface BuiltCommand {
   name: string | null;
   options: ReturnType<typeof compileOptions>;
   /** The result the Command declares, or nothing where it declares none. */
-  result: BuiltResult | undefined;
+  /** The built declaration is the shape the write site reads, so the channel carries it. */
+  result: DeclaredResult | undefined;
   routes: ReadonlyMap<string, RoutedChild>;
 }
 
@@ -769,7 +763,7 @@ function resultView(
  * `default` once named persists through later calls that name none, and the first key answers
  * until one is named.
  */
-function buildResult(state: Declared, hasAction: boolean): BuiltResult | undefined {
+function buildResult(state: Declared, hasAction: boolean): DeclaredResult | undefined {
   const sentence = commandSentence(state.name);
   const declarations = state.results.filter((call) => call.kind !== 'views');
   if (declarations.length > 1) {
@@ -831,9 +825,11 @@ function bindDispatch<Args, Options, Globals>(
 ) {
   return ({ host, out, passthrough, signal, style, values }: DispatchInput) => {
     const bound = state.bind(values);
-    // Last resort: no typed path exists. The graph erases the binder's generic relationship.
-    // It holds because attachment checks the global output requirement and graph build rejects
-    // Global/local collisions. This binder returns the Application's validated globals alone.
+    // Last resort: no typed path exists.
+    // The graph erases the binder's generic relationship.
+    // It holds because attachment checks the global output requirement.
+    // Graph build rejects a collision between a global and a local.
+    // This binder returns the Application's validated globals alone.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const globalOptions = globals.bind(values) as Globals;
     return action({
@@ -1313,8 +1309,8 @@ export async function prepareDispatch(
         throw new ResultError('missing', path);
       }
     } catch (error) {
-      // The action's failure is the invocation's outcome, so a sequence it left pending is
-      // Stopped where it stands rather than drained to its end.
+      // The action's failure is the invocation's outcome.
+      // A sequence it left pending is stopped where it stands rather than drained to its end.
       channel.stop();
       throw error;
     }

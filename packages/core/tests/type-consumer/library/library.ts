@@ -16,8 +16,8 @@ const build = new Command('build')
   });
 const colliding = new Command('collision').option('file', { type: 'boolean' }).action(() => {});
 
-// A declaration that carries a result satisfies a neutral annotation, because the result's neutral
-// Type is unknown, and a consumer attaches it like any other Command.
+// A declaration that carries a result satisfies a neutral annotation.
+// The result's neutral type is unknown, so a consumer attaches it like any other Command.
 const summarize: Command = new Command('summarize')
   .result<{ total: number }>({ views: { total: { render: ({ total }) => `${String(total)}\n` } } })
   .action(({ out }) => out.results({ total: 0 }));

@@ -15,7 +15,7 @@ const { default: executable } = await import(
 );
 const compiler = executable();
 const file = resolvePath(root, process.argv[2] ?? 'examples/textstat/src/count-files.ts');
-const needle = process.argv[3] ?? 'out.render(';
+const needle = process.argv[3] ?? 'out.results(';
 const project = nearestProject(dirname(file));
 const uri = pathToFileURL(file).href;
 

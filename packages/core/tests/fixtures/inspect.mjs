@@ -78,8 +78,8 @@ function nested() {
   return new Application('store').command(cache).action(dispatch);
 }
 
-// A declared result is a graph fact, so inspection reports its unit, its names in record order,
-// And the default a later `views()` call moved.
+// A declared result is a graph fact.
+// Inspection reports its unit, its names in record order, and the default a call moved.
 function results() {
   const table = { render: (value) => `${String(value.count)}\n` };
   const wide = { render: (value) => `${String(value.count)} rows\n` };

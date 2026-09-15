@@ -2,8 +2,8 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function incomplete(scenario: string) {
-  return invoke(new URL('fixtures/incomplete.mjs', import.meta.url), [scenario]);
+function incomplete(scenario: string, env: Record<string, string> = {}) {
+  return invoke(new URL('fixtures/incomplete.mjs', import.meta.url), [scenario], { env });
 }
 
 /** The incomplete-result line, which names the Command and both counts. */
@@ -192,5 +192,61 @@ test('a failure raised after the result resolved is ordinary and the result stan
     status: 1,
     stderr: 'The action failed.\n',
     stdout: 'PATHS\n0: one.txt\n1: two words.txt\nEND\nresolved:1\n',
+  });
+});
+
+test('a cancelled row view stops asking an endless source and writes no row after the stop', () => {
+  expect(incomplete('cancel-row')).toEqual({
+    status: 130,
+    stderr: line('Command "count"', 2, 1),
+    stdout: `${partial}resolved:130\n`,
+  });
+});
+
+test('a cancelled whole view stops collecting rather than buffering an endless source', () => {
+  expect(incomplete('cancel-whole')).toEqual({
+    status: 130,
+    stderr: line('Command "count"', 2, 0),
+    stdout: 'resolved:130\n',
+  });
+});
+
+test('an action that fails after the source ended leaves the closing piece unwritten', () => {
+  expect(incomplete('tail-after-action-fails')).toEqual({
+    status: 1,
+    stderr: `${line('Command "count"', 0, 0)}The action failed.\n`,
+    stdout: 'PATHS\nresolved:1\n',
+  });
+});
+
+test('an iterator result whose done getter throws is the source failure it raised', () => {
+  expect(incomplete('done-throws')).toEqual({
+    status: 1,
+    stderr: `${line('Command "count"', 0, 0)}The source failed.\n`,
+    stdout: 'PATHS\nresolved:1\n',
+  });
+});
+
+test('a cleanup that never settles does not hold the stopped run open', () => {
+  expect(incomplete('cleanup-hangs', { NODE_OPTIONS: '--unhandled-rejections=strict' })).toEqual({
+    status: 1,
+    stderr: `${line('Command "count"', 0, 0)}The action failed.\n`,
+    stdout: 'PATHS\nresolved:1\n',
+  });
+});
+
+test('a source that throws undefined is reported once, like any other thrown value', () => {
+  expect(incomplete('undefined-throw')).toEqual({
+    status: 1,
+    stderr: `${line('Command "count"', 1, 1)}Internal error: An unknown error occurred.\n`,
+    stdout: `${partial}resolved:1\n`,
+  });
+});
+
+test('a result that iterates neither way is a source fault naming the Command', () => {
+  expect(incomplete('not-iterable')).toEqual({
+    status: 1,
+    stderr: `${line('Command "count"', 0, 0)}Internal error: The result of Command "count" is not iterable.\n`,
+    stdout: 'resolved:1\n',
   });
 });

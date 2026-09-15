@@ -16,6 +16,23 @@ function rejected(message: string) {
   return { status: 1, stderr: `Invalid declaration: ${message}\n`, stdout: 'resolved:1\n' };
 }
 
+test.each([
+  ['probe/both', 'View "probe/both" carries render and row. Supply one of the two.'],
+  [
+    'probe/none',
+    'View "probe/none" carries neither render nor row. Supply a view with render or a row view with row.',
+  ],
+] satisfies [string, string][])(
+  'view() rejects the %s definition at the call',
+  (scenario, message) => {
+    expect(views(scenario)).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `declaration:1: ${message}\n`,
+    });
+  },
+);
+
 test('a declared view with no override renders through its own default function', () => {
   expect(views('declared-default')).toEqual(rendered('page: one\nresolved:0\n'));
 });

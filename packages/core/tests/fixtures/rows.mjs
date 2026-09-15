@@ -191,6 +191,12 @@ async function act({ out }) {
       out.render(rows, {});
       break;
     }
+    case 'null-view': {
+      // The dispatch reads the value inside the guard, so no call throws where it was written.
+      out.render(rows, null);
+      out.print('after');
+      break;
+    }
     default: {
       throw new Error(`Unknown scenario: ${scenario}`);
     }

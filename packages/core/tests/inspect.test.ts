@@ -336,8 +336,8 @@ test('reports the declared result on every Command, and null where none is decla
   );
   expect(children).toEqual([
     ['count', { default: 'table', kind: 'value', views: ['table'] }],
-    // The names keep their record order, and the later views() call appended one and moved the
-    // Default to it.
+    // The names keep their record order.
+    // The later views() call appended one name and moved the default to it.
     ['paths', { default: 'wide', kind: 'rows', views: ['list', 'table', 'wide'] }],
     ['plain', null],
   ]);

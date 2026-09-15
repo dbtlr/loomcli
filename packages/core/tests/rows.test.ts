@@ -137,6 +137,15 @@ test('a view value that carries neither shape is the same fault', () => {
   });
 });
 
+test('a null view is the same fault of its call, rejected rather than thrown at the call', () => {
+  expect(rows('null-view')).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: Rendering output failed: The view carries neither render nor row. Supply a view with render or a row view with row.\n',
+    stdout: 'after\nresolved:1\n',
+  });
+});
+
 test('an override of incompleteResult that returns the empty string silences the line', () => {
   expect(rows('silenced')).toEqual({
     status: 1,

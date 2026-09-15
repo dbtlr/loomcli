@@ -228,5 +228,21 @@ function build() {
   }
 }
 
-const code = await build().run({ host: { argv } });
-process.stdout.write(`resolved:${code}\n`);
+/** The definitions `view()` rejects at the call, keyed by the identity each diagnostic names. */
+const shapes = {
+  'probe/both': { render: () => '', row: () => '' },
+  'probe/none': {},
+};
+
+if (scenario in shapes) {
+  try {
+    view(scenario, shapes[scenario]);
+    process.stdout.write('declared\n');
+  } catch (error) {
+    const kind = error instanceof DeclarationError ? 'declaration' : 'other';
+    process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
+  }
+} else {
+  const code = await build().run({ host: { argv } });
+  process.stdout.write(`resolved:${code}\n`);
+}

@@ -1,8 +1,8 @@
-import type { ArgumentSlot, BuiltCommand, BuiltGraph, BuiltResult } from './command.js';
+import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
 import type { compileOptions } from './options.js';
-import type { ArgumentConfig, OptionConfig } from './types.js';
+import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { validatesOmission } from './validation.js';
 
@@ -253,7 +253,7 @@ function commandNode(
 }
 
 /** The declared result as plain data, or `null` on a Command that declares none. */
-function resultNode(result: BuiltResult | undefined): ResultNode | null {
+function resultNode(result: DeclaredResult | undefined): ResultNode | null {
   if (!result) {
     return null;
   }

@@ -1,3 +1,4 @@
+import { InternalError, routedSubject } from './errors.js';
 import type { IncompleteResult } from './lanes.js';
 import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
@@ -63,21 +64,64 @@ interface SequenceWriter<Row> {
   view: SequenceView<Row>;
 }
 
-/** The steps one source answers with. A value that iterates neither way fails as the source. */
-function stepsOf<Row>(source: Iterable<Row> | AsyncIterable<Row>): Steps<Row> {
+/**
+ * The two iteration protocols, read off one source without assuming it carries either. A string
+ * carries the synchronous one and answers no `in` check, and an object may carry the asynchronous
+ * key with nothing callable under it, so each is read and tested rather than probed for.
+ */
+interface Protocols<Row> {
+  [Symbol.asyncIterator]?: (() => AsyncIterator<Row>) | undefined;
+  [Symbol.iterator]?: (() => Iterator<Row>) | undefined;
+}
+
+/**
+ * The steps one source answers with, under whichever protocol it carries. The asynchronous one
+ * answers first, as the language's own `for await` does.
+ * A value that iterates neither way answers with nothing, and its caller reports the fault.
+ */
+function iterate<Row>(source: Protocols<Row> | null | undefined): Steps<Row> | undefined {
+  const asynchronous = source?.[Symbol.asyncIterator];
+  if (typeof asynchronous === 'function') {
+    return asynchronous.call(source);
+  }
+  const synchronous = source?.[Symbol.iterator];
+  if (typeof synchronous === 'function') {
+    return synchronous.call(source);
+  }
+  return undefined;
+}
+
+/**
+ * The steps one source answers with, with whatever the protocol raised marked as the source's own
+ * failure. A value that iterates neither way is the same fault, named for the Command that emitted
+ * it, because the types reject it and a JavaScript author alone reaches it.
+ */
+function stepsOf<Row>(writer: SequenceWriter<Row>): Steps<Row> {
+  let steps: Steps<Row> | undefined = undefined;
   try {
-    return Symbol.asyncIterator in source
-      ? source[Symbol.asyncIterator]()
-      : source[Symbol.iterator]();
+    steps = iterate(writer.source);
   } catch (error) {
     throw new SourceFault(error);
   }
+  if (!steps) {
+    throw new SourceFault(
+      new InternalError(`The result of ${routedSubject(writer.path)} is not iterable.`, undefined),
+    );
+  }
+  return steps;
 }
 
+/**
+ * One step of a source, read inside the source-fault wrapper. `done` and `value` are read here, so
+ * an iterator result whose own getter throws is the source's failure rather than an escape.
+ */
+type Pulled<Row> = { done: true } | { done: false; value: Row };
+
 /** One request of the source, with whatever it raised marked as the source's own failure. */
-async function pull<Row>(steps: Steps<Row>): Promise<IteratorResult<Row>> {
+async function pull<Row>(steps: Steps<Row>): Promise<Pulled<Row>> {
   try {
-    return await steps.next();
+    const result = await steps.next();
+    return result.done === true ? { done: true } : { done: false, value: result.value };
   } catch (error) {
     throw new SourceFault(error);
   }
@@ -87,38 +131,46 @@ async function pull<Row>(steps: Steps<Row>): Promise<IteratorResult<Row>> {
 interface Reading<Row> {
   counts: Counts;
   live: Live;
+  signal: AbortSignal;
   steps: Steps<Row>;
 }
 
-/** The stop, read where the writer would request the next row or write the one it holds. */
-function halt(live: Live): void {
-  if (live.stopped) {
+/**
+ * The stop, read before the writer requests the next row and before it writes the piece it holds.
+ * A cancelled run stops here too, so core requests no further rows and writes no further pieces
+ * from the moment the signal aborted.
+ */
+function halt(reading: { live: Live; signal: AbortSignal }): void {
+  if (reading.live.stopped || reading.signal.aborted) {
     throw stopRequested;
   }
 }
 
 /** One step, counted where the source produced a row. A stopped writer requests none. */
-async function step<Row>(reading: Reading<Row>): Promise<IteratorResult<Row>> {
-  halt(reading.live);
+async function step<Row>(reading: Reading<Row>): Promise<Pulled<Row>> {
+  halt(reading);
   const result = await pull(reading.steps);
-  if (result.done !== true) {
+  if (!result.done) {
     reading.counts.yielded += 1;
   }
-  // A row the source produced after the stop was counted, and nothing is written for it.
-  halt(reading.live);
+  // A row an in-flight request delivered after the stop is counted, and nothing is written for it.
+  halt(reading);
   return result;
 }
 
 /**
- * The source is told the writer wants no more rows, so a generator runs its own cleanup. Whatever
- * that cleanup raises is the source's business: the stop that reaches this point is reported
- * already, and a second failure would replace it.
+ * The source is told the writer wants no more rows, so a generator runs its own cleanup.
+ * The settlement is never awaited: a cleanup that never settles would pin the destination's tail,
+ * and the failure that stopped the sequence would never be reported.
+ * Whatever that cleanup raises is the source's business, and it is observed here alone, because the
+ * stop is reported through the fault that raised it and a second failure would replace it.
  */
-async function endSteps<Row>(steps: Steps<Row>): Promise<void> {
+function endSteps<Row>(steps: Steps<Row>): void {
   try {
-    await steps.return?.();
+    const ended: unknown = steps.return?.();
+    void Promise.resolve(ended).catch(() => undefined);
   } catch {
-    // The stop is reported through the fault that raised it, never through the cleanup.
+    // A cleanup that throws outright is the same business, and it ends here too.
   }
 }
 
@@ -150,10 +202,11 @@ async function writeEachRow<Row>(
   view: ResolvedRowView<Row>,
   reading: Reading<Row>,
 ): Promise<void> {
+  halt(reading);
   await writeEdge(writer, view.head);
   for (;;) {
     const next = await step(reading);
-    if (next.done === true) {
+    if (next.done) {
       return;
     }
     const index = reading.counts.yielded - 1;
@@ -167,7 +220,7 @@ async function collectRows<Row>(reading: Reading<Row>): Promise<Row[]> {
   const collected: Row[] = [];
   for (;;) {
     const next = await step(reading);
-    if (next.done === true) {
+    if (next.done) {
       return collected;
     }
     collected.push(next.value);
@@ -202,7 +255,7 @@ async function closingPiece<Row>(
   try {
     return await writePieces(writer, reading);
   } catch (error) {
-    await endSteps(reading.steps);
+    endSteps(reading.steps);
     throw error;
   }
 }
@@ -210,16 +263,18 @@ async function closingPiece<Row>(
 /**
  * The sequence itself: every piece the source decides, then the closing piece. Every piece is
  * awaited before the next row is requested, so a slow destination applies back-pressure to the
- * source. A run cancelled before the source ended never writes the closing piece, so a truncated
- * result never reads as a complete one.
+ * source. The stop is read once more between the source's end and the closing piece, so a run
+ * cancelled there, and an action that failed there, never write it and a truncated result never
+ * reads as a complete one.
  */
 async function writeRows<Row>(
   writer: SequenceWriter<Row>,
   live: Live,
   counts: Counts,
 ): Promise<boolean> {
-  const close = await closingPiece(writer, { counts, live, steps: stepsOf(writer.source) });
-  if (writer.signal.aborted) {
+  const reading: Reading<Row> = { counts, live, signal: writer.signal, steps: stepsOf(writer) };
+  const close = await closingPiece(writer, reading);
+  if (live.stopped || writer.signal.aborted) {
     return false;
   }
   await close();

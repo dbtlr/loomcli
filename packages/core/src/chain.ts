@@ -244,8 +244,9 @@ function nextOf(turn: EntryTurn): () => Promise<ChainOutcome> {
       },
     );
     state.downstream = pending;
-    // Core awaits the downstream promise itself, so a middleware that never awaits `next()` still
-    // Holds the chain open and never ends the run with an unobserved rejection.
+    // Core awaits the downstream promise itself.
+    // A middleware that never awaits `next()` still holds the chain open.
+    // The run therefore never ends with an unobserved rejection.
     void pending.catch(() => undefined);
     return pending;
   };
@@ -292,8 +293,8 @@ async function settle(
     return reported(chain, 'taken-over');
   }
   await quiet(state.downstream);
-  // A middleware that caught the rejection reports what the chain reached; the recorded failure
-  // Still decides the exit code.
+  // A middleware that caught the rejection reports what the chain reached.
+  // The recorded failure still decides the exit code.
   return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 
@@ -411,8 +412,9 @@ async function runInvocation(invocation: Invocation): Promise<void> {
   const entries = activatedEntries(invocation.plugins, routed.scan);
   const raised = await runChain(invocation, routed, entries);
   if (raised) {
-    // The chain resolved because a middleware caught the rejection. The failure it caught still
-    // Decides the exit code, the rule an action's caught output rejection already follows.
+    // The chain resolved because a middleware caught the rejection.
+    // The failure it caught still decides the exit code.
+    // That is the rule an action's caught output rejection already follows.
     throw raised;
   }
 }

@@ -110,15 +110,44 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
   }
 }
 
+/** Which of the two exclusive view functions one value carries, or that it carries the wrong set. */
+type ViewShape = 'both' | 'neither' | 'render' | 'row';
+
+/**
+ * The shape one value names. The argument is read defensively, because every call that takes a view
+ * is reachable from JavaScript and `null` is one such value.
+ */
+function shapeOf(value: { render?: unknown; row?: unknown } | null | undefined): ViewShape {
+  const row = typeof value?.row === 'function';
+  const render = typeof value?.render === 'function';
+  if (row && render) {
+    return 'both';
+  }
+  if (row) {
+    return 'row';
+  }
+  return render ? 'render' : 'neither';
+}
+
 /**
  * One declared view of either shape: an identity and its default functions. The data type is
  * inferred from the function's first parameter when that parameter is an object type or a
  * `readonly` array, and is stated for a primitive or a union, because inference runs through
- * `Readonly<Data>`. The two shapes are told apart by the function present.
+ * `Readonly<Data>`. The two shapes are told apart by the function present, and a definition that
+ * carries both or neither is rejected here rather than guessed at.
  */
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
+  const shape = shapeOf(definition);
+  if (shape === 'both') {
+    throw new DeclarationError(`View "${identity}" carries render and row. Supply one of the two.`);
+  }
+  if (shape === 'neither') {
+    throw new DeclarationError(
+      `View "${identity}" carries neither render nor row. Supply a view with render or a row view with row.`,
+    );
+  }
   return typeof definition.row === 'function'
     ? new RowViewDeclaration<never>(identity, definition)
     : new ViewDeclaration<never>(identity, definition);
@@ -369,8 +398,8 @@ interface ResolvedView {
 /** One stored view value, read back over the data its own key carries. */
 function readStored(stored: StoredView): ResolvedView {
   // Last resort: no typed path exists.
-  // A registry holds one entry per key and cannot carry a type parameter per entry, so a stored
-  // View value reads back with its data type erased.
+  // A registry holds one entry per key and cannot carry a type parameter per entry.
+  // A stored view value therefore reads back with its data type erased.
   // It holds because `override(key, replacement)` typed the replacement against its key's data.
   // Resolution reaches a stored value through that key alone.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -518,5 +547,15 @@ export type {
   ViewIdentities,
   ViewOverride,
   ViewRegistry,
+  ViewShape,
 };
-export { buildViews, describeFailure, override, resolveRowView, resolveView, view, viewIdentities };
+export {
+  buildViews,
+  describeFailure,
+  override,
+  resolveRowView,
+  resolveView,
+  shapeOf,
+  view,
+  viewIdentities,
+};

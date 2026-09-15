@@ -106,6 +106,12 @@ function silenced(
 }
 
 /**
+ * The stand-in for "this run has no primary failure", which is a value no thrown value can be.
+ * `undefined` is itself throwable, so the absence is spelled here rather than borrowed from it.
+ */
+const noPrimary = Symbol('no primary');
+
+/**
  * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
  * that wraps it at any depth, which an action that caught a source failure and rethrew its own
  * produces. Such a cause is reported once, through the primary outcome that carries it.
@@ -113,12 +119,13 @@ function silenced(
 function carried(primary: unknown, cause: unknown): boolean {
   const seen = new Set<unknown>();
   let value = primary;
-  while (value !== undefined && !seen.has(value)) {
+  while (value !== noPrimary && !seen.has(value)) {
     if (value === cause) {
       return true;
     }
     seen.add(value);
-    value = value instanceof Error ? value.cause : undefined;
+    // A failure wraps its own cause under `cause`, and one that declares none ends the walk.
+    value = value instanceof Error && 'cause' in value ? value.cause : noPrimary;
   }
   return false;
 }
@@ -435,7 +442,7 @@ class ApplicationBuilder<
     // Faults a plugin raised beside the primary outcome, reported after it and never before it.
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
-    let primary: unknown = undefined;
+    let primary: unknown = noPrimary;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -680,8 +687,9 @@ class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
-    // The options slot is read defensively, never inspected: an invalid value still yields
-    // `views` and the facts of some kind, and `checkOptions` reports it at build.
+    // The options slot is read defensively, never inspected.
+    // An invalid value still yields `views` and the facts of some kind.
+    // `checkOptions` reports such a value at build.
     // The root's own slot and core facts stay empty, because the Application checks its own slot.
     // Its diagnostics name the Application rather than the root Command.
     super(
@@ -705,6 +713,9 @@ class ApplicationDeclaration<
         globals: emptyGlobals(),
         options,
         plugins: options?.plugins,
+        // The read is loose because the slot is reachable from JavaScript with any value at all.
+        // An Application value passed here answers `views` with its own authoring method.
+        // The public `ApplicationOptions.views` stays exactly `readonly ViewOverride[]`.
         // An options slot that is no plain object carries no override list, and its own rule reports it.
         views: isPlainObject(options) ? options.views : undefined,
       },

@@ -98,6 +98,61 @@ async function* faulting() {
   throw new FatalError('The source failed after the signal.');
 }
 
+/** A source that stops the run at its first row and then yields forever. */
+async function* endless() {
+  yield rows[0];
+  controller.abort();
+  for (;;) {
+    yield rows[1];
+  }
+}
+
+/** A source that throws `undefined`, which is a thrown value like any other. */
+function* nothing() {
+  yield rows[0];
+  const thrown = undefined;
+  throw thrown;
+}
+
+/** The gate one source releases as it ends, which the action awaits before it fails. */
+let release = () => undefined;
+const gate = new Promise((resolve) => {
+  release = resolve;
+});
+
+/** A source that ends at once and releases the gate as it does, so the action fails after it. */
+const ending = {
+  [Symbol.iterator]: () => ({
+    next: () => {
+      release();
+      return { done: true, value: undefined };
+    },
+  }),
+};
+
+/** A source whose iterator result refuses to say whether it is done. */
+const refusingResult = {
+  [Symbol.iterator]: () => ({
+    next: () => ({
+      get done() {
+        throw new FatalError('The source failed.');
+      },
+      value: undefined,
+    }),
+  }),
+};
+
+/** A source whose cleanup never settles, so a stopped sequence must not await it. */
+const unsettling = {
+  [Symbol.asyncIterator]: () => ({
+    next: async () => {
+      await after(40);
+      return { done: false, value: rows[0] };
+    },
+    return: () => new Promise(() => undefined),
+  }),
+};
+
 /** A slow source that records every request, so a stopped sequence asks it for nothing more. */
 async function* watched() {
   for (const row of rows) {
@@ -162,15 +217,22 @@ const declarations = {
   'action-fails': 'row',
   'action-fails-render': 'none',
   'after-resolved': 'row',
+  'cancel-row': 'row',
+  'cancel-whole': 'whole',
   'cancelled-echo': 'row',
   'cancelled-fault': 'row',
   'cancelled-returns': 'row',
+  'cleanup-hangs': 'row',
+  'done-throws': 'row',
   'line-broken-alone': 'row',
+  'not-iterable': 'row',
   root: 'row',
   silenced: 'row',
   'source-awaited': 'row',
   'source-deferred': 'row',
   'stderr-failed': 'row',
+  'tail-after-action-fails': 'row',
+  'undefined-throw': 'row',
   'view-row': 'row',
   'view-row-class': 'row',
   'whole-cancelled': 'whole',
@@ -202,8 +264,8 @@ async function act({ out }) {
       break;
     }
     case 'stderr-failed': {
-      // The action's print reaches stderr on a result Command and fails there, so the line below
-      // Meets a destination that has failed already.
+      // The action's print reaches stderr on a result Command and fails there.
+      // The line below therefore meets a destination that has failed already.
       await out.print('first').catch(() => undefined);
       await after(5);
       await out.results(failing());
@@ -217,6 +279,39 @@ async function act({ out }) {
     case 'zero-rows': {
       await out.results(empty);
       break;
+    }
+    case 'cancel-row':
+    case 'cancel-whole': {
+      // The source aborts at its first row and then yields forever, so core must stop asking.
+      await out.results(endless());
+      break;
+    }
+    case 'undefined-throw': {
+      await out.results(nothing());
+      break;
+    }
+    case 'not-iterable': {
+      // The types reject this value, so a JavaScript author alone reaches the fault it raises.
+      await out.results(7);
+      break;
+    }
+    case 'done-throws': {
+      out.results(refusingResult);
+      break;
+    }
+    case 'cleanup-hangs': {
+      // The source's cleanup never settles, so awaiting it would pin the destination's tail.
+      out.results(unsettling);
+      throw new FatalError('The action failed.');
+    }
+    case 'tail-after-action-fails': {
+      // The source ends, and the action fails before the closing piece could be written.
+      // The two ticks put the failure past the writer's last look at the source and no further.
+      out.results(ending);
+      await gate;
+      await Promise.resolve();
+      await Promise.resolve();
+      throw new FatalError('The action failed.');
     }
     case 'view-row':
     case 'view-row-class':

@@ -32,8 +32,8 @@ const scenarios = {
   'views-no-result': (target) => target.views({ table }).action(dispatch),
 };
 
-// The same declaration reads on the unnamed root and on a named Command, and each diagnostic
-// Names the Command that holds the fault.
+// The same declaration reads on the unnamed root and on a named Command.
+// Each diagnostic names the Command that holds the fault.
 const declare = scenarios[scenario];
 const app =
   place === 'root'
