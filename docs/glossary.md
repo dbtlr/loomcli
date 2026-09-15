@@ -347,7 +347,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the parsed invocation, and the selected view, and it either takes over by returning or continues the chain by calling `next()`, which raises the fault core held.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the parsed invocation, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
