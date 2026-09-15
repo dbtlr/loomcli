@@ -277,6 +277,11 @@ export interface ActionChannel {
   out: Out<OpenResult>;
   /** Whether the action emitted its result, which the missing rule reads after it returned. */
   emitted: () => boolean;
+  /**
+   * Stops every sequence this channel still has pending. The action's own failure stays primary,
+   * so a sequence it never awaited is stopped rather than drained.
+   */
+  stop: () => void;
 }
 export type StringOption = OptionSpelling &
   Presence &

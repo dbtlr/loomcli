@@ -1289,22 +1289,29 @@ export async function prepareDispatch(
   });
   const channel = invocation.channel({ path, result: command.result });
   return async () => {
-    await dispatch({
-      host: invocation.host,
-      out: channel.out,
-      passthrough: parsed.passthrough,
-      signal: invocation.signal,
-      style: invocation.style,
-      values,
-    });
-    /**
-     * A declared result is a promise the Command makes, so an action that returned normally
-     * without emitting one broke it. A failure raised before the call is that failure, and a
-     * cancelled run raises none, because an action that reads its signal and returns is the
-     * sanctioned path.
-     */
-    if (command.result && !channel.emitted() && !invocation.signal.aborted) {
-      throw new ResultError('missing', path);
+    try {
+      await dispatch({
+        host: invocation.host,
+        out: channel.out,
+        passthrough: parsed.passthrough,
+        signal: invocation.signal,
+        style: invocation.style,
+        values,
+      });
+      /**
+       * A declared result is a promise the Command makes, so an action that returned normally
+       * without emitting one broke it. A failure raised before the call is that failure, and a
+       * cancelled run raises none, because an action that reads its signal and returns is the
+       * sanctioned path.
+       */
+      if (command.result && !channel.emitted() && !invocation.signal.aborted) {
+        throw new ResultError('missing', path);
+      }
+    } catch (error) {
+      // The action's failure is the invocation's outcome, so a sequence it left pending is
+      // Stopped where it stands rather than drained to its end.
+      channel.stop();
+      throw error;
     }
   };
 }

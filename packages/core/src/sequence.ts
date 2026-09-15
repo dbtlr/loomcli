@@ -14,6 +14,17 @@ class SourceFault {
   }
 }
 
+/**
+ * The value a stopped writer unwinds with, compared by identity where the sequence ends. The
+ * invocation that stopped it has a primary failure of its own, so this value reports nothing.
+ */
+const stopRequested = Symbol('stopped');
+
+/** Whether the invocation still wants rows, read where the writer would otherwise go on. */
+interface Live {
+  stopped: boolean;
+}
+
 /** One source read as the steps the writer pulls, whichever iteration protocol it carries. */
 interface Steps<Row> {
   next: () => Promise<IteratorResult<Row>> | IteratorResult<Row>;
@@ -75,15 +86,26 @@ async function pull<Row>(steps: Steps<Row>): Promise<IteratorResult<Row>> {
 /** One reading of one source: the steps it answers with, and what it has produced so far. */
 interface Reading<Row> {
   counts: Counts;
+  live: Live;
   steps: Steps<Row>;
 }
 
-/** One step, counted where the source produced a row. */
+/** The stop, read where the writer would request the next row or write the one it holds. */
+function halt(live: Live): void {
+  if (live.stopped) {
+    throw stopRequested;
+  }
+}
+
+/** One step, counted where the source produced a row. A stopped writer requests none. */
 async function step<Row>(reading: Reading<Row>): Promise<IteratorResult<Row>> {
+  halt(reading.live);
   const result = await pull(reading.steps);
   if (result.done !== true) {
     reading.counts.yielded += 1;
   }
+  // A row the source produced after the stop was counted, and nothing is written for it.
+  halt(reading.live);
   return result;
 }
 
@@ -191,8 +213,12 @@ async function closingPiece<Row>(
  * source. A run cancelled before the source ended never writes the closing piece, so a truncated
  * result never reads as a complete one.
  */
-async function writeRows<Row>(writer: SequenceWriter<Row>, counts: Counts): Promise<boolean> {
-  const close = await closingPiece(writer, { counts, steps: stepsOf(writer.source) });
+async function writeRows<Row>(
+  writer: SequenceWriter<Row>,
+  live: Live,
+  counts: Counts,
+): Promise<boolean> {
+  const close = await closingPiece(writer, { counts, live, steps: stepsOf(writer.source) });
   if (writer.signal.aborted) {
     return false;
   }
@@ -205,23 +231,53 @@ async function writeRows<Row>(writer: SequenceWriter<Row>, counts: Counts): Prom
  * no `tail`, and writes one incomplete-result line on stderr before the fault's own report; a
  * source failure is recorded there, because a call the action never awaited observes none.
  */
-async function writeSequence<Row>(writer: SequenceWriter<Row>): Promise<void> {
+async function runSequence<Row>(writer: SequenceWriter<Row>, live: Live): Promise<void> {
   const counts: Counts = { written: 0, yielded: 0 };
   try {
-    if (!(await writeRows(writer, counts))) {
+    if (!(await writeRows(writer, live, counts))) {
       writer.incomplete({ path: writer.path, ...counts });
     }
   } catch (error) {
     writer.incomplete({ path: writer.path, ...counts });
-    if (error instanceof SourceFault) {
-      writer.stopped(error.cause);
-      throw error.cause;
-    }
-    throw error;
+    raise(writer, error);
   } finally {
     writer.close();
   }
 }
 
-export type { SequenceView, SequenceWriter };
+/**
+ * What one stop leaves behind once its line is written: nothing, where the invocation asked for
+ * the stop and reports its own failure, the source's failure recorded and raised, or the fault of
+ * a piece, which the output path has accounted for already.
+ */
+function raise<Row>(writer: SequenceWriter<Row>, error: unknown): void {
+  if (error === stopRequested) {
+    return;
+  }
+  if (error instanceof SourceFault) {
+    writer.stopped(error.cause);
+    throw error.cause;
+  }
+  throw error;
+}
+
+/** One sequence in flight: the promise its call answers with, and the switch that ends it early. */
+interface LiveSequence {
+  pending: Promise<void>;
+  /** Ends the sequence where it next would go on. A finished sequence answers it with nothing. */
+  stop: () => void;
+}
+
+/** One sequence, started here and stoppable from the invocation that issued it. */
+function writeSequence<Row>(writer: SequenceWriter<Row>): LiveSequence {
+  const live: Live = { stopped: false };
+  return {
+    pending: runSequence(writer, live),
+    stop: () => {
+      live.stopped = true;
+    },
+  };
+}
+
+export type { LiveSequence, SequenceView, SequenceWriter };
 export { writeSequence };

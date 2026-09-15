@@ -106,6 +106,24 @@ function silenced(
 }
 
 /**
+ * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
+ * that wraps it at any depth, which an action that caught a source failure and rethrew its own
+ * produces. Such a cause is reported once, through the primary outcome that carries it.
+ */
+function carried(primary: unknown, cause: unknown): boolean {
+  const seen = new Set<unknown>();
+  let value = primary;
+  while (value !== undefined && !seen.has(value)) {
+    if (value === cause) {
+      return true;
+    }
+    seen.add(value);
+    value = value instanceof Error ? value.cause : undefined;
+  }
+  return false;
+}
+
+/**
  * The caller's own signal, read where it enters. A JavaScript caller reaches the slot with any
  * value, and a value that is not an `AbortSignal` would otherwise escape as a raw TypeError.
  */
@@ -530,7 +548,7 @@ class ApplicationBuilder<
        * already, so the one it raised is not reported twice.
        */
       for (const cause of output?.stopped ?? []) {
-        if (cause !== primary) {
+        if (!carried(primary, cause)) {
           faults.push(toFailure(cause));
         }
       }

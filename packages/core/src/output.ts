@@ -177,9 +177,26 @@ function erased(value: unknown): never {
   return value as never;
 }
 
-/** What one action's channel has emitted, which the missing rule reads after the action returned. */
+/**
+ * The sequences one channel has issued. An action that fails while one of them is still pending
+ * stays primary, so its sequences are stopped rather than drained. A sequence that finished
+ * already answers its own switch with nothing, so the set is never pruned.
+ */
+type LiveSequences = Set<() => void>;
+
+/**
+ * What one action's channel has done: the emissions the missing rule reads after the action
+ * returned, and the sequences its failure stops.
+ */
 interface Emission {
   calls: number;
+  live: LiveSequences;
+}
+
+/** Where one write goes, and the channel whose failure stops a sequence written there. */
+interface Target {
+  destination: Stream;
+  live?: LiveSequences | undefined;
 }
 
 export class Output {
@@ -216,7 +233,7 @@ export class Output {
       // The data type is erased here, as it is in the registry: one call dispatches on the shape of
       // The view it was handed, and every view function reads its data back through its own key.
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
-        this.renderValue(data, value, 'stdout'),
+        this.renderValue(data, value, { destination: 'stdout' }),
       // Only the action emits a result, so this call is the middleware fault whatever was declared.
       results: () => this.resultFault('middleware'),
       success: (message) => this.emit('success', message, 'stderr'),
@@ -232,7 +249,8 @@ export class Output {
    */
   channel(binding: ResultBinding): ActionChannel {
     const destination: Stream = binding.result ? 'stderr' : 'stdout';
-    const emission: Emission = { calls: 0 };
+    const emission: Emission = { calls: 0, live: new Set() };
+    const target: Target = { destination, live: emission.live };
     return {
       emitted: () => emission.calls > 0,
       out: {
@@ -241,8 +259,13 @@ export class Output {
         // The data type is erased here, as it is in the registry: one call dispatches on the shape
         // Of the view it was handed, and every view function reads its data back through its key.
         render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
-          this.renderValue(data, value, destination),
+          this.renderValue(data, value, target),
         results: (value) => this.results(binding, emission, value),
+      },
+      stop: () => {
+        for (const stop of emission.live) {
+          stop();
+        }
       },
     };
   }
@@ -267,7 +290,10 @@ export class Output {
       return this.renderFailed(new Error(`The view "${result.default}" is not declared.`));
     }
     if (result.kind === 'rows') {
-      return this.sequence(erased(value), this.sequenceView(view), 'stdout');
+      return this.sequence(erased(value), this.sequenceView(view), {
+        destination: 'stdout',
+        live: emission.live,
+      });
     }
     if (typeof view.row === 'function') {
       // Build rejects a row view on a value result, so reaching one here is core's own fault.
@@ -354,7 +380,7 @@ export class Output {
   private renderValue(
     data: never,
     value: View<never> | RowView<never>,
-    destination: Stream,
+    target: Target,
   ): Promise<void> {
     const rows = typeof value.row === 'function';
     if (rows === (typeof value.render === 'function')) {
@@ -364,12 +390,12 @@ export class Output {
       return this.sequence(
         data,
         { kind: 'rows', view: resolveRowView(this.registry, value) },
-        destination,
+        target,
       );
     }
     return this.rendered(
-      () => resolveView(this.registry, value)(data, this.context(destination)),
-      destination,
+      () => resolveView(this.registry, value)(data, this.context(target.destination)),
+      target.destination,
     );
   }
 
@@ -387,9 +413,10 @@ export class Output {
    * written. The returned rejection is observed here as well, because an action that never awaits
    * the call must not end the process with an unhandled rejection.
    */
-  private sequence(source: never, view: SequenceView<never>, destination: Stream): Promise<void> {
+  private sequence(source: never, view: SequenceView<never>, target: Target): Promise<void> {
+    const { destination } = target;
     const place = this.destination(this.host[destination]).reserve();
-    const pending = writeSequence({
+    const sequence = writeSequence({
       close: place.close,
       context: this.context(destination),
       incomplete: (facts) => {
@@ -404,8 +431,10 @@ export class Output {
       },
       view,
     });
-    void pending.catch(() => undefined);
-    return pending;
+    // A sequence its own channel can stop, so an action's failure ends it rather than draining it.
+    target.live?.add(sequence.stop);
+    void sequence.pending.catch(() => undefined);
+    return sequence.pending;
   }
 
   /**
