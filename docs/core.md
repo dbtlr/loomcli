@@ -1311,6 +1311,8 @@ export const attachFormat: CommandAttachHook = (command) => {
 };
 ```
 
+This example shows the installed hook. The proposed [help restyle](#help-and-version-restyle) appends the declared default to its description.
+
 - **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. Core resolves each result record under [Result build errors](#result-build-errors) before the hooks, so `result` is exact, and runs those rules again over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
 - **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
 - **What it returns.** The value it received or one derived from it by those calls. Build rejects a hook that is not a function, one that returns anything else, and one that throws, under [Plugin build errors](#plugin-build-errors); a thrown `DeclarationError` reports as itself.
@@ -1497,35 +1499,60 @@ The help and version factories take no parameters, so an application installs ea
 
 ### Version
 
-`version()` declares one Boolean option, `version`, with the short spelling `V` and the description `Print the version.`, so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<CommandGraph>` exported from `@loomcli/plugins/version/views` and listed in the plugin's `views`. Its default function returns `<name> v<version>\n` from `graph.name` and `graph.version`, escaped the way the middleware escaped the line before this contract, and the middleware calls `out.render(graph, versionLine)` and returns without calling `next()`, so the exit code is 0, nothing later in the chain runs, the action never dispatches, and a fault core held from parsing or validation is never raised. An application overrides `versionLine` to restyle the line while `version()` stays installed. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is rendering alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
+```ts
+// @loomcli/plugins/version/views
+import type { CommandGraph, DeclaredView } from '@loomcli/core';
+
+export declare const versionLine: DeclaredView<CommandGraph>;
+```
+
+For an Application that declares `version: '0.2.0'`:
+
+```text
+jsonkit v0.2.0
+```
+
+- **Restyle status.** The styling below is the proposed help and version restyle contract. Implementation and its change fragment follow separately. The installed default still prints the unstyled line.
+- **Style.** The application name uses `style.highlight.bold`, and the version, including its `v`, uses `style.primary`. One unstyled space separates them. Each graph string is escaped before styling. The line ends with exactly one newline and adds no logo, branding glyph, or label.
+- **Policy.** Core resolves these semantic styles under the existing [rendering policy](#styles-and-rendering-policy). Installing `loomTheme()` supplies copper for highlight. The version plugin requires no theme, chooses no color, and reads no host capability.
+
+`version()` declares one Boolean option, `version`, with the short spelling `V` and the description `Print the version.`, so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<CommandGraph>` exported from `@loomcli/plugins/version/views` and listed in the plugin's `views`. Its default function returns the text `<name> v<version>\n` from `graph.name` and `graph.version`, with the proposed styling above, and the middleware calls `out.render(graph, versionLine)` and returns without calling `next()`, so the exit code is 0, nothing later in the chain runs, the action never dispatches, and a fault core held from parsing or validation is never raised. An application overrides `versionLine` to restyle the line while `version()` stays installed. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is rendering alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
 
 `version` is never absent on the graph. An Application that omits it declares `0.0.0`, which means unversioned, so `CommandGraph.version` is a `string` and no projection branches on its absence. An explicit `0.0.0` reads the same, and core keeps no record of which one the author wrote. A declared version follows the one-line rule every core fact string follows, so the line the plugin prints is one line; core otherwise neither validates nor normalizes it.
 
 ### Help
 
-`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page from `graph` and `command` alone, escapes it, and ends it with exactly one newline, so stdout holds the page and one line terminator, the bytes `out.print` produced before this contract. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping and newline, and a structured page model is a decision for the help restyle increment. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes the completed plain page. Under the proposed [help restyle](#help-and-version-restyle), it escapes raw fragments before styling. Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
 
 The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
 
 #### Help extensions
 
-Two descriptors are exported from `@loomcli/plugins/help/extension`, and both are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. The default function escapes the page it derives, the step the middleware performed before this contract, so a graph fact that carries a marker character prints literally; a replacement owns that escaping obligation.
+Two descriptors are exported from `@loomcli/plugins/help/extension`, and both are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
 ```ts
-// src/help/views.ts, the view declarations module of the @loomcli/plugins/help subpath
-import Package from '../../package.json' with { type: 'json' };
-import { view } from '@loomcli/core';
-import type { CommandGraph, CommandNode } from '@loomcli/core';
-
-import { renderPage } from './page.js';
+// @loomcli/plugins/help/views
+import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
 
 export interface HelpPage {
-  readonly graph: CommandGraph;
-  readonly command: CommandNode;
+	readonly graph: CommandGraph;
+	readonly command: CommandNode;
 }
 
-export const helpPage = view<HelpPage>(`${Package.name}/help/page`, {
-  render: ({ command, graph }, { style }) => `${style.escape(renderPage(graph, command))}\n`,
+export declare const helpPage: DeclaredView<HelpPage>;
+```
+
+```ts
+import { Application, override } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { helpPage } from '@loomcli/plugins/help/views';
+
+const app = new Application('example', {
+	plugins: [help()],
+	views: [override(helpPage, {
+		render: ({ graph, command }, { style }) =>
+			`${style.primary(style.escape([graph.name, ...command.path].join(' ')))}\n`,
+	})],
 });
 ```
 
@@ -1584,7 +1611,7 @@ A projection that wants help's prose imports the descriptor module and reads the
 
 #### The help page
 
-The page is plain text on every host: no color, no glyph beyond the masthead's middle dot, and no terminal fact read, so one invocation prints the same bytes on a terminal, in a pipe, and under a test. The styling a themed view adds is a separate increment, and this page is complete without it because no meaning rides on styling. Output is UTF-8. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry.
+The page rules below define content and layout. The proposed [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. The installed help view remains unstyled until that implementation lands. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts.
 
 The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Section titles are upper case at the left margin, and every other line is indented two spaces, so a line at the left margin is the masthead, a section title, or the closing hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
@@ -1600,9 +1627,9 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 
 The right-cell rule: the description when the member has one, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>`, and `deprecated: <message>`. Two spaces separate a description from the parenthesis; a member with no description has the parenthesis as its whole right cell, with no leading spaces; and a member with neither description nor facts has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
 
-Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
+Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The installed view counts JavaScript string length. The restyle instead measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
-The root of jsonkit has an action and six children, of which `fetch` is deprecated and `debug` and `paths` are hidden, and declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so `jsonkit --help` prints:
+The root of jsonkit has an action and six children, of which `fetch` is deprecated and `debug` and `paths` are hidden, and declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -1620,7 +1647,7 @@ COMMANDS
   fetch   Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
-      --format <format>  Select the output format: records, json, jsonl.
+      --format <format>  Select the output format: records, json, jsonl. Default: records.
 
 GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
@@ -1635,7 +1662,7 @@ EXAMPLES
 Run jsonkit <command> --help for command details.
 ```
 
-`select` is a leaf with one required multiple option and no `details` or `examples`, so `jsonkit select --help` prints:
+`select` is a leaf with one required multiple option and no `details` or `examples`, so the restyled `jsonkit select --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit select · Keep the named fields of the document.
@@ -1653,7 +1680,7 @@ GLOBAL OPTIONS
       --explain      Explain the selected command and exit.
 ```
 
-textstat is one root Command with a variadic argument, five local options, of which `--minimum` is deprecated and `--timing` is hidden, a sixth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS, and `textstat --help` prints:
+textstat is one root Command with a variadic argument, five local options, of which `--minimum` is deprecated and `--timing` is hidden, a sixth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -1671,7 +1698,7 @@ OPTIONS
       --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
       --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)
   -t, --total                  Add a total row.
-      --format <format>        Select the output format: table, json, jsonl.
+      --format <format>        Select the output format: table, json, jsonl. Default: table.
   -h, --help                   Show this help.
   -V, --version                Print the version.
       --explain                Explain the selected command and exit.
@@ -1682,6 +1709,75 @@ EXAMPLES
 ```
 
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+
+#### Help and version restyle
+
+```ts
+// Existing view inputs remain unchanged.
+import type { CommandGraph, DeclaredView } from '@loomcli/core';
+import type { HelpPage } from '@loomcli/plugins/help/views';
+
+// Exported from @loomcli/plugins/help/views and @loomcli/plugins/version/views.
+declare const helpPage: DeclaredView<HelpPage>;
+declare const versionLine: DeclaredView<CommandGraph>;
+```
+
+```text
+OPTIONS
+      --format <format>  Select the output format: records, json, jsonl. Default: records.
+```
+
+- **Status and scope.** Proposed contract ahead of implementation. It changes the default help and version views and the formatter's option description. It adds no export, extension field, theme requirement, glyph, or rendering policy. The existing help and version takeover, output destination, invocation rules, and view override identities stay unchanged.
+- **Content.** The page keeps its masthead, details, usage forms, section order, filtering, row facts, examples, hint, indentation, blank lines, and final newline. The application path remains first in the masthead. Neither default view adds a framework logo or branding glyph. Available view names stay in the formatter option description, with no separate section.
+- **Escaping.** Graph strings, help extension strings, and rendered default values are literal data. The view escapes each raw fragment with `style.escape` before styling or measuring it. It never escapes the completed marked page or recovers semantic fields by parsing a rendered row. Authored markup in a description or example remains literal. Existing default serialization and line-terminator escaping remain unchanged. Embedded ANSI remains subject to core's separate rendering policy.
+- **Measurement.** The two-column rule uses destination-aware `context.width` and core's deferred `pad`. This replaces JavaScript string-length padding. It preserves ASCII spacing while aligning wide and combining characters under core's existing rules. Styling never changes which members or sections appear, and neither view wraps or reads terminal width.
+- **Policy.** Views return semantic marked strings. The installed theme and core's destination policy determine colors and modifiers. A missing theme leaves semantic colors unmapped, while explicit bold and italic still follow modifier policy. Under automatic policy, an ordinary pipe has no style escapes. At a capable terminal, `NO_COLOR` disables color but does not disable bold or italic. Explicit policy and `FORCE_COLOR` retain their existing precedence. The plain examples disable both colors and modifiers.
+- **Replacement.** `helpPage` keeps `{ graph, command }`. `versionLine` keeps `CommandGraph`. Each override replaces the whole view through the existing registry. A replacement derives its own content and owns its layout, literal-data escaping, styles, and final newline. No public section model or builder is introduced.
+
+The default help view applies this mapping. A style named below is a member of the run-specific `style` object.
+
+| Page part | Style |
+| --- | --- |
+| Masthead application path | `highlight.bold` |
+| Masthead middle dot | `dim` |
+| Masthead description and details | `primary` |
+| Section titles | `dim` |
+| Application paths, child command names, and option spellings outside authored examples | `highlight` |
+| Placeholders, including their brackets and variadic suffix, and argument labels in ARGUMENTS | `dim.italic` |
+| Argument forms in USAGE, `[options]`, and the `<command>` or `[command]` markers in USAGE and COMMANDS | `dim.italic` |
+| Option spelling separator `,` | `dim` |
+| Descriptions in right cells | `primary` |
+| Fact parentheses, fact separators, `required`, `repeatable`, and `default: <value>` | `dim` |
+| `deprecated: <message>` inside a fact list | `warning` |
+| The entire `Deprecated: <message>` line below a masthead, excluding indentation | `warning` |
+| Example `$` prompt | `dim` |
+| Application name added before an authored example | `highlight` |
+| Authored example command text | `primary` |
+| Example note | `dim` |
+| Hint words `Run` and `for command details.` | `dim` |
+| Hint application path and `--help` | `highlight` |
+| Hint `<command>` | `dim.italic` |
+
+Indentation, padding, spaces between styled parts, and newlines are unstyled. Spaces inside a styled text value retain that value's style. A placeholder's internal `...`, and the `...` after a required multiple option's placeholder, share its dim italic style. The `--[no-]name` spelling is one highlighted option spelling, not a placeholder. Deprecated rows keep their name and description styles. Only the deprecation fact uses warning, with surrounding parentheses and separators still dim. The text stays explicit when color is off, and no warning glyph is added.
+
+Examples remain opaque authored text. The view styles only the prompt and application name it adds, the whole authored command string, and the optional note. It does not parse shell syntax or highlight individual flags inside that string.
+
+The formatter hook changes its description to `Select the output format: <names>. Default: <default>.`. Names retain their existing record order after `json` and `jsonl` are appended where absent. `<default>` is the result's declared default name at that hook. A plugin whose hook changes the default installs before `format()` for the description to reflect that choice. As with available view names, later hooks do not retroactively update the description. The description is ordinary literal graph text, so the whole sentence uses the description's `primary` style. It is not the right-cell `default:` fact, and the option still declares no parser default. An omitted `--format` preserves an earlier middleware's selection. Help does not infer formatter ownership from an option name or inspect the result to synthesize this sentence. A Command without the formatter has no synthetic format row or view list. Enum-driven help remains outside this contract.
+
+Compared with the previously accepted help page rules, the changed rules are: semantic styling replaces unconditional plain output, column width follows core's measurement, and the formatter description adds its declared default. The version line gains the styling in [Version](#version) without changing its text. All other content and invocation rules remain in force.
+
+#### Help and version restyle acceptance
+
+The implementation re-pins hand-written help pages and version lines against built processes under Node and Bun, including packed-consumer coverage. Plain and themed expectations are authored independently of the rendering helpers.
+
+- Root, leaf, group, and hybrid pages retain their content rules. Cover hidden-member filtering, a directly requested hidden Command, a group with only hidden children, omitted empty sections, and root-only folding of globals.
+- Compare complete plain text for jsonkit root, jsonkit select, and textstat against the examples above. Check one final newline, no trailing row padding, required and variadic forms, Boolean polarity, short-only options, and existing default serialization.
+- Pin exact themed bytes for the style mapping, including placeholders beside highlighted spellings, dim fact punctuation around warning deprecation, literal example flags, notes, the hint, and the version line. Cover deprecation on both a row and a routed Command's masthead.
+- Cover the named theme at truecolor, 256 colors, and 16 colors, a custom token mapping, an absent theme, an ordinary pipe, and a capable terminal with `NO_COLOR`. Check modifier policy independently, including fully disabled styles. Neither view chooses a fallback color or adds a glyph.
+- Use wide and combining characters in names and placeholders, plus literal style-marker data in graph facts, defaults, and help extensions. Check alignment through core's measurement, literal marker output, and no interpretation of authored example syntax.
+- Check formatter view order, custom and replaced view names, an unadvertised `ndjson` alias, and a declared default other than a pack view. An earlier hook changing the default updates the description. A later hook changing it leaves the description at its formatter-hook value. With the formatter absent, help invents no selector or view list. Inspect the formatter description and the absence of a parser default, and prove omission preserves an earlier middleware's selected view.
+- Check version strings with a lowercase `v`, an uppercase `V`, an omitted version, and explicit `0.0.0`. Root and routed invocations print the same application version text, and raw marker-bearing strings stay literal.
+- Keep the existing help and version override, takeover, fault precedence, stdout, and exit-code coverage. A replacement sees the same graph data, owns its newline, and can render its own styles without installing a replacement plugin.
 
 ### Formatter
 
@@ -1726,7 +1822,7 @@ Invalid input: Unknown option "--format". Supply a declared option; prefix a hyp
 
 - **Views.** `json()` and `jsonl()` are whole views: under `result<Value>` they receive the value, and under `rows<Row>` core collects the sequence and they receive the array. `map` reshapes what they receive, identity by default. They are bare pack views under [Row views](#row-views), typed by contextual typing inside a `views` record and stated, `json<Summary>()`, when hoisted or written as the second argument of `out.render`. They render as ordinary views with the plugin uninstalled, so a Command that names `json: json()` first prints JSON by default with no `--format` anywhere.
 - **Bytes.** `json()` writes `JSON.stringify(mapped, null, 2)` and one newline. `jsonl()` writes one line per element when the mapped value is an array, each `JSON.stringify(element)` and one newline, and one such line otherwise; an empty array prints nothing. `toJSON` is honored and an `undefined`, function, or symbol property is dropped, as `JSON.stringify` does. A value that encodes to nothing, `undefined` at the top, or that `JSON.stringify` throws on, a `bigint` or a cycle, makes the view throw, reported through the output-view row of the [Failure contract](#failure-contract). The text is data: each view escapes it through `style.escape` and replaces every character from U+007F to U+009F with its `\uXXXX` escape, four lowercase hex digits, so nothing the [rendering policy](#rendering-policies) would strip or read as a terminal control reaches it, and applies no style, so the bytes are the same under every capability.
-- **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with no short spelling and no default, the description `Select the output format: ` followed by the record's keys in record order, comma-separated, and a full stop, and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>` with its description, under `options` in `inspect()` with `scope: 'application'`, reaching the action at run time under `options.format` and absent from its types. A key or spelling collision with an option the Command, the Application, or another plugin declares is the hook-collision build error, naming the plugin and the Command, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name.
+- **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with no short spelling and no default, the description `Select the output format: ` followed by the record's keys in record order, comma-separated, and a full stop (the proposed [help restyle](#help-and-version-restyle) appends ` Default: <default>.`), and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>` with its description, under `options` in `inspect()` with `scope: 'application'`, reaching the action at run time under `options.format` and absent from its types. A key or spelling collision with an option the Command, the Application, or another plugin declares is the hook-collision build error, naming the plugin and the Command, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name. Under the proposed restyle, the same order lets the description reflect a hook's changed default.
 - **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and `request` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault leaves `request` at `null` and is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` is the validator's issue, exit 2, and `--format yaml --help` with help installed after the formatter still prints the page. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
 
 ```ts
@@ -1748,7 +1844,7 @@ export default middleware;
 
 #### Formatter example coverage
 
-The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, and `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description omits the declared-default sentence until the [help restyle](#help-and-version-restyle) lands. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
 
 ### Table
 
@@ -1938,6 +2034,8 @@ The implementation increment proves these cases through public APIs:
 `scripts/check-theme-contract.mjs` checks the built factory export against the compiler and editor. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
 
 ### Example coverage
+
+The proposed [help restyle](#help-and-version-restyle-acceptance) re-pins these byte comparisons with color and modifiers disabled. Separate expectations cover themed output. Until that implementation, the installed formatter description omits the declared-default sentence shown above.
 
 The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, `jsonkit fetch --help` prints the deprecated page and `jsonkit debug --help` the hidden one, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
 
