@@ -19,7 +19,7 @@ A theme must be able to preserve those hues without reading terminal facts or in
 
 The existing `hex`, `rgb`, and `ansi256` helpers and their background counterparts accept optional fallback values. RGB and hex accept `ansi256` and `ansi16`. ANSI-256 helpers accept only `ansi16`. The [core reference](../core.md#explicit-color-fallbacks) defines the types, selection rules, and validation.
 
-Each fallback affects only its named depth. When a fallback is absent, core approximates the original color at that depth. Supplying a 256-color fallback never changes the 16-color result. Calls without options retain their current output.
+Each fallback affects only its named depth. When a fallback is absent, core approximates the original color at that depth. Supplying a 256-color fallback never changes the 16-color result. Calls that omit the options argument retain their current output. Direct array callbacks also receive an index, so `values.map(style.hex)` must become `values.map((value) => style.hex(value))`. The index now occupies a validated options position.
 
 Fallbacks are part of the concrete color value. Replacing that foreground replaces all its alternatives. Nesting and embedded resets restore the enclosing color with its alternatives. Core's capability detection and color policy decide which value reaches the stream. Explicit fallbacks do not force color.
 
@@ -42,7 +42,7 @@ The new color forms are specified in the [wire contract](../style-wire.md#explic
 
 ## Status
 
-Proposed. The implementation must provide the named palette and fallback helpers with packed-consumer evidence and Node and Bun process fixtures. The acceptance cases in the core reference include autocomplete and literal-name inference, exact colors at each depth, composition, validation, and unchanged no-options behavior. Until that implementation lands, current exports and approximation remain governed by ADR-0027.
+Proposed. One implementation increment delivers the named palette and fallback helpers together, then accepts this record and ADR-0022 together. The two acceptance lists in the core reference are checks within that shared delivery gate, not independent shipping increments. Packed-consumer evidence and Node and Bun process fixtures cover both. The acceptance cases in the core reference include autocomplete and literal-name inference, exact colors at each depth, composition, validation, and unchanged no-options behavior. Until that implementation lands, current exports and approximation remain governed by ADR-0027.
 
 ## Changelog
 
