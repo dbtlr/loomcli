@@ -32,6 +32,14 @@
       "types": "./dist/src/help/views.d.ts",
       "import": "./dist/src/help/views.js"
     },
+    "./records": {
+      "types": "./dist/src/records.d.ts",
+      "import": "./dist/src/records.js"
+    },
+    "./table": {
+      "types": "./dist/src/table.d.ts",
+      "import": "./dist/src/table.js"
+    },
     "./version": {
       "types": "./dist/src/version/plugin.d.ts",
       "import": "./dist/src/version/plugin.js"

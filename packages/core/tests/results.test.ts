@@ -37,6 +37,14 @@ test('an empty sequence still writes head and tail under a row view', () => {
   });
 });
 
+test('a declared row view tail receives the number of rows written through out.results', () => {
+  expect(results('counted-tail')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '0: one.txt\n1: two words.txt\nCOUNT:2\nresolved:0\n',
+  });
+});
+
 test('a string source iterates one character per row, as every synchronous iterable does', () => {
   expect(results('string-source')).toEqual({
     status: 0,

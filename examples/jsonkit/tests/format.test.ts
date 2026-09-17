@@ -64,12 +64,16 @@ test('jsonkit paths --format yaml --help still prints the help page, help instal
   });
 });
 
-test('jsonkit inspect reports the root has no result and paths gains the formatter views', () => {
+test('jsonkit inspect reports formatter views on the root records and paths results', () => {
   const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(inspected.status).toBe(0);
   const graph: { root: { result: unknown; children: { name: string; result: unknown }[] } } =
     JSON.parse(inspected.stdout);
-  expect(graph.root.result).toBeNull();
+  expect(graph.root.result).toEqual({
+    default: 'records',
+    kind: 'rows',
+    views: ['records', 'json', 'jsonl'],
+  });
   const found = graph.root.children.find((child) => child.name === 'paths');
   expect(found?.result).toEqual({
     default: 'list',

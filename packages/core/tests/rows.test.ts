@@ -29,6 +29,14 @@ test('an empty sequence still writes head and tail', () => {
   expect(rows('empty')).toEqual({ status: 0, stderr: '', stdout: 'PATHS\nEND\nresolved:0\n' });
 });
 
+test('a row view tail receives the number of rows written through out.render', () => {
+  expect(rows('counted-tail')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '0: one.txt\n1: two words.txt\nCOUNT:2\nresolved:0\n',
+  });
+});
+
 test('core requests no row until the previous piece has been written', () => {
   /**
    * The destination reports each completed write and the source reports each request, so the two

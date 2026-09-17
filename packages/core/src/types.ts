@@ -189,7 +189,7 @@ export interface View<Data> {
 export interface RowView<Row> {
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   head?: (context: ViewContext) => string;
-  tail?: (context: ViewContext) => string;
+  tail?: (count: number, context: ViewContext) => string;
   /** A row view has one shape; the whole view of Rendered output is the other. */
   render?: never;
 }

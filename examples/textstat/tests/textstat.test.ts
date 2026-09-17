@@ -18,7 +18,7 @@ test('textstat prints one table for the counted files, with the total only when 
     ).toEqual({
       status: 0,
       stderr: '',
-      stdout: 'BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n',
     });
     expect(
       invoke(
@@ -31,7 +31,7 @@ test('textstat prints one table for the counted files, with the total only when 
     ).toEqual({
       status: 0,
       stderr: '',
-      stdout: 'BYTES  SOURCE\n    6  one.txt\n    2  two words.txt\n    8  total\n',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n    8  total\n',
     });
   } finally {
     rmSync(directory, { force: true, recursive: true });
@@ -49,7 +49,7 @@ test('textstat prints the header alone when the byte threshold filters every sou
         ['small.txt', 'large.txt', '--min-bytes', '6'],
         { cwd: directory },
       ),
-    ).toEqual({ status: 0, stderr: '', stdout: 'BYTES  SOURCE\n' });
+    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -89,7 +89,7 @@ test('textstat widens the count column past the header for a large count', () =>
     writeFileSync(join(directory, 'big.txt'), 'a'.repeat(123_456));
     expect(
       invoke(new URL('../dist/src/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
-    ).toEqual({ status: 0, stderr: '', stdout: ' BYTES  SOURCE\n123456  big.txt\n' });
+    ).toEqual({ status: 0, stderr: '', stdout: ' COUNT  SOURCE\n123456  big.txt\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -99,14 +99,14 @@ test('textstat uses the supplied cwd and supports an explicit hyphenated relativ
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['cwd'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'BYTES  SOURCE\n    5  ./-notes.txt\n',
+    stdout: 'COUNT  SOURCE\n    5  ./-notes.txt\n',
   });
 });
 
 test.each([
-  [['words-across-chunks'], 'WORDS  SOURCE\n    2  stdin\n'],
-  [['character-across-chunks', 'words'], 'WORDS  SOURCE\n    2  stdin\n'],
-  [['character-across-chunks', 'bytes'], 'BYTES  SOURCE\n   12  stdin\n'],
+  [['words-across-chunks'], 'COUNT  SOURCE\n    2  stdin\n'],
+  [['character-across-chunks', 'words'], 'COUNT  SOURCE\n    2  stdin\n'],
+  [['character-across-chunks', 'bytes'], 'COUNT  SOURCE\n   12  stdin\n'],
 ] satisfies [string[], string][])(
   'textstat counts the split stdin stream %j once',
   (args, stdout) => {
@@ -130,7 +130,7 @@ test('textstat counts one unbroken token that spans many chunks', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['long-token'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'WORDS  SOURCE\n    1  stdin\n',
+    stdout: 'COUNT  SOURCE\n    1  stdin\n',
   });
 });
 
@@ -152,17 +152,17 @@ test('textstat never reads stdin when files are supplied', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['files-only'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'BYTES  SOURCE\n    5  notes.txt\nreads: 0\n',
+    stdout: 'COUNT  SOURCE\n    5  notes.txt\nreads: 0\n',
   });
 });
 
 test.each([
   [
     ['--metric', 'bytes', '--total'],
-    'BYTES  SOURCE\n   12  one.txt\n   14  two.txt\n   26  total\n',
+    'COUNT  SOURCE\n   12  one.txt\n   14  two.txt\n   26  total\n',
   ],
-  [['-tm', 'words'], 'WORDS  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
-  [['--metric=lines', '-t'], 'LINES  SOURCE\n    1  one.txt\n    1  two.txt\n    2  total\n'],
+  [['-tm', 'words'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
+  [['--metric=lines', '-t'], 'COUNT  SOURCE\n    1  one.txt\n    1  two.txt\n    2  total\n'],
 ] satisfies [string[], string][])(
   'textstat counts the selected metric and total for %j',
   (options, stdout) => {
@@ -186,8 +186,8 @@ test.each([
 );
 
 test.each([
-  ['words', 'WORDS  SOURCE\n    0  empty.txt\n    0  total\n'],
-  ['lines', 'LINES  SOURCE\n    0  empty.txt\n    0  total\n'],
+  ['words', 'COUNT  SOURCE\n    0  empty.txt\n    0  total\n'],
+  ['lines', 'COUNT  SOURCE\n    0  empty.txt\n    0  total\n'],
 ])('textstat counts empty content as zero for %s', (metric, stdout) => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-empty-'));
   try {
@@ -218,10 +218,10 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
 });
 
 test.each([
-  ['0', 'BYTES  SOURCE\n    0  empty.txt\n    2  small.txt\n    5  large.txt\n    7  total\n'],
-  ['0002', 'BYTES  SOURCE\n    2  small.txt\n    5  large.txt\n    7  total\n'],
-  ['3', 'BYTES  SOURCE\n    5  large.txt\n    5  total\n'],
-  ['6', 'BYTES  SOURCE\n    0  total\n'],
+  ['0', 'COUNT  SOURCE\n    0  empty.txt\n    2  small.txt\n    5  large.txt\n    7  total\n'],
+  ['0002', 'COUNT  SOURCE\n    2  small.txt\n    5  large.txt\n    7  total\n'],
+  ['3', 'COUNT  SOURCE\n    5  large.txt\n    5  total\n'],
+  ['6', 'COUNT  SOURCE\n    0  total\n'],
 ])(
   'textstat uses transformed minimum %s with inclusive byte filtering and retained totals',
   (minimum, stdout) => {
@@ -272,9 +272,9 @@ test.each(['-1', '1.5', '10KB'])(
 );
 
 test.each([
-  [['--minimum', '3'], 'BYTES  SOURCE\n    5  large.txt\n'],
-  [['--min-bytes', '3', '--minimum', '1'], 'BYTES  SOURCE\n    5  large.txt\n'],
-  [['--min-bytes', '1', '--minimum', '6'], 'BYTES  SOURCE\n'],
+  [['--minimum', '3'], 'COUNT  SOURCE\n    5  large.txt\n'],
+  [['--min-bytes', '3', '--minimum', '1'], 'COUNT  SOURCE\n    5  large.txt\n'],
+  [['--min-bytes', '1', '--minimum', '6'], 'COUNT  SOURCE\n'],
 ] satisfies [string[], string][])(
   'textstat drops a source below the larger of the two thresholds for %j',
   (options, stdout) => {
@@ -310,7 +310,7 @@ test('textstat --timing reports the elapsed time on stderr after the rows', () =
       },
     );
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe('BYTES  SOURCE\n    6  one.txt\n');
+    expect(result.stdout).toBe('COUNT  SOURCE\n    6  one.txt\n');
     // The number is a measurement, so the line shape is the whole assertion.
     expect(result.stderr).toMatch(/^ℹ elapsed: \d+ms\n$/u);
   } finally {
@@ -336,7 +336,7 @@ test.each([
     input: 'x',
   });
   expect(result.status).toBe(0);
-  expect(result.stdout).toBe('BYTES  SOURCE\n    1  stdin\n');
+  expect(result.stdout).toBe('COUNT  SOURCE\n    1  stdin\n');
   expect(result.stderr).toMatch(diagnostic);
 });
 
@@ -347,7 +347,7 @@ test('textstat preserves a filename that resembles valid style markup', () => {
     writeFileSync(join(directory, name), 'x');
     expect(
       invoke(new URL('../dist/src/main.js', import.meta.url), [name], { cwd: directory }),
-    ).toEqual({ status: 0, stderr: '', stdout: `BYTES  SOURCE\n    1  ${name}\n` });
+    ).toEqual({ status: 0, stderr: '', stdout: `COUNT  SOURCE\n    1  ${name}\n` });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -369,17 +369,17 @@ test('textstat renders an unreadable source name literally', () => {
 });
 
 test.each([
-  [['--metric', 'words'], 'hello brave world\n', 'WORDS  SOURCE\n    3  stdin\n'],
+  [['--metric', 'words'], 'hello brave world\n', 'COUNT  SOURCE\n    3  stdin\n'],
   [
     ['--metric', 'words', '--total'],
     'hello brave world\n',
-    'WORDS  SOURCE\n    3  stdin\n    3  total\n',
+    'COUNT  SOURCE\n    3  stdin\n    3  total\n',
   ],
-  [['--metric', 'lines'], 'one\ntwo\n', 'LINES  SOURCE\n    2  stdin\n'],
-  [[], 'hello\n', 'BYTES  SOURCE\n    6  stdin\n'],
-  [['--total'], '', 'BYTES  SOURCE\n    0  stdin\n    0  total\n'],
-  [['--min-bytes', '3', '--total'], 'hi', 'BYTES  SOURCE\n    0  total\n'],
-  [['--min-bytes', '2', '--total'], 'hi', 'BYTES  SOURCE\n    2  stdin\n    2  total\n'],
+  [['--metric', 'lines'], 'one\ntwo\n', 'COUNT  SOURCE\n    2  stdin\n'],
+  [[], 'hello\n', 'COUNT  SOURCE\n    6  stdin\n'],
+  [['--total'], '', 'COUNT  SOURCE\n    0  stdin\n    0  total\n'],
+  [['--min-bytes', '3', '--total'], 'hi', 'COUNT  SOURCE\n    0  total\n'],
+  [['--min-bytes', '2', '--total'], 'hi', 'COUNT  SOURCE\n    2  stdin\n    2  total\n'],
 ] satisfies [string[], string, string][])(
   'textstat counts piped stdin for %j',
   (args, input, stdout) => {
@@ -400,7 +400,7 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
         cwd: directory,
         input: 'piped text that is longer',
       }),
-    ).toEqual({ status: 0, stderr: '', stdout: 'BYTES  SOURCE\n    6  one.txt\n' });
+    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -412,7 +412,7 @@ test('the inspected graph reports the declared table and the formatter views on 
   const graph: { root: { result: unknown } } = JSON.parse(inspected.stdout);
   expect(graph.root.result).toEqual({
     default: 'table',
-    kind: 'value',
+    kind: 'rows',
     views: ['table', 'json', 'jsonl'],
   });
 });

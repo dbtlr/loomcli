@@ -174,22 +174,24 @@ function endSteps<Row>(steps: Steps<Row>): void {
   }
 }
 
-/** The text one edge function returns. An absent `head` or `tail` writes nothing at all. */
-function edge(
-  produce: ((context: ViewContext) => unknown) | undefined,
-  context: ViewContext,
-): (() => unknown) | undefined {
-  return produce === undefined ? undefined : () => produce(context);
-}
-
-/** One piece, skipped where the view supplies no function for it. */
-async function writeEdge<Row>(
+/** The opening piece, skipped where the view supplies no `head` function. */
+async function writeHead<Row>(
   writer: SequenceWriter<Row>,
   produce: ((context: ViewContext) => unknown) | undefined,
 ): Promise<void> {
-  const text = edge(produce, writer.context);
-  if (text) {
-    await writer.piece(text);
+  if (produce) {
+    await writer.piece(() => produce(writer.context));
+  }
+}
+
+/** The closing piece, skipped where the view supplies no `tail` function. */
+async function writeTail<Row>(
+  writer: SequenceWriter<Row>,
+  produce: ((count: number, context: ViewContext) => unknown) | undefined,
+  count: number,
+): Promise<void> {
+  if (produce) {
+    await writer.piece(() => produce(count, writer.context));
   }
 }
 
@@ -203,7 +205,7 @@ async function writeEachRow<Row>(
   reading: Reading<Row>,
 ): Promise<void> {
   halt(reading);
-  await writeEdge(writer, view.head);
+  await writeHead(writer, view.head);
   for (;;) {
     const next = await step(reading);
     if (next.done) {
@@ -244,7 +246,7 @@ async function writePieces<Row>(
   }
   const { view } = writer.view;
   await writeEachRow(writer, view, reading);
-  return () => writeEdge(writer, view.tail);
+  return () => writeTail(writer, view.tail, reading.counts.written);
 }
 
 /** The same pieces, with the source told to stop where one of them raised. */

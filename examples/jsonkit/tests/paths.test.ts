@@ -20,13 +20,25 @@ test('jsonkit paths writes one row per path as the walk yields it, the root firs
       status: 0,
       stderr: '',
       stdout: [
-        'PATH\tKIND',
-        '.\tobject with 3 keys',
-        'name\tstring',
-        'tags\tarray with 2 items',
-        'tags.0\tstring',
-        'tags.1\tstring',
-        'ok\tboolean',
+        'kind  object with 3 keys',
+        'path  .',
+        '',
+        'kind  string',
+        'path  name',
+        '',
+        'kind  array with 2 items',
+        'path  tags',
+        '',
+        'kind  string',
+        'path  tags.0',
+        '',
+        'kind  string',
+        'path  tags.1',
+        '',
+        'kind  boolean',
+        'path  ok',
+        '',
+        '6 records',
         '',
       ].join('\n'),
     });
@@ -38,7 +50,7 @@ test('a walk that throws leaves its written rows behind, under the line and the 
     expect(invoke(main, ['paths', '-f', 'doc.json'], { cwd })).toEqual({
       status: 1,
       stderr: `${incomplete(2, 2)}Cannot walk boom\n`,
-      stdout: 'PATH\tKIND\n.\tobject with 2 keys\nname\tstring\n',
+      stdout: 'kind  object with 2 keys\npath  .\n\nkind  string\npath  name\n',
     });
   });
 });
