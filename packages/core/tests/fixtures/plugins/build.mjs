@@ -55,6 +55,51 @@ const exotic = {
 
 const named = (identity, definition) => plugin(identity, definition);
 
+/** The whole view a value result names, so a hook reshapes a record that already holds one. */
+const text = { render: (value) => `${value}\n` };
+
+/** A row view, which a value result may never name, whichever declaration named it. */
+const records = { row: (value) => `${value}\n` };
+
+/** The plugin every hook row names, whose hook one scenario supplies. */
+function formatter(onCommandAttach) {
+  return named('@loomcli/plugins/format', { onCommandAttach });
+}
+
+/** A hook that acts on the `count` Command alone, so the root passes through unchanged. */
+function onCount(act) {
+  return (command) => (command.name === 'count' ? act(command) : command);
+}
+
+/** The option every hook collision row declares. */
+function declaresFormat(command) {
+  return command.option('format', { type: 'string' });
+}
+
+/** The Command a hook reshapes: one value result under one declared view. */
+function counted() {
+  return new Command('count').result({ views: { text } }).action(dispatch);
+}
+
+/** One application whose plugins carry hooks, over the `count` Command each row names. */
+function withHooks(plugins, count = counted()) {
+  return new Application('app', { plugins }).command(count).action(dispatch);
+}
+
+/** A value with every key of the attached surface, which is still not the value core made. */
+const forged = {
+  argument: () => forged,
+  arguments: [],
+  extend: () => forged,
+  hasAction: true,
+  name: 'count',
+  option: () => forged,
+  options: [],
+  path: ['count'],
+  result: null,
+  views: () => forged,
+};
+
 /** A schema whose validate call is the scenario's own, so the rule under test is the only rule. */
 const schemaOf = (validate) => ({ '~standard': { validate, vendor: 'fixture', version: 1 } });
 
@@ -95,6 +140,67 @@ const scenarios = {
     return new Application('app').command(get).action(dispatch);
   },
   'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
+  'hook-argument-collision': () =>
+    withHooks(
+      [formatter(onCount(declaresFormat))],
+      new Command('count').argument('format', {}).action(dispatch),
+    ),
+  'hook-global-collision': () =>
+    new Application('app', { plugins: [formatter(onCount(declaresFormat))] })
+      .globalOption('format', { type: 'string' })
+      .command(counted())
+      .action(dispatch),
+  'hook-hook-collision': () =>
+    withHooks([
+      named('@acme/out', { onCommandAttach: onCount(declaresFormat) }),
+      formatter(onCount(declaresFormat)),
+    ]),
+  'hook-invalid-option': () =>
+    withHooks([formatter(onCount((command) => command.option('format', { type: 'nope' })))]),
+  'hook-late-option': () =>
+    withHooks([formatter(onCount(declaresFormat))], new Command('count').action(dispatch)),
+  'hook-local-collision': () =>
+    withHooks(
+      [formatter(onCount(declaresFormat))],
+      new Command('count').option('format', { type: 'string' }).action(dispatch),
+    ),
+  'hook-missing-default': () =>
+    withHooks([formatter(onCount((command) => command.views({}, { default: 'wide' })))]),
+  'hook-not-function': () => withPlugin(formatter('nope')),
+  'hook-plugin-collision': () =>
+    withHooks([
+      named('@acme/out', { options: { format: { type: 'string' } } }),
+      formatter(onCount(declaresFormat)),
+    ]),
+  'hook-returns-other': () => withHooks([formatter(onCount(() => forged))]),
+  'hook-row-view': () => withHooks([formatter(onCount((command) => command.views({ records })))]),
+  'hook-spelling-collision': () =>
+    new Application('app', {
+      plugins: [
+        formatter(onCount((command) => command.option('format', { short: 'f', type: 'string' }))),
+      ],
+    })
+      .globalOption('file', { short: 'f', type: 'string' })
+      .command(counted())
+      .action(dispatch),
+  'hook-throws': () =>
+    withHooks([
+      formatter(
+        onCount(() => {
+          throw new Error('the hook broke');
+        }),
+      ),
+    ]),
+  'hook-throws-declaration': () =>
+    withHooks([
+      formatter(
+        onCount(() => {
+          throw new DeclarationError(
+            'Plugin "@loomcli/plugins/format" requires a result on Command "count". Declare one or omit the plugin.',
+          );
+        }),
+      ),
+    ]),
   'identity-not-string': () => withPlugin(plugin(7, {})),
   installed: () => withPlugin(named('@loomcli/help', {})),
   'installed-twice': () =>

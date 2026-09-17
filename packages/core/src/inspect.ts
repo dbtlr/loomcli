@@ -23,7 +23,9 @@ interface ArgumentNode {
 
 /**
  * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms, and
- * `scope` tells an application's own option from a plugin option, which reaches no action.
+ * `scope` tells an application's own option from a plugin option, which reaches no action. An
+ * option a plugin's lifecycle hook declared on a Command is that Command's own in every respect, so
+ * it reads `application` and names no plugin.
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
@@ -296,4 +298,4 @@ function inspectGraph(
 }
 
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
-export { inspectGraph };
+export { inspectGraph, resultNode };

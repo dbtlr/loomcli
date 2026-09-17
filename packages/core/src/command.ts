@@ -19,6 +19,8 @@ import {
 } from './facts.js';
 import type { BuiltGlobals, GlobalsState, OptionOwner } from './globals.js';
 import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
+import { resultNode } from './inspect.js';
+import type { ResultNode } from './inspect.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type { OptionValues } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
@@ -29,6 +31,9 @@ import type {
   ActionContext,
   ArgumentConfig,
   ArgumentValue,
+  AttachedCommand,
+  attachedCommand,
+  CommandAttachHook,
   declaredTypes,
   DeclaredResult,
   DeclaredTypes,
@@ -153,8 +158,8 @@ type LateDeclaration =
  */
 type AliasDeclaration = readonly string[];
 
-/** The attachable shape of a Command, without its inferred declaration types. */
-interface AttachedCommand {
+/** The private handle one graph node is built through, without its inferred declaration types. */
+interface CommandNodeHandle {
   readonly name: string | null;
   build(context: BuildContext): BuiltCommand;
 }
@@ -170,14 +175,18 @@ interface BuildContext {
   descriptors: DescriptorRegistry;
   extensions: ExtensionRecords;
   globals: BuiltGlobals;
-  owners: Map<AttachedCommand, string | null>;
+  owners: Map<CommandNodeHandle, string | null>;
+  /** The route from the root to the Command being built, which a lifecycle hook reads. */
+  path: readonly string[];
+  /** The installed plugins in installation order, whose hooks run over every Command. */
+  plugins: readonly BuiltPlugin[];
 }
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
-const nodes = new WeakMap<object, AttachedCommand>();
+const nodes = new WeakMap<object, CommandNodeHandle>();
 
 /** Reads the declarations behind an attached value; anything else is a declaration error. */
-function nodeOf(parent: string | null, child: object): AttachedCommand {
+function nodeOf(parent: string | null, child: object): CommandNodeHandle {
   const node = nodes.get(child);
   if (!node) {
     throw new DeclarationError(
@@ -494,8 +503,8 @@ function checkDeclarationOrder(state: Declared): void {
 }
 
 /** Child names are checked before any child builds, so parent diagnostics come first. */
-function collectChildren(state: Declared): [string, AttachedCommand][] {
-  const attached: [string, AttachedCommand][] = [];
+function collectChildren(state: Declared): [string, CommandNodeHandle][] {
+  const attached: [string, CommandNodeHandle][] = [];
   const seen = new Set<string>();
   for (const child of state.children) {
     const node = nodeOf(state.name, child);
@@ -576,7 +585,7 @@ function aliasNamespace(parent: string | null, names: ReadonlySet<string>) {
  */
 function buildChild(
   parent: string | null,
-  [name, node]: [string, AttachedCommand],
+  [name, node]: [string, CommandNodeHandle],
   context: BuildContext,
 ): BuiltCommand {
   const owner = context.owners.get(node);
@@ -586,7 +595,7 @@ function buildChild(
     );
   }
   context.owners.set(node, parent);
-  return node.build(context);
+  return node.build({ ...context, path: [...context.path, name] });
 }
 
 /** A variadic or optional slot ends the positional list, so nothing may follow either one. */
@@ -670,7 +679,7 @@ function compileLocalOptions(state: Declared, globals: BuiltGlobals, subject: st
  * children. A group with no children receives an invocation no handler can answer, and a local
  * option on a group reaches no handler either, because locals never inherit.
  */
-function checkGroup(state: Declared, children: readonly [string, AttachedCommand][]): void {
+function checkGroup(state: Declared, children: readonly [string, CommandNodeHandle][]): void {
   const { name } = state;
   if (children.length === 0) {
     throw new DeclarationError(`${commandSentence(name)} has no action. Register an action.`);
@@ -818,6 +827,326 @@ function buildResult(state: Declared, hasAction: boolean): DeclaredResult | unde
   return { default: selected ?? first.value, kind: declaration.kind, views };
 }
 
+/** One call a hook made, in the order it made it, which the declaration reads back afterwards. */
+type AttachCall =
+  | { identity: string; input: InputDeclaration; kind: 'input' }
+  | { call: ResultCall; kind: 'views' }
+  | { kind: 'extend'; values: readonly ExtensionValue<'command'>[] };
+
+/** The erased declaration one hook reads, with the calls it and every hook before it has made. */
+interface AttachState {
+  calls: readonly AttachCall[];
+  declared: Declared;
+  hasAction: boolean;
+  identity: string;
+  path: readonly string[];
+}
+
+/** What the hooks of one Command have produced so far, which the next hook reads. */
+type AttachProgress = Pick<AttachState, 'calls' | 'declared'>;
+
+/** The values one build made, so a value a hook returns is one of them and never a forged shape. */
+const attachments = new WeakMap<object, AttachState>();
+
+/** The declared names of one kind, in declaration order, as a hook reads them. */
+function declaredNames(declared: Declared, kind: 'argument' | 'option'): readonly string[] {
+  return declared.inputs.filter((input) => input.kind === kind).map((input) => input.name);
+}
+
+/**
+ * One Command unlocked for a hook. Every call returns a new value and leaves its receiver
+ * unchanged, and records what it added twice over: on the erased declaration the next value reads
+ * its facts from, and on the call list the declaration reads back once every hook has returned.
+ * The result is resolved for each value, so a `views()` call reports its own fault where it is made
+ * and a later call reads the record that call left behind.
+ */
+class AttachedCommandValue implements AttachedCommand {
+  declare readonly [attachedCommand]: true;
+
+  readonly #state: AttachState;
+  readonly #result: ResultNode | null;
+
+  constructor(state: AttachState) {
+    this.#state = state;
+    this.#result = resultNode(buildResult(state.declared, state.hasAction));
+    attachments.set(this, state);
+    Object.freeze(this);
+  }
+
+  get name(): string | null {
+    return this.#state.declared.name;
+  }
+
+  get path(): readonly string[] {
+    return this.#state.path;
+  }
+
+  get hasAction(): boolean {
+    return this.#state.hasAction;
+  }
+
+  get arguments(): readonly string[] {
+    return declaredNames(this.#state.declared, 'argument');
+  }
+
+  get options(): readonly string[] {
+    return declaredNames(this.#state.declared, 'option');
+  }
+
+  get result(): ResultNode | null {
+    return this.#result;
+  }
+
+  argument(name: string, config: ArgumentConfig): AttachedCommand {
+    return this.#declare({ config: captureConfig(config), kind: 'argument', name });
+  }
+
+  option(name: string, config: OptionConfig): AttachedCommand {
+    return this.#declare({ config: captureConfig(config), kind: 'option', name });
+  }
+
+  views(
+    replacements: Readonly<Record<string, ResultView>>,
+    options?: { default?: string },
+  ): AttachedCommand {
+    const call: ResultCall = {
+      default: recordOf(options, 'default'),
+      kind: 'views',
+      views: replacements,
+    };
+    const { declared } = this.#state;
+    return this.#derive(
+      { call, kind: 'views' },
+      { ...declared, results: [...declared.results, call] },
+    );
+  }
+
+  extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand {
+    return this.#derive({ kind: 'extend', values }, this.#state.declared);
+  }
+
+  /** One input the running hook declared, which the Command's own names now hold. */
+  #declare(input: InputDeclaration): AttachedCommand {
+    const { declared, identity } = this.#state;
+    return this.#derive(
+      { identity, input, kind: 'input' },
+      { ...declared, inputs: [...declared.inputs, input] },
+    );
+  }
+
+  #derive(call: AttachCall, declared: Declared): AttachedCommand {
+    const state = this.#state;
+    return new AttachedCommandValue({ ...state, calls: [...state.calls, call], declared });
+  }
+}
+
+/** The reason one failed hook reports, which is the thrown value's own message. */
+function attachReason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** One hook's own call, whose failure is the plugin's, and whose own report is its own. */
+function callHook(
+  value: AttachedCommand,
+  hook: CommandAttachHook,
+  named: { identity: string; subject: string },
+): AttachedCommand {
+  try {
+    return hook(value);
+  } catch (error) {
+    // A hook that reports a declaration fault of its own reports as itself.
+    if (error instanceof DeclarationError) {
+      throw error;
+    }
+    throw new DeclarationError(
+      `Plugin "${named.identity}" failed in onCommandAttach for ${named.subject}: ${attachReason(error)}.`,
+    );
+  }
+}
+
+/** One plugin's hook over one Command, which answers with the declaration the hook returned. */
+function attachOnce(
+  value: AttachedCommand,
+  hook: CommandAttachHook,
+  named: { identity: string; subject: string },
+): AttachState {
+  const state = attachments.get(callHook(value, hook, named));
+  if (!state) {
+    throw new DeclarationError(
+      `Plugin "${named.identity}" returned a value that is not the attached Command from onCommandAttach for ${named.subject}. Return the value it received or a value derived from it.`,
+    );
+  }
+  return state;
+}
+
+/**
+ * Every installed plugin's hook over one Command, in installation order, each receiving what the
+ * previous returned. The calls they made travel back to the declaration the remaining rules read.
+ */
+function runAttachHooks(
+  declared: Declared,
+  facts: { hasAction: boolean; path: readonly string[] },
+  plugins: readonly BuiltPlugin[],
+): readonly AttachCall[] {
+  const subject = commandSubject(declared.name);
+  let progress: AttachProgress = { calls: [], declared };
+  for (const installed of plugins) {
+    const hook = installed.onCommandAttach;
+    if (hook) {
+      const identity = installed.identity;
+      const value = new AttachedCommandValue({ ...progress, ...facts, identity });
+      const state = attachOnce(value, hook, { identity, subject });
+      progress = { calls: state.calls, declared: state.declared };
+    }
+  }
+  return progress.calls;
+}
+
+/**
+ * One input a hook declared. It joins the values an action reads at run time and the declaration's
+ * types not at all, and it records no late declaration, because a hook's calls are exempt from the
+ * closures `action()` applies.
+ */
+function declareHookInput<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  input: InputDeclaration,
+): CommandState<Args, Options, Globals> {
+  const previous = state.bind;
+  return {
+    ...state,
+    bind: (values) => {
+      const bound = previous(values);
+      return input.kind === 'argument'
+        ? { ...bound, args: { ...bound.args, ...values.argument(input) } }
+        : { ...bound, options: { ...bound.options, ...values.option(input) } };
+    },
+    inputs: [...state.inputs, input],
+  };
+}
+
+/** The declaration the hooks left behind, which every remaining build rule reads. */
+function applyAttachCalls<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  calls: readonly AttachCall[],
+): CommandState<Args, Options, Globals> {
+  let next = state;
+  for (const call of calls) {
+    if (call.kind === 'input') {
+      next = declareHookInput(next, call.input);
+    } else if (call.kind === 'views') {
+      next = { ...next, results: [...next.results, call.call] };
+    } else {
+      next = declareExtensions(next, call.values);
+    }
+  }
+  return next;
+}
+
+/** One input a hook declared, with the plugin whose hook declared it. */
+interface AttachedInput {
+  identity: string;
+  input: InputDeclaration;
+}
+
+/** The names one Command already holds, by the scope that holds each of them. */
+interface HeldNames {
+  arguments: ReadonlySet<string>;
+  globals: BuiltGlobals;
+  hooks: Map<string, string>;
+  locals: ReadonlySet<string>;
+}
+
+/** What one name a hook declared collides with, and the remedy that pair earns. */
+function attachedCollision(name: string, held: HeldNames) {
+  const hook = held.hooks.get(name);
+  if (hook !== undefined) {
+    return {
+      clause: `an option plugin "${hook}" declared through onCommandAttach`,
+      remedy: 'Install one of them.',
+    };
+  }
+  const remedy = "Rename the Command's option or omit the plugin.";
+  if (held.locals.has(name)) {
+    return { clause: 'a local option', remedy };
+  }
+  const claimed = held.globals.names.get(name);
+  if (claimed) {
+    const clause =
+      claimed.kind === 'plugin' ? `an option of plugin "${claimed.identity}"` : 'a global option';
+    return { clause, remedy };
+  }
+  return held.arguments.has(name) ? { clause: 'an argument', remedy } : undefined;
+}
+
+/**
+ * The spellings one compiled table holds, each under the form its own option is named by, which is
+ * its long form where it declares one and the colliding spelling itself where it declares none.
+ */
+function readSpellings(table: ReturnType<typeof compileOptions>, claimed: Map<string, string>) {
+  const longs = new Map<string, string>();
+  for (const [spelling, option] of table) {
+    if (option.role === 'long') {
+      longs.set(option.name, spelling);
+    }
+  }
+  for (const [spelling, option] of table) {
+    if (!claimed.has(spelling)) {
+      claimed.set(spelling, longs.get(option.name) ?? spelling);
+    }
+  }
+}
+
+/**
+ * Every option a hook declared, against the names and spellings the Command, the globals table, and
+ * an earlier hook already hold. It runs before the Command's own options compile, so a hook-declared
+ * option reports as the plugin's fault and never as the author's.
+ */
+function checkAttachedOptions(
+  declared: Declared,
+  attached: readonly AttachedInput[],
+  globals: BuiltGlobals,
+): void {
+  const subject = commandSubject(declared.name);
+  const hooked = new Set(attached.map((entry) => entry.input));
+  const authored = declared.inputs.filter((input) => !hooked.has(input));
+  const held: HeldNames = {
+    arguments: new Set(declaredNames(declared, 'argument')),
+    globals,
+    hooks: new Map(),
+    locals: new Set(authored.filter((input) => input.kind === 'option').map((input) => input.name)),
+  };
+  const claimed = new Map<string, string>();
+  readSpellings(globals.options, claimed);
+  readSpellings(
+    compileOptions(
+      authored.filter((input) => input.kind === 'option'),
+      subject,
+    ),
+    claimed,
+  );
+  for (const { identity, input } of attached) {
+    if (input.kind === 'option') {
+      const collision = attachedCollision(input.name, held);
+      if (collision) {
+        throw new DeclarationError(
+          `Plugin "${identity}" declares option "${input.name}" on ${subject}, which is already declared as ${collision.clause}. ${collision.remedy}`,
+        );
+      }
+      const table = compileOptions([input], subject);
+      for (const [spelling] of table) {
+        const used = claimed.get(spelling);
+        if (used !== undefined) {
+          throw new DeclarationError(
+            `Plugin "${identity}" declares option "${input.name}" with spelling "${spelling}" on ${subject}, which "${used}" already uses.`,
+          );
+        }
+      }
+      readSpellings(table, claimed);
+      held.hooks.set(input.name, identity);
+    }
+  }
+}
+
 /** Binds one Command's declarations to its action, so an action reads only validated values. */
 function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
@@ -845,25 +1174,14 @@ function bindDispatch<Args, Options, Globals>(
   };
 }
 
-/** Validates one declaration against the shared globals table and compiles it for dispatch. */
-export function buildCommand<Args, Options, Globals>(
-  state: CommandState<Args, Options, Globals>,
+/** Each declaration's own facts and extension values, whichever scope declared it. */
+function checkInputFacts(
+  inputs: readonly InputDeclaration[],
+  command: { name: string | null; subject: string },
   context: BuildContext,
-): BuiltCommand {
-  const { actions, name } = state;
-  const { globals } = context;
-  const subject = commandSubject(name);
-  checkCommandOptions(name, state.options);
-  const description = checkDescription(commandSentence(name), state.description);
-  const hidden = checkHidden(commandSentence(name), state.hidden);
-  const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
-  const extensions = buildCommandExtensions({
-    descriptors: context.descriptors,
-    layers: state.extensions,
-    subject: { phrase: `on ${subject}`, sentence: commandSentence(name) },
-  });
-  // Each declaration's own facts, in authoring order, before the rules that pair declarations.
-  for (const input of state.inputs) {
+): void {
+  const { name, subject } = command;
+  for (const input of inputs) {
     const sentence = `${commandSentence(name)} ${input.kind} "${input.name}"`;
     checkDescription(sentence, input.config.description);
     if (input.kind === 'argument') {
@@ -882,28 +1200,81 @@ export function buildCommand<Args, Options, Globals>(
       }),
     );
   }
+}
+
+/** One Command declares arguments or attaches children, whichever declaration made each of them. */
+function checkArgumentPlacement(
+  name: string | null,
+  slot: ArgumentSlot | undefined,
+  child: [string, CommandNodeHandle] | undefined,
+): void {
+  if (slot && child) {
+    throw new DeclarationError(
+      `${commandSentence(name)} declares argument "${slot.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
+    );
+  }
+}
+
+/** Validates one declaration against the shared globals table and compiles it for dispatch. */
+export function buildCommand<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  context: BuildContext,
+): BuiltCommand {
+  const { actions, name } = state;
+  const { globals } = context;
+  const subject = commandSubject(name);
+  const layer = { phrase: `on ${subject}`, sentence: commandSentence(name) };
+  checkCommandOptions(name, state.options);
+  const description = checkDescription(commandSentence(name), state.description);
+  const hidden = checkHidden(commandSentence(name), state.hidden);
+  const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
+  const declaredExtensions = buildCommandExtensions({
+    descriptors: context.descriptors,
+    layers: state.extensions,
+    subject: layer,
+  });
+  // Each declaration's own facts, in authoring order, before the rules that pair declarations.
+  checkInputFacts(state.inputs, { name, subject }, context);
   const attached = collectChildren(state);
   checkDeclarationOrder(state);
   const aliases = collectAliases(state);
-  const slots = collectArguments(state, subject);
-  const first = slots[0];
-  const child = attached[0];
-  if (first && child) {
-    throw new DeclarationError(
-      `${commandSentence(name)} declares argument "${first.input.name}" and attaches child "${child[0]}". Move the argument into a child Command or remove the children.`,
-    );
-  }
+  const declaredSlots = collectArguments(state, subject);
+  checkArgumentPlacement(name, declaredSlots[0], attached[0]);
   if (actions.length > 1) {
     throw new DeclarationError(
       `${commandSentence(name)} has multiple actions. Register one action.`,
     );
   }
   const action = actions[0];
-  const result = buildResult(state, action !== undefined);
+  const hasAction = action !== undefined;
+  const declaredResult = buildResult(state, hasAction);
+  /**
+   * The hooks run once the author's declaration is complete and its result is resolved, so a hook
+   * reads an exact record, and every rule below reads what the hooks returned.
+   */
+  const calls = runAttachHooks(state, { hasAction, path: context.path }, context.plugins);
+  const hooked = applyAttachCalls(state, calls);
+  const declared = calls.filter((call) => call.kind === 'input');
+  checkInputFacts(
+    declared.map((call) => call.input),
+    { name, subject },
+    context,
+  );
+  const extensions = calls.some((call) => call.kind === 'extend')
+    ? buildCommandExtensions({
+        descriptors: context.descriptors,
+        layers: hooked.extensions,
+        subject: layer,
+      })
+    : declaredExtensions;
+  const slots = declared.length > 0 ? collectArguments(hooked, subject) : declaredSlots;
+  checkArgumentPlacement(name, slots[0], attached[0]);
+  const result = calls.length > 0 ? buildResult(hooked, hasAction) : declaredResult;
   if (!action) {
-    checkGroup(state, attached);
+    checkGroup(hooked, attached);
   }
-  const options = compileLocalOptions(state, globals, subject);
+  checkAttachedOptions(hooked, declared, globals);
+  const options = compileLocalOptions(hooked, globals, subject);
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
   const claim = aliasNamespace(name, new Set(attached.map((entry) => entry[0])));
@@ -923,10 +1294,10 @@ export function buildCommand<Args, Options, Globals>(
     children,
     deprecated,
     description,
-    dispatch: action ? bindDispatch(state, action, globals) : undefined,
+    dispatch: action ? bindDispatch(hooked, action, globals) : undefined,
     extensions,
     hidden,
-    inputs: state.inputs,
+    inputs: hooked.inputs,
     name,
     options,
     result,
@@ -952,6 +1323,8 @@ export function buildGraph<Args, Options, Globals>(
     extensions: install.extensions,
     globals: buildGlobals(globals, install.plugins, install),
     owners: new Map(),
+    path: [],
+    plugins: install.plugins,
   };
   return {
     extensions: context.extensions,

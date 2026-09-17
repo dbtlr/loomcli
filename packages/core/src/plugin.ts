@@ -8,7 +8,7 @@ import type { ProcessSignal } from './signals.js';
 import type { Palette } from './style-state.js';
 import type { ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
-import type { OptionValue, PluginOptionConfig } from './types.js';
+import type { CommandAttachHook, OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { OptionInput } from './validation.js';
 import type { ViewContribution } from './view.js';
@@ -38,6 +38,7 @@ interface DeclaredPlugin {
   theme?: unknown;
   options?: PluginOptions;
   middleware?: { activate?: unknown; load?: unknown };
+  onCommandAttach?: unknown;
   extensions?: readonly AnyExtension[];
   views?: unknown;
   signals?: unknown;
@@ -89,7 +90,10 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
   context: MiddlewareContext<OptionsOf<Contributor>>,
 ) => Promise<void> | void;
 
-/** Everything a plugin declares. It holds declarations alone and performs no work. */
+/**
+ * Everything a plugin declares. Creating and installing the value runs none of its code: a hook
+ * runs at graph build, and the middleware runs inside an invocation.
+ */
 interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
   Theme extends ThemeMapping = ThemeMapping,
@@ -100,15 +104,16 @@ interface PluginDefinition<
     activate: 'always' | readonly (keyof Options & string)[];
     load: () => Promise<{ default: Middleware<Plugin<Options>> }>;
   };
+  onCommandAttach?: CommandAttachHook;
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
 }
 
 /**
- * One plugin: an identity and the declarations it contributes. The value performs no work when it
- * is created and none when it is installed, so an installed plugin an invocation never reaches
- * costs that invocation nothing.
+ * One plugin: an identity and the contributions it carries. Creating and installing the value runs
+ * none of its code: a hook runs at graph build, and the middleware runs inside an invocation, so an
+ * installed plugin an invocation never reaches costs that invocation its hooks alone.
  */
 function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(
   identity: string,
@@ -363,9 +368,32 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
   return [...claimed];
 }
 
+/**
+ * A lifecycle hook is a function core calls at one named point, so being callable is the whole
+ * claim this check makes; every rule the calls it makes carry belongs to the build that calls it.
+ */
+function isHook(value: unknown): value is CommandAttachHook {
+  return typeof value === 'function';
+}
+
+/** One plugin's `onCommandAttach` hook, or `undefined` for a plugin that declares none. */
+function readHook(identity: string, declared: unknown): CommandAttachHook | undefined {
+  if (declared === undefined) {
+    return undefined;
+  }
+  if (!isHook(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares onCommandAttach that is not a function. Supply a function of the Command.`,
+    );
+  }
+  return declared;
+}
+
 /** One installed plugin's declarations, read once per build in installation order. */
 interface BuiltPlugin {
   theme: Palette | undefined;
+  /** The hook core calls once per Command at graph build, or nothing where none is declared. */
+  onCommandAttach: CommandAttachHook | undefined;
   /** The plugin's own `views` slot, read once the validated theme is in place. */
   views: unknown;
   identity: string;
@@ -440,6 +468,7 @@ function buildPlugins(
       identity,
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),
+      onCommandAttach: readHook(identity, declaration.onCommandAttach),
       signals,
       theme,
       views: declaration.views,

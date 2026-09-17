@@ -209,6 +209,55 @@ const rejected = [
     'plugin-overrides',
     'Plugin "@loomcli/help" overrides the view for "InputError" twice. Remove one override.',
   ],
+  [
+    'hook-not-function',
+    'Plugin "@loomcli/plugins/format" declares onCommandAttach that is not a function. Supply a function of the Command.',
+  ],
+  [
+    'hook-returns-other',
+    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
+  ],
+  [
+    'hook-throws',
+    'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke.',
+  ],
+  [
+    'hook-throws-declaration',
+    'Plugin "@loomcli/plugins/format" requires a result on Command "count". Declare one or omit the plugin.',
+  ],
+  [
+    'hook-local-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a local option. Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-global-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-plugin-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@acme/out". Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-hook-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option plugin "@acme/out" declared through onCommandAttach. Install one of them.',
+  ],
+  [
+    'hook-argument-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an argument. Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-spelling-collision',
+    'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses.',
+  ],
+  [
+    'hook-row-view',
+    'Command "count" names row view "records" on a value result. Supply a view with render, or declare the result with rows().',
+  ],
+  [
+    'hook-missing-default',
+    'Command "count" selects default view "wide", which it does not name. Name the view or select a named one.',
+  ],
+  ['hook-invalid-option', 'Option "format" has an invalid type. Use "string" or "boolean".'],
 ] satisfies [string, string][];
 
 test.each(rejected)('inspect() and run() reject the %s declaration alike', (scenario, message) => {
@@ -262,6 +311,14 @@ test('one class overridden by the application and by a plugin resolves first-in-
 
 test('an empty signals claim leaves the slot free for the next plugin', () => {
   expect(build('signals-empty-claim', 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'inspected\n',
+  });
+});
+
+test('a hook declares an option after the action, which the closures do not close', () => {
+  expect(build('hook-late-option', 'inspect')).toEqual({
     status: 0,
     stderr: '',
     stdout: 'inspected\n',

@@ -4,6 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ExtensionValue } from './extension.js';
+import type { ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
@@ -215,6 +216,41 @@ export interface DeclaredResult {
   kind: 'value' | 'rows';
   views: ReadonlyMap<string, ResultView>;
 }
+
+/** Phantom key. It brands the surface a lifecycle hook receives, so a forged value is not one. */
+export declare const attachedCommand: unique symbol;
+
+/**
+ * One Command as `onCommandAttach` receives it: the facts `inspect()` publishes, with their types
+ * erased, and the authoring calls a hook may make. Each call returns a new value whose facts hold
+ * what the call added, so a hook reads its own earlier calls back. The calls a hook cannot make are
+ * absent, because each of them changes what the action was compiled against or the graph's shape.
+ */
+export interface AttachedCommand {
+  readonly [attachedCommand]: true;
+  /** The Command's own name, and `null` for the root. */
+  readonly name: string | null;
+  readonly path: readonly string[];
+  readonly hasAction: boolean;
+  /** The declared argument names, in declaration order. */
+  readonly arguments: readonly string[];
+  /** The declared local option names, in declaration order. */
+  readonly options: readonly string[];
+  readonly result: ResultNode | null;
+  argument(name: string, config: ArgumentConfig): AttachedCommand;
+  option(name: string, config: OptionConfig): AttachedCommand;
+  views(
+    replacements: Readonly<Record<string, ResultView>>,
+    options?: { default?: string },
+  ): AttachedCommand;
+  extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
+}
+
+/**
+ * The lifecycle hook core calls once per Command at graph build, in installation order, each
+ * receiving what the previous plugin's hook returned.
+ */
+export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
 
 /**
  * What `out.results` accepts for one declared result. The declaration rides in the declared types
