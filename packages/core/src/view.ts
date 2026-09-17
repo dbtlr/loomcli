@@ -58,15 +58,18 @@ type ViewFunction = (data: never, context: ViewContext) => unknown;
 /** One stored row function, with the row type erased for the same reason. */
 type RowFunction = (row: never, index: number, context: ViewContext) => unknown;
 
-/** One stored function that opens or closes a sequence and reads the context alone. */
-type EdgeFunction = (context: ViewContext) => unknown;
+/** One stored function that opens a sequence and reads the context alone. */
+type HeadFunction = (context: ViewContext) => unknown;
+
+/** One stored function that closes a sequence and reads its completed row count. */
+type TailFunction = (count: number, context: ViewContext) => unknown;
 
 /** One stored view value: the functions of whichever shape its author supplied. */
 interface StoredView {
   render?: ViewFunction | undefined;
   row?: RowFunction | undefined;
-  head?: EdgeFunction | undefined;
-  tail?: EdgeFunction | undefined;
+  head?: HeadFunction | undefined;
+  tail?: TailFunction | undefined;
 }
 
 /** Authored declarations register here, so a hand-built object with an identity is a bare view. */
@@ -94,7 +97,7 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
   readonly identity: string;
   readonly row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   readonly head?: (context: ViewContext) => string;
-  readonly tail?: (context: ViewContext) => string;
+  readonly tail?: (count: number, context: ViewContext) => string;
 
   constructor(identity: string, definition: RowView<Row>) {
     this.identity = identity;
@@ -391,8 +394,8 @@ function buildViews(
 interface ResolvedView {
   render?: ((data: unknown, context: ViewContext) => unknown) | undefined;
   row?: ((row: unknown, index: number, context: ViewContext) => unknown) | undefined;
-  head?: EdgeFunction | undefined;
-  tail?: EdgeFunction | undefined;
+  head?: HeadFunction | undefined;
+  tail?: TailFunction | undefined;
 }
 
 /** One stored view value, read back over the data its own key carries. */
@@ -458,8 +461,8 @@ function resolveView<Data>(
 /** The three functions one sequence writes through: `head`, `row` per item, and `tail`. */
 interface ResolvedRowView<Row> {
   row: (row: Row, index: number, context: ViewContext) => unknown;
-  head: EdgeFunction | undefined;
-  tail: EdgeFunction | undefined;
+  head: HeadFunction | undefined;
+  tail: TailFunction | undefined;
 }
 
 /**

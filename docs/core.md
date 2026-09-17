@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023.
 
 ## Application declarations
 
@@ -1024,7 +1024,7 @@ import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
 import { countFiles } from '../actions/count-files.js';
-import type { Row } from '../table.js';
+import type { Row } from '../row.js';
 
 export const count = new Command('count')
   .argument('files', { required: true, variadic: true })
@@ -1041,7 +1041,7 @@ import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
 import { count } from './commands/count.js';
-import type { Row } from './table.js';
+import type { Row } from './row.js';
 
 const wide = table<Row>({ columns: ['source', 'count', { key: 'count', header: 'Share', format: share }] });
 export const branded = count.views({ wide, json: json({ map: toWire }) }, { default: 'wide' });
@@ -1703,7 +1703,16 @@ import { version } from '@loomcli/plugins/version';
 
 export const textstat = new Application('textstat', { plugins: [help(), version(), format()] })
   // ...
-  .rows<Row>({ views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) } })
+  .rows<Row>({
+    views: {
+      table: table({
+        columns: [
+          { key: 'count', header: 'COUNT', align: 'right' },
+          { key: 'source', header: 'SOURCE' },
+        ],
+      }),
+    },
+  })
   .action(countFiles);
 ```
 
@@ -1777,7 +1786,14 @@ interface Row {
 export const count = new Command('count')
   .argument('files', { required: true, variadic: true })
   .rows<Row>({
-    views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) },
+    views: {
+      table: table({
+        columns: [
+          { key: 'count', header: 'COUNT', align: 'right' },
+          { key: 'source', header: 'SOURCE' },
+        ],
+      }),
+    },
   })
   .action(countFiles);
 ```
@@ -1852,7 +1868,7 @@ kind  array with 2 items
 
 #### Table and records example coverage
 
-The increment is proven when both examples drop their hand-written views for the two factories. [textstat](../examples/textstat/src/application.ts) declares `rows<Row>` over `{ count: number; source: string }` with `views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) }`, its action appends `{ count: total, source: 'total' }` when `--total` was supplied, and the `Table` type and `tableView` are deleted with the module that held them; the header names `COUNT` rather than the metric, and `--format json` prints an array of rows rather than one object. jsonkit's `paths` declares `views: { list: records({ identifier: 'path' }), table: table({ columns: ['path', 'kind'] }) }`, and `pathList` and `pathTable` are deleted. jsonkit's root declares `rows<Member>` over `{ key: string; kind: string }` with `views: { records: records({ identifier: 'key' }) }`, its own line about the document's kind moves to stderr through `out.info`, and a scalar document is an empty sequence whose tail prints `0 records`. The implementation re-pins the golden bytes and the transcripts of the [results](#results-example-coverage), [formatter](#formatter-example-coverage), and [failure](#example-coverage-2) coverage paragraphs against the new views, and the `jsonkit --help` page under [The help page](#the-help-page), which gains an OPTIONS section with its `--format` row because the root now declares a result.
+The increment is proven when both examples drop their hand-written views for the two factories. [textstat](../examples/textstat/src/application.ts) declares `rows<Row>` over `{ count: number; source: string }`. Its table view names the `COUNT` and `SOURCE` headers, and its action appends `{ count: total, source: 'total' }` when `--total` was supplied. The `Table` type, `tableView`, and the module that held them are deleted. `--format json` prints an array of rows instead of one object. jsonkit's `paths` declares `views: { list: records({ identifier: 'path' }), table: table({ columns: ['path', 'kind'] }) }`, and `pathList` and `pathTable` are deleted. jsonkit's root declares `rows<Member>` over `{ key: string; kind: string }` with `views: { records: records({ identifier: 'key' }) }`. Its line about the document's kind moves to stderr through `out.info`. A scalar document is an empty sequence whose tail prints `0 records`. The implementation re-pins the golden bytes and the transcripts of the [results](#results-example-coverage), [formatter](#formatter-example-coverage), and [failure](#example-coverage-2) coverage paragraphs against the new views. The `jsonkit --help` page under [The help page](#the-help-page) gains an OPTIONS section with its `--format` row because the root now declares a result.
 
 The acceptance tests cover each factory as the second argument of `out.render` and as an entry of a declared result, a column measured against a wide CJK cell and against a styled cell, a `null` and an `undefined` cell under each factory, one key listed twice as two columns, a `format` cell that returns styled text the view leaves unescaped beside a default cell in the same row that the view escapes, the all-keys default in first-seen order under each factory, an empty sequence under the table with `columns` printing the header line alone and without `columns` printing nothing, an empty sequence under records printing `0 records`, a one-row sequence printing `1 record`, and `tail` receiving the row count under `out.render` and under `out.results` alike. The negative type checks cover a column that names a key the row does not carry, a records field that carries `header`, an `identifier` that names a key the row does not carry, and a `format` whose value parameter is typed as something other than the key's own value type. Each case runs under Node and Bun.
 

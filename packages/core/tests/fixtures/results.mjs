@@ -28,6 +28,12 @@ const list = {
   tail: () => 'END\n',
 };
 
+/** A declared row view whose tail makes the completed row count observable. */
+const withCountedTail = {
+  row: (row, index) => `${index}: ${row.source}\n`,
+  tail: (count) => `COUNT:${count}\n`,
+};
+
 /** The whole view over the collected rows, which renders once at the end of the source. */
 const collected = { render: (all) => `${all.length} rows\n` };
 
@@ -89,6 +95,7 @@ const shared = scenario === 'order' ? capture() : undefined;
 const declarations = {
   array: 'row',
   async: 'row',
+  'counted-tail': 'row',
   'declared-rows': 'row',
   'declared-value': 'value',
   'empty-row': 'row',
@@ -140,6 +147,10 @@ async function act({ out }) {
     }
     case 'async': {
       await out.results(streamed());
+      break;
+    }
+    case 'counted-tail': {
+      await out.results(rows);
       break;
     }
     case 'whole': {
@@ -286,6 +297,9 @@ function resultViews(declared) {
   }
   if (scenario === 'string-source') {
     return { letters };
+  }
+  if (scenario === 'counted-tail') {
+    return { counted: withCountedTail };
   }
   if (declared === 'value') {
     return { table };

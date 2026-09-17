@@ -20,6 +20,12 @@ const list = {
   tail: () => 'END\n',
 };
 
+/** A row view whose tail makes the completed row count observable. */
+const withCountedTail = {
+  row: (row, index) => `${index}: ${row.source}\n`,
+  tail: (count) => `COUNT:${count}\n`,
+};
+
 /** A row view that fails on the second row, so the pieces before it stand. */
 const breaking = {
   head: () => 'PATHS\n',
@@ -140,6 +146,10 @@ async function act({ out }) {
     }
     case 'empty': {
       await out.render([], list);
+      break;
+    }
+    case 'counted-tail': {
+      await out.render(rows, withCountedTail);
       break;
     }
     case 'back-pressure': {

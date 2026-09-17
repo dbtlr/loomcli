@@ -4,15 +4,31 @@ import { invoke } from '../../../scripts/test-process.js';
 import { document, main, withDocuments } from './documents.js';
 
 const summary = [
-  'object with 6 keys',
-  'name\tstring',
-  'tags\tarray with 2 items',
-  'nested\tobject with 1 key',
-  'count\tnumber',
-  'ok\tboolean',
-  'none\tnull',
+  'key   name',
+  'kind  string',
+  '',
+  'key   tags',
+  'kind  array with 2 items',
+  '',
+  'key   nested',
+  'kind  object with 1 key',
+  '',
+  'key   count',
+  'kind  number',
+  '',
+  'key   ok',
+  'kind  boolean',
+  '',
+  'key   none',
+  'kind  null',
+  '',
+  '6 records',
   '',
 ].join('\n');
+
+function kindLine(kind: string): string {
+  return `ℹ ${kind}\n`;
+}
 
 test('jsonkit preserves JSON strings that resemble recognized style markup', () => {
   const literal = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
@@ -41,26 +57,26 @@ test('jsonkit summarizes an object with one kind line per key', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json'], { cwd })).toEqual({
       status: 0,
-      stderr: '',
+      stderr: kindLine('object with 6 keys'),
       stdout: summary,
     });
   });
 });
 
 test.each([
-  ['[1,2,3]', 'array with 3 items\n'],
-  ['[1]', 'array with 1 item\n'],
-  ['{}', 'object with 0 keys\n'],
-  ['"text"', 'string\n'],
-  ['42', 'number\n'],
-  ['true', 'boolean\n'],
-  ['null', 'null\n'],
-])('jsonkit summarizes %s with only its kind line', (contents, stdout) => {
+  ['[1,2,3]', 'array with 3 items'],
+  ['[1]', 'array with 1 item'],
+  ['{}', 'object with 0 keys'],
+  ['"text"', 'string'],
+  ['42', 'number'],
+  ['true', 'boolean'],
+  ['null', 'null'],
+])('jsonkit summarizes %s as an empty records result beside its kind line', (contents, kind) => {
   withDocuments({ 'doc.json': contents }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json'], { cwd })).toEqual({
       status: 0,
-      stderr: '',
-      stdout,
+      stderr: kindLine(kind),
+      stdout: '0 records\n',
     });
   });
 });
@@ -205,13 +221,16 @@ test.each([
 });
 
 test.each([
-  [[], summary],
-  [['get', 'name'], '"loom"\n'],
-  [['keys'], 'name\ntags\nnested\ncount\nok\nnone\n'],
-  [['select', '--field', 'name'], '{\n  "name": "loom"\n}\n'],
-] satisfies [string[], string][])('jsonkit reads the piped document for %j', (args, stdout) => {
-  expect(invoke(main, args, { input: document })).toEqual({ status: 0, stderr: '', stdout });
-});
+  [[], summary, kindLine('object with 6 keys')],
+  [['get', 'name'], '"loom"\n', ''],
+  [['keys'], 'name\ntags\nnested\ncount\nok\nnone\n', ''],
+  [['select', '--field', 'name'], '{\n  "name": "loom"\n}\n', ''],
+] satisfies [string[], string, string][])(
+  'jsonkit reads the piped document for %j',
+  (args, stdout, stderr) => {
+    expect(invoke(main, args, { input: document })).toEqual({ status: 0, stderr, stdout });
+  },
+);
 
 test.each(['', '{"name":', 'not json at all'])(
   'jsonkit reports a parse failure for the piped text %j',

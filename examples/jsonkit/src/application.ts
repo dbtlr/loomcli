@@ -5,6 +5,7 @@ import type { EnvironmentOf } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
+import { records } from '@loomcli/plugins/records';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
@@ -16,6 +17,7 @@ import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
 import { fileOrStdin } from './file-or-stdin.js';
+import type { Member } from './member.js';
 import { fatalError, inputProblems, unknownCommand } from './views.js';
 
 // The root action type-imports this value, so it is registered by the last call.
@@ -60,4 +62,5 @@ export const jsonkit = configured
   .command(fetch)
   .command(debug)
   .command(paths)
+  .rows<Member>({ views: { records: records({ identifier: 'key' }) } })
   .action(summarize);

@@ -7,7 +7,7 @@ import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
-import type { Row } from './table.js';
+import type { Row } from './row.js';
 
 /**
  * One counted source: the subject each failure names, the name its row prints, and the
@@ -78,15 +78,14 @@ async function countAll(
   return { rows, total };
 }
 
-/** The whole table is emitted at once as the result, and the hidden timing line follows it. */
+/** The counted rows are emitted at once as the result, and the hidden timing line follows it. */
 export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
   const started = performance.now();
   const counted = await countAll(options, sources(args.files, host));
-  await out.results({
-    metric: options.metric,
-    rows: counted.rows,
-    total: options.total ? counted.total : undefined,
-  });
+  const rows = options.total
+    ? [...counted.rows, { count: counted.total, source: 'total' }]
+    : counted.rows;
+  await out.results(rows);
   if (options.timing) {
     await out.info(`elapsed: ${Math.round(performance.now() - started)}ms`);
   }

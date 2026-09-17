@@ -4,14 +4,14 @@ import { Application, FatalError, override } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
+import { table } from '@loomcli/plugins/table';
 import { version } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
 import { filesOrStdin } from './files-or-stdin.js';
-import { tableView } from './table.js';
-import type { Table } from './table.js';
+import type { Row } from './row.js';
 import { fatalError } from './views.js';
 
 /**
@@ -70,7 +70,16 @@ export const textstat = new Application('textstat', {
     hidden: true,
     type: 'boolean',
   })
-  // The table is the result this application produces, and its own view is its default view name.
-  // Stdout therefore carries the table and nothing else the action writes.
-  .result<Table>({ views: { table: tableView } })
+  // The counted sources are the rows this application produces, and the table is their default.
+  // Stdout therefore carries the rows and nothing else the action writes.
+  .rows<Row>({
+    views: {
+      table: table({
+        columns: [
+          { align: 'right', header: 'COUNT', key: 'count' },
+          { header: 'SOURCE', key: 'source' },
+        ],
+      }),
+    },
+  })
   .action(countFiles);

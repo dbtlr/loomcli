@@ -19,27 +19,24 @@ function withOneFile(run: (cwd: string) => void) {
   }
 }
 
-/** The table the row above counts. The action prints the argument as supplied, not resolved. */
-const document = {
-  metric: 'bytes',
-  rows: [{ count: 6, source: 'one.txt' }],
-};
+/** The rows the source above produces. The action prints the argument as supplied, not resolved. */
+const rows = [{ count: 6, source: 'one.txt' }];
 
-test('textstat --format json prints the table as one indented document on stdout', () => {
+test('textstat --format json prints the rows as one indented array on stdout', () => {
   withOneFile((cwd) => {
     const result = invoke(main, ['--format', 'json', 'one.txt'], { cwd });
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe(`${JSON.stringify(document, null, 2)}\n`);
+    expect(result.stdout).toBe(`${JSON.stringify(rows, null, 2)}\n`);
   });
 });
 
-test('textstat --format jsonl prints the table on one line', () => {
+test('textstat --format jsonl prints one line per row', () => {
   withOneFile((cwd) => {
     const result = invoke(main, ['--format', 'jsonl', 'one.txt'], { cwd });
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe(`${JSON.stringify(document)}\n`);
+    expect(result.stdout).toBe(`${rows.map((row) => JSON.stringify(row)).join('\n')}\n`);
   });
 });
 
@@ -58,7 +55,7 @@ test('textstat --format json --timing still writes the timing line on stderr', (
       env: { TERM: 'xterm-256color' },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe(`${JSON.stringify(document, null, 2)}\n`);
+    expect(result.stdout).toBe(`${JSON.stringify(rows, null, 2)}\n`);
     expect(result.stderr).toMatch(/^ℹ elapsed: \d+ms\n$/u);
   });
 });
@@ -66,7 +63,7 @@ test('textstat --format json --timing still writes the timing line on stderr', (
 test('textstat with no --format prints the table exactly as it did before the plugin', () => {
   withOneFile((cwd) => {
     const result = invoke(main, ['one.txt'], { cwd });
-    expect(result).toEqual({ status: 0, stderr: '', stdout: 'BYTES  SOURCE\n    6  one.txt\n' });
+    expect(result).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
   });
 });
 
