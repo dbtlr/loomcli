@@ -75,7 +75,7 @@ test('a bigint makes jsonl() throw, reported at exit 1', () => {
 });
 
 test.each(['never', 'always'] as const)(
-  String.raw`U+001B, U+009B, and U+007F print as , , and  under color %s`,
+  String.raw`U+001B, U+009B, and U+007F print as \u001b, \u009b, and \u007f under color %s`,
   (color) => {
     expect(run('jsonl-controls', color)).toEqual(rendered('"a\\u001bb\\u009bc\\u007fd"\n'));
   },

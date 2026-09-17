@@ -43,4 +43,4 @@ The ordering of validation ahead of the chain is settled here. Open: whether a t
 
 ## Status
 
-Accepted. The formatter increment proves it: both example applications install `format()` after `help()` and `version()`, `textstat --format json` prints its table as one document with the timing line still on stderr, `jsonkit paths --format jsonl` prints one line per entry as the source yields, and the acceptance in [Formatter](../core.md#formatter) runs under Node and Bun.
+Accepted. The formatter increment proves it: both example applications install `format()` after `help()` and `version()`, `textstat --format json` prints its table as one document with the timing line still on stderr, `jsonkit paths --format jsonl` prints one line per entry once core has collected the sequence, and the acceptance in [Formatter](../core.md#formatter) runs under Node and Bun.
