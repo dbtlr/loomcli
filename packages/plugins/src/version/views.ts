@@ -6,7 +6,7 @@ import Package from '../../package.json' with { type: 'json' };
 /**
  * The declared view of the version line. A declared version that already starts with a lowercase
  * `v` carries that `v` once; every other first character is printed after the added one. The rule
- * is presentation alone, and `graph.version` keeps the declared string.
+ * is rendering alone, and `graph.version` keeps the declared string.
  */
 export const versionLine = view<CommandGraph>(`${Package.name}/version/line`, {
   render: ({ name, version }, { style }) =>

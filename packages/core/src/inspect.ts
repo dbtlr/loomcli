@@ -23,7 +23,9 @@ interface ArgumentNode {
 
 /**
  * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms, and
- * `scope` tells an application's own option from a plugin option, which reaches no action.
+ * `scope` tells an application's own option from a plugin option, which reaches no action. An
+ * option a plugin's lifecycle hook declared on a Command is that Command's own in every respect, so
+ * it reads `application` and names no plugin.
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
@@ -82,8 +84,8 @@ interface CommandNode {
 }
 
 /**
- * The result one Command declares: the unit its action emits, the presentation names in record
- * order, and the name of the view core renders when nothing selects another.
+ * The result one Command declares: the unit its action emits, the view names in record order, and
+ * the name of the view core renders when nothing selects another.
  */
 interface ResultNode {
   readonly kind: 'value' | 'rows';
@@ -128,11 +130,13 @@ function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Sp
 }
 
 /**
- * A snapshot of one declared value. Arrays and plain objects are copied and frozen to any depth, so
- * a consumer cannot reach the declaration through the graph, and a later call reports the declared
- * value again. Primitives and library objects are reported as they are.
+ * A snapshot of one value. Arrays and plain objects are copied and frozen to any depth, so a
+ * consumer cannot reach the source through the copy, and a later call reports the value again.
+ * Primitives and library objects, such as a class instance or a `Date` a schema produced, are
+ * reported as they are, because core cannot copy them meaningfully. The graph reads it for a
+ * declared value and the chain reads it for the request one middleware holds.
  */
-function snapshot(value: unknown): unknown {
+export function snapshot(value: unknown): unknown {
   if (Array.isArray(value)) {
     return Object.freeze(value.map((entry: unknown) => snapshot(entry)));
   }
@@ -296,4 +300,4 @@ function inspectGraph(
 }
 
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
-export { inspectGraph };
+export { inspectGraph, resultNode };

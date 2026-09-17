@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the request
 description: A plugin definition carries lifecycle hooks named on<Event> that core calls at named points, beginning with onCommandAttach at graph build. Local parsing and validation run ahead of the middleware chain with the fault held until the dispatch boundary, so a middleware reads the request and selects a result's view by name. The formatter is the proof.
-status: proposed
+status: accepted
 created: 2026-09-15
-modified: 2026-09-15
+modified: 2026-09-16
 ---
 
 # ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the request
@@ -43,4 +43,4 @@ The ordering of validation ahead of the chain is settled here. Open: whether a t
 
 ## Status
 
-Proposed. It moves to accepted when the formatter increment lands with both example applications installing `format()` and the acceptance in [Formatter](../core.md#formatter) proven under Node and Bun.
+Accepted. The formatter increment proves it: both example applications install `format()` after `help()` and `version()`, `textstat --format json` prints its table as one document with the timing line still on stderr, `jsonkit paths --format jsonl` prints one line per entry once core has collected the sequence, and the acceptance in [Formatter](../core.md#formatter) runs under Node and Bun.

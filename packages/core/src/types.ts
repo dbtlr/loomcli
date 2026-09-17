@@ -4,6 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ExtensionValue } from './extension.js';
+import type { ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
@@ -192,29 +193,64 @@ export interface RowView<Row> {
   /** A row view has one shape; the whole view of Rendered output is the other. */
   render?: never;
 }
-/** The presentation record of a value result: every entry renders the whole value. */
+/** The views record of a value result: every entry renders the whole value. */
 export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
 /**
- * The presentation record of a rows result: a whole view over the collected rows, which core
- * buffers the sequence for, or a row view, which core feeds as the rows arrive.
+ * The views record of a rows result: a whole view over the collected rows, which core buffers the
+ * sequence for, or a row view, which core feeds as the rows arrive.
  */
 export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
 
 /**
- * One presentation a result names, with its data type erased, as the view registry erases a
- * declared view's. The write site reads each function back through the key that resolved it.
+ * One view a result names, with its data type erased, as the view registry erases a declared
+ * view's. The write site reads each function back through the key that resolved it.
  */
 export type ResultView = View<never> | RowView<never>;
 
 /**
- * One declared result as the write site reads it: the unit the action emits, the presentations it
- * names in record order, and the key core renders when nothing selects another.
+ * One declared result as the write site reads it: the unit the action emits, the view names it
+ * declares in record order, and the key core renders when nothing selects another.
  */
 export interface DeclaredResult {
   default: string;
   kind: 'value' | 'rows';
   views: ReadonlyMap<string, ResultView>;
 }
+
+/** Phantom key. It brands the surface a lifecycle hook receives, so a forged value is not one. */
+export declare const attachedCommand: unique symbol;
+
+/**
+ * One Command as `onCommandAttach` receives it: the facts `inspect()` publishes, with their types
+ * erased, and the authoring calls a hook may make. Each call returns a new value whose facts hold
+ * what the call added, so a hook reads its own earlier calls back. The calls a hook cannot make are
+ * absent, because each of them changes what the action was compiled against or the graph's shape.
+ */
+export interface AttachedCommand {
+  readonly [attachedCommand]: true;
+  /** The Command's own name, and `null` for the root. */
+  readonly name: string | null;
+  readonly path: readonly string[];
+  readonly hasAction: boolean;
+  /** The declared argument names, in declaration order. */
+  readonly arguments: readonly string[];
+  /** The declared local option names, in declaration order. */
+  readonly options: readonly string[];
+  readonly result: ResultNode | null;
+  argument(name: string, config: ArgumentConfig): AttachedCommand;
+  option(name: string, config: OptionConfig): AttachedCommand;
+  views(
+    replacements: Readonly<Record<string, ResultView>>,
+    options?: { default?: string },
+  ): AttachedCommand;
+  extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
+}
+
+/**
+ * The lifecycle hook core calls once per Command at graph build, in installation order, each
+ * receiving what the previous plugin's hook returned.
+ */
+export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
 
 /**
  * What `out.results` accepts for one declared result. The declaration rides in the declared types
@@ -250,7 +286,7 @@ export interface Out<Result = unknown> {
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
-  /** The neutral presentation call: a rendered value has no purpose and no destination. */
+  /** The neutral view call: a rendered value has no purpose and no destination. */
   render<Data>(data: Data, view: View<Data>): Promise<void>;
   /** The same call over a sequence: core writes each row's text as the source yields it. */
   render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
@@ -263,13 +299,29 @@ export interface Out<Result = unknown> {
 }
 
 /**
- * What the action's channel answers to: the routed path its diagnostics name, and the result the
- * routed Command declared. The declaration decides the destinations the channel carries, so the
- * redirect is read from the graph once and never from the view a run selected.
+ * What the action's channel answers to: the routed path its diagnostics name, the result the
+ * routed Command declared, and the view this run selected. The declaration decides the
+ * destinations the channel carries, so the redirect is read from the graph once and never from the
+ * view a run selected; `view` decides the rendering alone, and is `null` when nothing selected one
+ * and the declaration's default stands.
  */
 export interface ResultBinding {
   path: readonly string[];
   result: DeclaredResult | undefined;
+  view: string | null;
+}
+
+/**
+ * The routed Command's invocation after parsing and validation, which every middleware reads. The
+ * values are what the action receives, the output of each declaration's schema, for that Command's
+ * own arguments and local options; global and plugin option values are not here. The records are
+ * untyped and frozen, because a middleware runs ahead of every action and the graph carries no
+ * type for a value.
+ */
+export interface Request {
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly options: Readonly<Record<string, unknown>>;
+  readonly passthrough: readonly string[];
 }
 
 /** The channel one action receives, with the emission the results lane holds it to. */
@@ -380,8 +432,9 @@ export type BooleanOption =
 export type OptionConfig = StringOption | BooleanOption;
 /**
  * The parsing part of a string option config, which is all a plugin option declares. A plugin
- * option carries no schema and no presence rule, because it is read before local parsing, where the
- * validation context every schema is promised cannot exist. Its middleware interprets the value.
+ * option carries no schema and no presence rule, because the pre-scan consumes it ahead of routing,
+ * where the validation context every schema is promised cannot exist. Its middleware interprets
+ * the value.
  * A Boolean plugin option is an ordinary `BooleanOption`, which already declares none of them.
  */
 export type PluginStringOption = OptionSpelling &

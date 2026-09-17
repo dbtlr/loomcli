@@ -12,6 +12,14 @@
   ],
   "type": "module",
   "exports": {
+    "./format": {
+      "types": "./dist/src/format/plugin.d.ts",
+      "import": "./dist/src/format/plugin.js"
+    },
+    "./format/views": {
+      "types": "./dist/src/format/views.d.ts",
+      "import": "./dist/src/format/views.js"
+    },
     "./help": {
       "types": "./dist/src/help/plugin.d.ts",
       "import": "./dist/src/help/plugin.js"

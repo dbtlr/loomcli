@@ -27,6 +27,7 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
       '      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)',
       '      --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)',
       '  -t, --total                  Add a total row.',
+      '      --format <format>        Select the output format: table, json, jsonl.',
       '  -h, --help                   Show this help.',
       '  -V, --version                Print the version.',
       '      --explain                Explain the selected command and exit.',

@@ -1,6 +1,7 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, override } from '@loomcli/core';
+import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { version } from '@loomcli/plugins/version';
@@ -35,7 +36,7 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
-  plugins: [help(), version(), explain()],
+  plugins: [help(), version(), format(), explain()],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 })
@@ -69,7 +70,7 @@ export const textstat = new Application('textstat', {
     hidden: true,
     type: 'boolean',
   })
-  // The table is the result this application produces, and its own view is its one presentation.
+  // The table is the result this application produces, and its own view is its default view name.
   // Stdout therefore carries the table and nothing else the action writes.
   .result<Table>({ views: { table: tableView } })
   .action(countFiles);

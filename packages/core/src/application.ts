@@ -342,7 +342,7 @@ class ApplicationBuilder<
     );
   }
 
-  /** Presentation after the fact, merged by key, as it is on a Command. */
+  /** Views after the fact, merged by key, as it is on a Command. */
   views(
     replacements: ResultViewsOf<Result>,
     options?: { default?: string },

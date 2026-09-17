@@ -39,8 +39,8 @@ interface Counts {
 }
 
 /**
- * The presentation one sequence writes through. A row view writes each row as the source yields
- * it; a whole view collects every row and renders once at the end of the source.
+ * The view one sequence writes through. A row view writes each row as the source yields it; a
+ * whole view collects every row and renders once at the end of the source.
  */
 type SequenceView<Row> =
   | { kind: 'rows'; view: ResolvedRowView<Row> }

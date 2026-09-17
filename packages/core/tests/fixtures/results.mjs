@@ -276,8 +276,8 @@ function views() {
   return [];
 }
 
-/** The presentation record one scenario declares, keyed by the name its own default takes. */
-function presentations(declared) {
+/** The views record one scenario declares, keyed by the name its own default takes. */
+function resultViews(declared) {
   if (scenario === 'declared-value') {
     return { table: declaredTable };
   }
@@ -300,7 +300,7 @@ function routed() {
     return new Command('plain').action(act);
   }
   const command = new Command('count');
-  const record = presentations(declared);
+  const record = resultViews(declared);
   const withResult =
     declared === 'value' ? command.result({ views: record }) : command.rows({ views: record });
   return withResult.action(act);

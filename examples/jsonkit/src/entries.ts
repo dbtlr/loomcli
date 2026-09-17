@@ -1,6 +1,6 @@
 import type { RowView, View } from '@loomcli/core';
 
-/** Two spaces separate the path column from the kind column in the buffered presentation. */
+/** Two spaces separate the path column from the kind column in the buffered view. */
 const GUTTER = '  ';
 
 const HEADING = 'PATH';
@@ -12,9 +12,9 @@ export interface Entry {
 }
 
 /**
- * The default presentation, one tab-separated line per path as the walk yields it. The row view
- * renders before the source ends, so a large document starts printing at once, and every function
- * owns the newline in the text it returns.
+ * The default view, one tab-separated line per path as the walk yields it. The row view renders
+ * before the source ends, so a large document starts printing at once, and every function owns the
+ * newline in the text it returns.
  */
 export const pathList: RowView<Entry> = {
   head: () => `${HEADING}\tKIND\n`,
@@ -22,8 +22,8 @@ export const pathList: RowView<Entry> = {
 };
 
 /**
- * The second presentation, which reads the whole walk before it renders: the path column is as
- * wide as the widest path, so an operator reading a finite document scans one aligned column.
+ * The second view, which reads the whole walk before it renders: the path column is as wide as the
+ * widest path, so an operator reading a finite document scans one aligned column.
  */
 export const pathTable: View<readonly Entry[]> = {
   render: (entries, { style }) => {
