@@ -45,7 +45,7 @@ function encodeText(text: string, context: ViewContext): string {
   return context.style
     .escape(text)
     .replace(
-      /[-]/gu,
+      /[\u007F-\u009F]/gu,
       (character) =>
         `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
     );

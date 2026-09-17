@@ -76,6 +76,23 @@ function declaresFormat(command) {
   return command.option('format', { type: 'string' });
 }
 
+/** The argument every hook argument collision row declares. */
+function declaresTag(command) {
+  return command.argument('tag', {});
+}
+
+/**
+ * A hook that keeps the first Command it is handed, the root, and returns that surface again for
+ * `count`, so the value it returns is registered and belongs to another Command's build.
+ */
+function returnsEarlier() {
+  let first = null;
+  return (command) => {
+    first ??= command;
+    return command.name === 'count' ? first : command;
+  };
+}
+
 /** The Command a hook reshapes: one value result under one declared view. */
 function counted() {
   return new Command('count').result({ views: { text } }).action(dispatch);
@@ -140,11 +157,21 @@ const scenarios = {
     return new Application('app').command(get).action(dispatch);
   },
   'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
+  'hook-argument-author-collision': () =>
+    withHooks(
+      [formatter(onCount(declaresTag))],
+      new Command('count').argument('tag', {}).result({ views: { text } }).action(dispatch),
+    ),
   'hook-argument-collision': () =>
     withHooks(
       [formatter(onCount(declaresFormat))],
       new Command('count').argument('format', {}).action(dispatch),
     ),
+  'hook-argument-hook-collision': () =>
+    withHooks([
+      named('@acme/out', { onCommandAttach: onCount(declaresTag) }),
+      formatter(onCount(declaresTag)),
+    ]),
   'hook-global-collision': () =>
     new Application('app', { plugins: [formatter(onCount(declaresFormat))] })
       .globalOption('format', { type: 'string' })
@@ -172,6 +199,7 @@ const scenarios = {
       named('@acme/out', { options: { format: { type: 'string' } } }),
       formatter(onCount(declaresFormat)),
     ]),
+  'hook-returns-earlier': () => withHooks([formatter(returnsEarlier())]),
   'hook-returns-other': () => withHooks([formatter(onCount(() => forged))]),
   'hook-row-view': () => withHooks([formatter(onCount((command) => command.views({ records })))]),
   'hook-spelling-collision': () =>

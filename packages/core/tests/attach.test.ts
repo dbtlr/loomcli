@@ -45,6 +45,12 @@ test('a hook reads the result and the action of every Command it receives', () =
   expect(seen[3]).toMatchObject({ hasAction: false, name: 'cache', result: null });
 });
 
+test('the arguments and the options a hook reads are frozen lists', () => {
+  const result = run('frozen', ['count']);
+  expect(result.stderr).toBe('');
+  expect(lines(result.stdout)[0]).toEqual({ arguments: 'threw', options: 'threw' });
+});
+
 test('a hook reads the arguments and the local options each Command declares', () => {
   const seen = lines(run('facts').stdout);
   expect(seen[2]).toMatchObject({ arguments: ['path'], name: 'get', options: ['raw'] });

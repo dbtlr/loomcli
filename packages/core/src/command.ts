@@ -19,7 +19,7 @@ import {
 } from './facts.js';
 import type { BuiltGlobals, GlobalsState, OptionOwner } from './globals.js';
 import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
-import { resultNode } from './inspect.js';
+import { resultNode, snapshot } from './inspect.js';
 import type { ResultNode } from './inspect.js';
 import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
 import type { OptionValues } from './options.js';
@@ -839,6 +839,8 @@ interface AttachState {
   declared: Declared;
   hasAction: boolean;
   identity: string;
+  /** The token one Command's own build mints, which every value derived within it carries. */
+  lineage: object;
   path: readonly string[];
 }
 
@@ -848,9 +850,14 @@ type AttachProgress = Pick<AttachState, 'calls' | 'declared'>;
 /** The values one build made, so a value a hook returns is one of them and never a forged shape. */
 const attachments = new WeakMap<object, AttachState>();
 
-/** The declared names of one kind, in declaration order, as a hook reads them. */
+/**
+ * The declared names of one kind, in declaration order, as a hook reads them. The list is frozen,
+ * because the surface publishes it read-only and a hook reshapes a Command through its calls alone.
+ */
 function declaredNames(declared: Declared, kind: 'argument' | 'option'): readonly string[] {
-  return declared.inputs.filter((input) => input.kind === kind).map((input) => input.name);
+  return Object.freeze(
+    declared.inputs.filter((input) => input.kind === kind).map((input) => input.name),
+  );
 }
 
 /**
@@ -964,14 +971,18 @@ function callHook(
   }
 }
 
-/** One plugin's hook over one Command, which answers with the declaration the hook returned. */
+/**
+ * One plugin's hook over one Command, which answers with the declaration the hook returned. The
+ * returned value has to carry the lineage token of the value the hook received, so the surface of
+ * another Command, or of one an earlier build made, never replays its calls onto this Command.
+ */
 function attachOnce(
   value: AttachedCommand,
   hook: CommandAttachHook,
-  named: { identity: string; subject: string },
+  named: { identity: string; lineage: object; subject: string },
 ): AttachState {
   const state = attachments.get(callHook(value, hook, named));
-  if (!state) {
+  if (!state || state.lineage !== named.lineage) {
     throw new DeclarationError(
       `Plugin "${named.identity}" returned a value that is not the attached Command from onCommandAttach for ${named.subject}. Return the value it received or a value derived from it.`,
     );
@@ -985,17 +996,18 @@ function attachOnce(
  */
 function runAttachHooks(
   declared: Declared,
-  facts: { hasAction: boolean; path: readonly string[] },
+  facts: { hasAction: boolean; lineage: object; path: readonly string[] },
   plugins: readonly BuiltPlugin[],
 ): readonly AttachCall[] {
   const subject = commandSubject(declared.name);
+  const { lineage } = facts;
   let progress: AttachProgress = { calls: [], declared };
   for (const installed of plugins) {
     const hook = installed.onCommandAttach;
     if (hook) {
       const identity = installed.identity;
       const value = new AttachedCommandValue({ ...progress, ...facts, identity });
-      const state = attachOnce(value, hook, { identity, subject });
+      const state = attachOnce(value, hook, { identity, lineage, subject });
       progress = { calls: state.calls, declared: state.declared };
     }
   }
@@ -1052,18 +1064,34 @@ interface AttachedInput {
 interface HeldNames {
   arguments: ReadonlySet<string>;
   globals: BuiltGlobals;
+  hookArguments: Map<string, string>;
   hooks: Map<string, string>;
   locals: ReadonlySet<string>;
 }
 
-/** What one name a hook declared collides with, and the remedy that pair earns. */
-function attachedCollision(name: string, held: HeldNames) {
+/** What one collision reports: the scope that holds the name, and the remedy that pair earns. */
+interface Collision {
+  clause: string;
+  remedy: string;
+}
+
+/** The clause and the remedy an input another plugin's hook already declared earns. */
+function hookClause(kind: 'argument' | 'option', identity: string): Collision {
+  return {
+    clause: `an ${kind} plugin "${identity}" declared through onCommandAttach`,
+    remedy: 'Install one of them.',
+  };
+}
+
+/** What one option name a hook declared collides with, in the order the scopes are reported. */
+function optionCollision(name: string, held: HeldNames): Collision | undefined {
   const hook = held.hooks.get(name);
   if (hook !== undefined) {
-    return {
-      clause: `an option plugin "${hook}" declared through onCommandAttach`,
-      remedy: 'Install one of them.',
-    };
+    return hookClause('option', hook);
+  }
+  const hooked = held.hookArguments.get(name);
+  if (hooked !== undefined) {
+    return hookClause('argument', hooked);
   }
   const remedy = "Rename the Command's option or omit the plugin.";
   if (held.locals.has(name)) {
@@ -1076,6 +1104,26 @@ function attachedCollision(name: string, held: HeldNames) {
     return { clause, remedy };
   }
   return held.arguments.has(name) ? { clause: 'an argument', remedy } : undefined;
+}
+
+/**
+ * What one argument name a hook declared collides with: an argument the Command declares, or one
+ * another plugin's hook declared before it. An argument names no spelling, so nothing else holds it.
+ */
+function argumentCollision(name: string, held: HeldNames): Collision | undefined {
+  const hook = held.hookArguments.get(name);
+  if (hook !== undefined) {
+    return hookClause('argument', hook);
+  }
+  const remedy = "Rename the Command's argument or omit the plugin.";
+  return held.arguments.has(name) ? { clause: 'an argument', remedy } : undefined;
+}
+
+/** What one name a hook declared collides with, whichever kind of input the hook declared. */
+function attachedCollision(input: InputDeclaration, held: HeldNames): Collision | undefined {
+  return input.kind === 'argument'
+    ? argumentCollision(input.name, held)
+    : optionCollision(input.name, held);
 }
 
 /**
@@ -1096,12 +1144,30 @@ function readSpellings(table: ReturnType<typeof compileOptions>, claimed: Map<st
   }
 }
 
+/** One hook-declared option's spellings, against every spelling the table already claims. */
+function checkAttachedSpelling(
+  declared: { identity: string; input: OptionInput },
+  named: { claimed: Map<string, string>; subject: string },
+): void {
+  const { claimed, subject } = named;
+  const table = compileOptions([declared.input], subject);
+  for (const [spelling] of table) {
+    const used = claimed.get(spelling);
+    if (used !== undefined) {
+      throw new DeclarationError(
+        `Plugin "${declared.identity}" declares option "${declared.input.name}" with spelling "${spelling}" on ${subject}, which "${used}" already uses.`,
+      );
+    }
+  }
+  readSpellings(table, claimed);
+}
+
 /**
- * Every option a hook declared, against the names and spellings the Command, the globals table, and
- * an earlier hook already hold. It runs before the Command's own options compile, so a hook-declared
- * option reports as the plugin's fault and never as the author's.
+ * Every input a hook declared, against the names and spellings the Command, the globals table, and
+ * an earlier hook already hold. It runs before the Command's own inputs compile, so a hook-declared
+ * input reports as the plugin's fault and never as the author's.
  */
-function checkAttachedOptions(
+function checkAttachedInputs(
   declared: Declared,
   attached: readonly AttachedInput[],
   globals: BuiltGlobals,
@@ -1109,40 +1175,31 @@ function checkAttachedOptions(
   const subject = commandSubject(declared.name);
   const hooked = new Set(attached.map((entry) => entry.input));
   const authored = declared.inputs.filter((input) => !hooked.has(input));
+  const options = authored.filter((input) => input.kind === 'option');
   const held: HeldNames = {
-    arguments: new Set(declaredNames(declared, 'argument')),
+    arguments: new Set(
+      authored.filter((input) => input.kind === 'argument').map((input) => input.name),
+    ),
     globals,
+    hookArguments: new Map(),
     hooks: new Map(),
-    locals: new Set(authored.filter((input) => input.kind === 'option').map((input) => input.name)),
+    locals: new Set(options.map((input) => input.name)),
   };
   const claimed = new Map<string, string>();
   readSpellings(globals.options, claimed);
-  readSpellings(
-    compileOptions(
-      authored.filter((input) => input.kind === 'option'),
-      subject,
-    ),
-    claimed,
-  );
+  readSpellings(compileOptions(options, subject), claimed);
   for (const { identity, input } of attached) {
+    const collision = attachedCollision(input, held);
+    if (collision) {
+      throw new DeclarationError(
+        `Plugin "${identity}" declares ${input.kind} "${input.name}" on ${subject}, which is already declared as ${collision.clause}. ${collision.remedy}`,
+      );
+    }
     if (input.kind === 'option') {
-      const collision = attachedCollision(input.name, held);
-      if (collision) {
-        throw new DeclarationError(
-          `Plugin "${identity}" declares option "${input.name}" on ${subject}, which is already declared as ${collision.clause}. ${collision.remedy}`,
-        );
-      }
-      const table = compileOptions([input], subject);
-      for (const [spelling] of table) {
-        const used = claimed.get(spelling);
-        if (used !== undefined) {
-          throw new DeclarationError(
-            `Plugin "${identity}" declares option "${input.name}" with spelling "${spelling}" on ${subject}, which "${used}" already uses.`,
-          );
-        }
-      }
-      readSpellings(table, claimed);
+      checkAttachedSpelling({ identity, input }, { claimed, subject });
       held.hooks.set(input.name, identity);
+    } else {
+      held.hookArguments.set(input.name, identity);
     }
   }
 }
@@ -1252,14 +1309,19 @@ export function buildCommand<Args, Options, Globals>(
    * The hooks run once the author's declaration is complete and its result is resolved, so a hook
    * reads an exact record, and every rule below reads what the hooks returned.
    */
-  const calls = runAttachHooks(state, { hasAction, path: context.path }, context.plugins);
+  // One token per Command per build, which binds a hook's return to the value it received.
+  const lineage = {};
+  const calls = runAttachHooks(state, { hasAction, lineage, path: context.path }, context.plugins);
   const hooked = applyAttachCalls(state, calls);
-  const declared = calls.filter((call) => call.kind === 'input');
+  const hookInputs = calls.filter((call) => call.kind === 'input');
   checkInputFacts(
-    declared.map((call) => call.input),
+    hookInputs.map((call) => call.input),
     { name, subject },
     context,
   );
+  // The hook-declared names are checked first, so a collision reports in the plugin's voice.
+  // A rule the author's own declaration voices never speaks for a name a hook declared.
+  checkAttachedInputs(hooked, hookInputs, globals);
   const extensions = calls.some((call) => call.kind === 'extend')
     ? buildCommandExtensions({
         descriptors: context.descriptors,
@@ -1267,13 +1329,12 @@ export function buildCommand<Args, Options, Globals>(
         subject: layer,
       })
     : declaredExtensions;
-  const slots = declared.length > 0 ? collectArguments(hooked, subject) : declaredSlots;
+  const slots = hookInputs.length > 0 ? collectArguments(hooked, subject) : declaredSlots;
   checkArgumentPlacement(name, slots[0], attached[0]);
   const result = calls.length > 0 ? buildResult(hooked, hasAction) : declaredResult;
   if (!action) {
     checkGroup(hooked, attached);
   }
-  checkAttachedOptions(hooked, declared, globals);
   const options = compileLocalOptions(hooked, globals, subject);
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
@@ -1652,7 +1713,13 @@ export type Prepared = {
   | { fault: unknown; kind: 'held'; request: null }
 );
 
-/** The frozen records one middleware reads: the routed Command's own inputs, and the tail. */
+/**
+ * The frozen records one middleware reads: the routed Command's own inputs, and the tail. Every
+ * value is a plain-data copy frozen to every depth, so a middleware that reaches into a list or a
+ * schema's output object reaches its own copy and contributes nothing to what the action receives.
+ * A value that is neither an array nor a plain object, a class instance or a `Date` a schema
+ * produced, is shared by reference, because core cannot copy it meaningfully.
+ */
 function requestOf(
   command: BuiltCommand,
   values: ValidatedInputs,
@@ -1662,7 +1729,7 @@ function requestOf(
   const options: Record<string, unknown> = {};
   for (const input of command.inputs) {
     const target = input.kind === 'argument' ? args : options;
-    target[input.name] = values.read(input);
+    target[input.name] = snapshot(values.read(input));
   }
   return Object.freeze({
     args: Object.freeze(args),

@@ -13,9 +13,10 @@ export const attachFormat: CommandAttachHook = (command) => {
     return command;
   }
   const machine = { json: json(), jsonl: jsonl() };
-  const missing = Object.entries(machine).filter(([name]) => !result.views.includes(name));
-  const reshaped = command.views(Object.fromEntries(missing));
-  const names = reshaped.result?.views ?? [];
+  const added = Object.entries(machine).filter(([name]) => !result.views.includes(name));
+  const reshaped = command.views(Object.fromEntries(added));
+  // `views()` appends a name the record lacks and leaves the place of one it holds.
+  const names = [...result.views, ...added.map(([name]) => name)];
   return reshaped.option('format', {
     description: `Select the output format: ${names.join(', ')}.`,
     type: 'string',

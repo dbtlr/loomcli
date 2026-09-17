@@ -70,15 +70,19 @@ class ViewSelection {
 
   /**
    * What `view` reads: the assigned name, or the declaration's default until one is assigned, and
-   * `null` on a Command that declares no result. An assignment that is not a name reads as the
-   * default, because the getter answers a view name and the assignment is the boundary's fault.
+   * `null` on a Command that declares no result, whatever was assigned there. An assignment that is
+   * not a name reads as the default, because the getter answers a view name and the assignment is
+   * the boundary's fault. The assignment itself is kept either way, so the boundary still raises it.
    */
   read(): string | null {
+    if (!this.#result) {
+      return null;
+    }
     const assigned = this.#assigned;
     if (assigned !== undefined && typeof assigned.name === 'string') {
       return assigned.name;
     }
-    return this.#result ? this.#result.default : null;
+    return this.#result.default;
   }
 
   /** The last assignment before the boundary wins; one made after it changes nothing. */

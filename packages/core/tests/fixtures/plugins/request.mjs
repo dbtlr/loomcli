@@ -18,6 +18,15 @@ const digits = {
   },
 };
 
+/** A schema whose output is an object, so the request and the action each hold one of them. */
+const noted = {
+  '~standard': {
+    validate: (value) => ({ value: { note: value } }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
 /** A schema that cancels the run where it stands, then answers as any other schema does. */
 const aborting = {
   '~standard': {
@@ -92,6 +101,31 @@ async function reading({ next, out, request, view }) {
   await next();
 }
 
+/** Whether one write into the request landed, so a frozen value reports as the throw it raises. */
+function attempt(write) {
+  try {
+    write();
+    return 'mutated';
+  } catch {
+    return 'threw';
+  }
+}
+
+/** A middleware that writes into every value the request carries, then continues. */
+async function mutating({ next, out, request }) {
+  const writes = {
+    assign: attempt(() => {
+      request.options.raw = true;
+    }),
+    meta: attempt(() => {
+      request.options.meta.note = 'middleware';
+    }),
+    tag: attempt(() => request.options.tag.push('middleware')),
+  };
+  await out.print(`writes:${JSON.stringify(writes)}`);
+  await next();
+}
+
 /** A middleware that takes the invocation over, as a help plugin does. */
 async function taking({ out, request }) {
   await out.print(`help:${request === null ? 'null' : 'request'}`);
@@ -128,6 +162,10 @@ const plugins = {
     plugin('@fixture/late', {
       middleware: { activate: 'always', load: () => ({ default: selector('late', 'after') }) },
     }),
+  mutator: () =>
+    plugin('@fixture/mutator', {
+      middleware: { activate: 'always', load: () => ({ default: mutating }) },
+    }),
   reader: () =>
     plugin('@fixture/reader', {
       middleware: { activate: 'always', load: () => ({ default: reading }) },
@@ -148,8 +186,10 @@ const installed = {
   'cancel-chain': ['canceller'],
   'cancel-validator': ['reader'],
   late: ['late'],
+  mutating: ['mutator'],
   reading: ['reader'],
   select: ['first'],
+  'select-read': ['first', 'reader'],
   'select-takeover': ['first', 'help'],
   takeover: ['help'],
   'throwing-bare': [],
@@ -167,6 +207,12 @@ function application() {
     .action(({ args, options, out, passthrough }) =>
       out.print(`get:${JSON.stringify({ args, options, passthrough })}`),
     );
+  const edit = new Command('edit')
+    .option('tag', { multiple: true, type: 'string' })
+    .option('meta', { type: 'string', validate: noted })
+    .action(({ options, out }) =>
+      out.print(`edit:${JSON.stringify({ frozen: Object.isFrozen(options.tag), options })}`),
+    );
   const count = new Command('count')
     .rows({ views: { list, total, wide } })
     .action(({ out }) => out.results(rows));
@@ -179,6 +225,7 @@ function application() {
   })
     .globalOption('file', { short: 'f', type: 'string' })
     .command(get)
+    .command(edit)
     .command(count)
     .command(cache)
     .action(({ out }) => out.print('root'));

@@ -35,6 +35,19 @@ test('a middleware reads the parsed args, the local options, and the passthrough
   );
 });
 
+test('a write into a list or a schema output the request carries never reaches the action', () => {
+  const result = run('mutating', ['edit', '--tag', 'a', '--tag', 'b', '--meta', 'kept']);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toBe(
+    [
+      'writes:{"assign":"threw","meta":"threw","tag":"threw"}',
+      'edit:{"frozen":false,"options":{"tag":["a","b"],"meta":{"note":"kept"}}}',
+      'resolved:0',
+      '',
+    ].join('\n'),
+  );
+});
+
 test('the request is null while core holds a schema fault, which the boundary raises', () => {
   const result = run('reading', ['get', 'a.b', '--depth', 'x']);
   expect(result.status).toBe(2);
@@ -152,6 +165,17 @@ test('view is null on a Command that declares no result', () => {
   const result = run('reading', ['get', 'a.b']);
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('view:null\n');
+});
+
+test('view reads null after an assignment on a Command that declares no result', () => {
+  const result = run('select-read', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'json' });
+  expect(result.stdout).toContain('view:null\n');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    internal(
+      'Plugin "@fixture/first" selected view "json" on Command "get", which declares no result.',
+    ),
+  );
 });
 
 test('the last assignment before the boundary wins across two middleware', () => {

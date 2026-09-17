@@ -130,11 +130,13 @@ function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Sp
 }
 
 /**
- * A snapshot of one declared value. Arrays and plain objects are copied and frozen to any depth, so
- * a consumer cannot reach the declaration through the graph, and a later call reports the declared
- * value again. Primitives and library objects are reported as they are.
+ * A snapshot of one value. Arrays and plain objects are copied and frozen to any depth, so a
+ * consumer cannot reach the source through the copy, and a later call reports the value again.
+ * Primitives and library objects, such as a class instance or a `Date` a schema produced, are
+ * reported as they are, because core cannot copy them meaningfully. The graph reads it for a
+ * declared value and the chain reads it for the request one middleware holds.
  */
-function snapshot(value: unknown): unknown {
+export function snapshot(value: unknown): unknown {
   if (Array.isArray(value)) {
     return Object.freeze(value.map((entry: unknown) => snapshot(entry)));
   }

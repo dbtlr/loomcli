@@ -61,6 +61,16 @@ function recording(command) {
   return command;
 }
 
+/** Whether one write into a published list landed, so a frozen list reports the throw it raises. */
+function attempt(write) {
+  try {
+    write();
+    return 'mutated';
+  } catch {
+    return 'threw';
+  }
+}
+
 const scenarios = {
   compose: () =>
     new Application('app', {
@@ -94,6 +104,22 @@ const scenarios = {
           new Command('clear').action(({ out }) => out.print('cleared')),
         ),
       )
+      .action(({ out }) => out.print('root')),
+  frozen: () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/frozen', {
+          onCommandAttach: onCount((command) => {
+            note({
+              arguments: attempt(() => command.arguments.push('tag')),
+              options: attempt(() => command.options.push('raw')),
+            });
+            return command;
+          }),
+        }),
+      ],
+    })
+      .command(counted())
       .action(({ out }) => out.print('root')),
   option: () =>
     new Application('app', {

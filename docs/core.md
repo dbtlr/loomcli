@@ -1288,7 +1288,7 @@ type ResultView = View<never> | RowView<never>; // the erased view a result name
 ```
 
 ```ts
-// src/formatter/attach.ts, the hook of the @loomcli/plugins/format subpath
+// src/format/attach.ts, the hook of the @loomcli/plugins/format subpath
 import type { CommandAttachHook } from '@loomcli/core';
 
 import { formatName } from './names.js';
@@ -1717,7 +1717,7 @@ Invalid input: Unknown option "--format". Supply a declared option; prefix a hyp
 - **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and `request` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault leaves `request` at `null` and is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` is the validator's issue, exit 2, and `--format yaml --help` with help installed after the formatter still prints the page. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
 
 ```ts
-// src/formatter/middleware.ts, loaded on every invocation that reaches it
+// src/format/middleware.ts, loaded on every invocation that reaches it
 import type { Middleware } from '@loomcli/core';
 
 import type { format } from './plugin.js';

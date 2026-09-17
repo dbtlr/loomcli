@@ -218,6 +218,10 @@ const rejected = [
     'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
   ],
   [
+    'hook-returns-earlier',
+    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
+  ],
+  [
     'hook-throws',
     'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke.',
   ],
@@ -244,6 +248,14 @@ const rejected = [
   [
     'hook-argument-collision',
     'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an argument. Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-argument-author-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an argument. Rename the Command\'s argument or omit the plugin.',
+  ],
+  [
+    'hook-argument-hook-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an argument plugin "@acme/out" declared through onCommandAttach. Install one of them.',
   ],
   [
     'hook-spelling-collision',

@@ -297,8 +297,8 @@ export class Output {
     const selected = binding.view ?? result.default;
     const view = result.views.get(selected);
     if (!view) {
-      // Build proved the default names a view the record holds, and the boundary proved a selected
-      // Name is one too, so this is core's own fault.
+      // Build proved the default names a view the record holds.
+      // The boundary proved a selected name is one too, so this is core's own fault.
       return this.renderFailed(new Error(`The view "${selected}" is not declared.`));
     }
     if (result.kind === 'rows') {
