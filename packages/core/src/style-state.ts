@@ -145,9 +145,19 @@ function colorCode(
     if (depth === 'truecolor') {
       return `${38 + offset};2;${color[1]};${color[2]};${color[3]}`;
     }
-    index = nearest([color[1], color[2], color[3]], depth);
+    const fallback = color[4];
+    if (depth === 16 && fallback?.ansi16 !== undefined) {
+      index = colors[fallback.ansi16];
+    } else if (depth === 256 && fallback?.ansi256 !== undefined) {
+      index = fallback.ansi256;
+    } else {
+      index = nearest([color[1], color[2], color[3]], depth);
+    }
+  } else if (depth !== 16) {
+    index = color[1];
   } else {
-    index = depth === 16 ? nearest(paletteRgb(color[1]), 16) : color[1];
+    const fallback = color[2]?.ansi16;
+    index = fallback === undefined ? nearest(paletteRgb(color[1]), 16) : colors[fallback];
   }
   return index < 16
     ? String((index < 8 ? 30 + index : 90 + index - 8) + offset)

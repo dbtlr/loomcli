@@ -1,7 +1,17 @@
+import { isPlainObject } from './facts.js';
 import { glyphForms } from './glyphs.generated.js';
 import { applyOperations, emptyAttributes } from './style-state.js';
 import type { Attributes, Palette } from './style-state.js';
-import { close, escape, headerEnd, isColorName, modifiers, open, tokens } from './style.js';
+import {
+  close,
+  colorFallbacks,
+  escape,
+  headerEnd,
+  isColorName,
+  modifiers,
+  open,
+  tokens,
+} from './style.js';
 import type { Color, Operation } from './style.js';
 
 type Alignment = 'left' | 'right' | 'center';
@@ -40,17 +50,37 @@ function color(value: unknown): Color | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  if (value.length === 2 && value[0] === 'ansi256' && isByte(value[1])) {
-    return ['ansi256', value[1]];
+  if ((value.length === 2 || value.length === 3) && value[0] === 'ansi256' && isByte(value[1])) {
+    if (value.length === 2) {
+      return ['ansi256', value[1]];
+    }
+    if (!isPlainObject(value[2])) {
+      return undefined;
+    }
+    try {
+      return ['ansi256', value[1], colorFallbacks(value[2], false)];
+    } catch {
+      return undefined;
+    }
   }
   if (
-    value.length === 4 &&
+    (value.length === 4 || value.length === 5) &&
     value[0] === 'rgb' &&
     isByte(value[1]) &&
     isByte(value[2]) &&
     isByte(value[3])
   ) {
-    return ['rgb', value[1], value[2], value[3]];
+    if (value.length === 4) {
+      return ['rgb', value[1], value[2], value[3]];
+    }
+    if (!isPlainObject(value[4])) {
+      return undefined;
+    }
+    try {
+      return ['rgb', value[1], value[2], value[3], colorFallbacks(value[4], true)];
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

@@ -1,4 +1,5 @@
 import type { ApplicationEnvironment, RegisteredEnvironment } from './environment.js';
+import { isPlainObject } from './facts.js';
 import type { Plugin, ThemeOf } from './plugin.js';
 import type { Alignment } from './style-wire.js';
 /** Concrete terminal foregrounds; backgrounds use the same palette indices. */
@@ -21,8 +22,23 @@ const colors = {
   yellow: 3,
 };
 
-type ColorName = keyof typeof colors;
-type Color = ColorName | readonly ['rgb', number, number, number] | readonly ['ansi256', number];
+type Ansi16Color = keyof typeof colors;
+type ColorName = Ansi16Color;
+interface ColorFallbacks {
+  readonly ansi256?: number | undefined;
+  readonly ansi16?: Ansi16Color | undefined;
+}
+type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;
+type RgbArguments = [
+  red: number,
+  green: number,
+  blue: number,
+  fallbacks?: ColorFallbacks | undefined,
+];
+type Color =
+  | ColorName
+  | readonly ['rgb', number, number, number, ColorFallbacks?]
+  | readonly ['ansi256', number, Ansi256Fallbacks?];
 const modifiers = [
   'bold',
   'faint',
@@ -48,12 +64,12 @@ type Style<Names extends string = CoreToken, Semantic extends boolean = false> =
   (text: string): string;
   readonly [semanticStyle]: Semantic;
   readonly escape: (text: string) => string;
-  readonly hex: (color: string) => Style<Names, Semantic>;
-  readonly bgHex: (color: string) => Style<Names, Semantic>;
-  readonly rgb: (red: number, green: number, blue: number) => Style<Names, Semantic>;
-  readonly bgRgb: (red: number, green: number, blue: number) => Style<Names, Semantic>;
-  readonly ansi256: (index: number) => Style<Names, Semantic>;
-  readonly bgAnsi256: (index: number) => Style<Names, Semantic>;
+  readonly hex: (color: string, fallbacks?: ColorFallbacks) => Style<Names, Semantic>;
+  readonly bgHex: (color: string, fallbacks?: ColorFallbacks) => Style<Names, Semantic>;
+  readonly rgb: (...args: RgbArguments) => Style<Names, Semantic>;
+  readonly bgRgb: (...args: RgbArguments) => Style<Names, Semantic>;
+  readonly ansi256: (index: number, fallbacks?: Ansi256Fallbacks) => Style<Names, Semantic>;
+  readonly bgAnsi256: (index: number, fallbacks?: Ansi256Fallbacks) => Style<Names, Semantic>;
 } & {
   readonly [Name in ColorName | `bg${Capitalize<ColorName>}` | Modifier | Reset]: Style<
     Names,
@@ -153,7 +169,47 @@ function byte(value: number): number {
   return value;
 }
 
-function hexColor(value: string): Color {
+/** Copies options at the helper boundary; the wire parser uses the same value rules. */
+function colorFallbacks(value: unknown, allow256: boolean): ColorFallbacks {
+  if (value === undefined) {
+    return {};
+  }
+  if (
+    !isPlainObject(value) ||
+    Reflect.ownKeys(value).some((key) => key !== 'ansi16' && !(allow256 && key === 'ansi256'))
+  ) {
+    throw new TypeError('Color fallbacks must be a plain object with supported depth names.');
+  }
+  const ansi16 = value.ansi16;
+  const ansi256 = value.ansi256;
+  if (ansi16 !== undefined && !isColorName(ansi16)) {
+    throw new TypeError('The ansi16 fallback must be a terminal foreground color name.');
+  }
+  if (
+    ansi256 !== undefined &&
+    (typeof ansi256 !== 'number' || !Number.isInteger(ansi256) || ansi256 < 0 || ansi256 > 255)
+  ) {
+    throw new RangeError('The ansi256 fallback must be an integer from 0 through 255.');
+  }
+  return {
+    ...(ansi16 === undefined ? {} : { ansi16 }),
+    ...(ansi256 === undefined ? {} : { ansi256 }),
+  };
+}
+
+function rgbColor([red, green, blue, fallbacks]: RgbArguments): Color {
+  const rgb = ['rgb', byte(red), byte(green), byte(blue)] as const;
+  const copied = colorFallbacks(fallbacks, true);
+  return Object.keys(copied).length === 0 ? rgb : [...rgb, copied];
+}
+
+function indexedColor(index: number, fallbacks?: Ansi256Fallbacks): Color {
+  const color = ['ansi256', byte(index)] as const;
+  const copied = colorFallbacks(fallbacks, false);
+  return Object.keys(copied).length === 0 ? color : [...color, copied];
+}
+
+function hexColor(value: string, fallbacks?: ColorFallbacks): Color {
   if (typeof value !== 'string' || !/^#(?:[\da-f]{3}|[\da-f]{6})$/iu.test(value)) {
     throw new TypeError('Hex colors must use #RGB or #RRGGBB.');
   }
@@ -161,12 +217,12 @@ function hexColor(value: string): Color {
     value.length === 4
       ? value.slice(1).replace(/[\da-f]/giu, (digit) => digit + digit)
       : value.slice(1);
-  return [
-    'rgb',
+  return rgbColor([
     Number.parseInt(full.slice(0, 2), 16),
     Number.parseInt(full.slice(2, 4), 16),
     Number.parseInt(full.slice(4, 6), 16),
-  ];
+    fallbacks,
+  ]);
 }
 
 /** Properties are generated from the same catalogs the wire parser validates. */
@@ -175,15 +231,17 @@ function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualSt
     const callable = (text: string) => frame(['style', operations], textOnly(text));
     const next = (operation: Operation) => chain([...operations, operation]);
     const helpers = {
-      ansi256: (index: number) => next(['foreground', ['ansi256', byte(index)]]),
-      bgAnsi256: (index: number) => next(['background', ['ansi256', byte(index)]]),
-      bgHex: (value: string) => next(['background', hexColor(value)]),
-      bgRgb: (red: number, green: number, blue: number) =>
-        next(['background', ['rgb', byte(red), byte(green), byte(blue)]]),
+      ansi256: (index: number, fallbacks?: Ansi256Fallbacks) =>
+        next(['foreground', indexedColor(index, fallbacks)]),
+      bgAnsi256: (index: number, fallbacks?: Ansi256Fallbacks) =>
+        next(['background', indexedColor(index, fallbacks)]),
+      bgHex: (value: string, fallbacks?: ColorFallbacks) =>
+        next(['background', hexColor(value, fallbacks)]),
+      bgRgb: (...args: RgbArguments) => next(['background', rgbColor(args)]),
       escape: escapeText,
-      hex: (value: string) => next(['foreground', hexColor(value)]),
-      rgb: (red: number, green: number, blue: number) =>
-        next(['foreground', ['rgb', byte(red), byte(green), byte(blue)]]),
+      hex: (value: string, fallbacks?: ColorFallbacks) =>
+        next(['foreground', hexColor(value, fallbacks)]),
+      rgb: (...args: RgbArguments) => next(['foreground', rgbColor(args)]),
     };
     const properties = new Map<string, () => unknown>(
       Object.entries(helpers).map(([name, helper]) => [name, () => helper]),
@@ -240,6 +298,9 @@ function pad(text: string, minimumWidth: number, options?: { align?: Alignment }
 const style: Style = createStyle();
 
 export type {
+  Ansi16Color,
+  Ansi256Fallbacks,
+  ColorFallbacks,
   ContextualStyle,
   Color,
   ColorName,
@@ -252,6 +313,7 @@ export type {
   ThemeMapping,
 };
 export {
+  colorFallbacks,
   chains,
   close,
   colors,

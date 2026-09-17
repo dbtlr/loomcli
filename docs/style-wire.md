@@ -48,9 +48,9 @@ Hex helpers normalize their input to RGB. Background operations use the same col
 Modifier names match the public catalog. A theme mapping expands to concrete operations and cannot expand to another token.
 Operations retain their order. A token with no mapping contributes no operation.
 
-## Explicit color fallbacks (proposed)
+## Explicit color fallbacks
 
-[ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes these additional color forms. They are not recognized by the current parser.
+[ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) defines these additional color forms. The parser accepts them alongside the original tuples.
 
 | Color | Fields in the final object |
 | --- | --- |

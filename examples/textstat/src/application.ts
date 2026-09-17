@@ -5,6 +5,7 @@ import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { table } from '@loomcli/plugins/table';
+import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
@@ -12,7 +13,7 @@ import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
 import { filesOrStdin } from './files-or-stdin.js';
 import type { Row } from './row.js';
-import { fatalError } from './views.js';
+import { fatalError, rowCell } from './views.js';
 
 /**
  * The byte threshold rule, declared once because two option spellings carry it while the
@@ -36,7 +37,7 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
-  plugins: [help(), version(), format(), explain()],
+  plugins: [help(), version(), format(), loomTheme(), explain()],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 })
@@ -76,8 +77,8 @@ export const textstat = new Application('textstat', {
     views: {
       table: table({
         columns: [
-          { align: 'right', header: 'COUNT', key: 'count' },
-          { header: 'SOURCE', key: 'source' },
+          { align: 'right', format: rowCell, header: 'COUNT', key: 'count' },
+          { format: rowCell, header: 'SOURCE', key: 'source' },
         ],
       }),
     },

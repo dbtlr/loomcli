@@ -92,4 +92,12 @@ export type {
   RegisteredEnvironment,
 } from './environment.js';
 
-export type { ConcreteStyle, Style, ThemeMapping, ThemeConstraint } from './style.js';
+export type {
+  Ansi16Color,
+  Ansi256Fallbacks,
+  ColorFallbacks,
+  ConcreteStyle,
+  Style,
+  ThemeMapping,
+  ThemeConstraint,
+} from './style.js';

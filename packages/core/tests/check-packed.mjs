@@ -140,6 +140,17 @@ try {
     assert.match(result.stdout, /Application details\./);
     assert.doesNotMatch(result.stdout, /Library details|greet old/);
   }
+  const paletteExpected = [
+    'primary|\x1b[90mdim\x1b[39m|\x1b[33mhighlight\x1b[39m|\x1b[32msuccess\x1b[39m|\x1b[93mwarning\x1b[39m|\x1b[31merror\x1b[39m|\x1b[34minfo\x1b[39m|\x1b[32mrgb\x1b[39m|\x1b[32mindexed\x1b[39m|\x1b[42mbgHex\x1b[49m|\x1b[42mbgRgb\x1b[49m|\x1b[42mbgIndexed\x1b[49m',
+    'primary|\x1b[38;5;245mdim\x1b[39m|\x1b[38;5;172mhighlight\x1b[39m|\x1b[38;5;108msuccess\x1b[39m|\x1b[38;5;178mwarning\x1b[39m|\x1b[38;5;131merror\x1b[39m|\x1b[38;5;67minfo\x1b[39m|\x1b[38;5;108mrgb\x1b[39m|\x1b[38;5;108mindexed\x1b[39m|\x1b[48;5;108mbgHex\x1b[49m|\x1b[48;5;108mbgRgb\x1b[49m|\x1b[48;5;108mbgIndexed\x1b[49m',
+    'primary|\x1b[38;2;139;147;163mdim\x1b[39m|\x1b[38;2;201;123;54mhighlight\x1b[39m|\x1b[38;2;122;143;123msuccess\x1b[39m|\x1b[38;2;226;185;61mwarning\x1b[39m|\x1b[38;2;192;69;50merror\x1b[39m|\x1b[38;2;91;125;163minfo\x1b[39m|\x1b[38;2;122;143;123mrgb\x1b[39m|\x1b[38;5;108mindexed\x1b[39m|\x1b[48;2;122;143;123mbgHex\x1b[49m|\x1b[48;2;122;143;123mbgRgb\x1b[49m|\x1b[48;5;108mbgIndexed\x1b[49m',
+    '\x1b[34mbare\x1b[39m\n',
+  ].join('');
+  for (const name of selected) {
+    const result = run(runtimes.get(name), [join(temporary, 'dist/palette.js')], temporary);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.stdout, paletteExpected, `${name}: packed palette and fallback output`);
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads } of invocations) {
