@@ -1085,16 +1085,12 @@ function hookClause(kind: 'argument' | 'option', identity: string): Collision {
 
 /**
  * The remedy a collision against the Command's own declarations, the globals table, or another
- * plugin's option earns. A hook-declared option keeps the one remedy it always reported, naming
- * the option the author must rename regardless of what it collides with. A hook-declared argument
- * names what the author must rename instead: the target's own kind and scope, or, when the target
- * is another plugin's option, the shared install remedy a hook input also earns.
+ * plugin's option earns. The remedy follows the target alone, whichever kind the hook declared:
+ * the author renames their own local option or argument, the author renames the colliding global
+ * option, or, when the target is another plugin's option, the two plugins install one of them.
  */
-function attachedRemedy(
-  kind: 'argument' | 'option',
-  target: 'argument' | 'global' | 'local' | 'plugin',
-): string {
-  if (kind === 'option' || target === 'local') {
+function attachedRemedy(target: 'argument' | 'global' | 'local' | 'plugin'): string {
+  if (target === 'local') {
     return "Rename the Command's option or omit the plugin.";
   }
   if (target === 'argument') {
@@ -1107,14 +1103,13 @@ function attachedRemedy(
 }
 
 /**
- * What one name a hook-declared input of the given kind collides with, in the order the scopes are
+ * What one name a hook-declared input of either kind collides with, in the order the scopes are
  * reported: an earlier hook's option, an earlier hook's argument, a local option, a global or
- * plugin-owned option, or an argument the Command declares. Both kinds of hook input share this one
- * lookup; only the remedy for a Command- or globals-owned target depends on which kind the hook
- * declared.
+ * plugin-owned option, or an argument the Command declares. The remedy follows the target alone,
+ * not which kind the hook declared.
  */
 function attachedCollision(input: InputDeclaration, held: HeldNames): Collision | undefined {
-  const { kind, name } = input;
+  const { name } = input;
   const hook = held.hooks.get(name);
   if (hook !== undefined) {
     return hookClause('option', hook);
@@ -1124,17 +1119,17 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
     return hookClause('argument', hooked);
   }
   if (held.locals.has(name)) {
-    return { clause: 'a local option', remedy: attachedRemedy(kind, 'local') };
+    return { clause: 'a local option', remedy: attachedRemedy('local') };
   }
   const claimed = held.globals.names.get(name);
   if (claimed) {
     const target = claimed.kind === 'plugin' ? 'plugin' : 'global';
     const clause =
       claimed.kind === 'plugin' ? `an option of plugin "${claimed.identity}"` : 'a global option';
-    return { clause, remedy: attachedRemedy(kind, target) };
+    return { clause, remedy: attachedRemedy(target) };
   }
   return held.arguments.has(name)
-    ? { clause: 'an argument', remedy: attachedRemedy(kind, 'argument') }
+    ? { clause: 'an argument', remedy: attachedRemedy('argument') }
     : undefined;
 }
 

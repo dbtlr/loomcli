@@ -99,7 +99,7 @@ test('the hook-collision error names a global option', () => {
   expect(invoke(rejected, ['global-collision'])).toEqual({
     status: 1,
     stderr:
-      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the Command\'s option or omit the plugin.\n',
+      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the global option or omit the plugin.\n',
     stdout: '',
   });
 });
@@ -108,7 +108,7 @@ test("the hook-collision error names another plugin's option", () => {
   expect(invoke(rejected, ['plugin-collision'])).toEqual({
     status: 1,
     stderr:
-      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@fixture/claimant". Rename the Command\'s option or omit the plugin.\n',
+      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@fixture/claimant". Install one of them.\n',
     stdout: '',
   });
 });

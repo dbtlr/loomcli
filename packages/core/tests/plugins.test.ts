@@ -235,11 +235,11 @@ const rejected = [
   ],
   [
     'hook-global-collision',
-    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the Command\'s option or omit the plugin.',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the global option or omit the plugin.',
   ],
   [
     'hook-plugin-collision',
-    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@acme/out". Rename the Command\'s option or omit the plugin.',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@acme/out". Install one of them.',
   ],
   [
     'hook-hook-collision',
@@ -247,7 +247,7 @@ const rejected = [
   ],
   [
     'hook-argument-collision',
-    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an argument. Rename the Command\'s option or omit the plugin.',
+    'Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an argument. Rename the Command\'s argument or omit the plugin.',
   ],
   [
     'hook-argument-author-collision',
