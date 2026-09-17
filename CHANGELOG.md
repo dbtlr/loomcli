@@ -6,6 +6,327 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.3.0 - 2026-09-17
+
+0.3.0 adds typed Command results with table, records, JSON, and JSON Lines views. Semantic styles, view overrides, and the Loom theme let applications customize output, help, and diagnostics.
+
+Pin both `@loomcli/core` and `@loomcli/plugins` to `0.3.0`. The migrations below cover Application registration, rendering and view overrides, result and context fixtures, middleware validation order, and help output.
+
+### Breaking Changes
+
+- Restore automatic Application global types in independently authored Commands and extracted actions through one shallow `Register.environment` augmentation.
+- Replace `GlobalOptions` and constructor `globals` configuration with `Application.globalOption(name, config)`. The Application supplies validated global values to every action.
+- Add immutable `Command.extend()` and `Application.extend()` calls that remain available after action registration. A later value replaces the complete earlier value from the same descriptor.
+
+### Migration
+
+**Affected surface.** `GlobalOptions`, constructor `globals` options on Application and Command, explicit global type arguments on either constructor, `CommandOptions<Globals>`, `ApplicationOptions<Globals>`, and TypeScript Commands whose actions read Application globals.
+
+**Why.** Application ownership should require one declaration, with global types available throughout its compiler project.
+
+**Before and after.**
+
+Before:
+
+```ts
+const globals = new GlobalOptions().option('file', { required: true, type: 'string' });
+const read = new Command('read', { globals }).action(handler);
+const app = new Application('app', { globals }).command(read);
+```
+
+After, in the Application module:
+
+```ts
+import type { EnvironmentOf } from '@loomcli/core';
+
+const configured = new Application('app')
+  .globalOption('file', { required: true, type: 'string' });
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+const app = configured.command(read);
+```
+
+The Command module now uses `new Command('read').action(handler)` without importing globals.
+
+**Steps.**
+
+1. Replace each `GlobalOptions.option()` declaration with `Application.globalOption()`. Remove the `GlobalOptions` import, the separate globals value, and constructor `globals` properties. Remove global type arguments from both constructors and from `ApplicationOptions`; use `CommandOptions` without a type argument.
+2. Declare all global options before the first `command()` or `action()` call. Register that configured Application value.
+3. Include the registration module in that application's TypeScript project. Use separate projects for applications with different registrations; reusable libraries omit consumer registration.
+4. To customize an imported Command, derive `command.extend(extensionValue)` and attach the returned value. Keep a self-typed extracted handler's original initializer ending in `action()`.
+
+**Validation.** Run the application's TypeScript check and invocation tests. Confirm detached actions infer global schema outputs, unknown keys fail, and existing global CLI spellings still reach their actions. See the [SDK reference](docs/core.md#modular-authoring).
+
+- Add composable `style`, independent `glyph`, deferred `pad`, and a destination-aware `ViewContext` on Node and Bun.
+- Add one optional theme contribution with inferred custom names and the `theme(mapping)` and `loomTheme(overrides?)` factories at `@loomcli/plugins/theme`.
+- Resolve view and semantic output under configurable color, modifier, hyperlink, and terminal-control policies. Add glyph gutters to `info`, `success`, `warn`, and `error`.
+
+### Migration
+
+**Affected surface.** View output, semantic output snapshots, embedded ANSI, marker-bearing raw data, complete `Host` values, and hand-built `ActionContext` values. Action contexts now require `style`.
+
+**Why.** Core now resolves marked output for the destination. The write site owns the newline, while core controls terminal capabilities and prevents formatting from leaking across calls. `out.render` and a failure diagnostic add none, so a view rendered through either owns its trailing newline; a semantic method appends one after its lane view, so a lane view returns none.
+
+**Before and after.**
+
+Before:
+
+```ts
+const view = { render: (name: string) => `${name}\n` };
+```
+
+After, preserve raw data literally:
+
+```ts
+import type { View } from '@loomcli/core';
+
+const fileName: View<string> = {
+  render: (name, { style }) => `${style.escape(name)}\n`,
+};
+```
+
+Previously `out.info('ready')` wrote `ready\n`. It now writes `ℹ ready\n` with main glyphs, or `i ready\n` with compatibility glyphs. `out.print('ready')` remains prefix-free.
+
+Before, a unit test could call `action(context)` with no `style` member. For an unthemed fixture, import `style` from `@loomcli/core` and call `action({ ...context, style })`. To test Application theme mappings, invoke the action through `Application.run()` so core supplies the configured style.
+
+**Steps.**
+
+1. Escape raw values before interpolating them into authored output. Preserve existing marked messages without another escape pass.
+2. Update semantic-output snapshots for glyph gutters and continuation indentation. `out.render` still adds no newline, and each semantic method still appends exactly one.
+3. Review embedded ANSI. Automatic policies evaluate each destination; other terminal controls default to stripping. Use `rendering: { terminalControls: 'preserve' }` for intentional complete terminal commands. Color, modifiers, and hyperlinks each accept `auto`, `always`, or `never`. Incomplete commands are always discarded.
+4. Add a `platform` string to complete `Host` values. Partial run overrides can omit it and use process capture.
+5. Optionally install `theme(mapping)` or `loomTheme(overrides?)` and include the shallow Application registration in the TypeScript project to expose custom names.
+6. Add `style` to hand-built action contexts, including values derived from `Parameters<ActionHandler<typeof command>>[0]`.
+
+**Validation.** Run the application's TypeScript check and output tests under Node and Bun. Compare redirected and terminal output, `NO_COLOR=1`, `TERM=linux`, and multiline messages. Use `width(style.escape(value))` to verify literal data alignment. See the [style reference](docs/core.md#styles-and-rendering-policy) for policy precedence and glyph selection.
+
+- Add one view registry for every rendered byte. `view(identity, definition)` declares a view, `override(key, view)` pairs a declared view or a failure class with a replacement, and both an Application and a plugin list them under `views`.
+- Add `lanes`, the five declared views behind `print`, `info`, `success`, `warn`, and `error`. An override of a lane view owns the glyph gutter, and the semantic method still appends one newline.
+- Add `helpPage` at `@loomcli/plugins/help/views` and `versionLine` at `@loomcli/plugins/version/views`, so an application brands the help page or the version line while the plugin stays installed.
+- Remove the `failures` option, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext`. `Renderer` is now `View` and `RendererContext` is now `ViewContext`.
+- Change failure resolution to walk each contributor in turn, the application first and then each plugin in installation order, and to walk the failure's prototype chain in full at each contributor. An application's override for a base class now beats a plugin's override for a subclass.
+- Change the text of a non-string view return from `The renderer returned <type> instead of a string.` to `The view returned <type> instead of a string.`
+
+### Migration
+
+**Affected surface.** The `failures` Application option, the `renderFailure` function, the `FailureRenderer`, `Renderer`, and `RendererContext` types, a plugin's `failures` declaration, the resolution order between an application's base-class registration and a plugin's subclass registration, and diagnostics that quote the non-string return reason.
+
+**Why.** A failure diagnostic, a semantic lane message, a help page, and a version line are all rendered output an application owns. One registry gives them one override surface and one resolution, as [ADR-0021](docs/decisions/0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) decides, so branding a plugin's page and branding a failure class are the same call.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { Application, InputError, renderFailure } from '@loomcli/core';
+import type { Renderer } from '@loomcli/core';
+
+const inputProblems: Renderer<InputError> = {
+  render: (failure, { style }) => `${style.escape(failure.message)}\n`,
+};
+
+export const app = new Application('app', {
+  failures: [renderFailure(InputError, inputProblems)],
+});
+```
+
+After:
+
+```ts
+import { Application, InputError, override } from '@loomcli/core';
+import type { View } from '@loomcli/core';
+
+const inputProblems: View<InputError> = {
+  render: (failure, { style }) => `${style.escape(failure.message)}\n`,
+};
+
+export const app = new Application('app', {
+  views: [override(InputError, inputProblems)],
+});
+```
+
+A plugin lists the views it declares beside the overrides it makes:
+
+```ts
+plugin('@acme/brand', { views: [brandPage, override(InputError, inputProblems)] });
+```
+
+**Steps.**
+
+1. Rename the `Renderer<Data>` type to `View<Data>` and `RendererContext` to `ViewContext`. The `render` function itself is unchanged.
+2. Replace each `failures` list with `views`, and each `renderFailure(Class, renderer)` entry with `override(Class, view)`. Do the same for a plugin's `failures` declaration.
+3. Check any application that registers a base class, such as `UsageError`, beside a plugin that registers a subclass, such as `InputError`. The application's override now answers both. Register the subclass on the application too where the earlier order was intended.
+4. Replace a call-site view you want an application to be able to brand with a declared view: export `view('<package>/<name>', definition)` from a `<subpath>/views` module and render it with `out.render(data, name)`. One identity means one object, so a second copy of the declaring package is a build error.
+5. Update any test that asserts the `The renderer returned ...` reason, and any that asserts a diagnostic from the retired declaration rules; the `failures` option now reports `The Application options contain failures. Declare view overrides under views with override(key, view).`
+
+**Validation.** Run `pnpm run check:types`, or `tsc --noEmit` in the application's own project, to find every retired name. Then run the output and failure tests under both runtimes: `pnpm exec vp test --run`, and `LOOM_TEST_RUNTIME=bun pnpm exec vp test --run`. Compare the bytes of each branded diagnostic, help page, and version line before and after the change.
+
+- Add `result<Value>({ views })` and `rows<Row>({ views })`, the authoring calls through which a Command or an Application's root declares what it produces. The type is stated by the author, `views` is a record keyed by view name whose first key is the default, and `action()` closes both calls, so an extracted `ActionHandler` types the emission from the declaration it imports.
+- Add `views(replacements, { default })`, published in every state on a declaration that carries a result. It merges by key, so a name the record already holds keeps its position and a new name is appended, and a default once named persists through later calls that name none, so an importing application reshapes the views without touching the action.
+- Add `out.results(value)`, the one call an action emits its result through. Under `result<Value>` it renders the resolved view over the value; under `rows<Row>` it accepts any iterable or async iterable and either feeds a row view as the source yields or collects the sequence for a whole view.
+- Add `RowView<Row>`, a view that renders a sequence one row at a time through `row`, with optional `head` and `tail`. `tail(count, context)` receives the number of rows that `row` received. `view(identity, definition)` and `override(key, replacement)` accept the shape, and `out.render(rows, rowView)` takes an iterable or an async iterable, requesting the next row only after the previous piece is written.
+- Change stdout to belong to the result. On a Command that declares one, the action's `print` and `render` write to stderr with stderr's capabilities, decided at graph build, so a script that captures stdout reads the result alone. A middleware's channel keeps the default destinations, and no method is removed.
+- Add `ResultError`, an `InternalError` carrying the routed `path`, a `kind` of `missing`, `repeated`, `undeclared`, or `middleware`, and no cause. An action that returns without emitting fails with exit 1, a second emission turns a would-be 0 into 1, and a cancelled run raises no missing-result fault.
+- Add `incompleteResult`, the declared view core writes on stderr when a sequence stops early, before the fault's own report. It carries the routed path and the yielded and written counts, and an override that returns the empty string silences it.
+- Add `result` to every node `inspect()` publishes: `null` where none is declared, and otherwise the unit, the view names in record order, and the default. The [core reference](docs/core.md#results) states the lane and its build rules.
+- Change `Out` to carry a required `results` member, and `View` to carry `row?: never`, so the two view shapes are exclusive in the type system.
+
+### Migration
+
+**Affected surface.** `Out<Result>` gains the required member `results`, so a value that implements `Out` by hand, such as a test double for an action's channel, no longer satisfies the type without it. `View<Data>` gains `row?: never`, so an object literal that carries both `render` and `row` no longer satisfies `View`, and `view(identity, definition)` rejects such a definition at the call with a `DeclarationError`. `CommandNode` gains the required member `result`, so hand-built graph nodes also need an update.
+
+**Why.** An action emits its result through one call, so `results` is on every `Out` rather than added by a declaration, and a Command with no result types its argument `never`. A view renders one whole value or one row at a time, never both, so the exclusion is stated in the type rather than guessed at the write site.
+
+**Before and after.**
+
+Before, a hand-built channel in a test:
+
+```ts
+import type { Out } from '@loomcli/core';
+
+const out: Out = {
+  error: async () => undefined,
+  fatal: (message) => {
+    throw new Error(message);
+  },
+  info: async () => undefined,
+  print: async () => undefined,
+  render: async () => undefined,
+  success: async () => undefined,
+  warn: async () => undefined,
+};
+```
+
+After, with the emission the lane requires:
+
+```ts
+import type { Out } from '@loomcli/core';
+
+const out: Out = {
+  error: async () => undefined,
+  fatal: (message) => {
+    throw new Error(message);
+  },
+  info: async () => undefined,
+  print: async () => undefined,
+  render: async () => undefined,
+  results: async () => undefined,
+  success: async () => undefined,
+  warn: async () => undefined,
+};
+```
+
+Before, one object serving as both shapes:
+
+```ts
+const rowsAndValue = {
+  render: (all: readonly Row[]) => all.map(line).join(''),
+  row: (row: Row) => line(row),
+};
+```
+
+After, one object per shape:
+
+```ts
+const whole: View<readonly Row[]> = { render: (all) => all.map(line).join('') };
+const byRow: RowView<Row> = { row: (row) => line(row) };
+```
+
+Before, a `CommandNode` fixture omitted `result`. After, a fixture for a Command with no result uses `{ ...node, result: null }`. A result-bearing fixture supplies `{ kind: 'value', views: ['json'], default: 'json' }`, or uses `kind: 'rows'` for a row sequence. Prefer a node from `Application.inspect()` when the test needs the complete declared graph.
+
+**Steps.**
+
+1. Add a `results` member to every hand-built `Out` value. A double that emits nothing returns a resolved promise.
+2. Find every view value that carries `render` beside `row` and split it into one whole view and one row view. Name each where its shape is wanted: a `views` record entry, an `out.render` argument, or a `view(identity, definition)` call.
+3. Add `result` to every hand-built `CommandNode`, including nodes nested in a `CommandGraph` fixture. Match the Command's declaration or use `null` when it declares no result.
+4. Rebuild, and read each new error at a `View`, `Out`, or `CommandNode` annotation. These changes surface at compile time.
+
+**Validation.** Run `pnpm run check:types`, or `tsc --noEmit` in the application's own project, to find every value these types now reject. Then run the application's tests under both runtimes: `pnpm exec vp test --run`, and `LOOM_TEST_RUNTIME=bun pnpm exec vp test --run`.
+
+- Add `@loomcli/plugins/format`, the formatter plugin. `format()` puts `--format <format>` on every Command that declares a result, listing the record's view names and declared default in its description and accepting `ndjson` as an unadvertised alias of `jsonl`, and its always-on middleware copies a supplied name into the selected view. `--format` on a Command with no result is the ordinary unknown-option error, and an unknown name is the option's validation issue with exit 2.
+- Add `json()` and `jsonl()` from `@loomcli/plugins/format`, whole views with an optional `map`. `json()` writes one indented document and `jsonl()` one compact line per element, each escaping DEL and the C1 controls as `\uXXXX`, and both render with the plugin uninstalled as any bare pack view does. The formatter's hook appends them to every result record that lacks the keys, so an author's own `json` is kept as written.
+- Add `onCommandAttach` to the plugin definition, a lifecycle hook core calls at graph build once per Command, the root first and then each child depth first, with the hooks of the installed plugins composing in installation order. It receives the declaration unlocked as `AttachedCommand`, the facts `inspect()` publishes beside the `argument`, `option`, `views`, and `extend` calls with their types erased, and returns the declaration to build. The exported types are `AttachedCommand`, `CommandAttachHook`, and `ResultView`. The [core reference](docs/core.md#lifecycle-hooks) states the hook and its build errors.
+- Add `request` to the middleware context, the routed Command's parsed and validated invocation as the exported `Request`, `null` while core holds a fault and on a group, and `view`, the name of the view the result renders through, which a middleware assigns before the dispatch boundary and reads as the declaration's default until one does. A name the record does not hold is an internal error at the boundary naming the plugin.
+- Change the middleware chain to run after local parsing and validation. Core parses the routed Command's tokens and validates the invocation before the first middleware runs, holds the fault it finds, and raises it at the dispatch boundary, the point the chain reaches when its last middleware continues, so a takeover still observes no fault and a wrapper installed ahead of help still reaches help's takeover. The [core reference](docs/core.md#invocation) states the order.
+
+### Migration
+
+**Affected surface.** A validator on an argument, a local option, or a global option with a side effect, or one that reads the host or awaits a resource, now runs on an invocation a middleware then takes over, `app get --help` included, because local parsing and validation run ahead of the chain. A middleware that took over and relied on no validator having run is affected the same way. `MiddlewareContext` gains required `request` and `view` members. Core supplies them during a run, but hand-built contexts in middleware unit tests must supply them too.
+
+**Why.** A middleware surrounds the whole request. Running the chain ahead of parsing kept a local option invisible to every middleware, so the formatter could not read `--format`, and any plugin that needs the invocation's values would have needed a second chain.
+
+**Before and after.**
+
+Before, a validator that recorded every invocation as a run:
+
+```ts
+const app = new Application('audit').argument('target', {
+  required: true,
+  validate: z.string().transform((value) => {
+    audit.record(value);
+    return value;
+  }),
+});
+```
+
+After, the validator answers and the action records, since the action runs only when the chain reaches the dispatch boundary:
+
+```ts
+const app = new Application('audit')
+  .argument('target', { required: true, validate: z.string() })
+  .action(async ({ args }) => {
+    audit.record(args.target);
+    // ...
+  });
+```
+
+Before, a middleware test could call `middleware(context)` without `request` or `view`. After, a fixture for a group uses `middleware({ ...context, request: null, view: null })`. For a callable Command, supply its parsed and validated `request`; use `null` only when core holds a fault. Set `view` to the declared default for a result Command, or `null` for a Command with no result.
+
+**Steps.**
+
+1. Read every `validate` and `validateOmitted` schema for a side effect, a host read, or an awaited resource. Move a side effect into the action, or make the schema idempotent where the effect is harmless when repeated.
+2. Read every middleware that takes over for an assumption that no validator ran. Remove the assumption; the held fault is still never raised under a takeover.
+3. Install `format()` after `help()` and `version()` where the application wants `--format`, and rename a local or global option named `format` that collides with it, or install one of the two plugins when another plugin's option already claims `format`, since build reports the collision and the plugin offers no rename.
+4. Add `request` and `view` to hand-built middleware contexts. Run the application's TypeScript check to find incomplete fixtures, then exercise any middleware that reads or assigns these members.
+
+**Validation.** Run the application's tests under both runtimes, `pnpm exec vp test --run` and `LOOM_TEST_RUNTIME=bun pnpm exec vp test --run`, and invoke each takeover path, such as `app get --help` with a required argument missing, to confirm it prints as before with any moved side effect absent.
+
+- Style the default help page and version line with semantic theme tokens and explicit bold and italic modifiers. Align help columns by terminal width, including wide and combining characters.
+- Include the formatter's declared default in its option description. Keep graph facts, defaults, and authored examples literal.
+
+### Migration
+
+**Affected surface.** Exact-byte consumers of the default help and version views, including snapshots and wrappers that call their `render` functions.
+
+**Why.** These views now return marked strings for core to resolve under the destination's rendering policy. Help columns use terminal width instead of JavaScript string length.
+
+**Before and after.** A capable terminal previously printed an unstyled application name. It now prints a bold highlighted name. The formatter description changes from `Select the output format: records, json, jsonl.` to `Select the output format: records, json, jsonl. Default: records.`
+
+**Steps.**
+
+1. For plain output, set `rendering: { color: 'never', modifiers: 'never' }` on the Application or invocation. `NO_COLOR` alone preserves modifiers at a capable terminal.
+2. Update help snapshots for the formatter sentence and Unicode column alignment.
+3. Pass default view output through `out.render` so core resolves its markers. Keep custom whole-view overrides when the application requires different output.
+
+**Validation.** Run the application's tests with plain and themed output configured as above. Compare stdout, stderr, exit codes, and final newlines against the updated expectations. This repository checks those policies and installed-package output with:
+
+```sh
+pnpm exec vp test --run packages/plugins/tests/help-style.test.ts
+LOOM_TEST_RUNTIME=bun pnpm exec vp test --run packages/plugins/tests/help-style.test.ts
+pnpm run check:packed
+```
+
+### Changes
+
+- Add `@loomcli/plugins/table` and `@loomcli/plugins/records` as typed view factories. A table buffers rows to measure its columns. A records view writes each row as it arrives and closes with the record count.
+
+- Add `loomTheme(overrides?)` at `@loomcli/plugins/theme` with seven dark foreground defaults, whole-token replacements, and inferred custom token names.
+- Add independent `ansi256` and `ansi16` fallbacks to concrete color helpers. Core selects the destination depth and preserves fallbacks through nesting and resets. Use one-argument wrappers such as `colors.map((color) => style.hex(color))` when passing helpers to array methods.
+- Install the Loom theme in both examples and highlight the `textstat --total` summary row. Ordinary pipes and automatic `NO_COLOR` retain plain output.
+
 ## v0.2.0 - 2026-09-10
 
 This release adds plugins. An Application installs each one explicitly through its `plugins` list, and a plugin contributes options, one middleware with declared activation, extension values, failure renderers, and a claim on the process signals. Core installs nothing on its own.
