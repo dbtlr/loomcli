@@ -189,7 +189,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023.
+View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](core.md#table) and [records](core.md#records) contracts.
 
 **Out**:
 The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
@@ -216,11 +216,23 @@ The `render` function of a whole view, or the `row`, `head`, and `tail` function
 _Avoid_: Renderer, render callback
 
 **Pack view**:
-A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against; whether the plugin publishes its configuration as a graph fact is that plugin's contract.
+A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against. Its configuration is plain data the returned view holds and never publishes, and a pack view is replaced by name alone, through a result's `views()` and never through an override.
 _Avoid_: Built-in view, formatter (for a pack view), widget
 
+**Column**:
+One entry of a table view's `columns` list: a key of the row, an optional header, an optional alignment, and an optional `format` that renders that cell. The list order is the column order, a key may appear twice, and an omitted list makes every key that appears in the rows a column in first-seen order.
+_Avoid_: Field (for a column), table column definition
+
+**Field**:
+One entry of a records view's `fields` list: a key of the row and an optional `format`. A field carries no header and no alignment, because the key is the label the line prints and the value column is one lane. An omitted list makes every key that appears in the record a field in first-seen order.
+_Avoid_: Column (for a field), property, attribute, row key
+
+**Identifier**:
+The required key of a records view's configuration, naming the field whose value identifies each record. The view styles that value apart from the rest so a reader scanning a list finds the record it names. It is a presentation choice alone, and it is neither a uniqueness claim nor a fact any other reader consumes.
+_Avoid_: Key, id, primary key, unique key, name (for the identifier)
+
 **Row view**:
-The second structural shape of a view, which renders a sequence one row at a time: a `row` function over one row, its index, and the context, with optional `head` and `tail` functions that open and close the sequence. Every function is pure and synchronous. Core tells a row view from a whole view by the function present, and feeds a row view as the source yields while it buffers a sequence for a whole view.
+The second structural shape of a view, which renders a sequence one row at a time: a `row` function over one row, its index, and the context, with optional `head` and `tail` functions that open and close the sequence, where `head` takes the context alone and `tail` takes the number of rows rendered and then the context. Every function is pure and synchronous. Core tells a row view from a whole view by the function present, and feeds a row view as the source yields while it buffers a sequence for a whole view.
 _Avoid_: Item view, stream view, incremental renderer
 
 **Whole view**:

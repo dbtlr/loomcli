@@ -925,10 +925,10 @@ Successful completion requires output completion. A view failure during the chai
 
 ### Example coverage
 
-[textstat](../examples/textstat/src/table.ts) holds its `Row` and `Table` types and one table view in its own module. The action collects a row per counted source and calls `out.render` once, after the last source is counted, so no core helper knows about columns and a read failure on any source leaves stdout empty. The header names the metric in upper case, then `SOURCE`. Counts right-align in a column as wide as the header or the widest count, a two-space gutter separates the columns, and the source column has no trailing padding. The total row is present only with `--total` and its source is `total`, so a selection that the byte threshold filters entirely still prints the header and one `total` row.
+[textstat](../examples/textstat/src/application.ts) prints a row per counted source, and a read failure on any source leaves stdout empty. The header names `COUNT`, then `SOURCE`. Counts right-align in a column as wide as the header or the widest count, a two-space gutter separates the columns, and the source column has no trailing padding. The total row is present only with `--total` and its source is `total`, so a selection that the byte threshold filters entirely still prints the header and one `total` row. The [table](#table) view produces these bytes from the column list, and the [table and records coverage](#table-and-records-example-coverage) pins them.
 
 ```text
-BYTES  SOURCE
+COUNT  SOURCE
     6  one.txt
     2  two words.txt
     8  total
@@ -961,7 +961,7 @@ interface View<Data> {
 interface RowView<Row> {
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   head?: (context: ViewContext) => string;
-  tail?: (context: ViewContext) => string;
+  tail?: (count: number, context: ViewContext) => string;
   render?: never;
 }
 interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
@@ -997,7 +997,7 @@ interface Out<Result = unknown> {
 
 #### Row views
 
-A view renders one whole value in one call, as [Rendered output](#rendered-output) defines it; where the two shapes meet, this section calls it a whole view. A row view renders a sequence one row at a time: `row` receives one row, its zero-based index, and the view context, and returns the text for that row; `head` and `tail` return the text that opens and closes the sequence, and each defaults to the empty string. Every function is pure and synchronous, holds no output handle, and owns the newlines in the text it returns, because the write site appends nothing. The two shapes are exclusive: a whole view has `render` and no `row`, a row view has `row` and no `render`, the types reject a value with both, and build rejects one a JavaScript author writes, so core never guesses. `view(identity, definition)` declares either shape, and a declared row view carries the brand and the invariance witness a declared view carries, so `override` keyed by it takes a row view under the rules of [Views](#views) unchanged; a replacement supplies the whole shape, so an omitted `head` or `tail` replaces the default's with nothing. `AnyDeclaredView` and `ViewContribution` admit both shapes, as the type block there states.
+A view renders one whole value in one call, as [Rendered output](#rendered-output) defines it; where the two shapes meet, this section calls it a whole view. A row view renders a sequence one row at a time: `row` receives one row, its zero-based index, and the view context, and returns the text for that row; `head` and `tail` return the text that opens and closes the sequence, and each defaults to the empty string. `head` receives the view context alone, because nothing about the sequence is known before it starts. `tail` receives the number of rows `row` was called with and then the view context, so a summary line reports a count no view has to accumulate, and the count is zero on an empty sequence. Every function is pure and synchronous, holds no output handle, and owns the newlines in the text it returns, because the write site appends nothing. The two shapes are exclusive: a whole view has `render` and no `row`, a row view has `row` and no `render`, the types reject a value with both, and build rejects one a JavaScript author writes, so core never guesses. `view(identity, definition)` declares either shape, and a declared row view carries the brand and the invariance witness a declared view carries, so `override` keyed by it takes a row view under the rules of [Views](#views) unchanged; a replacement supplies the whole shape, so an omitted `head` or `tail` replaces the default's with nothing. `AnyDeclaredView` and `ViewContribution` admit both shapes, as the type block there states.
 
 `out.render` accepts a row view with an iterable, the second overload above. `out.render(rows, records)` renders `head`, then each row as the iterable yields it, then `tail`, and writes each piece in order on the call's destination. A synchronous or an asynchronous iterable is accepted. Core calls `row` for each item as it arrives, not inside the `out.render` call, and does not request the next item until the previous piece's write has completed, so a slow destination applies back-pressure to the source; a source that never ends never completes, which is the author's to avoid. The returned promise resolves when `tail` is written. A sequence call, under `out.render` with a row view or under `out.results` with either view shape, holds its place in its destination's order from the moment it is issued until its last piece is written, so a later call to the same destination, awaited or not, writes after the sequence, and the call-order rule of [Output and failures](#output-and-failures) reads at the granularity of calls. One consequence is a hazard the author owns: a source that itself writes to the sequence's destination waits behind the sequence, which waits on the source, so such a write is issued before or after the sequence or to the other destination. A pending sequence is open output: the invocation does not complete, under the rule that successful completion requires output completion, until every sequence it issued has ended. This is the first step of the lane: an action renders through a table or records view from the plugin pack with no declaration, no `--format`, and no change to its stdout.
 
@@ -1011,7 +1011,7 @@ import { table } from '@loomcli/plugins/table';
 });
 ```
 
-A pack view is a configured factory, and what it returns is a bare view: it carries no identity, nothing replaces it by reference, and two calls with one configuration are two views. Its configuration is typed from the row type. When the factory call is written inside a `views` record, the row type flows in by contextual typing and a column that names a field the rows do not carry is a compile error on that string. As the second argument of `out.render` the call's row type is inferred from the iterable and does not flow into the factory's configuration, so there, as in a call hoisted into its own constant, the factory states its row type, `table<Row>({…})`, or its cell callbacks go unchecked. A `columns` or `fields` list is an ordered list whose entries are a bare key or `{ key, header?, align?, format? }`, where a bare key is `{ key }`, the list order is the column order, a header defaults to the key spelled as written, a key may appear twice, and `format` is a function that renders one cell. When the list is omitted every own key that appears in the rows is a column in first-seen order, cells stringify with `String(value)`, and an empty sequence prints nothing, because no key is known. A factory's return type names one shape, never a union of the two, so its value reaches both `out.render` overloads and a `views` record alike. Each factory's full configuration is its own plugin's contract, and so is the table's choice between a row view with declared widths and a whole view that measures every row, whether the factory renders through an inner declared view an application can override for every table at once, and whether and how the plugin publishes a configuration as a graph fact, since core sees a bare view and has nothing to key such a fact on.
+A pack view is a configured factory, and what it returns is a bare view: it carries no identity, nothing replaces it by reference, and two calls with one configuration are two views. Its configuration is typed from the row type. When the factory call is written inside a `views` record, the row type flows in by contextual typing and a column that names a field the rows do not carry is a compile error on that string. As the second argument of `out.render` the call's row type is inferred from the iterable and does not flow into the factory's configuration, so there, as in a call hoisted into its own constant, the factory states its row type, `table<Row>({…})`, or its cell callbacks go unchecked. A `columns` or `fields` list is an ordered list whose entries are a bare key or an object with `key` and the entry's own optional fields, where a bare key is `{ key }`, the list order is the column order, a key may appear twice, and `format` is a function that renders one cell. When the list is omitted every own key that appears in the rows is a column in first-seen order, cells stringify with `String(value)`, and an empty sequence prints nothing, because no key is known. A factory's return type names one shape, never a union of the two, so its value reaches both `out.render` overloads and a `views` record alike. A factory's configuration is plain data the view it returns holds, and no factory publishes it: core sees a bare view and has nothing to key such a fact on, and an application changes a result's layout by naming another view rather than by reaching for the one it has. Each factory's full configuration is its own contract: [Table](#table) states the table's, a whole view that measures every row, and [Records](#records) states the records list's, a row view that writes each record as it arrives.
 
 #### Declaring a result
 
@@ -1113,7 +1113,7 @@ Build applies the rules below at every depth, each a `DeclarationError` with exi
 
 #### Results example coverage
 
-The results increment is proven when [textstat](../examples/textstat/src/application.ts) declares its table as `result<Table>` with its own whole view under the key `table` and prints the bytes in the [failure example coverage](#example-coverage-2) unchanged, with its `--timing` line still on stderr, and when a hidden jsonkit Command declares `rows<Entry>` over the document's paths with an application-authored row view as its default and a whole view under a second key, writes each row as an async generator yields it, and leaves a partial list and the incomplete line behind when the generator throws. The acceptance tests cover both shapes of `out.render` with a row view under a synchronous and an asynchronous iterable, `out.results` under each declaration with an array, a generator, and an async generator, back-pressure observed through a destination that delays its write callback and a source that records each request, so no second request precedes the first callback, a later `print` to the same destination landing after an unawaited sequence's last piece under a row view and under a whole view, an invocation that stays open while an unawaited sequence waits on a slow source and completes after it, `print` and `render` reaching stderr with stderr's capabilities on a result Command and stdout on a plain one, a middleware's `print` keeping stdout on a result Command, each `ResultError` kind with its exit code, its prefix, and an `undefined` cause, an `InternalError` override reaching a `ResultError`, a cancelled run with an unemitted result returning the signal's code and no missing-result diagnostic, each early stop of the previous section under a row view and under a whole view with the incomplete line carrying both counts before the report, a whole view that throws after a finite source ended, a cancelled source that returns leaving the line alone, an override of `incompleteResult` silencing it and one that throws leaving the primary report intact, an empty sequence under each view shape, `views()` replacing a key in place, appending a key, moving the default, and keeping a moved default through a later call, `inspect()` publishing the fact, and each build rule above. The positive type checks cover a declared row view in a plugin's `views` list and a library's neutral annotation and `command()` attachment of a declaration with a result. The negative type checks cover an iterable that is not the declared value passed under `result`, a value passed under `rows`, `out.results` on a Command with no result and on a middleware's `out`, a column that names a missing field through the declaration and through `out.render`, a value with both `render` and `row` in a declaration and in `views()`, a row view under `result` in a declaration and in `views()`, `result()` or `rows()` called after `action()`, and `views()` on a declaration with no result. Editor latency on `ActionHandler` over a declaration with a result is measured against the current baseline before the increment merges. Each case runs under Node and Bun.
+The results increment is proven when [textstat](../examples/textstat/src/application.ts) declares its table as a result with one whole view under the key `table` and prints the table bytes the [table and records coverage](#table-and-records-example-coverage) pins, with its `--timing` line still on stderr, and when a hidden jsonkit Command declares `rows<Entry>` over the document's paths with an application-authored row view as its default and a whole view under a second key, writes each row as an async generator yields it, and leaves a partial list and the incomplete line behind when the generator throws. The acceptance tests cover both shapes of `out.render` with a row view under a synchronous and an asynchronous iterable, `out.results` under each declaration with an array, a generator, and an async generator, back-pressure observed through a destination that delays its write callback and a source that records each request, so no second request precedes the first callback, a later `print` to the same destination landing after an unawaited sequence's last piece under a row view and under a whole view, an invocation that stays open while an unawaited sequence waits on a slow source and completes after it, `print` and `render` reaching stderr with stderr's capabilities on a result Command and stdout on a plain one, a middleware's `print` keeping stdout on a result Command, each `ResultError` kind with its exit code, its prefix, and an `undefined` cause, an `InternalError` override reaching a `ResultError`, a cancelled run with an unemitted result returning the signal's code and no missing-result diagnostic, each early stop of the previous section under a row view and under a whole view with the incomplete line carrying both counts before the report, a whole view that throws after a finite source ended, a cancelled source that returns leaving the line alone, an override of `incompleteResult` silencing it and one that throws leaving the primary report intact, an empty sequence under each view shape, `views()` replacing a key in place, appending a key, moving the default, and keeping a moved default through a later call, `inspect()` publishing the fact, and each build rule above. The positive type checks cover a declared row view in a plugin's `views` list and a library's neutral annotation and `command()` attachment of a declaration with a result. The negative type checks cover an iterable that is not the declared value passed under `result`, a value passed under `rows`, `out.results` on a Command with no result and on a middleware's `out`, a column that names a missing field through the declaration and through `out.render`, a value with both `render` and `row` in a declaration and in `views()`, a row view under `result` in a declaration and in `views()`, `result()` or `rows()` called after `action()`, and `views()` on a declaration with no result. Editor latency on `ActionHandler` over a declaration with a result is measured against the current baseline before the increment merges. Each case runs under Node and Bun.
 
 ## Plugins
 
@@ -1477,7 +1477,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and the formatter, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` factories of [Row views](#row-views) under their own contract.
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and the formatter, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -1695,16 +1695,17 @@ function jsonl<Data>(config?: { map?: (data: Readonly<Data>) => unknown }): View
 import { Application } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
+import { table } from '@loomcli/plugins/table';
 import { version } from '@loomcli/plugins/version';
 
 export const textstat = new Application('textstat', { plugins: [help(), version(), format()] })
   // ...
-  .result<Table>({ views: { table: tableView } })
+  .rows<Row>({ views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) } })
   .action(countFiles);
 ```
 
 ```text
-$ textstat --format json one.txt      # the Table as one JSON document on stdout, warnings on stderr
+$ textstat --format json one.txt      # the rows as one JSON array on stdout, warnings on stderr
 $ textstat --format yaml one.txt
 Invalid input: Option "--format": Supply one of table, json, jsonl.
 $ jsonkit get --format json user.name -f doc.json
@@ -1735,7 +1736,122 @@ export default middleware;
 
 #### Formatter example coverage
 
-The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the `Table` as one indented document with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints it on one line, `textstat one.txt` prints the table it printed before, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, and `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, and `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+
+### Table
+
+The table is `@loomcli/plugins/table`. Its factory `table<Row>(config?)` takes a column list and returns a whole view over the collected rows, `View<readonly Row[]>`, so the same value reaches a `views` record under `rows<Row>` and the second argument of `out.render`. Nothing is installed: there is no plugin factory at the subpath, no option, no lifecycle hook, and no graph fact, and what the call returns is a bare pack view under [Row views](#row-views). The view measures every row before it writes its first line, which is what buys a column as wide as its widest cell, so a sequence rendered through it is buffered whatever its source.
+
+```ts
+// @loomcli/plugins/table
+function table<Row>(config?: TableConfig<Row>): View<readonly Row[]>;
+
+interface TableConfig<Row> {
+  columns?: readonly Column<Row>[];
+}
+type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
+type ColumnEntry<Row> = {
+  [Key in keyof Row & string]: {
+    key: Key;
+    header?: string;
+    align?: 'left' | 'right' | 'center';
+    format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
+  };
+}[keyof Row & string];
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { table } from '@loomcli/plugins/table';
+
+import { countFiles } from '../actions/count-files.js';
+
+interface Row {
+  count: number;
+  source: string;
+}
+
+export const count = new Command('count')
+  .argument('files', { required: true, variadic: true })
+  .rows<Row>({
+    views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) },
+  })
+  .action(countFiles);
+```
+
+```text
+COUNT  SOURCE
+    6  one.txt
+    2  two words.txt
+    8  total
+```
+
+- **Configuration.** `columns` is an ordered list whose entries are a bare key or `{ key, header?, align?, format? }`, where a bare key is `{ key }` and the list order is the column order. A key may appear twice, which is two columns over one field, each with its own header, alignment, and format. With `columns` omitted, every own key that appears in the rows is a column in first-seen order with the key as its header. The configuration is plain data the returned view holds: the factory publishes no fact and no descriptor, and an application that wants another layout names another view.
+- **Form.** One header line, then one line per row in source order. A header cell is the entry's `header` or the key spelled as written, styled `dim`. Two spaces separate one column from the next. There are no borders, no rule lines, and no trailing spaces after the last column of a line. Every line ends with `\n`, and the view owns every newline it writes.
+- **Cells.** A default cell is `String(value)` passed through `style.escape` and styled `primary`, and `null` and `undefined` print as the empty string rather than as their spellings. A `format` entry replaces the default cell and returns marked text its author owns, which the view neither escapes nor styles, the view-function rule of [Rendered output](#rendered-output); a default cell is escaped by the view because the value is data.
+- **Width.** Each column is padded with core's `pad` to the widest of its header and every cell in that column, each measured with `context.width`, so a styled cell and a wide character land in the same column as a plain narrow one. Alignment is `left` unless the entry names `right` or `center`. A cell is never truncated, whatever the destination reports as its width, and no alignment is inferred from a value's type: a number left-aligns until a column asks for `right`.
+- **Empty.** An empty sequence with `columns` given prints the header line alone, so a filtered run still reports the shape it searched. An empty sequence with no `columns` prints nothing, because no key is known.
+- **Typing.** `columns` is typed from `Row`, and each entry's `format` receives `Row[Key]` narrowed from that entry's own literal key. Inside a `views` record the row type flows in by contextual typing, so a key that is not a key of `Row` is a compile error on that string. Hoisted into a constant or written as the second argument of `out.render` the row type does not flow in, so the factory states it, `table<Row>({…})`, or its cell callbacks go unchecked, the rule [Row views](#row-views) states for every pack view.
+
+### Records
+
+The records list is `@loomcli/plugins/records`. Its factory `records<Row>(config)` takes an identifier and an optional field list and returns a row view, `RowView<Row>`, so a record prints as its source yields it and no row waits on the rows behind it. Like the table it installs nothing and returns a bare pack view. `identifier` is required: it names the key whose value identifies the record, which the view styles apart so an operator scanning a long list finds the record it names.
+
+```ts
+// @loomcli/plugins/records
+function records<Row>(config: RecordsConfig<Row>): RowView<Row>;
+
+interface RecordsConfig<Row> {
+  identifier: keyof Row & string;
+  fields?: readonly Field<Row>[];
+}
+type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
+type FieldEntry<Row> = {
+  [Key in keyof Row & string]: {
+    key: Key;
+    format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
+  };
+}[keyof Row & string];
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { records } from '@loomcli/plugins/records';
+
+import { listMembers } from '../actions/list-members.js';
+
+interface Member {
+  key: string;
+  kind: string;
+}
+
+export const members = new Command('members')
+  .rows<Member>({ views: { records: records({ identifier: 'key' }) } })
+  .action(listMembers);
+```
+
+```text
+key   user
+kind  object with 3 keys
+
+key   tags
+kind  array with 2 items
+
+2 records
+```
+
+- **Configuration.** `fields` is an ordered list whose entries are a bare key or `{ key, format? }`, where a bare key is `{ key }` and the list order is the field order. A field carries no `header` and no `align`: the key is the label a records list prints, and the value column is one lane, so neither has a second spelling to choose. With `fields` omitted, every own key that appears in the record is a field in first-seen order. `identifier` names a key of `Row` and needs no place in `fields`; it selects the value the view highlights, and it may be a field the list omits.
+- **Form.** One line per field: the key padded left to the key column's width, styled `dim`, then two spaces, then the value. One blank line separates one record from the next, with none before the first record and none after the last. There are no rule lines. Every line ends with `\n`, and the view owns every newline it writes.
+- **Width.** With `fields` declared, the key column is as wide as the widest key in the list, so every record aligns against the same column. Under the all-keys default the key column is as wide as the widest key of that record alone, because a row view sees one row and cannot measure the rows behind it. Keys are measured with `context.width` and padded with core's `pad`, and a key is never truncated.
+- **Cells.** A default value is `String(value)` passed through `style.escape` and styled `primary`, except the identifier's value, which is styled `highlight`. `null` and `undefined` print as the empty string, so the key stands alone on its line. A `format` entry replaces the default and returns marked text its author owns, which the view neither escapes nor styles, the identifier's field included.
+- **Head and tail.** `head` prints nothing, because a records list has no column headings to open with. `tail` prints one blank line and then the summary line `<count> records`, styled `dim`, with its own newline, where `count` is the number of rows `row` was called with. One record reads `1 record`, and an empty sequence prints `0 records` with no blank line before it, because no record printed.
+- **Typing.** `identifier` and `fields` are typed from `Row`, and each entry's `format` receives `Row[Key]` narrowed from that entry's own literal key. The contextual-typing rule is the table's: inside a `views` record a key that is not a key of `Row` is a compile error on that string, and hoisted or written as the second argument of `out.render` the factory states its row type, `records<Row>({…})`, or its cell callbacks go unchecked.
+
+#### Table and records example coverage
+
+The increment is proven when both examples drop their hand-written views for the two factories. [textstat](../examples/textstat/src/application.ts) declares `rows<Row>` over `{ count: number; source: string }` with `views: { table: table({ columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'] }) }`, its action appends `{ count: total, source: 'total' }` when `--total` was supplied, and the `Table` type and `tableView` are deleted with the module that held them; the header names `COUNT` rather than the metric, and `--format json` prints an array of rows rather than one object. jsonkit's `paths` declares `views: { list: records({ identifier: 'path' }), table: table({ columns: ['path', 'kind'] }) }`, and `pathList` and `pathTable` are deleted. jsonkit's root declares `rows<Member>` over `{ key: string; kind: string }` with `views: { records: records({ identifier: 'key' }) }`, its own line about the document's kind moves to stderr through `out.info`, and a scalar document is an empty sequence whose tail prints `0 records`. The implementation re-pins the golden bytes and the transcripts of the [results](#results-example-coverage), [formatter](#formatter-example-coverage), and [failure](#example-coverage-2) coverage paragraphs against the new views.
+
+The acceptance tests cover each factory as the second argument of `out.render` and as an entry of a declared result, a column measured against a wide CJK cell and against a styled cell, a `null` and an `undefined` cell under each factory, one key listed twice as two columns, a `format` cell that returns styled text the view leaves unescaped beside a default cell in the same row that the view escapes, the all-keys default in first-seen order under each factory, an empty sequence under the table with `columns` printing the header line alone and without `columns` printing nothing, an empty sequence under records printing `0 records`, a one-row sequence printing `1 record`, and `tail` receiving the row count under `out.render` and under `out.results` alike. The negative type checks cover a column that names a key the row does not carry, a records field that carries `header`, an `identifier` that names a key the row does not carry, and a `format` whose value parameter is typed as something other than the key's own value type. Each case runs under Node and Bun.
 
 ### Example coverage
 
