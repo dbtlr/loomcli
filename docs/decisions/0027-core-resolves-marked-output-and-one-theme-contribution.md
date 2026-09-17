@@ -4,7 +4,7 @@ title: ADR-0027 - Core resolves marked output and one theme contribution
 description: Accept the implemented style seam independently of the proposed named Loom palette, replacing the affected renderer and plugin-slot clauses.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-14
+modified: 2026-09-17
 ---
 
 # ADR-0027 - Core resolves marked output and one theme contribution
@@ -42,3 +42,4 @@ The named `loomTheme` palette remains proposed under ADR-0022. The view registry
 - 2026-09-14: The view registry contract in [Views](../core.md#views) renames `Renderer` to `View` and `RendererContext` to `ViewContext`, and makes the semantic methods' glyph gutter the default of a lane view that an application can override, binding when [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) is accepted. The semantic method still appends its one newline outside the view. Every other clause stands.
 
 - 2026-09-14: ADR-0021 is accepted and the view registry is implemented; the sentence above that calls it proposed predates that acceptance. The results lane remains proposed under ADR-0023, whose contract in [Results](../core.md#results) adds the row view as a second shape of the marked-string view this record defines, with no change to the string, theme, or resolution seam.
+- 2026-09-17: [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes an exception to the incorporated approximation rule: an explicit color fallback takes precedence at its named depth. Existing no-options behavior and every other constraint remain unchanged. This exception binds only when ADR-0029 is accepted with its implementation.

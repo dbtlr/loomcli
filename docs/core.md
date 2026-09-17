@@ -1872,13 +1872,78 @@ The increment is proven when both examples drop their hand-written views for the
 
 The acceptance tests cover each factory as the second argument of `out.render` and as an entry of a declared result, a column measured against a wide CJK cell and against a styled cell, a `null` and an `undefined` cell under each factory, one key listed twice as two columns, a `format` cell that returns styled text the view leaves unescaped beside a default cell in the same row that the view escapes, the all-keys default in first-seen order under each factory, an empty sequence under the table with `columns` printing the header line alone and without `columns` printing nothing, an empty sequence under records printing `0 records`, a one-row sequence printing `1 record`, and `tail` receiving the row count under `out.render` and under `out.results` alike. The negative type checks cover a column that names a key the row does not carry, a records field that carries `header`, an `identifier` that names a key the row does not carry, and a `format` whose value parameter is typed as something other than the key's own value type. Each case runs under Node and Bun.
 
+### Loom theme
+
+```ts
+import type { ConcreteStyle, Plugin, ThemeConstraint, ThemeMapping } from '@loomcli/core';
+
+type LoomThemeDefaults = Readonly<Record<
+	'dim' | 'primary' | 'highlight' | 'success' | 'warning' | 'error' | 'info',
+	ConcreteStyle
+>>;
+
+export type LoomThemeOverrides = {
+	readonly [Name in keyof LoomThemeDefaults]?: ConcreteStyle | undefined;
+} & ThemeMapping;
+
+export declare function loomTheme<const Mapping extends ThemeMapping = {}>(
+	overrides?: LoomThemeOverrides & Mapping & ThemeConstraint<Mapping>,
+): Plugin<{}, LoomThemeDefaults & Omit<NoInfer<Mapping>, keyof LoomThemeDefaults>>;
+```
+
+```ts
+import { Application, style } from '@loomcli/core';
+import { loomTheme } from '@loomcli/plugins/theme';
+
+const app = new Application('example', {
+	plugins: [loomTheme({
+		highlight: style.cyan.bold,
+		identifier: style.hex('#C97B36', { ansi256: 172, ansi16: 'yellow' }),
+	})],
+});
+```
+
+- **Status.** This is the proposed contract under ADR-0022 and [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md). `loomTheme` and fallback options are not implemented yet.
+- **Exports.** `@loomcli/plugins/theme` adds `loomTheme` and the type `LoomThemeOverrides` beside the existing `theme(mapping)`. Both factories use identity `@loomcli/plugins/theme` and contribute through the same single theme slot. They install no middleware, options, hooks, or views. Importing either factory installs nothing.
+- **Defaults.** `loomTheme()` supplies the seven mappings below. `theme(mapping)` remains the bare factory and supplies only its declared mappings. The named defaults change foregrounds only, preserving backgrounds and modifiers. There is no mode argument, light palette, background detection, terminal query, environment variable, or CLI flag for selecting a palette.
+- **Overrides.** A supplied concrete chain replaces the complete mapping for its key, including its fallback colors. An omitted or `undefined` built-in override retains the default. `style` contributes no operations and inherits its surroundings. `style.resetForeground` selects the terminal's foreground default while preserving other attributes. `null` and applied strings are invalid values. The existing concrete-chain and reserved-name rules apply.
+- **Custom names.** Extra keys add tokens to the Application vocabulary, including keys whose value is `undefined`. Core-key completion suggests the seven names without requiring an annotation. A reusable mapping can use `satisfies LoomThemeOverrides` while retaining its custom keys. Literal custom names survive the returned plugin and [Application environment registration](#theme-plugins-and-typed-names) into action and view contexts. The imported `style` remains independent of Application registration. A mapping cannot reference another token.
+- **Policy.** Construction reads no terminal facts. Core selects colors for each destination under the existing rendering policy. Installing the theme does not force color, select glyph forms, or change layout. An ordinary pipe remains free of styling, while explicit policy or `FORCE_COLOR` can enable it. Under automatic policy, `NO_COLOR` suppresses colors unless `FORCE_COLOR` is also set. Authored modifiers follow their own policy. Theme installation leaves unmarked text unchanged.
+
+The named palette uses [explicit fallback colors](#explicit-color-fallbacks) at the reduced depths:
+
+| Token | Truecolor foreground | 256-color foreground | 16-color foreground |
+| --- | --- | --- | --- |
+| `primary` | Terminal default | Terminal default | Terminal default |
+| `dim` | `#8B93A3` | `245` | `brightBlack` |
+| `highlight` | `#C97B36` | `172` | `yellow` |
+| `success` | `#7A8F7B` | `108` | `green` |
+| `warning` | `#E2B93D` | `178` | `brightYellow` |
+| `error` | `#C04532` | `131` | `red` |
+| `info` | `#5B7DA3` | `67` | `blue` |
+
+`primary` maps to `style.resetForeground`, not a fixed white or cream. `dim` uses a color, not `faint`. No default adds bold. A view requests emphasis through a chain such as `style.highlight.bold(text)`. The palette paints no background and does not adapt to one.
+
+#### Loom theme acceptance
+
+The implementation increment proves these cases through public APIs:
+
+- Packed consumers import both factories and `LoomThemeOverrides` from the same subpath. Neither import installs a plugin. Installing either with another theme fails the existing identity or theme-slot check.
+- Every default emits the exact foreground in the table at each depth, with no background or modifier operation. A nested `primary` restores terminal foreground inside a colored span while preserving the surrounding background and modifiers.
+- Omitted and `undefined` overrides retain defaults. A replacement chain discards the original mapping and its fallbacks. `style` inherits the enclosing style, and `style.resetForeground` restores terminal foreground. Custom `undefined` keys remain valid tokens.
+- Compiler checks cover literal custom names, independent imported styles, invalid values, reserved names, and semantic references. An editor completion check suggests all seven core keys and omits keys already supplied.
+- Both examples install `loomTheme()`. `textstat --total` uses the default highlight for its total row on a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content and layout contain no color escapes. Help and version restyling remains a separate increment.
+- Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence exercises the published declarations and the named palette at each color depth.
+
+Before implementation, `scripts/check-theme-contract.mjs` checks the proposed factory declaration from this section against current core types. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
+
 ### Example coverage
 
 The first-party increment is proven when both example applications install `help()` and `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help and version win a tie, and public APIs alone produce the pages above. The examples move the prose the pages print onto help's own descriptors: jsonkit's root and `get`, and textstat's root, carry `helpCommand` values with the `details` and `examples` the pages show, where each `command` omits the application name, and jsonkit's `--file` carries `helpInput({ placeholder: 'path' })`; the example plugin keeps its own descriptor and values, because the two are separate facts. The acceptance tests compare bytes: `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages, `jsonkit get --help` prints the `get` page with its `details` and example while `path` is missing, `jsonkit select --bogus --help` prints the `select` page, `jsonkit fetch --help` prints the deprecated page and `jsonkit debug --help` the hidden one, and `jsonkit cache --help` on a nested fixture prints a group page with the children form alone and a `cache <command>` row on its parent's page. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the example manifests hold `0.0.0`, and an Application that omits `version` prints the same line. `jsonkit --help --version` prints help and never imports the version middleware module. Each case runs under Node and Bun, the pattern the seam's coverage set.
 
 ## Styles and rendering policy
 
-Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named `loomTheme` palette remains proposed under ADR-0022.
+Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named [Loom theme](#loom-theme) remains proposed under ADR-0022. [Explicit color fallbacks](#explicit-color-fallbacks) remain proposed under ADR-0029.
 
 ### Strings and composition
 
@@ -1945,6 +2010,53 @@ Three scoped resets are chainable:
 
 `style.reset.red(text)` clears inherited styling and then applies red. Closing the span restores the enclosing style. A token mapped to `style.reset` explicitly clears inherited styling. An omitted mapping does not clear anything.
 
+### Explicit color fallbacks
+
+```ts
+import type { Style } from '@loomcli/core';
+
+export type ColorName =
+	| 'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white'
+	| 'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow'
+	| 'brightBlue' | 'brightMagenta' | 'brightCyan' | 'brightWhite';
+
+export interface ColorFallbacks {
+	readonly ansi256?: number | undefined;
+	readonly ansi16?: ColorName | undefined;
+}
+
+export type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;
+
+// These members extend the existing Style type.
+interface ColorHelpers<Names extends string, Semantic extends boolean> {
+	hex(color: string, fallbacks?: ColorFallbacks): Style<Names, Semantic>;
+	rgb(red: number, green: number, blue: number, fallbacks?: ColorFallbacks): Style<Names, Semantic>;
+	ansi256(index: number, fallbacks?: Ansi256Fallbacks): Style<Names, Semantic>;
+	bgHex(color: string, fallbacks?: ColorFallbacks): Style<Names, Semantic>;
+	bgRgb(red: number, green: number, blue: number, fallbacks?: ColorFallbacks): Style<Names, Semantic>;
+	bgAnsi256(index: number, fallbacks?: Ansi256Fallbacks): Style<Names, Semantic>;
+}
+```
+
+```ts
+const sage = style.hex('#7A8F7B', { ansi256: 108, ansi16: 'green' });
+const rgbSage = style.rgb(122, 143, 123, { ansi256: 108, ansi16: 'green' });
+const indexedSage = style.ansi256(108, { ansi16: 'green' });
+sage.bold('Ready');
+```
+
+- **Status.** These helper extensions and the three types exported by core are proposed under [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md). Current helpers accept only their original arguments.
+- **Selection.** RGB and hex retain their original RGB value at truecolor depth. At 256 or 16 colors, the matching explicit fallback wins. An omitted or `undefined` fallback uses the existing approximation of the original color for that depth. A 256-color fallback never changes the 16-color result. `ansi256` retains its original index at truecolor and 256-color depth, and uses `ansi16` when supplied at 16-color depth.
+- **Values.** `ansi256` is an integer from 0 through 255. `ansi16` is one of the sixteen foreground color names, including for background helpers. Both options are optional. `undefined` options and an empty object behave as omission. The `ansi256` and `bgAnsi256` helpers accept only `ansi16`.
+- **Validation.** Helpers validate options when called and copy the accepted values into the chain. Later object mutation cannot change that chain. A non-plain options object, unknown option, or invalid color name throws `TypeError`. An invalid palette index throws `RangeError`. Existing hex and RGB validation remains unchanged. No value is coerced, rounded, or clamped.
+- **Composition.** Fallbacks belong to one color operation. A later foreground replaces the original foreground and all its fallbacks, so `sage.blue` uses named blue at every depth. A background operation leaves the foreground choice intact. Nesting and embedded ANSI resets restore enclosing colors with their fallbacks. All helpers retain the receiver's token names and semantic-chain restriction.
+- **Callbacks.** Helpers accept only their documented arguments. A callback such as `values.map(style.hex)` passes the array index as the options argument and now fails validation. Use `values.map((value) => style.hex(value))` so the helper receives only the color.
+- **Policy.** Fallbacks do not change capability detection or force color. Color suppression removes them like other colors. Direct styles and theme mappings use the same rules. Calls that omit the options argument preserve their current behavior. Named terminal colors and raw ANSI colors gain no inferred fallback mapping.
+
+#### Fallback acceptance
+
+The implementation verifies exact bytes for explicit and omitted fallbacks at all three depths, including `ansi256` source colors and background helpers. It verifies that an index passed by a direct array callback is rejected and an explicit one-argument wrapper succeeds. It covers partial and `undefined` options, invalid options at helper-call time, copied option values, whole-color replacement, nested restoration, embedded resets, and color suppression. Type checks reject invalid fields and names while preserving chain typing. The wire checks validate the new color forms and retain the existing forms, as specified in the [wire contract](style-wire.md#explicit-color-fallbacks-proposed). Node and Bun process fixtures plus packed consumers prove the public API.
+
 ### Theme plugins and typed names
 
 The core semantic names are `dim`, `primary`, `highlight`, `success`, `warning`, `error`, and `info`. These are names, not built-in appearances.
@@ -1967,7 +2079,7 @@ const app = new Application('example', {
 
 `theme(mapping)` supplies exactly the mappings provided. Its plugin identity is `@loomcli/plugins/theme`. Importing it installs nothing.
 
-The proposed `loomTheme(overrides?)` factory is not exported yet. It will supply Loom's seven default mappings and accept partial overrides. A supplied override will replace the complete token mapping; an omitted or undefined override will retain the named default. Its palette belongs to the named Loom theme increment.
+The proposed [`loomTheme(overrides?)`](#loom-theme) factory adds the named palette and accepts replacements and custom keys. It is not exported yet.
 
 #### `PluginDefinition.theme` field
 
@@ -2107,6 +2219,8 @@ When colors are enabled, core determines depth from captured hints in this order
 
 The iTerm version field is `TERM_PROGRAM_VERSION`. These are a portable subset of [supports-color's detection rules](https://github.com/chalk/supports-color/blob/e2a4cd3c44eb384b075161ef32859cd29ce1aa7f/index.js), with enablement handled separately. Core does not read CLI flags or live process globals during resolution, and does not reuse upstream numeric forcing semantics. Forced color without a depth hint uses sixteen colors. A future detector update needs equivalent Node and Bun evidence.
 
+The proposed [explicit fallback contract](#explicit-color-fallbacks) adds a depth-specific exception to the following approximation rule when implemented.
+
 RGB colors remain RGB at truecolor depth. At lower depth, core chooses the closest available color by squared RGB distance, with the lower palette index breaking ties. The 256-color target is the conventional xterm palette. The sixteen-color target uses that palette's first sixteen entries. Named colors retain their terminal palette indices; they do not acquire hard-coded RGB values on a richer terminal. ANSI-256 colors retain their index at 256 or truecolor depth and approximate to sixteen colors at basic depth. A terminal can customize its palette, so approximation does not promise an exact visual match.
 
 The same policies apply to ANSI styling already embedded in supplied strings. Color suppression removes foreground and background colors, not unrelated modifiers or text. An embedded reset restores the enclosing Loom style. Core closes remaining style and hyperlink state at the end of each rendered string.
@@ -2152,4 +2266,4 @@ The style tests and packed consumers cover these obligations:
 - Literal marker data, nested deferred padding, Unicode width, tabs, multiline strings, and the adversarial cases in the wire contract.
 - Fresh host capture on repeated runs, no import-time capability capture, and equivalent output under Node and Bun.
 
-Process fixtures run on Node and Bun. Captured Windows facts test glyph selection; these fixtures do not certify native Windows support. Named-theme whole-token replacement belongs to the separate palette increment.
+Process fixtures run on Node and Bun. Captured Windows facts test glyph selection; these fixtures do not certify native Windows support. Named-theme whole-token replacement belongs to [Loom theme acceptance](#loom-theme-acceptance). Fallback-option coverage belongs to [Fallback acceptance](#fallback-acceptance).
