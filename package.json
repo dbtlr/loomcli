@@ -21,7 +21,7 @@
     "verify": "pnpm run check && vp test --run",
     "build": "node scripts/clean.mjs && tsc -p packages/core/tsconfig.json && tsc -p packages/plugins/tsconfig.json && tsc -p examples/explain/tsconfig.json && tsc -p examples/textstat/tsconfig.json && tsc -p examples/jsonkit/tsconfig.json && tsc -p apps/loom/tsconfig.json && tsc -p packages/core/tests/type-consumer/library/tsconfig.json && tsc -p packages/core/tests/runtime-consumer/library/tsconfig.json",
     "check:packed": "node packages/core/tests/check-packed.mjs",
-    "check:types": "node packages/core/tests/check-types.mjs",
+    "check:types": "node packages/core/tests/check-types.mjs && node scripts/check-theme-contract.mjs",
     "loom": "node apps/loom/dist/main.js"
   },
   "devDependencies": {

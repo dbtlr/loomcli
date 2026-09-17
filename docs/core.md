@@ -1935,7 +1935,7 @@ The implementation increment proves these cases through public APIs:
 - Both examples install `loomTheme()`. `textstat --total` uses the default highlight for its total row on a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content and layout contain no color escapes. Help and version restyling remains a separate increment.
 - Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence exercises the published declarations and the named palette at each color depth.
 
-Before implementation, `pnpm build && node scripts/check-theme-contract.mjs` checks the proposed factory declaration from this section against current core types. It verifies compilation and editor completion, not palette merging or output behavior.
+Before implementation, `scripts/check-theme-contract.mjs` checks the proposed factory declaration from this section against current core types. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
 
 ### Example coverage
 
