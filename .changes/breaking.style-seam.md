@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** View output, semantic output snapshots, embedded ANSI, marker-bearing raw data, and complete `Host` values.
+**Affected surface.** View output, semantic output snapshots, embedded ANSI, marker-bearing raw data, complete `Host` values, and hand-built `ActionContext` values. Action contexts now require `style`.
 
 **Why.** Core now resolves marked output for the destination. The write site owns the newline, while core controls terminal capabilities and prevents formatting from leaking across calls. `out.render` and a failure diagnostic add none, so a view rendered through either owns its trailing newline; a semantic method appends one after its lane view, so a lane view returns none.
 
@@ -28,6 +28,8 @@ const fileName: View<string> = {
 
 Previously `out.info('ready')` wrote `ready\n`. It now writes `ℹ ready\n` with main glyphs, or `i ready\n` with compatibility glyphs. `out.print('ready')` remains prefix-free.
 
+Before, a unit test could call `action(context)` with no `style` member. For an unthemed fixture, import `style` from `@loomcli/core` and call `action({ ...context, style })`. To test Application theme mappings, invoke the action through `Application.run()` so core supplies the configured style.
+
 **Steps.**
 
 1. Escape raw values before interpolating them into authored output. Preserve existing marked messages without another escape pass.
@@ -35,5 +37,6 @@ Previously `out.info('ready')` wrote `ready\n`. It now writes `ℹ ready\n` with
 3. Review embedded ANSI. Automatic policies evaluate each destination; other terminal controls default to stripping. Use `rendering: { terminalControls: 'preserve' }` for intentional complete terminal commands. Color, modifiers, and hyperlinks each accept `auto`, `always`, or `never`. Incomplete commands are always discarded.
 4. Add a `platform` string to complete `Host` values. Partial run overrides can omit it and use process capture.
 5. Optionally install `theme(mapping)` or `loomTheme(overrides?)` and include the shallow Application registration in the TypeScript project to expose custom names.
+6. Add `style` to hand-built action contexts, including values derived from `Parameters<ActionHandler<typeof command>>[0]`.
 
 **Validation.** Run the application's TypeScript check and output tests under Node and Bun. Compare redirected and terminal output, `NO_COLOR=1`, `TERM=linux`, and multiline messages. Use `width(style.escape(value))` to verify literal data alignment. See the [style reference](docs/core.md#styles-and-rendering-policy) for policy precedence and glyph selection.
