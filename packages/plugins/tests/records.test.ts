@@ -84,6 +84,14 @@ test('records() leaves formatted text authored and escapes default data values',
   expect(result.stdout.split(marker)).toHaveLength(2);
 });
 
+test('records() escapes a data key before styling its label', () => {
+  const result = invoke(fixture, ['escaped-key']);
+  const marker = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toContain(marker);
+});
+
 test('records() does not add a line when the fields omit the identifier', () => {
   expect(invoke(fixture, ['identifier-omitted'])).toEqual({
     status: 0,

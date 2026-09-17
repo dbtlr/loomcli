@@ -1,3 +1,5 @@
+import { Writable } from 'node:stream';
+
 import { Application } from '@loomcli/core';
 import { table } from '@loomcli/plugins/table';
 
@@ -40,6 +42,10 @@ const cases = {
     rows: [{ authored: marker, raw: marker }],
     view: table({ columns: ['raw', { format: (value) => value, key: 'authored' }] }),
   },
+  'escaped-key': {
+    rows: [{ [marker]: 'value' }],
+    view: table(),
+  },
   explicit: {
     rows: [
       { count: 6, source: 'one.txt' },
@@ -48,6 +54,11 @@ const cases = {
     view: table({
       columns: [{ align: 'right', header: 'COUNT', key: 'count' }, 'source'],
     }),
+  },
+  large: {
+    discardOutput: true,
+    rows: Array.from({ length: 150_000 }, () => ({ value: 'x' })),
+    view: table(),
   },
   nullish: {
     rows: [{ end: 'x', missing: undefined, nullish: null }],
@@ -75,5 +86,8 @@ const app = selected.declared
       .action(({ out }) => out.results(selected.rows))
   : new Application('table').action(({ out }) => out.render(selected.rows, selected.view));
 
-const code = await app.run({ host: { argv: [] } });
+const stdout = selected.discardOutput
+  ? new Writable({ write: (_chunk, _encoding, done) => done() })
+  : process.stdout;
+const code = await app.run({ host: { argv: [], stdout } });
 process.stdout.write(`resolved:${String(code)}\n`);

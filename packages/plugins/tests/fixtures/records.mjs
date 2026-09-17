@@ -25,6 +25,10 @@ const cases = {
       identifier: 'key',
     }),
   },
+  'escaped-key': {
+    rows: [{ [marker]: 'value' }],
+    view: records({ identifier: marker }),
+  },
   explicit: {
     rows: [
       { key: 'user', kind: 'object' },

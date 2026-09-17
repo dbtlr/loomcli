@@ -63,6 +63,22 @@ test('table() leaves formatted text authored and escapes default data cells', ()
   expect(result.stdout.split(marker)).toHaveLength(2);
 });
 
+test('table() escapes a discovered key before styling its header', () => {
+  const result = invoke(fixture, ['escaped-key']);
+  const marker = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toContain(marker);
+});
+
+test('table() measures a large finite sequence without an argument overflow', () => {
+  expect(invoke(fixture, ['large'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'resolved:0\n',
+  });
+});
+
 test('table() prints only configured headers for an empty sequence', () => {
   expect(invoke(fixture, ['empty-explicit'])).toEqual({
     status: 0,

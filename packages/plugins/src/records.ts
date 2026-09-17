@@ -83,9 +83,14 @@ function renderRecord<Row>({
   index: number;
   row: Readonly<Row>;
 }): string {
-  const width = Math.max(EMPTY, ...fields.map((field) => context.width(field.key)));
-  const lines = fields.map((field) => {
-    const key = context.style.dim(pad(field.key, width));
+  const keys = fields.map((field) => context.style.escape(field.key));
+  let width = EMPTY;
+  for (const key of keys) {
+    width = Math.max(width, context.width(key));
+  }
+  const lines = fields.map((field, fieldIndex) => {
+    const escapedKey = keys[fieldIndex] ?? context.style.escape(field.key);
+    const key = context.style.dim(pad(escapedKey, width));
     return `${key}  ${field.value(row, context)}`;
   });
   const record = lines.length === EMPTY ? '' : `${lines.join('\n')}\n`;

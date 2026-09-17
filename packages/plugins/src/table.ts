@@ -27,7 +27,7 @@ interface TableConfig<Row> {
 interface PreparedColumn<Row> {
   readonly align: TableAlignment;
   readonly cell: (row: Readonly<Row>, context: ViewContext) => string;
-  readonly header: string;
+  readonly header: (context: ViewContext) => string;
 }
 
 /** A data value escaped and styled by the view, with absence rendered as an empty cell. */
@@ -48,7 +48,8 @@ function prepareEntry<Row, Key extends keyof Row & string>(
       entry.format
         ? entry.format(row[entry.key], row, context)
         : defaultCell(row[entry.key], context),
-    header: entry.header ?? entry.key,
+    header: (context) =>
+      entry.header === undefined ? context.style.escape(entry.key) : entry.header,
   };
 }
 
@@ -64,7 +65,7 @@ function prepareDiscoveredColumn<Row>(key: string): PreparedColumn<Row> {
   return {
     align: 'left',
     cell: (row, context) => defaultCell(Reflect.get(Object(row), key), context),
-    header: key,
+    header: (context) => context.style.escape(key),
   };
 }
 
@@ -117,14 +118,14 @@ function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
       if (columns.length === EMPTY) {
         return '';
       }
-      const headers = columns.map((column) => context.style.dim(column.header));
+      const headers = columns.map((column) => context.style.dim(column.header(context)));
       const rendered = rows.map((row) => columns.map((column) => column.cell(row, context)));
-      const widths = columns.map((column, index) => {
-        const header = headers[index] ?? context.style.dim(column.header);
-        return Math.max(
-          context.width(header),
-          ...rendered.map((cells) => context.width(cells[index] ?? '')),
-        );
+      const widths = headers.map((header, index) => {
+        let width = context.width(header);
+        for (const cells of rendered) {
+          width = Math.max(width, context.width(cells[index] ?? ''));
+        }
+        return width;
       });
       const lines = [
         line(headers, columns, widths),
