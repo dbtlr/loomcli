@@ -47,6 +47,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
 | [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a view context and one optional theme contribution; the named palette remains separate. | accepted |
 | [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) | Plugins run code at named lifecycle hooks, beginning with `onCommandAttach`, and middleware wraps the parsed invocation and selects a result's view by name. | accepted |
+| [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) | Concrete color helpers accept independent depth-specific fallbacks, and the named Loom theme supplies a foreground-only palette. | proposed |
 
 ## Adding a record
 

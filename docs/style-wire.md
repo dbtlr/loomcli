@@ -48,6 +48,21 @@ Hex helpers normalize their input to RGB. Background operations use the same col
 Modifier names match the public catalog. A theme mapping expands to concrete operations and cannot expand to another token.
 Operations retain their order. A token with no mapping contributes no operation.
 
+## Explicit color fallbacks (proposed)
+
+[ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes these additional color forms. They are not recognized by the current parser.
+
+| Color | Fields in the final object |
+| --- | --- |
+| `["rgb", r, g, b, {"ansi256": 108, "ansi16": "green"}]` | Optional `ansi256` and `ansi16` |
+| `["ansi256", index, {"ansi16": "green"}]` | Optional `ansi16` only |
+
+The original tuples remain valid. RGB channels and palette indices remain integers from 0 through 255. The final object contains only the listed fields, and an empty object is valid. `ansi16` is a core foreground color name, also when the enclosing operation sets a background. Unknown fields, invalid values, `null`, or any other tuple length invalidate the frame under the existing malformed-frame rules.
+
+Helpers copy validated fallback values into their color operation. They omit undefined fields from the serialized object. Raw JSON null is not an omitted value. The optional object remains part of that color through composition, nesting, and embedded ANSI reset restoration. A later foreground operation replaces the whole foreground color, including its fallback object.
+
+Core selects only the fallback for the destination's depth. At a depth with no explicit fallback, it approximates the original color. A fallback at another depth does not affect that result. Color policy can suppress the selected color. Background selection uses the same rule, and width measurement remains independent of color.
+
 ## Literal data and malformed frames
 
 `style.escape(text)` replaces each of the four delimiters with `Escape` followed by its four uppercase hexadecimal digits.
