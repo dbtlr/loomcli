@@ -56,7 +56,7 @@ const root = page(
   '  fetch   Read one value at a path.  (deprecated: Use get instead.)',
   '',
   'OPTIONS',
-  '      --format <format>  Select the output format: records, json, jsonl.',
+  '      --format <format>  Select the output format: records, json, jsonl. Default: records.',
   '',
   'GLOBAL OPTIONS',
   '  -f, --file <path>  The document to read. Omit it to read piped text.',

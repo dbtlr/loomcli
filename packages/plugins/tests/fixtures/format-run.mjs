@@ -28,6 +28,18 @@ const earlier = plugin('@fixture/earlier', {
   },
 });
 
+const changeDefault = plugin('@fixture/default', {
+  onCommandAttach: (command) =>
+    command.result === null
+      ? command
+      : command.views({ custom: table, json: table }, { default: 'custom' }),
+});
+function hookOrder(before) {
+  const count = new Command('count').result({ views: { table } }).action(dispatch);
+  return new Application('app', {
+    plugins: before ? [changeDefault, ...plugins] : [...plugins, changeDefault],
+  }).command(count);
+}
 const scenarios = {
   /** An author-declared "json" view kept with its own map and its declared position. */
   'author-json': () => {
@@ -40,6 +52,7 @@ const scenarios = {
     const count = new Command('count').result({ views: { ndjson: table, table } }).action(dispatch);
     return new Application('app', { plugins }).command(count).action(dispatch);
   },
+  'earlier-default': () => hookOrder(true),
   /** An earlier plugin assigns a view; an omitted --format leaves that assignment in place. */
   'earlier-view': () => {
     const count = new Command('count').result({ views: { json: json(), table } }).action(dispatch);
@@ -47,6 +60,11 @@ const scenarios = {
       .command(count)
       .action(dispatch);
   },
+  'later-default': () => hookOrder(false),
+  'no-formatter': () =>
+    new Application('app', { plugins: [help()] }).command(
+      new Command('count').result({ views: { table } }).action(dispatch),
+    ),
   /** A Command with no result, so --format is the unknown-option error and no help row. */
   'no-result': () => {
     const count = new Command('count').action(dispatch);
