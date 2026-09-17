@@ -10,7 +10,7 @@
 
 ### Migration
 
-**Affected surface.** Two published types. `Out<Result>` gains the required member `results`, so a value that implements `Out` by hand, such as a test double for an action's channel, no longer satisfies the type without it. `View<Data>` gains `row?: never`, so an object literal that carries both `render` and `row` no longer satisfies `View`, and `view(identity, definition)` rejects such a definition at the call with a `DeclarationError`.
+**Affected surface.** `Out<Result>` gains the required member `results`, so a value that implements `Out` by hand, such as a test double for an action's channel, no longer satisfies the type without it. `View<Data>` gains `row?: never`, so an object literal that carries both `render` and `row` no longer satisfies `View`, and `view(identity, definition)` rejects such a definition at the call with a `DeclarationError`. `CommandNode` gains the required member `result`, so hand-built graph nodes also need an update.
 
 **Why.** An action emits its result through one call, so `results` is on every `Out` rather than added by a declaration, and a Command with no result types its argument `never`. A view renders one whole value or one row at a time, never both, so the exclusion is stated in the type rather than guessed at the write site.
 
@@ -69,10 +69,13 @@ const whole: View<readonly Row[]> = { render: (all) => all.map(line).join('') };
 const byRow: RowView<Row> = { row: (row) => line(row) };
 ```
 
+Before, a `CommandNode` fixture omitted `result`. After, a fixture for a Command with no result uses `{ ...node, result: null }`. A result-bearing fixture supplies `{ kind: 'value', views: ['json'], default: 'json' }`, or uses `kind: 'rows'` for a row sequence. Prefer a node from `Application.inspect()` when the test needs the complete declared graph.
+
 **Steps.**
 
 1. Add a `results` member to every hand-built `Out` value. A double that emits nothing returns a resolved promise.
 2. Find every view value that carries `render` beside `row` and split it into one whole view and one row view. Name each where its shape is wanted: a `views` record entry, an `out.render` argument, or a `view(identity, definition)` call.
-3. Rebuild, and read each new error at a `View` or `Out` annotation. Both changes surface at compile time.
+3. Add `result` to every hand-built `CommandNode`, including nodes nested in a `CommandGraph` fixture. Match the Command's declaration or use `null` when it declares no result.
+4. Rebuild, and read each new error at a `View`, `Out`, or `CommandNode` annotation. These changes surface at compile time.
 
-**Validation.** Run `pnpm run check:types`, or `tsc --noEmit` in the application's own project, to find every value the two types now reject. Then run the application's tests under both runtimes: `pnpm exec vp test --run`, and `LOOM_TEST_RUNTIME=bun pnpm exec vp test --run`.
+**Validation.** Run `pnpm run check:types`, or `tsc --noEmit` in the application's own project, to find every value these types now reject. Then run the application's tests under both runtimes: `pnpm exec vp test --run`, and `LOOM_TEST_RUNTIME=bun pnpm exec vp test --run`.
