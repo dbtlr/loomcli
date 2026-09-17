@@ -263,13 +263,29 @@ export interface Out<Result = unknown> {
 }
 
 /**
- * What the action's channel answers to: the routed path its diagnostics name, and the result the
- * routed Command declared. The declaration decides the destinations the channel carries, so the
- * redirect is read from the graph once and never from the view a run selected.
+ * What the action's channel answers to: the routed path its diagnostics name, the result the
+ * routed Command declared, and the view this run selected. The declaration decides the
+ * destinations the channel carries, so the redirect is read from the graph once and never from the
+ * view a run selected; `view` decides the rendering alone, and is `null` when nothing selected one
+ * and the declaration's default stands.
  */
 export interface ResultBinding {
   path: readonly string[];
   result: DeclaredResult | undefined;
+  view: string | null;
+}
+
+/**
+ * The routed Command's invocation after parsing and validation, which every middleware reads. The
+ * values are what the action receives, the output of each declaration's schema, for that Command's
+ * own arguments and local options; global and plugin option values are not here. The records are
+ * untyped and frozen, because a middleware runs ahead of every action and the graph carries no
+ * type for a value.
+ */
+export interface Request {
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly options: Readonly<Record<string, unknown>>;
+  readonly passthrough: readonly string[];
 }
 
 /** The channel one action receives, with the emission the results lane holds it to. */
@@ -380,8 +396,9 @@ export type BooleanOption =
 export type OptionConfig = StringOption | BooleanOption;
 /**
  * The parsing part of a string option config, which is all a plugin option declares. A plugin
- * option carries no schema and no presence rule, because it is read before local parsing, where the
- * validation context every schema is promised cannot exist. Its middleware interprets the value.
+ * option carries no schema and no presence rule, because the pre-scan consumes it ahead of routing,
+ * where the validation context every schema is promised cannot exist. Its middleware interprets
+ * the value.
  * A Boolean plugin option is an ordinary `BooleanOption`, which already declares none of them.
  */
 export type PluginStringOption = OptionSpelling &

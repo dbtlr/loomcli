@@ -279,9 +279,11 @@ export class Output {
   }
 
   /**
-   * One `out.results` call on the action's channel. The declaration decides the unit, its default
-   * view decides the presentation, and stdout carries the result under either one. A call the
-   * declaration does not answer for is a fault of the lane and writes nothing.
+   * One `out.results` call on the action's channel. The declaration decides the unit, the selected
+   * view decides the presentation, and stdout carries the result under either one. The selected
+   * view is the one a middleware named before the action dispatched, or the declaration's default
+   * when none did. A call the declaration does not answer for is a fault of the lane and writes
+   * nothing.
    */
   private results(binding: ResultBinding, emission: Emission, value: unknown): Promise<void> {
     const { path, result } = binding;
@@ -292,10 +294,12 @@ export class Output {
       return this.resultFault('repeated', path);
     }
     emission.calls += 1;
-    const view = result.views.get(result.default);
+    const selected = binding.view ?? result.default;
+    const view = result.views.get(selected);
     if (!view) {
-      // Build proved the default names a view the record holds, so this is core's own fault.
-      return this.renderFailed(new Error(`The view "${result.default}" is not declared.`));
+      // Build proved the default names a view the record holds, and the boundary proved a selected
+      // Name is one too, so this is core's own fault.
+      return this.renderFailed(new Error(`The view "${selected}" is not declared.`));
     }
     if (result.kind === 'rows') {
       return this.sequence(erased(value), this.sequenceView(view, bare), {
@@ -305,9 +309,7 @@ export class Output {
     }
     if (typeof view.row === 'function') {
       // Build rejects a row view on a value result, so reaching one here is core's own fault.
-      return this.renderFailed(
-        new Error(`The view "${result.default}" renders rows, not a value.`),
-      );
+      return this.renderFailed(new Error(`The view "${selected}" renders rows, not a value.`));
     }
     return this.rendered(() => resolveView(bare, view)(erased(value), this.context('stdout')));
   }

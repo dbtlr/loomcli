@@ -68,6 +68,7 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
+  Request,
   ResultInput,
   ResultViews,
   RunOptions,

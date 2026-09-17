@@ -52,8 +52,8 @@ test('the second plugin loads and takes over when the first is not activated', (
   expect(result.stdout).toBe('version:1.2.0\nresolved:0\n');
 });
 
-test('a takeover leaves the remaining tokens unparsed and resolves 0', () => {
-  // `get` needs a required argument and `--nope` is no declared option; neither is ever read.
+test('a takeover never raises the fault core held and resolves 0', () => {
+  // `get` needs a required argument and `--nope` is no declared option; neither fault is raised.
   expect(run('help', ['-h', 'get', '--nope'])).toEqual({
     status: 0,
     stderr: '',
@@ -78,7 +78,7 @@ test('an unknown command fails in routing before any middleware runs', () => {
   });
 });
 
-test('a middleware takes over a group invocation before the callable check', () => {
+test('a middleware takes over a group invocation and the callable check is never raised', () => {
   expect(run('help', ['--help', 'cache'])).toEqual({
     status: 0,
     stderr: '',

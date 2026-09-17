@@ -69,6 +69,8 @@ export interface Invocation {
   host: Host;
   inputs: ScopedInputs;
   passthrough: readonly string[];
+  /** The run's cancellation signal, which stops this phase between two schema calls. */
+  signal: AbortSignal;
   supplied: SuppliedValues;
 }
 
@@ -108,6 +110,14 @@ class ValidatedInputs {
     input: OptionInput<Name, Config>,
   ): Record<Name, OptionValue<Config>> {
     return this.#field(input);
+  }
+
+  /**
+   * One validated value read without its declared type, which is what an untyped reader such as a
+   * middleware's request receives. The declared types stay with the two readers above.
+   */
+  read(input: InputDeclaration): unknown {
+    return this.#values.get(input);
   }
 
   #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
@@ -507,6 +517,14 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
     lines.push(...messages(suppliedName(entry.input, spelling), issues));
   };
   for (const entry of declarations) {
+    if (invocation.signal.aborted) {
+      /**
+       * A cancelled run starts no further schema call. The one already in flight was awaited
+       * above, and whatever this phase collected is never raised, because the run resolves its
+       * cancellation code instead.
+       */
+      break;
+    }
     const { input } = entry;
     if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(input, booleanValue(supplied.options, input.name, input.config));

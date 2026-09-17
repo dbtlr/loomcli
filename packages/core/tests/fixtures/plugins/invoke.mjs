@@ -163,8 +163,8 @@ function application() {
       await out.print(`get:${args.path}:${JSON.stringify(options)}`);
       await out.print(`action-signal:${signal instanceof AbortSignal}:${signal.aborted}`);
     });
-  // A group answers no invocation of its own, so the callable check is what rejects it, after
-  // The chain has run and only when no middleware took the invocation over.
+  // A group answers no invocation of its own, so the callable check is what rejects it.
+  // Core holds that fault and raises it at the dispatch boundary, so a takeover swallows it.
   const cache = new Command('cache').command(
     new Command('clear').action(({ out }) => out.print('cleared')),
   );

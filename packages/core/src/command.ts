@@ -41,6 +41,7 @@ import type {
   OptionConfig,
   OptionValue,
   Out,
+  Request,
   ResultBinding,
   ResultView,
   ResultViews,
@@ -1255,23 +1256,58 @@ export function routeInvocation(graph: BuiltGraph, argv: readonly string[]): Rou
   };
 }
 
+/** What one invocation reaches the middleware chain with. */
+export interface DispatchInvocation {
+  /** The channel the action receives, which the results lane builds from the routed node. */
+  channel: (binding: ResultBinding) => ActionChannel;
+  defaults: DefaultValues;
+  host: Host;
+  signal: AbortSignal;
+  style: ContextualStyle;
+}
+
 /**
- * The phases the middleware chain terminates in: the callable check, local parsing, validation, and
- * the action. It answers with the call that dispatches, so the caller records that the action was
- * invoked at the moment it invokes it and no earlier failure reads as a dispatch.
+ * One invocation prepared ahead of the middleware chain. `'ready'` carries the request a middleware
+ * reads and the call that dispatches; `'held'` carries the fault this phase found, which core
+ * raises at the dispatch boundary and never before, so a takeover swallows it. `result` is what the
+ * routed Command declared, whose views a middleware selects among, on either shape.
  */
-export async function prepareDispatch(
+export type Prepared = {
+  result: DeclaredResult | undefined;
+} & (
+  | { dispatch: (view: string | null) => Promise<void>; kind: 'ready'; request: Request }
+  | { fault: unknown; kind: 'held'; request: null }
+);
+
+/** The frozen records one middleware reads: the routed Command's own inputs, and the tail. */
+function requestOf(
+  command: BuiltCommand,
+  values: ValidatedInputs,
+  passthrough: readonly string[],
+): Request {
+  const args: Record<string, unknown> = {};
+  const options: Record<string, unknown> = {};
+  for (const input of command.inputs) {
+    const target = input.kind === 'argument' ? args : options;
+    target[input.name] = values.read(input);
+  }
+  return Object.freeze({
+    args: Object.freeze(args),
+    options: Object.freeze(options),
+    passthrough: Object.freeze([...passthrough]),
+  });
+}
+
+/**
+ * The phases that run ahead of the chain: the callable check, local parsing, and validation. It
+ * answers with the call that dispatches, so the caller records that the action was invoked at the
+ * moment it invokes it and no earlier failure reads as a dispatch.
+ */
+async function readyDispatch(
   graph: BuiltGraph,
   routed: RoutedInvocation,
-  invocation: {
-    /** The channel the action receives, which the results lane builds from the routed node. */
-    channel: (binding: ResultBinding) => ActionChannel;
-    defaults: DefaultValues;
-    host: Host;
-    signal: AbortSignal;
-    style: ContextualStyle;
-  },
-): Promise<() => unknown> {
+  invocation: DispatchInvocation,
+): Promise<{ dispatch: (view: string | null) => Promise<void>; request: Request }> {
   const { command, path, scan } = routed;
   const { dispatch } = command;
   // A group answers no invocation of its own, so it fails with the routing errors above it.
@@ -1286,33 +1322,55 @@ export async function prepareDispatch(
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: command.inputs },
     passthrough: parsed.passthrough,
+    signal: invocation.signal,
     supplied: { args, options: mergeValues(scan, parsed.options) },
   });
-  const channel = invocation.channel({ path, result: command.result });
-  return async () => {
-    try {
-      await dispatch({
-        host: invocation.host,
-        out: channel.out,
-        passthrough: parsed.passthrough,
-        signal: invocation.signal,
-        style: invocation.style,
-        values,
-      });
-      /**
-       * A declared result is a promise the Command makes, so an action that returned normally
-       * without emitting one broke it. A failure raised before the call is that failure, and a
-       * cancelled run raises none, because an action that reads its signal and returns is the
-       * sanctioned path.
-       */
-      if (command.result && !channel.emitted() && !invocation.signal.aborted) {
-        throw new ResultError('missing', path);
+  return {
+    dispatch: async (view) => {
+      // The channel is built at the boundary, because the view a middleware selected is read there.
+      const channel = invocation.channel({ path, result: command.result, view });
+      try {
+        await dispatch({
+          host: invocation.host,
+          out: channel.out,
+          passthrough: parsed.passthrough,
+          signal: invocation.signal,
+          style: invocation.style,
+          values,
+        });
+        /**
+         * A declared result is a promise the Command makes, so an action that returned normally
+         * without emitting one broke it. A failure raised before the call is that failure, and a
+         * cancelled run raises none, because an action that reads its signal and returns is the
+         * sanctioned path.
+         */
+        if (command.result && !channel.emitted() && !invocation.signal.aborted) {
+          throw new ResultError('missing', path);
+        }
+      } catch (error) {
+        // The action's failure is the invocation's outcome.
+        // A sequence it left pending is stopped where it stands rather than drained to its end.
+        channel.stop();
+        throw error;
       }
-    } catch (error) {
-      // The action's failure is the invocation's outcome.
-      // A sequence it left pending is stopped where it stands rather than drained to its end.
-      channel.stop();
-      throw error;
-    }
+    },
+    request: requestOf(command, values, parsed.passthrough),
   };
+}
+
+/**
+ * Prepares one dispatch ahead of the middleware chain and holds whatever fault it found, so a
+ * middleware reads the request before the action runs and a takeover never observes the fault.
+ */
+export async function prepareDispatch(
+  graph: BuiltGraph,
+  routed: RoutedInvocation,
+  invocation: DispatchInvocation,
+): Promise<Prepared> {
+  const result = routed.command.result;
+  try {
+    return { ...(await readyDispatch(graph, routed, invocation)), kind: 'ready', result };
+  } catch (error) {
+    return { fault: error, kind: 'held', request: null, result };
+  }
 }

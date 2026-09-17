@@ -1,6 +1,6 @@
-import type { BuiltGraph, RoutedInvocation } from './command.js';
+import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
 import { prepareDispatch, routeInvocation } from './command.js';
-import { InternalError, reasonOf, toFailure } from './errors.js';
+import { InternalError, reasonOf, routedSubject, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
@@ -9,7 +9,15 @@ import type { OptionValues } from './options.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
 import type { ContextualStyle } from './style.js';
-import type { ActionChannel, Host, OpenResult, Out, ResultBinding } from './types.js';
+import type {
+  ActionChannel,
+  DeclaredResult,
+  Host,
+  OpenResult,
+  Out,
+  Request,
+  ResultBinding,
+} from './types.js';
 import type { DefaultValues, OptionInput } from './validation.js';
 
 /**
@@ -21,16 +29,101 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
 /**
  * What one middleware receives. `graph` is the frozen graph `inspect()` returns, built once for the
  * run, and `command` is the routed node inside it. `options` holds this plugin's own option values
- * and never another plugin's or the application's globals.
+ * and never another plugin's or the application's globals. `request` is the routed Command's
+ * invocation, parsed and validated ahead of the chain, and `null` while core holds a fault and on a
+ * group. `view` names the view the result renders through: it reads as the declaration's default
+ * until a middleware assigns one, and as `null` on a Command that declares none. The last
+ * assignment before the dispatch boundary wins, and one made after it changes nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: PluginOptionValues<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
+  readonly request: Request | null;
+  get view(): string | null;
+  set view(name: string);
   readonly host: Host;
   readonly out: Out;
   readonly signal: AbortSignal;
   readonly next: () => Promise<ChainOutcome>;
+}
+
+/** One middleware's assignment of the view a result renders through, and the plugin that made it. */
+interface ViewAssignment {
+  identity: string;
+  name: unknown;
+}
+
+/**
+ * The view one run selects, which is one value whichever middleware wrote it. The assignment is
+ * kept as it arrived, because a JavaScript caller reaches the setter with any value and the check
+ * belongs at the dispatch boundary, where the fault it raises ranks behind a held fault.
+ */
+class ViewSelection {
+  #assigned: ViewAssignment | undefined = undefined;
+  #reached = false;
+  readonly #result: DeclaredResult | undefined;
+
+  constructor(result: DeclaredResult | undefined) {
+    this.#result = result;
+  }
+
+  /**
+   * What `view` reads: the assigned name, or the declaration's default until one is assigned, and
+   * `null` on a Command that declares no result. An assignment that is not a name reads as the
+   * default, because the getter answers a view name and the assignment is the boundary's fault.
+   */
+  read(): string | null {
+    const assigned = this.#assigned;
+    if (assigned !== undefined && typeof assigned.name === 'string') {
+      return assigned.name;
+    }
+    return this.#result ? this.#result.default : null;
+  }
+
+  /** The last assignment before the boundary wins; one made after it changes nothing. */
+  assign(identity: string, name: unknown): void {
+    if (!this.#reached) {
+      this.#assigned = { identity, name };
+    }
+  }
+
+  /** The chain reached the dispatch boundary, so this run's view is fixed whatever follows. */
+  reach(): void {
+    this.#reached = true;
+  }
+
+  /**
+   * The name the boundary dispatches through: `null` when no middleware assigned one and the
+   * declaration's default stands. A plugin that selected a view has the name checked here.
+   */
+  resolve(path: readonly string[]): string | null {
+    const assigned = this.#assigned;
+    if (assigned === undefined) {
+      return null;
+    }
+    const plugin = pluginSentence(assigned.identity);
+    const { name } = assigned;
+    if (!this.#result) {
+      throw new InternalError(
+        `${plugin} selected view "${String(name)}" on ${routedSubject(path)}, which declares no result.`,
+        undefined,
+      );
+    }
+    if (typeof name !== 'string') {
+      throw new InternalError(
+        `${plugin} selected a view that is not a string on ${routedSubject(path)}.`,
+        undefined,
+      );
+    }
+    if (!this.#result.views.has(name)) {
+      throw new InternalError(
+        `${plugin} selected view "${name}", which ${routedSubject(path)} does not name.`,
+        undefined,
+      );
+    }
+    return name;
+  }
 }
 
 /**
@@ -344,13 +437,24 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
 async function runChain(
   invocation: Invocation,
   routed: RoutedInvocation,
-  entries: readonly ChainEntry[],
+  prepared: Prepared,
 ): Promise<LoomError | undefined> {
+  const entries = activatedEntries(invocation.plugins, routed.scan);
   const run = { invoked: false, raised: undefined as LoomError | undefined };
+  const selection = new ViewSelection(prepared.result);
+  /**
+   * The dispatch boundary: the point the chain reaches when its last middleware continues. Core
+   * raises the held fault here, so it ranks ahead of a bad view assignment, or else reads the
+   * selected view and dispatches the action.
+   */
   const terminal = async (): Promise<ChainOutcome> => {
-    const dispatch = await prepareDispatch(invocation.graph, routed, invocation);
+    selection.reach();
+    if (prepared.kind === 'held') {
+      throw prepared.fault;
+    }
+    const view = selection.resolve(routed.path);
     run.invoked = true;
-    await dispatch();
+    await prepared.dispatch(view);
     return 'dispatched';
   };
   const cancelled = () => invocation.signal.aborted;
@@ -375,7 +479,14 @@ async function runChain(
       next,
       options: entry.options,
       out: invocation.out,
+      request: prepared.request,
       signal: invocation.signal,
+      get view(): string | null {
+        return selection.read();
+      },
+      set view(name: string) {
+        selection.assign(entry.identity, name);
+      },
     }),
     invoked: () => run.invoked,
     record: (error) => {
@@ -402,15 +513,17 @@ async function runChain(
 }
 
 /**
- * Runs one invocation: the global pre-scan, routing, the middleware chain, and the phases the chain
- * terminates in. A middleware that returns without calling `next()` has taken over, so the
- * remaining tokens are never parsed and nothing later in the chain runs.
+ * Runs one invocation: the global pre-scan, routing, the dispatch this invocation prepares, and the
+ * middleware chain it then runs. Local parsing and validation run ahead of the chain so that a
+ * middleware reads the request, and the fault they find is held until the dispatch boundary. A
+ * middleware that returns without calling `next()` has taken over, so the held fault is never
+ * raised and nothing later in the chain runs.
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = routeInvocation(invocation.graph, invocation.host.argv);
   invocation.route(routed.path);
-  const entries = activatedEntries(invocation.plugins, routed.scan);
-  const raised = await runChain(invocation, routed, entries);
+  const prepared = await prepareDispatch(invocation.graph, routed, invocation);
+  const raised = await runChain(invocation, routed, prepared);
   if (raised) {
     // The chain resolved because a middleware caught the rejection.
     // The failure it caught still decides the exit code.
