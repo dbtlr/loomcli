@@ -153,8 +153,8 @@ function shapeReason(both: boolean): string {
 }
 
 /**
- * No contributor at all. A result's presentation is replaced by name alone, so the Application's
- * override list never reaches a result's views, which carry no identity.
+ * No contributor at all. A result's selected view is replaced by view name alone, so the
+ * Application's override list never reaches a result's views, which carry no identity.
  */
 const bare: ViewRegistry = [];
 
@@ -169,13 +169,13 @@ function renderText(produce: () => unknown): { text: string } | { failed: unknow
 }
 
 /**
- * The data one view reads back through the key that resolved it. A result's presentations are
- * stored with their data type erased, as the view registry erases a declared view's, so the write
- * site hands each function the value its own declaration checked.
+ * The data one view reads back through the key that resolved it. A result's views are stored with
+ * their data type erased, as the view registry erases a declared view's, so the write site hands
+ * each function the value its own declaration checked.
  */
 function erased(value: unknown): never {
   // Last resort: no typed path exists.
-  // A views record holds one entry per presentation and carries no type parameter per entry.
+  // A views record holds one entry per view name and carries no type parameter per entry.
   // Every view it stores reads its data as the erased type the registry uses.
   // It holds because the authoring call checked the value against the declaration the record answers.
   // Build proved every entry in that record renders the declared type.
@@ -280,7 +280,7 @@ export class Output {
 
   /**
    * One `out.results` call on the action's channel. The declaration decides the unit, the selected
-   * view decides the presentation, and stdout carries the result under either one. The selected
+   * view decides how it renders, and stdout carries the result under either one. The selected
    * view is the one a middleware named before the action dispatched, or the declaration's default
    * when none did. A call the declaration does not answer for is a fault of the lane and writes
    * nothing.
@@ -405,10 +405,10 @@ export class Output {
   }
 
   /**
-   * The presentation one sequence writes through, in the shape its own view carries. The caller
-   * supplies the contributors the view resolves through: `out.render`'s call-site view resolves
-   * through this invocation's registry, as ADR-0021 requires, and a result's view resolves through
-   * none, because a result's presentation is replaced by name alone.
+   * The view one sequence writes through, in the shape its own view carries. The caller supplies
+   * the contributors the view resolves through: `out.render`'s call-site view resolves through
+   * this invocation's registry, as ADR-0021 requires, and a result's view resolves through none,
+   * because a result's selected view is replaced by view name alone.
    */
   private sequenceView(value: ResultView, registry: ViewRegistry): SequenceView<never> {
     if (typeof value.row === 'function') {

@@ -193,23 +193,23 @@ export interface RowView<Row> {
   /** A row view has one shape; the whole view of Rendered output is the other. */
   render?: never;
 }
-/** The presentation record of a value result: every entry renders the whole value. */
+/** The views record of a value result: every entry renders the whole value. */
 export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
 /**
- * The presentation record of a rows result: a whole view over the collected rows, which core
- * buffers the sequence for, or a row view, which core feeds as the rows arrive.
+ * The views record of a rows result: a whole view over the collected rows, which core buffers the
+ * sequence for, or a row view, which core feeds as the rows arrive.
  */
 export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
 
 /**
- * One presentation a result names, with its data type erased, as the view registry erases a
- * declared view's. The write site reads each function back through the key that resolved it.
+ * One view a result names, with its data type erased, as the view registry erases a declared
+ * view's. The write site reads each function back through the key that resolved it.
  */
 export type ResultView = View<never> | RowView<never>;
 
 /**
- * One declared result as the write site reads it: the unit the action emits, the presentations it
- * names in record order, and the key core renders when nothing selects another.
+ * One declared result as the write site reads it: the unit the action emits, the view names it
+ * declares in record order, and the key core renders when nothing selects another.
  */
 export interface DeclaredResult {
   default: string;
@@ -286,7 +286,7 @@ export interface Out<Result = unknown> {
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
-  /** The neutral presentation call: a rendered value has no purpose and no destination. */
+  /** The neutral view call: a rendered value has no purpose and no destination. */
   render<Data>(data: Data, view: View<Data>): Promise<void>;
   /** The same call over a sequence: core writes each row's text as the source yields it. */
   render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;

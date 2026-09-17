@@ -84,8 +84,8 @@ interface CommandNode {
 }
 
 /**
- * The result one Command declares: the unit its action emits, the presentation names in record
- * order, and the name of the view core renders when nothing selects another.
+ * The result one Command declares: the unit its action emits, the view names in record order, and
+ * the name of the view core renders when nothing selects another.
  */
 interface ResultNode {
   readonly kind: 'value' | 'rows';

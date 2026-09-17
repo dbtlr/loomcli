@@ -238,7 +238,7 @@ function checkAliasName(command: string | null, alias: unknown): void {
  */
 /**
  * One call of the results lane, in the order it was made. A `result()` or `rows()` call declares
- * the unit, and a `views()` call reshapes the presentation of whichever declaration it follows.
+ * the unit, and a `views()` call reshapes the views of whichever declaration it follows.
  * Each record arrives unexamined, because build owns every rule the lane carries.
  */
 export type ResultCall =
@@ -431,7 +431,7 @@ export function declareResult<Args, Options, Globals>(
   };
 }
 
-/** A `views()` call reshapes presentation and closes nothing, so it is never a late declaration. */
+/** A `views()` call reshapes views and closes nothing, so it is never a late declaration. */
 export function declareResultViews<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   replacements: unknown,
@@ -693,10 +693,10 @@ function checkGroup(state: Declared, children: readonly [string, CommandNodeHand
 }
 
 /**
- * A presentation name is a bare token the way a child name is, and never an array index, because
- * an integer-like key does not keep the position the author gave it.
+ * A view name is a bare token the way a child name is, and never an array index, because an
+ * integer-like key does not keep the position the author gave it.
  */
-function isPresentationName(name: string): boolean {
+function isViewName(name: string): boolean {
   return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
 }
 
@@ -782,7 +782,7 @@ function buildResult(state: Declared, hasAction: boolean): DeclaredResult | unde
     );
   }
   const declaration = declarations[0];
-  // A `views()` call reshapes a result's presentation, so one with no result reshapes nothing.
+  // A `views()` call reshapes a result's views, so one with no result reshapes nothing.
   // The types publish the call where a result is carried, so this reaches a JavaScript author.
   if (!declaration) {
     if (state.results.length > 0) {
@@ -802,7 +802,7 @@ function buildResult(state: Declared, hasAction: boolean): DeclaredResult | unde
   for (const call of state.results) {
     for (const [name, entry] of recordEntries(call.views)) {
       const view = resultView({ kind: declaration.kind, sentence }, name, entry);
-      if (!isPresentationName(name)) {
+      if (!isViewName(name)) {
         throw new DeclarationError(
           `${sentence} names view "${name}". Use a nonempty name without whitespace, a leading hyphen, or "=", and not a number.`,
         );
@@ -1429,8 +1429,8 @@ export class CommandBuilder<
   }
 
   /**
-   * Presentation after the fact. It merges by key, so an existing name is replaced in place and a
-   * new one is appended, and `default` names the key core renders when nothing selects another.
+   * Views after the fact. It merges by key, so an existing name is replaced in place and a new one
+   * is appended, and `default` names the key core renders when nothing selects another.
    */
   views(
     replacements: ResultViewsOf<Result>,

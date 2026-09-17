@@ -34,7 +34,7 @@ function imported() {
 /**
  * Each reshaping, applied to the declaration the scenario places it on. Every entry but the last
  * reshapes a Command whose action is already registered, which is how an importing application
- * changes presentation without touching the action.
+ * changes views without touching the action.
  */
 const scenarios = {
   append: () => imported().views({ wide }),
