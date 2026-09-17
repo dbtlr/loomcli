@@ -15,4 +15,10 @@
 2. Update help snapshots for the formatter sentence and Unicode column alignment.
 3. Pass default view output through `out.render` so core resolves its markers. Keep custom whole-view overrides when the application requires different output.
 
-**Validation.** Run help and version under Node and Bun with both styles disabled, then with `loomTheme()` and styles enabled. Compare stdout, stderr, exit codes, and final newlines against the updated expectations.
+**Validation.** Run the application's tests with plain and themed output configured as above. Compare stdout, stderr, exit codes, and final newlines against the updated expectations. This repository checks those policies and installed-package output with:
+
+```sh
+pnpm exec vp test --run packages/plugins/tests/help-style.test.ts
+LOOM_TEST_RUNTIME=bun pnpm exec vp test --run packages/plugins/tests/help-style.test.ts
+pnpm run check:packed
+```

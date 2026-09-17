@@ -272,3 +272,35 @@ test.each([
     });
   },
 );
+
+test('a detailed custom theme distinguishes every page token, including primary prose and examples', () => {
+  expect(
+    run({ argv: ['--help'], rendering: { color: 'always', modifiers: 'always' }, theme: 'custom' }),
+  ).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      '\u001b[36;1mapp\u001b[39;22m \u001b[35m·\u001b[39m \u001b[32mRead values.\u001b[39m',
+      '',
+      '  \u001b[32mOne line.\u001b[39m',
+      '',
+      '\u001b[35mUSAGE\u001b[39m',
+      '  \u001b[36mapp\u001b[39m \u001b[35;3m[options]\u001b[39;23m',
+      '  \u001b[36mapp\u001b[39m \u001b[35;3m<command>\u001b[39;23m \u001b[35;3m[options]\u001b[39;23m',
+      '',
+      '\u001b[35mCOMMANDS\u001b[39m',
+      '  \u001b[36mget\u001b[39m  \u001b[32mRead one.\u001b[39m  \u001b[35m(\u001b[31mdeprecated: Use read.\u001b[35m)\u001b[39m',
+      '',
+      '\u001b[35mGLOBAL OPTIONS\u001b[39m',
+      '  \u001b[36m-h\u001b[35m,\u001b[39m \u001b[36m--help\u001b[39m     \u001b[32mShow this help.\u001b[39m',
+      '  \u001b[36m-V\u001b[35m,\u001b[39m \u001b[36m--version\u001b[39m  \u001b[32mPrint the version.\u001b[39m',
+      '',
+      '\u001b[35mEXAMPLES\u001b[39m',
+      '  \u001b[35m$\u001b[39m \u001b[36mapp\u001b[39m \u001b[32mget --raw «warning»\u001b[39m',
+      '    \u001b[35mLiteral flags.\u001b[39m',
+      '',
+      '\u001b[35mRun\u001b[39m \u001b[36mapp\u001b[39m \u001b[35;3m<command>\u001b[39;23m \u001b[36m--help\u001b[39m \u001b[35mfor command details.\u001b[39m',
+      '',
+    ].join('\n'),
+  });
+});
