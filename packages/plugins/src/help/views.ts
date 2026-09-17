@@ -12,9 +12,9 @@ export interface HelpPage {
 
 /**
  * The declared view of the help page. Its default derives the page from the graph and the routed
- * node alone, escapes it, so a graph fact carrying a marker character prints literally, and ends it
+ * node alone. It escapes each raw fragment before styling and measuring it, and ends the page
  * with exactly one newline. A replacement owns both obligations.
  */
 export const helpPage = view<HelpPage>(`${Package.name}/help/page`, {
-  render: ({ command, graph }, { style }) => `${style.escape(renderPage(graph, command))}\n`,
+  render: ({ command, graph }, context) => `${renderPage(graph, command, context)}\n`,
 });

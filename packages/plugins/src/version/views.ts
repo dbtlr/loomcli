@@ -10,5 +10,5 @@ import Package from '../../package.json' with { type: 'json' };
  */
 export const versionLine = view<CommandGraph>(`${Package.name}/version/line`, {
   render: ({ name, version }, { style }) =>
-    `${style.escape(`${name} ${version.startsWith('v') ? version : `v${version}`}`)}\n`,
+    `${style.highlight.bold(style.escape(name))} ${style.primary(style.escape(version.startsWith('v') ? version : `v${version}`))}\n`,
 });

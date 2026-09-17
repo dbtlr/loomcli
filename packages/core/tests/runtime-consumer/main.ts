@@ -2,6 +2,7 @@ import { Application, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
+import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { versionLine } from '@loomcli/plugins/version/views';
 
@@ -20,7 +21,7 @@ const greeter = new Application('greeter', {
       examples: [{ command: 'world --greeting packed', note: 'The line this check compares.' }],
     }),
   ],
-  plugins: [help(), version()],
+  plugins: [help(), version(), loomTheme()],
   version: '1.0.0',
   // Each override brands the packed plugin's own default, which it calls by reference.
   views: [
@@ -42,4 +43,8 @@ const greeter = new Application('greeter', {
   })
   .action(({ args, options, out }) => out.print(`${options.greeting}: ${args.subject}`));
 
-await greeter.run();
+const styled = process.env.LOOM_PACKED_STYLES === '1';
+await greeter.run({
+  host: { env: {} },
+  rendering: { color: styled ? 'always' : 'never', modifiers: styled ? 'always' : 'never' },
+});

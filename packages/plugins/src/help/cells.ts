@@ -1,5 +1,5 @@
-import { readExtension } from '@loomcli/core';
-import type { ArgumentNode, OptionNode } from '@loomcli/core';
+import { pad, readExtension } from '@loomcli/core';
+import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { helpInput } from './extension.js';
 import { terminators } from './lines.js';
@@ -48,33 +48,39 @@ function placeholder(option: OptionNode): string {
  * The spellings one option row opens with: both of them, the long one alone indented four spaces so
  * the long spellings align, or the short one alone for a `shortOnly` option.
  */
-function spellings(option: OptionNode): string {
+function spellings(option: OptionNode, { style }: ViewContext): string {
   const long = longSpelling(option);
   if (long === null) {
-    return option.short ?? '';
+    return style.highlight(style.escape(option.short ?? ''));
   }
-  return option.short === null ? `    ${long}` : `${option.short}, ${long}`;
+  const highlighted = style.highlight(style.escape(long));
+  return option.short === null
+    ? `    ${highlighted}`
+    : `${style.highlight(style.escape(option.short))}${style.dim(',')} ${highlighted}`;
 }
 
 /** The left cell of one option row. A Boolean option takes no value, so it shows no placeholder. */
-function optionCell(option: OptionNode): string {
-  const cell = spellings(option);
-  return option.type === 'string' ? `${cell} <${placeholder(option)}>` : cell;
+function optionCell(option: OptionNode, context: ViewContext): string {
+  const { style } = context;
+  const cell = spellings(option, context);
+  return option.type === 'string'
+    ? `${cell} ${style.dim.italic(style.escape(`<${placeholder(option)}>`))}`
+    : cell;
 }
 
 /**
  * How the action form names one required option, with `...` for a multiple option. Only an option
  * that takes a value reaches this, because core rejects `required` on a Boolean option.
  */
-function optionForm(option: StringOption): string {
+function optionForm(option: StringOption, { style }: ViewContext): string {
   const spelling = longSpelling(option) ?? option.short ?? '';
-  return `${spelling} <${placeholder(option)}>${option.multiple ? '...' : ''}`;
+  return `${style.highlight(style.escape(spelling))} ${style.dim.italic(style.escape(`<${placeholder(option)}>${option.multiple ? '...' : ''}`))}`;
 }
 
 /** How the action form names one argument: required or optional, and variadic or scalar. */
-function argumentForm(argument: ArgumentNode): string {
+function argumentForm(argument: ArgumentNode, { style }: ViewContext): string {
   const name = argument.variadic ? `${argument.name}...` : argument.name;
-  return argument.required ? `<${name}>` : `[${name}]`;
+  return style.dim.italic(style.escape(argument.required ? `<${name}>` : `[${name}]`));
 }
 
 /** The JSON escape each line terminator prints as, in code point order. */
@@ -144,64 +150,84 @@ function renderDefault(value: unknown): string {
  * one parenthesis. Two spaces separate the two, a member with no description has the parenthesis as
  * its whole cell, and a member with neither has no right cell at all.
  */
-function rightCell(description: string | undefined, facts: readonly string[]): string {
-  const parenthesis = isEmpty(facts) ? '' : `(${facts.join(', ')})`;
+function rightCell(
+  description: string | undefined,
+  facts: readonly string[],
+  { style }: ViewContext,
+): string {
+  const parenthesis = isEmpty(facts)
+    ? ''
+    : `${style.dim('(')}${facts.join(`${style.dim(',')} `)}${style.dim(')')}`;
   if (description === undefined) {
     return parenthesis;
   }
-  return parenthesis === '' ? description : `${description}${gutter}${parenthesis}`;
+  const text = style.primary(style.escape(description));
+  return parenthesis === '' ? text : `${text}${gutter}${parenthesis}`;
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
-function defaultFacts(declared: { readonly value: unknown } | undefined): string[] {
+function defaultFacts(
+  declared: { readonly value: unknown } | undefined,
+  { style }: ViewContext,
+): string[] {
   if (declared === undefined || declared.value === undefined) {
     return [];
   }
-  return [`default: ${renderDefault(declared.value)}`];
+  return [style.dim(style.escape(`default: ${renderDefault(declared.value)}`))];
 }
 
 /** The facts one string option row carries, in the order the right-cell rule names them. */
-function stringFacts(option: StringOption): string[] {
+function stringFacts(option: StringOption, context: ViewContext): string[] {
+  const { style } = context;
   return [
-    ...(option.required ? ['required'] : []),
-    ...(option.multiple ? ['repeatable'] : []),
-    ...defaultFacts(option.default),
+    ...(option.required ? [style.dim('required')] : []),
+    ...(option.multiple ? [style.dim('repeatable')] : []),
+    ...defaultFacts(option.default, context),
   ];
 }
 
 /** The facts one Boolean option row carries. Its absent value is its only possible one. */
-function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): string[] {
+function booleanFacts(
+  option: Extract<OptionNode, { type: 'boolean' }>,
+  { style }: ViewContext,
+): string[] {
   // A negative polarity means the absent value is `true` and both spellings set it to `false`.
-  return option.polarity === 'negative' ? ['default: true'] : [];
+  return option.polarity === 'negative' ? [style.dim('default: true')] : [];
 }
 
 /**
  * The fact a deprecated member contributes: its migration message. The right-cell rule prints it
  * last, so a reader takes everything after `deprecated: ` as the message.
  */
-function deprecatedFacts(member: { readonly deprecated: string | undefined }): string[] {
-  return member.deprecated === undefined ? [] : [`deprecated: ${member.deprecated}`];
+function deprecatedFacts(
+  member: { readonly deprecated: string | undefined },
+  { style }: ViewContext,
+): string[] {
+  return member.deprecated === undefined
+    ? []
+    : [style.warning(style.escape(`deprecated: ${member.deprecated}`))];
 }
 
 /** The facts one option row carries, in the order the right-cell rule names them. */
-function optionFacts(option: OptionNode): string[] {
-  const declared = option.type === 'string' ? stringFacts(option) : booleanFacts(option);
-  return [...declared, ...deprecatedFacts(option)];
+function optionFacts(option: OptionNode, context: ViewContext): string[] {
+  const declared =
+    option.type === 'string' ? stringFacts(option, context) : booleanFacts(option, context);
+  return [...declared, ...deprecatedFacts(option, context)];
 }
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */
-function argumentFacts(argument: ArgumentNode): string[] {
-  return defaultFacts(argument.default);
+function argumentFacts(argument: ArgumentNode, context: ViewContext): string[] {
+  return defaultFacts(argument.default, context);
 }
 
 /**
  * One section's rows as page lines. The left cell is padded to the longest one in that section plus
  * two spaces, and a row with no right cell has no trailing padding. Nothing wraps.
  */
-function column(rows: readonly Row[]): string[] {
-  const width = Math.max(...rows.map((row) => row.left.length)) + gutter.length;
+function column(rows: readonly Row[], context: ViewContext): string[] {
+  const width = Math.max(...rows.map((row) => context.width(row.left))) + gutter.length;
   return rows.map(
-    (row) => `${gutter}${row.right === '' ? row.left : row.left.padEnd(width) + row.right}`,
+    (row) => `${gutter}${row.right === '' ? row.left : pad(row.left, width) + row.right}`,
   );
 }
 

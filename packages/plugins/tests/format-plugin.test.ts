@@ -112,3 +112,36 @@ test("the hook-collision error names another plugin's option", () => {
     stdout: '',
   });
 });
+
+test('the formatter describes ordered views and its declared default without a parser default', () => {
+  const found = inspect('author-json').root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')).toMatchObject({
+    description: 'Select the output format: json, table, jsonl. Default: json.',
+  });
+  expect(found?.options.find((option) => option.name === 'format')).not.toHaveProperty('default');
+});
+
+test.each([
+  ['earlier-default', 'table, custom, json, jsonl', 'custom'],
+  ['later-default', 'table, json, jsonl', 'table'],
+  ['author-ndjson', 'ndjson, table, json, jsonl', 'ndjson'],
+])(
+  'the format description records hook-time names and default: %s',
+  (scenario, names, selected) => {
+    const found = inspect(scenario).root.children.find((child) => child.name === 'count');
+    expect(found?.options.find((option) => option.name === 'format')).toMatchObject({
+      description: `Select the output format: ${names}. Default: ${selected}.`,
+    });
+    expect(found?.options.find((option) => option.name === 'format')).not.toHaveProperty('default');
+  },
+);
+
+test('a result without the formatter invents no selector or list of views', () => {
+  expect(inspect('no-formatter').root.children[0]?.options).toEqual([]);
+  expect(run('no-formatter', ['count', '--help'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      'app count\n\nUSAGE\n  app count [options]\n\nGLOBAL OPTIONS\n  -h, --help  Show this help.\n',
+  });
+});

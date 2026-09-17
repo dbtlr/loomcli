@@ -48,8 +48,41 @@ const page = [
   '',
 ].join('\n');
 
-// Three fixed invocations, so the printed bytes are the whole contract the packed packages satisfy.
+// Fixed invocations, so the printed bytes are the whole contract the packed packages satisfy.
+const styledPage = [
+  '\u001b[33;1mgreeter\u001b[39;22m \u001b[90m·\u001b[39m Greet one subject.',
+  '',
+  '  The greeting is printed before the subject.',
+  '',
+  '\u001b[90mUSAGE\u001b[39m',
+  '  \u001b[33mgreeter\u001b[39m \u001b[90;3m<subject>\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m',
+  '',
+  '\u001b[90mARGUMENTS\u001b[39m',
+  '  \u001b[90;3msubject\u001b[39;23m  Who to greet.',
+  '',
+  '\u001b[90mOPTIONS\u001b[39m',
+  '  \u001b[33m-g\u001b[90m,\u001b[39m \u001b[33m--greeting\u001b[39m \u001b[90;3m<word>\u001b[39;23m  The greeting to print.  \u001b[90m(default: hello)\u001b[39m',
+  '  \u001b[33m-h\u001b[90m,\u001b[39m \u001b[33m--help\u001b[39m             Show this help.',
+  '  \u001b[33m-V\u001b[90m,\u001b[39m \u001b[33m--version\u001b[39m          Print the version.',
+  '',
+  '\u001b[90mEXAMPLES\u001b[39m',
+  '  \u001b[90m$\u001b[39m \u001b[33mgreeter\u001b[39m world --greeting packed',
+  '    \u001b[90mThe line this check compares.\u001b[39m',
+  '',
+].join('\n');
 const invocations = [
+  {
+    argv: ['--help'],
+    env: { LOOM_PACKED_STYLES: '1' },
+    expected: `greeter help\n${styledPage}`,
+    reads: 'the themed help page',
+  },
+  {
+    argv: ['--version'],
+    env: { LOOM_PACKED_STYLES: '1' },
+    expected: 'greeter build\n\u001b[33;1mgreeter\u001b[39;22m v1.0.0\n',
+    reads: 'the themed version line',
+  },
   {
     argv: ['world', '--greeting', 'packed'],
     expected: 'packed: world\n',
@@ -153,8 +186,8 @@ try {
   }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
-    for (const { argv, expected, reads } of invocations) {
-      const runtime = run(runtimes.get(name), [entry, ...argv], temporary);
+    for (const { argv, expected, reads, env } of invocations) {
+      const runtime = run(runtimes.get(name), [entry, ...argv], temporary, env);
       assert.equal(runtime.status, 0, `${name} exited with ${runtime.status}: ${runtime.output}`);
       assert.equal(
         runtime.stdout,
