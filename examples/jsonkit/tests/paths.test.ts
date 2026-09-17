@@ -43,14 +43,18 @@ test('a walk that throws leaves its written rows behind, under the line and the 
   });
 });
 
-test('the declared result names both presentations in record order, the row view first', () => {
+test('the declared result names both views and the formatter appends its own, the row view first', () => {
   const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(inspected.status).toBe(0);
   const graph: { root: { children: { name: string; result: unknown }[] } } = JSON.parse(
     inspected.stdout,
   );
   const found = graph.root.children.find((child) => child.name === 'paths');
-  expect(found?.result).toEqual({ default: 'list', kind: 'rows', views: ['list', 'table'] });
+  expect(found?.result).toEqual({
+    default: 'list',
+    kind: 'rows',
+    views: ['list', 'table', 'json', 'jsonl'],
+  });
 });
 
 test('the hidden Command stays off the help page and out of the candidate list', () => {
