@@ -60,6 +60,10 @@ const cases = {
     rows: Array.from({ length: 150_000 }, () => ({ value: 'x' })),
     view: table(),
   },
+  'last-center': {
+    rows: [{ value: 'x' }],
+    view: table({ columns: [{ align: 'center', header: 'ABCD', key: 'value' }] }),
+  },
   nullish: {
     rows: [{ end: 'x', missing: undefined, nullish: null }],
     view: table({ columns: ['nullish', 'missing', 'end'] }),

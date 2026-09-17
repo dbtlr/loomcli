@@ -3,6 +3,7 @@ import type { View, ViewContext } from '@loomcli/core';
 
 type TableAlignment = 'center' | 'left' | 'right';
 
+const CENTER_SIDES = 2;
 const EMPTY = 0;
 const LAST_OFFSET = 1;
 
@@ -28,6 +29,21 @@ interface PreparedColumn<Row> {
   readonly align: TableAlignment;
   readonly cell: (row: Readonly<Row>, context: ViewContext) => string;
   readonly header: (context: ViewContext) => string;
+}
+
+interface CellLayout<Row> {
+  readonly column: PreparedColumn<Row> | undefined;
+  readonly context: ViewContext;
+  readonly last: boolean;
+  readonly text: string;
+  readonly width: number | undefined;
+}
+
+interface LineLayout<Row> {
+  readonly cells: readonly string[];
+  readonly columns: readonly PreparedColumn<Row>[];
+  readonly context: ViewContext;
+  readonly widths: readonly number[];
 }
 
 /** A data value escaped and styled by the view, with absence rendered as an empty cell. */
@@ -84,25 +100,33 @@ function discoverColumns<Row>(rows: readonly Row[]): PreparedColumn<Row>[] {
   return columns;
 }
 
+/** One cell padded to its column width without adding spaces after the last cell. */
+function renderCell<Row>({ column, context, last, text, width }: CellLayout<Row>): string {
+  if (!column || width === undefined) {
+    return text;
+  }
+  if (!last || column.align === 'right') {
+    return pad(text, width, { align: column.align });
+  }
+  if (column.align === 'left') {
+    return text;
+  }
+  const leading = Math.floor(Math.max(EMPTY, width - context.width(text)) / CENTER_SIDES);
+  return `${pad('', leading)}${text}`;
+}
+
 /** One line with two spaces between cells and no trailing padding on its last cell. */
-function line<Row>(
-  cells: readonly string[],
-  columns: readonly PreparedColumn<Row>[],
-  widths: readonly number[],
-): string {
+function line<Row>({ cells, columns, context, widths }: LineLayout<Row>): string {
   return cells
-    .map((cell, index) => {
-      const column = columns[index];
-      const width = widths[index];
-      if (
-        !column ||
-        width === undefined ||
-        (index === cells.length - LAST_OFFSET && column.align !== 'right')
-      ) {
-        return cell;
-      }
-      return pad(cell, width, { align: column.align });
-    })
+    .map((text, index) =>
+      renderCell({
+        column: columns[index],
+        context,
+        last: index === cells.length - LAST_OFFSET,
+        text,
+        width: widths[index],
+      }),
+    )
     .join('  ');
 }
 
@@ -128,8 +152,8 @@ function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
         return width;
       });
       const lines = [
-        line(headers, columns, widths),
-        ...rendered.map((cells) => line(cells, columns, widths)),
+        line({ cells: headers, columns, context, widths }),
+        ...rendered.map((cells) => line({ cells, columns, context, widths })),
       ];
       return `${lines.join('\n')}\n`;
     },

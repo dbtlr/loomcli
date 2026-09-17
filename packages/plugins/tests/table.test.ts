@@ -79,6 +79,14 @@ test('table() measures a large finite sequence without an argument overflow', ()
   });
 });
 
+test('table() centers its last column without trailing padding', () => {
+  expect(invoke(fixture, ['last-center'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'ABCD\n x\nresolved:0\n',
+  });
+});
+
 test('table() prints only configured headers for an empty sequence', () => {
   expect(invoke(fixture, ['empty-explicit'])).toEqual({
     status: 0,
