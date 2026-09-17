@@ -1,0 +1,3 @@
+- Add `loomTheme(overrides?)` at `@loomcli/plugins/theme` with seven dark foreground defaults, whole-token replacements, and inferred custom token names.
+- Add independent `ansi256` and `ansi16` fallbacks to concrete color helpers. Core selects the destination depth and preserves fallbacks through nesting and resets. Use one-argument wrappers such as `colors.map((color) => style.hex(color))` when passing helpers to array methods.
+- Install the Loom theme in both examples and highlight the `textstat --total` summary row. Ordinary pipes and automatic `NO_COLOR` retain plain output.

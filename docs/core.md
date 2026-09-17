@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named Loom palette remains a separate proposed increment. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023.
 
 ## Application declarations
 
@@ -1903,7 +1903,7 @@ const app = new Application('example', {
 });
 ```
 
-- **Status.** This is the proposed contract under ADR-0022 and [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md). `loomTheme` and fallback options are not implemented yet.
+- **Status.** Implemented under ADR-0022 and [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md).
 - **Exports.** `@loomcli/plugins/theme` adds `loomTheme` and the type `LoomThemeOverrides` beside the existing `theme(mapping)`. Both factories use identity `@loomcli/plugins/theme` and contribute through the same single theme slot. They install no middleware, options, hooks, or views. Importing either factory installs nothing.
 - **Defaults.** `loomTheme()` supplies the seven mappings below. `theme(mapping)` remains the bare factory and supplies only its declared mappings. The named defaults change foregrounds only, preserving backgrounds and modifiers. There is no mode argument, light palette, background detection, terminal query, environment variable, or CLI flag for selecting a palette.
 - **Overrides.** A supplied concrete chain replaces the complete mapping for its key, including its fallback colors. An omitted or `undefined` built-in override retains the default. `style` contributes no operations and inherits its surroundings. `style.resetForeground` selects the terminal's foreground default while preserving other attributes. `null` and applied strings are invalid values. The existing concrete-chain and reserved-name rules apply.
@@ -1935,7 +1935,7 @@ The implementation increment proves these cases through public APIs:
 - Both examples install `loomTheme()`. `textstat --total` uses the default highlight for its total row on a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content and layout contain no color escapes. Help and version restyling remains a separate increment.
 - Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence exercises the published declarations and the named palette at each color depth.
 
-Before implementation, `scripts/check-theme-contract.mjs` checks the proposed factory declaration from this section against current core types. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
+`scripts/check-theme-contract.mjs` checks the built factory export against the compiler and editor. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
 
 ### Example coverage
 
@@ -1943,7 +1943,7 @@ The first-party increment is proven when both example applications install `help
 
 ## Styles and rendering policy
 
-Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named [Loom theme](#loom-theme) remains proposed under ADR-0022. [Explicit color fallbacks](#explicit-color-fallbacks) remain proposed under ADR-0029.
+Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named [Loom theme](#loom-theme) and [explicit color fallbacks](#explicit-color-fallbacks) are implemented under ADR-0022 and ADR-0029.
 
 ### Strings and composition
 
@@ -2045,7 +2045,7 @@ const indexedSage = style.ansi256(108, { ansi16: 'green' });
 sage.bold('Ready');
 ```
 
-- **Status.** These helper extensions and the three types exported by core are proposed under [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md). Current helpers accept only their original arguments.
+- **Status.** These helper extensions and the three types exported by core are implemented under [ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md).
 - **Selection.** RGB and hex retain their original RGB value at truecolor depth. At 256 or 16 colors, the matching explicit fallback wins. An omitted or `undefined` fallback uses the existing approximation of the original color for that depth. A 256-color fallback never changes the 16-color result. `ansi256` retains its original index at truecolor and 256-color depth, and uses `ansi16` when supplied at 16-color depth.
 - **Values.** `ansi256` is an integer from 0 through 255. `ansi16` is one of the sixteen foreground color names, including for background helpers. Both options are optional. `undefined` options and an empty object behave as omission. The `ansi256` and `bgAnsi256` helpers accept only `ansi16`.
 - **Validation.** Helpers validate options when called and copy the accepted values into the chain. Later object mutation cannot change that chain. A non-plain options object, unknown option, or invalid color name throws `TypeError`. An invalid palette index throws `RangeError`. Existing hex and RGB validation remains unchanged. No value is coerced, rounded, or clamped.
@@ -2055,7 +2055,7 @@ sage.bold('Ready');
 
 #### Fallback acceptance
 
-The implementation verifies exact bytes for explicit and omitted fallbacks at all three depths, including `ansi256` source colors and background helpers. It verifies that an index passed by a direct array callback is rejected and an explicit one-argument wrapper succeeds. It covers partial and `undefined` options, invalid options at helper-call time, copied option values, whole-color replacement, nested restoration, embedded resets, and color suppression. Type checks reject invalid fields and names while preserving chain typing. The wire checks validate the new color forms and retain the existing forms, as specified in the [wire contract](style-wire.md#explicit-color-fallbacks-proposed). Node and Bun process fixtures plus packed consumers prove the public API.
+The implementation verifies exact bytes for explicit and omitted fallbacks at all three depths, including `ansi256` source colors and background helpers. It verifies that an index passed by a direct array callback is rejected and an explicit one-argument wrapper succeeds. It covers partial and `undefined` options, invalid options at helper-call time, copied option values, whole-color replacement, nested restoration, embedded resets, and color suppression. Type checks reject invalid fields and names while preserving chain typing. The wire checks validate the new color forms and retain the existing forms, as specified in the [wire contract](style-wire.md#explicit-color-fallbacks). Node and Bun process fixtures plus packed consumers prove the public API.
 
 ### Theme plugins and typed names
 
@@ -2079,7 +2079,7 @@ const app = new Application('example', {
 
 `theme(mapping)` supplies exactly the mappings provided. Its plugin identity is `@loomcli/plugins/theme`. Importing it installs nothing.
 
-The proposed [`loomTheme(overrides?)`](#loom-theme) factory adds the named palette and accepts replacements and custom keys. It is not exported yet.
+The [`loomTheme(overrides?)`](#loom-theme) factory adds the named palette and accepts replacements and custom keys.
 
 #### `PluginDefinition.theme` field
 
@@ -2219,7 +2219,7 @@ When colors are enabled, core determines depth from captured hints in this order
 
 The iTerm version field is `TERM_PROGRAM_VERSION`. These are a portable subset of [supports-color's detection rules](https://github.com/chalk/supports-color/blob/e2a4cd3c44eb384b075161ef32859cd29ce1aa7f/index.js), with enablement handled separately. Core does not read CLI flags or live process globals during resolution, and does not reuse upstream numeric forcing semantics. Forced color without a depth hint uses sixteen colors. A future detector update needs equivalent Node and Bun evidence.
 
-The proposed [explicit fallback contract](#explicit-color-fallbacks) adds a depth-specific exception to the following approximation rule when implemented.
+[Explicit fallbacks](#explicit-color-fallbacks) take precedence at their named depth. Without a matching fallback, the following approximation rule applies.
 
 RGB colors remain RGB at truecolor depth. At lower depth, core chooses the closest available color by squared RGB distance, with the lower palette index breaking ties. The 256-color target is the conventional xterm palette. The sixteen-color target uses that palette's first sixteen entries. Named colors retain their terminal palette indices; they do not acquire hard-coded RGB values on a richer terminal. ANSI-256 colors retain their index at 256 or truecolor depth and approximate to sixteen colors at basic depth. A terminal can customize its palette, so approximation does not promise an exact visual match.
 

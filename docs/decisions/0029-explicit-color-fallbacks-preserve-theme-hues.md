@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0029 - Explicit color fallbacks preserve theme hues
 description: Extend concrete color helpers with optional depth-specific fallbacks while core retains capability detection, composition, and rendering policy.
-status: proposed
+status: accepted
 created: 2026-09-17
 modified: 2026-09-17
 ---
@@ -31,7 +31,7 @@ The [Loom theme](../core.md#loom-theme) supplies the dark foreground palette wit
 
 When accepted, this record supersedes only the unconditional approximation rule incorporated by ADR-0027 through the core reference. An explicit fallback takes precedence at its named depth. All other ADR-0027 constraints remain: core owns resolution, the theme is a static concrete mapping, and one optional plugin owns the theme slot. ADR-0022 continues to govern the proposed named palette and its acceptance gate.
 
-The new color forms are specified in the [wire contract](../style-wire.md#explicit-color-fallbacks-proposed). Existing forms remain valid. The wire remains internal and is not a persistent interchange format.
+The new color forms are specified in the [wire contract](../style-wire.md#explicit-color-fallbacks). Existing forms remain valid. The wire remains internal and is not a persistent interchange format.
 
 ## Considered options
 
@@ -47,3 +47,5 @@ Proposed. One implementation increment delivers the named palette and fallback h
 ## Changelog
 
 - 2026-09-17: Proposed explicit color fallbacks and the foreground-only named palette.
+
+- 2026-09-17: Accepted with the named palette and explicit fallbacks implemented together. Exact output, composition, validation, packed consumers, and Node and Bun process tests cover the shared gate. The built factory passes compiler and editor-completion checks.

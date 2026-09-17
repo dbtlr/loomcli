@@ -470,3 +470,142 @@ test('themes reject semantic chains, reserved names, and competing owners', () =
     }).stdout,
   ).toBe('\u001b[36;1mX\u001b[39;22m');
 });
+
+test.each([
+  [{}, '32'],
+  [{ TERM: 'xterm-256color' }, '38;5;108'],
+  [{ COLORTERM: 'truecolor' }, '38;2;122;143;123'],
+])('explicit RGB fallbacks select only the destination depth %j', (env, code) => {
+  expect(
+    resolve('X', {
+      chain: [['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }]],
+      env: { FORCE_COLOR: '1', ...env },
+    }),
+  ).toEqual({ status: 0, stderr: '', stdout: `\u001b[${code}mX\u001b[39m` });
+});
+
+test('fallback helpers validate at construction and copy accepted values', () => {
+  expect(invoke(new URL('fixtures/color-fallbacks.mjs', import.meta.url))).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'validated and copied\n',
+  });
+});
+
+test.each([
+  [[], '90', '90'],
+  [[{}], '90', '90'],
+  [[{ ansi256: 108 }], '90', '38;5;108'],
+  [[{ ansi16: 'green' }], '32', '90'],
+])('fallbacks %j never affect another depth', (options, ansi16, ansi256) => {
+  for (const [env, code] of [
+    [{}, ansi16],
+    [{ TERM: 'xterm-256color' }, ansi256],
+    [{ COLORTERM: 'truecolor' }, '38;2;122;143;123'],
+  ] as const) {
+    expect(
+      resolve('X', {
+        chain: [['rgb', 122, 143, 123, ...options]],
+        env,
+        rendering: { color: 'always' },
+      }).stdout,
+    ).toBe(`\u001b[${code}mX\u001b[39m`);
+  }
+});
+
+test.each([
+  [['ansi256', 108, { ansi16: 'green' }], '32', '38;5;108', '38;5;108', '39'],
+  [['ansi256', 108], '90', '38;5;108', '38;5;108', '39'],
+  [['bgAnsi256', 108, { ansi16: 'green' }], '42', '48;5;108', '48;5;108', '49'],
+  [
+    ['bgHex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
+    '42',
+    '48;5;108',
+    '48;2;122;143;123',
+    '49',
+  ],
+  [
+    ['bgRgb', 122, 143, 123, { ansi16: 'green', ansi256: 108 }],
+    '42',
+    '48;5;108',
+    '48;2;122;143;123',
+    '49',
+  ],
+])('color helper %j uses explicit fallbacks', (helper, ansi16, ansi256, truecolor, reset) => {
+  for (const [env, code] of [
+    [{}, ansi16],
+    [{ TERM: 'xterm-256color' }, ansi256],
+    [{ COLORTERM: 'truecolor' }, truecolor],
+  ] as const) {
+    expect(resolve('X', { chain: [helper], env, rendering: { color: 'always' } }).stdout).toBe(
+      `\u001b[${code}mX\u001b[${reset}m`,
+    );
+  }
+});
+
+test('whole-color replacement and background composition preserve independent choices', () => {
+  const sage = ['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }];
+  expect(resolve('X', { chain: [sage, 'blue'], rendering: { color: 'always' } }).stdout).toBe(
+    '\u001b[34mX\u001b[39m',
+  );
+  expect(
+    resolve('X', {
+      chain: [sage, ['bgHex', '#C04532', { ansi16: 'red' }]],
+      rendering: { color: 'always' },
+    }).stdout,
+  ).toBe('\u001b[32;41mX\u001b[39;49m');
+  expect(resolve('X', { chain: [sage], env: { NO_COLOR: '1' }, tty: true }).stdout).toBe('X');
+  expect(resolve('X', { chain: [sage] }).stdout).toBe('X');
+});
+
+test.each([
+  [{}, '32', '42'],
+  [{ TERM: 'xterm-256color' }, '38;5;108', '48;5;108'],
+  [{ COLORTERM: 'truecolor' }, '38;2;122;143;123', '48;2;122;143;123'],
+])('nested and embedded resets restore fallback colors at %j', (env, foreground, background) => {
+  const options = {
+    chain: [
+      ['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
+      ['bgHex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
+      'bold',
+    ],
+    env,
+    rendering: { color: 'always', modifiers: 'always' },
+  };
+  expect(resolve(`A${redSpan('B')}C\u001b[34;45mD\u001b[0mE`, options).stdout).toBe(
+    `\u001b[${foreground};${background};1mA\u001b[31mB\u001b[${foreground}mC\u001b[34;45mD\u001b[${foreground};${background}mE\u001b[39;49;22m`,
+  );
+});
+
+test.each([
+  ['rgb', 122, 143, 123, { ansi16: null }],
+  ['rgb', 122, 143, 123, { ansi256: null }],
+  ['rgb', 122, 143, 123, { ansi256: 256 }],
+  ['rgb', 122, 143, 123, { ansi16: 'bgGreen' }],
+  ['rgb', 122, 143, 123, { unknown: 1 }],
+  ['rgb', 122, 143, 123, null],
+  ['rgb', 122, 143, 123, {}, {}],
+  ['ansi256', 108, { ansi256: 108 }],
+  ['ansi256', 108, { ansi16: null }],
+  ['ansi256', 108, null],
+  ['ansi256', 108, {}, {}],
+])('malformed fallback wire color %j stays literal and measurable', (...color) => {
+  const text = `\uE000${JSON.stringify(['style', [['foreground', color]]])}\uE001X\uE002`;
+  expect(resolve(text).stdout).toBe(text);
+  expect(resolve(text, { measure: true }).stdout).toBe(String(text.length));
+});
+
+test.each([
+  [['rgb', 122, 143, 123], '90'],
+  [['rgb', 122, 143, 123, {}], '90'],
+  [['rgb', 122, 143, 123, { ansi16: 'green' }], '32'],
+  [['ansi256', 108], '90'],
+  [['ansi256', 108, {}], '90'],
+  [['ansi256', 108, { ansi16: 'green' }], '32'],
+])('valid wire color %j resolves through output and width', (color, code) => {
+  const text = `\uE000${JSON.stringify(['style', [['foreground', color]]])}\uE001X\uE002`;
+  expect(resolve(text, { rendering: { color: 'always' } }).stdout).toBe(
+    `\u001b[${code}mX\u001b[39m`,
+  );
+  expect(resolve(text, { measure: true }).stdout).toBe('1');
+});

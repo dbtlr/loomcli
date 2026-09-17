@@ -1,25 +1,22 @@
-// Checks the proposed Loom theme declaration in docs/core.md against the compiler and editor.
+// Checks the built Loom theme export against the compiler and editor.
 // Run after pnpm build: node scripts/check-theme-contract.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const reference = readFileSync(join(root, 'docs/core.md'), 'utf8');
-const section = /^### Loom theme\r?\n(?<body>[\s\S]*?)(?=^### |$(?![\s\S]))/mu.exec(reference);
-const declaration = /^```ts\r?\n(?<body>[\s\S]*?)^```/mu.exec(section?.groups.body ?? '')?.groups
-  .body;
-assert.ok(declaration, 'docs/core.md must contain a TypeScript declaration under ### Loom theme.');
 const { default: executable } = await import(
   pathToFileURL(join(root, 'node_modules/typescript/lib/getExePath.js')).href
 );
 const compiler = executable();
 const project = mkdtempSync(join(tmpdir(), 'loom-theme-contract-'));
 const coreNames = ['dim', 'primary', 'highlight', 'success', 'warning', 'error', 'info'];
-const text = `${declaration}
+const text = `import { loomTheme } from '@loomcli/plugins/theme';
+import type { LoomThemeOverrides } from '@loomcli/plugins/theme';
+import type { ConcreteStyle, Plugin } from '@loomcli/core';
 import { Application, style } from '@loomcli/core';
 import type { EnvironmentOf, View } from '@loomcli/core';
 
@@ -74,6 +71,11 @@ loomTheme({ highlight: null });
 try {
   mkdirSync(join(project, 'node_modules/@loomcli'), { recursive: true });
   symlinkSync(join(root, 'packages/core'), join(project, 'node_modules/@loomcli/core'), 'junction');
+  symlinkSync(
+    join(root, 'packages/plugins'),
+    join(project, 'node_modules/@loomcli/plugins'),
+    'junction',
+  );
   writeFileSync(join(project, 'package.json'), JSON.stringify({ type: 'module' }));
   writeFileSync(
     join(project, 'tsconfig.json'),

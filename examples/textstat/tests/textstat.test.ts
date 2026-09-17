@@ -416,3 +416,64 @@ test('the inspected graph reports the declared table and the formatter views on 
     views: ['table', 'json', 'jsonl'],
   });
 });
+
+test.each([
+  [{ COLORTERM: '', FORCE_COLOR: '1', TERM: 'xterm', TERM_PROGRAM: '' }, '90', '33'],
+  [
+    { COLORTERM: '', FORCE_COLOR: '1', TERM: 'xterm-256color', TERM_PROGRAM: '' },
+    '38;5;245',
+    '38;5;172',
+  ],
+  [
+    { COLORTERM: 'truecolor', FORCE_COLOR: '1', TERM: 'xterm' },
+    '38;2;139;147;163',
+    '38;2;201;123;54',
+  ],
+])('textstat highlights the summary, never a file named total, at %j', (env, dim, highlight) => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-palette-'));
+  try {
+    writeFileSync(join(directory, 'total'), 'abc');
+    const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['total', '--total'], {
+      cwd: directory,
+      env,
+    });
+    expect(result).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `\u001b[${dim}mCOUNT\u001b[39m  \u001b[${dim}mSOURCE\u001b[39m\n    3  total\n    \u001b[${highlight}m3\u001b[39m  \u001b[${highlight}mtotal\u001b[39m\n`,
+    });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test.each(['json', 'jsonl'])('summary styling leaves the %s result fields unchanged', (format) => {
+  const result = invoke(
+    new URL('../dist/src/main.js', import.meta.url),
+    ['--total', '--format', format],
+    { env: { FORCE_COLOR: '1' }, input: 'abc' },
+  );
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).not.toContain('\u001b');
+  const rows: unknown =
+    format === 'json'
+      ? JSON.parse(result.stdout)
+      : result.stdout
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line));
+  expect(rows).toEqual([
+    { count: 3, source: 'stdin' },
+    { count: 3, source: 'total' },
+  ]);
+});
+
+test('NO_COLOR keeps the total row content and layout without foreground escapes', () => {
+  expect(
+    invoke(new URL('../dist/src/main.js', import.meta.url), ['--total'], {
+      env: { COLORTERM: 'truecolor', FORCE_COLOR: '', NO_COLOR: '1' },
+      input: 'abc',
+    }),
+  ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    3  stdin\n    3  total\n' });
+});

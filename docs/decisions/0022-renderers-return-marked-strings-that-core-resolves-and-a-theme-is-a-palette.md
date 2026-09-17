@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0022 - Renderers return marked strings, and a theme maps semantic names to concrete styles
 description: Ordinary strings carry composable terminal styles, semantic tokens, glyphs, and deferred padding. Core resolves them under one rendering policy, and one optional theme plugin supplies concrete token mappings.
-status: proposed
+status: accepted
 created: 2026-09-11
 modified: 2026-09-17
 ---
@@ -67,3 +67,5 @@ The view registry and results lane remain separate increments under ADR-0021 and
 
 - 2026-09-14: ADR-0021 is accepted and implemented; the results lane remains proposed under ADR-0023, whose contract in [Results](../core.md#results) adds a row view as a second shape of the marked-string view and changes nothing in the string, theme, or resolution seam this record describes.
 - 2026-09-17: The [Loom theme contract](../core.md#loom-theme) fixes `loomTheme(overrides?)`, the dark foreground defaults, custom-key inference and core-key completion, and replacement and clearing semantics. [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes explicit reduced-color fallbacks. Background painting, light colors, and background detection are outside this increment. This record remains proposed until the named palette and its evidence land.
+
+- 2026-09-17: Accepted with the named palette and explicit fallbacks implemented together. Exact output, composition, validation, packed consumers, and Node and Bun process tests cover the shared gate. The built factory passes compiler and editor-completion checks.

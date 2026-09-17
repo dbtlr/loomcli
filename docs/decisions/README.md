@@ -40,14 +40,14 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) | Plugin facts attach as descriptor-keyed extension values, and core owns description and version as graph facts. | superseded |
 | [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) | First-party plugins ship in one package, `@loomcli/plugins`, as separately installable subpath exports with `<package>/<plugin>` identities. | accepted |
 | [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md) | Every rendered byte resolves through one registry of declared views named by reference, and class-keyed failure views fold into it as view overrides; the registry is implemented. | accepted |
-| [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | proposed |
+| [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) | Ordinary strings carry composable styles and independent glyphs; one theme maps semantic names to concrete styles, and core applies rendering policy. | accepted |
 | [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md) | A Command declares one value or a sequence of rows with views keyed by view name, stdout belongs to the result, and `json` and `jsonl` are views the formatter plugin declares. | accepted |
 | [ADR-0024](0024-application-registration-provides-globals-to-standalone-commands.md) | One shallow Application registration supplies global types across modules. | superseded |
 | [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) | Completed Commands accept immutable extension configuration. | accepted |
 | [ADR-0026](0026-applications-declare-global-options-through-a-fluent-method.md) | Applications declare global options through a fluent method before Command attachment or action registration. | accepted |
 | [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) | Core resolves marked output with a view context and one optional theme contribution; the named palette remains separate. | accepted |
 | [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) | Plugins run code at named lifecycle hooks, beginning with `onCommandAttach`, and middleware wraps the parsed invocation and selects a result's view by name. | accepted |
-| [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) | Concrete color helpers accept independent depth-specific fallbacks, and the named Loom theme supplies a foreground-only palette. | proposed |
+| [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) | Concrete color helpers accept independent depth-specific fallbacks, and the named Loom theme supplies a foreground-only palette. | accepted |
 
 ## Adding a record
 

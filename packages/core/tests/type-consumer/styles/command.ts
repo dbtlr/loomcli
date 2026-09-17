@@ -6,7 +6,7 @@ const renderer: View<{ name: string }> = {
     `${style.identifier(style.escape(data.name))}:${width(pad(data.name, 8))}`,
 };
 const action: ActionHandler<typeof command> = ({ out, style }) => {
-  out.print(style.identifier('known'));
+  out.print(style.hex('#7A8F7B', { ansi16: 'green' }).identifier('known'));
   out.print(style.absent('known without a mapping'));
   // @ts-expect-error TS2551: Detached actions reject unknown contextual token names.
   style.identifer('typo');

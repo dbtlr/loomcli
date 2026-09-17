@@ -7,6 +7,7 @@ import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
+import { totalRow } from './row.js';
 import type { Row } from './row.js';
 
 /**
@@ -82,8 +83,8 @@ async function countAll(
 export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
   const started = performance.now();
   const counted = await countAll(options, sources(args.files, host));
-  const rows = options.total
-    ? [...counted.rows, { count: counted.total, source: 'total' }]
+  const rows: Row[] = options.total
+    ? [...counted.rows, { count: counted.total, source: 'total', [totalRow]: true }]
     : counted.rows;
   await out.results(rows);
   if (options.timing) {

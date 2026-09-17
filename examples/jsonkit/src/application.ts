@@ -6,6 +6,7 @@ import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { records } from '@loomcli/plugins/records';
+import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
@@ -33,7 +34,7 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  plugins: [help(), version(), format(), explain()],
+  plugins: [help(), version(), format(), loomTheme(), explain()],
   version: Package.version,
   views: [
     override(FatalError, fatalError),
