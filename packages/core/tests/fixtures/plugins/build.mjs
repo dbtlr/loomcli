@@ -81,6 +81,11 @@ function declaresTag(command) {
   return command.argument('tag', {});
 }
 
+/** The option every hook argument collision row against an option declares, named to match. */
+function declaresTagOption(command) {
+  return command.option('tag', { type: 'string' });
+}
+
 /**
  * A hook that keeps the first Command it is handed, the root, and returns that surface again for
  * `count`, so the value it returns is registered and belongs to another Command's build.
@@ -167,9 +172,29 @@ const scenarios = {
       [formatter(onCount(declaresFormat))],
       new Command('count').argument('format', {}).action(dispatch),
     ),
+  'hook-argument-global-collision': () =>
+    new Application('app', { plugins: [formatter(onCount(declaresTag))] })
+      .globalOption('tag', { type: 'string' })
+      .command(counted())
+      .action(dispatch),
   'hook-argument-hook-collision': () =>
     withHooks([
       named('@acme/out', { onCommandAttach: onCount(declaresTag) }),
+      formatter(onCount(declaresTag)),
+    ]),
+  'hook-argument-hook-option-collision': () =>
+    withHooks([
+      named('@acme/out', { onCommandAttach: onCount(declaresTagOption) }),
+      formatter(onCount(declaresTag)),
+    ]),
+  'hook-argument-local-collision': () =>
+    withHooks(
+      [formatter(onCount(declaresTag))],
+      new Command('count').option('tag', { type: 'string' }).action(dispatch),
+    ),
+  'hook-argument-plugin-collision': () =>
+    withHooks([
+      named('@acme/out', { options: { tag: { type: 'string' } } }),
       formatter(onCount(declaresTag)),
     ]),
   'hook-global-collision': () =>

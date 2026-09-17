@@ -254,6 +254,22 @@ const rejected = [
     'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an argument. Rename the Command\'s argument or omit the plugin.',
   ],
   [
+    'hook-argument-local-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as a local option. Rename the Command\'s option or omit the plugin.',
+  ],
+  [
+    'hook-argument-global-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as a global option. Rename the global option or omit the plugin.',
+  ],
+  [
+    'hook-argument-plugin-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an option of plugin "@acme/out". Install one of them.',
+  ],
+  [
+    'hook-argument-hook-option-collision',
+    'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an option plugin "@acme/out" declared through onCommandAttach. Install one of them.',
+  ],
+  [
     'hook-argument-hook-collision',
     'Plugin "@loomcli/plugins/format" declares argument "tag" on Command "count", which is already declared as an argument plugin "@acme/out" declared through onCommandAttach. Install one of them.',
   ],
