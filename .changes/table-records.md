@@ -1,1 +1,0 @@
-- Add `@loomcli/plugins/table` and `@loomcli/plugins/records` as typed view factories. A table buffers rows to measure its columns. A records view writes each row as it arrives and closes with the record count.
