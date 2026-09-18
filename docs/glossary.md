@@ -335,8 +335,12 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Manifest**:
-The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. It excludes authoring provenance, diagnostics, and implementation history.
-_Avoid_: Schema (for the whole document), spec, descriptor
+The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It excludes aliases, hidden members, authoring provenance, diagnostics, and implementation history, and nothing depends on it: a fact a consumer needs enters the Command graph and reaches the manifest from there.
+_Avoid_: Schema (for the whole document), spec, descriptor, tool listing
+
+**Input schema**:
+The JSON Schema a validated input's schema publishes through the Standard JSON Schema channel, carried on the Command graph so every projection reads what the input accepts. It describes the value the string token must satisfy, and it is unknown, not unconstrained, where the schema publishes none.
+_Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
 A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
