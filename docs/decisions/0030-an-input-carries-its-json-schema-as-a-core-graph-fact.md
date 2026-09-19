@@ -4,7 +4,7 @@ title: ADR-0030 - An input carries its JSON Schema as a core graph fact, derived
 description: Graph build asks a validated input's Standard Schema for its input-side JSON Schema through the standard's converter and stores the plain result on the option or argument node, so the manifest, help, completion, and any later projection read one shape fact with no plugin installed. A result carries no schema.
 status: proposed
 created: 2026-09-18
-modified: 2026-09-18
+modified: 2026-09-19
 ---
 
 # ADR-0030 - An input carries its JSON Schema as a core graph fact, derived through the Standard JSON Schema channel
@@ -37,3 +37,7 @@ A result carries no schema. A declared result schema is work no author will writ
 ## Status
 
 Proposed. It moves to accepted with the contract in `docs/core.md` and the implementation that stores the fact and publishes it through `inspect()`.
+
+## Changelog
+
+- 2026-09-19: The contract in `docs/core.md`, under Input schema, binds the two open choices this record left to it. Build requests target `draft-2020-12` with no `libraryOptions`, and stores the converter's input-side return value verbatim, copied and frozen, reading nothing inside it. A converter that throws or returns a non-object is a `DeclarationError` from `inspect()`, naming the input, the target, and the converter's message, and reads `null` under `run()`, because an operator cannot correct an author's schema: the diagnostic belongs to development and the unknown shape to a shipped application. `null` has one reading, no published shape, and never means unconstrained. The Boolean `OptionNode` variant carries `schema: null` as well, so the node shape holds if a later contract lets a Boolean option validate. Two facts the contract records: zod 4.5.4's converter does not throw on a transform's input side, so no existing application meets the new error, and the formatter's `--format` validator moves its accepted names ahead of the `ndjson` mapping so the fact carries the enum. The authored human sentence for a help row is a help descriptor field for the help accepted-values contract, not a core fact. The record stays proposed until the implementation stores the fact and `inspect()` publishes it.
