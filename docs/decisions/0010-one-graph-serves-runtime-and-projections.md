@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-18
+modified: 2026-09-19
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -37,3 +37,5 @@ Help, manifests, completions, and agent tool listings are projections of `inspec
 - 2026-09-14: The results-lane contract in [Results](../core.md#results) adds one frozen graph fact per Command, `result`, published by `inspect()` as `null` or `{ kind, views, default }`, the presentation names in record order. Runtime and every projection read the same fact, under this record. A pack view's configuration is not a core fact.
 
 - 2026-09-18: [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), proposed, adds one frozen graph fact per validated option and argument, `schema`, the input-side JSON Schema the input's Standard Schema publishes through the standard's converter, or `null` where no shape is known. The schema object itself stays private, as above; what `inspect()` publishes is the plain data the converter returned. The manifest is one projection of that fact and of the rest of the graph, and nothing depends on the manifest. It binds when that record is accepted.
+
+- 2026-09-19: The input schema contract in [Input schema](../core.md#input-schema), written for [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), gives `inspect()` one rule `run()` does not apply: a schema whose converter fails is a `DeclarationError` from `inspect()` and reads `null` under `run()`, because an operator cannot correct an author's schema. The sentence above that `inspect()` applies every rule `run()` applies except the declared default then reads as two exceptions, one in each direction. It binds when ADR-0030 is accepted.
