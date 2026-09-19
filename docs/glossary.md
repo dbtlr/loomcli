@@ -339,7 +339,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
-The JSON Schema a validated input's schema publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value the string token must satisfy, exactly as the schema library states it, and it is unknown, not unconstrained, where the schema publishes none.
+The JSON Schema a validated input's schema publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value the string token, or the whole list of tokens for a collection input, must satisfy, exactly as the schema library states it, and it is unknown, not unconstrained, where the schema publishes none.
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
