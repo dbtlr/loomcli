@@ -23,12 +23,15 @@ const digits = {
 /** The same validator with a converter, which records every call and answers with `answer`. */
 function converting(answer) {
   const calls = [];
+  const answers = [];
   const schema = {
     '~standard': {
       jsonSchema: {
         input: (options) => {
           calls.push(options);
-          return answer(options);
+          const value = answer(options);
+          answers.push(value);
+          return value;
         },
         output: () => {
           throw new Error('The output side is never asked.');
@@ -39,7 +42,7 @@ function converting(answer) {
       version: 1,
     },
   };
-  return { calls, schema };
+  return { answers, calls, schema };
 }
 
 /** A converter that throws, the way zod does for a shape JSON Schema cannot carry. */
@@ -49,6 +52,21 @@ const throwing = converting(() => {
 
 /** A converter that returns something other than a plain object. */
 const nonObject = converting(() => 'string');
+
+/** A converter that returns an object that is not plain: an array. */
+const listing = converting(() => [1, 2]);
+
+/** A validator whose converter throws on being reached, before any call. */
+const lazy = {
+  '~standard': {
+    get jsonSchema() {
+      throw new Error('The converter is built on first use and cannot be.');
+    },
+    validate: digits['~standard'].validate,
+    vendor: 'fixture',
+    version: 1,
+  },
+};
 
 /** A converter that answers a nested document, so the copy and the freeze reach every depth. */
 const nested = converting((options) => ({
@@ -99,6 +117,8 @@ function shared() {
 function failing() {
   return new Application('failing')
     .option('minimum', { type: 'string', validate: throwing.schema })
+    .option('list', { type: 'string', validate: listing.schema })
+    .option('lazy', { type: 'string', validate: lazy })
     .argument('files', { validate: nonObject.schema, variadic: true })
     .action(dispatch);
 }
@@ -114,6 +134,7 @@ function observed() {
   });
   return new Application('observed', { plugins: [observer] })
     .option('metric', { type: 'string', validate: enumeration })
+    .option('count', { type: 'string', validate: nested.schema })
     .action(dispatch);
 }
 
@@ -145,6 +166,7 @@ if (mode === 'run') {
     `${encode({
       distinct: first.schema !== second.schema,
       equal: JSON.stringify(first.schema) === JSON.stringify(second.schema),
+      libraryFrozen: nested.answers.some((answer) => Object.isFrozen(answer)),
       nestedFrozen: Object.isFrozen(first.schema.items),
       rejected,
     })}\n`,

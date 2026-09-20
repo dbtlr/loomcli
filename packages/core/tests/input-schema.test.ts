@@ -71,9 +71,11 @@ test('a validator with no converter reads null beside validated: true', () => {
   });
 });
 
-test('a converter that throws or returns a non-object reads null', () => {
+test('a converter that throws, on reach or on call, or returns anything but a plain object reads null', () => {
   const graph = inspect('failing');
   expect(graph.root.options[0]).toMatchObject({ name: 'minimum', schema: null, validated: true });
+  expect(graph.root.options[1]).toMatchObject({ name: 'list', schema: null, validated: true });
+  expect(graph.root.options[2]).toMatchObject({ name: 'lazy', schema: null, validated: true });
   expect(graph.root.arguments[0]).toMatchObject({ name: 'files', schema: null, validated: true });
 });
 
@@ -81,6 +83,7 @@ test('the stored value is a frozen copy to every depth, one per input, with the 
   expect(inspect('shared', 'copies')).toEqual({
     distinct: true,
     equal: true,
+    libraryFrozen: false,
     nestedFrozen: true,
     rejected: true,
   });
@@ -97,6 +100,18 @@ test('inspect() calls the converter once per input, and a run with no middleware
     inspected: 2,
     options: { target: 'draft-2020-12' },
     ran: 0,
+  });
+});
+
+test('a run with a middleware chain calls the converter once per input, like inspect()', () => {
+  const result = invoke(fixture, ['observed', 'calls']);
+  expect(result.stderr).toBe('');
+  const last = result.stdout.trimEnd().split('\n').at(-1);
+  expect(JSON.parse(last ?? '')).toEqual({
+    code: 0,
+    inspected: 1,
+    options: { target: 'draft-2020-12' },
+    ran: 1,
   });
 });
 

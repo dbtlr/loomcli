@@ -547,7 +547,8 @@ interface ArgumentNode {
 // The converter core calls, as the standard declares it beside `validate`. A schema library
 // implements it once; a hand-written schema implements it with this type or omits it.
 type Converter = StandardJSONSchemaV1['~standard']['jsonSchema'];
-type Validator = StandardSchemaV1 | StandardJSONSchemaV1;
+// `validate` takes a Standard Schema; one that also implements the converter publishes a shape.
+type Validator = StandardSchemaV1 | (StandardSchemaV1 & StandardJSONSchemaV1);
 ```
 
 ```ts
@@ -571,7 +572,7 @@ metric.schema;
 - On `schema`, `null` has one reading: the graph holds no published shape. An input without `validate`, a Boolean option, a validator without `jsonSchema`, and a converter that fails all read `null`. It never means unconstrained. A projection that needs a shape where the fact is `null` derives it from the node: a Boolean option is exact, and a string option or an argument is open, one string, or the whole `string[]` under `multiple` or `variadic`. `validated` answers a different question and is unchanged, so `validated: true` beside `schema: null` is an ordinary state. The Boolean variant carries the field, always `null` under this contract, so the node shape and every projection built on it hold unchanged if a later contract lets a Boolean option validate.
 - A converter fails when it throws or returns anything but a plain object. A failure reads `null` under `inspect()` and `run()` alike: the graph holds no published shape, validation is unchanged, and nothing else happens. The contract of 2026-09-19 made the failure a `DeclarationError` from `inspect()` alone, naming the input, the target, and the converter's message, because an operator cannot correct an author's schema and the diagnostic belongs to development. That diagnostic is held while the question of how a run tells a development application from a distributed one is decided, and it ships with the answer. zod 4.5.4's converter does not throw on a transform's input side, so no schema in the examples meets it.
 - The fact is computed in the projection step: one converter call per validated input, on every `inspect()` call and on every run that has a middleware chain, since the graph a middleware reads is the one `inspect()` returns. Two inputs that share one schema object each get their own call and their own copy. A run with no middleware calls no converter. The converter is synchronous by the standard's contract, so `inspect()` stays synchronous, and the [validation context](#validation-context) is never passed to it.
-- A [plugin option](#plugin-options) reads `schema: null` beside `validated: false`. An option a lifecycle hook declares is a local option and publishes what its validator publishes, and core never edits the fact, so an alias a validator accepts on its input side is published with the rest. The [formatter](#formatter)'s `--format` therefore carries the enum of the view names alone: its validator names its accepted values ahead of the `ndjson` mapping, a change this contract requires of the formatter.
+- A [plugin option](#plugin-options) reads `schema: null` beside `validated: false`. An option a lifecycle hook declares is a local option and publishes what its validator publishes, and core never edits the fact, so an alias a validator accepts on its input side is published with the rest. The [formatter](#formatter)'s `--format` therefore carries the enum of the view names alone: its validator's declared shape is that enum, and the `ndjson` mapping is applied before it reaches the enum, so the alias stays out of the published fact, a change this contract requires of the formatter.
 
 ### Example coverage
 

@@ -172,10 +172,13 @@ function declaredDefault(config: ArgumentConfig | OptionConfig) {
   return 'default' in config ? Object.freeze({ value: snapshot(config.default) }) : undefined;
 }
 
-/** The JSON Schema draft build asks every converter for, with no library options. */
-const schemaTarget: StandardJSONSchemaV1.Options = { target: 'draft-2020-12' };
+/**
+ * The JSON Schema draft build asks every converter for, with no library options. Every converter
+ * receives this one object, so it is frozen against a library that writes to its argument.
+ */
+const schemaTarget: StandardJSONSchemaV1.Options = Object.freeze({ target: 'draft-2020-12' });
 
-/** Whether a validator declares the Standard JSON Schema converter beside `validate`. */
+/** Whether a validator declares the Standard JSON Schema converter, both sides, beside `validate`. */
 function publishesSchema(
   schema: StandardSchemaV1,
 ): schema is StandardSchemaV1 & StandardJSONSchemaV1 {
@@ -185,24 +188,31 @@ function publishesSchema(
     typeof props.jsonSchema === 'object' &&
     props.jsonSchema !== null &&
     'input' in props.jsonSchema &&
-    typeof props.jsonSchema.input === 'function'
+    typeof props.jsonSchema.input === 'function' &&
+    'output' in props.jsonSchema &&
+    typeof props.jsonSchema.output === 'function'
   );
 }
 
 /**
  * The input-side schema a declaration's validator publishes, snapshotted the way a declared
  * default is, or `null` where the graph holds no published shape: no validator, a validator with
- * no converter, or a converter that throws or returns anything but a plain object. The contract
- * makes that last case a declaration error `inspect()` alone reports; that diagnostic waits on the
- * open question of how a run tells development from a distributed application, so it reads `null`
- * on both paths until it is settled.
+ * no converter, or a converter that throws or returns anything but a plain object. The contract of
+ * 2026-09-19 made that last case a declaration error `inspect()` alone reports; that diagnostic is
+ * held while the question of how a run tells development from a distributed application is
+ * decided, so it reads `null` on both paths.
  */
 function inputSchema(config: ArgumentConfig | OptionConfig): InputSchema {
   const schema = 'validate' in config ? config.validate : undefined;
-  if (schema === undefined || !publishesSchema(schema)) {
+  if (schema === undefined) {
     return null;
   }
+  // The converter is the library's code from the first property read.
+  // A throw on reaching it and a throw on calling it are one failure.
   try {
+    if (!publishesSchema(schema)) {
+      return null;
+    }
     const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
     return isPlainObject(published) ? snapshotRecord(published) : null;
   } catch {
