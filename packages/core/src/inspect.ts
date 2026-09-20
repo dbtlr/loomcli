@@ -1,3 +1,5 @@
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
+
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
@@ -9,7 +11,13 @@ import { validatesOmission } from './validation.js';
 /** A declaration that carries no extension value publishes one shared, empty frozen record. */
 const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
 
-/** One declared argument. `default` wraps the declared value, so an explicit `undefined` shows. */
+/** The plain JSON Schema a validated input publishes, or `null` where the graph holds no shape. */
+type InputSchema = Readonly<Record<string, unknown>> | null;
+
+/**
+ * One declared argument. `default` wraps the declared value, so an explicit `undefined` shows, and
+ * `schema` is the input schema its validator publishes through the Standard JSON Schema converter.
+ */
 interface ArgumentNode {
   readonly name: string;
   readonly description: string | undefined;
@@ -17,6 +25,7 @@ interface ArgumentNode {
   readonly variadic: boolean;
   readonly validated: boolean;
   readonly validateOmitted: boolean;
+  readonly schema: InputSchema;
   readonly default: { readonly value: unknown } | undefined;
   readonly extensions: Readonly<Record<string, unknown>>;
 }
@@ -29,6 +38,9 @@ interface ArgumentNode {
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
+ * `schema` is the input schema the validator publishes. A Boolean option validates nothing, so its
+ * variant carries the field at `null`, and every projection built on the node holds if a later
+ * contract lets it validate.
  */
 type OptionNode =
   | {
@@ -44,6 +56,7 @@ type OptionNode =
       readonly multiple: boolean;
       readonly validated: boolean;
       readonly validateOmitted: boolean;
+      readonly schema: InputSchema;
       readonly default: { readonly value: unknown } | undefined;
       readonly extensions: Readonly<Record<string, unknown>>;
     }
@@ -58,6 +71,7 @@ type OptionNode =
       readonly short: string | null;
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
+      readonly schema: InputSchema;
       readonly extensions: Readonly<Record<string, unknown>>;
     };
 
@@ -141,16 +155,69 @@ export function snapshot(value: unknown): unknown {
     return Object.freeze(value.map((entry: unknown) => snapshot(entry)));
   }
   if (isPlainObject(value)) {
-    return Object.freeze(
-      Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, snapshot(entry)])),
-    );
+    return snapshotRecord(value);
   }
   return value;
+}
+
+/** The snapshot of one plain object, under the record type the caller already established. */
+function snapshotRecord(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
+  return Object.freeze(
+    Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, snapshot(entry)])),
+  );
 }
 
 /** A declared default is wrapped, so `default: undefined` reads apart from no default at all. */
 function declaredDefault(config: ArgumentConfig | OptionConfig) {
   return 'default' in config ? Object.freeze({ value: snapshot(config.default) }) : undefined;
+}
+
+/**
+ * The JSON Schema draft build asks every converter for, with no library options. Every converter
+ * receives this one object, so it is frozen against a library that writes to its argument.
+ */
+const schemaTarget: StandardJSONSchemaV1.Options = Object.freeze({ target: 'draft-2020-12' });
+
+/** Whether a validator declares the Standard JSON Schema converter, both sides, beside `validate`. */
+function publishesSchema(
+  schema: StandardSchemaV1,
+): schema is StandardSchemaV1 & StandardJSONSchemaV1 {
+  const props: object = schema['~standard'];
+  return (
+    'jsonSchema' in props &&
+    typeof props.jsonSchema === 'object' &&
+    props.jsonSchema !== null &&
+    'input' in props.jsonSchema &&
+    typeof props.jsonSchema.input === 'function' &&
+    'output' in props.jsonSchema &&
+    typeof props.jsonSchema.output === 'function'
+  );
+}
+
+/**
+ * The input-side schema a declaration's validator publishes, snapshotted the way a declared
+ * default is, or `null` where the graph holds no published shape: no validator, a validator with
+ * no converter, or a converter that throws or returns anything but a plain object. The contract of
+ * 2026-09-19 made that last case a declaration error `inspect()` alone reports; that diagnostic is
+ * held while the question of how a run tells development from a distributed application is
+ * decided, so it reads `null` on both paths.
+ */
+function inputSchema(config: ArgumentConfig | OptionConfig): InputSchema {
+  const schema = 'validate' in config ? config.validate : undefined;
+  if (schema === undefined) {
+    return null;
+  }
+  // The converter is the library's code from the first property read.
+  // A throw on reaching it and a throw on calling it are one failure.
+  try {
+    if (!publishesSchema(schema)) {
+      return null;
+    }
+    const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
+    return isPlainObject(published) ? snapshotRecord(published) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** One declaration's extension record, which is the shared empty one when it carries no value. */
@@ -180,6 +247,7 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
           name,
           negative,
           polarity: config.polarity ?? 'positive',
+          schema: null,
           scope,
           short,
           type: 'boolean',
@@ -195,6 +263,7 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
           multiple: config.multiple === true,
           name,
           required: config.required === true,
+          schema: inputSchema(config),
           scope,
           short,
           type: 'string',
@@ -213,6 +282,7 @@ function argumentNode(slot: ArgumentSlot, records: ExtensionRecords): ArgumentNo
     extensions: extensionsOf(records, slot.input),
     name,
     required: slot.required,
+    schema: inputSchema(config),
     validateOmitted: validatesOmission(slot.input),
     validated: config.validate !== undefined,
     variadic: slot.variadic,

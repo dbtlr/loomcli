@@ -10,7 +10,9 @@ function run(scenario: string, argv: string[]) {
 }
 
 interface InspectedGraph {
-  root: { children: { name: string; options: { name: string }[]; result: unknown }[] };
+  root: {
+    children: { name: string; options: { name: string; schema?: unknown }[]; result: unknown }[];
+  };
 }
 
 function inspect(scenario: string): InspectedGraph {
@@ -143,5 +145,32 @@ test('a result without the formatter invents no selector or list of views', () =
     stderr: '',
     stdout:
       'app count\n\nUSAGE\n  app count [options]\n\nGLOBAL OPTIONS\n  -h, --help  Show this help.\n',
+  });
+});
+
+test.each([
+  ['later-default', ['table', 'json', 'jsonl']],
+  ['author-ndjson', ['ndjson', 'table', 'json', 'jsonl']],
+])('--format publishes the enum of the view names alone: %s', (scenario, names) => {
+  const found = inspect(scenario).root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')).toMatchObject({
+    schema: {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      enum: names,
+      type: 'string',
+    },
+  });
+});
+
+test('the unadvertised ndjson alias still maps to jsonl, and a stray name lists the views', () => {
+  expect(run('later-default', ['count', '--format', 'ndjson'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"label":"a","value":1}\n',
+  });
+  expect(run('later-default', ['count', '--format', 'xml'])).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Option "--format": Supply one of table, json, jsonl.\n',
+    stdout: '',
   });
 });

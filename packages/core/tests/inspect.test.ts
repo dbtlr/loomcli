@@ -6,10 +6,16 @@ import { invoke } from '../../../scripts/test-process.js';
 const none = '#undefined';
 
 /** A declaration that carries no extension value reports the empty record, never a missing key. */
-const bare = { extensions: {} };
+const bare = { extensions: {}, schema: null };
 
 /** An option the application declared, global or local, reports the application scope. */
-const owned = { deprecated: none, extensions: {}, hidden: false, scope: 'application' };
+const owned = {
+  deprecated: none,
+  extensions: {},
+  hidden: false,
+  schema: null,
+  scope: 'application',
+};
 
 function invokeInspect(graph: string, mode = 'json') {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, mode]);
