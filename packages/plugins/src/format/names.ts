@@ -6,12 +6,14 @@ const ndjsonAlias = 'ndjson';
 /**
  * The validator the format hook attaches to `--format`: a string that names one of `names`, with
  * `ndjson` accepted as an alias of `jsonl` unless the record already names `ndjson` itself.
+ * The alias is mapped ahead of the enum, so the input schema the option publishes carries the view
+ * names alone and the unadvertised alias stays out of it.
  */
 export function formatName(names: readonly string[]) {
   const list = names.join(', ');
   const aliased = !names.includes(ndjsonAlias);
-  return z
-    .string()
-    .transform((value) => (aliased && value === ndjsonAlias ? 'jsonl' : value))
-    .refine((value) => names.includes(value), { message: `Supply one of ${list}.` });
+  return z.preprocess(
+    (value) => (aliased && value === ndjsonAlias ? 'jsonl' : value),
+    z.enum(names, { error: `Supply one of ${list}.` }),
+  );
 }

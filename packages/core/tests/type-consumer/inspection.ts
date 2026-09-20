@@ -1,5 +1,12 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
-import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
+import type {
+  ArgumentNode,
+  CommandGraph,
+  CommandNode,
+  OptionNode,
+  StandardJSONSchemaV1,
+  StandardSchemaV1,
+} from '@loomcli/core';
 
 // `inspect()` answers in every authoring state, as `run()` and `name` do.
 
@@ -53,6 +60,36 @@ root.aliases.push('other');
 // @ts-expect-error TS2339: The graph carries the globals once, never inside a Command node.
 root.globals;
 
+// Every input node carries the input schema, a plain read-only record or null, on both option forms.
+const argumentSchema = (slot: ArgumentNode): Readonly<Record<string, unknown>> | null =>
+  slot.schema;
+const optionSchema = (option: OptionNode): Readonly<Record<string, unknown>> | null =>
+  option.schema;
+// @ts-expect-error TS2542: The published schema is read-only, so a consumer cannot edit it.
+graph.globals.map((option) => (option.schema === null ? null : (option.schema.type = 'number')));
+
+// A hand-written schema declares its converter with the standard's own type beside the validator.
+const digits: StandardSchemaV1<string, number> & StandardJSONSchemaV1<string, number> = {
+  '~standard': {
+    jsonSchema: {
+      input: () => ({ pattern: '^[0-9]+$', type: 'string' }),
+      output: () => ({ type: 'integer' }),
+    },
+    validate: (value: unknown) =>
+      typeof value === 'string' && /^[0-9]+$/.test(value)
+        ? { value: Number(value) }
+        : { issues: [{ message: 'Use decimal digits.' }] },
+    vendor: 'consumer',
+    version: 1,
+  },
+};
+const converted = new Application('converted')
+  .option('size', { type: 'string', validate: digits })
+  .action(({ options }) => {
+    const size: number = options.size ?? 0;
+    void size;
+  });
+
 // The declaration error is a class, so a consumer narrows a caught value with `instanceof`.
 function describe(error: unknown): string {
   if (error instanceof DeclarationError) {
@@ -63,6 +100,9 @@ function describe(error: unknown): string {
 
 void spelling;
 void describe;
+void argumentSchema;
+void optionSchema;
+void converted;
 void freshGraph;
 void partialGraph;
 void globalOptions;

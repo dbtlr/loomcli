@@ -27,7 +27,7 @@ export type { RenderingPolicy } from './rendering.js';
 export type { ViewContext } from './types.js';
 export { pad, style } from './style.js';
 export { issuePath } from './validation.js';
-export type { StandardSchemaV1 } from '@standard-schema/spec';
+export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
 export type { InputProblem, ResultFault } from './errors.js';
