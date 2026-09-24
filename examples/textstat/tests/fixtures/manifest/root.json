@@ -1,0 +1,192 @@
+{
+  "name": "textstat",
+  "version": "0.0.0",
+  "description": "Count bytes, words, or lines across text sources.",
+  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, or the whole list of tokens for a multiple option or a variadic argument, and a null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "130": "Cancelled by SIGINT or by a caller-supplied abort",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "long": "--manifest",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "explain",
+      "description": "Explain the selected command and exit.",
+      "deprecated": null,
+      "long": "--explain",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    }
+  ],
+  "command": {
+    "name": null,
+    "path": [],
+    "description": "Count bytes, words, or lines across text sources.",
+    "details": [
+      "With no files, textstat counts the text piped to it and names the source \"stdin\"."
+    ],
+    "examples": [
+      {
+        "command": "one.txt two.txt",
+        "note": null
+      },
+      {
+        "command": "--metric words --total *.md",
+        "note": null
+      }
+    ],
+    "deprecated": null,
+    "hasAction": true,
+    "result": {
+      "kind": "rows",
+      "views": [
+        "table",
+        "json",
+        "jsonl"
+      ],
+      "default": "table"
+    },
+    "arguments": [
+      {
+        "name": "files",
+        "description": "The files to count. Omit them to read piped text.",
+        "required": false,
+        "variadic": true,
+        "schema": null,
+        "default": null
+      }
+    ],
+    "options": [
+      {
+        "type": "string",
+        "name": "metric",
+        "description": "What each row counts.",
+        "deprecated": null,
+        "long": "--metric",
+        "short": "-m",
+        "required": false,
+        "multiple": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "enum": [
+            "bytes",
+            "words",
+            "lines"
+          ]
+        },
+        "default": {
+          "value": "bytes"
+        }
+      },
+      {
+        "type": "string",
+        "name": "min-bytes",
+        "description": "Drop a source smaller than this many bytes.",
+        "deprecated": null,
+        "long": "--min-bytes",
+        "short": null,
+        "required": false,
+        "multiple": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "default": {
+          "value": "0"
+        }
+      },
+      {
+        "type": "string",
+        "name": "minimum",
+        "description": "Drop a source smaller than this many bytes. The larger threshold wins.",
+        "deprecated": "Use --min-bytes instead.",
+        "long": "--minimum",
+        "short": null,
+        "required": false,
+        "multiple": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "default": null
+      },
+      {
+        "type": "boolean",
+        "name": "total",
+        "description": "Add a total row.",
+        "deprecated": null,
+        "long": "--total",
+        "short": "-t",
+        "negative": null,
+        "polarity": "positive",
+        "schema": null
+      },
+      {
+        "type": "string",
+        "name": "format",
+        "description": "Select the output format: table, json, jsonl. Default: table.",
+        "deprecated": null,
+        "long": "--format",
+        "short": null,
+        "required": false,
+        "multiple": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "enum": [
+            "table",
+            "json",
+            "jsonl"
+          ]
+        },
+        "default": null
+      }
+    ],
+    "children": []
+  }
+}

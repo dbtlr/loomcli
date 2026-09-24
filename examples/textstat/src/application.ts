@@ -4,6 +4,7 @@ import { Application, FatalError, override } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
+import { manifest } from '@loomcli/plugins/manifest';
 import { table } from '@loomcli/plugins/table';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
@@ -37,7 +38,7 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
-  plugins: [help(), version(), format(), loomTheme(), explain()],
+  plugins: [help(), version(), format(), manifest(), loomTheme(), explain()],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 })

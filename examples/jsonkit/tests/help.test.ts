@@ -62,6 +62,7 @@ const root = page(
   '  -f, --file <path>  The document to read. Omit it to read piped text.',
   '  -h, --help         Show this help.',
   '  -V, --version      Print the version.',
+  "      --manifest     Print this command's manifest as JSON.",
   '      --explain      Explain the selected command and exit.',
   '',
   'EXAMPLES',
@@ -85,6 +86,7 @@ const select = page(
   '  -f, --file <path>  The document to read. Omit it to read piped text.',
   '  -h, --help         Show this help.',
   '  -V, --version      Print the version.',
+  "      --manifest     Print this command's manifest as JSON.",
   '      --explain      Explain the selected command and exit.',
 );
 
@@ -123,6 +125,7 @@ test('jsonkit get --help renders while the required path is missing', () => {
       '  -f, --file <path>  The document to read. Omit it to read piped text.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
+      "      --manifest     Print this command's manifest as JSON.",
       '      --explain      Explain the selected command and exit.',
       '',
       'EXAMPLES',
@@ -152,6 +155,7 @@ test('jsonkit fetch --help opens with the deprecation message under the masthead
       '  -f, --file <path>  The document to read. Omit it to read piped text.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
+      "      --manifest     Print this command's manifest as JSON.",
       '      --explain      Explain the selected command and exit.',
     ),
   );
@@ -169,6 +173,7 @@ test('jsonkit debug --help prints the page of a Command no listing shows', () =>
       '  -f, --file <path>  The document to read. Omit it to read piped text.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
+      "      --manifest     Print this command's manifest as JSON.",
       '      --explain      Explain the selected command and exit.',
     ),
   );
