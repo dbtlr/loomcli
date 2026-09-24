@@ -169,7 +169,7 @@
       {
         "type": "string",
         "name": "format",
-        "description": "Select the output format: table, json, jsonl. Default: table.",
+        "description": "Select the output format, table by default.",
         "deprecated": null,
         "long": "--format",
         "short": null,

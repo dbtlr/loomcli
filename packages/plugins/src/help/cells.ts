@@ -146,23 +146,27 @@ function renderDefault(value: unknown): string {
 }
 
 /**
- * The right cell of one row: the description when the member has one, then the facts that apply in
- * one parenthesis. Two spaces separate the two, a member with no description has the parenthesis as
- * its whole cell, and a member with neither has no right cell at all.
+ * The right cell of one row: the description when the member has one, then its accepted-values
+ * sentence, then the facts that apply in one parenthesis. One space separates the description from
+ * the sentence and two spaces separate the text from the parenthesis; a member with no text has the
+ * parenthesis as its whole cell, and a member with none of the three has no right cell at all.
  */
 function rightCell(
-  description: string | undefined,
+  text: { readonly accepts?: string | undefined; readonly description: string | undefined },
   facts: readonly string[],
   { style }: ViewContext,
 ): string {
   const parenthesis = isEmpty(facts)
     ? ''
     : `${style.dim('(')}${facts.join(`${style.dim(',')} `)}${style.dim(')')}`;
-  if (description === undefined) {
+  const written = [text.description, text.accepts]
+    .filter((part) => part !== undefined)
+    .map((part) => style.primary(style.escape(part)));
+  if (isEmpty(written)) {
     return parenthesis;
   }
-  const text = style.primary(style.escape(description));
-  return parenthesis === '' ? text : `${text}${gutter}${parenthesis}`;
+  const joined = written.join(' ');
+  return parenthesis === '' ? joined : `${joined}${gutter}${parenthesis}`;
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
@@ -238,6 +242,7 @@ export {
   column,
   deprecatedFacts,
   isEmpty,
+  oneLine,
   optionCell,
   optionFacts,
   optionForm,

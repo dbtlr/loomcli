@@ -2,6 +2,7 @@ import { readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { breaks } from '../lines.js';
+import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
   argumentForm,
@@ -121,7 +122,7 @@ function childRow(child: CommandNode, context: ViewContext): Row {
   // `deprecated` is this row's one possible fact.
   return {
     left: `${style.highlight(style.escape(child.name ?? ''))}${parent ? ` ${style.dim.italic(suffix)}` : ''}`,
-    right: rightCell(child.description, deprecatedFacts(child, context), context),
+    right: rightCell({ description: child.description }, deprecatedFacts(child, context), context),
   };
 }
 
@@ -140,7 +141,11 @@ function commands(children: readonly CommandNode[], context: ViewContext): strin
 function args(command: CommandNode, context: ViewContext): string[] {
   const rows = command.arguments.map((argument) => ({
     left: context.style.dim.italic(context.style.escape(argument.name)),
-    right: rightCell(argument.description, argumentFacts(argument, context), context),
+    right: rightCell(
+      { accepts: argumentAccepts(argument), description: argument.description },
+      argumentFacts(argument, context),
+      context,
+    ),
   }));
   return isEmpty(rows) ? [] : [context.style.dim('ARGUMENTS'), ...column(rows, context)];
 }
@@ -148,7 +153,11 @@ function args(command: CommandNode, context: ViewContext): string[] {
 function optionRow(option: OptionNode, context: ViewContext): Row {
   return {
     left: optionCell(option, context),
-    right: rightCell(option.description, optionFacts(option, context), context),
+    right: rightCell(
+      { accepts: optionAccepts(option), description: option.description },
+      optionFacts(option, context),
+      context,
+    ),
   };
 }
 

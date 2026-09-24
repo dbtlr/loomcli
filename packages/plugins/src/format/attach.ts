@@ -18,7 +18,7 @@ export const attachFormat: CommandAttachHook = (command) => {
   // `views()` appends a name the record lacks and leaves the place of one it holds.
   const names = [...result.views, ...added.map(([name]) => name)];
   return reshaped.option('format', {
-    description: `Select the output format: ${names.join(', ')}. Default: ${result.default}.`,
+    description: `Select the output format, ${result.default} by default.`,
     type: 'string',
     validate: formatName(names),
   });

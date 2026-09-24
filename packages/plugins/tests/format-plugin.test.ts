@@ -115,10 +115,11 @@ test("the hook-collision error names another plugin's option", () => {
   });
 });
 
-test('the formatter describes ordered views and its declared default without a parser default', () => {
+test('the formatter describes its declared default and publishes the ordered views as its enum, without a parser default', () => {
   const found = inspect('author-json').root.children.find((child) => child.name === 'count');
   expect(found?.options.find((option) => option.name === 'format')).toMatchObject({
-    description: 'Select the output format: json, table, jsonl. Default: json.',
+    description: 'Select the output format, json by default.',
+    schema: { enum: ['json', 'table', 'jsonl'] },
   });
   expect(found?.options.find((option) => option.name === 'format')).not.toHaveProperty('default');
 });
@@ -128,11 +129,12 @@ test.each([
   ['later-default', 'table, json, jsonl', 'table'],
   ['author-ndjson', 'ndjson, table, json, jsonl', 'ndjson'],
 ])(
-  'the format description records hook-time names and default: %s',
+  'the format description records the hook-time default and its enum the hook-time names: %s',
   (scenario, names, selected) => {
     const found = inspect(scenario).root.children.find((child) => child.name === 'count');
     expect(found?.options.find((option) => option.name === 'format')).toMatchObject({
-      description: `Select the output format: ${names}. Default: ${selected}.`,
+      description: `Select the output format, ${selected} by default.`,
+      schema: { enum: names.split(', ') },
     });
     expect(found?.options.find((option) => option.name === 'format')).not.toHaveProperty('default');
   },
