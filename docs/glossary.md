@@ -335,7 +335,7 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Manifest**:
-The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It excludes aliases, hidden members, authoring provenance, diagnostics, and implementation history, and nothing depends on it: no projection or plugin reads a fact from it, because a fact a consumer needs enters the Command graph and reaches the manifest from there. A plugin that wants its own facts in the manifest supplies them through the manifest's collecting extension.
+The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It lists no alias or hidden member, though a hidden Command routed to directly prints its own slice, and it excludes authoring provenance, diagnostics, and implementation history, and nothing depends on it: no projection or plugin reads a fact from it, because a fact a consumer needs enters the Command graph and reaches the manifest from there. A plugin that wants its own facts in the manifest supplies them through the manifest's collecting extension.
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
