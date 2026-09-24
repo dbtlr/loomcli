@@ -335,7 +335,7 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Manifest**:
-The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It excludes aliases, hidden members, authoring provenance, diagnostics, and implementation history, and nothing depends on it: a fact a consumer needs enters the Command graph and reaches the manifest from there.
+The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It excludes aliases, hidden members, authoring provenance, diagnostics, and implementation history, and nothing depends on it: no projection or plugin reads a fact from it, because a fact a consumer needs enters the Command graph and reaches the manifest from there. A plugin that wants its own facts in the manifest supplies them through the manifest's collecting extension.
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
@@ -373,6 +373,10 @@ _Avoid_: Trigger, gate, filter
 **Extension**:
 A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity. Command-targeted values can be replaced after action registration through immutable `extend()` calls.
 _Avoid_: Metadata, annotation, field, decorator
+
+**Collecting extension**:
+An extension whose values accumulate on a declaration in order, from the author and then from lifecycle hooks, instead of replacing each other. The plugin that declares one reads what an open set of suppliers gave it, and no value records its supplier.
+_Avoid_: Contribution queue, queue, channel, contribution (for one value)
 
 **Core fact**:
 A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, and the input schema.

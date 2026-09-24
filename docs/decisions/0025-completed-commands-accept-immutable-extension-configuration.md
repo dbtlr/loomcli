@@ -4,7 +4,7 @@ title: ADR-0025 - Completed Commands accept immutable extension configuration
 description: Command and Application extend calls remain available after action registration and replace complete values by descriptor while preserving the action and input contract.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-18
+modified: 2026-09-24
 ---
 
 # ADR-0025 - Completed Commands accept immutable extension configuration
@@ -38,3 +38,4 @@ Accepted 2026-09-13 with immutable extension configuration in the public SDK. `p
 - 2026-09-14: The results-lane contract in [Results](../core.md#results) adds `views()` beside `extend()` as a second call published outside the state-dependent method union, on a declaration that carries a result, in every state including after `action()`. It reshapes presentation alone and reopens no input or action declaration, the same split this record made for extension configuration. The type closes with the action; the views stay open.
 - 2026-09-15: [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md), proposed, exempts a call a plugin's `onCommandAttach` hook issues from the closure above: the order rules exist to keep the action's types true to the author's declaration, and nothing a hook adds reaches the types. `extend()` still reopens nothing. It binds when that record is accepted.
 - 2026-09-18: [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), proposed, applies the universal-facts rule this record carries from ADR-0019 to an input's shape: the JSON Schema a validated input's schema publishes is read by the manifest, the help page, and a completion script alike, so build derives it and the node carries it as a core fact rather than as any plugin's extension value. It binds when that record is accepted.
+- 2026-09-24: Proposed [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) supersedes the replacement clause for a collecting extension, one declared with `collect: true`: across layers and lifecycle hooks, its values accumulate in order instead of replacing the complete earlier value. One layer still holds one value per extension, and the replacement rule stands for every ordinary extension. The same record moves validation of the author's layers ahead of the hooks, so a hook reads validated values. It binds when ADR-0031 is accepted.

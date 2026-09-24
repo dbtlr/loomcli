@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-19
+modified: 2026-09-24
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -40,3 +40,4 @@ Help, manifests, completions, and agent tool listings are projections of `inspec
 
 - 2026-09-19: The input schema contract in [Input schema](../core.md#input-schema), written for [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), gives `inspect()` one rule `run()` does not apply: a schema whose converter fails is a `DeclarationError` from `inspect()` and reads `null` under `run()`, because an operator cannot correct an author's schema. The sentence above that `inspect()` applies every rule `run()` applies except the declared default then reads as two exceptions, one in each direction. It binds when ADR-0030 is accepted.
 - 2026-09-19: The implementation of the input schema fact holds that second exception. The converter-failure diagnostic was reopened, because a `DeclarationError` from `inspect()` alone reaches a test harness and no developer running the application through `run()`, and it waits on how a run tells a development application from a distributed one. Until that is decided, a converter that fails reads `null` under `inspect()` and `run()` alike, and the one exception stays the declared default `run()` alone validates. The entry above binds, in its final form, with the rule that settles the diagnostic.
+- 2026-09-24: [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md), proposed, adds collecting extensions, whose values accumulate from the author's layers and from lifecycle hooks. A collected value carries no record of which plugin or layer supplied it, so the rule that a projection describes the built product and never its provenance holds for them.

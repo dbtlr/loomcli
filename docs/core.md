@@ -680,7 +680,7 @@ type OptionNode =
 - `version` is the string the Application declares, or `0.0.0` when it declares none, so it is never `undefined`. Every `description` is the core fact the declaration carries, or `undefined` when omitted. The root `CommandNode` reports the Application's description, the value `CommandGraph.description` holds, so a projection that walks nodes never special-cases the root. The graph names no plugin as the source of anything: which plugin contributed an option is provenance, and a projection describes the built product alone. An extension key carries its defining plugin's identity because that identity is the fact's name, the way a package name is part of an import, not a record of who installed what.
 - `globals` holds the application's global options and every plugin option in one list, in the order the globals table holds them: the application's declarations, then each plugin's in installation order. `scope` is `'application'` for an option declared on the Application or on a Command, global or local, by the author or by a plugin's `onCommandAttach` hook, and `'plugin'` for a [plugin option](#plugin-options), the kind declared under a plugin's `options` in the globals table, which reaches no action; it names no plugin. A plugin entry on the string variant always reads `required: false`, `validated: false`, `validateOmitted: false`, and `schema: null`, so a projection does not branch on them; the Boolean variant carries `schema: null` and none of the other three.
 - `result` is `null` on a Command that declares none, and otherwise the kind, the view names in record order, and the default, under [Results](#results). The names include every view a plugin's `onCommandAttach` hook added, and an option such a hook declared appears under the node's `options` like any local option, because the graph names no plugin as the source of anything.
-- `extensions` holds each [extension value](#extensions) the declaration carries, keyed by extension identity, as the frozen plain-data output of its schema. `readExtension(node, descriptor)` is the typed read; the record is the projection-neutral form.
+- `extensions` holds each [extension value](#extensions) the declaration carries, keyed by extension identity, as the frozen plain-data output of its schema. A [collecting extension](#collecting-extensions) holds the frozen array of its values' outputs in collection order, and a declaration that carries none of its values has no key for it. `readExtension(node, descriptor)` is the typed read; the record is the projection-neutral form.
 - The result is frozen, and its types are read-only, so a consumer reads it without copying it.
 
 ```ts
@@ -1190,6 +1190,7 @@ import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
+import { attachHelp } from './attach.js';
 import { helpCommand, helpInput } from './extension.js';
 import { helpPage } from './views.js';
 
@@ -1200,6 +1201,7 @@ export function help(): Plugin<HelpOptions> {
   return plugin(`${Package.name}/help`, {
     extensions: [helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
+    onCommandAttach: attachHelp,
     options,
     views: [helpPage],
   });
@@ -1325,6 +1327,7 @@ interface AttachedCommand {
   readonly arguments: readonly string[]; // declared names, in order
   readonly options: readonly string[]; // declared local option names, in order
   readonly result: ResultNode | null; // as inspect() publishes it
+  readonly extensions: Readonly<Record<string, unknown>>; // as inspect() would publish it at this hook
   argument(name: string, config: ArgumentConfig): AttachedCommand;
   option(name: string, config: OptionConfig): AttachedCommand;
   views(replacements: Readonly<Record<string, ResultView>>, options?: { default?: string }): AttachedCommand;
@@ -1360,10 +1363,10 @@ export const attachFormat: CommandAttachHook = (command) => {
 The hook includes the declared default in its description, as specified by the [help restyle](#help-and-version-restyle).
 
 - **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. Core resolves each result record under [Result build errors](#result-build-errors) before the hooks, so `result` is exact, and runs those rules again over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
-- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
+- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. Build validates the author's layers before the first hook runs, so a hook never reads an unvalidated value, and an invalid value the author declared is reported before any hook runs. A value passed to `extend()` is validated at the call, so a value its schema rejects throws the invalid-value `DeclarationError` from the call, which reports as itself. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
 - **What it returns.** The value it received or one derived from it by those calls. Build rejects a hook that is not a function, one that returns anything else, and one that throws, under [Plugin build errors](#plugin-build-errors); a thrown `DeclarationError` reports as itself.
 - **Types.** Nothing a hook adds reaches the action's types: a hook-declared option is in `options` at run time and absent from the typed `options`, and a middleware reads it through `request`, which is untyped for that reason. A rule the types reject for an author is reached by a hook's erased call and reported at build as it is for a JavaScript author.
-- **Rules.** A hook's calls are exempt from the four closures `action()` applies, to arguments, options, aliases, and children, and from nothing else. An input a hook declares whose key or spelling the Command, the Application's globals, another plugin's options, or another plugin's hook already use is the hook-collision error, naming the plugin and the Command; the rule reads across kinds, so a hook-declared argument collides with an option and a hook-declared option collides with an argument. `arguments` and `options` show the Command's own names, so a hook sees that case before it causes it, and the other three surface at build. Hooks compose in sequence, not first-in-wins: a later hook sees and can replace what an earlier one added, `views()` by name included.
+- **Rules.** A hook's calls are exempt from the four closures `action()` applies, to arguments, options, aliases, and children, and from nothing else. An input a hook declares whose key or spelling the Command, the Application's globals, another plugin's options, or another plugin's hook already use is the hook-collision error, naming the plugin and the Command; the rule reads across kinds, so a hook-declared argument collides with an option and a hook-declared option collides with an argument. `arguments` and `options` show the Command's own names, so a hook sees that case before it causes it, and the other three surface at build. Hooks compose in sequence, not first-in-wins: a later hook sees and can replace what an earlier one added, `views()` by name included, except that a value of a [collecting extension](#collecting-extensions) joins the values before it and replaces none of them.
 - **Names.** `AttachedCommand`, `CommandAttachHook`, and `ResultView` are exported. The private build handle the command module spells `AttachedCommand` today is renamed with the increment.
 
 ### Extensions
@@ -1378,7 +1381,7 @@ const customized = build.extend(helpCommand({ details: 'Build this application.'
 const app = configured.command(customized);
 ```
 
-Constructor `extensions` and each `extend()` call form successive layers. A later value from the same descriptor replaces its complete earlier value. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. The final record supports both inspection and `readExtension()`.
+Constructor `extensions` and each `extend()` call form successive layers. A later value of an ordinary extension replaces its complete earlier value, and a [collecting extension](#collecting-extensions) keeps both. Other descriptors remain. No fields merge and no arrays concatenate; schema defaults belong to the replacement output. Duplicate identities within one layer fail. Layers validate in authoring order, so replacement cannot hide an invalid earlier value or a conflicting descriptor reference. Replacement does not delete and reinsert keys; records use ordinary JavaScript object key ordering. The final record supports both inspection and `readExtension()`.
 
 An empty call returns an equivalent new declaration. Extending preserves the action, inputs, aliases, children, core facts, Application environment, and authoring state. It never reopens input or action declarations. Core facts such as `description`, `hidden`, and `deprecated`, and option/argument extensions, retain their constructor or input-configuration rules. A plugin reaches a completed declaration only through `onCommandAttach` under [Lifecycle hooks](#lifecycle-hooks), where `extend()` is one of the calls it may make.
 
@@ -1411,17 +1414,89 @@ const get = new Command('get', {
 }).argument('path', { required: true, description: 'Dot path to read.' });
 ```
 
-An extension value is keyed by its extension's identity and branded with its target, so it needs no field name and collides with no core key, and a value on the wrong target is a compile error at the config object. The call is typed from the schema's input type, so an unresolved descriptor or an ill-typed value fails to compile; identity strings and the remaining rules are checked at build. The value carries the input the author supplied and a private reference to the descriptor that produced it. Build validates the input once against the descriptor's schema, which must answer synchronously, and stores a copy of the output on the graph node under the identity, frozen to any depth, the way a declared default is stored, so a later change to the author's object changes nothing. `readExtension(node, descriptor)` takes the node kind the descriptor targets, `CommandNode`, `OptionNode`, or `ArgumentNode`, so a read against the wrong node kind is a compile error, and returns the stored output as a deeply read-only value, or `undefined` when the node carries no value for that identity. It compares the descriptor by reference with the one that produced the value and throws a `DeclarationError` when they differ, so a read never returns output another schema produced. It runs no schema.
+An extension value is keyed by its extension's identity and branded with its target, so it needs no field name and collides with no core key, and a value on the wrong target is a compile error at the config object. The call is typed from the schema's input type, so an unresolved descriptor or an ill-typed value fails to compile; identity strings and the remaining rules are checked at build. The value carries the input the author supplied and a private reference to the descriptor that produced it. Build validates the input once against the descriptor's schema, which must answer synchronously, and stores a copy of the output on the graph node under the identity, frozen to any depth, the way a declared default is stored, so a later change to the author's object changes nothing. `readExtension(node, descriptor)` takes the node kind the descriptor targets, `CommandNode` or the `AttachedCommand` a [lifecycle hook](#lifecycle-hooks) receives, `OptionNode`, or `ArgumentNode`, so a read against the wrong node kind is a compile error, and returns the stored output as a deeply read-only value, or `undefined` when the node carries no value for that identity. It compares the descriptor by reference with the one that produced the value and throws a `DeclarationError` when they differ, so a read never returns output another schema produced. It runs no schema.
 
 The stored output must be plain data: `string`, finite `number`, `boolean`, `null`, arrays, and objects whose prototype is `Object.prototype` or `null` with no accessors and no non-enumerable properties, to any depth and without cycles, with `undefined` property values dropped. That is the form the node can freeze and `inspect()` can report as the projection-neutral form. A schema that produces anything else, a `Date`, a `Map`, a class instance, a `bigint`, a `symbol`, or a function, is rejected at build; a date travels as a string and a map as an array of pairs.
 
-One identity means one descriptor. Every descriptor on a graph, whether an installed plugin defines it or a carried value references it, is compared by reference, and build rejects two distinct descriptor objects that share an identity, because a read through one would return a value another schema produced. A second copy of one plugin package in `node_modules`, installed or not, trips this rule, which is the intended signal to deduplicate. A projection that reads another plugin's facts imports that plugin's descriptor module, which is declarations alone and never its middleware, and it never imports the plugin's implementation.
+One identity means one descriptor. Every descriptor on a graph, whether an installed plugin defines it or a carried value references it, is compared by reference, and build rejects two distinct descriptor objects that share an identity, because a read through one would return a value another schema produced. A second copy of one plugin package in `node_modules`, installed or not, trips this rule, which is the intended signal to deduplicate. A projection that reads another plugin's facts imports that plugin's descriptor module, which is declarations alone and never its middleware, and it never imports the plugin's implementation. A plugin that supplies values to another plugin's collecting extension imports that descriptor module the same way.
 
 Build also rejects two values of one extension on one declaration, a value the schema rejects, a schema that returns a promise, and an `extensions` entry that is not an extension value.
 
 A fact whose plugin is not installed is inert for execution: no middleware acts on it, and core gives it no meaning. It still sits on the graph, `inspect()` reports it, and a projection that imports its descriptor can read it through `readExtension`. A Command library can therefore ship help facts into an application that installs no help plugin, or one that installs a different help plugin.
 
 Core owns the facts every projection needs: `description` on the Application, on a Command, on an option, and on an argument, `version` on the Application, and `hidden` and `deprecated` on a Command and on an option, as [Hidden and deprecated members](#hidden-and-deprecated-members) describes. Each is optional in the declaration, and each states how an omitted declaration reads: `undefined` for a description and a deprecated message, `false` for `hidden`, and `0.0.0` for `version`, the one fact with a conventional sentinel for "unversioned". A description, a deprecated message, and a declared version are strings that hold a character other than whitespace and no line terminator, and `hidden` is a Boolean. Whitespace is the Unicode `White_Space` class, which covers the tab, the space, the no-break space, and every line terminator, and a line terminator is LF, VT, FF, CR, NEL, LS, or PS. They make a help page, a manifest, or a completion script minimally useful with no extension present, and an extension enriches them. A further fact of the same kind follows the same rule when it is specified, and states its own omitted reading. The convention for `version` is the package manifest's own field, as the installation example shows, so the graph and the published version stay in sync.
+
+#### Collecting extensions
+
+```ts
+function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+  identity: string,
+  config: { schema: Schema; target: Target; collect?: false },
+): Extension<Target, Schema>;
+function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+  identity: string,
+  config: { schema: Schema; target: Target; collect: true },
+): Extension<Target, Schema, true>;
+
+interface Extension<
+  Target extends ExtensionTarget = ExtensionTarget,
+  Schema extends StandardSchemaV1 = StandardSchemaV1,
+  Collect extends boolean = false,
+> extends AnyExtension {
+  (input: StandardSchemaV1.InferInput<Schema>): ExtensionValue<Target>;
+  readonly schema: Schema;
+  readonly target: Target;
+  readonly collect: Collect;
+}
+
+type NodeFor<Target extends ExtensionTarget> = Target extends 'command'
+  ? CommandNode | AttachedCommand
+  : Target extends 'option'
+    ? OptionNode
+    : ArgumentNode;
+
+function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+  node: NodeFor<Target>,
+  descriptor: Extension<Target, Schema>,
+): DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
+function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+  node: NodeFor<Target>,
+  descriptor: Extension<Target, Schema, true>,
+): readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[];
+// DeepReadonly<Value> makes a value read-only to any depth, arrays included.
+```
+
+```ts
+// A plugin declares the extension in its declarations module.
+export const notesCommand = extension(`${Package.name}/command`, {
+  collect: true,
+  schema: z.object({ note: z.string() }),
+  target: 'command',
+});
+
+// The author supplies a value, and another plugin's hook supplies one more.
+const get = new Command('get', { extensions: [notesCommand({ note: 'Read one value.' })] });
+const supplier = plugin('@acme/supplier', {
+  onCommandAttach: (command) => command.extend(notesCommand({ note: 'Paths are dot-separated.' })),
+});
+
+// The declaring plugin's middleware reads both, author first.
+const middleware: Middleware<Plugin> = async ({ command, out }) => {
+  for (const { note } of readExtension(command, notesCommand)) {
+    await out.print(note); // 'Read one value.', then 'Paths are dot-separated.'
+  }
+};
+```
+
+A collecting extension lets an open set of suppliers give facts to the one plugin that declares it. The author and any plugin supply values, each value is kept, and the declaring plugin reads them all and needs no code for any supplier. [ADR-0031](decisions/0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) records the decision.
+
+- **Declaration.** `collect: true` makes an extension collecting. Without it, or with `collect: false`, the extension is ordinary and keeps the replacement rule above. Every descriptor publishes `collect` as `true` or `false`. Build rejects a `collect` that is neither, which reaches a JavaScript author alone.
+- **Collection.** A Command keeps every value of a collecting extension it carries, in collection order: the constructor's `extensions`, then each `extend()` layer in authoring order, then each value a lifecycle hook adds, hooks in installation order and each hook's `extend()` calls in call order. A later value never replaces an earlier one, and values never merge: each is its own validated output. One layer still holds at most one value of an extension, so two values in one `extensions` list or in one `extend()` call are the two-values error. An option and an argument have one layer and no hook call reaches them, so a collecting extension on either holds no value or one.
+- **Storage.** Each value is validated by the descriptor's schema and stored as plain data, as any extension output is. The declaration's record holds the frozen array of outputs under the identity, and a declaration that carries no value of the extension has no key for it.
+- **Read.** Through a collecting descriptor, `readExtension` returns the array, read-only to any depth, or `[]` when the node carries no value, so a reader never branches on absence. The by-reference descriptor check is unchanged.
+- **Suppliers.** An author supplies a value as with any extension. A plugin supplies values from its `onCommandAttach` hook through `extend()`, importing the declaring plugin's declarations module, and the declaring plugin need not be installed; its values are then inert, as any extension value of an uninstalled plugin is. A value names no supplier: which plugin or which layer supplied it is provenance, and neither the node nor a read reports it.
+
+The collecting extension is proven when public APIs alone show, under Node and Bun: help's values under `manifestCommand` on textstat's root and on jsonkit's root and `get`, read through `inspect()` with no manifest plugin installed; an author's `manifestCommand` value on jsonkit's `get` collected ahead of help's; `[]` from `readExtension` on a Command that carries neither; two values in one layer rejected; values from two layers and from two hooks kept in collection order; a hook reading an author value and an earlier hook's value through `readExtension`; an invalid author value reported ahead of a hook that throws; a value a hook passes to `extend()` rejected at the call with the invalid-value diagnostic; an ordinary extension still replaced across layers and across hooks; a collecting extension on an option holding one value; and a `collect` that is not a Boolean rejected at build.
 
 ### Views from plugins
 
@@ -1470,7 +1545,7 @@ The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switch
 
 ### Plugin build errors
 
-Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Eighteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
+Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Nineteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `extension()` types it; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
 
 | Rejected declaration                             | Diagnostic                                                                                                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1498,6 +1573,7 @@ Every rule below applies in `inspect()` and `run()` alike and returns code 1 thr
 | A plugin `extensions` entry that is not a descriptor | `Plugin "@loomcli/plugins/help" holds a value that is not an extension. Supply the value returned by extension(identity, config).`                                                          |
 | An `extensions` entry that is not an extension   | `Command "get" holds a value that is not an extension value. Supply the value returned by calling an extension.`                                                                        |
 | A descriptor that declares no schema             | `Command "get" holds extension "@loomcli/plugins/help/command", which declares no schema. Supply a Standard Schema v1 object that answers synchronously.`                                       |
+| A descriptor whose `collect` is not a Boolean    | `Extension "@acme/notes/command" declares collect that is not a Boolean. Supply true, or omit it.` |
 | An extension value on the wrong target           | `Command "get" holds extension "@loomcli/plugins/help/input", which applies to options. Supply an extension that applies to Commands.`                                                          |
 | Two values of one extension on one declaration   | `Command "get" holds extension "@loomcli/plugins/help/command" twice. Supply one value.`                                                                                                         |
 | Two descriptors sharing one identity             | `Extension "@loomcli/plugins/help/command" is defined twice. Install one copy of the package that defines it.`                                                                                   |
@@ -1525,7 +1601,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath, and the package has no root export, so an application that installs one plugin bundles one, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and the formatter, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, and a middleware module the entry loads lazily when the plugin acts on an invocation. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, and the formatter, the [manifest](#manifest)'s declarations module ahead of the manifest plugin, the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -1541,7 +1617,7 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-The help and version factories take no parameters, so an application installs each as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help and version each read the graph and their own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. The formatter is not one: its hook adds an option and two views to the graph, and its middleware reads the request, as [Formatter](#formatter) states.
+The help and version factories take no parameters, so an application installs each as it is. A spelling a plugin reserves is a build error for an application option that uses it, under [Plugin options](#plugin-options), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help's page and the version line each read the graph and their plugin's own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. Help's hook restates help's own facts under the manifest's collecting extension, as [Help in the manifest](#help-in-the-manifest) states, so it adds no fact the graph did not already hold. The formatter is not one: its hook adds an option and two views to the graph, and its middleware reads the request, as [Formatter](#formatter) states.
 
 ### Version
 
@@ -1567,7 +1643,7 @@ jsonkit v0.2.0
 
 ### Help
 
-`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, and the two extensions below. The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, the two extensions below, and the `onCommandAttach` hook of [Help in the manifest](#help-in-the-manifest). The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
 
 The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
 
@@ -1653,6 +1729,37 @@ const get = new Command('get', {
 ```
 
 A projection that wants help's prose imports the descriptor module and reads the values with `readExtension`, as [Extensions](#extensions) describes, and never imports the help middleware.
+
+#### Help in the manifest
+
+```ts
+// src/help/attach.ts, the hook of the @loomcli/plugins/help subpath
+import { readExtension } from '@loomcli/core';
+import type { CommandAttachHook } from '@loomcli/core';
+
+import { manifestCommand } from '../manifest/extension.js';
+import { helpCommand } from './extension.js';
+
+export const attachHelp: CommandAttachHook = (command) => {
+  const value = readExtension(command, helpCommand);
+  if (value === undefined || (value.details === undefined && value.examples === undefined)) {
+    return command;
+  }
+  return command.extend(
+    manifestCommand({
+      ...(value.details === undefined ? {} : { details: value.details }),
+      ...(value.examples === undefined ? {} : { examples: value.examples.map((example) => ({ ...example })) }),
+    }),
+  );
+};
+```
+
+Help decides that its prose belongs in the [manifest](#manifest), and it supplies that prose through the manifest's [collecting extension](#collecting-extensions), so the manifest carries no code for help.
+
+- **What it supplies.** On each Command, the hook reads `helpCommand`. When the value holds `details` or `examples`, it extends the Command with one `manifestCommand` value that holds the same `details` and the same `examples`, each field present only where help's value holds it. A Command with no help value, or with one that holds neither field, gets nothing. The option-targeted `helpInput` is not supplied: a placeholder names a value for a human, and the input's own [schema](#input-schema) states what it accepts.
+- **When the manifest is absent.** The manifest plugin need not be installed. The value is then inert, and `inspect()` still reports it under `@loomcli/plugins/manifest/command`.
+- **Order.** Help's value joins the author's own `manifestCommand` values after them, and it joins values from other plugins' hooks in installation order.
+- **Cost.** The hook is one call per Command on every build. Help's entry module imports `@loomcli/plugins/manifest/extension`, a declarations module, and nothing else of the manifest's.
 
 #### The help page
 
@@ -2077,6 +2184,48 @@ The implementation increment proves these cases through public APIs:
 - Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence exercises the published declarations and the named palette at each color depth.
 
 `scripts/check-theme-contract.mjs` checks the built factory export against the compiler and editor. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI include it. It verifies compilation and editor completion, not palette merging or output behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
+
+### Manifest
+
+```ts
+// src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
+import Package from '../../package.json' with { type: 'json' };
+import { extension } from '@loomcli/core';
+import { z } from 'zod';
+
+const terminator = /[\n\v\f\r\u0085  ]/u;
+const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
+  message: 'Supply one line that holds a character other than whitespace.',
+});
+const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085  ]/u).every((each) => /\S/u.test(each)), {
+  message: 'Supply prose whose every line holds a character other than whitespace.',
+});
+
+export const manifestCommand = extension(`${Package.name}/manifest/command`, {
+  collect: true,
+  schema: z.object({
+    details: prose.optional(),
+    examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
+  }),
+  target: 'command',
+});
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+
+const get = new Command('get', {
+  description: 'Read one value at a path.',
+  extensions: [manifestCommand({ details: 'Quote a path that holds a shell metacharacter.' })],
+});
+```
+
+The manifest plugin is `@loomcli/plugins/manifest`. This section defines its declarations module, `@loomcli/plugins/manifest/extension`, which ships ahead of the plugin because help supplies values through it. The plugin's option and the document it prints are specified with the plugin.
+
+- **The extension.** `manifestCommand` is a [collecting extension](#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is prose under the rule help's `details` follows: every line holds a character other than whitespace, and line breaks are kept. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
+- **Who supplies values.** A value is meant for an agent because it lands in the manifest. The author's own value is where an instruction goes that an agent needs beyond the help page. A plugin's value holds the facts that plugin chooses to project into the manifest, as help's hook does under [Help in the manifest](#help-in-the-manifest).
+- **An empty value.** A value that holds neither field is accepted and supplies nothing.
 
 ### Example coverage
 
