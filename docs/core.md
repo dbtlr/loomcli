@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the pack exports the [manifest](#manifest)'s declarations module ahead of the manifest plugin.
 
 ## Application declarations
 
@@ -1184,7 +1184,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 }
 ```
 
-`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `views` holds overrides for different keys. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity and the target and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that loads a middleware annotates its factory's return type, and exports its options type when it declares options. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
+`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `views` holds overrides for different keys. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity, the target, and whether the extension collects, and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that loads a middleware annotates its factory's return type, and exports its options type when it declares options. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
 ```ts
 // src/help/plugin.ts, the entry module of the @loomcli/plugins/help subpath
@@ -1365,7 +1365,7 @@ export const attachFormat: CommandAttachHook = (command) => {
 The hook includes the declared default in its description, as specified by the [help restyle](#help-and-version-restyle).
 
 - **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. Core resolves each result record under [Result build errors](#result-build-errors) before the hooks, so `result` is exact, and runs those rules again over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
-- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. Build validates a Command's author layers before the first hook runs on that Command, so a hook never reads an unvalidated value, and an invalid value the author declared on a Command is reported before any hook runs on it. A value passed to `extend()` is validated at the call: every rule under [Plugin build errors](#plugin-build-errors) that applies to a declaration's `extensions` applies there too, and it throws its `DeclarationError` from the call, which reports as itself. A hook that catches the throw continues, and the rejected value is not added. Build stores the output validated at the call and runs no schema twice. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
+- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. Build validates a Command's author layers before the first hook runs on that Command, so a hook never reads an unvalidated value, and an invalid value the author declared on a Command is reported before any hook runs on it. A value passed to `extend()` is validated at the call: every rule under [Plugin build errors](#plugin-build-errors) that applies to a declaration's `extensions` applies there too, and it throws its `DeclarationError` from the call, which reports as itself. A hook that catches the throw continues, and the rejected value is not added. Only the value a hook returns carries its `extend()` values into the build, so a descriptor used in a call that threw, or in a value the hook discarded, registers nothing. Build stores the output validated at the call and runs no schema twice. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
 - **What it returns.** The value it received or one derived from it by those calls. Build rejects a hook that is not a function, one that returns anything else, and one that throws, under [Plugin build errors](#plugin-build-errors); a thrown `DeclarationError` reports as itself.
 - **Types.** Nothing a hook adds reaches the action's types: a hook-declared option is in `options` at run time and absent from the typed `options`, and a middleware reads it through `request`, which is untyped for that reason. A rule the types reject for an author is reached by a hook's erased call and reported at build as it is for a JavaScript author.
 - **Rules.** A hook's calls are exempt from the four closures `action()` applies, to arguments, options, aliases, and children, and from nothing else. An input a hook declares whose key or spelling the Command, the Application's globals, another plugin's options, or another plugin's hook already use is the hook-collision error, naming the plugin and the Command; the rule reads across kinds, so a hook-declared argument collides with an option and a hook-declared option collides with an argument. `arguments` and `options` show the Command's own names, so a hook sees that case before it causes it, and the other three surface at build. Hooks compose in sequence, not first-in-wins: a later hook sees and can replace what an earlier one added, `views()` by name included, except that a value of a [collecting extension](#collecting-extensions) joins the values before it and replaces none of them.
@@ -1433,12 +1433,18 @@ Core owns the facts every projection needs: `description` on the Application, on
 ```ts
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
-  config: { schema: Schema; target: Target; collect?: false },
+  config: { schema: Schema; target: Target; collect?: false | undefined },
 ): Extension<Target, Schema>;
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect: true },
 ): Extension<Target, Schema, true>;
+
+interface AnyExtension {
+  readonly identity: string;
+  readonly target: ExtensionTarget;
+  readonly collect: boolean;
+}
 
 interface Extension<
   Target extends ExtensionTarget = ExtensionTarget,
@@ -1457,14 +1463,14 @@ type NodeFor<Target extends ExtensionTarget> = Target extends 'command'
     ? OptionNode
     : ArgumentNode;
 
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+type ExtensionRead<Schema extends StandardSchemaV1, Collect extends boolean> = Collect extends true
+  ? readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[]
+  : DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
+
+function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1, Collect extends boolean = false>(
   node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema>,
-): DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
-  node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema, true>,
-): readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[];
+  descriptor: Extension<Target, Schema, Collect>,
+): ExtensionRead<Schema, Collect>;
 // DeepReadonly<Value> makes a value read-only to any depth, arrays included.
 ```
 
@@ -1549,7 +1555,7 @@ The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switch
 
 ### Plugin build errors
 
-Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Nineteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `extension()` types it; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
+Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Nineteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `AnyExtension` requires one; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
 
 | Rejected declaration                             | Diagnostic                                                                                                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1682,18 +1688,25 @@ const app = new Application('example', {
 ```
 
 ```ts
+// src/lines.ts, the pack's line and prose rules, which belong to no subpath
+import { z } from 'zod';
+
+const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
+export const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
+  message: 'Supply one line that holds a character other than whitespace.',
+});
+export const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
+  message: 'Supply prose whose every line holds a character other than whitespace.',
+});
+```
+
+```ts
 // src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
 import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
+import { line, prose } from '../lines.js';
 
 export const helpCommand = extension(`${Package.name}/help/command`, {
   schema: z.object({
@@ -1752,7 +1765,7 @@ export const attachHelp: CommandAttachHook = (command) => {
   return command.extend(
     manifestCommand({
       ...(value.details === undefined ? {} : { details: value.details }),
-      ...(value.examples === undefined ? {} : { examples: value.examples.map((example) => ({ ...example })) }),
+      ...(value.examples === undefined ? {} : { examples: [...value.examples] }),
     }),
   );
 };
@@ -2356,13 +2369,8 @@ import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
+// The pack's shared line and prose rules, which help's schema also uses.
+import { line, prose } from '../lines.js';
 
 export const manifestCommand = extension(`${Package.name}/manifest/command`, {
   collect: true,

@@ -237,6 +237,11 @@ export interface AttachedCommand {
   /** The declared local option names, in declaration order. */
   readonly options: readonly string[];
   readonly result: ResultNode | null;
+  /**
+   * The extension record `inspect()` would publish for this Command at this hook: the author's
+   * layers, then every value an earlier hook or this hook's earlier `extend()` calls added.
+   */
+  readonly extensions: Readonly<Record<string, unknown>>;
   argument(name: string, config: ArgumentConfig): AttachedCommand;
   option(name: string, config: OptionConfig): AttachedCommand;
   views(

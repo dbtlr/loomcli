@@ -1,8 +1,8 @@
 import { pad, readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { terminators } from '../lines.js';
 import { helpInput } from './extension.js';
-import { terminators } from './lines.js';
 
 /** One option that takes a value, the only kind the action form and the fact list ever narrow to. */
 type StringOption = Extract<OptionNode, { type: 'string' }>;

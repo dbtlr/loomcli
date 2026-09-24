@@ -2,19 +2,14 @@ import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
 import Package from '../../package.json' with { type: 'json' };
-import { breaks, terminator } from './lines.js';
+import { line, prose } from '../lines.js';
 
 /**
  * The two facts a declaration carries for the help page, as declarations alone. A projection that
  * wants help's prose imports this module and never the help middleware, and an application that
- * installs no help plugin still compiles against it.
+ * installs no help plugin still compiles against it. The line and prose rules are the manifest's
+ * too, so every value help supplies to the manifest validates there.
  */
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-const prose = z.string().refine((value) => value.split(breaks).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
 
 const example = z.object({ command: line, note: line.optional() });
 

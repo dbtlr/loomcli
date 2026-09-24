@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0031 - A plugin supplies facts to another plugin's projection through a collecting extension
 description: A projection with an open set of suppliers declares a collecting extension, whose values accumulate in order instead of replacing each other, and a supplier adds values from its onCommandAttach hook by importing the declaring plugin's declarations module. Help supplies its details and examples to the manifest this way, and the manifest carries no code for any supplier.
-status: proposed
+status: accepted
 created: 2026-09-24
 modified: 2026-09-24
 ---
@@ -45,8 +45,12 @@ It reverses the rejection of contribution queues that ADR-0019 recorded among it
 
 ## Consequences
 
-`Extension` gains a third type parameter, `Collect`, which defaults to `false`, and every descriptor publishes `collect`. `readExtension` gains an overload for a collecting descriptor, and it accepts the value a hook receives for a Command-target descriptor. The value `onCommandAttach` receives gains `extensions`. Build stops validating a Command's extension values a second time after its hooks run: each value is validated once, the author's before the hooks and a hook's at its `extend()` call. The help plugin gains an `onCommandAttach` hook, which costs one call per Command on every build, and its entry module imports the manifest's declarations module. The plugin pack gains the subpath `@loomcli/plugins/manifest/extension` ahead of the manifest plugin's entry.
+`Extension` gains a third type parameter, `Collect`, which defaults to `false`, and every descriptor, `AnyExtension` included, publishes `collect`, so a hand-built descriptor without it is rejected. `readExtension` returns a list through a collecting descriptor, and it accepts the value a hook receives for a Command-target descriptor. The value `onCommandAttach` receives gains `extensions`. Build stops validating a Command's extension values a second time after its hooks run: each value is validated once, the author's before the hooks and a hook's at its `extend()` call. The help plugin gains an `onCommandAttach` hook, which costs one call per Command on every build, and its entry module imports the manifest's declarations module. The plugin pack gains the subpath `@loomcli/plugins/manifest/extension` ahead of the manifest plugin's entry.
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that collects values, publishes `extensions` to hooks, ships the manifest's declarations module, and makes help supply its values, proven through `inspect()` with no manifest plugin installed, under Node and Bun.
+Accepted 2026-09-24 with the implementation. Core collects the values of an extension declared with `collect: true`, publishes `extensions` on the value a hook receives, and validates a hook's `extend()` values at the call, once. The pack exports `@loomcli/plugins/manifest/extension`, and help's hook supplies its `details` and `examples` through it. `inspect()` on textstat's root and on jsonkit's root and `get` reports them with no manifest plugin installed, jsonkit's author value first on `get`, and the packed consumer reads them under Node and Bun.
+
+## Changelog
+
+- 2026-09-24: Accepted with the implementation. The line and prose rules help and the manifest share live in one pack module outside any subpath, `packages/plugins/src/lines.ts`, which both declarations modules import, so a value help supplies always validates and neither subpath imports the other's internals. `readExtension` keeps one signature whose return type follows the descriptor's `Collect` type. A descriptor a hook's `extend()` uses registers only through the value the hook returns, so a call that threw or a value the hook discarded leaves the build's descriptor registry as it was. `readExtension`'s `Collect` type parameter defaults to `false`, so a two-argument call written against 0.3.0 still compiles. The rejection of a hand-built descriptor without a Boolean `collect` is a breaking change with its own fragment.

@@ -72,6 +72,7 @@ test('the inspected graph carries the plugin option, the extension value, and th
     ['explain', 'plugin'],
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
+  // Help also supplies its value to the manifest's collecting extension, with no manifest installed.
   expect(graph.root.extensions).toEqual({
     '@loom/explain/command': {
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
@@ -81,5 +82,12 @@ test('the inspected graph carries the plugin option, the extension value, and th
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
     },
+    '@loomcli/plugins/manifest/command': [
+      {
+        details:
+          'With no files, textstat counts the text piped to it and names the source "stdin".',
+        examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
+      },
+    ],
   });
 });
