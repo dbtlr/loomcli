@@ -35,6 +35,13 @@ const notes = extension('@fixture/notes/command', {
 /** An ordinary extension: a later value replaces the earlier one. */
 const single = extension('@fixture/single/command', { schema: noteSchema, target: 'command' });
 
+/** A second descriptor object under the collecting extension's identity, as a duplicated package copy. */
+const twin = extension('@fixture/notes/command', {
+  collect: true,
+  schema: noteSchema,
+  target: 'command',
+});
+
 /** A collecting extension on options, which have one layer and no hook call. */
 const optionNotes = extension('@fixture/notes/option', {
   collect: true,
@@ -132,12 +139,30 @@ function bareApplication(plugins) {
   return new Application('app', { plugins }).action(() => {});
 }
 
+/** A plugin that lists a factory-built descriptor whose `collect` is the given non-Boolean value. */
+function factoryBuilt(collect) {
+  const descriptor = extension('@fixture/factory/command', {
+    collect,
+    schema: noteSchema,
+    target: 'command',
+  });
+  return plugin('@fixture/factory', { extensions: [descriptor] });
+}
+
+/** A Command whose ordinary extension comes first, so a replacement that moved its key would show. */
+const ordered = () =>
+  new Command('ordered', {
+    extensions: [single({ note: 'constructor' }), notes({ note: 'constructor' })],
+  }).action(() => {});
+
 const scenarios = {
   'author-first': () =>
     new Application('app', { plugins: [throwing] }).command(
       new Command('get', { extensions: [notes({ wrong: true })] }).action(() => {}),
     ),
   caught: () => new Application('app', { plugins: [rejecting(true)] }).command(get()),
+  'factory-null': () => bareApplication([factoryBuilt(null)]),
+  'factory-yes': () => bareApplication([factoryBuilt('yes')]),
   'hand-absent': () => bareApplication([handBuilt('absent')]),
   'hand-false': () => bareApplication([handBuilt(false)]),
   'hand-yes': () => bareApplication([handBuilt('yes')]),
@@ -154,7 +179,27 @@ const scenarios = {
     })
       .command(get())
       .command(bare()),
+  keys: () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/replacing', {
+          onCommandAttach: (command) =>
+            command.name === 'ordered' ? command.extend(single({ note: 'hook' })) : command,
+        }),
+      ],
+    }).command(ordered()),
   layers: () => new Application('app').command(get()).command(bare()),
+  'option-then-extend': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/both', {
+          onCommandAttach: (command) =>
+            command.name === 'get'
+              ? command.option('extra', { type: 'boolean' }).extend(notes({ note: 'hook' }))
+              : command,
+        }),
+      ],
+    }).command(get()),
   reads: () =>
     new Application('app', {
       plugins: [
@@ -164,6 +209,23 @@ const scenarios = {
       ],
     }).command(get()),
   rejected: () => new Application('app', { plugins: [rejecting(false)] }).command(get()),
+  'rejected-twin': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/rejected-twin', {
+          onCommandAttach: (command) => {
+            if (command.name !== null) {
+              return command;
+            }
+            try {
+              return command.extend(twin({ wrong: true }));
+            } catch {
+              return command;
+            }
+          },
+        }),
+      ],
+    }).command(get()),
   'twice-in-call': () =>
     new Application('app', {
       plugins: [
@@ -178,6 +240,15 @@ const scenarios = {
         () => {},
       ),
     ),
+  'twin-at-call': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/twin', {
+          onCommandAttach: (command) =>
+            command.name === 'get' ? command.extend(twin({ note: 'twin' })) : command,
+        }),
+      ],
+    }).command(get()),
 };
 
 const application = scenarios[scenario];
@@ -202,8 +273,23 @@ if (mode === 'inspect') {
   const [first, second] = graph.root.children;
   note({
     bare: readExtension(second, notes),
+    emptyFrozen: Object.isFrozen(readExtension(second, notes)),
     frozen: Object.isFrozen(readExtension(first, notes)),
     get: readExtension(first, notes),
+  });
+  try {
+    readExtension(first, twin);
+    note({ foreign: null });
+  } catch (error) {
+    note({ foreign: error.constructor.name, message: error.message });
+  }
+} else if (mode === 'keys') {
+  note(Object.keys(application().inspect().root.children[0].extensions));
+} else if (mode === 'options') {
+  const [first] = application().inspect().root.children;
+  note({
+    notes: first.extensions['@fixture/notes/command'],
+    options: first.options.map(({ name }) => name),
   });
 } else if (mode === 'descriptors') {
   const undefinedCollect = extension('@fixture/undefined/command', {
@@ -211,5 +297,15 @@ if (mode === 'inspect') {
     schema: noteSchema,
     target: 'command',
   });
-  note({ notes: notes.collect, single: single.collect, undefined: undefinedCollect.collect });
+  const nullCollect = extension('@fixture/null/command', {
+    collect: null,
+    schema: noteSchema,
+    target: 'command',
+  });
+  note({
+    notes: notes.collect,
+    null: nullCollect.collect,
+    single: single.collect,
+    undefined: undefinedCollect.collect,
+  });
 }

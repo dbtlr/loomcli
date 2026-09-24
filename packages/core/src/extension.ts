@@ -9,15 +9,20 @@ import type { AttachedCommand } from './types.js';
 type ExtensionTarget = 'argument' | 'command' | 'option';
 
 /**
- * The descriptor supertype a plugin's `extensions` list uses. It publishes the identity and the
- * target and erases both the schema and the factory call signature, because a schema-typed call
- * signature relates only by schema identity and a list cannot name one schema per element. A
- * descriptor is assignable to it; an extension value, which publishes its brand alone, is not.
+ * The descriptor supertype a plugin's `extensions` list uses. It publishes the identity, the
+ * target, and whether the extension collects, and erases both the schema and the factory call
+ * signature, because a schema-typed call signature relates only by schema identity and a list
+ * cannot name one schema per element. A descriptor is assignable to it; an extension value, which
+ * publishes its brand alone, is not.
  */
 interface AnyExtension {
   readonly identity: string;
   readonly target: ExtensionTarget;
+  readonly collect: boolean;
 }
+
+/** What a value must show to be taken for a descriptor before its `collect` flag is checked. */
+type DescriptorShape = Pick<AnyExtension, 'identity' | 'target'>;
 
 /** One carried value: the input its author supplied and the descriptor that produced it. */
 interface CarriedValue {
@@ -81,7 +86,7 @@ interface Extension<
  */
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
-  config: { schema: Schema; target: Target; collect?: false },
+  config: { schema: Schema; target: Target; collect?: false | undefined },
 ): Extension<Target, Schema>;
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
@@ -98,7 +103,7 @@ function extension<Target extends ExtensionTarget, Schema extends StandardSchema
   // An omitted or undefined `collect` publishes as false, and any other value as given.
   // Build then rejects a JavaScript author's value that is neither Boolean.
   const descriptor: Extension<Target, Schema, boolean> = Object.assign(create, {
-    collect: config.collect ?? false,
+    collect: config.collect === undefined ? false : config.collect,
     identity,
     schema: config.schema,
     target: config.target,
@@ -125,11 +130,13 @@ type DeepReadonly<Value> = Value extends readonly (infer Item)[]
     ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]> }
     : Value;
 
-/** What one read answers: a stored output, a collecting extension's outputs, or nothing. */
-type ReadOutput<Schema extends StandardSchemaV1> =
-  | DeepReadonly<StandardSchemaV1.InferOutput<Schema>>
-  | readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[]
-  | undefined;
+/**
+ * What one read answers, decided by the descriptor's own `collect` type: a collecting extension's
+ * outputs as a read-only list, or an ordinary extension's output or nothing.
+ */
+type ExtensionRead<Schema extends StandardSchemaV1, Collect extends boolean> = Collect extends true
+  ? readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[]
+  : DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
 
 /** The read of a collecting extension a declaration carries no value of, shared and frozen. */
 const noValues: readonly never[] = Object.freeze([]);
@@ -140,35 +147,32 @@ const noValues: readonly never[] = Object.freeze([]);
  * value, and runs no schema. Through a collecting descriptor it returns every collected output in
  * collection order, and an empty list where the node carries none.
  */
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+function readExtension<
+  Target extends ExtensionTarget,
+  Schema extends StandardSchemaV1,
+  Collect extends boolean,
+>(
   node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema>,
-): DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
-  node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema, true>,
-): readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[];
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
-  node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema, boolean>,
-): ReadOutput<Schema> {
+  descriptor: Extension<Target, Schema, Collect>,
+): ExtensionRead<Schema, Collect> {
   const record: Readonly<Record<string, unknown>> = node.extensions;
   const owner = owners.get(record)?.get(descriptor.identity);
-  if (owner === undefined) {
-    return descriptor.collect ? noValues : undefined;
-  }
-  if (owner !== descriptor) {
+  if (owner !== undefined && owner !== descriptor) {
     throw new DeclarationError(
       `Extension "${descriptor.identity}" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.`,
     );
   }
+  // A collecting extension a declaration carries no value of reads as an empty list.
+  const absent = descriptor.collect ? noValues : undefined;
+  const stored: unknown = owner === undefined ? absent : record[descriptor.identity];
   // Last resort: no typed path exists.
   // The graph stores every output under a string identity, so the record reads back as `unknown`.
-  // No key relates one entry to a descriptor's schema or to its `collect` flag.
+  // No key relates one entry to a descriptor's schema or to its runtime `collect` flag.
   // It holds because the reference test above proves this descriptor produced this entry.
-  // Build stored exactly what its schema returned, as one output or, when it collects, a list.
+  // Build stored exactly what its schema returned, a list when the descriptor collects.
+  // `Collect` is the literal `extension()` published as `collect`, which registration enforces.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return record[descriptor.identity] as ReadOutput<Schema>;
+  return stored as ExtensionRead<Schema, Collect>;
 }
 
 /** How a diagnostic names the declarations one target covers. */
@@ -329,8 +333,11 @@ type DescriptorRegistry = Map<string, AnyExtension>;
  */
 type ExtensionRecords = Map<object, Readonly<Record<string, unknown>>>;
 
-/** Whether a value is a descriptor: a callable object carrying an identity and a declared target. */
-function isDescriptor(value: unknown): value is AnyExtension {
+/**
+ * Whether a value has a descriptor's shape: a callable object carrying an identity and a declared
+ * target. Its `collect` flag is checked where a build registers it.
+ */
+function isDescriptor(value: unknown): value is DescriptorShape {
   return (
     value !== null &&
     (typeof value === 'object' || typeof value === 'function') &&
@@ -341,36 +348,47 @@ function isDescriptor(value: unknown): value is AnyExtension {
   );
 }
 
-/**
- * Whether one descriptor collects. Registration has already rejected a descriptor whose `collect`
- * is neither Boolean, so a missing or false flag reads as an ordinary extension.
- */
+/** Whether a descriptor carries the `collect` flag every descriptor publishes, as a Boolean. */
+function hasCollectFlag(descriptor: DescriptorShape): descriptor is AnyExtension {
+  return 'collect' in descriptor && typeof descriptor.collect === 'boolean';
+}
+
+/** Whether one registered descriptor collects, so its values accumulate instead of replacing. */
 function collects(descriptor: AnyExtension): boolean {
-  return 'collect' in descriptor && descriptor.collect === true;
+  return descriptor.collect;
 }
 
 /**
- * One identity means one descriptor, wherever on the graph that descriptor appears. A descriptor
- * is checked once, when a build first meets it: its `collect` flag is `true` or `false`, which the
- * factory always publishes and a hand-built descriptor may not.
+ * The descriptor a registry holds for one identity once this one is admitted. One identity means
+ * one descriptor, wherever on the graph that descriptor appears, and a descriptor is checked when
+ * a build first meets it: its `collect` flag is `true` or `false`, which the factory always
+ * publishes and a hand-built descriptor may not. It reads the registry and changes nothing.
  */
-function registerDescriptor(descriptors: DescriptorRegistry, descriptor: AnyExtension): void {
+function admitDescriptor(
+  descriptors: ReadonlyMap<string, AnyExtension>,
+  descriptor: DescriptorShape,
+): AnyExtension {
   const known = descriptors.get(descriptor.identity);
   if (known === undefined) {
-    const flag: unknown = 'collect' in descriptor ? descriptor.collect : undefined;
-    if (flag !== true && flag !== false) {
+    if (!hasCollectFlag(descriptor)) {
       throw new DeclarationError(
         `Extension "${descriptor.identity}" declares collect that is not a Boolean. Supply true or false, or build the descriptor with extension(identity, config).`,
       );
     }
-    descriptors.set(descriptor.identity, descriptor);
-    return;
+    return descriptor;
   }
   if (known !== descriptor) {
     throw new DeclarationError(
       `Extension "${descriptor.identity}" is defined twice. Install one copy of the package that defines it.`,
     );
   }
+  return known;
+}
+
+/** Admits one descriptor and records it, so a later descriptor of its identity is compared to it. */
+function registerDescriptor(descriptors: DescriptorRegistry, descriptor: DescriptorShape): void {
+  const admitted = admitDescriptor(descriptors, descriptor);
+  descriptors.set(admitted.identity, admitted);
 }
 
 /** Whether a value answers the Standard Schema v1 contract this build calls synchronously. */
@@ -522,10 +540,13 @@ function validateLayer(slot: ExtensionSlot): readonly ValidatedValue[] {
   const { subject } = slot;
   const layer: ValidatedValue[] = [];
   const seen = new Set<string>();
+  // The layer's descriptors register together once every value is valid.
+  // A rejected layer, such as a hook's `extend()` call the hook catches, leaves the registry as it was.
+  const staged = new Map(slot.descriptors);
   for (const entry of readList(subject, slot.declared)) {
     const carried = carriedValue(subject, slot.target, entry);
     const { descriptor } = carried;
-    registerDescriptor(slot.descriptors, descriptor);
+    registerDescriptor(staged, descriptor);
     if (seen.has(descriptor.identity)) {
       throw new DeclarationError(
         `${subject.sentence} holds extension "${descriptor.identity}" twice. Supply one value.`,
@@ -533,6 +554,9 @@ function validateLayer(slot: ExtensionSlot): readonly ValidatedValue[] {
     }
     seen.add(descriptor.identity);
     layer.push({ descriptor, output: validateValue(subject, carried) });
+  }
+  for (const [identity, descriptor] of staged) {
+    slot.descriptors.set(identity, descriptor);
   }
   return layer;
 }
@@ -548,6 +572,12 @@ interface ExtensionStore {
     { readonly descriptor: AnyExtension; readonly outputs: readonly unknown[] }
   >;
 }
+
+/**
+ * The record each store published, so a store a hook left unchanged publishes the same record on
+ * every read and build does no second walk of it.
+ */
+const published = new WeakMap<ExtensionStore, Readonly<Record<string, unknown>>>();
 
 /** The store of a declaration that carries no value yet. */
 const emptyStore: ExtensionStore = { entries: new Map() };
@@ -573,6 +603,10 @@ function extendStore(store: ExtensionStore, layer: readonly ValidatedValue[]): E
  * reference.
  */
 function publishStore(store: ExtensionStore): Readonly<Record<string, unknown>> {
+  const cached = published.get(store);
+  if (cached) {
+    return cached;
+  }
   const stored: [string, unknown][] = [];
   const defined = new Map<string, AnyExtension>();
   for (const [identity, { descriptor, outputs }] of store.entries) {
@@ -583,6 +617,7 @@ function publishStore(store: ExtensionStore): Readonly<Record<string, unknown>> 
   // `__proto__` is a key of the record and the record keeps `Object.prototype`.
   const frozen = Object.freeze(Object.fromEntries(stored));
   owners.set(frozen, defined);
+  published.set(store, frozen);
   return frozen;
 }
 

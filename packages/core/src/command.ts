@@ -895,12 +895,10 @@ class AttachedCommandValue implements AttachedCommand {
 
   readonly #state: AttachState;
   readonly #result: ResultNode | null;
-  readonly #extensions: Readonly<Record<string, unknown>>;
 
   constructor(state: AttachState) {
     this.#state = state;
     this.#result = resultNode(buildResult(state.declared, state.hasAction));
-    this.#extensions = publishStore(state.extensions);
     attachments.set(this, state);
     Object.freeze(this);
   }
@@ -929,8 +927,9 @@ class AttachedCommandValue implements AttachedCommand {
     return this.#result;
   }
 
+  /** Published on first read and shared by every value whose store is unchanged. */
   get extensions(): Readonly<Record<string, unknown>> {
-    return this.#extensions;
+    return publishStore(this.#state.extensions);
   }
 
   argument(name: string, config: ArgumentConfig): AttachedCommand {

@@ -1184,7 +1184,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 }
 ```
 
-`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `views` holds overrides for different keys. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity and the target and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that loads a middleware annotates its factory's return type, and exports its options type when it declares options. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
+`Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `views` holds overrides for different keys. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity, the target, and whether the extension collects, and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that loads a middleware annotates its factory's return type, and exports its options type when it declares options. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
 ```ts
 // src/help/plugin.ts, the entry module of the @loomcli/plugins/help subpath
@@ -1433,12 +1433,18 @@ Core owns the facts every projection needs: `description` on the Application, on
 ```ts
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
-  config: { schema: Schema; target: Target; collect?: false },
+  config: { schema: Schema; target: Target; collect?: false | undefined },
 ): Extension<Target, Schema>;
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect: true },
 ): Extension<Target, Schema, true>;
+
+interface AnyExtension {
+  readonly identity: string;
+  readonly target: ExtensionTarget;
+  readonly collect: boolean;
+}
 
 interface Extension<
   Target extends ExtensionTarget = ExtensionTarget,
@@ -1457,14 +1463,14 @@ type NodeFor<Target extends ExtensionTarget> = Target extends 'command'
     ? OptionNode
     : ArgumentNode;
 
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
+type ExtensionRead<Schema extends StandardSchemaV1, Collect extends boolean> = Collect extends true
+  ? readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[]
+  : DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
+
+function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1, Collect extends boolean>(
   node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema>,
-): DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
-function readExtension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
-  node: NodeFor<Target>,
-  descriptor: Extension<Target, Schema, true>,
-): readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[];
+  descriptor: Extension<Target, Schema, Collect>,
+): ExtensionRead<Schema, Collect>;
 // DeepReadonly<Value> makes a value read-only to any depth, arrays included.
 ```
 
@@ -1549,7 +1555,7 @@ The published `ExitCode` type widens from `0 | 1 | 2`, so a consumer that switch
 
 ### Plugin build errors
 
-Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Nineteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `extension()` types it; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
+Every rule below applies in `inspect()` and `run()` alike and returns code 1 through `run()`. Nineteen of them reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's identity, definition, `options` record, single option declaration, `middleware` object, `onCommandAttach` function, `extensions` list, `views` list, and `signals` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `AnyExtension` requires one; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin option with a schema or presence rule, since `PluginOptions` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options.
 
 | Rejected declaration                             | Diagnostic                                                                                                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2363,7 +2369,7 @@ import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-// Help's own line and prose rules, from the pack module both declarations modules share.
+// The pack's shared line and prose rules, which help's schema also uses.
 import { line, prose } from '../lines.js';
 
 export const manifestCommand = extension(`${Package.name}/manifest/command`, {

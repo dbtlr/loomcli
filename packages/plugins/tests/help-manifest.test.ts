@@ -46,3 +46,28 @@ test('without help installed, the manifest holds the author values alone', () =>
     root: [],
   });
 });
+
+/** What one manifest value case reports: no fault, or the declaration error the build raised. */
+function rule(name: string): unknown {
+  const result = invoke(new URL('fixtures/manifest-rules.mjs', import.meta.url), [name]);
+  expect(result.stderr).toBe('');
+  return JSON.parse(result.stdout);
+}
+
+/** The build error one rejected manifest value on `get` reports. */
+function invalid(message: string) {
+  return {
+    fault: 'DeclarationError',
+    message: `Command "get" holds an invalid "@loomcli/plugins/manifest/command" value: ${message} Correct the value.`,
+  };
+}
+
+test('manifestCommand applies the line and prose rules help applies', () => {
+  const line = 'Supply one line that holds a character other than whitespace.';
+  expect(rule('valid')).toEqual({ fault: null });
+  expect(rule('blank-prose-line')).toEqual(
+    invalid('Supply prose whose every line holds a character other than whitespace.'),
+  );
+  expect(rule('command-on-two-lines')).toEqual(invalid(line));
+  expect(rule('note-on-two-lines')).toEqual(invalid(line));
+});

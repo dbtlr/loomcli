@@ -16,6 +16,12 @@ const explicit = extension('@fixture/explicit/command', {
   schema: note,
   target: 'command',
 });
+// An undefined `collect` compiles and reads as an ordinary extension.
+const undefinedCollect = extension('@fixture/undefined/command', {
+  collect: undefined,
+  schema: note,
+  target: 'command',
+});
 const optionNotes = extension('@fixture/notes/option', {
   collect: true,
   schema: note,
@@ -25,6 +31,7 @@ const optionNotes = extension('@fixture/notes/option', {
 const collecting: true = notes.collect;
 const ordinary: false = single.collect;
 const declaredOrdinary: false = explicit.collect;
+const undefinedOrdinary: false = undefinedCollect.collect;
 
 declare const node: CommandNode;
 declare const option: OptionNode;
@@ -49,13 +56,15 @@ const reader = plugin('@fixture/reader', {
 // @ts-expect-error TS2741: a collecting read is a list, never one output or undefined.
 const wrongShape: { readonly note: string } | undefined = readExtension(node, notes);
 
-// @ts-expect-error TS2769: the value a hook receives is a Command, never an option node.
+// @ts-expect-error TS2345: the value a hook receives is a Command, never an option node.
 readExtension(attached, optionNotes);
 
 // @ts-expect-error TS2769: collect is true or false.
 extension('@fixture/bad/command', { collect: 'yes', schema: note, target: 'command' });
 
 export {
+  undefinedCollect,
+  undefinedOrdinary,
   collecting,
   declaredOrdinary,
   explicit,
