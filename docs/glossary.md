@@ -371,12 +371,16 @@ A middleware's declared condition for running and loading: a list of its plugin'
 _Avoid_: Trigger, gate, filter
 
 **Extension**:
-A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity. Command-targeted values can be replaced after action registration through immutable `extend()` calls.
+A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity. Command-targeted values can be replaced after action registration through immutable `extend()` calls, except a collecting extension's, which accumulate.
 _Avoid_: Metadata, annotation, field, decorator
 
 **Collecting extension**:
 An extension whose values accumulate on a declaration in order, from the author and then from lifecycle hooks, instead of replacing each other. The plugin that declares one reads what an open set of suppliers gave it, and no value records its supplier.
 _Avoid_: Contribution queue, queue, channel, contribution (for one value)
+
+**Supplier**:
+The author or a plugin whose lifecycle hook gives a value to a collecting extension.
+_Avoid_: Contributor, producer, publisher
 
 **Core fact**:
 A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, and the input schema.
