@@ -1,4 +1,5 @@
 import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 
@@ -8,28 +9,42 @@ function run(scenario: string, argv: string[]) {
   return invoke(fixture, [scenario, ...argv]);
 }
 
-/** A document the fixture printed, parsed without claiming a shape for it. */
-function documentOf(argv: string[]): Record<string, unknown> {
-  const result = run('app', argv);
-  expect(result).toMatchObject({ status: 0, stderr: '' });
-  return JSON.parse(result.stdout);
+/** A Command entry as these tests walk it: its name and children, every other field kept as it is. */
+interface Entry {
+  readonly [field: string]: unknown;
+  readonly children: readonly Entry[];
+  readonly name: string | null;
 }
 
-/** The Command entry at a path of child names, read from a parsed document's `command`. */
-function entryAt(document: Record<string, unknown>, names: string[]): Record<string, unknown> {
-  let entry: unknown = document.command;
+const entrySchema: z.ZodType<Entry> = z.lazy(() =>
+  z.looseObject({ children: z.array(entrySchema), name: z.string().nullable() }),
+);
+
+const printedSchema = z.looseObject({ command: entrySchema });
+
+/** The raw document text one invocation printed, after checking that it succeeded. */
+function printed(argv: string[]): string {
+  const result = run('app', argv);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return result.stdout;
+}
+
+/** A document the fixture printed, parsed at the boundary into the fields these tests walk. */
+function documentOf(argv: string[]) {
+  return printedSchema.parse(JSON.parse(printed(argv)));
+}
+
+/** The Command entry at a path of child names under a parsed document's `command`. */
+function entryAt(document: z.infer<typeof printedSchema>, names: readonly string[]): Entry {
+  let entry = document.command;
   for (const name of names) {
-    const children: unknown =
-      typeof entry === 'object' && entry !== null && 'children' in entry ? entry.children : [];
-    entry = Array.isArray(children)
-      ? children.find(
-          (child: unknown) =>
-            typeof child === 'object' && child !== null && 'name' in child && child.name === name,
-        )
-      : undefined;
+    const child = entry.children.find((candidate) => candidate.name === name);
+    if (child === undefined) {
+      throw new Error(`The document holds no child "${name}".`);
+    }
+    entry = child;
   }
-  expect(entry).toBeTypeOf('object');
-  return Object(entry);
+  return entry;
 }
 
 const tokens =
@@ -179,8 +194,9 @@ test('the manifest prints the routed slice as indented JSON in the contract key 
 });
 
 test('the root slice lists every visible Command and omits the hidden one', () => {
-  const document = documentOf(['--manifest']);
-  expect(Object.keys(document)).toEqual([
+  const text = printed(['--manifest']);
+  const raw: unknown = JSON.parse(text);
+  expect(Object.keys(Object(raw))).toEqual([
     'name',
     'version',
     'description',
@@ -190,20 +206,26 @@ test('the root slice lists every visible Command and omits the hidden one', () =
     'globals',
     'command',
   ]);
+  const document = printedSchema.parse(raw);
   const root = entryAt(document, []);
   expect(root).toMatchObject({
+    name: null,
+    path: [],
     description: 'A fixture application.',
     details: [],
     examples: [],
     hasAction: true,
-    name: null,
-    path: [],
   });
   expect(entryAt(document, ['get'])).toEqual(getDocument.command);
-  const names = Array.isArray(root.children)
-    ? root.children.map((child: { name: string }) => child.name)
-    : [];
-  expect(names).toEqual(['get', 'show', 'old', 'cache', 'weird', 'empty']);
+  expect(root.children.map((child) => child.name)).toEqual([
+    'get',
+    'show',
+    'old',
+    'cache',
+    'weird',
+    'empty',
+    'pick',
+  ]);
 });
 
 test('a result reads kind, views, and default in order, and the formatter option carries its enum', () => {
@@ -248,15 +270,57 @@ test('a hidden Command routed to directly prints its own slice, and a group prin
   });
 });
 
-test('a C1 control in a description prints as its escape', () => {
-  const result = run('app', ['weird', '--manifest']);
-  expect(result.status).toBe(0);
-  expect(result.stdout).toContain(String.raw`"description": "A \u009b control."`);
-  expect(result.stdout).not.toContain('\u009b');
+test('marker characters print exactly, C1 controls escape up to U+009F, and U+00A0 stays raw', () => {
+  const text = printed(['weird', '--manifest']);
+  expect(text).toContain('"description": "A \\u009b control, a \\u009f edge, and a \u00a0 space."');
+  expect(text).not.toContain('\u009b');
+  expect(entryAt(printedSchema.parse(JSON.parse(text)), []).options).toEqual([
+    {
+      type: 'string',
+      name: 'marked',
+      description: null,
+      deprecated: null,
+      long: '--marked',
+      short: null,
+      required: false,
+      multiple: false,
+      schema: null,
+      default: { value: 'c\uE000\uE001\uE002\uE003d' },
+    },
+  ]);
+});
+
+test('the bytes are the same with color and modifiers forced on', () => {
+  const plain = run('app', ['get', '--manifest']);
+  const forced = invoke(fixture, ['app', 'get', '--manifest'], { env: { COLOR: 'always' } });
+  expect(forced).toEqual(plain);
+});
+
+test('an argument entry carries its schema and default, and an absent description reads null', () => {
+  expect(entryAt(documentOf(['pick', '--manifest']), []).arguments).toEqual([
+    {
+      name: 'index',
+      description: null,
+      required: false,
+      variadic: false,
+      schema: {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'string',
+        pattern: '^[0-9]+$',
+      },
+      default: { value: '0' },
+    },
+  ]);
+  expect(entryAt(documentOf(['--manifest']), ['empty']).description).toBeNull();
 });
 
 test('an unknown Command still fails in routing, and an earlier takeover wins', () => {
-  expect(run('app', ['nope', '--manifest'])).toMatchObject({ status: 2, stdout: '' });
+  expect(run('app', ['nope', '--manifest'])).toEqual({
+    status: 2,
+    stderr:
+      'Invalid input: Unknown command "nope". Use one of: get, show, old, cache, weird, empty, pick.\n',
+    stdout: '',
+  });
   expect(run('app', ['--help', '--manifest']).stdout).toMatch(/^app · A fixture application\./u);
   expect(run('app', ['--version', '--manifest'])).toEqual({
     status: 0,
@@ -273,13 +337,44 @@ test('a --manifest token after the passthrough delimiter is not read as the opti
   });
 });
 
-test('a declared default that is not plain JSON data fails the write', () => {
-  for (const scenario of ['bigint', 'nan', 'function']) {
-    expect(run(scenario, ['--manifest'])).toEqual({
-      status: 1,
-      stderr:
-        'Internal error: The manifest cannot encode the default of option "--odd" as JSON. Declare a default that is null, a Boolean, a finite number, a string, or an array or plain object of these.\n',
-      stdout: '',
-    });
+/** The report one unencodable input produces, named by the field that holds the value. */
+function unencodable(field: string): { status: number; stderr: string; stdout: string } {
+  return {
+    status: 1,
+    stderr: `Internal error: The manifest cannot encode ${field} as JSON. Supply a value that is null, a Boolean, a finite number, a string, or an array or plain object of these.\n`,
+    stdout: '',
+  };
+}
+
+test('a declared default that is not plain JSON data fails the write, wherever the input sits', () => {
+  for (const scenario of [
+    'bigint',
+    'nan',
+    'function',
+    'infinity',
+    'date',
+    'map',
+    'array-date',
+    'deep-bigint',
+    'global-nan',
+    'child-nan',
+  ]) {
+    expect(run(scenario, ['--manifest'])).toEqual(unencodable('the default of option "--odd"'));
   }
+  expect(run('argument-nan', ['--manifest'])).toEqual(unencodable('the default of argument "odd"'));
+});
+
+test('a null-prototype default of plain data prints, and an absent description reads null', () => {
+  const result = run('null-prototype', ['--manifest']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  const document = printedSchema.parse(JSON.parse(result.stdout));
+  expect(document.description).toBeNull();
+  expect(entryAt(document, []).description).toBeNull();
+  expect(entryAt(document, []).options).toMatchObject([
+    { name: 'odd', default: { value: { plain: [1, { two: null }] } } },
+  ]);
+});
+
+test('a published schema that is not plain JSON data fails the write', () => {
+  expect(run('schema', ['--manifest'])).toEqual(unencodable('the schema of option "--odd"'));
 });

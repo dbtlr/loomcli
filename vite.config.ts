@@ -2,11 +2,11 @@ import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
   fmt: {
-    // A pinned manifest document holds the exact bytes the plugin prints, so the formatter never rewrites it.
     ignorePatterns: [
       'dist/**',
       '**/*.generated.ts',
       '**/*.{md,mdx,markdown}',
+      // A pinned manifest document holds the exact bytes the plugin prints, so it is never rewritten.
       'examples/*/tests/fixtures/manifest/*.json',
     ],
     singleQuote: true,
@@ -109,8 +109,13 @@ export default defineConfig({
         ],
         rules: {
           // The manifest document's key order is its wire contract, so its objects keep that order.
-          // An absent scalar reads `null` in the document, as the contract states for every field.
           'eslint/sort-keys': 'off',
+        },
+      },
+      {
+        files: ['packages/plugins/src/manifest/document.ts'],
+        rules: {
+          // An absent scalar reads `null` in the document, as the contract states for every field.
           'unicorn/no-null': 'off',
         },
       },

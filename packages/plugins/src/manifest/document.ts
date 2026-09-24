@@ -82,9 +82,9 @@ const tokens =
 const exitCodes = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
+  '2': 'Invalid invocation inputs',
   '130': 'Cancelled by SIGINT or by a caller-supplied abort',
   '143': 'Cancelled by SIGTERM',
-  '2': 'Invalid invocation inputs',
 } as const satisfies ManifestDocument['exitCodes'];
 
 /** What the view names `json` and `jsonl` promise under Declaring a result. */
@@ -223,37 +223,46 @@ function inputLabel(entry: ManifestOption | ManifestArgument): string {
     : `argument "${entry.name}"`;
 }
 
-/**
- * The first input in a document whose declared default is not plain JSON data, or `undefined`.
- * Only a declared default can hold such a value, since core freezes every schema and extension
- * output as plain data.
- */
-function unencodableDefault(document: ManifestDocument): string | undefined {
+/** Every input a document lists: the globals, then each Command's arguments and options. */
+function inputsOf(document: ManifestDocument): (ManifestOption | ManifestArgument)[] {
   const inputs: (ManifestOption | ManifestArgument)[] = [...document.globals];
   const pending = [document.command];
   for (let entry = pending.shift(); entry !== undefined; entry = pending.shift()) {
     inputs.push(...entry.arguments, ...entry.options);
     pending.push(...entry.children);
   }
-  const found = inputs.find(
-    (input) => 'default' in input && input.default !== null && !isPlainJson(input.default.value),
-  );
-  return found === undefined ? undefined : inputLabel(found);
+  return inputs;
+}
+
+/**
+ * The first input in a document whose declared default or published schema is not plain JSON data,
+ * named with the field that holds it, or `undefined`. A declared default is snapshotted as the
+ * author wrote it, and a converter's schema keeps any value it returned, so either can hold one.
+ */
+function unencodableInput(document: ManifestDocument): string | undefined {
+  for (const input of inputsOf(document)) {
+    if ('default' in input && input.default !== null && !isPlainJson(input.default.value)) {
+      return `the default of ${inputLabel(input)}`;
+    }
+    if (input.schema !== null && !isPlainJson(input.schema)) {
+      return `the schema of ${inputLabel(input)}`;
+    }
+  }
+  return undefined;
 }
 
 /**
  * The document as bytes: `JSON.stringify` with a two-space indent and one newline, escaped as the
  * formatter's `json()` escapes, with no style. It is a bare view the plugin never declares, so no
- * override reaches it: the document is data, as a result's `json` output is. A value that is not
- * plain JSON data, which only a declared default can be, fails the write instead of printing a value
- * the author never declared.
+ * override reaches it: the document is data, as a result's `json` output is. A default or a schema
+ * that is not plain JSON data fails the write instead of printing a value the author never declared.
  */
 const manifestView: View<ManifestDocument> = {
   render: (document, context) => {
-    const unencodable = unencodableDefault(document);
+    const unencodable = unencodableInput(document);
     if (unencodable !== undefined) {
       throw new Error(
-        `The manifest cannot encode the default of ${unencodable} as JSON. Declare a default that is null, a Boolean, a finite number, a string, or an array or plain object of these.`,
+        `The manifest cannot encode ${unencodable} as JSON. Supply a value that is null, a Boolean, a finite number, a string, or an array or plain object of these.`,
       );
     }
     return encodeText(`${JSON.stringify(document, undefined, indentSpaces)}\n`, context);

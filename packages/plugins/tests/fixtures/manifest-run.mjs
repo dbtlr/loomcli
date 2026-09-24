@@ -44,7 +44,14 @@ function application() {
   );
   const clear = new Command('clear', { description: 'Empty the cache.' }).action(dispatch);
   const cache = new Command('cache', { description: 'Manage the cache.' }).command(clear);
-  const weird = new Command('weird', { description: 'A \u009b control.' }).action(dispatch);
+  const weird = new Command('weird', {
+    description: 'A \u009b control, a \u009f edge, and a \u00a0 space.',
+  })
+    .option('marked', { default: 'c\uE000\uE001\uE002\uE003d', type: 'string' })
+    .action(dispatch);
+  const pick = new Command('pick')
+    .argument('index', { default: '0', validate: z.string().regex(/^[0-9]+$/u) })
+    .action(dispatch);
   const empty = new Command('empty', { extensions: [manifestCommand({})] }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
@@ -60,6 +67,7 @@ function application() {
     .command(cache)
     .command(weird)
     .command(empty)
+    .command(pick)
     .action(dispatch);
 }
 
@@ -70,12 +78,57 @@ function defaulted(value) {
     .action(dispatch);
 }
 
+/** A hand-written schema whose converter publishes a bound JSON cannot carry. */
+const unboundedSchema = {
+  '~standard': {
+    jsonSchema: { input: () => ({ minimum: Number.NaN, type: 'number' }), output: () => ({}) },
+    validate: (value) => ({ value }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/** An application whose one option publishes that schema. */
+const unbounded = () =>
+  new Application('app', { plugins: [manifest()] })
+    .option('odd', { type: 'string', validate: unboundedSchema })
+    .action(dispatch);
+
+/** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
+function placed(where, value) {
+  const odd = { default: value, type: 'string', validate: z.any() };
+  const app = new Application('app', { plugins: [manifest()] });
+  if (where === 'global') {
+    return app.globalOption('odd', odd).action(dispatch);
+  }
+  if (where === 'argument') {
+    return app.argument('odd', { default: value, validate: z.any() }).action(dispatch);
+  }
+  return app.command(new Command('child').option('odd', odd).action(dispatch)).action(dispatch);
+}
+
 const scenarios = {
   app: application,
+  'argument-nan': () => placed('argument', Number.NaN),
+  'array-date': () => defaulted([new Date(0)]),
   bigint: () => defaulted(10n),
+  'child-nan': () => placed('child', Number.NaN),
+  date: () => defaulted(new Date(0)),
+  'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
   function: () => defaulted(() => 'ten'),
+  'global-nan': () => placed('global', Number.NaN),
+  infinity: () => defaulted(Number.POSITIVE_INFINITY),
+  map: () => defaulted(new Map()),
   nan: () => defaulted(Number.NaN),
+  'null-prototype': () =>
+    defaulted(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
+  schema: unbounded,
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
-await scenarios[scenario]().run({ host: { argv } });
+// `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
+const forced = process.env.COLOR === 'always';
+await scenarios[scenario]().run({
+  host: { argv },
+  ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
+});
