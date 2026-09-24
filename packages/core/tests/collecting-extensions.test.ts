@@ -159,6 +159,10 @@ test('a rejected extend() call the hook catches registers none of its descriptor
   expect(facts('rejected-twin', 'fault')[0]).toEqual({ fault: null });
 });
 
+test('a descriptor a hook added only to a value it discarded never reaches the build', () => {
+  expect(facts('discarded-twin', 'fault')[0]).toEqual({ fault: null });
+});
+
 test('an invalid author value is reported before a hook on that Command runs', () => {
   expect(facts('author-first', 'fault')[0]).toEqual({
     fault: 'DeclarationError',

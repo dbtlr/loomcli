@@ -16,6 +16,7 @@ import {
   validateLayer,
 } from './extension.js';
 import type {
+  AnyExtension,
   DescriptorRegistry,
   ExtensionRecords,
   ExtensionStore,
@@ -844,31 +845,29 @@ type AttachCall =
   | { identity: string; input: InputDeclaration; kind: 'input' }
   | { call: ResultCall; kind: 'views' };
 
-/**
- * Where a hook's `extend()` validates its values: the build's descriptor registry and the subject
- * a diagnostic names, which are the ones the Command's own layers were validated under.
- */
-interface ExtensionScope {
-  descriptors: DescriptorRegistry;
-  subject: ExtensionSubject;
-}
-
 /** The erased declaration one hook reads, with the calls it and every hook before it has made. */
 interface AttachState {
   calls: readonly AttachCall[];
   declared: Declared;
   /** Every extension value validated so far: the author's layers, then each hook's `extend()`. */
   extensions: ExtensionStore;
+  /**
+   * The descriptors this value's extensions registered, over the build's registry. Build commits
+   * the registry of the value the last hook returned, so a descriptor a hook added only to a value
+   * it discarded, or in a call that threw, never reaches the build.
+   */
+  registry: ReadonlyMap<string, AnyExtension>;
   hasAction: boolean;
   identity: string;
   /** The token one Command's own build mints, which every value derived within it carries. */
   lineage: object;
   path: readonly string[];
-  scope: ExtensionScope;
+  /** The Command a diagnostic about one of its extension values names. */
+  subject: ExtensionSubject;
 }
 
 /** What the hooks of one Command have produced so far, which the next hook reads. */
-type AttachProgress = Pick<AttachState, 'calls' | 'declared' | 'extensions'>;
+type AttachProgress = Pick<AttachState, 'calls' | 'declared' | 'extensions' | 'registry'>;
 
 /** The values one build made, so a value a hook returns is one of them and never a forged shape. */
 const attachments = new WeakMap<object, AttachState>();
@@ -962,8 +961,18 @@ class AttachedCommandValue implements AttachedCommand {
    */
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand {
     const state = this.#state;
-    const layer = validateLayer({ ...state.scope, declared: values, target: 'command' });
-    return new AttachedCommandValue({ ...state, extensions: extendStore(state.extensions, layer) });
+    const registry = new Map(state.registry);
+    const layer = validateLayer({
+      declared: values,
+      descriptors: registry,
+      subject: state.subject,
+      target: 'command',
+    });
+    return new AttachedCommandValue({
+      ...state,
+      extensions: extendStore(state.extensions, layer),
+      registry,
+    });
   }
 
   /** One input the running hook declared, which the Command's own names now hold. */
@@ -1029,21 +1038,26 @@ function attachOnce(
  * previous returned. The calls they made travel back to the declaration the remaining rules read.
  */
 function runAttachHooks(
-  start: Pick<AttachState, 'declared' | 'extensions' | 'scope'>,
+  start: Pick<AttachState, 'declared' | 'extensions' | 'registry'> & { layer: ExtensionSubject },
   facts: { hasAction: boolean; lineage: object; path: readonly string[] },
   plugins: readonly BuiltPlugin[],
 ): AttachProgress {
-  const { declared, extensions, scope } = start;
+  const { declared, extensions, layer, registry } = start;
   const subject = commandSubject(declared.name);
   const { lineage } = facts;
-  let progress: AttachProgress = { calls: [], declared, extensions };
+  let progress: AttachProgress = { calls: [], declared, extensions, registry };
   for (const installed of plugins) {
     const hook = installed.onCommandAttach;
     if (hook) {
       const identity = installed.identity;
-      const value = new AttachedCommandValue({ ...progress, ...facts, identity, scope });
+      const value = new AttachedCommandValue({ ...progress, ...facts, identity, subject: layer });
       const state = attachOnce(value, hook, { identity, lineage, subject });
-      progress = { calls: state.calls, declared: state.declared, extensions: state.extensions };
+      progress = {
+        calls: state.calls,
+        declared: state.declared,
+        extensions: state.extensions,
+        registry: state.registry,
+      };
     }
   }
   return progress;
@@ -1324,9 +1338,12 @@ export function buildCommand<Args, Options, Globals>(
   const description = checkDescription(commandSentence(name), state.description);
   const hidden = checkHidden(commandSentence(name), state.hidden);
   const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
-  const scope: ExtensionScope = { descriptors: context.descriptors, subject: layer };
   // The author's layers validate before any hook runs on this Command, so a hook reads them.
-  const declaredExtensions = storeCommandLayers({ ...scope, layers: state.extensions });
+  const declaredExtensions = storeCommandLayers({
+    descriptors: context.descriptors,
+    layers: state.extensions,
+    subject: layer,
+  });
   // Each declaration's own facts, in authoring order, before the rules that pair declarations.
   checkInputFacts(state.inputs, { name, subject }, context);
   const attached = collectChildren(state);
@@ -1349,11 +1366,15 @@ export function buildCommand<Args, Options, Globals>(
   // One token per Command per build, which binds a hook's return to the value it received.
   const lineage = {};
   const progress = runAttachHooks(
-    { declared: state, extensions: declaredExtensions, scope },
+    { declared: state, extensions: declaredExtensions, layer, registry: context.descriptors },
     { hasAction, lineage, path: context.path },
     context.plugins,
   );
   const { calls } = progress;
+  // The descriptors the returned value's extensions registered join the build's registry.
+  for (const [identity, descriptor] of progress.registry) {
+    context.descriptors.set(identity, descriptor);
+  }
   const hooked = applyAttachCalls(state, calls);
   const hookInputs = calls.filter((call) => call.kind === 'input');
   checkInputFacts(

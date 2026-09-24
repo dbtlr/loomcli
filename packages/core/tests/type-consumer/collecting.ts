@@ -42,6 +42,12 @@ const list: readonly { readonly note: string }[] = readExtension(node, notes);
 const one: { readonly note: string } | undefined = readExtension(node, single);
 const optionList: readonly { readonly note: string }[] = readExtension(option, optionNotes);
 
+// Two explicit type arguments name an ordinary extension, as they did before `collect` existed.
+const explicitOne: { readonly note: string } | undefined = readExtension<'command', typeof note>(
+  node,
+  single,
+);
+
 // A lifecycle hook reads the value it receives through the same typed read, and its record.
 const reader = plugin('@fixture/reader', {
   onCommandAttach: (command) => {
@@ -63,6 +69,7 @@ readExtension(attached, optionNotes);
 extension('@fixture/bad/command', { collect: 'yes', schema: note, target: 'command' });
 
 export {
+  explicitOne,
   undefinedCollect,
   undefinedOrdinary,
   collecting,

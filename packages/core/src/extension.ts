@@ -150,7 +150,7 @@ const noValues: readonly never[] = Object.freeze([]);
 function readExtension<
   Target extends ExtensionTarget,
   Schema extends StandardSchemaV1,
-  Collect extends boolean,
+  Collect extends boolean = false,
 >(
   node: NodeFor<Target>,
   descriptor: Extension<Target, Schema, Collect>,

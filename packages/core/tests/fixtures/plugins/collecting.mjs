@@ -161,6 +161,19 @@ const scenarios = {
       new Command('get', { extensions: [notes({ wrong: true })] }).action(() => {}),
     ),
   caught: () => new Application('app', { plugins: [rejecting(true)] }).command(get()),
+  'discarded-twin': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/discarding', {
+          onCommandAttach: (command) => {
+            if (command.name === null) {
+              command.extend(twin({ note: 'discarded' }));
+            }
+            return command;
+          },
+        }),
+      ],
+    }).command(get()),
   'factory-null': () => bareApplication([factoryBuilt(null)]),
   'factory-yes': () => bareApplication([factoryBuilt('yes')]),
   'hand-absent': () => bareApplication([handBuilt('absent')]),
