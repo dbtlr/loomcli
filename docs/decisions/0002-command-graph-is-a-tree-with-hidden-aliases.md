@@ -4,7 +4,7 @@ title: ADR-0002 - The command graph is a tree, and hidden aliases replace multi-
 description: A Command value attaches at one point in one Application's graph. Extra operator spellings are hidden aliases that route to the Command but never appear in any report.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-09
+modified: 2026-09-24
 ---
 
 # ADR-0002 - The command graph is a tree, and hidden aliases replace multi-parent attachment
@@ -31,3 +31,4 @@ The unnamed root declares no aliases. A hidden alias never appears in a candidat
 ## Changelog
 
 - 2026-09-09: Terminology. The glossary now names this concept an alias, an unadvertised synonym for a common mistype or inference, and retires the name hidden alias, because hidden now names a different fact: a hidden Command is a full Command kept off every listing while it still routes and runs, recorded with `docs/core.md` and the dated 2026-09-09 entry of ADR-0019. The decision here is unchanged, and "hidden aliases" in this record's title and text reads as "aliases".
+- 2026-09-24: The manifest omits aliases, as [Graph inspection](../core.md#graph-inspection) states since the 2026-09-18 correction and the [Manifest](../core.md#manifest) contract repeats. The sentence above that a manifest consumer can read them no longer holds: an alias is unadvertised, so of the projections only a completion script reads it.

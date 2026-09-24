@@ -1080,6 +1080,8 @@ export const count = new Command('count')
 
 `views` is a record keyed by view name, and its values are views in the sense [Views](#views) gives the word, reached by a name rather than by a reference. The first key is the default view, the one core renders when nothing selects another, and every key the record holds when the [formatter](#formatter)'s hook runs is a name `--format` accepts, so the names are unique by construction. A key is a bare token under the rule Application names meet and is not an integer-like string, because such a key does not keep its authored position, and the record holds at least one entry. Under `result<Value>` every entry is a `View<Value>`. Under `rows<Row>` an entry is a `View<readonly Row[]>`, which core buffers the whole sequence for, or a `RowView<Row>`, which core feeds as rows arrive. Core knows no view name of its own, not even `text`: `json()` and `jsonl()` are whole views the [formatter](#formatter) ships, with an optional `map` that reshapes what the view receives before encoding, the value under `result` and the collected rows under `rows`. They render as ordinary views with the plugin uninstalled. Installing the plugin adds `--format` to every Command that declares a result and the two views to every record that lacks them, through its `onCommandAttach` hook.
 
+The names `json` and `jsonl` carry a promise: a view under either name encodes as the formatter's view of that name does, whatever its `map` reshapes. The [manifest](#manifest) states the two encodings to an agent on the strength of the name alone, because a view's name is all the graph holds. Core enforces nothing here. An author who puts another view under `json` or `jsonl` breaks the promise the manifest makes for that Command, and a view that encodes differently takes another name.
+
 The `views()` call reshapes the views after the fact. It is published in every state on a declaration that carries a result, and never on one that carries none, so an importing application can add a wide table or a mapped `json` to a Command it did not author without touching its action. Its record takes the shape the declaration carries, so a row view under a value result is the same compile error there as in the declaration. It merges by key: an existing key is replaced in place and keeps its position, and a new key is appended. `default` names the key that becomes the default view; a default once named persists through later calls that name none, and until one is named the first key is the default. Naming a key the record does not hold after the merge is a build error. Like `extend()`, `views()` returns a new immutable value. A result's view is replaced by name alone: the Application's override list reaches failures, lanes, and declared views by reference, and never a result's views, which carry no identity.
 
 ```ts
@@ -1807,6 +1809,7 @@ GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
   -h, --help         Show this help.
   -V, --version      Print the version.
+      --manifest     Print this command's manifest as JSON.
       --explain      Explain the selected command and exit.
 
 EXAMPLES
@@ -1831,6 +1834,7 @@ GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
   -h, --help         Show this help.
   -V, --version      Print the version.
+      --manifest     Print this command's manifest as JSON.
       --explain      Explain the selected command and exit.
 ```
 
@@ -1855,6 +1859,7 @@ OPTIONS
       --format <format>        Select the output format: table, json, jsonl. Default: table.
   -h, --help                   Show this help.
   -V, --version                Print the version.
+      --manifest               Print this command's manifest as JSON.
       --explain                Explain the selected command and exit.
 
 EXAMPLES
@@ -2190,6 +2195,162 @@ The implementation increment proves these cases through public APIs:
 ### Manifest
 
 ```ts
+// @loomcli/plugins/manifest
+import type { Plugin, PluginOptions, ResultNode } from '@loomcli/core';
+
+const options = {
+  manifest: { description: "Print this command's manifest as JSON.", type: 'boolean' },
+} satisfies PluginOptions;
+export type ManifestOptions = typeof options;
+export declare function manifest(): Plugin<ManifestOptions>;
+
+// The document the option prints, as JSON. The package exports no type for it.
+interface ManifestDocument {
+  readonly name: string;
+  readonly version: string;
+  readonly description: string | null;
+  readonly tokens: string;
+  readonly exitCodes: { readonly '0': string; readonly '1': string; readonly '2': string; readonly '130': string; readonly '143': string };
+  readonly encodings: { readonly json: string; readonly jsonl: string };
+  readonly globals: readonly ManifestOption[];
+  readonly command: ManifestCommand;
+}
+interface ManifestCommand {
+  readonly name: string | null;
+  readonly path: readonly string[];
+  readonly description: string | null;
+  readonly details: readonly string[];
+  readonly examples: readonly { readonly command: string; readonly note: string | null }[];
+  readonly deprecated: string | null;
+  readonly hasAction: boolean;
+  readonly result: ResultNode | null;
+  readonly arguments: readonly ManifestArgument[];
+  readonly options: readonly ManifestOption[];
+  readonly children: readonly ManifestCommand[];
+}
+interface ManifestArgument {
+  readonly name: string;
+  readonly description: string | null;
+  readonly required: boolean;
+  readonly variadic: boolean;
+  readonly schema: Readonly<Record<string, unknown>> | null;
+  readonly default: { readonly value: unknown } | null;
+}
+type ManifestOption =
+  | {
+      readonly type: 'string';
+      readonly name: string;
+      readonly description: string | null;
+      readonly deprecated: string | null;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly required: boolean;
+      readonly multiple: boolean;
+      readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly default: { readonly value: unknown } | null;
+    }
+  | {
+      readonly type: 'boolean';
+      readonly name: string;
+      readonly description: string | null;
+      readonly deprecated: string | null;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly negative: string | null;
+      readonly polarity: 'positive' | 'negative' | 'both';
+      readonly schema: Readonly<Record<string, unknown>> | null;
+    };
+```
+
+`jsonkit get --manifest` prints the document below, abridged here to its first global; the full `globals` list continues with `--help`, `--version`, `--manifest`, and `--explain`.
+
+```json
+{
+  "name": "jsonkit",
+  "version": "0.0.0",
+  "description": "Read and reshape one JSON document.",
+  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, or the whole list of tokens for a multiple option or a variadic argument, and a null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "130": "Cancelled by SIGINT or by a caller-supplied abort",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "string",
+      "name": "file",
+      "description": "The document to read. Omit it to read piped text.",
+      "deprecated": null,
+      "long": "--file",
+      "short": "-f",
+      "required": false,
+      "multiple": false,
+      "schema": null,
+      "default": null
+    }
+  ],
+  "command": {
+    "name": "get",
+    "path": [
+      "get"
+    ],
+    "description": "Read one value at a path.",
+    "details": [
+      "Quote a path that holds a shell metacharacter.",
+      "A path is a dot-separated walk from the root of the document."
+    ],
+    "examples": [
+      {
+        "command": "get name -f doc.json",
+        "note": null
+      },
+      {
+        "command": "get nested.deep.value -f doc.json",
+        "note": null
+      }
+    ],
+    "deprecated": null,
+    "hasAction": true,
+    "result": null,
+    "arguments": [
+      {
+        "name": "path",
+        "description": "Dot path to read.",
+        "required": true,
+        "variadic": false,
+        "schema": null,
+        "default": null
+      }
+    ],
+    "options": [],
+    "children": []
+  }
+}
+```
+
+The manifest plugin prints, for the routed Command, a self-contained JSON projection of the graph that an agent reads to construct a correct invocation before it makes one. The graph is the source of truth: the document copies facts [Graph inspection](#graph-inspection) publishes and adds nothing but the fixed statements of the envelope, and no projection, plugin, or core path reads a fact from it.
+
+- **The option.** `manifest()` takes no parameters and declares one Boolean [plugin option](#plugin-options), `manifest`, with no short spelling and the description `Print this command's manifest as JSON.`, and a middleware activated by it. Like `--help`, it is consumed at any placement before `--`. It lists `manifestCommand` under its `extensions`, declares no view, and claims no slot.
+- **The takeover.** The middleware prints the document for the routed Command and returns without calling `next()`, so the exit code is 0, the action never dispatches, and a fault core held from parsing or validation is never raised: a group, such as the `cache` group of the nested fixture under [The help page](#the-help-page), prints its own document, and `jsonkit get --manifest` prints while `path` is missing. An unknown Command still fails in routing, so `jsonkit nope --manifest` reports the unknown command, and a pre-scan structure fault still ranks ahead of the chain. An earlier-installed middleware that takes over wins, so in the example applications `jsonkit --help --manifest` prints help and `jsonkit --version --manifest` prints the version.
+- **The slice.** `command` is the routed Command's entry with its visible descendants nested under `children`, and the envelope carries the Application's `name`, `version`, `description`, and `globals`, so a slice needs no second document. At the root the slice is the whole application. A hidden Command routed to directly prints its own slice, as its help page does.
+- **What a listing omits.** A hidden Command, a hidden local option, and a hidden global or plugin option are omitted, as every listing omits them. Aliases never appear. A deprecated member appears with its migration message under `deprecated`.
+- **The envelope.** `name`, `version`, and `description` are the graph's. `tokens` states the token rule once, so no entry repeats it: what a schema describes, that a `null` schema means unknown, and that an example omits the application name. `exitCodes` carries the five codes with the Meaning column's text from the [Invocation](#invocation) table, code formatting removed, and names no failure class. `encodings` states what the `json` and `jsonl` view names promise under [Declaring a result](#declaring-a-result). The three statements are fixed strings, the same in every document.
+- **A Command entry.** It mirrors `CommandNode` without `aliases`, `hidden`, and `extensions`, and adds `details` and `examples` from the Command's [`manifestCommand`](#manifest-extension) values: `details` holds each value's `details`, one string per value that holds one, and `examples` concatenates each value's `examples`, both in collection order. At the root, `description` is the Application's, as the graph reports it.
+- **An input entry.** An argument entry mirrors `ArgumentNode` without `validated`, `validateOmitted`, and `extensions`. An option entry mirrors its `OptionNode` variant without `hidden`, `scope`, and `extensions`, and on the string variant without `validated` and `validateOmitted`, so a plugin option and an application option read alike and the document names no plugin. `validated` and `validateOmitted` describe how core runs a schema, and an agent reads `schema: null` as unknown whatever they hold. `schema` is the graph's [input schema](#input-schema), copied verbatim. `default` is `{ "value": <declared value> }`, or `null` when the input declares no default or declares `undefined`. A hook-declared option, `--format` included, is an ordinary local option entry.
+- **Absence.** Every field is present in every entry. An absent scalar reads `null`, an empty list reads `[]`, and a Command with no result reads `result: null`, which is how an agent learns that `--format` is absent there.
+- **Key order.** Every object the plugin builds holds its keys in the order the type block lists them. `result` holds `kind`, `views`, and `default` in that order. A `schema` object and a default value keep the key order of the graph's snapshot, as JavaScript enumerates it.
+- **Bytes.** The document is `JSON.stringify(document, null, 2)` and one newline, written to stdout with no style, so the bytes are the same under every capability. The text is escaped as the formatter's `json()` escapes it: through `style.escape`, with every character from U+007F to U+009F replaced by its `\uXXXX` escape in four lowercase hex digits. A declared default that is not plain JSON data, meaning `null`, a Boolean, a finite number, a string, or an array or plain object holding only these, fails the write through the output-view row of the [Failure contract](#failure-contract): a `bigint`, `NaN`, a function, a `Date`, or a `Map` would otherwise print a value the author never declared. The middleware writes through a bare view the plugin does not declare, so no override reaches it: the document is data, as a result's `json` output is, and an application that wants another document writes its own projection.
+- **Stability.** The document carries no version of its own. The Application's `version` is its only version identity. A field keeps its meaning across releases, a later fact arrives as a new field, and a consumer ignores fields it does not know.
+
+#### Manifest extension
+
+```ts
 // src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
 import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
@@ -2223,11 +2384,22 @@ const get = new Command('get', {
 });
 ```
 
-The manifest plugin is `@loomcli/plugins/manifest`. This section defines its declarations module, `@loomcli/plugins/manifest/extension`, which ships ahead of the plugin because help supplies values through it. The plugin's option and the document it prints are specified with the plugin.
+The declarations module, `@loomcli/plugins/manifest/extension`, holds the collecting extension through which the author and any plugin give a Command's entry its `details` and `examples`. It is declarations alone, apart from the plugin's entry, so help supplies values through it whether or not the manifest is installed.
 
 - **The extension.** `manifestCommand` is a [collecting extension](#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is prose under the rule help's `details` follows: every line holds a character other than whitespace, and line breaks are kept. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
 - **Who supplies values.** A value is meant for an agent because it lands in the manifest. The author's own value is where an instruction goes that an agent needs beyond the help page. A plugin's value holds the facts that plugin chooses to project into the manifest, as help's hook does under [Help in the manifest](#help-in-the-manifest).
 - **An empty value.** A value that holds neither field is accepted and stored, and the manifest prints nothing for it.
+
+#### Manifest acceptance
+
+The manifest is proven when both example applications install `manifest()` after `format()` and ahead of the example plugin, and public APIs alone produce these results under Node and Bun:
+
+- **Pinned documents.** `textstat --manifest`, `jsonkit --manifest`, and `jsonkit get --manifest` print documents compared byte for byte. `jsonkit get`'s `details` holds the author's value ahead of help's. `jsonkit fetch --manifest` shows the deprecated Command's message. `jsonkit debug --manifest` prints the hidden Command's own slice, and the root document omits it.
+- **An agent-shaped run.** A process test reads `textstat --manifest` alone, builds an invocation from it by choosing `--metric` from its schema's enum and `--format json` from the result's views, runs it, and parses stdout as the `json` encoding states.
+- **Help pages.** Every help page lists the `--manifest` row among its options, and the golden pages are re-pinned for it.
+- **Takeover and precedence.** `jsonkit get --manifest` without its required argument prints with exit 0, and so does `--manifest` on a group in the nested fixture. An unknown Command still reports its routing error. `jsonkit --help --manifest` prints help and `jsonkit --version --manifest` prints the version. A `--manifest` token after `--` is not read as the option.
+- **Entries.** Fixture applications cover: a hidden option and a hidden global omitted. An explicit `default: undefined` reads `null`. Two `manifestCommand` values with `details` produce two strings in collection order, and a value with neither field adds nothing. A U+009B inside a description prints as `\u009b`. A declared `bigint`, `NaN`, or function default fails through the output-view row. Keys follow the type block's order, `result` included, and no version field appears.
+- **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs `--manifest`.
 
 ### Example coverage
 
