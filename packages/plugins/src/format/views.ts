@@ -1,14 +1,9 @@
-import type { View, ViewContext } from '@loomcli/core';
+import type { View } from '@loomcli/core';
+
+import { encodeText } from '../encode.js';
 
 /** `JSON.stringify`'s indent for `json()`'s whole document. `jsonl()` passes no indent. */
 const jsonIndentSpaces = 2;
-
-/** The radix and digit count a `\uXXXX` control-character escape always uses. */
-const hexRadix = 16;
-const hexDigitCount = 4;
-
-/** Each replaced character is exactly one UTF-16 code unit, so its code always sits at index 0. */
-const soleCodeUnit = 0;
 
 /** The identity mapping a view falls back to when the author supplies no `map`. */
 function identity<Data>(data: Readonly<Data>): unknown {
@@ -32,23 +27,6 @@ function stringify(value: unknown, indent?: number): string {
     throw new Error('The value cannot be encoded as JSON: the value is undefined.');
   }
   return encoded;
-}
-
-/**
- * Makes the rendered text safe under every rendering policy. `style.escape` neutralizes the
- * internal markup delimiters first; the C1 controls and DEL, U+007F through U+009F, are not among
- * them, so they are replaced afterward, each as its own four-digit lowercase `\uXXXX` escape. The
- * two passes never collide: `style.escape` only ever inserts its own marker character followed by
- * hex digits, never a literal backslash, so it cannot re-mangle the escapes this second pass adds.
- */
-function encodeText(text: string, context: ViewContext): string {
-  return context.style
-    .escape(text)
-    .replace(
-      /[\u007F-\u009F]/gu,
-      (character) =>
-        `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
-    );
 }
 
 /** Configuration both views share: how to reshape the received data before encoding it. */

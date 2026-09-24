@@ -189,7 +189,22 @@ try {
   for (const name of selected) {
     const result = run(runtimes.get(name), [join(temporary, 'dist/manifest.js')], temporary);
     assert.equal(result.status, 0, result.output);
-    assert.equal(result.stdout, collectedExpected, `${name}: packed manifest values`);
+    const [collected, ...document] = result.stdout.split('\n');
+    assert.equal(`${collected}\n`, collectedExpected, `${name}: packed manifest values`);
+    const printed = JSON.parse(document.join('\n'));
+    assert.deepEqual(
+      {
+        details: printed.command.details,
+        examples: printed.command.examples,
+        name: printed.command.name,
+      },
+      {
+        details: ['Only an agent needs this.'],
+        examples: [{ command: 'read x', note: null }],
+        name: 'read',
+      },
+      `${name}: packed manifest document`,
+    );
   }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
@@ -204,7 +219,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, and the collected manifest values.\n`,
+    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, and the manifest document.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

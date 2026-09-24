@@ -30,6 +30,7 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
       '      --format <format>        Select the output format: table, json, jsonl. Default: table.',
       '  -h, --help                   Show this help.',
       '  -V, --version                Print the version.',
+      "      --manifest               Print this command's manifest as JSON.",
       '      --explain                Explain the selected command and exit.',
       '',
       'EXAMPLES',

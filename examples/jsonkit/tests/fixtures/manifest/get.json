@@ -1,0 +1,111 @@
+{
+  "name": "jsonkit",
+  "version": "0.0.0",
+  "description": "Read and reshape one JSON document.",
+  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, or the whole list of tokens for a multiple option or a variadic argument, and a null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "130": "Cancelled by SIGINT or by a caller-supplied abort",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "string",
+      "name": "file",
+      "description": "The document to read. Omit it to read piped text.",
+      "deprecated": null,
+      "long": "--file",
+      "short": "-f",
+      "required": false,
+      "multiple": false,
+      "schema": null,
+      "default": null
+    },
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "long": "--manifest",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    },
+    {
+      "type": "boolean",
+      "name": "explain",
+      "description": "Explain the selected command and exit.",
+      "deprecated": null,
+      "long": "--explain",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "schema": null
+    }
+  ],
+  "command": {
+    "name": "get",
+    "path": [
+      "get"
+    ],
+    "description": "Read one value at a path.",
+    "details": [
+      "Quote a path that holds a shell metacharacter.",
+      "A path is a dot-separated walk from the root of the document."
+    ],
+    "examples": [
+      {
+        "command": "get name -f doc.json",
+        "note": null
+      },
+      {
+        "command": "get nested.deep.value -f doc.json",
+        "note": null
+      }
+    ],
+    "deprecated": null,
+    "hasAction": true,
+    "result": null,
+    "arguments": [
+      {
+        "name": "path",
+        "description": "Dot path to read.",
+        "required": true,
+        "variadic": false,
+        "schema": null,
+        "default": null
+      }
+    ],
+    "options": [],
+    "children": []
+  }
+}

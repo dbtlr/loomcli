@@ -21,7 +21,7 @@ function graph() {
   return inspected.parse(JSON.parse(result.stdout));
 }
 
-test('help supplies the root help values to the manifest with no manifest plugin installed', () => {
+test("help supplies the root help values to the manifest's collecting extension", () => {
   expect(graph().root.extensions[identity]).toEqual([
     {
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
