@@ -8,8 +8,20 @@ import {
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
-import { buildCommandExtensions, buildExtensions } from './extension.js';
-import type { DescriptorRegistry, ExtensionRecords, ExtensionValue } from './extension.js';
+import {
+  buildExtensions,
+  extendStore,
+  publishStore,
+  storeCommandLayers,
+  validateLayer,
+} from './extension.js';
+import type {
+  DescriptorRegistry,
+  ExtensionRecords,
+  ExtensionStore,
+  ExtensionSubject,
+  ExtensionValue,
+} from './extension.js';
 import {
   checkDeprecated,
   checkDescription,
@@ -830,22 +842,33 @@ function buildResult(state: Declared, hasAction: boolean): DeclaredResult | unde
 /** One call a hook made, in the order it made it, which the declaration reads back afterwards. */
 type AttachCall =
   | { identity: string; input: InputDeclaration; kind: 'input' }
-  | { call: ResultCall; kind: 'views' }
-  | { kind: 'extend'; values: readonly ExtensionValue<'command'>[] };
+  | { call: ResultCall; kind: 'views' };
+
+/**
+ * Where a hook's `extend()` validates its values: the build's descriptor registry and the subject
+ * a diagnostic names, which are the ones the Command's own layers were validated under.
+ */
+interface ExtensionScope {
+  descriptors: DescriptorRegistry;
+  subject: ExtensionSubject;
+}
 
 /** The erased declaration one hook reads, with the calls it and every hook before it has made. */
 interface AttachState {
   calls: readonly AttachCall[];
   declared: Declared;
+  /** Every extension value validated so far: the author's layers, then each hook's `extend()`. */
+  extensions: ExtensionStore;
   hasAction: boolean;
   identity: string;
   /** The token one Command's own build mints, which every value derived within it carries. */
   lineage: object;
   path: readonly string[];
+  scope: ExtensionScope;
 }
 
 /** What the hooks of one Command have produced so far, which the next hook reads. */
-type AttachProgress = Pick<AttachState, 'calls' | 'declared'>;
+type AttachProgress = Pick<AttachState, 'calls' | 'declared' | 'extensions'>;
 
 /** The values one build made, so a value a hook returns is one of them and never a forged shape. */
 const attachments = new WeakMap<object, AttachState>();
@@ -872,10 +895,12 @@ class AttachedCommandValue implements AttachedCommand {
 
   readonly #state: AttachState;
   readonly #result: ResultNode | null;
+  readonly #extensions: Readonly<Record<string, unknown>>;
 
   constructor(state: AttachState) {
     this.#state = state;
     this.#result = resultNode(buildResult(state.declared, state.hasAction));
+    this.#extensions = publishStore(state.extensions);
     attachments.set(this, state);
     Object.freeze(this);
   }
@@ -904,6 +929,10 @@ class AttachedCommandValue implements AttachedCommand {
     return this.#result;
   }
 
+  get extensions(): Readonly<Record<string, unknown>> {
+    return this.#extensions;
+  }
+
   argument(name: string, config: ArgumentConfig): AttachedCommand {
     return this.#declare({ config: captureConfig(config), kind: 'argument', name });
   }
@@ -928,8 +957,14 @@ class AttachedCommandValue implements AttachedCommand {
     );
   }
 
+  /**
+   * The values are validated here, at the call, so the next read of `extensions` holds them and
+   * build never validates them again. A rejected value throws from the call and adds nothing.
+   */
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand {
-    return this.#derive({ kind: 'extend', values }, this.#state.declared);
+    const state = this.#state;
+    const layer = validateLayer({ ...state.scope, declared: values, target: 'command' });
+    return new AttachedCommandValue({ ...state, extensions: extendStore(state.extensions, layer) });
   }
 
   /** One input the running hook declared, which the Command's own names now hold. */
@@ -995,23 +1030,24 @@ function attachOnce(
  * previous returned. The calls they made travel back to the declaration the remaining rules read.
  */
 function runAttachHooks(
-  declared: Declared,
+  start: Pick<AttachState, 'declared' | 'extensions' | 'scope'>,
   facts: { hasAction: boolean; lineage: object; path: readonly string[] },
   plugins: readonly BuiltPlugin[],
-): readonly AttachCall[] {
+): AttachProgress {
+  const { declared, extensions, scope } = start;
   const subject = commandSubject(declared.name);
   const { lineage } = facts;
-  let progress: AttachProgress = { calls: [], declared };
+  let progress: AttachProgress = { calls: [], declared, extensions };
   for (const installed of plugins) {
     const hook = installed.onCommandAttach;
     if (hook) {
       const identity = installed.identity;
-      const value = new AttachedCommandValue({ ...progress, ...facts, identity });
+      const value = new AttachedCommandValue({ ...progress, ...facts, identity, scope });
       const state = attachOnce(value, hook, { identity, lineage, subject });
-      progress = { calls: state.calls, declared: state.declared };
+      progress = { calls: state.calls, declared: state.declared, extensions: state.extensions };
     }
   }
-  return progress.calls;
+  return progress;
 }
 
 /**
@@ -1043,13 +1079,10 @@ function applyAttachCalls<Args, Options, Globals>(
 ): CommandState<Args, Options, Globals> {
   let next = state;
   for (const call of calls) {
-    if (call.kind === 'input') {
-      next = declareHookInput(next, call.input);
-    } else if (call.kind === 'views') {
-      next = { ...next, results: [...next.results, call.call] };
-    } else {
-      next = declareExtensions(next, call.values);
-    }
+    next =
+      call.kind === 'input'
+        ? declareHookInput(next, call.input)
+        : { ...next, results: [...next.results, call.call] };
   }
   return next;
 }
@@ -1292,11 +1325,9 @@ export function buildCommand<Args, Options, Globals>(
   const description = checkDescription(commandSentence(name), state.description);
   const hidden = checkHidden(commandSentence(name), state.hidden);
   const deprecated = checkDeprecated(commandSentence(name), state.deprecated);
-  const declaredExtensions = buildCommandExtensions({
-    descriptors: context.descriptors,
-    layers: state.extensions,
-    subject: layer,
-  });
+  const scope: ExtensionScope = { descriptors: context.descriptors, subject: layer };
+  // The author's layers validate before any hook runs on this Command, so a hook reads them.
+  const declaredExtensions = storeCommandLayers({ ...scope, layers: state.extensions });
   // Each declaration's own facts, in authoring order, before the rules that pair declarations.
   checkInputFacts(state.inputs, { name, subject }, context);
   const attached = collectChildren(state);
@@ -1318,7 +1349,12 @@ export function buildCommand<Args, Options, Globals>(
    */
   // One token per Command per build, which binds a hook's return to the value it received.
   const lineage = {};
-  const calls = runAttachHooks(state, { hasAction, lineage, path: context.path }, context.plugins);
+  const progress = runAttachHooks(
+    { declared: state, extensions: declaredExtensions, scope },
+    { hasAction, lineage, path: context.path },
+    context.plugins,
+  );
+  const { calls } = progress;
   const hooked = applyAttachCalls(state, calls);
   const hookInputs = calls.filter((call) => call.kind === 'input');
   checkInputFacts(
@@ -1329,13 +1365,8 @@ export function buildCommand<Args, Options, Globals>(
   // The hook-declared names are checked first, so a collision reports in the plugin's voice.
   // A rule the author's own declaration voices never speaks for a name a hook declared.
   checkAttachedInputs(hooked, hookInputs, globals);
-  const extensions = calls.some((call) => call.kind === 'extend')
-    ? buildCommandExtensions({
-        descriptors: context.descriptors,
-        layers: hooked.extensions,
-        subject: layer,
-      })
-    : declaredExtensions;
+  // Every value was validated once, the author's above and each hook's at its `extend()` call.
+  const extensions = publishStore(progress.extensions);
   const slots = hookInputs.length > 0 ? collectArguments(hooked, subject) : declaredSlots;
   checkArgumentPlacement(name, slots[0], attached[0]);
   const result = calls.length > 0 ? buildResult(hooked, hasAction) : declaredResult;

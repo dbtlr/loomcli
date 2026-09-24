@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the pack exports the [manifest](#manifest)'s declarations module ahead of the manifest plugin.
 
 ## Application declarations
 
@@ -1682,18 +1682,25 @@ const app = new Application('example', {
 ```
 
 ```ts
+// src/lines.ts, the pack's line and prose rules, which belong to no subpath
+import { z } from 'zod';
+
+const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
+export const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
+  message: 'Supply one line that holds a character other than whitespace.',
+});
+export const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
+  message: 'Supply prose whose every line holds a character other than whitespace.',
+});
+```
+
+```ts
 // src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
 import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
+import { line, prose } from '../lines.js';
 
 export const helpCommand = extension(`${Package.name}/help/command`, {
   schema: z.object({
@@ -1752,7 +1759,7 @@ export const attachHelp: CommandAttachHook = (command) => {
   return command.extend(
     manifestCommand({
       ...(value.details === undefined ? {} : { details: value.details }),
-      ...(value.examples === undefined ? {} : { examples: value.examples.map((example) => ({ ...example })) }),
+      ...(value.examples === undefined ? {} : { examples: [...value.examples] }),
     }),
   );
 };
@@ -2356,13 +2363,8 @@ import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
+// Help's own line and prose rules, from the pack module both declarations modules share.
+import { line, prose } from '../lines.js';
 
 export const manifestCommand = extension(`${Package.name}/manifest/command`, {
   collect: true,

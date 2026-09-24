@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0031 - A plugin supplies facts to another plugin's projection through a collecting extension
 description: A projection with an open set of suppliers declares a collecting extension, whose values accumulate in order instead of replacing each other, and a supplier adds values from its onCommandAttach hook by importing the declaring plugin's declarations module. Help supplies its details and examples to the manifest this way, and the manifest carries no code for any supplier.
-status: proposed
+status: accepted
 created: 2026-09-24
 modified: 2026-09-24
 ---
@@ -49,4 +49,8 @@ It reverses the rejection of contribution queues that ADR-0019 recorded among it
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that collects values, publishes `extensions` to hooks, ships the manifest's declarations module, and makes help supply its values, proven through `inspect()` with no manifest plugin installed, under Node and Bun.
+Accepted 2026-09-24 with the implementation. Core collects the values of an extension declared with `collect: true`, publishes `extensions` on the value a hook receives, and validates a hook's `extend()` values at the call, once. The pack exports `@loomcli/plugins/manifest/extension`, and help's hook supplies its `details` and `examples` through it. `inspect()` on textstat's root and on jsonkit's root and `get` reports them with no manifest plugin installed, jsonkit's author value first on `get`, and the packed consumer reads them under Node and Bun.
+
+## Changelog
+
+- 2026-09-24: Accepted with the implementation. The line and prose rules help and the manifest share moved into one pack module outside any subpath, `packages/plugins/src/lines.ts`, which help's and the manifest's declarations modules both import, so a value help supplies always validates and neither subpath imports the other's internals. An existing type test that pinned `TS2345` for a Command descriptor reading an option node now pins `TS2769`, because `readExtension` has overloads; the read is rejected as before.

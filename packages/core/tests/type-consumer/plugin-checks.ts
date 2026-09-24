@@ -55,7 +55,7 @@ if (!option) {
 }
 
 // A read takes the node kind its own descriptor targets.
-// @ts-expect-error TS2345: A Command descriptor never reads an option node.
+// @ts-expect-error TS2769: A Command descriptor never reads an option node.
 const wrongNode = readExtension(option, helpCommand);
 
 const reader: Middleware<typeof help> = ({ options }) => {

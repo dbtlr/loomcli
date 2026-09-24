@@ -1,6 +1,7 @@
 import { readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { breaks } from '../lines.js';
 import {
   argumentFacts,
   argumentForm,
@@ -14,7 +15,6 @@ import {
 } from './cells.js';
 import type { Row, StringOption } from './cells.js';
 import { helpCommand } from './extension.js';
-import { breaks } from './lines.js';
 
 /**
  * The members one page shows. A member is visible when it is not hidden, and this is the one place

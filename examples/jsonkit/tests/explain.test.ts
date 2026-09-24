@@ -89,6 +89,7 @@ test('the inspected graph carries the plugin option, the extension value, and th
     ['explain', 'plugin'],
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
+  // Help also supplies its value to the manifest's collecting extension, with no manifest installed.
   expect(graph.root.extensions).toEqual({
     '@loom/explain/command': {
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
@@ -98,6 +99,12 @@ test('the inspected graph carries the plugin option, the extension value, and th
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
       examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
     },
+    '@loomcli/plugins/manifest/command': [
+      {
+        details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
+        examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
+      },
+    ],
   });
   const get = graph.root.children.find((child) => child.name === 'get');
   expect(get?.extensions).toEqual({
@@ -112,5 +119,16 @@ test('the inspected graph carries the plugin option, the extension value, and th
         { command: 'get nested.deep.value -f doc.json' },
       ],
     },
+    // The author's agent-only value comes first, then the value help supplied at its hook.
+    '@loomcli/plugins/manifest/command': [
+      { details: 'Quote a path that holds a shell metacharacter.' },
+      {
+        details: 'A path is a dot-separated walk from the root of the document.',
+        examples: [
+          { command: 'get name -f doc.json' },
+          { command: 'get nested.deep.value -f doc.json' },
+        ],
+      },
+    ],
   });
 });

@@ -184,6 +184,13 @@ try {
     assert.equal(result.status, 0, result.output);
     assert.equal(result.stdout, paletteExpected, `${name}: packed palette and fallback output`);
   }
+  const collectedExpected =
+    '[{"details":"Only an agent needs this."},{"examples":[{"command":"read x"}]}]\n';
+  for (const name of selected) {
+    const result = run(runtimes.get(name), [join(temporary, 'dist/manifest.js')], temporary);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.stdout, collectedExpected, `${name}: packed manifest values`);
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -197,7 +204,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, and the overridden version line.\n`,
+    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, and the collected manifest values.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
