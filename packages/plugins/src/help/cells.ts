@@ -104,7 +104,7 @@ function oneLine(text: string): string {
 
 /** Whether a value is a list of strings, which prints as its elements separated by a space. */
 function isStrings(value: unknown): value is readonly string[] {
-  // `Array.from` reads a hole as the `undefined` it is, which `every` alone would skip.
+  // Spreading reads a hole as the `undefined` it is, which `every` alone would skip.
   return Array.isArray(value) && [...value].every((entry: unknown) => typeof entry === 'string');
 }
 
