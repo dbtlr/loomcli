@@ -163,6 +163,18 @@ test('a descriptor a hook added only to a value it discarded never reaches the b
   expect(facts('discarded-twin', 'fault')[0]).toEqual({ fault: null });
 });
 
+test('a descriptor a hook returns is compared with every other descriptor of its identity', () => {
+  const twice = {
+    fault: 'DeclarationError',
+    message:
+      'Extension "@fixture/notes/command" is defined twice. Install one copy of the package that defines it.',
+  };
+  // The root's hook returns a twin, and the child's author layer carries the original.
+  expect(facts('returned-twin', 'fault')[0]).toEqual(twice);
+  // Two hooks on one Command each return a value of a different descriptor of one identity.
+  expect(facts('twin-hooks', 'fault')[0]).toEqual(twice);
+});
+
 test('an invalid author value is reported before a hook on that Command runs', () => {
   expect(facts('author-first', 'fault')[0]).toEqual({
     fault: 'DeclarationError',

@@ -239,6 +239,15 @@ const scenarios = {
         }),
       ],
     }).command(get()),
+  'returned-twin': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@fixture/returning', {
+          onCommandAttach: (command) =>
+            command.name === null ? command.extend(twin({ note: 'root' })) : command,
+        }),
+      ],
+    }).command(get()),
   'twice-in-call': () =>
     new Application('app', {
       plugins: [
@@ -262,6 +271,16 @@ const scenarios = {
         }),
       ],
     }).command(get()),
+  'twin-hooks': () =>
+    new Application('app', {
+      plugins: [
+        supplier('@fixture/first', 'first hook'),
+        plugin('@fixture/twin', {
+          onCommandAttach: (command) =>
+            command.name === 'get' ? command.extend(twin({ note: 'twin' })) : command,
+        }),
+      ],
+    }).command(new Command('get').action(() => {})),
 };
 
 const application = scenarios[scenario];
