@@ -47,7 +47,7 @@ function application() {
   const weird = new Command('weird', {
     description: 'A \u009b control, a \u009f edge, and a \u00a0 space.',
   })
-    .option('marked', { default: 'c\uE000\uE001\uE002\uE003d', type: 'string' })
+    .option('marked', { default: 'c\uE000\uE001\uE002\uE003d\uE003E000e', type: 'string' })
     .action(dispatch);
   const pick = new Command('pick')
     .argument('index', { default: '0', validate: z.string().regex(/^[0-9]+$/u) })

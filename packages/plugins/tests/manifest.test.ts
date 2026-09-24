@@ -285,7 +285,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       required: false,
       multiple: false,
       schema: null,
-      default: { value: 'c\uE000\uE001\uE002\uE003d' },
+      default: { value: 'c\uE000\uE001\uE002\uE003d\uE003E000e' },
     },
   ]);
 });
@@ -364,7 +364,7 @@ test('a declared default that is not plain JSON data fails the write, wherever t
   expect(run('argument-nan', ['--manifest'])).toEqual(unencodable('the default of argument "odd"'));
 });
 
-test('a null-prototype default of plain data prints, and an absent description reads null', () => {
+test('a null-prototype default prints as the plain object core copies it into, and an absent description reads null', () => {
   const result = run('null-prototype', ['--manifest']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const document = printedSchema.parse(JSON.parse(result.stdout));

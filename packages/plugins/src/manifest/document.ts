@@ -195,7 +195,11 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
   };
 }
 
-/** Whether a value is plain JSON data: null, a Boolean, a finite number, a string, or containers of these. */
+/**
+ * Whether a value is plain JSON data: null, a Boolean, a finite number, a string, or arrays and
+ * plain objects of these. Core copies every plain object it snapshots onto `Object.prototype`, so
+ * a null-prototype object never reaches the document.
+ */
 function isPlainJson(value: unknown): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return true;
@@ -211,7 +215,7 @@ function isPlainJson(value: unknown): boolean {
   }
   const prototype: unknown = Object.getPrototypeOf(value);
   return (
-    (prototype === Object.prototype || prototype === null) &&
+    prototype === Object.prototype &&
     Object.values(value).every((item: unknown) => isPlainJson(item))
   );
 }
