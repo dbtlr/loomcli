@@ -1,6 +1,7 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode } from '@loomcli/core';
 
+import { escapeControls } from '../encode.js';
 import { terminator } from '../lines.js';
 import { isStrings, oneLine } from './cells.js';
 import { helpArgument, helpInput } from './extension.js';
@@ -109,12 +110,16 @@ function itemsSet(schema: Schema): readonly string[] | undefined {
 
 /**
  * One value as the list prints it: as written, or as its JSON string when it is empty or holds
- * whitespace, a comma, a double quote, or a line terminator, with every line terminator escaped so
- * the row stays one line.
+ * whitespace, a comma, a double quote, a line terminator, or a control character. JSON escapes the
+ * C0 controls; DEL and the C1 controls, which JSON leaves raw, print as their lowercase `\uXXXX`
+ * escapes, and every line terminator prints escaped, so the row shows the exact value on one line.
  */
 function listed(value: string): string {
-  const plain = value !== '' && !/[\s,"]/u.test(value) && !terminator.test(value);
-  return oneLine(plain ? value : JSON.stringify(value));
+  const plain = value !== '' && !/[\s,"\p{Cc}]/u.test(value) && !terminator.test(value);
+  if (plain) {
+    return value;
+  }
+  return oneLine(escapeControls(JSON.stringify(value)));
 }
 
 /**

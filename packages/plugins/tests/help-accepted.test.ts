@@ -87,6 +87,7 @@ test('a row derives its accepted values from a closed set of strings at every le
     '--number-typed': null,
     '--pattern-only': null,
     '--quoted': String.raw`One of: "", "a b", "c,d", "e\"f", "g\u2028h", plain.`,
+    '--quoted-controls': String.raw`One of: "b\bc", "d\u007fe", "f\u009bg".`,
     '--quoted-more': `${String.raw`One of: "i\u0085j", "k\tl", "m`}\u00a0${String.raw`n".`}`,
     '--repeated': 'One of: a, b.',
     '--repeated-late': 'One of: b, a.',
