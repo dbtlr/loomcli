@@ -319,7 +319,7 @@ A public surface derived from the Command graph, such as help, a manifest, compl
 _Avoid_: Export, output format, adapter
 
 **Help page**:
-The projection of one routed Command that the help plugin prints: its masthead, usage, visible members, and examples, with meaning independent of styling.
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling.
 _Avoid_: Usage text, man page, help screen
 
 **Formatter**:

@@ -1193,7 +1193,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
 import { attachHelp } from './attach.js';
-import { helpCommand, helpInput } from './extension.js';
+import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpPage } from './views.js';
 
 const options = { help: { description: 'Show this help.', short: 'h', type: 'boolean' } } satisfies PluginOptions;
@@ -1201,7 +1201,7 @@ export type HelpOptions = typeof options;
 
 export function help(): Plugin<HelpOptions> {
   return plugin(`${Package.name}/help`, {
-    extensions: [helpCommand, helpInput],
+    extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
     options,
@@ -1355,14 +1355,14 @@ export const attachFormat: CommandAttachHook = (command) => {
   const reshaped = command.views(Object.fromEntries(missing));
   const names = reshaped.result?.views ?? [];
   return reshaped.option('format', {
-    description: `Select the output format: ${names.join(', ')}. Default: ${result.default}.`,
+    description: `Select the output format, ${result.default} by default.`,
     type: 'string',
     validate: formatName(names),
   });
 };
 ```
 
-The hook includes the declared default in its description, as specified by the [help restyle](#help-and-version-restyle).
+The hook includes the declared default in its description, as specified by the [help restyle](#help-and-version-restyle), and leaves the view names to the help page's [accepted values](#accepted-values), which read them from the option's schema.
 
 - **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. Core resolves each result record under [Result build errors](#result-build-errors) before the hooks, so `result` is exact, and runs those rules again over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
 - **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. Build validates a Command's author layers before the first hook runs on that Command, so a hook never reads an unvalidated value, and an invalid value the author declared on a Command is reported before any hook runs on it. A value passed to `extend()` is validated at the call: every rule under [Plugin build errors](#plugin-build-errors) that applies to a declaration's `extensions` applies there too, and it throws its `DeclarationError` from the call, which reports as itself. A hook that catches the throw continues, and the rejected value is not added. Only the value a hook returns carries its `extend()` values into the build, so a descriptor used in a call that threw, or in a value the hook discarded, registers nothing. Build stores the output validated at the call and runs no schema twice. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape.
@@ -1517,12 +1517,12 @@ Overriding a plugin's view replaces its function alone: the plugin stays install
 import { plugin } from '@loomcli/core';
 
 import { attachHelp } from './attach.js';
-import { helpCommand, helpInput } from './extension.js';
+import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpPage } from './views.js';
 
 export function help(): Plugin<HelpOptions> {
   return plugin(`${Package.name}/help`, {
-    extensions: [helpCommand, helpInput],
+    extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
     options,
@@ -1653,13 +1653,13 @@ jsonkit v0.2.0
 
 ### Help
 
-`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, the two extensions below, and the `onCommandAttach` hook of [Help in the manifest](#help-in-the-manifest). The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, the three extensions below, and the `onCommandAttach` hook of [Help in the manifest](#help-in-the-manifest). The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
 
 The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
 
 #### Help extensions
 
-Two descriptors are exported from `@loomcli/plugins/help/extension`, and both are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
+Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so build rejects a value that breaks one the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
 ```ts
 // @loomcli/plugins/help/views
@@ -1716,12 +1716,19 @@ export const helpCommand = extension(`${Package.name}/help/command`, {
   target: 'command',
 });
 export const helpInput = extension(`${Package.name}/help/input`, {
-  schema: z.object({ placeholder: z.string().regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.').optional() }),
+  schema: z.object({
+    accepts: line.optional(),
+    placeholder: z.string().regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.').optional(),
+  }),
   target: 'option',
+});
+export const helpArgument = extension(`${Package.name}/help/argument`, {
+  schema: z.object({ accepts: line.optional() }),
+  target: 'argument',
 });
 ```
 
-`helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead, one authored line per page line, each indented two spaces, with line breaks kept and nothing wrapped; every line of it holds a character other than whitespace, so it adds no blank line of its own to the page and no line terminator at either end. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option, a global option, and a plugin option carry it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean option is accepted and never shown, because a Boolean option takes no value. Arguments carry no help extension: an argument's placeholder is its declared name, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
+`helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead, one authored line per page line, each indented two spaces, with line breaks kept and nothing wrapped; every line of it holds a character other than whitespace, so it adds no blank line of its own to the page and no line terminator at either end. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option, a global option, and a plugin option carry it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean option is accepted and never shown, because a Boolean option takes no value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean option is accepted and never shown, for the same reason. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
 
 ```ts
 import { Application, Command } from '@loomcli/core';
@@ -1743,6 +1750,25 @@ const get = new Command('get', {
     }),
   ],
 }).argument('path', { description: 'Dot path to read.', required: true });
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { helpArgument, helpInput } from '@loomcli/plugins/help/extension';
+import { z } from 'zod';
+
+const pick = new Command('pick', { description: 'Print one item of a list.' })
+  .argument('index', {
+    description: 'The item to print.',
+    extensions: [helpArgument({ accepts: 'A whole number from 0 up to the last index.' })],
+    validate: z.string().regex(/^[0-9]+$/u),
+  })
+  .option('order', {
+    description: 'The order to count in.',
+    extensions: [helpInput({ accepts: 'asc to count from the first item, desc from the last.' })],
+    type: 'string',
+    validate: z.enum(['asc', 'desc']),
+  });
 ```
 
 A projection that wants help's prose imports the descriptor module and reads the values with `readExtension`, as [Extensions](#extensions) describes, and never imports the help middleware.
@@ -1794,7 +1820,7 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 8. **EXAMPLES.** For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
 9. **Hint.** When the page printed COMMANDS: `Run <path> <command> --help for command details.`
 
-The right-cell rule: the description when the member has one, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>`, and `deprecated: <message>`. Two spaces separate a description from the parenthesis; a member with no description has the parenthesis as its whole right cell, with no leading spaces; and a member with neither description nor facts has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
+The right-cell rule: the description when the member has one, then, for an option or an argument that has them, its [accepted values](#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>`, and `deprecated: <message>`. One space separates the description from the accepted-values sentence, and two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
@@ -1816,7 +1842,7 @@ COMMANDS
   fetch   Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
-      --format <format>  Select the output format: records, json, jsonl. Default: records.
+      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
@@ -1865,11 +1891,11 @@ ARGUMENTS
   files  The files to count. Omit them to read piped text.
 
 OPTIONS
-  -m, --metric <metric>        What each row counts.  (default: bytes)
+  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
       --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
       --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)
   -t, --total                  Add a total row.
-      --format <format>        Select the output format: table, json, jsonl. Default: table.
+      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
   -h, --help                   Show this help.
   -V, --version                Print the version.
       --manifest               Print this command's manifest as JSON.
@@ -1881,6 +1907,33 @@ EXAMPLES
 ```
 
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+
+#### Accepted values
+
+```text
+OPTIONS
+  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
+      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
+```
+
+An option or an argument row states the values the input accepts, so a reader chooses a valid value before the first run rather than learning it from a validation error. The sentence sits in the right cell after the description and before the facts, under the right-cell rule.
+
+- **Authored.** An `accepts` value on the input's help extension, `helpInput` for an option and `helpArgument` for an argument, is the sentence, printed as written. It always wins, whatever the input's schema holds, so an author states a pattern, a range, or a long set in their own words. An `accepts` on a Boolean option is never shown.
+- **Derived.** Without `accepts`, help derives the sentence from the input's [input schema](#input-schema) when that schema is a closed set of strings: an `enum` whose members are all strings, a single string `const`, or an `anyOf` whose members are each a string `const`, and for a multiple option or a variadic argument the same shapes under `items`, because each token must be one of the values. The sentence is `One of: ` followed by the values in the schema's order, separated by a comma and a space, and a closing period: `One of: bytes, words, lines.`
+- **Bounds.** A set of more than eight values derives nothing, and neither does any other shape, a `null` schema, or a set holding a value that is not a string; the row then prints as it would without accepted values. Every CLI token is a string, so a numeric or Boolean member would name a value no token can be.
+- **Quoting.** A value that is empty or holds whitespace, a comma, or a double quote prints as its JSON string, `One of: "a b", c.`, so the list splits unambiguously. Every value is escaped before styling, as every graph string on the page is.
+- **Not the manifest's.** `accepts` is help's own fact for a human reader. Help does not supply it to the [manifest](#manifest), where an agent reads the exact `schema`.
+
+The [formatter](#formatter)'s `--format` carries the enum of its view names, so its row derives them, and the formatter's description names only the default.
+
+#### Accepted values acceptance
+
+Accepted values are proven when public APIs alone produce these results under Node and Bun:
+
+- **Example pages.** `textstat --help` prints the `--metric` and `--format` rows shown above, and `jsonkit --help` prints `--format` with `One of: records, json, jsonl.`. The quoted pages in this document and the example applications' help and manifest goldens are re-pinned for the formatter's new description.
+- **Derived shapes.** Fixture applications cover a string `enum`, a single string `const`, an `anyOf` of string `const`s, the same set under `items` for a multiple option and a variadic argument, eight values printing, nine deriving nothing, a set holding a number deriving nothing, a pattern deriving nothing, and an argument row deriving from its schema.
+- **Authored.** An `accepts` wins over a derived list, prints for an input with a `null` or pattern schema, prints on an argument row through `helpArgument`, and is never shown on a Boolean option.
+- **Text.** A value that is empty or holds a space, a comma, or a double quote prints as its JSON string, a marker character in a value prints literally, and a row with no description starts its right cell with the sentence.
 
 #### Help and version restyle
 
@@ -1896,7 +1949,7 @@ declare const versionLine: DeclaredView<CommandGraph>;
 
 ```text
 OPTIONS
-      --format <format>  Select the output format: records, json, jsonl. Default: records.
+      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 ```
 
 - **Scope.** It changes the default help and version views and the formatter's option description. It adds no export, extension field, theme requirement, glyph, or rendering policy. The existing help and version takeover, output destination, invocation rules, and view override identities stay unchanged.
@@ -1934,7 +1987,7 @@ Indentation, padding, spaces between styled parts, and newlines are unstyled. Sp
 
 Examples remain opaque authored text. The view styles only the prompt and application name it adds, the whole authored command string, and the optional note. It does not parse shell syntax or highlight individual flags inside that string.
 
-The formatter hook changes its description to `Select the output format: <names>. Default: <default>.`. Names retain their existing record order after `json` and `jsonl` are appended where absent. `<default>` is the result's declared default name at that hook. A plugin whose hook changes the default installs before `format()` for the description to reflect that choice. As with available view names, later hooks do not retroactively update the description. The description is ordinary literal graph text, so the whole sentence uses the description's `primary` style. It is not the right-cell `default:` fact, and the option still declares no parser default. An omitted `--format` preserves an earlier middleware's selection. Help does not infer formatter ownership from an option name or inspect the result to synthesize this sentence. A Command without the formatter has no synthetic format row or view list. Enum-driven help remains outside this contract.
+The formatter hook sets its description to `Select the output format, <default> by default.`, where `<default>` is the result's declared default name at that hook. The view names are not in the description: the option's schema is the enum of the names, in record order after `json` and `jsonl` are appended where absent, and the page prints them as the row's [accepted values](#accepted-values). A plugin whose hook changes the default installs before `format()` for the description to reflect that choice. Later hooks do not retroactively update the description. The description is ordinary literal graph text, so the whole sentence uses the description's `primary` style. It is not the right-cell `default:` fact, and the option still declares no parser default. An omitted `--format` preserves an earlier middleware's selection. Help does not infer formatter ownership from an option name or inspect the result to synthesize this sentence. A Command without the formatter has no synthetic format row or view list.
 
 Compared with the previously accepted help page rules, the changed rules are: semantic styling replaces unconditional plain output, column width follows core's measurement, and the formatter description adds its declared default. The version line gains the styling in [Version](#version) without changing its text. All other content and invocation rules remain in force.
 
@@ -1994,7 +2047,7 @@ Invalid input: Unknown option "--format". Supply a declared option; prefix a hyp
 
 - **Views.** `json()` and `jsonl()` are whole views: under `result<Value>` they receive the value, and under `rows<Row>` core collects the sequence and they receive the array. `map` reshapes what they receive, identity by default. They are bare pack views under [Row views](#row-views), typed by contextual typing inside a `views` record and stated, `json<Summary>()`, when hoisted or written as the second argument of `out.render`. They render as ordinary views with the plugin uninstalled, so a Command that names `json: json()` first prints JSON by default with no `--format` anywhere.
 - **Bytes.** `json()` writes `JSON.stringify(mapped, null, 2)` and one newline. `jsonl()` writes one line per element when the mapped value is an array, each `JSON.stringify(element)` and one newline, and one such line otherwise; an empty array prints nothing. `toJSON` is honored and an `undefined`, function, or symbol property is dropped, as `JSON.stringify` does. A value that encodes to nothing, `undefined` at the top, or that `JSON.stringify` throws on, a `bigint` or a cycle, makes the view throw, reported through the output-view row of the [Failure contract](#failure-contract). The text is data: each view escapes it through `style.escape` and replaces every character from U+007F to U+009F with its `\uXXXX` escape, four lowercase hex digits, so nothing the [rendering policy](#rendering-policies) would strip or read as a terminal control reaches it, and applies no style, so the bytes are the same under every capability.
-- **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with no short spelling and no default, the description `Select the output format: ` followed by the record's keys in record order, comma-separated, and `. Default: <default>.`, where `<default>` is the declared default at that hook, and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The validator maps `ndjson` to `jsonl` before it checks the record's keys, so the option's [input schema](#input-schema) is the enum of the record's keys and the unadvertised alias stays out of it. The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>` with its description, under `options` in `inspect()` with `scope: 'application'`, reaching the action at run time under `options.format` and absent from its types. A key or spelling collision with an option the Command, the Application, or another plugin declares is the hook-collision build error, naming the plugin and the Command, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name. The same order lets the description reflect a hook's changed default.
+- **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with no short spelling and no default, the description `Select the output format, <default> by default.`, where `<default>` is the declared default at that hook, and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The validator maps `ndjson` to `jsonl` before it checks the record's keys, so the option's [input schema](#input-schema) is the enum of the record's keys and the unadvertised alias stays out of it. The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>` with its description, under `options` in `inspect()` with `scope: 'application'`, reaching the action at run time under `options.format` and absent from its types. A key or spelling collision with an option the Command, the Application, or another plugin declares is the hook-collision build error, naming the plugin and the Command, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name. The same order lets the description reflect a hook's changed default.
 - **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and `request` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault leaves `request` at `null` and is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` is the validator's issue, exit 2, and `--format yaml --help` with help installed after the formatter still prints the page. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
 
 ```ts
@@ -2016,7 +2069,7 @@ export default middleware;
 
 #### Formatter example coverage
 
-The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description includes the declared-default sentence specified by the [help restyle](#help-and-version-restyle). `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description names the declared default, as specified by the [help restyle](#help-and-version-restyle), and whose [accepted values](#accepted-values) list the view names. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, and the hook-collision error against a local, a global, and another plugin's `format`. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
 
 ### Table
 
