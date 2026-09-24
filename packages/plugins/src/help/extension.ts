@@ -5,7 +5,7 @@ import Package from '../../package.json' with { type: 'json' };
 import { line, prose } from '../lines.js';
 
 /**
- * The two facts a declaration carries for the help page, as declarations alone. A projection that
+ * The facts a declaration carries for the help page, as declarations alone. A projection that
  * wants help's prose imports this module and never the help middleware, and an application that
  * installs no help plugin still compiles against it. The line and prose rules are the manifest's
  * too, so every value help supplies to the manifest validates there.

@@ -94,14 +94,18 @@ const escapes: Readonly<Record<string, string>> = {
   '\u2029': String.raw`\u2029`,
 };
 
-/** A line terminator inside a rendered default prints as its escape, so a row stays one line. */
+/**
+ * A line terminator inside a rendered default or a listed value prints as its escape, so a row
+ * stays one line.
+ */
 function oneLine(text: string): string {
   return text.replaceAll(terminators, (found) => escapes[found] ?? found);
 }
 
 /** Whether a value is a list of strings, which prints as its elements separated by a space. */
 function isStrings(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string');
+  // `Array.from` reads a hole as the `undefined` it is, which `every` alone would skip.
+  return Array.isArray(value) && [...value].every((entry: unknown) => typeof entry === 'string');
 }
 
 /**
@@ -242,6 +246,7 @@ export {
   column,
   deprecatedFacts,
   isEmpty,
+  isStrings,
   oneLine,
   optionCell,
   optionFacts,

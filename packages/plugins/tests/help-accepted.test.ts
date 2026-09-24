@@ -36,11 +36,17 @@ function pageOf(argv: string[]): string {
 
 test('a row derives its accepted values from a closed set of strings at every level, and nothing when a keyword could narrow it', () => {
   expect(optionCells(pageOf(['shapes', '--help']))).toEqual({
+    '--all-annotations': 'One of: a.',
     '--any-annotated': 'One of: a, b.',
     '--any-consts': 'One of: a, b.',
+    '--any-enum-annotated': 'One of: a.',
+    '--any-enum-narrow': null,
+    '--any-enum-typed': 'One of: a, b.',
     '--any-mixed': 'One of: a, b, c.',
     '--any-nested': null,
     '--any-pattern': null,
+    '--any-top-annotated': 'One of: a.',
+    '--any-top-pattern': null,
     '--any-typed': 'One of: a, b.',
     '--authored-open': 'Anything at all.',
     '--authored-over-enum': 'Custom words.',
@@ -62,16 +68,31 @@ test('a row derives its accepted values from a closed set of strings at every le
     '--many-contains': '(repeatable)',
     '--many-counted': 'One of: x.  (repeatable)',
     '--many-enum': 'One of: x, y.  (repeatable)',
+    '--many-items-annotated': 'One of: x.  (repeatable)',
+    '--many-items-any-annotated': 'One of: x.  (repeatable)',
+    '--many-items-any-narrow': '(repeatable)',
+    '--many-items-any-typed': 'One of: x.  (repeatable)',
+    '--many-items-narrow-const': '(repeatable)',
     '--many-items-pattern': '(repeatable)',
     '--many-items-typed': 'One of: x.  (repeatable)',
+    '--many-object': '(repeatable)',
     '--many-prefix': '(repeatable)',
+    '--many-scalar': '(repeatable)',
     '--marked': 'One of: m\uE000n.',
     '--nine': null,
+    '--nine-repeating': 'One of: a, b, c, d, e, f, g, h.',
     '--nullable': null,
     '--number': null,
+    '--number-const': null,
+    '--number-typed': null,
     '--pattern-only': null,
     '--quoted': String.raw`One of: "", "a b", "c,d", "e\"f", "g\u2028h", plain.`,
+    '--quoted-more': `${String.raw`One of: "i\u0085j", "k\tl", "m`}\u00a0${String.raw`n".`}`,
     '--repeated': 'One of: a, b.',
+    '--repeated-late': 'One of: b, a.',
+    '--scalar-array': null,
+    '--sparse-any': null,
+    '--sparse-enum': null,
   });
 });
 
@@ -81,4 +102,15 @@ test('an argument row derives from its schema, prints an authored helpArgument s
     '  size   A whole number.',
     '  names  One of: x, y.',
   ]);
+});
+
+test.each([
+  ['v-const', ['  values  One of: x.']],
+  ['v-any', ['  values  One of: x, y.']],
+  ['v-typed', ['  values  One of: x.']],
+  ['v-annotated', ['  values  One of: x.']],
+  ['v-narrow', ['  values']],
+  ['v-scalar', ['  values']],
+])('a variadic argument derives from items under the same keyword rules: %s', (name, rows) => {
+  expect(section(pageOf([name, '--help']), 'ARGUMENTS')).toEqual(rows);
 });

@@ -1,3 +1,0 @@
-- Add accepted values to help pages. An option or argument row states the values its input accepts after its description: an authored `accepts` line, or `One of: …` derived from a closed set of strings in the input schema, up to eight values, when nothing beside the set could narrow it. See [Accepted values](docs/core.md#accepted-values).
-- Add `accepts` to `helpInput`, and add `helpArgument`, the argument-targeted help extension that carries `accepts`, both from `@loomcli/plugins/help/extension`.
-- Change the formatter's `--format` description to `Select the output format, <default> by default.`. The help page lists the view names as the row's accepted values, and the option's schema still carries them.

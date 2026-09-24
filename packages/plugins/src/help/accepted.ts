@@ -1,7 +1,8 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode } from '@loomcli/core';
 
-import { oneLine } from './cells.js';
+import { terminator } from '../lines.js';
+import { isStrings, oneLine } from './cells.js';
 import { helpArgument, helpInput } from './extension.js';
 
 /** One JSON Schema object as the graph publishes it: plain data read one keyword at a time. */
@@ -35,11 +36,6 @@ function isSchema(value: unknown): value is Schema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Whether every member of a list is a string, which is what a token can be. */
-function isStrings(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string');
-}
-
 /** The keywords that name a closed set of values at one level. */
 type ClosedKeyword = 'anyOf' | 'const' | 'enum';
 
@@ -55,15 +51,13 @@ function isClosedKeyword(keyword: string): keyword is ClosedKeyword {
  */
 function closedKeyword(schema: Schema): ClosedKeyword | undefined {
   const entries = Object.entries(schema);
-  const shapes = entries.map(([keyword]) => keyword).filter((keyword) => isClosedKeyword(keyword));
+  const shapes = entries.map(([keyword]) => keyword).filter(isClosedKeyword);
   const others = entries.filter(([keyword]) => !isClosedKeyword(keyword));
   const harmless = others.every(
     ([keyword, value]) => (keyword === 'type' && value === 'string') || annotations.has(keyword),
   );
   const [shape, second] = shapes;
-  return harmless && second === undefined && shape !== undefined && isClosedKeyword(shape)
-    ? shape
-    : undefined;
+  return harmless && second === undefined ? shape : undefined;
 }
 
 /** The values one `enum` or `const` level names, or `undefined` for any other level. */
@@ -83,7 +77,10 @@ function flattened(members: unknown): readonly string[] | undefined {
   if (!Array.isArray(members)) {
     return undefined;
   }
-  const named = members.map((entry: unknown) => (isSchema(entry) ? member(entry) : undefined));
+  // `Array.from` reads a hole as `undefined`, so a sparse `anyOf` derives nothing.
+  const named = Array.from(members, (entry: unknown) =>
+    isSchema(entry) ? member(entry) : undefined,
+  );
   return named.every((values) => values !== undefined) ? named.flat() : undefined;
 }
 
@@ -116,7 +113,7 @@ function itemsSet(schema: Schema): readonly string[] | undefined {
  * the row stays one line.
  */
 function listed(value: string): string {
-  const plain = value !== '' && !/[\s,"\u0085]/u.test(value);
+  const plain = value !== '' && !/[\s,"]/u.test(value) && !terminator.test(value);
   return oneLine(plain ? value : JSON.stringify(value));
 }
 

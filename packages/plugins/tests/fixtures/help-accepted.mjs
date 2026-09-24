@@ -22,6 +22,13 @@ const many = (json) => ({ multiple: true, type: 'string', validate: shaped(json)
 
 const nine = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 
+/** An array of the given length with a hole wherever `entries` names no index. */
+function sparse(length, entries) {
+  const list = [];
+  list.length = length;
+  return Object.assign(list, entries);
+}
+
 /** Each option exercises one rule of accepted values; its name says which. */
 const shapes = new Command('shapes', { description: 'Every derivation rule.' })
   .option('enum-typed', one({ enum: ['a', 'b'], type: 'string' }))
@@ -94,6 +101,51 @@ const shapes = new Command('shapes', { description: 'Every derivation rule.' })
     one({ pattern: '^x', type: 'string' }, { extensions: [helpInput({ accepts: 'An x.' })] }),
   )
   .option('flag', { extensions: [helpInput({ accepts: 'Never shown.' })], type: 'boolean' })
+  .option(
+    'all-annotations',
+    one({
+      $comment: 'c',
+      $id: 'i',
+      $schema: 's',
+      default: 'a',
+      deprecated: false,
+      description: 'd',
+      enum: ['a'],
+      examples: ['a'],
+      readOnly: true,
+      title: 't',
+      writeOnly: false,
+    }),
+  )
+  .option('number-typed', one({ enum: ['a'], type: 'number' }))
+  .option('number-const', one({ const: 1 }))
+  .option('any-top-annotated', one({ anyOf: [{ const: 'a' }], description: 'd' }))
+  .option('any-top-pattern', one({ anyOf: [{ const: 'a' }], pattern: 'x' }))
+  .option('any-enum-typed', one({ anyOf: [{ enum: ['a'], type: 'string' }, { const: 'b' }] }))
+  .option('any-enum-annotated', one({ anyOf: [{ enum: ['a'], title: 't' }] }))
+  .option('any-enum-narrow', one({ anyOf: [{ enum: ['a'], minLength: 1 }] }))
+  .option('repeated-late', one({ enum: ['b', 'a', 'b'] }))
+  .option('nine-repeating', one({ enum: [...nine.slice(0, 8), 'a'] }))
+  .option('scalar-array', one({ items: { enum: ['x'] }, type: 'array' }))
+  .option('sparse-enum', one({ enum: sparse(3, { 0: 'a', 2: 'b' }) }))
+  .option('sparse-any', one({ anyOf: sparse(2, { 1: { const: 'a' } }) }))
+  .option('quoted-more', one({ enum: ['i\u0085j', 'k\tl', 'm\u00a0n'] }))
+  .option('many-object', many({ items: { enum: ['x'] }, type: 'object' }))
+  .option('many-scalar', many({ enum: ['x'] }))
+  .option('many-items-annotated', many({ items: { default: 'x', enum: ['x'] }, type: 'array' }))
+  .option('many-items-narrow-const', many({ items: { const: 'x', pattern: 'x' }, type: 'array' }))
+  .option(
+    'many-items-any-typed',
+    many({ items: { anyOf: [{ const: 'x' }], type: 'string' }, type: 'array' }),
+  )
+  .option(
+    'many-items-any-annotated',
+    many({ items: { anyOf: [{ const: 'x' }], title: 't' }, type: 'array' }),
+  )
+  .option(
+    'many-items-any-narrow',
+    many({ items: { anyOf: [{ const: 'x' }], minLength: 1 }, type: 'array' }),
+  )
   .action(() => {});
 
 /** Arguments derive from their schema too, and carry an authored sentence through helpArgument. */
@@ -114,5 +166,21 @@ const pick = new Command('pick', { description: 'Pick items.' })
   })
   .action(() => {});
 
-const app = new Application('app', { plugins: [help()] }).command(shapes).command(pick);
+/** One Command per variadic case, since a Command holds one variadic argument. */
+const variadic = (name, json) =>
+  new Command(name).argument('values', { validate: shaped(json), variadic: true }).action(() => {});
+
+const variadics = [
+  variadic('v-const', { items: { const: 'x' }, type: 'array' }),
+  variadic('v-any', { items: { anyOf: [{ const: 'x' }, { enum: ['y'] }] }, type: 'array' }),
+  variadic('v-typed', { items: { enum: ['x'], type: 'string' }, type: 'array' }),
+  variadic('v-annotated', { items: { description: 'd', enum: ['x'] }, type: 'array' }),
+  variadic('v-narrow', { items: { enum: ['x'], pattern: 'x' }, type: 'array' }),
+  variadic('v-scalar', { enum: ['x'] }),
+];
+
+const app = variadics.reduce(
+  (built, command) => built.command(command),
+  new Application('app', { plugins: [help()] }).command(shapes).command(pick),
+);
 await app.run({ host: { argv: process.argv.slice(2) } });
