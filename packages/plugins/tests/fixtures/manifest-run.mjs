@@ -22,11 +22,12 @@ function application() {
     ],
   })
     .argument('path', { description: 'The path.', required: true })
-    .option('raw', { description: 'Print raw.', polarity: 'both', type: 'boolean' })
+    .option('raw', { description: 'Print raw.', env: 'APP_RAW', polarity: 'both', type: 'boolean' })
     .option('debug', { hidden: true, type: 'boolean' })
     .option('limit', {
       default: '10',
       description: 'The limit.',
+      env: 'APP_LIMIT',
       short: 'l',
       type: 'string',
       validate: z.string().regex(/^[0-9]+$/u),

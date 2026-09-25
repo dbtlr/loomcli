@@ -1,10 +1,12 @@
+import { checkEnvBinding, claimVariables } from './bindings.js';
+import type { BoundOption } from './bindings.js';
 import { DeclarationError } from './errors.js';
 import { buildExtensions } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
 import { compileOptions } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
 import type { OptionConfig, OptionValue } from './types.js';
-import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
+import type { OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
 
@@ -100,10 +102,12 @@ function spellingCollision(
  */
 interface BuiltGlobals {
   bind: (values: ValidatedInputs) => unknown;
-  inputs: readonly InputDeclaration[];
+  inputs: readonly OptionInput[];
   names: ReadonlyMap<string, OptionOwner>;
   options: ReturnType<typeof compileOptions>;
   plugins: readonly BuiltPlugin[];
+  /** The variable each option in the table binds, under the phrase a duplicate names it by. */
+  variables: ReadonlyMap<string, string>;
 }
 
 /** The Application's private global declarations and their schema-derived value binder. */
@@ -144,6 +148,7 @@ function buildGlobals(
     checkDescription(sentence, input.config.description);
     checkHidden(sentence, input.config.hidden);
     checkDeprecated(sentence, input.config.deprecated);
+    checkEnvBinding(sentence, input.config);
     build.extensions.set(
       input,
       buildExtensions({
@@ -162,7 +167,23 @@ function buildGlobals(
       options,
     });
   });
-  return { bind: node.bind, inputs: node.inputs, names, options, plugins };
+  const variables = claimVariables([
+    ...boundOptions(node.inputs, (name) => `global option "${name}"`),
+    ...plugins.flatMap((installed) =>
+      boundOptions(installed.inputs, (name) => `plugin "${installed.identity}" option "${name}"`),
+    ),
+  ]);
+  return { bind: node.bind, inputs: node.inputs, names, options, plugins, variables };
+}
+
+/** The options in one list that bind a variable, each named by the phrase its scope gives it. */
+function boundOptions(
+  inputs: readonly OptionInput[],
+  site: (name: string) => string,
+): BoundOption[] {
+  return inputs.flatMap(({ config, name }) =>
+    config.env === undefined ? [] : [{ site: site(name), variable: config.env }],
+  );
 }
 
 /** One plugin's options joining the table the application's globals already hold. */
@@ -193,4 +214,11 @@ function join(
 }
 
 export type { BuiltGlobals, GlobalsState, OptionOwner, OptionSite };
-export { buildGlobals, declareGlobalOption, emptyGlobals, keyCollision, spellingCollision };
+export {
+  boundOptions,
+  buildGlobals,
+  declareGlobalOption,
+  emptyGlobals,
+  keyCollision,
+  spellingCollision,
+};

@@ -20,7 +20,7 @@ export interface OptionValues {
 }
 
 /** Every parsed value lands in one of these maps; `lists` holds the repeated string options. */
-function emptyValues(): OptionValues {
+export function emptyValues(): OptionValues {
   return { booleans: new Map(), lists: new Map(), strings: new Map() };
 }
 
@@ -274,6 +274,23 @@ export function extractGlobals(
     }
   }
   return { rest, values };
+}
+
+/**
+ * Whether one option holds a value a tier supplied: a token in any spelling it accepts, or a fill
+ * from an input source. A declared default is never in these maps, so it never counts.
+ */
+export function isSupplied(values: OptionValues, name: string): boolean {
+  return values.strings.has(name) || values.lists.has(name) || values.booleans.has(name);
+}
+
+/** One run's own copy of parsed values, which the input-source stage fills without touching argv's. */
+export function copyValues(values: OptionValues): OptionValues {
+  return {
+    booleans: new Map(values.booleans),
+    lists: new Map([...values.lists].map(([name, list]) => [name, [...list]])),
+    strings: new Map(values.strings),
+  };
 }
 
 /** Global and local keys never overlap, so one merged view feeds a single validation pass. */

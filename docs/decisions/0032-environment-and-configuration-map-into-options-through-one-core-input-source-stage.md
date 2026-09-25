@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0032 - Environment and configuration map into options through one core input-source stage
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
-status: proposed
+status: accepted
 created: 2026-09-24
 modified: 2026-09-24
 ---
@@ -44,4 +44,8 @@ The invocation order gains the input-source stage between local parsing and vali
 
 ## Status
 
-Proposed. It moves to accepted with the implementation of the contract in [Input sources](../core.md#input-sources), proven by the acceptance listed there.
+Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean, and plugin options, applies the input source build rules in `inspect()` and `run()`, fills unfilled options in one stage between local parsing and validation, loads a declared configuration source only when an in-scope option is still unfilled, configuration-bound, and free of an environment fault, and publishes `env` through `inspect()` and the manifest. textstat binds `--min-bytes` to `TEXTSTAT_MIN_BYTES` and `--total` to `TEXTSTAT_TOTAL`, and the acceptance in [Input sources](../core.md#input-sources) passes under Node and Bun through a fixture configuration plugin.
+
+## Changelog
+
+- 2026-09-24: Accepted with the implementation. A Boolean variable outside the grammar leaves its option unfilled for the source as well as for the default, so the source is never asked about it and no lower tier fills it. Core reads every answer before it fills any, so an answer the rule rejects leaves every requested option unfilled. A diagnostic on a negative-only Boolean option names it by `--no-<name>`, the one spelling an operator types for it. An empty list a source answers for a required multiple option reports the required message with the source in parentheses, as every failure on a filled value does. The resolver-failure sentence supplies its full stop only where the thrown message carries none, as the extension value diagnostic does.

@@ -89,6 +89,7 @@ export default defineConfig({
           'packages/core/src/inspect.ts',
           'packages/core/src/options.ts',
           'packages/core/src/plugin.ts',
+          'packages/core/src/sources.ts',
           'packages/core/src/validation.ts',
         ],
         rules: {

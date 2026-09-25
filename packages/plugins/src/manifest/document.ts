@@ -60,6 +60,7 @@ type ManifestOption =
       readonly required: boolean;
       readonly multiple: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly env: string | null;
       readonly default: { readonly value: unknown } | null;
     }
   | {
@@ -72,6 +73,7 @@ type ManifestOption =
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly env: string | null;
     };
 
 /** The token rule, stated once so no entry repeats it. */
@@ -120,6 +122,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         negative: node.negative,
         polarity: node.polarity,
         schema: node.schema,
+        env: node.env,
       }
     : {
         type: 'string',
@@ -127,6 +130,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         required: node.required,
         multiple: node.multiple,
         schema: node.schema,
+        env: node.env,
         default: defaultOf(node),
       };
 }

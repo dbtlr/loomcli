@@ -57,6 +57,7 @@ export const textstat = new Application('textstat', {
   .option('min-bytes', {
     default: '0',
     description: 'Drop a source smaller than this many bytes.',
+    env: 'TEXTSTAT_MIN_BYTES',
     type: 'string',
     validate: byteThreshold,
   })
@@ -66,7 +67,12 @@ export const textstat = new Application('textstat', {
     type: 'string',
     validate: byteThreshold,
   })
-  .option('total', { description: 'Add a total row.', short: 't', type: 'boolean' })
+  .option('total', {
+    description: 'Add a total row.',
+    env: 'TEXTSTAT_TOTAL',
+    short: 't',
+    type: 'boolean',
+  })
   .option('timing', {
     description: 'Report the elapsed time on stderr.',
     hidden: true,

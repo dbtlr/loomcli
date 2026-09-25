@@ -56,6 +56,15 @@ interface ScopedInput {
   input: InputDeclaration;
 }
 
+/**
+ * What the input-source stage leaves for validation's messages, by option name: the label of each
+ * value it filled, and the variable of each Boolean option whose value is outside the grammar.
+ */
+interface Provenance {
+  labels: ReadonlyMap<string, string>;
+  rejected: ReadonlyMap<string, string>;
+}
+
 /** The raw tokens one invocation collected, keyed by declaration and by option name. */
 interface SuppliedValues {
   args: ReadonlyMap<InputDeclaration, string | string[]>;
@@ -69,8 +78,14 @@ export interface Invocation {
   host: Host;
   inputs: ScopedInputs;
   passthrough: readonly string[];
+  /**
+   * The plugin options, which are never validated. A Boolean one whose variable is outside the
+   * grammar is still a problem of this phase, reported after the globals and before the locals.
+   */
+  plugins: readonly OptionInput[];
   /** The run's cancellation signal, which stops this phase between two schema calls. */
   signal: AbortSignal;
+  sources: Provenance;
   supplied: SuppliedValues;
 }
 
@@ -163,14 +178,24 @@ function spellingOf(input: InputDeclaration): string {
     return input.name;
   }
   const { config } = input;
-  return config.shortOnly === true && config.short !== undefined
-    ? `-${config.short}`
+  if (config.shortOnly === true && config.short !== undefined) {
+    return `-${config.short}`;
+  }
+  // A negative-only Boolean option accepts its negative form alone.
+  return config.type === 'boolean' && config.polarity === 'negative'
+    ? `--no-${input.name}`
     : `--${input.name}`;
 }
 
-/** An input diagnostic names the declaration by kind and by the spelling that reaches it. */
-function suppliedName(input: InputDeclaration, spelling: string) {
-  return input.kind === 'argument' ? `Argument "${spelling}"` : `Option "${spelling}"`;
+/**
+ * An input diagnostic names the declaration by kind and by the spelling that reaches it. A value an
+ * input source filled adds its source in parentheses, so the operator learns where it came from.
+ */
+function suppliedName(input: InputDeclaration, spelling: string, origin?: string) {
+  if (input.kind === 'argument') {
+    return `Argument "${spelling}"`;
+  }
+  return origin === undefined ? `Option "${spelling}"` : `Option "${spelling}" (from ${origin})`;
 }
 
 /**
@@ -178,10 +203,15 @@ function suppliedName(input: InputDeclaration, spelling: string) {
  * each phase used before omission became one problem, and a collected input asks for one value
  * more than a scalar does.
  */
-function missingMessage(input: InputDeclaration, spelling: string, collected: boolean) {
+function missingMessage(
+  input: InputDeclaration,
+  spelling: string,
+  facts: { collected: boolean; origin?: string | undefined },
+) {
+  const { collected, origin } = facts;
   return input.kind === 'argument'
     ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}. Supply a value for "${spelling}".`
-    : `Option "${spelling}" is required. Supply ${collected ? 'at least one value' : 'a value'}.`;
+    : `${suppliedName(input, spelling, origin)} is required. Supply ${collected ? 'at least one value' : 'a value'}.`;
 }
 
 /**
@@ -480,9 +510,28 @@ function suppliedInputs(
   return { args, options };
 }
 
-export async function validateValues(invocation: Invocation): Promise<ValidatedInputs> {
-  const { defaults, supplied } = invocation;
+/** The Boolean grammar's one issue, which a variable outside it reports. */
+const grammarIssues: readonly StandardSchemaV1.Issue[] = [{ message: 'Use true, false, 1, or 0.' }];
+
+/**
+ * Every declaration in the order this phase reports its problems: the globals, then each plugin
+ * option whose variable is outside the grammar, then the routed Command's own declarations.
+ */
+function reportingOrder(invocation: Invocation): ScopedInput[] {
   const declarations = scoped(invocation.inputs);
+  const globals = declarations.filter((entry) => entry.global);
+  const rejected = invocation.plugins
+    .filter((input) => invocation.sources.rejected.has(input.name))
+    .map((input) => ({ global: true, input }));
+  return [...globals, ...rejected, ...declarations.filter((entry) => !entry.global)];
+}
+
+export async function validateValues(invocation: Invocation): Promise<ValidatedInputs> {
+  const { defaults, sources, supplied } = invocation;
+  const declarations = scoped(invocation.inputs);
+  /** Where a filled option's value came from, which its diagnostic names; argv names none. */
+  const originOf = (input: InputDeclaration) =>
+    input.kind === 'option' ? sources.labels.get(input.name) : undefined;
   /**
    * One reading of the tokens and the route, built anew for each schema call. The route, the
    * tail, and every collected value are copies, so a schema that writes to them reaches neither
@@ -501,6 +550,20 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   const values = new Map<InputDeclaration, unknown>();
   const lines: string[] = [];
   const problems: InputProblem[] = [];
+  /** One rejected input, whatever rejected it, in the order this phase reaches it. */
+  const reject = (
+    entry: ScopedInput,
+    issues: readonly StandardSchemaV1.Issue[],
+    subject: string,
+  ) => {
+    problems.push({
+      input: identityOf(entry),
+      issues,
+      reason: 'invalid',
+      spelling: spellingOf(entry.input),
+    });
+    lines.push(...messages(subject, issues));
+  };
   /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
     const result = await validate(entry.input, raw, {
@@ -512,11 +575,13 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
       values.set(entry.input, result.value);
       return;
     }
-    const issues = reported(result.issues);
-    problems.push({ input: identityOf(entry), issues, reason: 'invalid', spelling });
-    lines.push(...messages(suppliedName(entry.input, spelling), issues));
+    reject(
+      entry,
+      reported(result.issues),
+      suppliedName(entry.input, spelling, originOf(entry.input)),
+    );
   };
-  for (const entry of declarations) {
+  for (const entry of reportingOrder(invocation)) {
     if (invocation.signal.aborted) {
       /**
        * A cancelled run starts no further schema call. The one already in flight was awaited
@@ -526,7 +591,11 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
       break;
     }
     const { input } = entry;
-    if (input.kind === 'option' && input.config.type === 'boolean') {
+    const variable = sources.rejected.get(input.name);
+    if (input.kind === 'option' && variable !== undefined) {
+      // A Boolean variable outside the grammar filled nothing, so it is the option's problem.
+      reject(entry, grammarIssues, suppliedName(input, spellingOf(input), variable));
+    } else if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(input, booleanValue(supplied.options, input.name, input.config));
     } else {
       const collected = collects(input);
@@ -540,7 +609,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
           // An omitted required argument arrives here too, so omission has one class.
           // One aggregated diagnostic covers an omitted argument and an omitted option alike.
           problems.push({ input: identityOf(entry), reason: 'missing', spelling });
-          lines.push(missingMessage(input, spelling, collected));
+          lines.push(missingMessage(input, spelling, { collected }));
         } else if (collected && !defaults.has(input)) {
           // No occurrence is an accurate empty collection, so it reads like a supplied value.
           await accept(entry, [], spelling);
@@ -551,6 +620,10 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
         } else {
           values.set(input, freshDefault(defaults.get(input)));
         }
+      } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
+        // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
+        problems.push({ input: identityOf(entry), reason: 'missing', spelling });
+        lines.push(missingMessage(input, spelling, { collected, origin: originOf(input) }));
       } else {
         await accept(entry, raw, spelling);
       }

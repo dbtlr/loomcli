@@ -98,6 +98,7 @@ test('a plugin string option reads required, validated, and validateOmitted as f
   expect(graph.globals[2]).toEqual({
     default: { value: 'plain' },
     description: undefined,
+    env: null,
     extensions: {},
     hidden: false,
     long: '--mode',
@@ -113,6 +114,7 @@ test('a plugin string option reads required, validated, and validateOmitted as f
   });
   expect(graph.globals[1]).toEqual({
     description: undefined,
+    env: null,
     extensions: {},
     hidden: false,
     long: '--cache',

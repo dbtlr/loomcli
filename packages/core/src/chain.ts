@@ -2,12 +2,12 @@ import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
 import { prepareDispatch, routeInvocation } from './command.js';
 import { InternalError, reasonOf, routedSubject, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
-import { inspectGraph } from './inspect.js';
+import { inspectGraph, nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
-import { booleanValue } from './options.js';
+import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
-import { pluginSentence } from './plugin.js';
-import type { BuiltPlugin, PluginOptions, PluginOptionValues } from './plugin.js';
+import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
+import type { BuiltPlugin, PluginOptions, PluginOptionValues, PluginValues } from './plugin.js';
 import type { ContextualStyle } from './style.js';
 import type {
   ActionChannel,
@@ -18,7 +18,7 @@ import type {
   Request,
   ResultBinding,
 } from './types.js';
-import type { DefaultValues, OptionInput } from './validation.js';
+import type { DefaultValues } from './validation.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
@@ -139,44 +139,6 @@ function isMiddlewareExport(value: unknown): value is (context: MiddlewareContex
   return typeof value === 'function';
 }
 
-/** Whether one option name was supplied as a token, in any spelling a declaration accepts. */
-function supplied(scan: OptionValues, name: string): boolean {
-  return scan.strings.has(name) || scan.lists.has(name) || scan.booleans.has(name);
-}
-
-/** The value shape a plugin option takes, which is what `OptionValue` gives its declaration. */
-type PluginValues = Record<string, string | string[] | boolean | undefined>;
-
-/** A collected value, or the declared array default, as this run's own copy. */
-function collectedValue(collected: readonly string[] | undefined, declared: unknown): string[] {
-  if (collected) {
-    return [...collected];
-  }
-  return Array.isArray(declared) ? [...declared] : [];
-}
-
-/**
- * One plugin's own option values for one run: what the pre-scan produced, or the declared default,
- * filled without validation. A collected value and an array default are copied, so a middleware
- * that writes to what it received changes neither the declaration nor the next run.
- */
-function pluginValues(inputs: readonly OptionInput[], scan: OptionValues): PluginValues {
-  const values: PluginValues = {};
-  for (const { config, name } of inputs) {
-    const declared: unknown = config.default;
-    if (config.type === 'boolean') {
-      values[name] = booleanValue(scan, name, config);
-    } else if (config.multiple === true) {
-      values[name] = collectedValue(scan.lists.get(name), declared);
-    } else {
-      // Build already proved that a string option without a schema declares a string default.
-      values[name] =
-        scan.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
-    }
-  }
-  return values;
-}
-
 /** One activated plugin in the chain, with the option values its own middleware reads. */
 interface ChainEntry {
   identity: string;
@@ -184,51 +146,34 @@ interface ChainEntry {
   options: PluginValues;
 }
 
-/** Whether one plugin's declared activation matched the tokens the pre-scan consumed. */
-function activates(installed: BuiltPlugin, scan: OptionValues): boolean {
+/**
+ * Whether one plugin's declared activation matched. A listed option activates when argv or an input
+ * source supplied it, whatever value it holds, and a declared default never does.
+ */
+function activates(installed: BuiltPlugin, values: OptionValues): boolean {
   const { middleware } = installed;
   if (!middleware) {
     return false;
   }
   return (
-    middleware.activate === 'always' || middleware.activate.some((name) => supplied(scan, name))
+    middleware.activate === 'always' || middleware.activate.some((name) => isSupplied(values, name))
   );
 }
 
 /**
  * The chain for one invocation: each installed plugin whose activation matched, in installation
- * order. Activation is read from the pre-scan, before any plugin code loads, so a plugin whose
- * option was never supplied is not in the chain and its loader is never called.
+ * order. Activation is read after the input-source stage and before any plugin code loads, so a
+ * plugin whose option no tier supplied is not in the chain and its loader is never called.
  */
-function activatedEntries(plugins: readonly BuiltPlugin[], scan: OptionValues): ChainEntry[] {
+function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues): ChainEntry[] {
   return plugins
-    .filter((installed) => activates(installed, scan))
+    .filter((installed) => activates(installed, values))
     .map((installed) => ({
       identity: installed.identity,
       // Activation proved the middleware exists, so the empty loader is never the one core calls.
       load: installed.middleware?.load ?? (() => undefined),
-      options: pluginValues(installed.inputs, scan),
+      options: pluginValues(installed.inputs, values),
     }));
-}
-
-/**
- * The routed node inside the inspected graph, which routing already proved reachable. A missing
- * segment means the two readings of one graph disagree, so the chain stops rather than hand a
- * middleware the wrong Command.
- */
-function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
-  let node = graph.root;
-  for (const name of path) {
-    const child = node.children.find((entry) => entry.name === name);
-    if (!child) {
-      throw new InternalError(
-        `The routed command "${path.join(' ')}" is not in the inspected graph.`,
-        undefined,
-      );
-    }
-    node = child;
-  }
-  return node;
 }
 
 /** A downstream promise core awaits for its completion alone; its outcome was recorded already. */
@@ -395,29 +340,12 @@ async function settle(
   return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 
-/** The module one loader answers with, whether it throws where it is called or rejects later. */
-async function loadModule(entry: ChainEntry): Promise<unknown> {
-  try {
-    return await entry.load();
-  } catch (error) {
-    throw new InternalError(`Loading plugin "${entry.identity}" failed: ${reasonOf(error)}`, error);
-  }
-}
-
 /** A plugin's module is loaded when the chain reaches it, never before. */
-async function loadMiddleware(entry: ChainEntry) {
-  const module: unknown = await loadModule(entry);
-  const handler: unknown =
-    module !== null && typeof module === 'object' && 'default' in module
-      ? module.default
-      : undefined;
-  if (!isMiddlewareExport(handler)) {
-    throw new InternalError(
-      `Loading plugin "${entry.identity}" failed: the module exports no default middleware function.`,
-      undefined,
-    );
-  }
-  return handler;
+function loadMiddleware(entry: ChainEntry) {
+  return loadDefault(entry.identity, entry.load, {
+    guard: isMiddlewareExport,
+    noun: 'middleware',
+  });
 }
 
 /** One entry's turn: its module loads here, when the chain reaches it and never before. */
@@ -439,11 +367,11 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
 
 /** The whole chain, answering with the failure it raised when a middleware caught that failure. */
 async function runChain(
-  invocation: Invocation,
+  invocation: Invocation & { inspected: () => CommandGraph },
   routed: RoutedInvocation,
   prepared: Prepared,
 ): Promise<LoomError | undefined> {
-  const entries = activatedEntries(invocation.plugins, routed.scan);
+  const entries = activatedEntries(invocation.plugins, prepared.globals);
   const run = { invoked: false, raised: undefined as LoomError | undefined };
   const selection = new ViewSelection(prepared.result);
   /**
@@ -469,7 +397,7 @@ async function runChain(
     return undefined;
   }
   // The graph a middleware reads is the one `inspect()` returns, built once for the run.
-  const graph = inspectGraph(invocation.name, invocation.graph, invocation.facts);
+  const graph = invocation.inspected();
   const command = nodeAt(graph, routed.path);
   // Every fault this chain has reported, so the same one raised again carries no second report.
   const announced = new WeakSet();
@@ -526,8 +454,14 @@ async function runChain(
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = routeInvocation(invocation.graph, invocation.host.argv);
   invocation.route(routed.path);
-  const prepared = await prepareDispatch(invocation.graph, routed, invocation);
-  const raised = await runChain(invocation, routed, prepared);
+  // The graph `inspect()` returns, built at most once for the run.
+  // A configuration source reads its requests from it, and the chain reads it after the source.
+  let graph: CommandGraph | undefined = undefined;
+  const inspected = () =>
+    (graph ??= inspectGraph(invocation.name, invocation.graph, invocation.facts));
+  const run = { ...invocation, inspected };
+  const prepared = await prepareDispatch(invocation.graph, routed, run);
+  const raised = await runChain(run, routed, prepared);
   if (raised) {
     // The chain resolved because a middleware caught the rejection.
     // The failure it caught still decides the exit code.

@@ -52,6 +52,9 @@ export type {
   PluginDefinition,
   PluginOptions,
   PluginOptionValues,
+  SourceAnswer,
+  SourceContext,
+  SourceResolver,
 } from './plugin.js';
 export type {
   Action,

@@ -5,6 +5,23 @@ import { fileURLToPath } from 'node:url';
 /** How long a fixture may run or stay silent before the harness ends it and the test fails. */
 const fixtureTimeout = 10_000;
 
+/** The prefixes of the variables the example applications bind to their options. */
+const exampleBindings = ['TEXTSTAT_', 'JSONKIT_'];
+
+/**
+ * The environment a fixture starts from: the parent's, minus every variable an example binds.
+ * A binding set in the developer's shell would otherwise fill an option the test never set.
+ * The test's own variables and the capture marker apply on top.
+ */
+function childEnvironment(env: Record<string, string | undefined> | undefined) {
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !exampleBindings.some((prefix) => name.startsWith(prefix)),
+    ),
+  );
+  return { ...inherited, LOOM_CAPTURE_TEST: 'present', ...env };
+}
+
 export function invoke(
   file: URL,
   args: string[] = [],
@@ -17,7 +34,7 @@ export function invoke(
     {
       ...rest,
       encoding: 'utf8',
-      env: { ...process.env, LOOM_CAPTURE_TEST: 'present', ...env },
+      env: childEnvironment(env),
       timeout: fixtureTimeout,
     },
   );
@@ -48,7 +65,7 @@ export function start(
   const { cwd, env } = options;
   const child = spawn(process.env.LOOM_TEST_RUNTIME ?? 'node', [fileURLToPath(file), ...args], {
     ...(cwd === undefined ? {} : { cwd }),
-    env: { ...process.env, LOOM_CAPTURE_TEST: 'present', ...env },
+    env: childEnvironment(env),
     // A fixture that owns the signals slot would absorb a SIGTERM as its first cooperative signal.
     // The harness therefore ends a stuck child with a signal no listener can absorb.
     killSignal: 'SIGKILL',

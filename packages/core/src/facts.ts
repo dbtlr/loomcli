@@ -14,6 +14,14 @@ const prose = /\P{White_Space}/u;
 const lineTerminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
 
 /**
+ * One line of prose: a string that holds a character other than whitespace and no line terminator.
+ * Every one-line fact reads this rule, and so does the label a configuration source answers with.
+ */
+export function isProseLine(value: unknown): value is string {
+  return typeof value === 'string' && prose.test(value) && !lineTerminator.test(value);
+}
+
+/**
  * The `description` core fact: one line of prose every projection reads. A value that is not a
  * string fails the same way a blank one does, because the author reads one rule for one fact.
  * An omitted description is absent, not a fault, so it passes through as `undefined`.
@@ -22,7 +30,7 @@ export function checkDescription(subject: string, value: unknown): string | unde
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
+  if (!isProseLine(value)) {
     throw new DeclarationError(
       `${subject} description must hold a character other than whitespace and no line terminator. Supply a one-line summary.`,
     );
@@ -57,7 +65,7 @@ export function checkDeprecated(subject: string, value: unknown): string | undef
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
+  if (!isProseLine(value)) {
     throw new DeclarationError(
       `${subject} deprecated message must hold a character other than whitespace and no line terminator. Supply a one-line migration path, such as "Use get instead.".`,
     );
@@ -91,7 +99,7 @@ export function checkVersion(value: unknown): string {
   if (value === undefined) {
     return '0.0.0';
   }
-  if (typeof value !== 'string' || !prose.test(value) || lineTerminator.test(value)) {
+  if (!isProseLine(value)) {
     throw new DeclarationError(
       'The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".',
     );

@@ -24,7 +24,8 @@
       "short": "-h",
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -35,7 +36,8 @@
       "short": "-V",
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -46,7 +48,8 @@
       "short": null,
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -57,7 +60,8 @@
       "short": null,
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     }
   ],
   "command": {
@@ -117,6 +121,7 @@
             "lines"
           ]
         },
+        "env": null,
         "default": {
           "value": "bytes"
         }
@@ -135,6 +140,7 @@
           "type": "string",
           "pattern": "^[0-9]+$"
         },
+        "env": "TEXTSTAT_MIN_BYTES",
         "default": {
           "value": "0"
         }
@@ -153,6 +159,7 @@
           "type": "string",
           "pattern": "^[0-9]+$"
         },
+        "env": null,
         "default": null
       },
       {
@@ -164,7 +171,8 @@
         "short": "-t",
         "negative": null,
         "polarity": "positive",
-        "schema": null
+        "schema": null,
+        "env": "TEXTSTAT_TOTAL"
       },
       {
         "type": "string",
@@ -184,6 +192,7 @@
             "jsonl"
           ]
         },
+        "env": null,
         "default": null
       }
     ],

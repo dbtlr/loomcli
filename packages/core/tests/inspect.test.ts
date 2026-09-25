@@ -11,6 +11,7 @@ const bare = { extensions: {}, schema: null };
 /** An option the application declared, global or local, reports the application scope. */
 const owned = {
   deprecated: none,
+  env: null,
   extensions: {},
   hidden: false,
   schema: null,
