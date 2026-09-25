@@ -143,6 +143,12 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
 
+  examples/doctor:
+    dependencies:
+      '@loomcli/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   examples/explain:
     dependencies:
       '@loomcli/core':
@@ -154,6 +160,9 @@ importers:
 
   examples/jsonkit:
     dependencies:
+      '@loom/doctor':
+        specifier: workspace:*
+        version: link:../doctor
       '@loom/explain':
         specifier: workspace:*
         version: link:../explain

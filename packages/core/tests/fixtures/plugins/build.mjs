@@ -151,6 +151,10 @@ const scenarios = {
     });
     return new Application('app', { extensions: [descriptor({})] }).action(dispatch);
   },
+  'commands-entry-not-command': () =>
+    withGroup(named('@acme/doctor', { commands: [{ name: 'doctor' }] })),
+  'commands-not-array': () =>
+    withGroup(named('@acme/doctor', { commands: new Command('doctor').action(dispatch) })),
   'definition-not-object': () => withPlugin(named('@loomcli/help', 'nope')),
   'empty-activation': () =>
     withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),
@@ -416,6 +420,13 @@ const scenarios = {
     return new Application('app').command(get).action(dispatch);
   },
 };
+
+/** A root group that installs one plugin, since a root that takes arguments holds no children. */
+function withGroup(installed) {
+  return new Application('app', { plugins: [installed] }).command(
+    new Command('local').action(dispatch),
+  );
+}
 
 /** The shortest application that installs one plugin, for a rule the plugin alone carries. */
 function withPlugin(installed) {

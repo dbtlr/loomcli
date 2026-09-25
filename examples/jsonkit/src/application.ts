@@ -1,3 +1,4 @@
+import { doctor } from '@loom/doctor';
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, InputError, override, UnknownCommandError } from '@loomcli/core';
@@ -35,7 +36,7 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  plugins: [help(), version(), format(), manifest(), loomTheme(), explain()],
+  plugins: [help(), version(), format(), manifest(), loomTheme(), explain(), doctor()],
   version: Package.version,
   views: [
     override(FatalError, fatalError),

@@ -1,5 +1,7 @@
 import { checkEnvBinding } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
+import { isCommand } from './command.js';
+import type { Command } from './command.js';
 import { DeclarationError, InternalError, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
@@ -47,6 +49,7 @@ interface DeclaredPlugin {
   views?: unknown;
   signals?: unknown;
   source?: unknown;
+  commands?: unknown;
 }
 
 /** The declarations behind one plugin value, read by this package alone. */
@@ -145,6 +148,7 @@ interface PluginDefinition<
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
   };
+  commands?: readonly Command<unknown, unknown>[];
 }
 
 /**
@@ -403,6 +407,30 @@ function readMiddleware(
 }
 
 /**
+ * The Commands one plugin attaches to the root. Build reads every other Command rule where the
+ * root attaches them, so this reads the list's shape alone.
+ */
+function readCommands(identity: string, declared: unknown): readonly object[] {
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares commands that are not an array. Supply a list of Command values.`,
+    );
+  }
+  const list: readonly unknown[] = declared;
+  return list.map((value) => {
+    if (!isCommand(value)) {
+      throw new DeclarationError(
+        `${pluginSentence(identity)} holds a value that is not a Command. Supply the value returned by new Command(name).`,
+      );
+    }
+    return value;
+  });
+}
+
+/**
  * One plugin's claim on the signals slot, drawn from the closed set core installs listeners for.
  * An empty list claims nothing, so it leaves the slot free for another plugin.
  * Each signal is claimed once, because core installs one listener per entry and a second listener
@@ -526,6 +554,8 @@ interface BuiltPlugin {
   middleware: BuiltMiddleware | undefined;
   signals: readonly ProcessSignal[];
   source: BuiltSource | undefined;
+  /** The Commands the plugin attaches to the root, in list order. */
+  commands: readonly object[];
 }
 
 /** The shared registers one build fills while it reads each plugin's contributions. */
@@ -602,6 +632,7 @@ function buildPlugins(
       sourceOwner = identity;
     }
     return {
+      commands: readCommands(identity, declaration.commands),
       identity,
       inputs,
       middleware: readMiddleware(identity, declaration.middleware, names),

@@ -131,6 +131,21 @@
     ],
     "children": [
       {
+        "name": "doctor",
+        "path": [
+          "doctor"
+        ],
+        "description": "Check the host this application runs on.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": true,
+        "result": null,
+        "arguments": [],
+        "options": [],
+        "children": []
+      },
+      {
         "name": "get",
         "path": [
           "get"

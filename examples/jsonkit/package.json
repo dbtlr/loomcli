@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@loom/doctor": "workspace:*",
     "@loom/explain": "workspace:*",
     "@loomcli/core": "workspace:*",
     "@loomcli/plugins": "workspace:*",
