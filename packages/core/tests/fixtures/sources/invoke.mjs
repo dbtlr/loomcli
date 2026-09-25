@@ -9,8 +9,18 @@ if (process.env.FIXTURE_TTY === '1') {
 
 /** How the configuration plugin loads its source, chosen by the test. */
 const loaders = {
+  // The loader aborts the caller's signal, so the abort lands while the source loads.
+  aborts: () => {
+    process.stdout.write('loader:called\n');
+    globalThis.fixtureAbort();
+    return import('./source.mjs');
+  },
   module: () => import('./source.mjs'),
   'no-default': () => import('./modules.mjs'),
+  recording: () => {
+    process.stdout.write('loader:called\n');
+    return import('./source.mjs');
+  },
   throws: () => {
     throw new Error('the loader threw before it could import');
   },
@@ -106,6 +116,11 @@ function application() {
     .option('plain', { env: 'NO_COLOR', type: 'boolean' })
     .action(({ options, out, style }) => out.print(`paint:${options.plain}:${style.red('X')}`));
   const cache = new Command('cache').command(new Command('clear').action(print('clear')));
+  // Variables named after Object.prototype members, which a plain-object env does not set.
+  const inherited = new Command('inherited')
+    .option('name', { env: 'constructor', type: 'string' })
+    .option('flag', { env: 'toString', type: 'boolean' })
+    .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
   return new Application('app', { plugins: (installed[process.argv[2]] ?? (() => []))() })
     .globalOption('limit', {
       default: '10',
@@ -118,6 +133,7 @@ function application() {
     .command(select)
     .command(paint)
     .command(cache)
+    .command(inherited)
     .action(print('root'));
 }
 
@@ -126,6 +142,12 @@ const argv = process.argv.slice(4);
 
 if (mode === 'inspect') {
   process.stdout.write(`${JSON.stringify(application().inspect())}\n`);
+} else if (mode === 'cancelled') {
+  // The caller cancelled the run before it started.
+  const controller = new AbortController();
+  controller.abort();
+  const code = await application().run({ host: { argv }, signal: controller.signal });
+  process.stdout.write(`resolved:${code}\n`);
 } else if (mode === 'cancel') {
   // The source aborts the caller's signal from inside its own call, so the abort lands in flight.
   const controller = new AbortController();

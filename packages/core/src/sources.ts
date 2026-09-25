@@ -111,12 +111,47 @@ function rawKind(input: OptionInput): RawKind {
   return input.config.multiple === true ? 'list' : 'string';
 }
 
-/** Whether one answered value holds the raw type its option takes. */
-function holdsRaw(kind: RawKind, value: unknown): value is RawFill {
-  if (kind === 'list') {
-    return Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string');
+/**
+ * The run's own copy of an answered list, or `undefined` when it is not a list of strings. Every
+ * index is read, so a hole fails the check as any entry that is not a string does.
+ */
+function stringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
   }
-  return typeof value === kind;
+  const list: string[] = [];
+  // Iteration visits a hole as undefined, where every() skips it.
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      return undefined;
+    }
+    list.push(entry);
+  }
+  return list;
+}
+
+/** One answered value as the raw type its option takes, or `undefined` when it holds another. */
+function rawValue(kind: RawKind, value: unknown): RawFill | undefined {
+  if (kind === 'list') {
+    return stringList(value);
+  }
+  if (kind === 'boolean') {
+    return typeof value === 'boolean' ? value : undefined;
+  }
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * The faults the answers rule names. Reading the answers runs the plugin's own code, such as a
+ * getter, so a throw of any other kind while reading them is the plugin's failure.
+ */
+const ruleFaults = new WeakSet<InternalError>();
+
+/** A fault the answers rule names, recorded so that reading the answers rethrows it unframed. */
+function ruleFault(message: string): InternalError {
+  const fault = new InternalError(message, undefined);
+  ruleFaults.add(fault);
+  return fault;
 }
 
 /** One answer read under the answers rule: an object that holds a one-line label and a value. */
@@ -128,17 +163,15 @@ function readAnswer(
   const shape = isPlainObject(answer) ? answer : undefined;
   const label = shape?.label;
   if (!shape || !isProseLine(label)) {
-    throw new InternalError(
+    throw ruleFault(
       `${sentence} answered option "${input.name}" with an answer that is not { value, label }.`,
-      undefined,
     );
   }
   const kind = rawKind(input);
-  const { value } = shape;
-  if (!holdsRaw(kind, value)) {
-    throw new InternalError(
+  const value = rawValue(kind, shape.value);
+  if (value === undefined) {
+    throw ruleFault(
       `${sentence} answered option "${input.name}" with a value that is not ${owed[kind]}.`,
-      undefined,
     );
   }
   return { label, value };
@@ -161,19 +194,13 @@ function readAnswers(
   requested: readonly Requested[],
 ): Answer[] {
   if (!isPlainObject(answers)) {
-    throw new InternalError(
-      `${sentence} returned configuration answers that are not a record.`,
-      undefined,
-    );
+    throw ruleFault(`${sentence} returned configuration answers that are not a record.`);
   }
   const byName = new Map(requested.map((target) => [target.input.name, target]));
   return Object.entries(answers).map(([name, answer]) => {
     const target = byName.get(name);
     if (!target) {
-      throw new InternalError(
-        `${sentence} answered option "${name}", which core did not request.`,
-        undefined,
-      );
+      throw ruleFault(`${sentence} answered option "${name}", which core did not request.`);
     }
     const { label, value } = readAnswer(sentence, target.input, answer);
     return { label, target, value };
@@ -194,16 +221,23 @@ interface SourceCall {
   requested: readonly Requested[];
 }
 
+/** The fault of a source that threw, while it ran or while core read what it returned. */
+function sourceFailure(sentence: string, error: unknown): InternalError {
+  return new InternalError(
+    `${sentence} failed in its configuration source: ${asSentence(reasonOf(error))}`,
+    error,
+  );
+}
+
 /**
  * Asks the one configuration source about every requested option, and answers with what it said.
- * Core loads the source here and calls it once, awaiting it; a run cancelled before either step
- * starts neither and reads no answer, and one cancelled during the call awaits it.
+ * Core loads the source here and calls it once, awaiting it; one cancelled during the call awaits
+ * it. The run checks its signal and then reaches the load with no await between, so a run
+ * cancelled before the load starts neither step, and one cancelled during the load calls nothing.
+ * Core builds the context before the call, so a fault of its own is never the plugin's.
  */
 async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]> {
   const { owner, requested } = call;
-  if (stage.signal.aborted) {
-    return [];
-  }
   const resolver = await loadDefault(owner.identity, owner.source.load, {
     guard: isResolverExport,
     noun: 'source',
@@ -212,20 +246,25 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
     return [];
   }
   const sentence = pluginSentence(owner.identity);
+  const context: SourceContext = {
+    host: stage.host,
+    options: pluginValues(owner.inputs, stage.globals.values),
+    requests: requested.map(({ input, scope }) => stage.request(input, scope.global)),
+  };
   let answers: unknown = undefined;
   try {
-    answers = await resolver({
-      host: stage.host,
-      options: pluginValues(owner.inputs, stage.globals.values),
-      requests: requested.map(({ input, scope }) => stage.request(input, scope.global)),
-    });
+    answers = await resolver(context);
   } catch (error) {
-    throw new InternalError(
-      `${sentence} failed in its configuration source: ${asSentence(reasonOf(error))}`,
-      error,
-    );
+    throw sourceFailure(sentence, error);
   }
-  return readAnswers(sentence, answers, requested);
+  try {
+    return readAnswers(sentence, answers, requested);
+  } catch (error) {
+    if (error instanceof InternalError && ruleFaults.has(error)) {
+      throw error;
+    }
+    throw sourceFailure(sentence, error);
+  }
 }
 
 /**

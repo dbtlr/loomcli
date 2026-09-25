@@ -32,6 +32,34 @@ const source = async ({ host, options, requests }) => {
   if (mode === 'unrequested') {
     return { port: { label: 'port in fixture.json', value: '1' } };
   }
+  if (mode === 'sparse' || mode === 'hollow') {
+    // A list with holes, which a check that skips holes would pass as a list of strings.
+    // `sparse` holds a hole beside a string, and `hollow` holds two holes and nothing else.
+    const value = [];
+    if (mode === 'sparse') {
+      value[1] = 'a';
+    } else {
+      value.length = 2;
+    }
+    return { fields: { label: 'fields in fixture.json', value } };
+  }
+  if (mode === 'record-getter') {
+    return {
+      get limit() {
+        throw new Error('the answers record threw');
+      },
+    };
+  }
+  if (mode === 'label-getter') {
+    return {
+      limit: {
+        get label() {
+          throw new Error('the answer label threw');
+        },
+        value: '1',
+      },
+    };
+  }
   const settings = JSON.parse(host.env.FIXTURE_SETTINGS ?? '{}');
   const answers = {};
   for (const request of requests) {

@@ -78,6 +78,19 @@ test('a Boolean variable outside the grammar is a usage failure naming the varia
   );
 });
 
+test('problems report the globals, then a rejected plugin variable, then the local options', () => {
+  const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'yes', FIXTURE_VERBOSE: 'yes' };
+  expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
+    [
+      'Invalid input: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
+      'Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, 1, or 0.',
+      'Option "--max": Supply a whole number.',
+      'Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.',
+      '',
+    ].join('\n'),
+  );
+});
+
 test('NO_COLOR keeps its presence rule while an option bound to it reads the grammar', () => {
   const terminal = { FIXTURE_TTY: '1', FORCE_COLOR: undefined, TERM: 'xterm-256color' };
   const paint = (env: Record<string, string | undefined>) =>
@@ -244,6 +257,14 @@ test.each([
     { FIXTURE_SOURCE: 'bare', ...settings({ 'limits.bytes': '5' }) },
     'Plugin "@fixture/config" answered option "limit" with an answer that is not { value, label }.',
   ],
+  [
+    { FIXTURE_SOURCE: 'record-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: the answers record threw.',
+  ],
+  [
+    { FIXTURE_SOURCE: 'label-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: the answer label threw.',
+  ],
 ])('a source fault %j reports its sentence with code 1', (env, sentence) => {
   const result = run([], env);
   expect(result.status).toBe(1);
@@ -253,10 +274,52 @@ test.each([
 test.each([
   [['count', '--max', '1'], { total: 'yes' }, 'option "total" with a value that is not a Boolean.'],
   [['select'], { fields: 'a' }, 'option "fields" with a value that is not an array of strings.'],
+  [
+    ['select'],
+    { fields: ['a', 1] },
+    'option "fields" with a value that is not an array of strings.',
+  ],
 ])('an answer of the wrong type for %j names the type the option takes', (argv, values, clause) => {
   const result = run(argv, settings(values));
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(`Internal error: Plugin "@fixture/config" answered ${clause}\n`);
+});
+
+test.each(['sparse', 'hollow'])('a %s list answer is not an array of strings', (mode) => {
+  const result = run(['select'], { FIXTURE_SOURCE: mode });
+  expect(result).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: Plugin "@fixture/config" answered option "fields" with a value that is not an array of strings.\n',
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level","fields","title"]}\nresolved:1\n',
+  });
+});
+
+test('a run cancelled before it starts loads no source and calls none', () => {
+  const env = { FIXTURE_LOADER: 'recording' };
+  expect(invoke(fixture, ['full', 'cancelled'], { env })).toEqual({
+    status: 130,
+    stderr: '',
+    stdout: 'resolved:130\n',
+  });
+});
+
+test('an abort while the source loads calls no resolver and dispatches nothing', () => {
+  const env = { FIXTURE_LOADER: 'aborts' };
+  expect(invoke(fixture, ['full', 'cancel'], { env })).toEqual({
+    status: 130,
+    stderr: '',
+    stdout: 'loader:called\nresolved:130\n',
+  });
+});
+
+test('a variable named after an Object.prototype member is unset in a plain-object env', () => {
+  expect(run(['inherited'], {}, 'plain')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'inherited:undefined:false\nresolved:0\n',
+  });
 });
 
 test('an abort during the source call awaits it and dispatches nothing', () => {
