@@ -5,7 +5,7 @@ description: Application.globalOption declares shared inputs directly and closes
 status: accepted
 supersedes: ADR-0024
 created: 2026-09-13
-modified: 2026-09-13
+modified: 2026-09-25
 ---
 
 # ADR-0026 - Applications declare global options through a fluent method
@@ -29,3 +29,7 @@ This decision supersedes ADR-0024 only for global declaration syntax, constructo
 ## Verification
 
 The declaration harness checks automatic types across modules and packed library boundaries, schema outputs, immutable derivation, literal names, collisions, and method closure. Runtime tests check globals at detached actions, unchanged receivers, both late declaration cases through `inspect()` and `run()`, and unchanged parser and help behavior under Node and Bun.
+
+## Changelog
+
+- 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause that graph build rejects late global declarations for JavaScript callers. `globalOption()` after `command()` or `action()` throws from that call, and a global that collides with a root-local option throws from whichever of the two calls comes second. It also supersedes the timing of the ADR-0024 clause this record carries, that graph build retains the key and spelling collision checks: each check throws at the call or the attach that first brings the two declarations together. It binds when that record is accepted.

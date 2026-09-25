@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-24
+modified: 2026-09-25
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -42,3 +42,4 @@ Help, manifests, completions, and agent tool listings are projections of `inspec
 - 2026-09-19: The implementation of the input schema fact holds that second exception. The converter-failure diagnostic was reopened, because a `DeclarationError` from `inspect()` alone reaches a test harness and no developer running the application through `run()`, and it waits on how a run tells a development application from a distributed one. Until that is decided, a converter that fails reads `null` under `inspect()` and `run()` alike, and the one exception stays the declared default `run()` alone validates. The entry above binds, in its final form, with the rule that settles the diagnostic.
 - 2026-09-24: [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md), proposed, adds collecting extensions, whose values accumulate from the author's layers and from lifecycle hooks. A collected value carries no record of which plugin or layer supplied it, so the rule that a projection describes the built product and never its provenance holds for them.
 - 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, adds one frozen graph fact per option, `env`, the variable its environment binding names or `null`, on both `OptionNode` variants. Which tier supplied a value on a run is provenance and stays off the graph and every projection; only core's failure messages name it. It binds when that record is accepted.
+- 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause that graph build applies every declaration rule. A fault known at an authoring call, a constructor, or an attach throws there, before `run()` or `inspect()` is reached, and graph build applies the root's finished-Command checks, the lifecycle hooks, and the rules over what the hooks contribute. `inspect()` still applies every build rule `run()` applies except passing a default through its schema. It binds when that record is accepted.
