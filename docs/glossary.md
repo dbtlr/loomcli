@@ -371,7 +371,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Configuration source**:
-The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
+The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
 
 **Middleware**:

@@ -498,7 +498,7 @@ Input sources are proven when public APIs alone produce these results under Node
 - **Booleans.** `true`, `1`, `FALSE`, and `0` fill a Boolean option under each polarity, `yes` fails with the grammar diagnostic, and `NO_COLOR` keeps its presence rule.
 - **Activation.** A plugin option filled from the environment activates its middleware, and one filled with `false` activates it too.
 - **Held faults.** A bad variable and a failing source both report nothing under `--help`, and each reports its diagnostic without it.
-- **Loading.** A source with no unfilled configuration-bound option in scope is never loaded, and a source answers a multiple option with a list.
+- **Loading.** A source is never loaded when no in-scope option is unfilled, configuration-bound, and free of an environment fault, so a Boolean variable outside the grammar keeps the source unloaded although its option is unfilled and configuration-bound. A source answers a multiple option with a list.
 - **Build.** Each row of [Input source build errors](#input-source-build-errors) is rejected, and one variable bound on two sibling Commands is accepted.
 - **Projections.** `inspect()` and the manifest report `env` on bound and unbound options.
 - **Diagnostics.** A rejected filled value prints `Option "--limit" (from TEXTSTAT_LIMIT): ...`, a configuration answer prints its label, and an argv message is unchanged.
