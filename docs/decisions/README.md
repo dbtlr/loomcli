@@ -50,6 +50,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) | Concrete color helpers accept independent depth-specific fallbacks, and the named Loom theme supplies a foreground-only palette. | accepted |
 | [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md) | A validated input carries its input-side JSON Schema as a core graph fact derived through the Standard JSON Schema channel; the manifest is one projection of the graph and nothing depends on it; a result carries no schema. | proposed |
 | [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) | A projection with an open set of suppliers declares a collecting extension whose values accumulate in order, and a supplier adds values from its `onCommandAttach` hook through the declaring plugin's declarations module; help supplies its details and examples to the manifest this way. | accepted |
+| [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md) | Environment and configuration map into options through one core input-source stage between local parsing and validation, with a fixed precedence of argv, environment, configuration, then default; an option names its variable explicitly, and one plugin may declare the configuration source. | proposed |
 
 ## Adding a record
 

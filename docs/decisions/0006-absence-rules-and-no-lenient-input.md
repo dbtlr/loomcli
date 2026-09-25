@@ -4,7 +4,7 @@ title: ADR-0006 - Absence is decided by the declaration, and invalid input never
 description: An omitted optional value skips its schema unless it declares validateOmitted, a collection always runs its schema, presence rules live in validation, and a rejected value fails the invocation.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-09-24
 ---
 
 # ADR-0006 - Absence is decided by the declaration, and invalid input never falls back to a default
@@ -29,3 +29,7 @@ Defaults, omission, and rejection interact, and each framework picks a posture. 
 ## Consequences
 
 `validateOmitted` beside `required`, a default, `multiple`, `variadic`, a Boolean type, or no schema is a compile error and a declaration error. A schema's input type must accept `undefined` when the flag is set, the same way a declared default must satisfy the input type.
+
+## Changelog
+
+- 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, reads "omitted" in this record, for an option, as unfilled by every tier: argv, the environment, and the configuration source all left it unsupplied. A filled value is supplied, so it satisfies `required`, never triggers `validateOmitted`, and keeps a declared default from applying. The rule against lenient input extends to the new tiers: a filled value its schema rejects, or a Boolean variable outside the closed grammar, fails the invocation and never falls through to a lower tier or to the default. An empty variable is unset rather than invalid, so it does fall through. It binds when that record is accepted.

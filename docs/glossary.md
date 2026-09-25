@@ -94,14 +94,22 @@ A string option that collects every occurrence into one array instead of rejecti
 _Avoid_: Repeatable flag, array option, list option
 
 **Default**:
-The value a declaration supplies for an omitted optional input. A default is stated in the schema's input type and passes through the schema like a supplied value.
+The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the schema's input type and passes through the schema like a supplied value.
+
+**Input-source stage**:
+The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.
+_Avoid_: Config merge, fallback chain, value resolution
+
+**Environment binding**:
+The variable an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
+_Avoid_: Env var option, env fallback, auto env
 
 **Schema**:
 A Standard Schema object attached to a value input through `validate`. It receives the supplied string or string array, decides acceptance, and determines the action's value type.
 _Avoid_: Validator (for the object), parser, type guard
 
 **Validation context**:
-The facts core attaches to every schema call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied tokens, and the host. A schema reads it to decide rules that depend on the invocation.
+The facts core attaches to every schema call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A schema reads it to decide rules that depend on the invocation.
 _Avoid_: Schema options, environment
 
 **Passthrough**:
@@ -149,7 +157,7 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, validation, the middleware chain, the action, and the exit status.
+One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, the input-source stage, validation, the middleware chain, the action, and the exit status.
 _Avoid_: Execution, call, request
 
 **Request**:
@@ -343,7 +351,7 @@ The JSON Schema a validated input's schema publishes through the Standard JSON S
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
-A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
+A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, a configuration source, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Plugin identity**:
@@ -351,7 +359,7 @@ The nonempty string that names a plugin, fixed where the plugin is defined. By c
 _Avoid_: Plugin name (when the key is meant), id (in prose)
 
 **Contribution**:
-One thing a plugin adds to an Application: an option, a middleware, a lifecycle hook, an extension, a declared view, a view override, or a slot claim. Contributions compose in installation order.
+One thing a plugin adds to an Application: an option, a middleware, a lifecycle hook, an extension, a declared view, a view override, a configuration source, or a slot claim. Contributions compose in installation order.
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
@@ -359,15 +367,19 @@ A function on a plugin definition that core calls at one named point of an Appli
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
-A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The signals slot is the first.
+A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The signals slot is the first, and the configuration source follows the same rule.
 _Avoid_: Singleton, capability (for the position)
+
+**Configuration source**:
+The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
+_Avoid_: Config loader, config provider, settings store
 
 **Middleware**:
 A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
-A middleware's declared condition for running and loading: a list of its plugin's own option names, any of which being present activates it, or always.
+A middleware's declared condition for running and loading: a list of its plugin's own option names, any of which being present activates it, or always. Present means supplied as a token or filled by the input-source stage, never by a default.
 _Avoid_: Trigger, gate, filter
 
 **Extension**:
