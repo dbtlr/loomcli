@@ -140,7 +140,7 @@
           "type": "string",
           "pattern": "^[0-9]+$"
         },
-        "env": null,
+        "env": "TEXTSTAT_MIN_BYTES",
         "default": {
           "value": "0"
         }
@@ -172,7 +172,7 @@
         "negative": null,
         "polarity": "positive",
         "schema": null,
-        "env": null
+        "env": "TEXTSTAT_TOTAL"
       },
       {
         "type": "string",
