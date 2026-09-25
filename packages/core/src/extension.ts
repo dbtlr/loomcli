@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { DeclarationError, reasonOf } from './errors.js';
+import { asSentence, DeclarationError, reasonOf } from './errors.js';
 import { isPlainObject } from './facts.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 import type { AttachedCommand } from './types.js';
@@ -181,6 +181,11 @@ const applies: Readonly<Record<ExtensionTarget, string>> = {
   command: 'Commands',
   option: 'options',
 };
+
+/** How a diagnostic names the declarations one target covers, such as "Commands". */
+function appliesTo(target: ExtensionTarget): string {
+  return applies[target];
+}
 
 /** One value of a plain-data walk: the frozen copy, or nothing when the shape is rejected. */
 type PlainResult = { data: unknown } | undefined;
@@ -405,14 +410,6 @@ function isSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-/**
- * One schema message as a sentence of its own. A schema author writes the message with or without a
- * full stop, so the diagnostic supplies one only where the message carries none.
- */
-function sentence(text: string): string {
-  return text.endsWith('.') ? text : `${text}.`;
-}
-
 /** The message one rejected value reports, with the placeholder a silent schema earns. */
 function issueText(issues: unknown): string {
   const first: unknown = Array.isArray(issues) ? issues[0] : undefined;
@@ -456,7 +453,7 @@ function validated(
   } catch (error) {
     // A schema that throws rejected the value the only way it could, so it reads as a rejection.
     throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${sentence(reasonOf(error))} Correct the value.`,
+      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${asSentence(reasonOf(error))} Correct the value.`,
     );
   }
 }
@@ -473,7 +470,7 @@ function validateValue(subject: ExtensionSubject, carried: CarriedValue): unknow
   const issues: unknown = 'issues' in result ? result.issues : undefined;
   if (issues !== undefined) {
     throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${identity}" value: ${sentence(issueText(issues))} Correct the value.`,
+      `${subject.sentence} holds an invalid "${identity}" value: ${asSentence(issueText(issues))} Correct the value.`,
     );
   }
   const output = plainData('value' in result ? result.value : undefined);
@@ -649,6 +646,7 @@ export type {
   ExtensionValue,
 };
 export {
+  appliesTo,
   buildExtensions,
   extendStore,
   extension,

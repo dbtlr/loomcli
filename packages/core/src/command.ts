@@ -1,8 +1,10 @@
+import { checkEnvBinding, checkNoArgumentBinding, claimVariables } from './bindings.js';
 import type { RegisteredGlobals } from './environment.js';
 import {
   commandSentence,
   commandSubject,
   DeclarationError,
+  InternalError,
   NonCallableCommandError,
   ResultError,
   UnexpectedArgumentError,
@@ -31,12 +33,21 @@ import {
   isPlainObject,
 } from './facts.js';
 import type { BuiltGlobals, GlobalsState, OptionOwner } from './globals.js';
-import { buildGlobals, keyCollision, spellingCollision } from './globals.js';
-import { resultNode, snapshot } from './inspect.js';
-import type { ResultNode } from './inspect.js';
-import { compileOptions, extractGlobals, mergeValues, parseInputs } from './options.js';
+import { boundOptions, buildGlobals, keyCollision, spellingCollision } from './globals.js';
+import { nodeAt, resultNode, snapshot } from './inspect.js';
+import type { CommandGraph, OptionNode, ResultNode } from './inspect.js';
+import {
+  compileOptions,
+  copyValues,
+  emptyValues,
+  extractGlobals,
+  mergeValues,
+  parseInputs,
+} from './options.js';
 import type { OptionValues } from './options.js';
 import type { BuiltPlugin, PluginBuild } from './plugin.js';
+import { fillInputs } from './sources.js';
+import type { SourceOutcome } from './sources.js';
 import type { ContextualStyle } from './style.js';
 import type {
   Action,
@@ -1296,9 +1307,11 @@ function checkInputFacts(
     checkDescription(sentence, input.config.description);
     if (input.kind === 'argument') {
       checkNoListingFacts(sentence, input.config);
+      checkNoArgumentBinding(sentence, input.config);
     } else {
       checkHidden(sentence, input.config.hidden);
       checkDeprecated(sentence, input.config.deprecated);
+      checkEnvBinding(sentence, input.config);
     }
     context.extensions.set(
       input,
@@ -1394,6 +1407,15 @@ export function buildCommand<Args, Options, Globals>(
     checkGroup(hooked, attached);
   }
   const options = compileLocalOptions(hooked, globals, subject);
+  // One invocation's scope is this Command's own options and the globals table.
+  // A variable binds one option there, while a sibling Command may bind it again.
+  claimVariables(
+    boundOptions(
+      hooked.inputs.filter((input) => input.kind === 'option'),
+      (option) => `${subject} option "${option}"`,
+    ),
+    globals.variables,
+  );
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
   const claim = aliasNamespace(name, new Set(attached.map((entry) => entry[0])));
@@ -1754,6 +1776,8 @@ export interface DispatchInvocation {
   channel: (binding: ResultBinding) => ActionChannel;
   defaults: DefaultValues;
   host: Host;
+  /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
+  inspected: () => CommandGraph;
   signal: AbortSignal;
   style: ContextualStyle;
 }
@@ -1762,9 +1786,12 @@ export interface DispatchInvocation {
  * One invocation prepared ahead of the middleware chain. `'ready'` carries the request a middleware
  * reads and the call that dispatches; `'held'` carries the fault this phase found, which core
  * raises at the dispatch boundary and never before, so a takeover swallows it. `result` is what the
- * routed Command declared, whose views a middleware selects among, on either shape.
+ * routed Command declared, whose views a middleware selects among, on either shape. `globals` holds
+ * the globals table's values after the input-source stage, which activation and every plugin's own
+ * options read on either shape.
  */
 export type Prepared = {
+  globals: OptionValues;
   result: DeclaredResult | undefined;
 } & (
   | { dispatch: (view: string | null) => Promise<void>; kind: 'ready'; request: Request }
@@ -1796,42 +1823,139 @@ function requestOf(
   });
 }
 
+/** The routed Command's own tokens after local parsing, or the fault that phase holds. */
+type LocalPhase =
+  | {
+      args: ReadonlyMap<InputDeclaration, string | string[]>;
+      dispatch: (input: DispatchInput) => unknown;
+      kind: 'parsed';
+      options: OptionValues;
+      passthrough: string[];
+    }
+  | { fault: unknown; kind: 'held' };
+
 /**
- * The phases that run ahead of the chain: the callable check, local parsing, and validation. It
- * answers with the call that dispatches, so the caller records that the action was invoked at the
- * moment it invokes it and no earlier failure reads as a dispatch.
+ * The callable check and local parsing. A group answers no invocation of its own, so it holds the
+ * missing-subcommand error with the rank the routing errors have and parses no token; a token
+ * fault holds the same way.
+ */
+function parseLocal(routed: RoutedInvocation): LocalPhase {
+  const { command, path } = routed;
+  const { dispatch } = command;
+  try {
+    if (!dispatch) {
+      throw new NonCallableCommandError(path, candidatesOf(command));
+    }
+    const parsed = parseInputs(command.options, routed.tokens);
+    const args = bindArguments(command, path, parsed.positionals);
+    return {
+      args,
+      dispatch,
+      kind: 'parsed',
+      options: parsed.options,
+      passthrough: parsed.passthrough,
+    };
+  } catch (error) {
+    return { fault: error, kind: 'held' };
+  }
+}
+
+/** The options one declaration list holds, in declaration order. */
+function optionsOf(inputs: readonly InputDeclaration[]): OptionInput[] {
+  return inputs.filter((input): input is OptionInput => input.kind === 'option');
+}
+
+/**
+ * The node of one option a configuration source is asked about: in the graph's globals, or among
+ * the routed Command's own options. Build published every declaration, so a missing node means the
+ * two readings of one graph disagree.
+ */
+function requestNode(
+  graph: CommandGraph,
+  path: readonly string[],
+  place: { global: boolean; name: string },
+): OptionNode {
+  const options = place.global ? graph.globals : nodeAt(graph, path).options;
+  const node = options.find((option) => option.name === place.name);
+  if (!node) {
+    throw new InternalError(`Option "${place.name}" is not in the inspected graph.`, undefined);
+  }
+  return node;
+}
+
+/** The one invocation every phase ahead of the chain reads: the graph, the route, and the run. */
+interface Preparation {
+  graph: BuiltGraph;
+  invocation: DispatchInvocation;
+  routed: RoutedInvocation;
+}
+
+/**
+ * The input-source stage over this run's own copies of the parsed values. The global and plugin
+ * options fill whatever local parsing held; the routed Command's own options fill only when local
+ * parsing held no fault, because the request is `null` otherwise.
+ */
+async function fillScope(
+  { graph, invocation, routed }: Preparation,
+  local: LocalPhase,
+): Promise<{ globals: OptionValues; locals: OptionValues; sources: SourceOutcome }> {
+  const globals = copyValues(routed.scan);
+  const locals = copyValues(local.kind === 'parsed' ? local.options : emptyValues());
+  const sources = await fillInputs({
+    extensions: graph.extensions,
+    globals: {
+      global: true,
+      inputs: [...graph.globals.inputs, ...graph.globals.plugins.flatMap((entry) => entry.inputs)],
+      values: globals,
+    },
+    host: invocation.host,
+    locals:
+      local.kind === 'parsed'
+        ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
+        : undefined,
+    plugins: graph.globals.plugins,
+    request: (input, global) =>
+      requestNode(invocation.inspected(), routed.path, { global, name: input.name }),
+    signal: invocation.signal,
+  });
+  return { globals, locals, sources };
+}
+
+/**
+ * Validation and the dispatch it prepares, over the values the input-source stage left. It answers
+ * with the call that dispatches, so the caller records that the action was invoked at the moment
+ * it invokes it and no earlier failure reads as a dispatch.
  */
 async function readyDispatch(
-  graph: BuiltGraph,
-  routed: RoutedInvocation,
-  invocation: DispatchInvocation,
+  { graph, invocation, routed }: Preparation,
+  filled: {
+    local: LocalPhase & { kind: 'parsed' };
+    sources: SourceOutcome;
+    values: OptionValues;
+  },
 ): Promise<{ dispatch: (view: string | null) => Promise<void>; request: Request }> {
-  const { command, path, scan } = routed;
-  const { dispatch } = command;
-  // A group answers no invocation of its own, so it fails with the routing errors above it.
-  if (!dispatch) {
-    throw new NonCallableCommandError(path, candidatesOf(command));
-  }
-  const parsed = parseInputs(command.options, routed.tokens);
-  const args = bindArguments(command, path, parsed.positionals);
+  const { command, path } = routed;
+  const { local } = filled;
   const values = await validateValues({
     command: path,
     defaults: invocation.defaults,
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: command.inputs },
-    passthrough: parsed.passthrough,
+    passthrough: local.passthrough,
+    plugins: graph.globals.plugins.flatMap((entry) => entry.inputs),
     signal: invocation.signal,
-    supplied: { args, options: mergeValues(scan, parsed.options) },
+    sources: filled.sources,
+    supplied: { args: local.args, options: filled.values },
   });
   return {
     dispatch: async (view) => {
       // The channel is built at the boundary, because the view a middleware selected is read there.
       const channel = invocation.channel({ path, result: command.result, view });
       try {
-        await dispatch({
+        await local.dispatch({
           host: invocation.host,
           out: channel.out,
-          passthrough: parsed.passthrough,
+          passthrough: local.passthrough,
           signal: invocation.signal,
           style: invocation.style,
           values,
@@ -1852,13 +1976,15 @@ async function readyDispatch(
         throw error;
       }
     },
-    request: requestOf(command, values, parsed.passthrough),
+    request: requestOf(command, values, local.passthrough),
   };
 }
 
 /**
  * Prepares one dispatch ahead of the middleware chain and holds whatever fault it found, so a
  * middleware reads the request before the action runs and a takeover never observes the fault.
+ * The phases run in order: local parsing, the input-source stage, and validation. A local fault
+ * outranks a configuration source's fault, and after either one core runs no validation.
  */
 export async function prepareDispatch(
   graph: BuiltGraph,
@@ -1866,9 +1992,30 @@ export async function prepareDispatch(
   invocation: DispatchInvocation,
 ): Promise<Prepared> {
   const result = routed.command.result;
+  const local = parseLocal(routed);
+  const preparation = { graph, invocation, routed };
+  const { globals, locals, sources } = await fillScope(preparation, local);
+  const held = (fault: unknown): Prepared => ({
+    fault,
+    globals,
+    kind: 'held',
+    request: null,
+    result,
+  });
+  if (local.kind === 'held') {
+    return held(local.fault);
+  }
+  if (sources.fault) {
+    return held(sources.fault);
+  }
   try {
-    return { ...(await readyDispatch(graph, routed, invocation)), kind: 'ready', result };
+    const ready = await readyDispatch(preparation, {
+      local,
+      sources,
+      values: mergeValues(globals, locals),
+    });
+    return { ...ready, globals, kind: 'ready', result };
   } catch (error) {
-    return { fault: error, kind: 'held', request: null, result };
+    return held(error);
   }
 }

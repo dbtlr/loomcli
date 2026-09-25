@@ -41,8 +41,18 @@ type OptionSpelling =
   | { short: ShortAlias; shortOnly: true };
 
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
-/** The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does. */
-type Multiplicity = { multiple: true } | { multiple?: false };
+/**
+ * The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does.
+ * A multiple option takes its list from the configuration source, so it binds no variable.
+ */
+type Multiplicity = { multiple: true; env?: never } | ({ multiple?: false } & EnvBinding);
+/**
+ * The environment binding: the variable the input-source stage fills the option from when argv
+ * supplies none. The declaration names it explicitly, and core derives no name.
+ */
+interface EnvBinding {
+  env?: string;
+}
 /**
  * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member
  * keeps the flag exact under contextual typing, as `Multiplicity` does.
@@ -412,6 +422,7 @@ export type BooleanOption =
   | (OptionSpelling &
       Described &
       Listed &
+      EnvBinding &
       OptionExtensions & {
         type: 'boolean';
         validate?: never;
@@ -423,6 +434,7 @@ export type BooleanOption =
       })
   | (Described &
       Listed &
+      EnvBinding &
       OptionExtensions & {
         type: 'boolean';
         validate?: never;

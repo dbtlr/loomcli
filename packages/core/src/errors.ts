@@ -276,6 +276,14 @@ export class ResultError extends InternalError {
   }
 }
 
+/**
+ * One message someone else wrote, as a sentence of its own. A schema or a plugin writes its message
+ * with or without a full stop, so a diagnostic supplies one only where the message carries none.
+ */
+export function asSentence(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`;
+}
+
 /** What a diagnostic says about an unexpected value, whether or not it was an Error. */
 export function reasonOf(thrown: unknown): string {
   return thrown instanceof Error ? thrown.message : 'An unknown error occurred.';

@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
+import { InternalError } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
 import type { compileOptions } from './options.js';
@@ -41,6 +42,7 @@ interface ArgumentNode {
  * `schema` is the input schema the validator publishes. A Boolean option validates nothing, so its
  * variant carries the field at `null`, and every projection built on the node holds if a later
  * contract lets it validate.
+ * `env` is the variable the option's environment binding names, or `null` when it binds none.
  */
 type OptionNode =
   | {
@@ -57,6 +59,7 @@ type OptionNode =
       readonly validated: boolean;
       readonly validateOmitted: boolean;
       readonly schema: InputSchema;
+      readonly env: string | null;
       readonly default: { readonly value: unknown } | undefined;
       readonly extensions: Readonly<Record<string, unknown>>;
     }
@@ -72,6 +75,7 @@ type OptionNode =
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
+      readonly env: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
     };
 
@@ -241,6 +245,7 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
       ? {
           deprecated: config.deprecated,
           description: config.description,
+          env: config.env ?? null,
           extensions,
           hidden: config.hidden === true,
           long,
@@ -256,6 +261,7 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
           default: declaredDefault(config),
           deprecated: config.deprecated,
           description: config.description,
+          env: config.env ?? null,
           extensions,
           hidden: config.hidden === true,
           long,
@@ -369,5 +375,25 @@ function inspectGraph(
   return Object.freeze(inspected);
 }
 
+/**
+ * The routed node inside the inspected graph, which routing already proved reachable. A missing
+ * segment means the two readings of one graph disagree, so the run stops rather than hand a
+ * middleware or a configuration source the wrong Command.
+ */
+function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
+  let node = graph.root;
+  for (const name of path) {
+    const child = node.children.find((entry) => entry.name === name);
+    if (!child) {
+      throw new InternalError(
+        `The routed command "${path.join(' ')}" is not in the inspected graph.`,
+        undefined,
+      );
+    }
+    node = child;
+  }
+  return node;
+}
+
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
-export { inspectGraph, resultNode };
+export { inspectGraph, nodeAt, resultNode };
