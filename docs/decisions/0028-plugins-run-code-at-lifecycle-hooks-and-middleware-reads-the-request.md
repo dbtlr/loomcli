@@ -4,7 +4,7 @@ title: ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the 
 description: A plugin definition carries lifecycle hooks named on<Event> that core calls at named points, beginning with onCommandAttach at graph build. Local parsing and validation run ahead of the middleware chain with the fault held until the dispatch boundary, so a middleware reads the request and selects a result's view by name. The formatter is the proof.
 status: accepted
 created: 2026-09-15
-modified: 2026-09-16
+modified: 2026-09-24
 ---
 
 # ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the request
@@ -44,3 +44,7 @@ The ordering of validation ahead of the chain is settled here. Open: whether a t
 ## Status
 
 Accepted. The formatter increment proves it: both example applications install `format()` after `help()` and `version()`, `textstat --format json` prints its table as one document with the timing line still on stderr, `jsonkit paths --format jsonl` prints one line per entry once core has collected the sequence, and the acceptance in [Formatter](../core.md#formatter) runs under Node and Bun.
+
+## Changelog
+
+- 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, inserts the input-source stage between local parsing and validation, ahead of the chain. The stage fills global and plugin options from the environment and the configuration source whatever local parsing held, and local options only when local parsing held nothing. Its faults join the held fault: a Boolean variable outside the closed grammar and a schema issue on a filled value are validation-phase problems, and a configuration source that fails to load, throws, or answers with a wrong-typed value is an internal error that takes the place of anything collected, as a validator's developer error does. Each is raised at the dispatch boundary, so a takeover still reports none. The chain's placement after parsing and validation, and `request`, stand. It binds when that record is accepted.
