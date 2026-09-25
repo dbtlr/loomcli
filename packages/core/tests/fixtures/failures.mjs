@@ -10,6 +10,8 @@ import {
 } from '@loomcli/core';
 import { z } from 'zod';
 
+import { declare } from './declare.mjs';
+
 const [scenario, ...argv] = process.argv.slice(2);
 
 /** Every fact the failure classes carry. JSON drops the keys a class does not declare. */
@@ -155,13 +157,11 @@ function build() {
         throw new Error('Unexpected failure.');
       });
     }
+    // A root with neither children nor an action is final only at build, so run() reports it.
     case 'declaration': {
       return new Application('failures', {
         views: [override(DeclarationError, brand('declaration'))],
-      })
-        .argument('files', { required: true, variadic: true })
-        .argument('extras', { required: true, variadic: true })
-        .action(dispatch);
+      });
     }
     case 'empty-issues': {
       return new Application('failures', {
@@ -192,5 +192,6 @@ function build() {
 
 // An unusable destination proves the fallback path stops reporting without changing the status.
 const host = scenario === 'broken-fallback' ? { argv, stderr: {} } : { argv };
-const code = await build().run({ host });
+const app = declare(build);
+const code = await app.run({ host });
 process.stdout.write(`resolved:${code}\n`);

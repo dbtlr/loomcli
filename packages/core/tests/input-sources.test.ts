@@ -370,7 +370,7 @@ test('inspect() publishes env on bound and unbound options of every kind', () =>
   ]);
 });
 
-/** Every input source build rule answers in `inspect()` and in `run()` alike. */
+/** Every input source declaration rule throws from the call or the attach that first proves it. */
 function build(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/sources/build.mjs', import.meta.url), [scenario, mode]);
 }
@@ -444,16 +444,11 @@ test.each([
     'binding-own-option',
     'Plugin "@acme/config" option "config" carries its own source binding. Remove the value; the source\'s own options resolve before it loads.',
   ],
-])('build rejects %s in inspect() and run()', (scenario, message) => {
+])('the declaration that makes %s wrong throws', (scenario, message) => {
   expect(build(scenario, 'inspect')).toEqual({
     status: 0,
     stderr: '',
-    stdout: `declaration:1: ${message}\n`,
-  });
-  expect(build(scenario, 'run')).toEqual({
-    status: 1,
-    stderr: `Invalid declaration: ${message}\n`,
-    stdout: 'resolved:1\n',
+    stdout: `thrown:1: ${message}\n`,
   });
 });
 

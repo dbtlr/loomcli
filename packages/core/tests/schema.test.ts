@@ -108,11 +108,11 @@ test.each([
   ['boolean-schema', 'is Boolean'],
   ['invalid-schema', 'Standard Schema v1'],
   ['nonstring-default', 'default must be a string'],
-])('%s fails declaration checking before token parsing', (scenario, reason) => {
+])('%s throws from the declaring call while the module evaluates', (scenario, reason) => {
   const result = schema(scenario, ['--unknown']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain('Invalid declaration:');
+  expect(result.stderr).not.toContain('Invalid declaration:');
   expect(result.stderr).toContain(reason);
 });
 

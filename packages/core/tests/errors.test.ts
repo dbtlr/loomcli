@@ -22,24 +22,6 @@ test.each([
     'Invalid input: Unknown option "-f". Supply a declared option; prefix a hyphenated path with "./".\n',
   ],
   [
-    'duplicate',
-    ['x'],
-    1,
-    'Invalid declaration: Argument "files" is declared more than once on the root Command. Remove or rename the duplicate.\n',
-  ],
-  [
-    'competing',
-    ['x'],
-    1,
-    'Invalid declaration: Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.\n',
-  ],
-  [
-    'multiple-actions',
-    [],
-    1,
-    'Invalid declaration: The root Command has multiple actions. Register one action.\n',
-  ],
-  [
     'actionless',
     [],
     1,
@@ -66,6 +48,27 @@ test.each([
   },
 );
 
+test.each([
+  [
+    'duplicate',
+    'Argument "files" is declared more than once on the root Command. Remove or rename the duplicate.',
+  ],
+  [
+    'competing',
+    'Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.',
+  ],
+  ['multiple-actions', 'The root Command has multiple actions. Register one action.'],
+] satisfies [string, string][])(
+  'the %s declaration throws from the call that makes it',
+  (scenario, message) => {
+    expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), [scenario])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `thrown:1: ${message}\n`,
+    });
+  },
+);
+
 test('catching FatalError prevents failure and eager printing', () => {
   expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), ['caught-fatal'])).toEqual({
     status: 0,
@@ -74,43 +77,31 @@ test('catching FatalError prevents failure and eager printing', () => {
   });
 });
 
-/** Both build entry points read the options slot, so the fixture is invoked through each. */
+/** The constructor checks the options slot, and a valid one reaches both build entry points. */
 function withOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/application-options.mjs', import.meta.url), [scenario, mode]);
 }
 
 test.each(['application-value', 'empty-application'])(
-  'an Application value (%s) used as an options object is a declaration error at build, not construction',
+  'an Application value (%s) used as an options object is thrown by the constructor',
   (scenario) => {
     expect(withOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: The Application options must be an object. Supply an Application options object.\n',
-    });
-    expect(withOptions(scenario, 'run')).toEqual({
-      status: 1,
-      stderr:
-        'Invalid declaration: The Application options must be an object. Supply an Application options object.\n',
-      stdout: 'assembled\nresolved:1\n',
+        'thrown:1: The Application options must be an object. Supply an Application options object.\n',
     });
   },
 );
 
 test.each(['string-options', 'array-options'])(
-  'options that are not an object (%s) are a declaration error at build, not construction',
+  'options that are not an object (%s) are thrown by the constructor',
   (scenario) => {
     expect(withOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: The Application options must be an object. Supply an Application options object.\n',
-    });
-    expect(withOptions(scenario, 'run')).toEqual({
-      status: 1,
-      stderr:
-        'Invalid declaration: The Application options must be an object. Supply an Application options object.\n',
-      stdout: 'assembled\nresolved:1\n',
+        'thrown:1: The Application options must be an object. Supply an Application options object.\n',
     });
   },
 );
@@ -128,43 +119,31 @@ test('an options object with core facts constructs, inspects, and runs the Appli
   });
 });
 
-/** A Command reads its own options slot under the same rules, through the same entry points. */
+/** A Command's constructor checks its own options slot under the same rules. */
 function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/command-options.mjs', import.meta.url), [scenario, mode]);
 }
 
 test.each(['application-value', 'empty-application'])(
-  'an Application value (%s) used as an options object on a Command is a declaration error at build',
+  'an Application value (%s) used as an options object on a Command is thrown by the constructor',
   (scenario) => {
     expect(withCommandOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: Command "get" options must be an object. Supply a Command options object.\n',
-    });
-    expect(withCommandOptions(scenario, 'run')).toEqual({
-      status: 1,
-      stderr:
-        'Invalid declaration: Command "get" options must be an object. Supply a Command options object.\n',
-      stdout: 'assembled\nresolved:1\n',
+        'thrown:1: Command "get" options must be an object. Supply a Command options object.\n',
     });
   },
 );
 
 test.each(['string-options', 'array-options'])(
-  'Command options that are not an object (%s) are a declaration error at build',
+  'Command options that are not an object (%s) are thrown by the constructor',
   (scenario) => {
     expect(withCommandOptions(scenario, 'inspect')).toEqual({
       status: 0,
       stderr: '',
       stdout:
-        'assembled\ndeclaration:1: Command "get" options must be an object. Supply a Command options object.\n',
-    });
-    expect(withCommandOptions(scenario, 'run')).toEqual({
-      status: 1,
-      stderr:
-        'Invalid declaration: Command "get" options must be an object. Supply a Command options object.\n',
-      stdout: 'assembled\nresolved:1\n',
+        'thrown:1: Command "get" options must be an object. Supply a Command options object.\n',
     });
   },
 );

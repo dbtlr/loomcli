@@ -56,7 +56,7 @@ test('a run that fails to build installs no listener and keeps its declaration d
   expect(run('build-fault')).toEqual({
     status: 1,
     stderr:
-      'Invalid declaration: Plugin "@acme/trace" claims the signals slot, which plugin "@fixture/owner" already holds. Install one owner.\n',
+      'Invalid declaration: Plugin "@fixture/failing" failed in onCommandAttach for the root Command: the hook broke.\n',
     stdout: 'before:0:0\nadded:none\nresolved:1\n',
   });
 });

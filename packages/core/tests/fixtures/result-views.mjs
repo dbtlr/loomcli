@@ -1,5 +1,7 @@
 import { Application, Command } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
@@ -61,7 +63,7 @@ function build() {
     : new Application('reshaped').command(scenarios[scenario]());
 }
 
-const app = build();
+const app = declare(build);
 process.stdout.write('assembled\n');
 
 if (mode === 'inspect') {

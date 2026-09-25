@@ -109,12 +109,12 @@ test.each([
     'Option "file" declares validateOmitted without a schema. Add validate or remove validateOmitted.',
   ],
 ] satisfies [string, string][])(
-  'the %s declaration is rejected before any token is read',
+  'the %s declaration throws from the declaring call while the module evaluates',
   (scenario, diagnostic) => {
-    expect(omitted(scenario, ['--unknown'])).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${diagnostic}\n`,
-      stdout: '',
-    });
+    const result = omitted(scenario, ['--unknown']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).not.toContain('Invalid declaration:');
+    expect(result.stderr).toContain(diagnostic);
   },
 );

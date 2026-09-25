@@ -308,7 +308,7 @@ export class Output {
       });
     }
     if (typeof view.row === 'function') {
-      // Build rejects a row view on a value result, so reaching one here is core's own fault.
+      // The result() call rejects a row view on a value result, so reaching one here is core's own fault.
       return this.renderFailed(new Error(`The view "${selected}" renders rows, not a value.`));
     }
     return this.rendered(() => resolveView(bare, view)(erased(value), this.context('stdout')));

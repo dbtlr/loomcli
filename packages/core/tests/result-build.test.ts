@@ -2,7 +2,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-/** Both build entry points read the result declaration, so each rule is invoked through each. */
+/** A result rule throws from its call or attach, or, on the root, from both build entry points. */
 function withResult(scenario: string, place: 'command' | 'root', mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/result-build.mjs', import.meta.url), [scenario, place, mode]);
 }
@@ -49,21 +49,42 @@ const places = [
   ['command', 'Command "count"'],
 ] satisfies ['command' | 'root', string][];
 
-/** Every rule at every depth: build applies each one wherever the declaration sits. */
+/**
+ * The rules a finished Command answers, which `views()` can still change until the Command is
+ * final. A named Command is final when it attaches; the root is final only at build.
+ */
+const finished = new Set(['empty-record', 'missing-default', 'no-action']);
+
+/** Every rule at every depth, each under the moment that first holds the data proving it. */
 const cases = places.flatMap(([place, subject]) =>
   rules.map(([scenario, rule]) => ({ place, rule, scenario, subject })),
 );
 
-test.each(cases)('a $scenario result on $subject is a declaration error at build', (entry) => {
-  const { place, rule, scenario, subject } = entry;
-  expect(withResult(scenario, place, 'inspect')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
-  });
-  expect(withResult(scenario, place, 'run')).toEqual({
-    status: 1,
-    stderr: `Invalid declaration: ${subject} ${rule}\n`,
-    stdout: 'assembled\nresolved:1\n',
-  });
-});
+test.each(cases.filter((entry) => entry.place === 'command' || !finished.has(entry.scenario)))(
+  'a $scenario result on $subject throws from the call or the attach that proves it',
+  (entry) => {
+    const { place, rule, scenario, subject } = entry;
+    expect(withResult(scenario, place, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `thrown:1: ${subject} ${rule}\n`,
+    });
+  },
+);
+
+test.each(cases.filter((entry) => entry.place === 'root' && finished.has(entry.scenario)))(
+  'a $scenario result on $subject is a declaration error at build',
+  (entry) => {
+    const { place, rule, scenario, subject } = entry;
+    expect(withResult(scenario, place, 'inspect')).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
+    });
+    expect(withResult(scenario, place, 'run')).toEqual({
+      status: 1,
+      stderr: `Invalid declaration: ${subject} ${rule}\n`,
+      stdout: 'assembled\nresolved:1\n',
+    });
+  },
+);

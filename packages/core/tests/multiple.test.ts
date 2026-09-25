@@ -133,9 +133,10 @@ test.each([
     'string-default',
     'Option "field" default must be an array of strings without a schema. Supply a string array default.',
   ],
-])('%s fails declaration checking before token parsing', (scenario, diagnostic) => {
+])('%s throws from the declaring call while the module evaluates', (scenario, diagnostic) => {
   const result = multiple(scenario, ['--unknown']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+  expect(result.stderr).not.toContain('Invalid declaration:');
+  expect(result.stderr).toContain(diagnostic);
 });

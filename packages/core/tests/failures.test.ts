@@ -205,10 +205,7 @@ test('an override for a fatal subclass answers it without answering the base', (
 
 test.each([
   ['internal', 'internal: Unexpected failure.\n'],
-  [
-    'declaration',
-    'declaration: Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.\n',
-  ],
+  ['declaration', 'declaration: The root Command has no action. Register an action.\n'],
 ])('an author-facing %s failure reaches its override', (scenario, stderr) => {
   expect(failures(scenario)).toEqual({ status: 1, stderr, stdout: 'resolved:1\n' });
 });
@@ -222,22 +219,22 @@ test('a view failure inside the action is reported through the registry with its
   });
 });
 
-test('two overrides for one class are a declaration error in core rendering', () => {
+test('two overrides for one class throw from the Application constructor', () => {
   expect(failures('duplicate', ['get'])).toEqual({
-    status: 1,
-    stderr:
-      'Invalid declaration: The Application overrides the view for "InputError" twice. Remove one override.\n',
-    stdout: 'resolved:1\n',
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: The Application overrides the view for "InputError" twice. Remove one override.\n',
   });
 });
 
-test('a value that is not an override is a declaration error', () => {
-  const result = failures('foreign', ['get']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('resolved:1\n');
-  expect(result.stderr).toBe(
-    'Invalid declaration: The Application holds a value that is not a view override. Supply the value returned by override(key, view).\n',
-  );
+test('a value that is not an override throws from the Application constructor', () => {
+  expect(failures('foreign', ['get'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: The Application holds a value that is not a view override. Supply the value returned by override(key, view).\n',
+  });
 });
 
 test('a schema that rejects without an explanation reports the placeholder issue', () => {

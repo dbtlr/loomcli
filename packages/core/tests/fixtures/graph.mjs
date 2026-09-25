@@ -2,6 +2,8 @@ import { Writable } from 'node:stream';
 
 import { Application, Command } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 
 const dispatch = ({ out }) => out.print('dispatched');
@@ -150,7 +152,7 @@ function build() {
         .action(dispatch)
         .command(child('get'));
     }
-    // A child's identity and name are settled before the order fault is reported.
+    // The child's own constructor throws before the late attach is reached.
     case 'late-child-invalid-name': {
       return app.action(dispatch).command(child('-get'));
     }
@@ -183,5 +185,6 @@ const stderr = new Writable({
     callback();
   },
 });
-const code = await build().run({ host: { argv: process.argv.slice(3), stderr } });
+const app = declare(build);
+const code = await app.run({ host: { argv: process.argv.slice(3), stderr } });
 process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);

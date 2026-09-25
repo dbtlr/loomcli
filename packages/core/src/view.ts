@@ -158,7 +158,7 @@ function view(identity: string, definition: View<never> | RowView<never>): AnyDe
 
 /**
  * What one override replaces: a declared view, a failure class read as its prototype, or a value
- * that is neither, which build reports as the entry fault of the list that holds it.
+ * that is neither, which the list that holds it reports as its entry fault.
  */
 type OverrideKey =
   | { kind: 'view'; view: AnyDeclaredView }
@@ -219,8 +219,8 @@ function override(key: object, replacement: StoredView): ViewOverride {
 
 /**
  * The key one failure-class override answers. A class is a function whose `prototype` is the
- * object a thrown failure's chain holds, so anything else is no key at all and build reports it as
- * the entry fault of the list that holds it, rather than colliding with every other such value.
+ * object a thrown failure's chain holds, so anything else is no key at all and the list that holds
+ * it reports it as its entry fault, rather than colliding with every other such value.
  */
 function failureKey(key: object): OverrideKey {
   if (typeof key !== 'function' || !('prototype' in key)) {

@@ -531,7 +531,7 @@ test('reports the option and the argument that validate their own omission', () 
 test('throws a DeclarationError a consumer catches by class, without run()', () => {
   expect(invokeInspect('invalid', 'catch')).toEqual({
     caught: true,
-    message: 'Command "get" has no action. Register an action.',
+    message: 'The root Command has no action. Register an action.',
     name: 'DeclarationError',
   });
 });
@@ -579,16 +579,13 @@ test.each([
     'Option "field" default must be an array of strings without a schema. Supply a string array default.',
   ],
 ] satisfies [string, string][])(
-  'inspect() rejects the %s declaration, as run() does',
+  'the call that declares the %s input throws before inspect() or run()',
   (graph, message) => {
-    expect(invokeInspect(graph, 'catch')).toEqual({
-      caught: true,
-      message,
-      name: 'DeclarationError',
+    expect(invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, 'declare'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `thrown:1: ${message}\n`,
     });
-    const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, 'run']);
-    expect(result.stderr).toBe(`Invalid declaration: ${message}\n`);
-    expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
   },
 );
 
@@ -604,10 +601,10 @@ test('inspect() leaves a default that only its schema rejects to run()', () => {
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 
-test('run() still reports the invalid graph as a diagnostic with code 1', () => {
+test('run() still reports a build fault as a diagnostic with code 1', () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), ['invalid', 'run']);
   expect(result.stderr).toBe(
-    'Invalid declaration: Command "get" has no action. Register an action.\n',
+    'Invalid declaration: The root Command has no action. Register an action.\n',
   );
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });

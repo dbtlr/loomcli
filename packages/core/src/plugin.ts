@@ -1,13 +1,16 @@
-import { checkEnvBinding } from './bindings.js';
+import { checkEnvBinding, claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
-import { isCommand } from './command.js';
-import type { Command } from './command.js';
+import { attach, commandNode } from './command.js';
+import type { AttachedChild, Command } from './command.js';
 import { DeclarationError, InternalError, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
-import type { AnyExtension, DescriptorRegistry, ExtensionRecords } from './extension.js';
+import type { AnyExtension, DescriptorRegistry } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
+import { boundOptions } from './globals.js';
+import type { InputRecords } from './globals.js';
 import type { OptionNode } from './inspect.js';
-import { booleanValue } from './options.js';
+import { coreViews } from './lanes.js';
+import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
@@ -16,13 +19,14 @@ import type { ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
 import type { CommandAttachHook, Host, OptionValue, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
-import type { OptionInput } from './validation.js';
+import type { InputDeclaration, OptionInput } from './validation.js';
+import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution } from './view.js';
 
 /**
  * The declaration record a plugin contributes its options under: the parsing part of an option
  * config, keyed by option name. A plugin option carries no schema and no presence rule, so the
- * config type publishes neither, and build repeats the rule for a JavaScript author.
+ * config type publishes neither, and `plugin()` repeats the rule for a JavaScript author.
  */
 type PluginOptions = Readonly<Record<string, PluginOptionConfig>>;
 
@@ -36,9 +40,9 @@ declare const pluginOptions: unique symbol;
 declare const pluginTheme: unique symbol;
 
 /**
- * One plugin's declarations as the registry holds them, with the generic parts erased. Build reads
- * every one of them defensively, because a JavaScript author reaches the same slots, so the erased
- * shape is what the rules below read and no declaration is claimed to be well formed here.
+ * One plugin's declarations as `plugin()` receives them, with the generic parts erased. The call
+ * reads every one of them defensively, because a JavaScript author reaches the same slots, so the
+ * erased shape is what the rules below read and no declaration is claimed to be well formed here.
  */
 interface DeclaredPlugin {
   theme?: unknown;
@@ -52,14 +56,8 @@ interface DeclaredPlugin {
   commands?: unknown;
 }
 
-/** The declarations behind one plugin value, read by this package alone. */
-interface PluginNode {
-  definition: DeclaredPlugin;
-  identity: unknown;
-}
-
 /** Authored values register here, so the public type publishes no state to reach or replace. */
-const nodes = new WeakMap<object, PluginNode>();
+const nodes = new WeakMap<object, BuiltPlugin>();
 
 /**
  * The runtime value `plugin()` returns. `Options` appears in a read position alone, which makes it
@@ -70,7 +68,7 @@ class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMappin
   declare readonly [pluginTheme]: Theme;
   declare readonly [pluginOptions]: () => Options;
 
-  constructor(node: PluginNode) {
+  constructor(node: BuiltPlugin) {
     nodes.set(this, node);
     Object.freeze(this);
   }
@@ -126,9 +124,10 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
 ) => Promise<Readonly<Record<string, SourceAnswer>>>;
 
 /**
- * Everything a plugin declares. Creating and installing the value runs none of its code: a hook
- * runs at graph build, the middleware runs inside an invocation, and the configuration source
- * runs in the input-source stage when an unfilled option carries its binding.
+ * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
+ * creating and installing the value runs none of its code: a hook runs at graph build, the
+ * middleware runs inside an invocation, and the configuration source runs in the input-source
+ * stage when an unfilled option carries its binding.
  */
 interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
@@ -154,7 +153,8 @@ interface PluginDefinition<
 /**
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
  * none of its code: a hook runs at graph build, and the middleware runs inside an invocation, so an
- * installed plugin an invocation never reaches costs that invocation its hooks alone.
+ * installed plugin an invocation never reaches costs that invocation its hooks alone. Every rule
+ * that one definition carries on its own throws here, before the value exists.
  */
 function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(
   identity: string,
@@ -166,16 +166,9 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
       ? {}
       : { theme: isPlainObject(definition.theme) ? { ...definition.theme } : definition.theme }),
   };
-  return new PluginDeclaration<Options, Theme>({
-    definition: isPlainObject(definition) ? captured : definition,
-    identity,
-  });
-}
-
-/** One installed plugin, with the declarations build reads out of it in installation order. */
-interface InstalledPlugin {
-  declaration: DeclaredPlugin;
-  identity: string;
+  return new PluginDeclaration<Options, Theme>(
+    readPlugin(identity, isPlainObject(definition) ? captured : definition),
+  );
 }
 
 /** How every plugin diagnostic names one plugin at the start of a sentence. */
@@ -184,7 +177,7 @@ function pluginSentence(identity: string): string {
 }
 
 /** Reads the declarations behind an installed value; anything else is a declaration error. */
-function nodeOf(value: unknown): PluginNode {
+function nodeOf(value: unknown): BuiltPlugin {
   const node = typeof value === 'object' && value !== null ? nodes.get(value) : undefined;
   if (!node) {
     throw new DeclarationError(
@@ -194,9 +187,8 @@ function nodeOf(value: unknown): PluginNode {
   return node;
 }
 
-/** The identity one installed value declares, which is a nonempty string installed once. */
-function readIdentity(node: PluginNode, installed: ReadonlySet<string>): string {
-  const { identity } = node;
+/** The identity one plugin declares, which is a nonempty string. */
+function readIdentity(identity: unknown): string {
   if (typeof identity !== 'string') {
     throw new DeclarationError(
       'A plugin declares an identity that is not a string. Supply a nonempty string, such as the package name.',
@@ -207,17 +199,11 @@ function readIdentity(node: PluginNode, installed: ReadonlySet<string>): string 
       'A plugin declares an empty identity. Supply a nonempty string, such as the package name.',
     );
   }
-  if (installed.has(identity)) {
-    throw new DeclarationError(
-      `The Application installs plugin "${identity}" twice. Install each plugin once.`,
-    );
-  }
   return identity;
 }
 
 /** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
-function definitionOf(identity: string, node: PluginNode): DeclaredPlugin {
-  const { definition } = node;
+function definitionOf(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
   if (!isPlainObject(definition)) {
     throw new DeclarationError(
       `${pluginSentence(identity)} declares a definition that is not an object. Supply { options, middleware, extensions, views }.`,
@@ -226,26 +212,69 @@ function definitionOf(identity: string, node: PluginNode): DeclaredPlugin {
   return definition;
 }
 
+/** What the installed list resolves to: the plugins in order, and every descriptor they define. */
+interface InstalledPlugins {
+  descriptors: DescriptorRegistry;
+  plugins: readonly BuiltPlugin[];
+}
+
 /**
- * The installed list in composition order, with the rules that read the list itself. The slot is
- * read defensively, because a JavaScript author reaches it with any value. Each plugin's own
- * declarations are read by the build steps that consume them, in the order those steps run.
+ * The installed list in composition order, with every rule that reads two plugins together: an
+ * identity installed twice, a second claim on the theme slot, the signals slot, or the
+ * configuration source, and two distinct descriptors under one identity. The slot is read
+ * defensively, because a JavaScript author reaches it with any value. Each plugin's own rules
+ * already ran at its `plugin()` call.
  */
-function installPlugins(plugins: unknown): readonly InstalledPlugin[] {
+function installPlugins(plugins: unknown): InstalledPlugins {
   if (!Array.isArray(plugins)) {
     throw new DeclarationError(
       'The Application plugins must be an array. Supply a list of plugin values.',
     );
   }
-  const installed: InstalledPlugin[] = [];
+  const list: readonly unknown[] = plugins;
+  const installed = list.map((value) => nodeOf(value));
   const identities = new Set<string>();
-  for (const value of plugins) {
-    const node = nodeOf(value);
-    const identity = readIdentity(node, identities);
+  const descriptors: DescriptorRegistry = new Map();
+  // Each slot has one owner, so the first plugin to claim it names the second claimant's diagnostic.
+  const owners: { signals?: string; source?: string; theme?: string } = {};
+  for (const entry of installed) {
+    const { identity } = entry;
+    if (identities.has(identity)) {
+      throw new DeclarationError(
+        `The Application installs plugin "${identity}" twice. Install each plugin once.`,
+      );
+    }
     identities.add(identity);
-    installed.push({ declaration: definitionOf(identity, node), identity });
+    if (entry.theme !== undefined) {
+      if (owners.theme !== undefined) {
+        throw new DeclarationError(
+          `${pluginSentence(identity)} claims the theme slot, which plugin "${owners.theme}" already holds. Install one owner.`,
+        );
+      }
+      owners.theme = identity;
+    }
+    for (const descriptor of entry.descriptors.values()) {
+      registerDescriptor(descriptors, descriptor);
+    }
+    // An empty claim leaves the signals slot free.
+    if (entry.signals.length > 0) {
+      if (owners.signals !== undefined) {
+        throw new DeclarationError(
+          `${pluginSentence(identity)} claims the signals slot, which plugin "${owners.signals}" already holds. Install one owner.`,
+        );
+      }
+      owners.signals = identity;
+    }
+    if (entry.source) {
+      if (owners.source !== undefined) {
+        throw new DeclarationError(
+          `${pluginSentence(identity)} declares a configuration source, which plugin "${owners.source}" already declares. Install one source.`,
+        );
+      }
+      owners.source = identity;
+    }
   }
-  return installed;
+  return { descriptors, plugins: installed };
 }
 
 /** The keys a plugin option may not declare, in the order its diagnostic names them. */
@@ -274,7 +303,7 @@ function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
 function readOptions(
   identity: string,
   declared: PluginOptions | undefined,
-  build: PluginBuild,
+  build: PluginRegisters,
 ): readonly OptionInput[] {
   if (declared !== undefined && !isPlainObject(declared)) {
     throw new DeclarationError(
@@ -289,7 +318,7 @@ function readOptions(
     const input: OptionInput = { config: captureConfig(config), kind: 'option', name };
     // The shared rules name the plugin and the option, so a fault reads with its contributor.
     checkDeclarations([input], sentence);
-    build.extensions.set(
+    build.records.set(
       input,
       buildExtensions({
         declared: config.extensions,
@@ -303,6 +332,9 @@ function readOptions(
     );
     inputs.push(input);
   }
+  // Two options of one plugin meet in the one table the pre-scan reads, so they share its rules.
+  compileOptions(inputs, `plugin "${identity}"`);
+  claimVariables(boundOptions(inputs, (name) => `plugin "${identity}" option "${name}"`));
   return inputs;
 }
 
@@ -407,10 +439,11 @@ function readMiddleware(
 }
 
 /**
- * The Commands one plugin attaches to the root. Build reads every other Command rule where the
- * root attaches them, so this reads the list's shape alone.
+ * The Commands one plugin attaches to the root, each checked by the attach the root applies, as a
+ * finished Command, against the plugin's own earlier Commands, and against the nesting cap. The
+ * Application attaches them again when it is constructed, against every other root child.
  */
-function readCommands(identity: string, declared: unknown): readonly object[] {
+function readCommands(identity: string, declared: unknown): readonly AttachedChild[] {
   if (declared === undefined) {
     return [];
   }
@@ -420,15 +453,18 @@ function readCommands(identity: string, declared: unknown): readonly object[] {
     );
   }
   const list: readonly unknown[] = declared;
-  const commands: object[] = [];
+  const commands: AttachedChild[] = [];
   // A for...of walk reads a hole as undefined, which the entry rule rejects, where map would skip it.
   for (const value of list) {
-    if (!isCommand(value)) {
+    const node = commandNode(value);
+    if (!node) {
       throw new DeclarationError(
         `${pluginSentence(identity)} holds a value that is not a Command. Supply the value returned by new Command(name).`,
       );
     }
-    commands.push(value);
+    commands.push(
+      attach({ argument: undefined, children: commands, hasAction: false, name: null }, node),
+    );
   }
   return commands;
 }
@@ -505,7 +541,7 @@ interface BuiltSource {
 function readSource(
   identity: string,
   declaration: DeclaredPlugin,
-  own: { build: PluginBuild; inputs: readonly OptionInput[] },
+  own: { build: PluginRegisters; inputs: readonly OptionInput[] },
 ): BuiltSource | undefined {
   const declared = declaration.source;
   if (declared === undefined) {
@@ -535,7 +571,7 @@ function readSource(
     );
   }
   const carrier = own.inputs.find((input) =>
-    Object.hasOwn(own.build.extensions.get(input) ?? {}, binding.identity),
+    Object.hasOwn(own.build.records.get(input) ?? {}, binding.identity),
   );
   if (carrier) {
     throw new DeclarationError(
@@ -545,7 +581,7 @@ function readSource(
   return { binding: binding.identity, load };
 }
 
-/** One installed plugin's declarations, read once per build in installation order. */
+/** One plugin's declarations, read once at its `plugin()` call. */
 interface BuiltPlugin {
   theme: Palette | undefined;
   /** The hook core calls once per Command at graph build, or nothing where none is declared. */
@@ -558,17 +594,25 @@ interface BuiltPlugin {
   signals: readonly ProcessSignal[];
   source: BuiltSource | undefined;
   /** The Commands the plugin attaches to the root, in list order. */
-  commands: readonly object[];
+  commands: readonly AttachedChild[];
+  /** Every descriptor the plugin defines or its options' values name, by identity. */
+  descriptors: ReadonlyMap<string, AnyExtension>;
+  /** The extension record each of the plugin's own options carries. */
+  records: InputRecords;
 }
 
-/** The shared registers one build fills while it reads each plugin's contributions. */
-interface PluginBuild {
+/** The registers one `plugin()` call fills while it reads the definition's contributions. */
+interface PluginRegisters {
   descriptors: DescriptorRegistry;
-  extensions: ExtensionRecords;
+  records: Map<InputDeclaration, Readonly<Record<string, unknown>>>;
 }
 
 /** A plugin's own list names the extensions it defines, before any declaration carries one. */
-function defineExtensions(identity: string, declaration: DeclaredPlugin, build: PluginBuild): void {
+function defineExtensions(
+  identity: string,
+  declaration: DeclaredPlugin,
+  build: PluginRegisters,
+): void {
   const { extensions } = declaration;
   if (extensions !== undefined && !Array.isArray(extensions)) {
     throw new DeclarationError(
@@ -586,66 +630,42 @@ function defineExtensions(identity: string, declaration: DeclaredPlugin, build: 
 }
 
 /**
- * Every installed plugin's declarations, in installation order. A plugin's own extensions register
- * before any declaration carries a value, so a duplicated package copy is reported from the list
- * that installed it.
+ * Every rule one definition carries on its own, in the order the definition's slots are read. The
+ * plugin's own extensions register before any declaration carries a value, so a duplicated package
+ * copy is reported from the list that defines it. The views list is read against core's view
+ * identities, and the Application reads it again against every other contributor's.
  */
-function buildPlugins(
-  installed: readonly InstalledPlugin[],
-  build: PluginBuild,
-): readonly BuiltPlugin[] {
-  /**
-   * The signals slot has one owner, so the first plugin to claim it names the second claimant's
-   * diagnostic. An empty claim leaves the slot free.
-   */
-  let owner: string | undefined = undefined;
-  let themeOwner: string | undefined = undefined;
-  // An application has one configuration source, so the first declarer names a second one's fault.
-  let sourceOwner: string | undefined = undefined;
-  return installed.map(({ declaration, identity }) => {
-    let theme: Palette | undefined = undefined;
-    if (declaration.theme !== undefined) {
-      if (themeOwner !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} claims the theme slot, which plugin "${themeOwner}" already holds. Install one owner.`,
-        );
-      }
-      theme = buildTheme(declaration.theme, identity);
-      themeOwner = identity;
-    }
-    defineExtensions(identity, declaration, build);
-    const inputs = readOptions(identity, declaration.options, build);
-    const names = new Set(inputs.map((input) => input.name));
-    const signals = readSignals(identity, declaration.signals);
-    if (signals.length > 0) {
-      if (owner !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} claims the signals slot, which plugin "${owner}" already holds. Install one owner.`,
-        );
-      }
-      owner = identity;
-    }
-    const source = readSource(identity, declaration, { build, inputs });
-    if (source) {
-      if (sourceOwner !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} declares a configuration source, which plugin "${sourceOwner}" already declares. Install one source.`,
-        );
-      }
-      sourceOwner = identity;
-    }
-    return {
-      commands: readCommands(identity, declaration.commands),
-      identity,
-      inputs,
-      middleware: readMiddleware(identity, declaration.middleware, names),
-      onCommandAttach: readHook(identity, declaration.onCommandAttach),
-      signals,
-      source,
-      theme,
-      views: declaration.views,
-    };
-  });
+function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin {
+  const named = readIdentity(identity);
+  const declaration = definitionOf(named, definition);
+  const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
+  const build: PluginRegisters = { descriptors: new Map(), records: new Map() };
+  defineExtensions(named, declaration, build);
+  const inputs = readOptions(named, declaration.options, build);
+  const names = new Set(inputs.map((input) => input.name));
+  const signals = readSignals(named, declaration.signals);
+  const source = readSource(named, declaration, { build, inputs });
+  const commands = readCommands(named, declaration.commands);
+  const middleware = readMiddleware(named, declaration.middleware, names);
+  const onCommandAttach = readHook(named, declaration.onCommandAttach);
+  buildViews(
+    { declares: true, sentence: pluginSentence(named) },
+    declaration.views,
+    viewIdentities(coreViews),
+  );
+  return {
+    commands,
+    descriptors: build.descriptors,
+    identity: named,
+    inputs,
+    middleware,
+    onCommandAttach,
+    records: build.records,
+    signals,
+    source,
+    theme,
+    views: declaration.views,
+  };
 }
 
 /** The signals the one slot owner claimed, or none when no installed plugin claims the slot. */
@@ -700,21 +720,12 @@ export type {
   SourceAnswer,
   SourceContext,
   SourceResolver,
-  InstalledPlugin,
+  InstalledPlugins,
   Middleware,
   OptionsOf,
   Plugin,
-  PluginBuild,
   PluginDefinition,
   PluginOptions,
   PluginOptionValues,
 };
-export {
-  buildPlugins,
-  installPlugins,
-  loadDefault,
-  ownedSignals,
-  plugin,
-  pluginSentence,
-  pluginValues,
-};
+export { installPlugins, loadDefault, ownedSignals, plugin, pluginSentence, pluginValues };

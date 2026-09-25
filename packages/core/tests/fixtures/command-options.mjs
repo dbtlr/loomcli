@@ -1,5 +1,7 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
@@ -24,10 +26,11 @@ const application = {
   'null-prototype-application': bare({ description: 'Reads one document.' }),
 };
 
-// Construction never inspects the options slot, so every scenario reaches this line.
-// The fault, when there is one, surfaces only at `inspect()` or `run()`, below.
-const get = new Command('get', supplied[scenario]).action(({ out }) => out.print('dispatched'));
-const app = new Application('fixture', application[scenario]).command(get);
+// Both constructors check their options slot, so a faulty one ends the fixture here.
+const app = declare(() => {
+  const get = new Command('get', supplied[scenario]).action(({ out }) => out.print('dispatched'));
+  return new Application('fixture', application[scenario]).command(get);
+});
 process.stdout.write('assembled\n');
 
 if (mode === 'inspect') {

@@ -2,6 +2,8 @@ import { Writable } from 'node:stream';
 
 import { Application, Command } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 
 const dispatch = ({ out }) => out.print('dispatched');
@@ -94,13 +96,10 @@ function build() {
       const clear = leaf('clear');
       return app.command(new Command('cache').command(clear)).command(clear).action(dispatch);
     }
-    case 'shared-child-same-parent-name': {
-      // Two distinct parents named "cache" at different depths attach one "clear" value.
-      const clear = leaf('clear');
-      return app
-        .command(new Command('cache').command(clear))
-        .command(new Command('other').command(new Command('cache').command(clear)))
-        .action(dispatch);
+    case 'nested-too-deep': {
+      // A group attached below a named Command would put its children three levels below the root.
+      const cache = new Command('cache').command(leaf('clear'));
+      return app.command(new Command('store').command(cache)).action(dispatch);
     }
     default: {
       return app.command(new Command('cache').command(leaf('clear'))).action(dispatch);
@@ -115,5 +114,6 @@ const stderr = new Writable({
     callback();
   },
 });
-const code = await build().run({ host: { argv: process.argv.slice(3), stderr } });
+const app = declare(build);
+const code = await app.run({ host: { argv: process.argv.slice(3), stderr } });
 process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);

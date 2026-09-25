@@ -1,5 +1,7 @@
 import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const target = process.argv[2];
 const fact = process.argv[3];
 const value = process.argv[4];
@@ -66,8 +68,8 @@ const targets = {
     }).action(dispatch),
 };
 
-// Construction never reads a fact, so every scenario reaches this line.
-const app = targets[target]({ [fact]: values[value] });
+// The call that receives a fact checks it, so a faulty one ends the fixture here.
+const app = declare(() => targets[target]({ [fact]: values[value] }));
 process.stdout.write('assembled\n');
 
 if (mode === 'inspect') {

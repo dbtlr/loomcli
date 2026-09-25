@@ -1,6 +1,8 @@
 import { Application, Command, DeclarationError, extension, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
+import { declare } from '../declare.mjs';
+
 const dispatch = ({ out }) => out.print('dispatched');
 
 const load = () => import('./source.mjs');
@@ -109,18 +111,18 @@ const scenarios = {
       .action(dispatch),
 };
 
-const build = scenarios[process.argv[2]];
+const app = declare(scenarios[process.argv[2]]);
 const mode = process.argv[3];
 
 if (mode === 'inspect') {
   try {
-    build().inspect();
+    app.inspect();
     process.stdout.write('inspected\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
     process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
   }
 } else {
-  const code = await build().run({ host: { argv: [] } });
+  const code = await app.run({ host: { argv: [] } });
   process.stdout.write(`resolved:${code}\n`);
 }
