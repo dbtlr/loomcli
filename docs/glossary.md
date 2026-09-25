@@ -36,7 +36,7 @@ One of the calls that produce a new declaration: `argument()`, `option()`, `glob
 _Avoid_: Builder method, chain step
 
 **Action**:
-The handler a Command registers after its inputs, aliases, and children, which receives the parsed and validated invocation and performs the work. A Command has at most one action, and registering it closes input, alias, child, and action declarations for the author. Command-targeted extension configuration and a result's `views()` remain open, and a plugin's lifecycle hook is exempt from the closure.
+The handler a Command registers after its inputs, aliases, and children, which receives the parsed and validated invocation and performs the work. An action is lazy by definition: registering it runs nothing, and core calls it only when routing selects its Command and the invocation reaches dispatch. A Command has at most one action, and registering it closes input, alias, child, and action declarations for the author. Command-targeted extension configuration and a result's `views()` remain open, and a plugin's lifecycle hook is exempt from the closure.
 _Avoid_: Handler, run function, executor
 
 **Action context**:
@@ -351,7 +351,7 @@ The JSON Schema a validated input's schema publishes through the Standard JSON S
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
-A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, a configuration source, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
+A frozen, explicitly installed value with a fixed identity that contributes options, one middleware, lifecycle hooks, extensions, views and view overrides, a configuration source, Commands attached to the root, or a slot claim through the same public contract first-party packages use. Its code runs where core calls it, at a hook or inside an invocation. Core installs none by default.
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Plugin identity**:
@@ -359,7 +359,7 @@ The nonempty string that names a plugin, fixed where the plugin is defined. By c
 _Avoid_: Plugin name (when the key is meant), id (in prose)
 
 **Contribution**:
-One thing a plugin adds to an Application: an option, a middleware, a lifecycle hook, an extension, a declared view, a view override, a configuration source, or a slot claim. Contributions compose in installation order.
+One thing a plugin adds to an Application: an option, a middleware, a lifecycle hook, an extension, a declared view, a view override, a configuration source, a Command attached to the root, or a slot claim. Contributions compose in installation order.
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
@@ -401,6 +401,10 @@ _Avoid_: Built-in metadata, reserved field
 **Plugin option**:
 An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
 _Avoid_: Global option (for a plugin's option), flag
+
+**Plugin Command**:
+A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. The application cannot rename or remove it.
+_Avoid_: Plugin subcommand, built-in command, contributed command
 
 **Core**:
 The `@loomcli/core` package: authoring, graph build, invocation, host capture, output, failures, and the plugin contract. Core is host-independent and installs no plugins.
