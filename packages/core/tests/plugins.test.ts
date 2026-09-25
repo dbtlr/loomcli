@@ -10,6 +10,14 @@ function build(scenario: string, mode: 'inspect' | 'run') {
 /** Every row of the plugin build errors. */
 const rejected = [
   [
+    'commands-hole',
+    'Plugin "@acme/doctor" holds a value that is not a Command. Supply the value returned by new Command(name).',
+  ],
+  [
+    'commands-null',
+    'Plugin "@acme/doctor" declares commands that are not an array. Supply a list of Command values.',
+  ],
+  [
     'commands-not-array',
     'Plugin "@acme/doctor" declares commands that are not an array. Supply a list of Command values.',
   ],

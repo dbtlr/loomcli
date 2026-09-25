@@ -153,8 +153,17 @@ const scenarios = {
   },
   'commands-entry-not-command': () =>
     withGroup(named('@acme/doctor', { commands: [{ name: 'doctor' }] })),
+  // A hole reads as the undefined the entry rule rejects, so the hole is the fixture.
+  'commands-hole': () =>
+    withGroup(
+      named('@acme/doctor', {
+        // oxlint-disable-next-line eslint/no-sparse-arrays
+        commands: [, new Command('doctor').action(dispatch)],
+      }),
+    ),
   'commands-not-array': () =>
     withGroup(named('@acme/doctor', { commands: new Command('doctor').action(dispatch) })),
+  'commands-null': () => withGroup(named('@acme/doctor', { commands: null })),
   'definition-not-object': () => withPlugin(named('@loomcli/help', 'nope')),
   'empty-activation': () =>
     withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),

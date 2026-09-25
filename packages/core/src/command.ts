@@ -209,7 +209,7 @@ interface BuildContext {
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, CommandNodeHandle>();
 
-/** Whether a value is a Command an author built, which any attachment point accepts. */
+/** Whether a value is a Command an author built. */
 export function isCommand(value: unknown): value is object {
   return typeof value === 'object' && value !== null && nodes.has(value);
 }

@@ -5,6 +5,9 @@ const named = (name) => new Command(name).action(({ out }) => out.print(`ran:${n
 
 const doctor = named('doctor');
 
+/** A group whose one child a run reaches through the group's name. */
+const tools = new Command('tools').command(named('clear'));
+
 /** A hook that declares a local option on the Command named doctor, which a plugin attaches. */
 const quiet = plugin('@acme/quiet', {
   onCommandAttach: (command) =>
@@ -23,7 +26,20 @@ const scenarios = {
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] }).command(
       named('doctor'),
     ),
-  // The hook plugin installs first, so its hook runs over a Command a later plugin attaches.
+  // A plugin Command's local option is judged against the application's globals at build.
+  'global-collision': () =>
+    new Application('app', {
+      plugins: [
+        attaching('@acme/doctor', [
+          new Command('doctor')
+            .option('quiet', { type: 'boolean' })
+            .action(({ out }) => out.print('ran')),
+        ]),
+      ],
+    })
+      .globalOption('quiet', { type: 'boolean' })
+      .command(named('local')),
+  // The hook belongs to a plugin other than the one that attaches the Command.
   hooked: () =>
     new Application('app', {
       plugins: [
@@ -36,11 +52,31 @@ const scenarios = {
       ],
     }).command(named('local')),
   // Two plugins and the application each attach, so the root's order is visible end to end.
+  // A group a plugin attaches routes into its own children like any other group.
+  nested: () =>
+    new Application('app', {
+      plugins: [attaching('@acme/tools', [tools])],
+    }).command(named('local')),
   order: () =>
     new Application('app', {
       plugins: [
         attaching('@acme/first', [named('alpha'), named('beta')]),
         attaching('@acme/second', [named('gamma')]),
+      ],
+    }).command(named('local')),
+  // One plugin's hook runs over the Command the same plugin attaches.
+  'own-hook': () =>
+    new Application('app', {
+      plugins: [
+        plugin('@acme/doctor', {
+          commands: [
+            new Command('doctor').action(({ options, out }) =>
+              out.print(`quiet:${String(options.quiet)}`),
+            ),
+          ],
+          onCommandAttach: (command) =>
+            command.name === 'doctor' ? command.option('quiet', { type: 'boolean' }) : command,
+        }),
       ],
     }).command(named('local')),
   'plugin-collision': () =>
@@ -53,6 +89,11 @@ const scenarios = {
       .action(({ out }) => out.print('ran:root')),
   'same-value-at-root': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] }).command(doctor),
+  // Two plugins list one Command value, which the root would then attach twice.
+  'same-value-in-plugins': () =>
+    new Application('app', {
+      plugins: [attaching('@acme/doctor', [doctor]), attaching('@acme/clinic', [doctor])],
+    }).command(named('local')),
   'same-value-nested': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] }).command(
       new Command('tools').command(doctor),

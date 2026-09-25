@@ -31,6 +31,18 @@ test("a lifecycle hook runs over a plugin Command, which the action's options re
   expect(run('hooked', ['doctor', '--quiet']).stdout).toBe('quiet:true\nresolved:0\n');
 });
 
+test("a plugin's own hook runs over the Command that plugin attaches", () => {
+  expect(run('own-hook', ['doctor', '--quiet']).stdout).toBe('quiet:true\nresolved:0\n');
+});
+
+test('routing descends into the children of a group a plugin attaches', () => {
+  expect(run('nested', ['tools', 'clear'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'ran:clear\nresolved:0\n',
+  });
+});
+
 /** Every existing Command rule rejects a plugin Command where the root attaches it. */
 const rejected = [
   [
@@ -46,12 +58,20 @@ const rejected = [
     'The root Command attaches child "check" with alias "doctor", which is also the name of child "doctor". Rename or remove one.',
   ],
   [
+    'same-value-in-plugins',
+    'The root Command attaches two children named "doctor". Rename or remove one.',
+  ],
+  [
     'same-value-at-root',
     'The root Command attaches two children named "doctor". Rename or remove one.',
   ],
   [
     'same-value-nested',
     'Command "tools" attaches child "doctor", which the root Command also attaches. Attach a Command value at one point; create a new Command for each placement.',
+  ],
+  [
+    'global-collision',
+    'Option "quiet" is declared as a global option and as a local option on Command "doctor". Rename the local option.',
   ],
   [
     'root-arguments',

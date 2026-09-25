@@ -420,14 +420,17 @@ function readCommands(identity: string, declared: unknown): readonly object[] {
     );
   }
   const list: readonly unknown[] = declared;
-  return list.map((value) => {
+  const commands: object[] = [];
+  // A for...of walk reads a hole as undefined, which the entry rule rejects, where map would skip it.
+  for (const value of list) {
     if (!isCommand(value)) {
       throw new DeclarationError(
         `${pluginSentence(identity)} holds a value that is not a Command. Supply the value returned by new Command(name).`,
       );
     }
-    return value;
-  });
+    commands.push(value);
+  }
+  return commands;
 }
 
 /**
