@@ -39,3 +39,4 @@ Accepted 2026-09-25 with the implementation. Core reads each plugin's `commands`
 
 - 2026-09-25: Accepted with the implementation.
 - 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, moves the attachment point and the collision check from graph build to Application construction. The constructor attaches each installed plugin's Commands to the root in the same order, ahead of the application's own, so a collision between two plugins throws from the constructor and one with the application's own Command throws from the `command()` call that attaches it. A root that declares arguments beside plugin Commands throws from its `argument()` call. Every Command rule still applies unchanged. It binds when that record is accepted.
+- 2026-09-25: ADR-0034 is accepted. The entry above binds as written.

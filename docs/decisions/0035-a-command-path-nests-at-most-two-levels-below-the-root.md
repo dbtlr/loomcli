@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0035 - A Command path nests at most two levels below the root
 description: A routed path holds at most two Command names below the root, so `app a b` is valid and `app a b c` is a declaration error. The cap is an internal constant rather than a public option, so raising it later relaxes a rule and breaks no application.
-status: proposed
+status: accepted
 created: 2026-09-25
 modified: 2026-09-25
 ---
@@ -34,4 +34,8 @@ An application that nests three or more levels deep fails at its first `command(
 
 ## Status
 
-Proposed. It moves to accepted when the implementation lands and `command()` rejects a Command that would sit more than two levels below the root.
+Accepted 2026-09-25 with the implementation. Attach reads the cap from an internal constant and measures it from the shallowest level the parent can sit at, so `command()` on a named Command rejects a child that has children of its own.
+
+## Changelog
+
+- 2026-09-25: Accepted with the implementation.

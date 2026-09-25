@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0034 - A declaration fault throws at the earliest point that knows it
 description: A declaration fault throws from the authoring call, constructor, or attach that first holds the data proving it, and only a declaration a later step may still add to waits for graph build. It supersedes the clause that graph build repeats the authoring rules for JavaScript authors.
-status: proposed
+status: accepted
 created: 2026-09-25
 modified: 2026-09-25
 ---
@@ -41,4 +41,8 @@ A JavaScript author's bad authoring call throws when its module evaluates, usual
 
 ## Status
 
-Proposed. It moves to accepted when the implementation lands: each authoring call, constructor, and attach throws the faults the contract assigns to it, attached children are stored as typed Commands, and graph build applies only the rules the contract leaves to it.
+Accepted 2026-09-25 with the implementation. Each authoring call, both constructors, and `plugin()` check their own input and the order faults the receiver's earlier calls make certain. One attach operation serves `Command.command()`, `Application.command()`, and a plugin's `commands` list, checks the child as a finished Command, and stores it as a typed handle, and the Application walks each joining subtree once. Graph build applies the finished-Command rules to the root and checks what lifecycle hooks contribute, and `run()` alone validates a default through its schema.
+
+## Changelog
+
+- 2026-09-25: Accepted with the implementation.
