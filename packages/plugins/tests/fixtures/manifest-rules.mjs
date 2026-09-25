@@ -10,12 +10,12 @@ const cases = {
 };
 
 const value = cases[process.argv[2]];
-const app = new Application('app').command(
-  new Command('get', { extensions: [manifestCommand(value)] }).action(() => {}),
-);
 
+// The constructor that carries the value validates it, so a faulty value throws there.
 try {
-  app.inspect();
+  new Application('app')
+    .command(new Command('get', { extensions: [manifestCommand(value)] }).action(() => {}))
+    .inspect();
   process.stdout.write(`${JSON.stringify({ fault: null })}\n`);
 } catch (error) {
   process.stdout.write(

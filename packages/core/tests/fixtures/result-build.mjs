@@ -1,5 +1,7 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 const place = process.argv[3];
 const mode = process.argv[4];
@@ -34,11 +36,12 @@ const scenarios = {
 
 // The same declaration reads on the unnamed root and on a named Command.
 // Each diagnostic names the Command that holds the fault.
-const declare = scenarios[scenario];
-const app =
+const apply = scenarios[scenario];
+const app = declare(() =>
   place === 'root'
-    ? declare(new Application('fixture'))
-    : new Application('fixture').command(declare(new Command('count'))).action(dispatch);
+    ? apply(new Application('fixture'))
+    : new Application('fixture').command(apply(new Command('count'))).action(dispatch),
+);
 process.stdout.write('assembled\n');
 
 if (mode === 'inspect') {

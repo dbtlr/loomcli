@@ -267,19 +267,19 @@ test.each([
   ],
   [
     'invalid-child-name',
-    'The root Command attaches a child named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "bad name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'empty-child-name',
-    'The root Command attaches a child named "". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'hyphen-child-name',
-    'The root Command attaches a child named "-get". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "-get" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'equals-child-name',
-    'The root Command attaches a child named "get=value". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "get=value" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'empty-argument-name',
@@ -365,18 +365,19 @@ test.each([
   ],
   [
     'late-child-invalid-name',
-    'The root Command attaches a child named "-get". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "-get" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'late-child-foreign',
     'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
   ],
 ] satisfies [string, string][])(
-  'rejects the %s graph before reading tokens',
+  'the call that makes the %s graph wrong throws before any build',
   (scenario, reason) => {
-    expect(invokeGraph(scenario, ['get'])).toEqual({
-      chunks: [`Invalid declaration: ${reason}\n`],
-      code: 1,
+    expect(invoke(new URL('fixtures/graph.mjs', import.meta.url), [scenario, 'get'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `thrown:1: ${reason}\n`,
     });
   },
 );

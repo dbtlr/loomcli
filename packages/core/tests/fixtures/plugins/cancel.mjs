@@ -95,6 +95,13 @@ const plugins = {
   /** Cancels the run from inside the chain, then takes over or continues the chain. */
   cancelling: () =>
     plugin('@fixture/cancelling', { middleware: { activate: 'always', load: marking } }),
+  /** A hook that fails, which only the graph build meets. */
+  failing: () =>
+    plugin('@fixture/failing', {
+      onCommandAttach: () => {
+        throw new Error('the hook broke');
+      },
+    }),
   /** Claims the signals slot, and adds the synchronous abort listener the contract describes. */
   owner: () =>
     plugin('@fixture/owner', {
@@ -125,8 +132,6 @@ const plugins = {
       },
       signals: ['SIGINT', 'SIGTERM'],
     }),
-  /** A second claimant on the signals slot, which is a declaration fault the build reports. */
-  trace: () => plugin('@acme/trace', { signals: ['SIGINT'] }),
   /** An always-on wrapper that reports the outcome its own `next()` resolved. */
   wrapper: () =>
     plugin('@fixture/wrapper', {
@@ -138,7 +143,7 @@ const plugins = {
 const installed = {
   'abort-error': [],
   'broken-renderer': [],
-  'build-fault': ['owner', 'trace'],
+  'build-fault': ['owner', 'failing'],
   'caller-abort': [],
   'caller-then-signal': ['owner'],
   'default-fault': ['owner'],

@@ -6,9 +6,12 @@ import { invoke } from '../../../scripts/test-process.js';
 const rule =
   'description must hold a character other than whitespace and no line terminator. Supply a one-line summary.';
 
-/** Both build entry points read the core facts, so the fixture is invoked through each. */
-function withFact(target: string, fact: string, value: string, mode: 'inspect' | 'run') {
-  return invoke(new URL('fixtures/facts.mjs', import.meta.url), [target, fact, value, mode]);
+/**
+ * The call that declares a fact checks it, so a faulty fact throws before any build and a valid one
+ * reaches `inspect()`.
+ */
+function withFact(target: string, fact: string, value: string) {
+  return invoke(new URL('fixtures/facts.mjs', import.meta.url), [target, fact, value, 'inspect']);
 }
 
 /** Each declaration that carries a description, under the subject its diagnostic names. */
@@ -23,17 +26,12 @@ const subjects = [
 ] satisfies [string, string][];
 
 test.each(subjects)(
-  'a blank description on %s is a declaration error in inspect() and in run()',
+  'a blank description on %s is thrown by the call that declares it',
   (target, subject) => {
-    expect(withFact(target, 'description', 'blank', 'inspect')).toEqual({
+    expect(withFact(target, 'description', 'blank')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
-    });
-    expect(withFact(target, 'description', 'blank', 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${subject} ${rule}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${subject} ${rule}\n`,
     });
   },
 );
@@ -41,19 +39,19 @@ test.each(subjects)(
 test.each(subjects)(
   'a whitespace-only description on %s is a declaration error',
   (target, subject) => {
-    expect(withFact(target, 'description', 'spaces', 'inspect')).toEqual({
+    expect(withFact(target, 'description', 'spaces')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
+      stdout: `thrown:1: ${subject} ${rule}\n`,
     });
   },
 );
 
 test.each(subjects)('a description that holds a line feed on %s is rejected', (target, subject) => {
-  expect(withFact(target, 'description', 'line-feed', 'inspect')).toEqual({
+  expect(withFact(target, 'description', 'line-feed')).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
+    stdout: `thrown:1: ${subject} ${rule}\n`,
   });
 });
 
@@ -70,10 +68,10 @@ test.each([
   'paragraph-separator',
   'vertical-tab',
 ])('a %s description is rejected with the same sentence', (value) => {
-  expect(withFact('command', 'description', value, 'inspect')).toEqual({
+  expect(withFact('command', 'description', value)).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: Command "get" ${rule}\n`,
+    stdout: `thrown:1: Command "get" ${rule}\n`,
   });
 });
 
@@ -89,10 +87,10 @@ const nonStrings: [string, string, string][] = subjects.flatMap(([target, subjec
 test.each(nonStrings)(
   'a %s description that is the %s value is rejected, naming %s',
   (target, value, subject) => {
-    expect(withFact(target, 'description', value, 'inspect')).toEqual({
+    expect(withFact(target, 'description', value)).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${rule}\n`,
+      stdout: `thrown:1: ${subject} ${rule}\n`,
     });
   },
 );
@@ -102,33 +100,23 @@ const versionRule =
   'The Application version must be a string that holds a character other than whitespace and no line terminator. Supply a string such as "1.2.0".';
 
 test.each(['null', 'number', 'string-object'])(
-  'a version that is the %s value is a declaration error in inspect() and in run()',
+  'a version that is the %s value is thrown by the call that declares it',
   (value) => {
-    expect(withFact('application', 'version', value, 'inspect')).toEqual({
+    expect(withFact('application', 'version', value)).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
-    });
-    expect(withFact('application', 'version', value, 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${versionRule}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${versionRule}\n`,
     });
   },
 );
 
 test.each(['blank', 'spaces', 'line-feed'])(
-  'a %s version is a declaration error in inspect() and in run()',
+  'a %s version is thrown by the call that declares it',
   (value) => {
-    expect(withFact('application', 'version', value, 'inspect')).toEqual({
+    expect(withFact('application', 'version', value)).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
-    });
-    expect(withFact('application', 'version', value, 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${versionRule}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${versionRule}\n`,
     });
   },
 );
@@ -146,15 +134,15 @@ test.each([
   'paragraph-separator',
   'vertical-tab',
 ])('a %s version is rejected with the same sentence', (value) => {
-  expect(withFact('application', 'version', value, 'inspect')).toEqual({
+  expect(withFact('application', 'version', value)).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: ${versionRule}\n`,
+    stdout: `thrown:1: ${versionRule}\n`,
   });
 });
 
 test.each(subjects.map(([target]) => target))('a one-line summary on %s builds', (target) => {
-  expect(withFact(target, 'description', 'summary', 'inspect')).toEqual({
+  expect(withFact(target, 'description', 'summary')).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
@@ -162,7 +150,7 @@ test.each(subjects.map(([target]) => target))('a one-line summary on %s builds',
 });
 
 test('a one-line version builds', () => {
-  expect(withFact('application', 'version', 'summary', 'inspect')).toEqual({
+  expect(withFact('application', 'version', 'summary')).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
@@ -172,7 +160,7 @@ test('a one-line version builds', () => {
 // A no-break space is whitespace, and a zero-width space is a format character.
 // Prose holds either one, so a description that holds other characters too is accepted.
 test.each(['no-break-space-inside', 'zero-width-space'])('a %s description builds', (value) => {
-  expect(withFact('command', 'description', value, 'inspect')).toEqual({
+  expect(withFact('command', 'description', value)).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
@@ -196,17 +184,12 @@ const deprecatedRule =
 const hiddenRule = 'hidden must be a Boolean. Supply true or false, or omit it.';
 
 test.each(members)(
-  'a blank deprecated message on %s is a declaration error in inspect() and in run()',
+  'a blank deprecated message on %s is thrown by the call that declares it',
   (target, subject) => {
-    expect(withFact(target, 'deprecated', 'blank', 'inspect')).toEqual({
+    expect(withFact(target, 'deprecated', 'blank')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${deprecatedRule}\n`,
-    });
-    expect(withFact(target, 'deprecated', 'blank', 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${subject} ${deprecatedRule}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${subject} ${deprecatedRule}\n`,
     });
   },
 );
@@ -214,49 +197,44 @@ test.each(members)(
 test.each(members)(
   'a deprecated message that holds a line feed on %s is rejected',
   (target, subject) => {
-    expect(withFact(target, 'deprecated', 'line-feed', 'inspect')).toEqual({
+    expect(withFact(target, 'deprecated', 'line-feed')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${deprecatedRule}\n`,
+      stdout: `thrown:1: ${subject} ${deprecatedRule}\n`,
     });
   },
 );
 
 // A deprecation with no migration path is the value the rule exists to reject.
 test.each(members)('a deprecated declared as true on %s is rejected', (target, subject) => {
-  expect(withFact(target, 'deprecated', 'true', 'inspect')).toEqual({
+  expect(withFact(target, 'deprecated', 'true')).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: ${subject} ${deprecatedRule}\n`,
+    stdout: `thrown:1: ${subject} ${deprecatedRule}\n`,
   });
 });
 
 test.each(members)(
-  'a hidden that is not a Boolean on %s is a declaration error in inspect() and in run()',
+  'a hidden that is not a Boolean on %s is thrown by the call that declares it',
   (target, subject) => {
-    expect(withFact(target, 'hidden', 'summary', 'inspect')).toEqual({
+    expect(withFact(target, 'hidden', 'summary')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${subject} ${hiddenRule}\n`,
-    });
-    expect(withFact(target, 'hidden', 'summary', 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${subject} ${hiddenRule}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${subject} ${hiddenRule}\n`,
     });
   },
 );
 
 test.each(['null', 'number'])('a hidden that is the %s value is rejected', (value) => {
-  expect(withFact('command', 'hidden', value, 'inspect')).toEqual({
+  expect(withFact('command', 'hidden', value)).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: Command "get" ${hiddenRule}\n`,
+    stdout: `thrown:1: Command "get" ${hiddenRule}\n`,
   });
 });
 
 test.each(members)('a one-line migration message on %s builds', (target) => {
-  expect(withFact(target, 'deprecated', 'migration', 'inspect')).toEqual({
+  expect(withFact(target, 'deprecated', 'migration')).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
@@ -269,7 +247,7 @@ test.each(
     [target, 'false'],
   ]),
 )('a hidden declared %s on %s builds', (target, value) => {
-  expect(withFact(target, 'hidden', value, 'inspect')).toEqual({
+  expect(withFact(target, 'hidden', value)).toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
@@ -287,18 +265,13 @@ const rejected = [
 ] satisfies [string, string, string][];
 
 test.each(rejected)(
-  'a %s that declares %s is a declaration error in inspect() and in run()',
+  'a %s that declares %s is thrown by the call that declares it',
   (target, fact, subject) => {
     const reason = `${subject} declares ${fact}, which applies to named Commands and options alone. Remove it.`;
-    expect(withFact(target, fact, 'true', 'inspect')).toEqual({
+    expect(withFact(target, fact, 'true')).toEqual({
       status: 0,
       stderr: '',
-      stdout: `assembled\ndeclaration:1: ${reason}\n`,
-    });
-    expect(withFact(target, fact, 'true', 'run')).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${reason}\n`,
-      stdout: 'assembled\nresolved:1\n',
+      stdout: `thrown:1: ${reason}\n`,
     });
   },
 );

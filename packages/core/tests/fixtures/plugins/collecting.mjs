@@ -161,6 +161,7 @@ const scenarios = {
       new Command('get', { extensions: [notes({ wrong: true })] }).action(() => {}),
     ),
   caught: () => new Application('app', { plugins: [rejecting(true)] }).command(get()),
+  // The root's hook runs first, and the later hook on get brings the descriptor the twin shares.
   'discarded-twin': () =>
     new Application('app', {
       plugins: [
@@ -172,8 +173,12 @@ const scenarios = {
             return command;
           },
         }),
+        plugin('@fixture/noting', {
+          onCommandAttach: (command) =>
+            command.name === 'get' ? command.extend(notes({ note: 'hook' })) : command,
+        }),
       ],
-    }).command(get()),
+    }).command(new Command('get').action(({ out }) => out.print('get'))),
   'factory-null': () => bareApplication([factoryBuilt(null)]),
   'factory-yes': () => bareApplication([factoryBuilt('yes')]),
   'hand-absent': () => bareApplication([handBuilt('absent')]),

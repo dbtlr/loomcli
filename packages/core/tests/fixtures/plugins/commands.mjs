@@ -1,5 +1,7 @@
 import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
 
+import { declare } from '../declare.mjs';
+
 /** Each Command prints its own name, so a run shows which Command routing selected. */
 const named = (name) => new Command(name).action(({ out }) => out.print(`ran:${name}`));
 
@@ -26,7 +28,17 @@ const scenarios = {
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] }).command(
       named('doctor'),
     ),
-  // A plugin Command's local option is judged against the application's globals at build.
+  // The application's own command() closes globalOption(), whatever the plugins attached.
+  'global-after-command': () =>
+    new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
+      .command(named('local'))
+      .globalOption('file', { type: 'string' }),
+  // The plugins' Commands attach at construction and leave globalOption() open.
+  'global-after-plugin-commands': () =>
+    new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
+      .globalOption('file', { type: 'string' })
+      .command(named('local')),
+  // A plugin Command's local option is judged against the globals when globalOption() is called.
   'global-collision': () =>
     new Application('app', {
       plugins: [
@@ -83,6 +95,11 @@ const scenarios = {
     new Application('app', {
       plugins: [attaching('@acme/doctor', [doctor]), attaching('@acme/clinic', [named('doctor')])],
     }).command(named('local')),
+  // The next three scenarios build a plugin alone, so no Application can raise the fault.
+  // The group's own command() call rejects a child with children before plugin() reads the list.
+  'plugin-deep-group': () => attaching('@acme/kit', [new Command('kit').command(tools)]),
+  'plugin-repeated-name': () => attaching('@acme/doctor', [named('doctor'), named('doctor')]),
+  'plugin-unfinished': () => attaching('@acme/doctor', [new Command('doctor')]),
   'root-arguments': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
       .argument('files', { variadic: true })
@@ -100,18 +117,18 @@ const scenarios = {
     ),
 };
 
-const build = scenarios[process.argv[2]];
+const app = declare(scenarios[process.argv[2]]);
 const mode = process.argv[3];
 
 if (mode === 'inspect') {
   try {
-    const graph = build().inspect();
+    const graph = app.inspect();
     process.stdout.write(`${JSON.stringify(graph.root.children.map((child) => child.name))}\n`);
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
     process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
   }
 } else {
-  const code = await build().run({ host: { argv: process.argv.slice(4) } });
+  const code = await app.run({ host: { argv: process.argv.slice(4) } });
   process.stdout.write(`resolved:${code}\n`);
 }

@@ -47,14 +47,14 @@ test('without help installed, the manifest holds the author values alone', () =>
   });
 });
 
-/** What one manifest value case reports: no fault, or the declaration error the build raised. */
+/** What one manifest value case reports: no fault, or the declaration error its call raised. */
 function rule(name: string): unknown {
   const result = invoke(new URL('fixtures/manifest-rules.mjs', import.meta.url), [name]);
   expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
 
-/** The build error one rejected manifest value on `get` reports. */
+/** The declaration error one rejected manifest value on `get` reports. */
 function invalid(message: string) {
   return {
     fault: 'DeclarationError',

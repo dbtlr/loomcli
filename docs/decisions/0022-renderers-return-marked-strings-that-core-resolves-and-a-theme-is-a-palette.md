@@ -70,3 +70,4 @@ The view registry and results lane remain separate increments under ADR-0021 and
 
 - 2026-09-17: Accepted with the named palette and explicit fallbacks implemented together. Exact output, composition, validation, packed consumers, and Node and Bun process tests cover the shared gate. The built factory passes compiler and editor-completion checks.
 - 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause that a second theme claimant is rejected at build. The Application constructor, which holds every installed plugin, throws it, and `plugin()` applies the mapping checks. It binds when that record is accepted.
+- 2026-09-25: ADR-0034 is accepted. The entry above binds as written.

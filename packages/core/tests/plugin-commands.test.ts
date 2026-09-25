@@ -9,7 +9,7 @@ function run(scenario: string, argv: string[] = []) {
   return invoke(fixture, [scenario, 'run', ...argv]);
 }
 
-/** The root's children as `inspect()` lists them, or the declaration error build raised. */
+/** The root's children as `inspect()` lists them, or the declaration fault a call threw. */
 function inspect(scenario: string) {
   return invoke(fixture, [scenario, 'inspect']).stdout;
 }
@@ -43,7 +43,10 @@ test('routing descends into the children of a group a plugin attaches', () => {
   });
 });
 
-/** Every existing Command rule rejects a plugin Command where the root attaches it. */
+/**
+ * Every existing Command rule rejects a plugin Command where the root attaches it: `plugin()` for
+ * its own list, the constructor for two plugins, and the application's own call otherwise.
+ */
 const rejected = [
   [
     'application-collision',
@@ -74,16 +77,28 @@ const rejected = [
     'Option "quiet" is declared as a global option and as a local option on Command "doctor". Rename the local option.',
   ],
   [
+    'global-after-command',
+    'The Application declares global option "file" after command() or action(). Declare global options before attaching Commands or registering an action.',
+  ],
+  [
     'root-arguments',
     'The root Command declares argument "files" and attaches child "doctor". Move the argument into a child Command or remove the children.',
   ],
+  ['plugin-unfinished', 'Command "doctor" has no action. Register an action.'],
+  [
+    'plugin-repeated-name',
+    'The root Command attaches two children named "doctor". Rename or remove one.',
+  ],
+  [
+    'plugin-deep-group',
+    'Command "kit" attaches child "tools", which has children of its own. Nest Commands at most two levels below the root.',
+  ],
 ] satisfies [string, string][];
 
-test.each(rejected)('build rejects the %s declaration', (scenario, message) => {
-  expect(inspect(scenario)).toBe(`declaration:1: ${message}\n`);
-  expect(run(scenario)).toEqual({
-    status: 1,
-    stderr: `Invalid declaration: ${message}\n`,
-    stdout: 'resolved:1\n',
-  });
+test.each(rejected)('the call that makes the %s declaration wrong throws', (scenario, message) => {
+  expect(inspect(scenario)).toBe(`thrown:1: ${message}\n`);
+});
+
+test("the plugins' Commands leave globalOption() open", () => {
+  expect(inspect('global-after-plugin-commands')).toBe('["doctor","local"]\n');
 });

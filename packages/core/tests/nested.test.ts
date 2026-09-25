@@ -94,10 +94,6 @@ test.each([
     'group-option',
     'Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.',
   ],
-  [
-    'root-group-option',
-    'The root Command declares option "verbose" but registers no action to receive it. Register an action or remove the option.',
-  ],
   ['leaf-actionless', 'Command "clear" has no action. Register an action.'],
   [
     'nested-foreign-globals',
@@ -109,7 +105,7 @@ test.each([
   ],
   [
     'invalid-nested-child-name',
-    'Command "cache" attaches a child named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "bad name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'late-nested-child',
@@ -154,18 +150,27 @@ test.each([
     'The root Command attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
   ],
   [
-    'shared-child-same-parent-name',
-    'Command "cache" attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
+    'nested-too-deep',
+    'Command "store" attaches child "cache", which has children of its own. Nest Commands at most two levels below the root.',
   ],
 ] satisfies [string, string][])(
-  'rejects the %s graph at its depth before reading tokens',
+  'the call or attach that makes the %s graph wrong throws at its depth',
   (scenario, reason) => {
-    expect(invokeNestedGraph(scenario, ['cache', 'clear'])).toEqual({
-      chunks: [`Invalid declaration: ${reason}\n`],
-      code: 1,
-    });
+    expect(
+      invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, 'cache', 'clear']),
+    ).toEqual({ status: 0, stderr: '', stdout: `thrown:1: ${reason}\n` });
   },
 );
+
+// The root is never attached, so build is the first point at which a root group is final.
+test('a root group that declares a local option is rejected at build', () => {
+  expect(invokeNestedGraph('root-group-option', ['clear'])).toEqual({
+    chunks: [
+      'Invalid declaration: The root Command declares option "verbose" but registers no action to receive it. Register an action or remove the option.\n',
+    ],
+    code: 1,
+  });
+});
 
 test.each([
   [['cache'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],

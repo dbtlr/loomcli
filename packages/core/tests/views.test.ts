@@ -88,54 +88,48 @@ test("an earlier plugin's UsageError override beats a later plugin's InputError 
 test("a build fault reaches the application's own overrides", () => {
   expect(views('build-fault')).toEqual({
     status: 1,
-    stderr:
-      'app declaration: Plugin "@fixture/twice" overrides the view for "InputError" twice. Remove one override.\n',
+    stderr: 'app declaration: The root Command has no action. Register an action.\n',
     stdout: 'resolved:1\n',
   });
 });
 
+/** One declaration the call that made it rejected, before any view could render the fault. */
+function thrown(message: string) {
+  return { status: 0, stderr: '', stdout: `thrown:1: ${message}\n` };
+}
+
 test.each([
   [
-    'build-fault-plugins',
+    'plugin-twice',
+    'Plugin "@fixture/twice" overrides the view for "InputError" twice. Remove one override.',
+  ],
+  [
+    'plugins-not-array',
     'The Application plugins must be an array. Supply a list of plugin values.',
   ],
-  ['build-fault-rendering', 'The rendering policy must be an object.'],
+  ['rendering-not-object', 'The rendering policy must be an object.'],
   [
-    'build-fault-options',
+    'retired-globals',
     'The Application options contain globals. Declare them with globalOption(name, config).',
   ],
   [
-    'build-fault-global',
+    'global-name',
     'Option name "-file" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
-    'build-fault-graph-branded',
+    'shared-child',
     'Command "two" attaches child "shared", which Command "one" also attaches. Attach a Command value at one point; create a new Command for each placement.',
   ],
 ] satisfies [string, string][])(
-  "the %s fault reaches the application's own overrides",
+  'the %s fault throws from its call, so no override renders it',
   (scenario, message) => {
-    expect(views(scenario)).toEqual({
-      status: 1,
-      stderr: `app declaration: ${message}\n`,
-      stdout: 'resolved:1\n',
-    });
+    expect(views(scenario)).toEqual(thrown(message));
   },
 );
 
-test("a graph-build fault does not consult a plugin's overrides", () => {
-  expect(views('build-fault-graph')).toEqual(
-    rejected(
-      'Command "two" attaches child "shared", which Command "one" also attaches. Attach a Command value at one point; create a new Command for each placement.',
-    ),
-  );
-});
-
 test("a build fault does not consult a plugin's overrides", () => {
   expect(views('build-fault-unbranded')).toEqual(
-    rejected(
-      'Plugin "@fixture/twice" overrides the view for "InputError" twice. Remove one override.',
-    ),
+    rejected('The root Command has no action. Register an action.'),
   );
 });
 
@@ -208,6 +202,9 @@ test.each([
     'app-junk-keys',
     'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
   ],
-] satisfies [string, string][])('build rejects the %s declaration', (scenario, message) => {
-  expect(views(scenario)).toEqual(rejected(message));
-});
+] satisfies [string, string][])(
+  'the call that declares the %s views throws',
+  (scenario, message) => {
+    expect(views(scenario)).toEqual(thrown(message));
+  },
+);

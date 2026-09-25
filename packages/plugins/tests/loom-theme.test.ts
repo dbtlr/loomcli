@@ -105,12 +105,12 @@ test.each(['identity', 'slot'])(
 );
 
 test.each(['null', 'applied', 'semantic', 'reserved'])(
-  'named theme rejects an invalid %s override through the core declaration boundary',
+  'named theme rejects an invalid %s override at the plugin() call',
   (invalidValue) => {
     const result = palette({ invalidValue, overrides: {} });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Invalid declaration:');
+    expect(result.stderr).not.toContain('Invalid declaration:');
     expect(result.stderr).toContain(
       invalidValue === 'reserved'
         ? 'shadows a built-in style member'

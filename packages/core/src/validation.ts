@@ -426,11 +426,11 @@ function hasDefault(input: InputDeclaration) {
 }
 
 /**
- * Every declaration rule that reads the declaration alone. It is synchronous, so `inspect()` and
- * `run()` apply exactly the same rules, and only validating a default through its schema, which
- * can be asynchronous, is left to `run()`. A contributor that declares under its own name, such as
- * a plugin, supplies the subject its diagnostics read with; every other caller is named by the
- * declaration itself.
+ * Every declaration rule that reads the declaration alone. It is synchronous, so the call that
+ * declares an input applies it, and build applies it to an input a lifecycle hook declared; only
+ * validating a default through its schema, which can be asynchronous, is left to `run()`. A
+ * contributor that declares under its own name, such as a plugin, supplies the subject its
+ * diagnostics read with; every other caller is named by the declaration itself.
  */
 export function checkDeclarations(inputs: readonly InputDeclaration[], named?: string): void {
   for (const input of inputs) {
@@ -454,7 +454,6 @@ export function checkDeclarations(inputs: readonly InputDeclaration[], named?: s
  */
 export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<DefaultValues> {
   const declarations = scoped(inputs);
-  checkDeclarations(declarations.map((entry) => entry.input));
   const defaults = new Map<InputDeclaration, unknown>();
   for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
     const { input } = entry;

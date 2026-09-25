@@ -1,5 +1,7 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const digits = {
   '~standard': {
     validate: (value) =>
@@ -145,12 +147,13 @@ function omission() {
     .action(dispatch);
 }
 
+/** A root with neither children nor an action, which is final only when the graph builds. */
 function invalid() {
-  return new Application('invalid').command(new Command('get')).action(dispatch);
+  return new Application('invalid');
 }
 
-// Each of these builds cleanly, so only the declaration checks can reject it.
-// A default that its schema rejects is the one fault inspection leaves to run().
+// Each of these throws from the call that declares the input.
+// A default that its schema rejects is the one fault that waits for run().
 const faults = {
   'boolean-default': () =>
     new Application('faults').option('total', { default: 'x', type: 'boolean' }).action(dispatch),
@@ -228,6 +231,9 @@ if (mode === 'catch') {
       })}\n`,
     );
   }
+} else if (mode === 'declare') {
+  declare(build);
+  process.stdout.write('declared\n');
 } else if (mode === 'run') {
   const code = await build().run({ host: { argv: [] } });
   process.stdout.write(`${encode({ code })}\n`);

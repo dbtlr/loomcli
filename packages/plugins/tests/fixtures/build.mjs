@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, DeclarationError } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
@@ -30,4 +30,12 @@ const scenarios = {
 
 const [name, ...argv] = process.argv.slice(2);
 
-process.exitCode = await scenarios[name]().run({ host: { argv } });
+// The call that carries the value validates it, so the fault throws before any run.
+try {
+  process.exitCode = await scenarios[name]().run({ host: { argv } });
+} catch (error) {
+  if (!(error instanceof DeclarationError)) {
+    throw error;
+  }
+  process.stdout.write(`thrown:${error.exitCode}: ${error.message}\n`);
+}

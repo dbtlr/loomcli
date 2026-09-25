@@ -84,11 +84,12 @@ test.each([
     'after-optional',
     'Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.',
   ],
-])('%s fails graph build before token parsing', (scenario, diagnostic) => {
+])('%s throws from the declaring call while the module evaluates', (scenario, diagnostic) => {
   const result = optional(scenario, ['one', 'two']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+  expect(result.stderr).not.toContain('Invalid declaration:');
+  expect(result.stderr).toContain(diagnostic);
 });
 
 test('an omitted optional variadic argument reaches its schema as an empty collection', () => {
@@ -128,15 +129,23 @@ test('a required variadic argument still rejects an empty tail', () => {
   });
 });
 
-test.each([
-  [
-    'tail-raw-default',
-    'Argument "files" default must be an array of strings without a schema. Supply a string array default.',
-  ],
-  ['tail-invalid-default', 'Argument "files" has an invalid default.'],
-])('%s is a declaration error', (scenario, diagnostic) => {
-  const result = optional(scenario, ['one']);
+test('a raw default of the wrong shape throws from the declaring call', () => {
+  const result = optional('tail-raw-default', ['one']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+  expect(result.stderr).not.toContain('Invalid declaration:');
+  expect(result.stderr).toContain(
+    'Argument "files" default must be an array of strings without a schema. Supply a string array default.',
+  );
 });
+
+// A schema may answer asynchronously, so a default it rejects waits for run().
+test.each([['tail-invalid-default', 'Argument "files" has an invalid default.']])(
+  '%s is a declaration error',
+  (scenario, diagnostic) => {
+    const result = optional(scenario, ['one']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+  },
+);

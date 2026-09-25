@@ -108,13 +108,13 @@ test.each([
   ['invalid-name', 'bad=name', 'name'],
   ['invalid-type', 'metric', 'type'],
   ['invalid-polarity', 'total', 'polarity'],
-])('rejects %s during graph construction before input errors', (scenario, name, reason) => {
+])('the option() call that declares %s throws before any build', (scenario, name, reason) => {
   const result = invoke(new URL('fixtures/option-declarations.mjs', import.meta.url), [scenario]);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('assembled\nresolved:1\n');
-  expect(result.stderr).toContain('Invalid declaration:');
-  expect(result.stderr).toContain(name);
-  expect(result.stderr).toContain(reason);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toMatch(/^thrown:1: /u);
+  expect(result.stdout).toContain(name);
+  expect(result.stdout).toContain(reason);
 });
 
 test.each([

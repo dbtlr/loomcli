@@ -2,13 +2,19 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-/** Every plugin build rule answers in `inspect()` and in `run()` alike, and `run()` returns 1. */
+/**
+ * One plugin declaration scenario. A fault a call can judge throws from that call, and a build fault
+ * answers in `inspect()` and in `run()` alike, where `run()` returns 1.
+ */
 function build(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/plugins/build.mjs', import.meta.url), [scenario, mode]);
 }
 
-/** Every row of the plugin build errors. */
-const rejected = [
+/**
+ * Every row of the plugin declaration errors that a call can judge. `plugin()` checks one
+ * definition, and `new Application()` checks the installed set, so each throws from the call.
+ */
+const thrown = [
   [
     'commands-hole',
     'Plugin "@acme/doctor" holds a value that is not a Command. Supply the value returned by new Command(name).',
@@ -229,6 +235,18 @@ const rejected = [
     'hook-not-function',
     'Plugin "@loomcli/plugins/format" declares onCommandAttach that is not a function. Supply a function of the Command.',
   ],
+] satisfies [string, string][];
+
+test.each(thrown)('the call that declares the %s fault throws it', (scenario, message) => {
+  expect(build(scenario, 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `thrown:1: ${message}\n`,
+  });
+});
+
+/** Every row that a lifecycle hook raises, which only the graph build can know. */
+const rejected = [
   [
     'hook-returns-other',
     'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',

@@ -1,5 +1,7 @@
 import { Application, DeclarationError } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
@@ -14,10 +16,9 @@ const supplied = {
   'string-options': 'globals',
 };
 
-// Construction never inspects the options slot, so every scenario reaches this line.
-// The fault, when there is one, surfaces only at `inspect()` or `run()`, below.
-const app = new Application('fixture', supplied[scenario]).action(({ out }) =>
-  out.print('dispatched'),
+// The constructor checks the options slot, so a faulty one ends the fixture here.
+const app = declare(() =>
+  new Application('fixture', supplied[scenario]).action(({ out }) => out.print('dispatched')),
 );
 process.stdout.write('assembled\n');
 

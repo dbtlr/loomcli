@@ -10,6 +10,8 @@ import {
   view,
 } from '@loomcli/core';
 
+import { declare } from './declare.mjs';
+
 const [scenario, ...argv] = process.argv.slice(2);
 
 /** The view one plugin declares, so an application brands it without replacing the plugin. */
@@ -72,7 +74,7 @@ function failing(views, plugins = []) {
 /** The application's own brand for a declaration failure, listed wherever one is expected. */
 const declarationBrand = [override(DeclarationError, brand('app declaration'))];
 
-/** A plugin that brands a declaration failure, which a build-time fault never reaches. */
+/** A plugin that brands a declaration failure, which a build fault never reaches. */
 const pluginBrand = plugin('@fixture/branding', {
   views: [override(DeclarationError, brand('plugin declaration'))],
 });
@@ -142,47 +144,41 @@ function build() {
       return failing([], [usage, inputs]);
     }
     case 'build-fault': {
-      // The application's overrides are published before anything else builds.
-      // A plugin's overrides are not consulted, because build has not validated them.
+      // The application's overrides are published before the graph builds.
+      // A plugin's overrides are not consulted, because the build that fails never finished.
+      // A root with neither children nor an action is final only at build.
+      return new Application('views', { plugins: [pluginBrand], views: declarationBrand });
+    }
+    case 'build-fault-unbranded': {
+      return new Application('views', { plugins: [pluginBrand], views: [] });
+    }
+    case 'plugin-twice': {
       const twice = plugin('@fixture/twice', {
         views: [override(InputError, brand('one')), override(InputError, brand('two'))],
       });
       return failing(declarationBrand, [pluginBrand, twice]);
     }
-    case 'build-fault-unbranded': {
-      const twice = plugin('@fixture/twice', {
-        views: [override(InputError, brand('one')), override(InputError, brand('two'))],
-      });
-      return failing([], [pluginBrand, twice]);
-    }
-    case 'build-fault-plugins': {
+    case 'plugins-not-array': {
       return new Application('views', { plugins: 'help', views: declarationBrand }).action(
         dispatch,
       );
     }
-    case 'build-fault-rendering': {
+    case 'rendering-not-object': {
       return new Application('views', { rendering: 'never', views: declarationBrand }).action(
         dispatch,
       );
     }
-    case 'build-fault-options': {
+    case 'retired-globals': {
       return new Application('views', { globals: {}, views: declarationBrand }).action(dispatch);
     }
-    case 'build-fault-global': {
+    case 'global-name': {
       return new Application('views', { views: declarationBrand })
         .globalOption('-file', { type: 'string' })
         .action(dispatch);
     }
-    case 'build-fault-graph': {
-      // The graph builds after the plugins, and its fault still reports through core's own text.
+    case 'shared-child': {
       const shared = new Command('shared').action(dispatch);
       return new Application('views', { plugins: [pluginBrand], views: [] })
-        .command(new Command('one').command(shared).action(dispatch))
-        .command(new Command('two').command(shared).action(dispatch));
-    }
-    case 'build-fault-graph-branded': {
-      const shared = new Command('shared').action(dispatch);
-      return new Application('views', { plugins: [pluginBrand], views: declarationBrand })
         .command(new Command('one').command(shared).action(dispatch))
         .command(new Command('two').command(shared).action(dispatch));
     }
@@ -243,6 +239,7 @@ if (scenario in shapes) {
     process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
   }
 } else {
-  const code = await build().run({ host: { argv } });
+  const app = declare(build);
+  const code = await app.run({ host: { argv } });
   process.stdout.write(`resolved:${code}\n`);
 }

@@ -118,29 +118,29 @@ test('a mixed-scope short group is the pre-scan error rather than help', () => {
   });
 });
 
-test('a details value with a blank line is rejected the way any extension value is', () => {
+test('a details value with a blank line is rejected at its call the way any extension value is', () => {
   expect(invoke(rejected, ['blank-details'])).toEqual({
-    status: 1,
-    stderr:
-      'Invalid declaration: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply prose whose every line holds a character other than whitespace. Correct the value.\n',
-    stdout: '',
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply prose whose every line holds a character other than whitespace. Correct the value.\n',
   });
 });
 
 test('an example command that spans two lines is rejected', () => {
   expect(invoke(rejected, ['example-line'])).toEqual({
-    status: 1,
-    stderr:
-      'Invalid declaration: Command "get" holds an invalid "@loomcli/plugins/help/command" value: Supply one line that holds a character other than whitespace. Correct the value.\n',
-    stdout: '',
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: Command "get" holds an invalid "@loomcli/plugins/help/command" value: Supply one line that holds a character other than whitespace. Correct the value.\n',
   });
 });
 
 test('a placeholder that holds whitespace is rejected', () => {
   expect(invoke(rejected, ['placeholder-whitespace'])).toEqual({
-    status: 1,
-    stderr:
-      'Invalid declaration: Global option "file" holds an invalid "@loomcli/plugins/help/input" value: Supply one word with no whitespace. Correct the value.\n',
-    stdout: '',
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: Global option "file" holds an invalid "@loomcli/plugins/help/input" value: Supply one word with no whitespace. Correct the value.\n',
   });
 });

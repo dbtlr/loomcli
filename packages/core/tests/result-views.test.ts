@@ -77,17 +77,12 @@ test('the call is published before the action too, and merges the same way', () 
   expect(written('before-action')).toBe(sequence);
 });
 
-test('a default that names no key after the merge is the build error', () => {
-  const rule =
-    'Command "paths" selects default view "narrow", which it does not name. Name the view or select a named one.';
+// A views() call stays callable and can add keys, so the attach that makes the Command final judges it.
+test('a default that names no key after the merge throws from the attach', () => {
   expect(reshaped('missing-default', 'inspect')).toEqual({
     status: 0,
     stderr: '',
-    stdout: `assembled\ndeclaration:1: ${rule}\n`,
-  });
-  expect(reshaped('missing-default', 'run')).toEqual({
-    status: 1,
-    stderr: `Invalid declaration: ${rule}\n`,
-    stdout: 'assembled\nresolved:1\n',
+    stdout:
+      'thrown:1: Command "paths" selects default view "narrow", which it does not name. Name the view or select a named one.\n',
   });
 });

@@ -2,8 +2,10 @@ import type { Writable } from 'node:stream';
 
 import { runInvocation } from './chain.js';
 import {
-  attachChild,
+  attachToRoot,
+  childNode,
   buildGraph,
+  checkDeclaredOptions,
   collectInputs,
   declareAction,
   declareExtensions,
@@ -12,7 +14,7 @@ import {
   declareResult,
   declareResultViews,
   freshState,
-  recordGlobalOption,
+  layerOf,
 } from './command.js';
 import type {
   AfterAction,
@@ -23,23 +25,25 @@ import type {
   BuiltGraph,
   Command,
   CommandMethod,
+  CommandNodeHandle,
   CommandState,
   ResultMethod,
 } from './command.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import { DeclarationError, InternalError, reasonOf, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
+import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
-import { declareGlobalOption, emptyGlobals } from './globals.js';
-import type { GlobalsState } from './globals.js';
+import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
+import type { GlobalsState, GlobalTable } from './globals.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
-import { buildPlugins, installPlugins, ownedSignals, pluginSentence } from './plugin.js';
-import type { BuiltPlugin, Plugin, PluginBuild } from './plugin.js';
+import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
+import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
@@ -66,7 +70,7 @@ import type {
 import type { ArgumentInput, OptionInput } from './validation.js';
 import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
 import { buildViews, describeFailure, viewIdentities } from './view.js';
-import type { ViewOverride, ViewRegistry } from './view.js';
+import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
 /**
  * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
@@ -81,13 +85,13 @@ const noViews: ViewRegistry = [];
 
 /**
  * What one preparation hands back as each stage of the build passes, in the order it passes them.
- * `inspect()` ignores every stage; `run()` uses them to configure the invocation's output as soon
- * as the declarations that decide it have been validated.
+ * `inspect()` ignores every stage; `run()` uses them to configure the invocation's output before
+ * the graph builds, so a build fault reports through the application's own overrides.
  */
 interface PrepareStage {
   /** Each registry as it is published: the application's alone, then the merged one. */
   views: (registry: ViewRegistry) => void;
-  /** The validated declared rendering policy, before any other declaration is read. */
+  /** The declared rendering policy the constructor validated. */
   rendering: (policy: RenderingPolicy) => void;
   /** The built plugins, which carry the theme the view context resolves styles through. */
   plugins: (plugins: readonly BuiltPlugin[]) => void;
@@ -157,6 +161,24 @@ export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly
 }
 
 /**
+ * Everything an Application holds beside its root declaration and its globals, each part checked by
+ * the constructor or the call that set it.
+ */
+interface ApplicationConfig {
+  /** Whether the application's own `command()` or `action()` has run, which closes `globalOption()`. */
+  composed: boolean;
+  /** Each installed plugin's view contributions, in installation order. */
+  contributors: readonly ViewContributions[];
+  facts: ApplicationFacts;
+  /** The parent that claimed each node the graph holds, so one value attaches at one point. */
+  owners: ReadonlyMap<CommandNodeHandle, string | null>;
+  plugins: readonly BuiltPlugin[];
+  rendering: RenderingPolicy;
+  /** The application's own view overrides. */
+  views: ViewContributions;
+}
+
+/**
  * The Application holds the unnamed root's declaration state and applies the same transitions a
  * Command does, so each declaration call has one typed implementation and no builder to recover.
  */
@@ -173,35 +195,21 @@ class ApplicationBuilder<
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
-  // The override list the constructor read out of the options slot, unexamined until build.
-  readonly #views: unknown;
-  readonly #plugins: Plugins | undefined;
   readonly #globals: GlobalsState<Globals>;
-  // The constructor's raw options argument, kept for the slot's own shape rules.
-  // The options-slot rules answer at the same point every other authoring fault does:
-  // `inspect()` and `run()`.
-  readonly #options: unknown;
-  // The facts the constructor read out of that slot, unexamined until build.
-  readonly #declared: DeclaredFacts;
+  readonly #config: ApplicationConfig;
 
   constructor(
     name: string,
-    root: CommandState<Args, Options, Globals>,
-    config: {
-      declared: DeclaredFacts;
-      views: unknown;
-      options?: unknown;
-      plugins: Plugins | undefined;
+    declared: {
+      config: ApplicationConfig;
       globals: GlobalsState<Globals>;
+      root: CommandState<Args, Options, Globals>;
     },
   ) {
-    this.#declared = config.declared;
-    this.#views = config.views;
     this.#name = name;
-    this.#options = config.options;
-    this.#plugins = config.plugins;
-    this.#globals = config.globals;
-    this.#root = root;
+    this.#config = declared.config;
+    this.#globals = declared.globals;
+    this.#root = declared.root;
   }
 
   get name(): string {
@@ -251,7 +259,7 @@ class ApplicationBuilder<
       kind: 'option',
       name,
     };
-    return this.derive(declareOption(this.#root, input));
+    return this.derive(declareOption(this.#root, input, this.table()));
   }
 
   globalOption<const Name extends string, const Config extends OptionConfig>(
@@ -272,11 +280,22 @@ class ApplicationBuilder<
     Plugins,
     Result
   > {
+    // The plugins' Commands attach at construction, so only the application's own calls close it.
+    if (this.#config.composed) {
+      throw new DeclarationError(
+        `The Application declares global option "${name}" after command() or action(). Declare global options before attaching Commands or registering an action.`,
+      );
+    }
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
       kind: 'option',
       name,
     };
+    const descriptors = new Map(this.#root.descriptors);
+    const globals = declareGlobalOption(this.#globals, input, descriptors);
+    const root = { ...this.#root, descriptors };
+    checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
+    checkDeclarations([input]);
     return new ApplicationBuilder<
       Args,
       Options,
@@ -284,20 +303,14 @@ class ApplicationBuilder<
       State,
       Plugins,
       Result
-    >(this.#name, recordGlobalOption(this.#root, name), {
-      declared: this.#declared,
-      globals: declareGlobalOption(this.#globals, input),
-      options: this.#options,
-      plugins: this.#plugins,
-      views: this.#views,
-    });
+    >(this.#name, { config: this.#config, globals, root });
   }
 
   /** Registering the action closes input authoring; extension configuration remains available. */
   action(
     handler: Action<Args, Globals & Options, Result>,
   ): Application<Args, Options, Globals, AfterAction, Plugins, Result> {
-    return this.derive(declareAction(this.#root, handler));
+    return this.derive(declareAction(this.#root, handler), { composed: true });
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
@@ -311,7 +324,13 @@ class ApplicationBuilder<
     Plugins,
     Result
   > {
-    return this.derive(attachChild(this.#root, child));
+    const scope = {
+      descriptors: new Map(this.#root.descriptors),
+      owners: new Map(this.#config.owners),
+      table: this.table(),
+    };
+    const root = attachToRoot(this.#root, childNode(null, child), scope);
+    return this.derive(root, { composed: true, owners: scope.owners });
   }
 
   /**
@@ -356,72 +375,51 @@ class ApplicationBuilder<
     return this.derive(declareExtensions(this.#root, values));
   }
 
+  /** The globals table the root's options and every joining subtree meet. */
+  private table(): GlobalTable {
+    return globalTable(this.#globals.inputs, this.#config.plugins);
+  }
+
   /**
-   * Root declaration calls preserve the Application configuration. The next state
-   * travels through this call: each method names its transition in its return type, and the
-   * wrapper publishes the same runtime value in exactly that state.
+   * Root declaration calls preserve the Application configuration, with the parts a call changed.
+   * The next state travels through this call: each method names its transition in its return type,
+   * and the wrapper publishes the same runtime value in exactly that state.
    */
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
+    changed: Partial<Pick<ApplicationConfig, 'composed' | 'owners'>> = {},
   ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared> {
     return new ApplicationBuilder<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared>(
       this.#name,
-      root,
-      {
-        declared: this.#declared,
-        globals: this.#globals,
-        options: this.#options,
-        plugins: this.#plugins,
-        views: this.#views,
-      },
+      { config: { ...this.#config, ...changed }, globals: this.#globals, root },
     );
   }
 
   /**
-   * Every rule that reads the declarations alone, in the order `run()` reads them: the
-   * application's own view overrides, the options slot, the installed list, each plugin's
-   * declarations, then the whole Command graph. The application's overrides are read and published
-   * first, because they need core's identities and nothing else, so every later declaration error
-   * reaches them, while a fault in that list itself reports through core's own text. The merged
-   * registry is published once the whole build has succeeded, so a build-time fault never resolves
-   * through a plugin's overrides, which build has not yet validated.
+   * The graph build, which applies the rules no earlier moment could know: the root's
+   * finished-Command rules and every lifecycle hook's contribution. The application's own overrides
+   * are published first, so a build fault reports through them. The merged registry is published
+   * once the build has succeeded, so a build fault never resolves through a plugin's overrides.
    */
   private prepare(stage: PrepareStage): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
     plugins: readonly BuiltPlugin[];
   } {
-    const identities = viewIdentities(coreViews);
-    const application = buildViews(
-      { declares: false, sentence: 'The Application' },
-      this.#views,
-      identities,
-    );
-    stage.views([application]);
-    stage.rendering(renderingPolicy(this.#declared.rendering));
-    const facts = checkOptions(this.#options, this.#declared);
-    const installed = installPlugins(this.#plugins ?? []);
-    const install: PluginBuild = { descriptors: new Map(), extensions: new Map() };
-    const plugins = buildPlugins(installed, install);
+    const { contributors, facts, plugins, rendering, views } = this.#config;
+    stage.views([views]);
+    stage.rendering(rendering);
     stage.plugins(plugins);
-    const contributors = plugins.map((entry) =>
-      buildViews(
-        { declares: true, sentence: pluginSentence(entry.identity) },
-        entry.views,
-        identities,
-      ),
-    );
-    const graph = buildGraph(this.#root, this.#globals, { ...install, plugins });
-    checkDeclarations([...graph.globals.inputs, ...collectInputs(graph.root)]);
-    stage.views([application, ...contributors]);
+    const graph = buildGraph(this.#root, this.#globals, plugins);
+    stage.views([views, ...contributors]);
     return { facts, graph, plugins };
   }
 
   /**
-   * The built graph as plain, frozen data. It applies every rule `run()` applies without a schema,
-   * in the order `run()` applies them, and throws `DeclarationError` when one fails. Validating a
-   * declared default through its schema can be asynchronous, so that one rule stays in `run()`.
-   * Nothing is cached: each call builds the graph anew.
+   * The built graph as plain, frozen data. It builds the graph as `run()` does and throws
+   * `DeclarationError` for the same build faults. Validating a declared default through its schema
+   * can be asynchronous, so that one rule stays in `run()`. Nothing is cached: each call builds the
+   * graph anew.
    */
   inspect(): CommandGraph {
     const built = this.prepare({
@@ -468,8 +466,7 @@ class ApplicationBuilder<
         const host = captureHost(overrides, stderr);
         const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
-        // The policy is read inside the build, after the application's own overrides are published.
-        // A faulty rendering declaration then reports through the view the application listed.
+        // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         signals = bracketRun(controller, checkSignal(options?.signal));
         const built = this.prepare({
@@ -641,44 +638,97 @@ interface ApplicationConstructor {
   ): Application<{}, {}, {}, ApplicationMethod, Plugins>;
 }
 
-/** The core facts one Application declares, validated at build and reported by `inspect()`. */
+/** The core facts one Application declares, validated at construction and reported by `inspect()`. */
 interface ApplicationFacts {
   description: string | undefined;
   version: string;
 }
 
-/** The same facts as the constructor captured them, before any rule has read them. */
-interface DeclaredFacts {
-  rendering: unknown;
-  description: unknown;
-  version: unknown;
+/** Reject obsolete wiring before silently losing options that invocations depend on. */
+function checkOptions(options: unknown): ApplicationFacts {
+  if (options === undefined) {
+    return { description: undefined, version: checkVersion(undefined) };
+  }
+  if (!isPlainObject(options)) {
+    throw new DeclarationError(
+      'The Application options must be an object. Supply an Application options object.',
+    );
+  }
+  if ('globals' in options) {
+    throw new DeclarationError(
+      'The Application options contain globals. Declare them with globalOption(name, config).',
+    );
+  }
+  if ('failures' in options) {
+    throw new DeclarationError(
+      'The Application options contain failures. Declare view overrides under views with override(key, view).',
+    );
+  }
+  // The root is every page's entry point, so it carries neither listing fact.
+  // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
+  checkNoListingFacts('The Application', options);
+  return {
+    description: checkDescription('The Application', options.description),
+    version: checkVersion(options.version),
+  };
 }
 
-/** Reject obsolete wiring before silently losing options that invocations depend on. */
-function checkOptions(options: unknown, declared: DeclaredFacts): ApplicationFacts {
-  if (options !== undefined) {
-    if (!isPlainObject(options)) {
-      throw new DeclarationError(
-        'The Application options must be an object. Supply an Application options object.',
-      );
-    }
-    if ('globals' in options) {
-      throw new DeclarationError(
-        'The Application options contain globals. Declare them with globalOption(name, config).',
-      );
-    }
-    if ('failures' in options) {
-      throw new DeclarationError(
-        'The Application options contain failures. Declare view overrides under views with override(key, view).',
-      );
-    }
-    // The root is every page's entry point, so it carries neither listing fact.
-    // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
-    checkNoListingFacts('The Application', options);
+/**
+ * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
+ * application's own view overrides, the rendering policy, the options slot and its facts, the
+ * installed list and every rule between two plugins, the root's extension values, and then each
+ * plugin's Commands, which attach to the root first, in installation order and list order.
+ */
+function declareApplication(options: unknown): {
+  config: ApplicationConfig;
+  globals: GlobalsState<{}>;
+  root: CommandState<{}, {}, {}>;
+} {
+  const slot = isPlainObject(options) ? options : undefined;
+  const identities = viewIdentities(coreViews);
+  const views = buildViews(
+    { declares: false, sentence: 'The Application' },
+    slot?.views,
+    identities,
+  );
+  const rendering = renderingPolicy(slot?.rendering);
+  const facts = checkOptions(options);
+  const installed = installPlugins(slot?.plugins ?? []);
+  const { plugins } = installed;
+  const contributors = plugins.map((entry) =>
+    buildViews(
+      { declares: true, sentence: pluginSentence(entry.identity) },
+      entry.views,
+      identities,
+    ),
+  );
+  const table = globalTable([], plugins);
+  const descriptors = installed.descriptors;
+  const extensions = storeCommandLayers({
+    descriptors,
+    layers: [slot?.extensions],
+    subject: layerOf(null),
+  });
+  // The Application checks its own facts, so the root carries none.
+  // Its diagnostics name the Application rather than the root Command.
+  let root = freshState<{}>({
+    descriptors,
+    extensions,
+    facts: { deprecated: undefined, description: undefined, hidden: false },
+    name: null,
+  });
+  const owners = new Map<CommandNodeHandle, string | null>();
+  for (const command of plugins.flatMap((entry) => entry.commands)) {
+    root = attachToRoot(root, command.node, {
+      descriptors: new Map(root.descriptors),
+      owners,
+      table,
+    });
   }
   return {
-    description: checkDescription('The Application', declared.description),
-    version: checkVersion(declared.version),
+    config: { composed: false, contributors, facts, owners, plugins, rendering, views },
+    globals: emptyGlobals(),
+    root,
   };
 }
 
@@ -687,39 +737,7 @@ class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
-    // The options slot is read defensively, never inspected.
-    // An invalid value still yields `views` and the facts of some kind.
-    // `checkOptions` reports such a value at build.
-    // The root's own slot and core facts stay empty, because the Application checks its own slot.
-    // Its diagnostics name the Application rather than the root Command.
-    super(
-      name,
-      freshState({
-        deprecated: undefined,
-        description: undefined,
-        extensions: options?.extensions,
-        hidden: undefined,
-        name: null,
-        options: undefined,
-      }),
-      {
-        declared: {
-          description: options?.description,
-          rendering: isPlainObject(options?.rendering)
-            ? { ...options.rendering }
-            : options?.rendering,
-          version: options?.version,
-        },
-        globals: emptyGlobals(),
-        options,
-        plugins: options?.plugins,
-        // The read is loose because the slot is reachable from JavaScript with any value at all.
-        // An Application value passed here answers `views` with its own authoring method.
-        // The public `ApplicationOptions.views` stays exactly `readonly ViewOverride[]`.
-        // An options slot that is no plain object carries no override list, and its own rule reports it.
-        views: isPlainObject(options) ? options.views : undefined,
-      },
-    );
+    super(name, declareApplication(options));
   }
 }
 

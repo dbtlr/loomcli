@@ -18,28 +18,22 @@ test('globalOption derives an Application without changing its receiver', () => 
 });
 
 test.each(['after-action', 'after-command'])(
-  'globalOption rejects %s before dispatch',
+  'globalOption() after %s throws from its call',
   (scenario) => {
-    const reason =
-      'The Application declares global option "late" after command() or action(). Declare global options before attaching Commands or registering an action.';
     expect(invoke(fixture, [scenario])).toEqual({
-      status: 1,
-      stderr: `Invalid declaration: ${reason}\n`,
-      stdout: '',
-    });
-    expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
       status: 0,
       stderr: '',
-      stdout: `${reason}\n`,
+      stdout:
+        'thrown:1: The Application declares global option "late" after command() or action(). Declare global options before attaching Commands or registering an action.\n',
     });
   },
 );
 
-test('a global declared after a colliding root-local option fails graph build', () => {
+test('a global declared after a colliding root-local option throws from globalOption()', () => {
   expect(invoke(fixture, ['local-first'])).toEqual({
-    status: 1,
-    stderr:
-      'Invalid declaration: Option "quiet" is declared as a global option and as a local option on the root Command. Rename the local option.\n',
-    stdout: '',
+    status: 0,
+    stderr: '',
+    stdout:
+      'thrown:1: Option "quiet" is declared as a global option and as a local option on the root Command. Rename the local option.\n',
   });
 });
