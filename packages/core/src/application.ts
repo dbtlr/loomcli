@@ -3,6 +3,7 @@ import type { Writable } from 'node:stream';
 import { runInvocation } from './chain.js';
 import {
   attachToRoot,
+  childNode,
   buildGraph,
   checkDeclaredOptions,
   collectInputs,
@@ -328,7 +329,7 @@ class ApplicationBuilder<
       owners: new Map(this.#config.owners),
       table: this.table(),
     };
-    const root = attachToRoot(this.#root, child, scope);
+    const root = attachToRoot(this.#root, childNode(null, child), scope);
     return this.derive(root, { composed: true, owners: scope.owners });
   }
 

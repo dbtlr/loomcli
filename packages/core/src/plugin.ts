@@ -720,7 +720,6 @@ export type {
   SourceAnswer,
   SourceContext,
   SourceResolver,
-  InstalledPlugins,
   Middleware,
   OptionsOf,
   Plugin,

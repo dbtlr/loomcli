@@ -214,8 +214,27 @@ interface BuildContext {
   plugins: readonly BuiltPlugin[];
 }
 
-/** Authored values register here, so the public type publishes no state to reach or replace. */
+/**
+ * Each authored value registers its handle here, so the public value holds no state to reach or
+ * replace.
+ */
 const nodes = new WeakMap<object, CommandNodeHandle>();
+
+/**
+ * The handle one Command value registers, closed over its state. The value itself carries no
+ * member that reaches the state, so an attached Command stays final.
+ */
+function nodeHandle<Args, Options, Globals>(
+  name: string,
+  state: CommandState<Args, Options, Globals>,
+): CommandNodeHandle {
+  return Object.freeze({
+    build: (context: BuildContext) => buildCommand(state, context),
+    declared: state,
+    hasAction: state.action !== undefined,
+    name,
+  });
+}
 
 /** The handle behind a value an author built as a Command, or nothing for any other value. */
 export function commandNode(value: unknown): CommandNodeHandle | undefined {
@@ -645,7 +664,7 @@ function recordOf(declaration: unknown, key: 'default' | 'views'): unknown {
 }
 
 /** The parent one attach reads: its name, the children it holds, and the calls that close it. */
-export interface AttachParent {
+interface AttachParent {
   /** The first argument the parent declares, which no child may sit beside. */
   argument: string | undefined;
   children: readonly AttachedChild[];
@@ -696,16 +715,15 @@ function checkSiblings(parent: AttachParent, child: AttachedChild): void {
   }
 }
 
-/** A child at the cap holds no children, at whatever level its parent was attached. */
+/**
+ * A child at the cap holds no children. Attach reads the child at the shallowest level its parent
+ * can sit at, and the Application's join reads every node at its level below the root.
+ */
 function checkNesting(parent: string | null, child: AttachedChild, level: number): void {
-  const { children } = child.node.declared;
-  if (level >= nestingCap.depth && children.length > 0) {
+  if (level >= nestingCap.depth && child.node.declared.children.length > 0) {
     throw new DeclarationError(
       `${commandSentence(parent)} attaches child "${child.name}", which has children of its own. Nest Commands at most ${nestingCap.words} levels below the root.`,
     );
-  }
-  for (const entry of children) {
-    checkNesting(child.name, entry, level + 1);
   }
 }
 
@@ -730,13 +748,14 @@ function checkGroup(state: Declared): void {
 /**
  * The rules a finished Command answers, which attach applies to a child and build to the root: a
  * result needs an action, its merged views record names at least one view and its default, and a
- * Command without an action is a group.
+ * Command without an action is a group. It answers with the resolved result.
  */
-function checkFinished(declared: Declared, hasAction: boolean): void {
-  buildResult(declared, hasAction);
+function checkFinished(declared: Declared, hasAction: boolean): DeclaredResult | undefined {
+  const result = buildResult(declared, hasAction);
   if (!hasAction) {
     checkGroup(declared);
   }
+  return result;
 }
 
 /**
@@ -763,7 +782,7 @@ export function attach(parent: AttachParent, node: CommandNodeHandle): AttachedC
 }
 
 /** The handle behind the value one `command()` call received; anything else is a declaration error. */
-function childNode(parent: string | null, child: unknown): CommandNodeHandle {
+export function childNode(parent: string | null, child: unknown): CommandNodeHandle {
   const node = commandNode(child);
   if (!node) {
     throw new DeclarationError(
@@ -774,7 +793,7 @@ function childNode(parent: string | null, child: unknown): CommandNodeHandle {
 }
 
 /** Attaching is a declaration call too, so the receiver keeps the children it already had. */
-export function attachChild<Args, Options, Globals>(
+function attachChild<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   child: unknown,
 ): CommandState<Args, Options, Globals> {
@@ -783,7 +802,7 @@ export function attachChild<Args, Options, Globals>(
 }
 
 /** What an Application holds while a subtree joins it, each register a copy the caller commits. */
-export interface JoinScope {
+interface JoinScope {
   descriptors: DescriptorRegistry;
   /** The parent that claimed each node the Application holds, by the name a diagnostic reads. */
   owners: Map<CommandNodeHandle, string | null>;
@@ -792,12 +811,17 @@ export interface JoinScope {
 
 /**
  * Walks one subtree joining an Application, once, for the rules only the Application can judge: one
- * Command value reached through two paths, two distinct descriptors under one identity, and a local
- * option that meets a global or plugin option's key, spelling, or variable. Parents may share a
- * name, so a claim is by node identity and the name serves the diagnostic alone.
+ * Command value reached through two paths, two distinct descriptors under one identity, a local
+ * option that meets a global or plugin option's key, spelling, or variable, and the nesting cap
+ * measured from the root. A claim is by node identity, and the name serves the diagnostic alone.
  */
-export function joinSubtree(scope: JoinScope, parent: string | null, child: AttachedChild): void {
+function joinSubtree(
+  scope: JoinScope,
+  child: AttachedChild,
+  { level, parent }: { level: number; parent: string | null },
+): void {
   const { name, node } = child;
+  checkNesting(parent, child, level);
   if (scope.owners.has(node)) {
     throw new DeclarationError(
       `${commandSentence(parent)} attaches child "${name}", which ${commandSubject(scope.owners.get(node) ?? null)} also attaches. Attach a Command value at one point; create a new Command for each placement.`,
@@ -809,7 +833,7 @@ export function joinSubtree(scope: JoinScope, parent: string | null, child: Atta
   }
   checkLocalOptions(optionsOf(node.declared.inputs), scope.table, commandSubject(name));
   for (const entry of node.declared.children) {
-    joinSubtree(scope, name, entry);
+    joinSubtree(scope, entry, { level: level + 1, parent: name });
   }
 }
 
@@ -819,11 +843,11 @@ export function joinSubtree(scope: JoinScope, parent: string | null, child: Atta
  */
 export function attachToRoot<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  child: unknown,
+  node: CommandNodeHandle,
   scope: JoinScope,
 ): CommandState<Args, Options, Globals> {
-  const attached = attach(parentOf(state), childNode(state.name, child));
-  joinSubtree(scope, state.name, attached);
+  const attached = attach(parentOf(state), node);
+  joinSubtree(scope, attached, { level: parentLevel(state.name) + 1, parent: state.name });
   return { ...state, children: [...state.children, attached], descriptors: scope.descriptors };
 }
 
@@ -1559,10 +1583,9 @@ export function buildCommand<Args, Options, Globals>(
   }
   const declaredSlots = collectArguments(state, subject);
   const hasAction = action !== undefined;
-  const declaredResult = buildResult(state, hasAction);
   /**
-   * The hooks run once the author's declaration is complete and its result is resolved, so a hook
-   * reads an exact record, and every rule below reads what the hooks returned.
+   * The hooks run once the author's declaration is complete, and each value a hook receives resolves
+   * its result, so a hook reads an exact record. Every rule below reads what the hooks returned.
    */
   // One token per Command per build, which binds a hook's return to the value it received.
   const lineage = {};
@@ -1590,10 +1613,7 @@ export function buildCommand<Args, Options, Globals>(
   const extensions = publishStore(progress.extensions);
   const slots = hookInputs.length > 0 ? collectArguments(hooked, subject) : declaredSlots;
   checkArgumentPlacement(name, slots[0], state.children[0]);
-  const result = calls.length > 0 ? buildResult(hooked, hasAction) : declaredResult;
-  if (!action) {
-    checkGroup(hooked);
-  }
+  const result = checkFinished(hooked, hasAction);
   const options = checkLocalOptions(optionsOf(hooked.inputs), globals, subject);
   // A hook's erased calls answer the declaration rules an authored call answers at the call.
   checkDeclarations(hookInputs.map((call) => call.input));
@@ -1663,7 +1683,7 @@ export class CommandBuilder<
   Globals,
   State extends CommandMethod = CommandMethod,
   Result = unknown,
-> implements CommandNodeHandle {
+> {
   declare readonly [commandValue]: true;
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
 
@@ -1673,19 +1693,7 @@ export class CommandBuilder<
   constructor(name: string, state: CommandState<Args, Options, Globals>) {
     this.#name = name;
     this.#state = state;
-    nodes.set(this, this);
-  }
-
-  get name(): string {
-    return this.#name;
-  }
-
-  get declared(): Declared {
-    return this.#state;
-  }
-
-  get hasAction(): boolean {
-    return this.#state.action !== undefined;
+    nodes.set(this, nodeHandle(name, state));
   }
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
@@ -1706,7 +1714,7 @@ export class CommandBuilder<
       kind: 'argument',
       name,
     };
-    return this.derive(declareArgument(this.#state, input));
+    return this.#derive(declareArgument(this.#state, input));
   }
 
   option<const Name extends string, const Config extends OptionConfig>(
@@ -1723,7 +1731,7 @@ export class CommandBuilder<
       kind: 'option',
       name,
     };
-    return this.derive(declareOption(this.#state, input));
+    return this.#derive(declareOption(this.#state, input));
   }
 
   /**
@@ -1731,14 +1739,14 @@ export class CommandBuilder<
    * tuple rest parameter rejects a call that names none.
    */
   alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {
-    return this.derive(declareAlias(this.#state, names));
+    return this.#derive(declareAlias(this.#state, names));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
   ): Command<Args, Options, Globals, AfterCommand<State>, Result> {
-    return this.derive(attachChild(this.#state, child));
+    return this.#derive(attachChild(this.#state, child));
   }
 
   /**
@@ -1748,7 +1756,7 @@ export class CommandBuilder<
   result<Value>(declaration: {
     views: ResultViews<NoInfer<Value>>;
   }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'value'; value: Value }> {
-    return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
+    return this.#derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#state, 'value', declaration),
     );
   }
@@ -1757,7 +1765,7 @@ export class CommandBuilder<
   rows<Row>(declaration: {
     views: RowViews<NoInfer<Row>>;
   }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'rows'; row: Row }> {
-    return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
+    return this.#derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#state, 'rows', declaration),
     );
   }
@@ -1770,31 +1778,27 @@ export class CommandBuilder<
     replacements: ResultViewsOf<Result>,
     options?: { default?: string },
   ): Command<Args, Options, Globals, State, Result> {
-    return this.derive(declareResultViews(this.#state, replacements, options));
+    return this.#derive(declareResultViews(this.#state, replacements, options));
   }
 
   /** The action closes input authoring; `extend()` remains outside this state transition. */
   action(
     handler: Action<Args, Globals & Options, Result>,
   ): Command<Args, Options, Globals, AfterAction, Result> {
-    return this.derive(declareAction(this.#state, handler));
+    return this.#derive(declareAction(this.#state, handler));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
   ): Command<Args, Options, Globals, State, Result> {
-    return this.derive(declareExtensions(this.#state, values));
-  }
-
-  build(context: BuildContext): BuiltCommand {
-    return buildCommand(this.#state, context);
+    return this.#derive(declareExtensions(this.#state, values));
   }
 
   /**
    * The same runtime value in the state the calling method's return type names. Each call states
    * its own transition, and the declared result travels with it unless the call replaces it.
    */
-  private derive<DerivedArgs, DerivedOptions, Next extends CommandMethod, DerivedResult = Result>(
+  #derive<DerivedArgs, DerivedOptions, Next extends CommandMethod, DerivedResult = Result>(
     state: CommandState<DerivedArgs, DerivedOptions, Globals>,
   ): Command<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult> {
     return new CommandBuilder<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult>(
