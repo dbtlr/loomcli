@@ -6,6 +6,83 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.4.0 - 2026-09-25
+
+0.4.0 adds the manifest: `--manifest` prints the routed Command's slice of the command graph as JSON, so an agent can build a correct invocation before it runs one. Every validated input publishes its JSON Schema as a graph fact, help rows state the values an input accepts, and collecting extensions let help and any other plugin supply prose to the manifest without the manifest knowing them.
+
+Pin both `@loomcli/core` and `@loomcli/plugins` to `0.4.0`. The migrations below cover hand-built extension descriptors, which must now publish `collect`, and help snapshots and readers of the formatter's `--format` description.
+
+### Breaking Changes
+
+- Require every extension descriptor to publish `collect` as `true` or `false`. `AnyExtension` now includes `collect`, `extension()` publishes it, and build rejects a descriptor whose `collect` is missing or not a Boolean with `Extension "<identity>" declares collect that is not a Boolean. Supply true or false, or build the descriptor with extension(identity, config).`
+
+### Migration
+
+**Affected surface.** A plugin or application that lists a hand-built descriptor object, one not returned by `extension(identity, config)`, in a plugin's `extensions`, and TypeScript code that constructs an `AnyExtension` value by hand. Descriptors built with `extension()` are unaffected.
+
+**Why.** A descriptor now says whether its values collect or replace each other, and build reads that flag for every descriptor it meets.
+
+**Before and after.**
+
+Before, a hand-built descriptor:
+
+```ts
+const notes = { identity: '@acme/notes/command', schema, target: 'command' };
+```
+
+After, built by the factory, which publishes `collect: false`:
+
+```ts
+import { extension } from '@loomcli/core';
+
+const notes = extension('@acme/notes/command', { schema, target: 'command' });
+```
+
+**Steps.**
+
+1. Find every descriptor object your code builds without calling `extension()`.
+2. Replace each with `extension(identity, { schema, target })`, or add `collect: false` to the object.
+
+**Validation.** Run the application's type check, then run `inspect()` or any command of the application. A remaining hand-built descriptor fails the build with the diagnostic above.
+
+- Add accepted values to help pages. An option or argument row states the values its input accepts after its description: an authored `accepts` line, or `One of: …` derived from a closed set of strings in the input schema, up to eight values, when nothing beside the set could narrow it. See [Accepted values](docs/core.md#accepted-values).
+- Add `accepts` to `helpInput`, and add `helpArgument`, the argument-targeted help extension that carries `accepts`, both from `@loomcli/plugins/help/extension`.
+- Change the formatter's `--format` description to `Select the output format, <default> by default.` The help page lists up to eight view names as the row's accepted values, and the option's schema carries every name.
+
+### Migration
+
+**Affected surface.** Exact-byte consumers of the default help view, including help snapshots, for any option or argument whose schema is a closed set of strings. Consumers that read the view names from the `--format` option's description through `inspect()` or the manifest.
+
+**Why.** A help row now states the values an input accepts, so a reader chooses a valid value before the first run, and the formatter's description stops repeating the view names the row now lists.
+
+**Before and after.** textstat's `--metric` row changes from `What each row counts.  (default: bytes)` to `What each row counts. One of: bytes, words, lines.  (default: bytes)`. The formatter description changes from `Select the output format: table, json, jsonl. Default: table.` to `Select the output format, table by default.`
+
+**Steps.**
+
+1. Update help snapshots for the accepted-values sentences and the new formatter description.
+2. Read the view names from the `--format` option's `schema.enum` in `inspect()` or the manifest instead of parsing its description.
+3. Where a derived list reads poorly, give the input an `accepts` line through `helpInput` or `helpArgument`.
+
+**Validation.** Run the application's help snapshots and any reader of the format option. This repository checks the pages and the installed packages with:
+
+```sh
+pnpm exec vp test --run packages/plugins/tests/help-accepted.test.ts
+LOOM_TEST_RUNTIME=bun pnpm exec vp test --run packages/plugins/tests/help-accepted.test.ts
+pnpm run check:packed
+```
+
+### Changes
+
+- Add `schema` to every `ArgumentNode` and `OptionNode` that `inspect()` returns: the input-side JSON Schema a validated input's validator publishes through the Standard JSON Schema converter, requested for `draft-2020-12`, copied and frozen to every depth, or `null` where the graph holds no published shape. A validator with no converter, an unvalidated input, a Boolean option, and a converter that fails all read `null`. See [Input schema](docs/core.md#input-schema).
+- Add the `StandardJSONSchemaV1` type export beside `StandardSchemaV1`, so a hand-written schema declares its converter with the standard's own type.
+- Change the formatter's `--format` validator so its declared shape is the enum of the view names and the unadvertised `ndjson` mapping is applied before it, so the option publishes the view names alone. Accepted values and diagnostics are unchanged.
+
+- Add collecting extensions. An extension declared with `collect: true` keeps every value the author or a plugin's `onCommandAttach` hook supplies, in order, instead of replacing the earlier value, and `readExtension` returns them as a read-only list, empty where a declaration carries none. See [Collecting extensions](docs/core.md#collecting-extensions).
+- Allow a lifecycle hook to read a Command's extension values through `AttachedCommand.extensions` and `readExtension`. A value a hook passes to `extend()` is validated at the call, so a hook that catches the rejection continues without the value, and build validates each value once.
+- Add `@loomcli/plugins/manifest/extension`, whose collecting extension `manifestCommand` holds the prose and example invocations a Command's manifest entry prints. The help plugin now supplies each Command's help `details` and `examples` to it, so `inspect()` reports them under `@loomcli/plugins/manifest/command` whether or not a manifest plugin is installed.
+
+- Add the manifest plugin, `@loomcli/plugins/manifest`. Installing `manifest()` adds `--manifest`, which prints the routed Command's slice of the graph as JSON for an agent to read before it invokes: the Application's name, version, description, and globals; fixed statements of the token rule, the exit codes, and what the `json` and `jsonl` views print; and the Command's entry with its visible descendants, arguments, options, input schemas, defaults, result, and the `details` and `examples` collected under `manifestCommand`. Hidden members and aliases are omitted, a deprecated member carries its message, and an absent value reads `null`. See [Manifest](docs/core.md#manifest).
+
 ## v0.3.0 - 2026-09-17
 
 0.3.0 adds typed Command results with table, records, JSON, and JSON Lines views. Semantic styles, view overrides, and the Loom theme let applications customize output, help, and diagnostics.
