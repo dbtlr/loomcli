@@ -4,7 +4,7 @@ title: ADR-0022 - Renderers return marked strings, and a theme maps semantic nam
 description: Ordinary strings carry composable terminal styles, semantic tokens, glyphs, and deferred padding. Core resolves them under one rendering policy, and one optional theme plugin supplies concrete token mappings.
 status: accepted
 created: 2026-09-11
-modified: 2026-09-17
+modified: 2026-09-25
 ---
 
 # ADR-0022 - Renderers return marked strings, and a theme maps semantic names to concrete styles
@@ -69,3 +69,4 @@ The view registry and results lane remain separate increments under ADR-0021 and
 - 2026-09-17: The [Loom theme contract](../core.md#loom-theme) fixes `loomTheme(overrides?)`, the dark foreground defaults, custom-key inference and core-key completion, and replacement and clearing semantics. [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes explicit reduced-color fallbacks. Background painting, light colors, and background detection are outside this increment. This record remains proposed until the named palette and its evidence land.
 
 - 2026-09-17: Accepted with the named palette and explicit fallbacks implemented together. Exact output, composition, validation, packed consumers, and Node and Bun process tests cover the shared gate. The built factory passes compiler and editor-completion checks.
+- 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause that a second theme claimant is rejected at build. The Application constructor, which holds every installed plugin, throws it, and `plugin()` applies the mapping checks. It binds when that record is accepted.

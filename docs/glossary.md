@@ -21,7 +21,11 @@ The unnamed Command an Application owns. It is the entry point of routing and fo
 _Avoid_: Main command, default command
 
 **Child** and **Parent**:
-A Command attached under another Command by a `command()` call, and the Command it is attached to. A Command value is a child at one point in one Application's graph.
+A Command attached under another Command by a `command()` call, and the Command it is attached to. A Command value is a child at one point in one Application's graph, and a Command path reaches at most two levels below the root.
+
+**Attach**:
+The operation that places a finished Command under a parent: `command()` on a Command or on the Application, or a plugin's `commands` list, which the Application constructor attaches to the root. An attached Command is final, so attach checks it as a finished Command and against its new siblings. When a subtree joins an Application, the Application checks it once against its globals, its plugins, and the nodes it already holds.
+_Avoid_: Mount, register, add
 
 **Group**:
 A Command that has children and registers no action. Routing passes through a group to one of its children and never dispatches the group itself.
@@ -149,7 +153,7 @@ The validated, frozen tree that core builds from an Application's declarations. 
 _Avoid_: Command tree, AST, registry, model (unqualified)
 
 **Graph build**:
-The phase that turns the declarations into a Command graph and applies every declaration rule. A rejected declaration is a declaration error, reported before any invocation token is read.
+The phase of `run()` and `inspect()` that turns the declarations into a Command graph. It applies only the declaration rules no earlier moment can judge: the root's finished-Command checks, the lifecycle hooks, and what the hooks contribute. A rejected declaration is a declaration error, reported before any invocation token is read.
 _Avoid_: Compilation, registration, setup
 
 **Inspection**:
@@ -294,7 +298,7 @@ The usage error that carries the whole validation phase: every omitted required 
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
-A failure caused by the author's declarations, found at graph build, by a rejected default, or by a validator that throws or returns a malformed result. It names the declaration and exits 1.
+A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its schema rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
 _Avoid_: Config error, definition error, developer error (in the class name)
 
 **Fatal error**:

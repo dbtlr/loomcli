@@ -4,7 +4,7 @@ title: ADR-0025 - Completed Commands accept immutable extension configuration
 description: Command and Application extend calls remain available after action registration and replace complete values by descriptor while preserving the action and input contract.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-24
+modified: 2026-09-25
 ---
 
 # ADR-0025 - Completed Commands accept immutable extension configuration
@@ -41,3 +41,4 @@ Accepted 2026-09-13 with immutable extension configuration in the public SDK. `p
 - 2026-09-24: Proposed [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) supersedes the replacement clause for a collecting extension, one declared with `collect: true`: across layers and lifecycle hooks, its values accumulate in order instead of replacing the complete earlier value. One layer still holds one value per extension, and the replacement rule stands for every ordinary extension. It also reverses the rejection of contribution queues this record carries forward by reference from ADR-0019's considered options. It binds when ADR-0031 is accepted.
 - 2026-09-24: [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) is accepted, so a collecting extension's values accumulate across layers and hooks. The replacement clause binds every ordinary extension as before.
 - 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, applies the universal-facts rule this record carries from ADR-0019 to `env`: the variable an option binds changes parsing for every run and is read by help and the manifest alike, so it is a core declaration key on the option config and a core fact on the node rather than any plugin's extension value. A configuration binding stays an extension value of the plugin that declares the source. It binds when that record is accepted.
+- 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause, carried from ADR-0001, that graph build applies the input and action order rules to JavaScript callers. Each rule throws from the call that breaks it, such as `option()` after `action()`, and `extend()` still reopens nothing. It also supersedes the timing of the ADR-0019 clauses this record carries by reference: an extension value is validated, and two distinct descriptors sharing an identity fail, at the call or the attach that first holds them rather than at build. The decision text above is unchanged. It binds when that record is accepted.
