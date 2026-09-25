@@ -236,7 +236,7 @@ test('a result reads kind, views, and default in order, and the formatter option
     {
       default: null,
       deprecated: null,
-      description: 'Select the output format: text, json, jsonl. Default: text.',
+      description: 'Select the output format, text by default.',
       long: '--format',
       multiple: false,
       name: 'format',

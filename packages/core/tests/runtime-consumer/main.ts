@@ -1,6 +1,6 @@
 import { Application, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
-import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
+import { helpArgument, helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
@@ -33,7 +33,11 @@ const greeter = new Application('greeter', {
     }),
   ],
 })
-  .argument('subject', { description: 'Who to greet.', required: true })
+  .argument('subject', {
+    description: 'Who to greet.',
+    extensions: [helpArgument({ accepts: 'Any name.' })],
+    required: true,
+  })
   .option('greeting', {
     default: 'hello',
     description: 'The greeting to print.',

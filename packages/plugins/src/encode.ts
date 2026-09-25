@@ -21,11 +21,18 @@ const soleCodeUnit = 0;
  * hex digits, never a literal backslash, so it cannot re-mangle the escapes this second pass adds.
  */
 export function encodeText(text: string, context: ViewContext): string {
-  return context.style
-    .escape(text)
-    .replace(
-      /[\u007F-\u009F]/gu,
-      (character) =>
-        `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
-    );
+  return escapeControls(context.style.escape(text));
+}
+
+/**
+ * The text with DEL and every C1 control, U+007F through U+009F, replaced by its four-digit
+ * lowercase `\uXXXX` escape, so none reaches a terminal. JSON escapes the C0 controls itself and
+ * leaves these raw, so JSON text passes through here before it prints.
+ */
+export function escapeControls(text: string): string {
+  return text.replaceAll(
+    /[\u007F-\u009F]/gu,
+    (character) =>
+      `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
+  );
 }

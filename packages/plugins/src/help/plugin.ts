@@ -3,7 +3,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
 import { attachHelp } from './attach.js';
-import { helpCommand, helpInput } from './extension.js';
+import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpPage } from './views.js';
 
 const options = {
@@ -20,7 +20,7 @@ export type HelpOptions = typeof options;
  */
 export function help(): Plugin<HelpOptions> {
   return plugin(`${Package.name}/help`, {
-    extensions: [helpCommand, helpInput],
+    extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
     options,

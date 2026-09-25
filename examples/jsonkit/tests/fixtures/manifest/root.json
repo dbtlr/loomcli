@@ -105,7 +105,7 @@
       {
         "type": "string",
         "name": "format",
-        "description": "Select the output format: records, json, jsonl. Default: records.",
+        "description": "Select the output format, records by default.",
         "deprecated": null,
         "long": "--format",
         "short": null,
