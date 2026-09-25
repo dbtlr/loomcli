@@ -9,14 +9,28 @@
 
 **Before and after.**
 
-Before, the fault surfaced from `run()` as a diagnostic with exit code 1:
+The throw at the call. Before, a fault surfaced from `run()` as a diagnostic with exit code 1:
 
 ```js
 const list = new Command('list').option('verbose', { multiple: true, type: 'boolean' });
-await new Application('app').command(list).run(); // Invalid declaration: ...
+const code = await new Application('app').command(list).run(); // Invalid declaration: ..., code 1
 ```
 
-After, the `option()` call throws when the module evaluates. A three-level path such as `app store cache clear` becomes `app cache clear`:
+After, the `option()` call throws `DeclarationError` when the module evaluates, so fix the declaration itself:
+
+```js
+const list = new Command('list').option('verbose', { type: 'boolean' });
+const code = await new Application('app').command(list).run();
+```
+
+The nesting cap. Before, a three-level path such as `app store cache clear` was accepted:
+
+```js
+const cache = new Command('cache').command(clear);
+const app = new Application('app').command(new Command('store').command(cache));
+```
+
+After, `command()` on `store` throws, so attach the group one level higher and route it as `app cache clear`:
 
 ```js
 const cache = new Command('cache').command(clear);

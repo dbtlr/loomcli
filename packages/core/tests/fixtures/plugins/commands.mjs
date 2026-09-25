@@ -95,6 +95,11 @@ const scenarios = {
     new Application('app', {
       plugins: [attaching('@acme/doctor', [doctor]), attaching('@acme/clinic', [named('doctor')])],
     }).command(named('local')),
+  // The next three scenarios build a plugin alone, so no Application can raise the fault.
+  // The group's own command() call rejects a child with children before plugin() reads the list.
+  'plugin-deep-group': () => attaching('@acme/kit', [new Command('kit').command(tools)]),
+  'plugin-repeated-name': () => attaching('@acme/doctor', [named('doctor'), named('doctor')]),
+  'plugin-unfinished': () => attaching('@acme/doctor', [new Command('doctor')]),
   'root-arguments': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
       .argument('files', { variadic: true })

@@ -44,8 +44,8 @@ test('routing descends into the children of a group a plugin attaches', () => {
 });
 
 /**
- * Every existing Command rule rejects a plugin Command where the root attaches it: the constructor
- * for two plugins, and the application's own call otherwise.
+ * Every existing Command rule rejects a plugin Command where the root attaches it: `plugin()` for
+ * its own list, the constructor for two plugins, and the application's own call otherwise.
  */
 const rejected = [
   [
@@ -83,6 +83,15 @@ const rejected = [
   [
     'root-arguments',
     'The root Command declares argument "files" and attaches child "doctor". Move the argument into a child Command or remove the children.',
+  ],
+  ['plugin-unfinished', 'Command "doctor" has no action. Register an action.'],
+  [
+    'plugin-repeated-name',
+    'The root Command attaches two children named "doctor". Rename or remove one.',
+  ],
+  [
+    'plugin-deep-group',
+    'Command "kit" attaches child "tools", which has children of its own. Nest Commands at most two levels below the root.',
   ],
 ] satisfies [string, string][];
 
