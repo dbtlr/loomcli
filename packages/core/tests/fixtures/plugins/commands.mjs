@@ -51,12 +51,12 @@ const scenarios = {
         ]),
       ],
     }).command(named('local')),
-  // Two plugins and the application each attach, so the root's order is visible end to end.
   // A group a plugin attaches routes into its own children like any other group.
   nested: () =>
     new Application('app', {
       plugins: [attaching('@acme/tools', [tools])],
     }).command(named('local')),
+  // Two plugins and the application each attach, so the root's order is visible end to end.
   order: () =>
     new Application('app', {
       plugins: [
