@@ -50,6 +50,7 @@ const root = page(
   '  jsonkit <command> [options]',
   '',
   'COMMANDS',
+  '  doctor  Check the host this application runs on.',
   '  get     Read one value at a path.',
   '  keys    List the keys at a path.',
   '  select  Keep the named fields of the document.',

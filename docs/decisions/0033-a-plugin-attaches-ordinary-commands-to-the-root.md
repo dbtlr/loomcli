@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0033 - A plugin attaches ordinary Commands to the root
 description: A plugin definition may list Commands, which attach to the root in installation order before the application's own Commands. A plugin Command is an ordinary Command attached from a different point, so every Command rule applies to it unchanged and no projection or invocation stage treats it differently.
-status: proposed
+status: accepted
 created: 2026-09-25
 modified: 2026-09-25
 ---
@@ -33,4 +33,8 @@ Some capabilities are Commands by nature: printing a shell completion script, or
 
 ## Status
 
-Proposed with the contract. It moves to accepted when the implementation attaches a fixture plugin's Command to jsonkit's root, and the acceptance in [Plugin Commands](../core.md#plugin-commands) passes under Node and Bun.
+Accepted 2026-09-25 with the implementation. Core reads each plugin's `commands` list at plugin build, rejects a value that is not an array and an entry that is not a Command, and attaches the Commands to the root ahead of the application's own, where every existing Command rule reads them. The private `@loom/doctor` plugin attaches `doctor` to jsonkit's root, and the acceptance in [Plugin Commands](../core.md#plugin-commands) passes under Node and Bun.
+
+## Changelog
+
+- 2026-09-25: Accepted with the implementation.

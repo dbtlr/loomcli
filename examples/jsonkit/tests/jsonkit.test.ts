@@ -278,7 +278,7 @@ test.each(['summary', 'gets', 'Get', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: unknown command "${name}"; try get, keys, select, fetch.\n`,
+        stderr: `jsonkit: unknown command "${name}"; try doctor, get, keys, select, fetch.\n`,
         stdout: '',
       });
     });

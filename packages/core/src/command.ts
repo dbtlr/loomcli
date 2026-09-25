@@ -209,6 +209,11 @@ interface BuildContext {
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, CommandNodeHandle>();
 
+/** Whether a value is a Command an author built. */
+export function isCommand(value: unknown): value is object {
+  return typeof value === 'object' && value !== null && nodes.has(value);
+}
+
 /** Reads the declarations behind an attached value; anything else is a declaration error. */
 function nodeOf(parent: string | null, child: object): CommandNodeHandle {
   const node = nodes.get(child);
@@ -1470,8 +1475,19 @@ export function buildGraph<Args, Options, Globals>(
   return {
     extensions: context.extensions,
     globals: context.globals,
-    root: buildCommand(root, context),
+    root: buildCommand(withPluginCommands(root, install.plugins), context),
   };
+}
+
+/**
+ * The root with every installed plugin's Commands ahead of the application's own, in installation
+ * and list order, so every Command rule reads them where the root attaches them.
+ */
+function withPluginCommands<Args, Options, Globals>(
+  root: CommandState<Args, Options, Globals>,
+  plugins: readonly BuiltPlugin[],
+): CommandState<Args, Options, Globals> {
+  return { ...root, children: [...plugins.flatMap((entry) => entry.commands), ...root.children] };
 }
 
 export class CommandBuilder<
