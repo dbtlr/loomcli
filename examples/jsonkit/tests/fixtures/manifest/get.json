@@ -25,6 +25,7 @@
       "required": false,
       "multiple": false,
       "schema": null,
+      "env": null,
       "default": null
     },
     {
@@ -36,7 +37,8 @@
       "short": "-h",
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -47,7 +49,8 @@
       "short": "-V",
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -58,7 +61,8 @@
       "short": null,
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
@@ -69,7 +73,8 @@
       "short": null,
       "negative": null,
       "polarity": "positive",
-      "schema": null
+      "schema": null,
+      "env": null
     }
   ],
   "command": {

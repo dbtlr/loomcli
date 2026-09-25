@@ -76,6 +76,7 @@ function plugin(name: string, description: string, short: string | null) {
     negative: null,
     polarity: 'positive',
     schema: null,
+    env: null,
   };
 }
 
@@ -90,6 +91,7 @@ const globals = [
     required: false,
     multiple: false,
     schema: null,
+    env: null,
     default: null,
   },
   plugin('help', 'Show this help.', '-h'),
@@ -139,6 +141,7 @@ const getDocument = {
         negative: '--no-raw',
         polarity: 'both',
         schema: null,
+        env: 'APP_RAW',
       },
       {
         type: 'string',
@@ -154,6 +157,7 @@ const getDocument = {
           type: 'string',
           pattern: '^[0-9]+$',
         },
+        env: 'APP_LIMIT',
         default: { value: '10' },
       },
       {
@@ -166,6 +170,7 @@ const getDocument = {
         required: false,
         multiple: true,
         schema: null,
+        env: null,
         default: null,
       },
       {
@@ -178,6 +183,7 @@ const getDocument = {
         required: false,
         multiple: false,
         schema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'string' },
+        env: null,
         default: null,
       },
     ],
@@ -237,6 +243,7 @@ test('a result reads kind, views, and default in order, and the formatter option
       default: null,
       deprecated: null,
       description: 'Select the output format, text by default.',
+      env: null,
       long: '--format',
       multiple: false,
       name: 'format',
@@ -285,6 +292,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       required: false,
       multiple: false,
       schema: null,
+      env: null,
       default: { value: 'c\uE000\uE001\uE002\uE003d\uE003E000e' },
     },
   ]);
