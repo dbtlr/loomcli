@@ -383,7 +383,7 @@ The one optional `source` a plugin definition declares, which answers for config
 _Avoid_: Config loader, config provider, settings store
 
 **Configuration file**:
-A JSON file the first-party configuration plugin answers from: the user file it derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in any file are usage failures.
+A JSON file the first-party configuration plugin answers from: the user file it derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Middleware**:

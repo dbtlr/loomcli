@@ -22,7 +22,7 @@ Each need already has an ordinary answer elsewhere. A middleware and an action w
 - **The context.** `SourceContext` gains `out`, the channel object a middleware receives, `style`, the contextual style an action receives, and `graph`, the `CommandGraph` `inspect()` would return for the run, which is the graph core already builds to produce the requests.
 - **Warnings.** A warning goes through `out.warn`, so it renders through `lanes.warn` and any override of it. It writes when the source runs, which is before any takeover, so `--help` with a broken file prints the warning on stderr and then the page.
 - **Input problems.** A resolver that throws or rejects with an `InputError` reports that error as a usage failure with code 2. Core holds it like any validation fault and raises it at the dispatch boundary, so a takeover such as `--help` reports nothing. It stops the stage, fills nothing, and takes the place of every problem already collected, and core runs no validation after it, as a plugin fault does. The source owns the error's message and problems.
-- **Every other throw.** Anything else the resolver throws or rejects with remains a plugin fault with code 1 under ADR-0032.
+- **Every other throw.** Anything else the resolver throws or rejects with remains a plugin fault with code 1 under ADR-0032, and so does an `InputError` thrown while core reads the answers, a getter's included.
 
 ## Considered options
 
