@@ -12,6 +12,14 @@
   ],
   "type": "module",
   "exports": {
+    "./config": {
+      "types": "./dist/src/config/plugin.d.ts",
+      "import": "./dist/src/config/plugin.js"
+    },
+    "./config/extension": {
+      "types": "./dist/src/config/extension.d.ts",
+      "import": "./dist/src/config/extension.js"
+    },
     "./format": {
       "types": "./dist/src/format/plugin.d.ts",
       "import": "./dist/src/format/plugin.js"

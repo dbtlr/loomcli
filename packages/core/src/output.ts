@@ -218,6 +218,8 @@ export class Output {
    * declaration a call answers to is checked where the action was authored.
    */
   readonly out: Out<OpenResult>;
+  /** The channel a configuration source receives: `out` with the results call naming a source. */
+  readonly sourceOut: Out<OpenResult>;
 
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
@@ -246,6 +248,8 @@ export class Output {
       success: (message) => this.emit('success', message, 'stderr'),
       warn: (message) => this.emit('warn', message, 'stderr'),
     };
+    // A configuration source writes through the same channel, and its results call names it.
+    this.sourceOut = { ...this.out, results: () => this.resultFault('source') };
   }
 
   /**

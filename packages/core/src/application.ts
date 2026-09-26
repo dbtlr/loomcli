@@ -510,6 +510,7 @@ class ApplicationBuilder<
               invocationOutput.useRoute(path);
             },
             signal: controller.signal,
+            sourceOut: output.sourceOut,
             style: output.style,
           });
         }

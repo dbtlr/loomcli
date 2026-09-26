@@ -212,6 +212,8 @@ interface Invocation {
    * receives the channel the results lane builds for the Command that was routed.
    */
   out: Out<OpenResult>;
+  /** The channel a configuration source receives, whose results call names the source. */
+  sourceOut: Out<OpenResult>;
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;

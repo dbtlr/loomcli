@@ -1,12 +1,13 @@
-import { asSentence, InternalError, reasonOf } from './errors.js';
+import { asSentence, InputError, InternalError, reasonOf, ResultError } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject, isProseLine } from './facts.js';
-import type { OptionNode } from './inspect.js';
+import type { CommandGraph, OptionNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
-import type { Host } from './types.js';
+import type { ContextualStyle } from './style.js';
+import type { Host, Out } from './types.js';
 import type { OptionInput } from './validation.js';
 
 /**
@@ -25,22 +26,29 @@ interface SourceStage {
   /** The globals table: the application's global options, then each plugin's in install order. */
   globals: StageScope;
   host: Host;
+  /** The graph `inspect()` would return for the run, built on its first read. */
+  inspected: () => CommandGraph;
   /** The routed Command's own options, or `undefined` while local parsing holds a fault. */
   locals: StageScope | undefined;
+  /** The channel a source writes through, whose results call names the source. */
+  out: Out;
   plugins: readonly BuiltPlugin[];
   /** The `OptionNode` of one option, read from the graph `inspect()` would return for the run. */
   request: (input: OptionInput, global: boolean) => OptionNode;
   signal: AbortSignal;
+  /** The contextual style an action receives, so a source escapes raw data before it warns. */
+  style: ContextualStyle;
 }
 
 /**
  * What the stage found beside the values it filled. `labels` names where each filled option's value
  * came from, by option name, and `rejected` names the variable of each Boolean option whose value
  * is outside the grammar. Both are internal to core's failure messages. `fault` is a configuration
- * source's own fault, which stops the stage and takes the place of every validation problem.
+ * source's own fault, or the `InputError` its resolver threw, which stops the stage and takes the
+ * place of every validation problem.
  */
 interface SourceOutcome {
-  fault: InternalError | undefined;
+  fault: InternalError | InputError | undefined;
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
 }
@@ -247,14 +255,23 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   }
   const sentence = pluginSentence(owner.identity);
   const context: SourceContext = {
+    graph: stage.inspected(),
     host: stage.host,
     options: pluginValues(owner.inputs, stage.globals.values),
+    out: stage.out,
     requests: requested.map(({ input, scope }) => stage.request(input, scope.global)),
+    style: stage.style,
   };
   let answers: unknown = undefined;
   try {
     answers = await resolver(context);
   } catch (error) {
+    // The resolver's own InputError is a usage failure.
+    // Its out.results() call is the results fault that names it.
+    // Every other throw is the plugin's fault.
+    if (error instanceof InputError || (error instanceof ResultError && error.kind === 'source')) {
+      throw error;
+    }
     throw sourceFailure(sentence, error);
   }
   try {
@@ -340,9 +357,12 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
     }
     return { fault: undefined, labels, rejected };
   } catch (error) {
-    // Every fault above is raised as an internal error; anything else is wrapped the same way.
+    // The resolver's InputError reports as a usage failure.
+    // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
     const fault =
-      error instanceof InternalError ? error : new InternalError(reasonOf(error), error);
+      error instanceof InternalError || error instanceof InputError
+        ? error
+        : new InternalError(reasonOf(error), error);
     return { fault, labels, rejected };
   }
 }

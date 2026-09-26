@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0039 - The configuration plugin reads layered JSON files and fails only on the file the operator names
 description: The first-party configuration plugin answers the configuration tier from a user file derived from the application name and the project files the application lists, combined key by key with the first listed file winning. `--config` replaces every file for one run. A file the plugin discovered never breaks a run; a file the operator named, and a wrong value in the file that answers a request, is a usage failure.
-status: proposed
+status: accepted
 created: 2026-09-26
 modified: 2026-09-26
 ---
@@ -45,8 +45,9 @@ The plugin reads files, so it is the first module in `@loomcli/plugins` to impor
 
 ## Status
 
-Proposed. It moves to accepted with the implementation in `@loomcli/plugins/config` and textstat's adoption, proven under Node and Bun by the configuration acceptance in `docs/core.md`.
+Accepted 2026-09-26 with the implementation in `@loomcli/plugins/config` and textstat's adoption, proven under Node and Bun by the configuration acceptance in `docs/core.md`.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the configuration plugin contract.
+- 2026-09-26: Accepted with the implementation. The entry module builds the resolver from the listed files when `source.load` runs, so the lazily loaded module exports a factory rather than a bare resolver.
