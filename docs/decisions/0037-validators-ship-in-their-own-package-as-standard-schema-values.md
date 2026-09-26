@@ -32,13 +32,13 @@ The factory grammars, outputs, published schemas, and messages are the contract 
 - **Validators in core.** Rejected. ADR-0005's reason holds: core stays free of a second validation vocabulary, and a growing catalog of values does not belong in the package every application loads.
 - **A subpath of `@loomcli/plugins`.** Rejected. ADR-0020 describes that package as the plugin pack, and a validator is not a plugin.
 - **A closed Loom constraint vocabulary on each validator.** Rejected under ADR-0030. The Standard JSON Schema channel already carries the shape every projection reads.
-- **A combinator for collection inputs and a composition utility.** Rejected. [ADR-0036](0036-a-collected-inputs-validator-validates-one-item.md) makes every validator an item validator on a collection, so no combinator is needed, and composition waits for a use no factory option covers.
+- **A combinator for multiple options and variadic arguments, and a composition utility.** Rejected. [ADR-0036](0036-each-value-passes-the-same-validator.md) runs the same validator on each of their values, so no combinator is needed, and composition waits for a use no factory option covers.
 
 ## Consequences
 
 An application covers common input shapes with one small dependency, and help prints accepted values for a `oneOf` input with no authored line. The package must follow the soundness rule for every factory it adds, and each addition is a public contract.
 
-The package joins the release set the way `@loomcli/plugins` did. It lands with `private: true`. The maintainer publishes a `0.0.0` placeholder to npm and binds the trusted publisher to it under [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md). An ordinary pull request then removes `private` at the current synchronized version, and the next release cut publishes it with the other libraries. The release workflow reads only the versions the manifests carry, so the placeholder never enters a plan.
+The package joins the release set the way `@loomcli/plugins` did. It lands with `private: true`. The maintainer publishes a `0.0.0` placeholder to npm from a minimal manifest without `private`, since npm refuses to publish a private package, and binds the trusted publisher to it under [ADR-0016](0016-a-release-merge-publishes-through-one-idempotent-workflow.md). An ordinary pull request then removes `private` at the current synchronized version, and the next release cut publishes it with the other libraries. The release workflow reads only the versions the manifests carry, so the placeholder never enters a plan.
 
 ## Status
 

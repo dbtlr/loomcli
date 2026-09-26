@@ -94,11 +94,11 @@ The Boolean option setting that selects which long forms exist and what an absen
 _Avoid_: Negation mode, inverse flag
 
 **Multiple option**:
-A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty collection rather than `undefined`. Its validator checks one item, and core applies it to each occurrence, so an empty collection makes no validator call.
+A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty array rather than `undefined`. The same validator checks each value, so no occurrence makes no validator call.
 _Avoid_: Repeatable flag, array option, list option
 
 **Default**:
-The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of them for a collection input, and passes through the validator like a supplied value.
+The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value.
 
 **Input-source stage**:
 The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.
@@ -109,7 +109,7 @@ The variable an option names with `env` on its declaration, from which the input
 _Avoid_: Env var option, env fallback, auto env
 
 **Validator**:
-The Standard Schema object a value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one supplied string, one item at a time for a collection input, decides acceptance, and determines the action's value type. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
+The Standard Schema object a value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
 _Avoid_: Schema (for the object), parser, type guard
 
 **Validator catalog**:
@@ -355,7 +355,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
-The JSON Schema a validated input's validator publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value the string token must satisfy, exactly as the validator states it; for a collection input core wraps the item's schema as the array's `items`. It is unknown, not unconstrained, where the validator publishes none. A published input schema is sound: every token the validator accepts satisfies it, so it may be looser than the validator and never stricter.
+The JSON Schema a validated input's validator publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value one string token must satisfy, exactly as the validator states it, and a multiple option or a variadic argument publishes that same schema for each of its values. It is unknown, not unconstrained, where the validator publishes none. A published input schema is sound: every token the validator accepts satisfies it, so it may be looser than the validator and never stricter.
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:

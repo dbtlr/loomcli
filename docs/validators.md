@@ -31,7 +31,7 @@ An author climbs these rungs, and each pays only for itself:
 
 **Values.** Every factory returns a `StandardSchemaV1<string, Output>` that also implements `StandardJSONSchemaV1`, with `vendor` `'@loomcli/validators'`. Its input is one raw string. `validate` is synchronous except under `path`, which probes the filesystem. The value is frozen and holds no state between calls, so one validator may serve many inputs.
 
-**Collections.** On a multiple option or a variadic argument, a catalog validator checks one item under [ADR-0036](decisions/0036-a-collected-inputs-validator-validates-one-item.md). `option('tag', { multiple: true, type: 'string', validate: text({ maxLength: 32 }) })` gives the action `string[]`, and core publishes `{ type: 'array', items: <the item's schema> }`.
+**Multiple options and variadic arguments.** On a multiple option or a variadic argument, the same validator checks each value under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md). `option('tag', { multiple: true, type: 'string', validate: text({ maxLength: 32 }) })` gives the action `string[]`, and the input schema is `text()`'s own.
 
 **Omission.** A catalog validator's input type is `string`, so it cannot sit beside `validateOmitted: true`, whose validator's input type must accept `undefined`. A rule about omission is a hand-written Standard Schema value, as [Absence and defaults](core.md#absence-and-defaults) shows.
 
@@ -210,13 +210,13 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 
 - The root export holds the nine factories, `createValidator`, and the `Validator` and `ParseResult` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
-- Under ADR-0037, the package joins the synchronized release set the way `@loomcli/plugins` did under [ADR-0020](decisions/0020-first-party-plugins-ship-in-one-package-as-subpaths.md) and [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder and binds the npm trusted publisher, an ordinary pull request removes `private` at the current synchronized version, and the next release cut publishes it. The root `build` script and `scripts/clean.mjs` list it, and the packed-consumer check that installs the published tarballs covers it beside core and plugins.
+- Under ADR-0037, the package joins the synchronized release set the way `@loomcli/plugins` did under [ADR-0020](decisions/0020-first-party-plugins-ship-in-one-package-as-subpaths.md) and [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder from a minimal manifest without `private` and binds the npm trusted publisher, an ordinary pull request removes `private` at the current synchronized version, and the next release cut publishes it. The root `build` script and `scripts/clean.mjs` list it, and the packed-consumer check that installs the published tarballs covers it beside core and plugins.
 
 ## Example coverage
 
 - textstat declares `--metric` with `oneOf(['bytes', 'words', 'lines'])` and `--min-bytes` and `--minimum` with `integer({ min: 0 })`, replacing their Zod schemas, so the rejected-value message for `TEXTSTAT_MIN_BYTES` reads `Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.` `inspect()` reports `metric` with the `enum` and `min-bytes` with `{ type: 'integer', minimum: 0 }` beside `$schema`.
 - textstat's `files` rule, a nonempty list or piped stdin, moves into its action under ADR-0036: an empty list with a terminal on stdin throws an `InputError` carrying one `invalid` problem for the argument, as [Example coverage](core.md#example-coverage-1) shows, so stderr still reads `Invalid input: Argument "files": Supply file arguments or pipe text to stdin.` with exit code 2.
-- jsonkit's `select` declares `--field` with `text()`, an item validator, so `--field a -F ''` fails with `Option "--field" at 1: Expected a nonempty value.`, and `inspect()` reports `{ type: 'array', items: { type: 'string', minLength: 1 } }` beside `$schema`.
+- jsonkit's `select` declares `--field` with `text()`, so `--field a -F ''` fails with `Option "--field" at 1: Expected a nonempty value.`, and `inspect()` reports `{ type: 'string', minLength: 1 }` beside `$schema`.
 - jsonkit's global `--file` keeps its hand-written validator, because it reads omission through `validateOmitted`.
 
 ## Acceptance
@@ -225,7 +225,7 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 - **Rejection.** For each factory, a table of rejected tokens pins the one message and shows the token is absent from it.
 - **Faults.** Each listed fault throws `DeclarationError` from the factory call.
 - **Context.** A context-free factory validates when called directly; `path` called directly throws the context sentence; `path` inside a run resolves against a host override's `cwd`, using temporary directories for the `read` and `write` checks.
-- **Collections.** Core runs an item validator once per item, indexes each issue, validates each default item, publishes `items`, and calls nothing for an empty collection, under ADR-0036.
+- **Multiple options and variadic arguments.** Core runs the validator once per value, reports each issue at its position, validates each default value, publishes the validator's schema unchanged, and calls nothing when no value is supplied, under ADR-0036.
 - **Help.** A `oneOf` input of at most eight values prints `One of: ...` with no authored `accepts`, under help's limit of eight.
 
 ## Not in 0.5.0
