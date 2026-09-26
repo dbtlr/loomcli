@@ -58,12 +58,13 @@ new Application('bad').option('file', {
 new Application('bad').option('file', {
   multiple: true,
   type: 'string',
-  validate: z.string(),
+  // The validator accepts undefined, so only the several-values rule can reject the declaration.
+  validate: z.string().optional(),
   validateOmitted: true,
 });
 // @ts-expect-error TS2345: A variadic argument with no values receives an empty array.
 new Command('bad').argument('files', {
-  validate: z.string(),
+  validate: z.string().optional(),
   validateOmitted: true,
   variadic: true,
 });
