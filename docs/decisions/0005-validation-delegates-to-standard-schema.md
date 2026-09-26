@@ -4,7 +4,7 @@ title: ADR-0005 - Validation delegates to Standard Schema, with context passed t
 description: Core has no native validator and no validate hook. A value input accepts any Standard Schema object, and core passes a validation context on every call through the standard's libraryOptions record.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-24
+modified: 2026-09-25
 ---
 
 # ADR-0005 - Validation delegates to Standard Schema, with context passed through the standard's own channel
@@ -31,3 +31,4 @@ Boolean options accept no schema; their polarity decides their absent value. A s
 
 - 2026-09-08: The core package is named `@loomcli/core` before its first publication. References to `@loom/core` above name the same library. The architectural decision is unchanged.
 - 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, widens what the validation context calls supplied. An option the environment or the configuration source filled is supplied, and `supplied` holds the raw value that tier filled: the string, the Boolean, or the list. The schema receives the same value, and the context names no tier. It binds when that record is accepted.
+- 2026-09-25: [ADR-0036](0036-each-value-passes-the-same-validator.md), proposed, supersedes the considered option that rejected per-value validators. On a multiple option or a variadic argument, `validate` names the validator for one value, each default value passes through it, and a rule over the whole list belongs to the action. It binds when that record is accepted; the rest of this record is unchanged.

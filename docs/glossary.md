@@ -94,11 +94,11 @@ The Boolean option setting that selects which long forms exist and what an absen
 _Avoid_: Negation mode, inverse flag
 
 **Multiple option**:
-A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty collection rather than `undefined`, and it enters the schema like a supplied value.
+A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty array rather than `undefined`. The same validator checks each value, so no occurrence makes no validator call.
 _Avoid_: Repeatable flag, array option, list option
 
 **Default**:
-The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the schema's input type and passes through the schema like a supplied value.
+The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value.
 
 **Input-source stage**:
 The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.
@@ -108,12 +108,16 @@ _Avoid_: Config merge, fallback chain, value resolution
 The variable an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
 _Avoid_: Env var option, env fallback, auto env
 
-**Schema**:
-A Standard Schema object attached to a value input through `validate`. It receives the supplied string or string array, decides acceptance, and determines the action's value type.
-_Avoid_: Validator (for the object), parser, type guard
+**Validator**:
+The Standard Schema object a value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
+_Avoid_: Schema (for the object), parser, type guard
+
+**Validator catalog**:
+The validators `@loomcli/validators` ships as factories, each built with `createValidator`, so an author covers a common input shape without a schema library. A factory earns its slot by covering a shape a command-line author would otherwise need a schema library for.
+_Avoid_: Built-in validators, core validators
 
 **Validation context**:
-The facts core attaches to every schema call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A schema reads it to decide rules that depend on the invocation.
+The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
 _Avoid_: Schema options, environment
 
 **Passthrough**:
@@ -157,7 +161,7 @@ The phase of `run()` and `inspect()` that turns the declarations into a Command 
 _Avoid_: Compilation, registration, setup
 
 **Inspection**:
-Reading the Command graph as plain frozen data through `inspect()`, without reading host facts or running an input schema.
+Reading the Command graph as plain frozen data through `inspect()`, without reading host facts or running a validator.
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
@@ -290,15 +294,15 @@ A failure that means the invocation is wrong: unknown command, missing subcomman
 _Avoid_: User error, CLI error, validation error (as the class name)
 
 **Structure error**:
-A parse-time fault in the token stream, such as an unknown option or a missing value. It ranks after routing errors and before schema issues.
+A parse-time fault in the token stream, such as an unknown option or a missing value. It ranks after routing errors and before validator issues.
 _Avoid_: Syntax error, parse error
 
 **Input error**:
-The usage error that carries the whole validation phase: every omitted required input and every schema-rejected value, in authoring order.
+The usage error that carries the whole validation phase: every omitted required input and every value a validator rejected, in authoring order.
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
-A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its schema rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
+A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
 _Avoid_: Config error, definition error, developer error (in the class name)
 
 **Fatal error**:
@@ -318,7 +322,7 @@ The view core declares for one failure class, keyed by the class, whose function
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Issue**:
-One Standard Schema rejection returned by a schema, with its message and optional path inside the value.
+One Standard Schema rejection returned by a validator, with its message and optional path inside the value.
 _Avoid_: Validation error, problem (for the schema-level record)
 
 **Problem**:
@@ -351,7 +355,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
-The JSON Schema a validated input's schema publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value the string token, or the whole list of tokens for a collection input, must satisfy, exactly as the schema library states it, and it is unknown, not unconstrained, where the schema publishes none.
+The JSON Schema a validated input's validator publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value one string token must satisfy, exactly as the validator states it, and a multiple option or a variadic argument publishes that same schema for each of its values. It is unknown, not unconstrained, where the validator publishes none. A published input schema is sound: every token the validator accepts satisfies it, so it may be looser than the validator and never stricter.
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
@@ -403,7 +407,7 @@ A declaration fact core owns and every projection reads without any plugin insta
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin option**:
-An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
+An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no validator and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
 _Avoid_: Global option (for a plugin's option), flag
 
 **Plugin Command**:
