@@ -2,6 +2,7 @@ import { Application, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpArgument, helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
+import type { HelpVariant } from '@loomcli/plugins/help/views';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { versionLine } from '@loomcli/plugins/version/views';
@@ -13,6 +14,11 @@ import { versionLine } from '@loomcli/plugins/version/views';
  * option. Declaration, parsing, plugin loading, view resolution, and output all run from the files
  * a registry consumer installs. The entry runs at module top level the way the examples run.
  */
+/** The branded header names a compact page, so the check reads the variant through the packed type. */
+function header(variant: HelpVariant): string {
+  return variant === 'compact' ? 'greeter help -h' : 'greeter help';
+}
+
 const greeter = new Application('greeter', {
   description: 'Greet one subject.',
   extensions: [
@@ -26,7 +32,7 @@ const greeter = new Application('greeter', {
   // Each override brands the packed plugin's own default, which it calls by reference.
   views: [
     override(helpPage, {
-      render: (page, context) => `greeter help\n${helpPage.render(page, context)}`,
+      render: (page, context) => `${header(page.variant)}\n${helpPage.render(page, context)}`,
     }),
     override(versionLine, {
       render: (graph, context) => `greeter build\n${versionLine.render(graph, context)}`,

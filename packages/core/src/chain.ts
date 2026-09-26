@@ -36,11 +36,12 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * What one middleware receives. `graph` is the frozen graph `inspect()` returns, built once for the
  * run, and `command` is the routed node inside it. `options` holds this plugin's own option values
  * and never another plugin's or the application's globals, and `spellings` holds the spelling that
- * supplied each of them as a token, which a filled or defaulted option never has. `request` is the routed Command's
- * invocation, parsed and validated ahead of the chain, and `null` while core holds a fault and on a
- * group. `view` names the view the result renders through: it reads as the declaration's default
- * until a middleware assigns one, and as `null` on a Command that declares none. The last
- * assignment before the dispatch boundary wins, and one made after it changes nothing.
+ * supplied each of them as a token, which a filled or defaulted option never has. `request` is the
+ * routed Command's invocation, parsed and validated ahead of the chain, and `null` while core holds
+ * a fault and on a group. `view` names the view the result renders through: it reads as the
+ * declaration's default until a middleware assigns one, and as `null` on a Command that declares
+ * none. The last assignment before the dispatch boundary wins, and one made after it changes
+ * nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: PluginOptionValues<Options>;

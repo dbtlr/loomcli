@@ -46,7 +46,7 @@ This answers one part of the question [ADR-0028](0028-plugins-run-code-at-lifecy
 
 ## Status
 
-Accepted 2026-09-26 with the implementation. Core records the spelling of each plugin option the pre-scan consumes, the middleware context carries the plugin's own spellings frozen, and help's acceptance proves the compact and extended pages under Node and Bun.
+Accepted 2026-09-26 with the implementation. Core records the spelling of each option it parses and hands each middleware the frozen spellings of its own plugin's options alone, and help's acceptance proves the compact and extended pages under Node and Bun.
 
 ## Changelog
 

@@ -20,6 +20,7 @@ test.each([
   [['-f'], { flag: '-f' }],
   [['--no-flag'], { flag: '--no-flag' }],
   [['--mode=fancy'], { mode: '--mode' }],
+  [['--name=a'], { name: '--name' }],
   [['-qf'], { flag: '-f', quiet: '-q' }],
   [['-n', 'a', '--name', 'b'], { name: '--name' }],
   [['--name', 'a', '-n', 'b'], { name: '-n' }],

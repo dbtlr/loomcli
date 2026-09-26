@@ -26,6 +26,5 @@ export interface HelpPage {
  * ends the page with exactly one newline. A replacement owns both obligations.
  */
 export const helpPage = view<HelpPage>(`${Package.name}/help/page`, {
-  render: ({ command, graph, variant }, context) =>
-    `${renderPage({ command, graph, variant }, context)}\n`,
+  render: (page, context) => `${renderPage(page, context)}\n`,
 });
