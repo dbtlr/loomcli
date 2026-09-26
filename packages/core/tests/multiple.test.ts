@@ -77,8 +77,8 @@ test('each per-value call reads its own context, so a write in one call never re
     status: 0,
     stderr: '',
     stdout: `${JSON.stringify([
-      { command: [], field: ['a', 'b'] },
-      { command: [], field: ['a', 'b'] },
+      { command: [], field: ['a', 'b'], kept: true },
+      { command: [], field: ['a', 'b'], kept: true },
     ])}\n`,
   });
 });

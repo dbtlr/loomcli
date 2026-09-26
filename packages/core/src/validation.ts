@@ -590,17 +590,37 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
    * One reading of the tokens and the route, built anew for each validator call. The route, the
    * tail, and every collected value are copies, so a validator that writes to them reaches neither
    * the parser's collections, nor the tail the action receives, nor the next validator call of
-   * this invocation. The host is the captured object itself, the one the action receives.
+   * this invocation. Each copy is made on its first read and kept for the call, so a validator
+   * that never reads one never pays for it, however many values a list holds. The host is the
+   * captured object itself, the one the action receives.
    */
-  const facts = () => ({
-    command: [...invocation.command],
-    host: invocation.host,
-    passthrough: [...invocation.passthrough],
-    supplied: suppliedInputs(
-      declarations.map((entry) => entry.input),
-      supplied,
-    ),
-  });
+  const contextOf = (entry: ScopedInput): ValidationContext => {
+    const copies: {
+      command?: readonly string[];
+      passthrough?: readonly string[];
+      supplied?: SuppliedInputs;
+    } = {};
+    return {
+      get command() {
+        copies.command ??= [...invocation.command];
+        return copies.command;
+      },
+      host: invocation.host,
+      input: identityOf(entry),
+      get passthrough() {
+        copies.passthrough ??= [...invocation.passthrough];
+        return copies.passthrough;
+      },
+      phase: 'invocation',
+      get supplied() {
+        copies.supplied ??= suppliedInputs(
+          declarations.map((declared) => declared.input),
+          supplied,
+        );
+        return copies.supplied;
+      },
+    };
+  };
   const values = new Map<InputDeclaration, unknown>();
   const lines: string[] = [];
   const problems: InputProblem[] = [];
@@ -621,7 +641,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
     const result = await validateDeclared(entry.input, raw, {
-      context: () => ({ ...facts(), input: identityOf(entry), phase: 'invocation' }),
+      context: () => contextOf(entry),
       signal: invocation.signal,
     });
     if (result.issues === undefined) {

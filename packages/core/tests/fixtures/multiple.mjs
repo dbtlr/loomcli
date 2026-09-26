@@ -138,6 +138,7 @@ switch (scenario) {
               seen.push({
                 command: [...context.command],
                 field: [...context.supplied.options.field],
+                kept: context.supplied === context.supplied,
               });
               context.command.push('written');
               context.supplied.options.field.push('written');
