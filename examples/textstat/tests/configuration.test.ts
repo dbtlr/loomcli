@@ -176,13 +176,17 @@ test(
       stdout: '',
     });
     space.write(space.project, 'broken.json', '{');
-    expect(space.textstat([...files, '--config', 'broken.json']).stderr).toBe(
-      namedFailure('broken.json', 'is not valid JSON.'),
-    );
+    expect(space.textstat([...files, '--config', 'broken.json'])).toEqual({
+      status: 2,
+      stderr: namedFailure('broken.json', 'is not valid JSON.'),
+      stdout: '',
+    });
     space.write(space.project, 'list.json', '[]');
-    expect(space.textstat([...files, '--config', 'list.json']).stderr).toBe(
-      namedFailure('list.json', 'does not hold a JSON object.'),
-    );
+    expect(space.textstat([...files, '--config', 'list.json'])).toEqual({
+      status: 2,
+      stderr: namedFailure('list.json', 'does not hold a JSON object.'),
+      stdout: '',
+    });
     const help = space.textstat(['--config', 'missing.json', '--help']);
     expect(help).toMatchObject({ status: 0, stderr: '' });
     expect(help.stdout.startsWith('textstat')).toBe(true);

@@ -511,12 +511,20 @@ test('an InputError from the resolver is a usage failure that replaces every oth
 });
 
 test('out.results() in a source is the results fault with the source as its subject', () => {
+  const fault =
+    'Internal error: A configuration source called out.results() on Command "count". Only the action emits a result.\n';
   expect(run(['count', '--max', '1'], { FIXTURE_SOURCE: 'results' })).toEqual({
     status: 1,
-    stderr:
-      'Internal error: A configuration source called out.results() on Command "count". Only the action emits a result.\n',
+    stderr: fault,
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level","total"]}\nresolved:1\n',
+  });
+  // The results-lane fault reports once after the outcome, as a middleware's call does, a takeover included.
+  expect(run(['count', '--max', '1', '--help'], { FIXTURE_SOURCE: 'results' })).toEqual({
+    status: 1,
+    stderr: fault,
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level","total"]}\nhelp\nresolved:1\n',
   });
 });
 
@@ -528,6 +536,10 @@ test.each([
   [
     { FIXTURE_SOURCE: 'input-error-getter' },
     'Plugin "@fixture/config" failed in its configuration source: Option "--limit": not from the resolver.',
+  ],
+  [
+    { FIXTURE_SOURCE: 'result-error' },
+    'Plugin "@fixture/config" failed in its configuration source: A middleware called out.results() on Command "bogus". Only the action emits a result.',
   ],
 ])('%j stays a plugin fault with code 1', (env, sentence) => {
   const result = run([], env);

@@ -1,6 +1,6 @@
 import { setTimeout as after } from 'node:timers/promises';
 
-import { InputError, readExtension } from '@loomcli/core';
+import { InputError, readExtension, ResultError } from '@loomcli/core';
 
 import { configKey } from './extension.mjs';
 
@@ -50,6 +50,10 @@ const source = async ({ graph, host, options, out, requests, style }) => {
   }
   if (mode === 'fatal') {
     out.fatal('the source gave up');
+  }
+  if (mode === 'result-error') {
+    // A ResultError the source built itself is not the fault of its own out.results() call.
+    throw new ResultError('middleware', ['bogus']);
   }
   if (mode === 'input-error-getter') {
     return {

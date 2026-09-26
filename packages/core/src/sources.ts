@@ -269,7 +269,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
     // The resolver's own InputError is a usage failure.
     // Its out.results() call is the results fault that names it.
     // Every other throw is the plugin's fault.
-    if (error instanceof InputError || error instanceof ResultError) {
+    if (error instanceof InputError || (error instanceof ResultError && error.kind === 'source')) {
       throw error;
     }
     throw sourceFailure(sentence, error);

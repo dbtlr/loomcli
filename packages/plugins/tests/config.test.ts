@@ -124,6 +124,11 @@ test(
     expect(
       received(space.run('none', [], { APPDATA: undefined, FIXTURE_PLATFORM: 'win32' }).stdout),
     ).toEqual(defaults);
+    // A relative HOME resolves against the host's working directory, and the label shows the full path.
+    const relative = space.write('home/.config/app/config.json', json({ limits: { bytes: 'x' } }));
+    expect(space.run('none', [], { HOME: 'home', XDG_CONFIG_HOME: '' }).stderr).toBe(
+      `Invalid input: Option "--limit" (from limits.bytes in ${relative}): Supply a whole number.\n`,
+    );
   }),
 );
 
@@ -181,13 +186,17 @@ test(
       stdout: 'resolved:2\n',
     });
     space.write('broken.json', '{');
-    expect(space.run('project', ['--config', 'broken.json']).stderr).toBe(
-      namedFailure('broken.json', 'is not valid JSON.'),
-    );
+    expect(space.run('project', ['--config', 'broken.json'])).toEqual({
+      status: 2,
+      stderr: namedFailure('broken.json', 'is not valid JSON.'),
+      stdout: 'resolved:2\n',
+    });
     space.write('list.json', '[]');
-    expect(space.run('project', ['--config', 'list.json']).stderr).toBe(
-      namedFailure('list.json', 'does not hold a JSON object.'),
-    );
+    expect(space.run('project', ['--config', 'list.json'])).toEqual({
+      status: 2,
+      stderr: namedFailure('list.json', 'does not hold a JSON object.'),
+      stdout: 'resolved:2\n',
+    });
     mkdirSync(join(space.project, 'dir.json'));
     expect(space.run('project', ['--config', 'dir.json']).stderr).toBe(
       namedFailure('dir.json', 'could not be read.'),
@@ -209,12 +218,15 @@ test(
       'a',
       '--title',
       't',
+      '--owner',
+      'o',
     ]);
     expect(filled).toMatchObject({ status: 0, stderr: '' });
     expect(received(filled.stdout)).toEqual({
       fields: ['a'],
       level: 'x',
       limit: '1',
+      owner: 'o',
       quiet: false,
       title: 't',
       total: true,
@@ -302,6 +314,15 @@ test(
     expect(space.run('project', []).stderr).toBe(
       wrong('Option "--title" (from title in .app.json): Use a string or a number.'),
     );
+    // An overflowing literal parses as Infinity, which is no JSON number.
+    space.write('.app.json', '{"title": 1e400, "fields": [-0, 1e21, -1e400]}');
+    expect(space.run('project', []).stderr).toBe(
+      wrong(
+        'Option "--fields" (from fields in .app.json) at 2: Use a string or a number.\nOption "--title" (from title in .app.json): Use a string or a number.',
+      ),
+    );
+    space.write('.app.json', '{"fields": [-0, 1e21]}');
+    expect(received(space.run('project', []).stdout)).toMatchObject({ fields: ['0', '1e+21'] });
   }),
 );
 
@@ -341,6 +362,39 @@ test(
 );
 
 test(
+  'a segment named after an Object.prototype member answers only from an own key',
+  inWorkspace((space) => {
+    space.write('.app.json', json({ limits: { bytes: '1' } }));
+    expect(received(space.run('project', []).stdout)).not.toHaveProperty('owner');
+    space.write('.app.json', json({ constructor: { name: 'own' } }));
+    expect(received(space.run('project', []).stdout)).toMatchObject({ owner: 'own' });
+  }),
+);
+
+test(
+  'a wrong value problem carries whether the option is global, and reaches an InputError view',
+  inWorkspace((space) => {
+    space.write('.app.json', json({ limits: { bytes: false }, log: { level: true } }));
+    expect(space.run('project', [], { FIXTURE_VIEWS: 'input' }).stderr).toBe(
+      `${JSON.stringify([
+        {
+          input: { global: true, kind: 'option', name: 'level' },
+          issues: [{ message: 'Use a string or a number.' }],
+          reason: 'invalid',
+          spelling: '--level',
+        },
+        {
+          input: { global: false, kind: 'option', name: 'limit' },
+          issues: [{ message: 'Use a string or a number.' }],
+          reason: 'invalid',
+          spelling: '--limit',
+        },
+      ])}\n`,
+    );
+  }),
+);
+
+test(
   'a bad path in the binding and bad settings throw declaration errors at the call',
   inWorkspace((space) => {
     expect(space.run('bad-path', []).stdout).toBe(
@@ -352,8 +406,13 @@ test(
     expect(space.run('bad-list', []).stdout).toBe(
       'DeclarationError: Plugin "@loomcli/plugins/config" files is not a list. Supply an array of paths.\n',
     );
-    expect(space.run('not-object', []).stdout).toBe(
-      'DeclarationError: Plugin "@loomcli/plugins/config" files is not a list. Supply an array of paths.\n',
+    for (const scenario of ['not-object', 'list-settings']) {
+      expect(space.run(scenario, []).stdout).toBe(
+        'DeclarationError: Plugin "@loomcli/plugins/config" files is not a list. Supply an array of paths.\n',
+      );
+    }
+    expect(space.run('control-entry', []).stdout).toBe(
+      'DeclarationError: Plugin "@loomcli/plugins/config" file 0 is not a path. Supply a nonempty path with no control character.\n',
     );
   }),
 );
@@ -405,6 +464,17 @@ test(
         join(space.root, String.raw`x\u001bdg`, 'app', 'config.json'),
         'does not hold a JSON object.',
       ),
+    );
+    // A C1 control and a line separator escape too, and a style marker prints literally.
+    const odd = `a${String.fromCodePoint(133)}b${String.fromCodePoint(8232)}c`;
+    expect(space.run('project', ['--config', odd]).stderr).toBe(
+      namedFailure(String.raw`a\u0085b\u2028c`, 'does not exist.'),
+    );
+    const marked = `${String.fromCodePoint(57_344)}1${String.fromCodePoint(57_345)}m${String.fromCodePoint(57_346)}`;
+    const markedXdg = join(space.root, `x${marked}dg`);
+    space.write('app/config.json', '[]', markedXdg);
+    expect(space.run('none', [], { XDG_CONFIG_HOME: markedXdg }).stderr).toBe(
+      skipped(join(markedXdg, 'app', 'config.json'), 'does not hold a JSON object.'),
     );
   }),
 );

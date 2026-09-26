@@ -10,11 +10,25 @@ const options = {
 
 const identity = `${Package.name}/config`;
 
-/** A file entry: a nonempty path that holds no control character and no line separator. */
-const pathEntry = /^[^\p{Cc}\p{Zl}\p{Zp}]+$/u;
+/** A file entry: a nonempty path that holds no control character. */
+const pathEntry = /^\P{Cc}+$/u;
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+/** The `files` a settings value lists, or the fault when the settings or the list has the wrong shape. */
+function listedFiles(settings: unknown): unknown[] {
+  const notList = new DeclarationError(
+    `Plugin "${identity}" files is not a list. Supply an array of paths.`,
+  );
+  if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
+    throw notList;
+  }
+  const files: unknown = 'files' in settings ? settings.files : undefined;
+  if (files === undefined) {
+    return [];
+  }
+  if (!Array.isArray(files)) {
+    throw notList;
+  }
+  return files;
 }
 
 /**
@@ -26,15 +40,7 @@ function checkFiles(settings: unknown): readonly string[] {
   if (settings === undefined) {
     return [];
   }
-  const files: unknown = isPlainObject(settings) ? settings.files : settings;
-  if (files === undefined) {
-    return [];
-  }
-  if (!Array.isArray(files)) {
-    throw new DeclarationError(
-      `Plugin "${identity}" files is not a list. Supply an array of paths.`,
-    );
-  }
+  const files = listedFiles(settings);
   return files.map((entry: unknown, index) => {
     if (typeof entry !== 'string' || !pathEntry.test(entry)) {
       throw new DeclarationError(

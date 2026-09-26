@@ -129,7 +129,9 @@ function rank({ files, host, name, named }: Ranking): RankedFile[] {
   const entries = files.map((file) => ranked(resolve(host.cwd, file), file, false));
   const user = userFile(name, host);
   if (user !== undefined) {
-    entries.push(ranked(user, user, false));
+    // A relative HOME or APPDATA resolves against the host's working directory, as every path does.
+    const full = resolve(host.cwd, user);
+    entries.push(ranked(full, full, false));
   }
   const seen = new Set<string>();
   return entries.filter((file) => {
@@ -229,7 +231,8 @@ function textOf(value: unknown): string | undefined {
   if (typeof value === 'string') {
     return value;
   }
-  return typeof value === 'number' ? JSON.stringify(value) : undefined;
+  // JSON.parse reads an overflowing literal as Infinity, which JSON.stringify would write as null.
+  return typeof value === 'number' && Number.isFinite(value) ? JSON.stringify(value) : undefined;
 }
 
 /** The list a multiple option takes from a JSON array, or one issue per item that is not a string or a number. */
