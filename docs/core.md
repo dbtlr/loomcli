@@ -2264,7 +2264,7 @@ Accepted values are proven when public APIs alone produce these results under No
 #### Help and version restyle
 
 ```ts
-// Existing view inputs remain unchanged.
+// The restyle left both view inputs unchanged; help variants add variant to HelpPage.
 import type { CommandGraph, DeclaredView } from '@loomcli/core';
 import type { HelpPage } from '@loomcli/plugins/help/views';
 
@@ -2283,7 +2283,7 @@ OPTIONS
 - **Escaping.** Graph strings, help extension strings, and rendered default values are literal data. The view escapes each raw fragment with `style.escape` before styling or measuring it. It never escapes the completed marked page or recovers semantic fields by parsing a rendered row. Authored markup in a description or example remains literal. Existing default serialization and line-terminator escaping remain unchanged. Embedded ANSI remains subject to core's separate rendering policy.
 - **Measurement.** The two-column rule uses destination-aware `context.width` and core's deferred `pad`. This replaces JavaScript string-length padding. It preserves ASCII spacing while aligning wide and combining characters under core's existing rules. Styling never changes which members or sections appear, and neither view wraps or reads terminal width.
 - **Policy.** Views return semantic marked strings. The installed theme and core's destination policy determine colors and modifiers. A missing theme leaves semantic colors unmapped, while explicit bold and italic still follow modifier policy. Under automatic policy, an ordinary pipe has no style escapes. At a capable terminal, `NO_COLOR` disables color but does not disable bold or italic. Explicit policy and `FORCE_COLOR` retain their existing precedence. The plain examples disable both colors and modifiers.
-- **Replacement.** `helpPage` keeps `{ graph, command }`. `versionLine` keeps `CommandGraph`. Each override replaces the whole view through the existing registry. A replacement derives its own content and owns its layout, literal-data escaping, styles, and final newline. No public section model or builder is introduced.
+- **Replacement.** `helpPage` keeps `{ graph, command }`, which [help variants](#help-variants) extend with `variant`. `versionLine` keeps `CommandGraph`. Each override replaces the whole view through the existing registry. A replacement derives its own content and owns its layout, literal-data escaping, styles, and final newline. No public section model or builder is introduced.
 
 The default help view applies this mapping. A style named below is a member of the run-specific `style` object.
 
