@@ -4,7 +4,7 @@ title: ADR-0032 - Environment and configuration map into options through one cor
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
 status: accepted
 created: 2026-09-24
-modified: 2026-09-24
+modified: 2026-09-26
 ---
 
 # ADR-0032 - Environment and configuration map into options through one core input-source stage
@@ -49,3 +49,4 @@ Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean
 ## Changelog
 
 - 2026-09-24: Accepted with the implementation. A Boolean variable outside the grammar leaves its option unfilled for the source as well as for the default, so the source is never asked about it and no lower tier fills it. Core reads every answer before it fills any, so an answer the rule rejects leaves every requested option unfilled. A diagnostic on a negative-only Boolean option names it by `--no-<name>`, the one spelling an operator types for it. An empty list a source answers for a required multiple option reports the required message with the source in parentheses, as every failure on a filled value does. The resolver-failure sentence supplies its full stop only where the thrown message carries none, as the extension value diagnostic does.
+- 2026-09-26: [ADR-0038](0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md), proposed, supersedes the clause that every throw from a source is a fault of that plugin: a thrown `InputError` reports with code 2, and the source context gains `out`, `style`, and `graph`. Every other rule here stands.

@@ -382,6 +382,10 @@ _Avoid_: Singleton, capability (for the position)
 The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
 
+**Configuration file**:
+A JSON file the first-party configuration plugin answers from: the user file it derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
+_Avoid_: Config, settings file, rc file, dotfile
+
 **Middleware**:
 A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
