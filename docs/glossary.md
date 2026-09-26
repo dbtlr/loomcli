@@ -302,7 +302,7 @@ The usage error that carries the whole validation phase: every omitted required 
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
-A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
+A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
 _Avoid_: Config error, definition error, developer error (in the class name)
 
 **Fatal error**:
@@ -407,7 +407,7 @@ A declaration fact core owns and every projection reads without any plugin insta
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin option**:
-An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no schema and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
+An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no validator and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
 _Avoid_: Global option (for a plugin's option), flag
 
 **Plugin Command**:
