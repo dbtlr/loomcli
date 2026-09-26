@@ -6,7 +6,14 @@ import { afterAll, beforeAll, describe, expect, it, test } from 'vite-plus/test'
 
 import { invoke } from '../../../scripts/test-process.js';
 import { path } from '../src/index.js';
-import { declarationFault, faultOf, published, rejectedWith, rejection } from './support.js';
+import {
+  conforms,
+  declarationFault,
+  faultOf,
+  published,
+  rejectedWith,
+  rejection,
+} from './support.js';
 
 const dialect = 'https://json-schema.org/draft/2020-12/schema';
 
@@ -40,6 +47,22 @@ test('path() publishes a nonempty string and nothing about the filesystem', () =
     minLength: 1,
     type: 'string',
   });
+});
+
+// The value a path token stands for is the token itself, so each accepted token meets the schema.
+test.each([
+  'a',
+  '.',
+  '/',
+  'a/../b/./c',
+  '/etc//hosts',
+  String.raw`C:\work\a`,
+  'dir/',
+  '\u{1F600}.txt',
+  ' ',
+])('path() accepts %j in a run and the token satisfies its published schema', (token) => {
+  expect(run({}, '/loom/work', token, 'linux').status).toBe(0);
+  expect(conforms(path(), token)).toBe(true);
 });
 
 test('path() called directly throws the context sentence', () => {

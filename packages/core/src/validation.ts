@@ -411,8 +411,12 @@ async function validateDeclared(
   call: { context: () => ValidationContext; signal?: AbortSignal },
 ): Promise<StandardSchemaV1.Result<unknown>> {
   const { context, signal } = call;
-  if (!collects(input) || input.config.validate === undefined || !Array.isArray(raw)) {
+  if (!collects(input) || input.config.validate === undefined) {
     return validate(input, raw, context());
+  }
+  if (!Array.isArray(raw)) {
+    // The parser, the input sources, and the declaration rules only ever supply an array here.
+    throw new TypeError(`${declaredName(input)} reached validation without an array of values.`);
   }
   const outputs: unknown[] = [];
   const issues: StandardSchemaV1.Issue[] = [];
@@ -524,10 +528,10 @@ export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<D
 }
 
 /**
- * An array default reaches the action as its own copy, so an action that mutates its collection
- * rewrites neither the declaration nor the next invocation. An array output is copied however it
- * was built, because a pass-through validator returns the declared array itself. Every other
- * output passes through unchanged.
+ * An array default reaches the action as its own copy, so an action that mutates its array
+ * rewrites neither the declaration nor the next invocation. One prepared default serves every
+ * invocation of a run, and an unvalidated default is the declared array itself, so each read
+ * copies it. Every other output passes through unchanged.
  */
 function freshDefault(value: unknown) {
   return Array.isArray(value) ? [...value] : value;

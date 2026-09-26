@@ -2,7 +2,7 @@
   "name": "jsonkit",
   "version": "0.0.0",
   "description": "Read and reshape one JSON document.",
-  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, or the whole list of tokens for a multiple option or a variadic argument, and a null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
   "exitCodes": {
     "0": "Successful execution and core output",
     "1": "Expected action failure, internal failure, or invalid declarations",

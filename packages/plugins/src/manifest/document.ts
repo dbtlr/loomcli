@@ -78,7 +78,7 @@ type ManifestOption =
 
 /** The token rule, stated once so no entry repeats it. */
 const tokens =
-  "Every input is a string token. A schema describes the value one token must satisfy, or the whole list of tokens for a multiple option or a variadic argument, and a null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+  "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 /** The Meaning column of core's Invocation table, with its code formatting removed. */
 const exitCodes = {

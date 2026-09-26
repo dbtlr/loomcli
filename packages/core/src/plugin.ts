@@ -698,7 +698,7 @@ function pluginValues(inputs: readonly OptionInput[], values: OptionValues): Plu
     } else if (config.multiple === true) {
       resolved[name] = collectedValue(values.lists.get(name), declared);
     } else {
-      // Build already proved that a string option without a schema declares a string default.
+      // Build already proved that a string option without a validator declares a string default.
       resolved[name] =
         values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
     }

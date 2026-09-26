@@ -54,22 +54,22 @@ new Application('bad').option('file', {
   validate: fileOrStdin,
   validateOmitted: true,
 });
-// @ts-expect-error TS2345: A multiple option validates its omission as an empty array.
+// @ts-expect-error TS2345: A multiple option with no values receives an empty array.
 new Application('bad').option('file', {
   multiple: true,
   type: 'string',
-  validate: z.array(z.string()),
+  validate: z.string(),
   validateOmitted: true,
 });
-// @ts-expect-error TS2345: A variadic argument validates its omission as an empty array.
+// @ts-expect-error TS2345: A variadic argument with no values receives an empty array.
 new Command('bad').argument('files', {
-  validate: z.array(z.string()),
+  validate: z.string(),
   validateOmitted: true,
   variadic: true,
 });
 // @ts-expect-error TS2345: A Boolean option declares no validateOmitted.
 new Application('bad').option('force', { type: 'boolean', validateOmitted: true });
-// @ts-expect-error TS2345: validateOmitted needs a schema to receive the omission.
+// @ts-expect-error TS2345: validateOmitted needs a validator to receive the omission.
 new Application('bad').option('file', { type: 'string', validateOmitted: true });
 
 const configured = new Application('registered').globalOption('file', {
