@@ -187,6 +187,11 @@ describe('an option that can never work throws from the call', () => {
       'text() pattern carries the flag g. Supply a pattern with no flag other than u.',
     ],
     [
+      'a pattern with the y flag',
+      { pattern: /a/uy },
+      'text() pattern carries the flag y. Supply a pattern with no flag other than u.',
+    ],
+    [
       'a pattern with two other flags',
       { pattern: /a/giu },
       'text() pattern carries the flags gi. Supply a pattern with no flag other than u.',

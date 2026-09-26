@@ -79,6 +79,20 @@ const faults: [string, unknown, string][] = [
   ],
 ];
 
+test('the checked values are the published ones, even when the list changes between reads', () => {
+  const values = ['x', 'b'];
+  let reads = 0;
+  Object.defineProperty(values, 0, {
+    enumerable: true,
+    get: () => {
+      reads += 1;
+      return reads === 1 ? 'a' : 'b';
+    },
+  });
+  const validator: ReturnType<typeof oneOf> = Reflect.apply(oneOf, undefined, [values]);
+  expect(published(validator)).toMatchObject({ enum: ['a', 'b'] });
+});
+
 test.each(faults)('%s throws a declaration fault from the call', (_name, values, message) => {
   expect(faultOf(() => Reflect.apply(oneOf, undefined, [values]))).toEqual(
     declarationFault(message),

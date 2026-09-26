@@ -403,7 +403,8 @@ async function validate(
  * One validation of a declared value. A multiple option or a variadic argument passes each of its
  * values through the validator in order, and each issue reads at its value's position before its
  * own path, so the action receives the array of outputs. Every other input passes its value once.
- * Each call reads a fresh context, so one call cannot change what the next one reads.
+ * Each call reads a fresh context whose arrays are copies, so a write to them never reaches the
+ * next call. The host is the one captured object that every call and the action share.
  */
 async function validateDeclared(
   input: InputDeclaration,

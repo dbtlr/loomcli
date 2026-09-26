@@ -91,6 +91,16 @@ describe('rejected tokens read the one sentence for the configuration', () => {
     ['no scheme', url(), 'example.org', plain],
     ['a relative path', url(), '/relative/path', plain],
     ['the empty string', url(), '', plain],
+    // RFC 3986 allows an empty path, but the published uri format does not, so soundness rejects it.
+    ['a scheme with nothing after it', url(), 'mailto:', plain],
+    ['a scheme and a query only', url(), 'x:?q=1', plain],
+    ['a scheme and a fragment only', url(), 'x:#top', plain],
+    [
+      'an empty path under protocols',
+      url({ protocols: ['h+x.y-z'] }),
+      'h+x.y-z:#',
+      'Expected an absolute URL with the scheme h+x.y-z.',
+    ],
     ['a space the WHATWG parser would encode', url(), 'https://example.org/a b', plain],
     [
       'a backslash the WHATWG parser would turn',
@@ -190,6 +200,12 @@ describe('an option that can never work throws from the call', () => {
       'a scheme that is not a string',
       { protocols: [5] },
       `url() protocols lists 5, which is not a scheme name. ${scheme}`,
+    ],
+    [
+      'a list with a hole',
+      // oxlint-disable-next-line no-sparse-arrays -- The hole is the fault under test.
+      { protocols: ['https', , 'http'] },
+      `url() protocols lists undefined, which is not a scheme name. ${scheme}`,
     ],
   ];
 

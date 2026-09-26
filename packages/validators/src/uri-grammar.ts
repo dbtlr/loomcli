@@ -37,7 +37,8 @@ const authority = `(?:${userinfo}@)?${host}(?::[0-9]*)?`;
 const pathAbempty = `(?:/${pchar}*)*`;
 const pathAbsolute = `/(?:${pchar}+(?:/${pchar}*)*)?`;
 const pathRootless = `${pchar}+(?:/${pchar}*)*`;
-const hierPart = `(?://${authority}${pathAbempty}|${pathAbsolute}|${pathRootless}|)`;
+// RFC 3986 also allows an empty path, which the published `uri` format refuses, so soundness drops it.
+const hierPart = `(?://${authority}${pathAbempty}|${pathAbsolute}|${pathRootless})`;
 const queryOrFragment = `(?:${pchar}|[/?])*`;
 
 const uriPattern = new RegExp(

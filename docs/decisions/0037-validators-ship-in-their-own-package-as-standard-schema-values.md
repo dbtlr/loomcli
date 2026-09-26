@@ -47,4 +47,4 @@ Accepted 2026-09-25 with the implementation. `@loomcli/validators` lands with `p
 ## Changelog
 
 - 2026-09-25: Proposed with the contract in the validators reference.
-- 2026-09-25: Accepted with the implementation. The `url` protocols pattern leaves `-` unescaped, because `\-` outside a character class is a syntax error under the `u` flag a draft 2020-12 `pattern` is read with.
+- 2026-09-25: Accepted with the implementation. The `url` protocols pattern leaves `-` unescaped, because `\-` outside a character class is a syntax error under the `u` flag a draft 2020-12 `pattern` is read with. `url` also rejects an absolute URI with an empty path, such as `mailto:`, because the published `format: 'uri'` refuses it and the soundness rule binds.

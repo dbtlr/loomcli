@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, validationContext } from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -17,6 +17,10 @@ const counting = (inner) => ({
 });
 
 const fieldName = z.string().min(1, 'Supply a field name.');
+/** The run's own controller, so a scenario cancels from inside a validator. */
+const controller = new AbortController();
+/** What each per-value call saw on entry, in call order. */
+const seen = [];
 let app = undefined;
 switch (scenario) {
   case 'plain': {
@@ -101,6 +105,52 @@ switch (scenario) {
       .action(report);
     break;
   }
+  case 'abort-mid-list': {
+    // The first value cancels the run, so no later value reaches the validator.
+    app = new Application('multiple')
+      .option('field', {
+        multiple: true,
+        type: 'string',
+        validate: counting({
+          '~standard': {
+            validate: (value) => {
+              controller.abort();
+              return { value };
+            },
+            vendor: 'fixture',
+            version: 1,
+          },
+        }),
+      })
+      .action(report);
+    break;
+  }
+  case 'per-value-context': {
+    // Each call records what it saw, then writes to every array the context handed it.
+    app = new Application('multiple')
+      .option('field', {
+        multiple: true,
+        type: 'string',
+        validate: {
+          '~standard': {
+            validate: (value, options) => {
+              const context = validationContext(options);
+              seen.push({
+                command: [...context.command],
+                field: [...context.supplied.options.field],
+              });
+              context.command.push('written');
+              context.supplied.options.field.push('written');
+              return { value };
+            },
+            vendor: 'fixture',
+            version: 1,
+          },
+        },
+      })
+      .action(({ out }) => out.print(JSON.stringify(seen)));
+    break;
+  }
   case 'required': {
     app = new Application('multiple')
       .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
@@ -147,4 +197,7 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-await app.run({ host: { argv } });
+const code = await app.run({ host: { argv }, signal: controller.signal });
+if (scenario === 'abort-mid-list') {
+  process.stdout.write(`calls:${calls}:code:${code}\n`);
+}

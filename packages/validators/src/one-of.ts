@@ -35,11 +35,13 @@ function checkValue(item: unknown, seen: Set<string>): void {
 function oneOf<const Values extends readonly [string, ...string[]]>(
   values: Values,
 ): Validator<Values[number]> {
+  checkList(values);
+  // The copy is what the validator keeps, so the checks read the copy and not the caller's list.
+  const listed: readonly Values[number][] = [...values];
   const seen = new Set<string>();
-  for (const item of checkList(values)) {
+  for (const item of listed) {
     checkValue(item, seen);
   }
-  const listed: readonly Values[number][] = [...values];
   const sentence = `Expected one of: ${listed.join(', ')}.`;
   return createValidator({
     inputSchema: { type: 'string', enum: [...listed] },

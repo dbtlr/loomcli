@@ -64,6 +64,25 @@ test('a multiple validator runs once per value and reports each issue at its pos
   });
 });
 
+test("a run cancelled inside one value's validator starts no call for the next value", () => {
+  expect(multiple('abort-mid-list', ['--field', 'a', '--field', 'b', '--field', 'c'])).toEqual({
+    status: 130,
+    stderr: '',
+    stdout: 'calls:1:code:130\n',
+  });
+});
+
+test('each per-value call reads its own context, so a write in one call never reaches the next', () => {
+  expect(multiple('per-value-context', ['--field', 'a', '--field', 'b'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${JSON.stringify([
+      { command: [], field: ['a', 'b'] },
+      { command: [], field: ['a', 'b'] },
+    ])}\n`,
+  });
+});
+
 test('a value issue with its own path reads after the value position', () => {
   expect(multiple('pathed', ['--field', 'a', '--field', 'b'])).toEqual({
     status: 2,

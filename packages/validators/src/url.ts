@@ -21,7 +21,8 @@ function protocolsOf(value: unknown): readonly string[] | undefined {
   if (items.length === empty) {
     throw fault('url() protocols is empty. List at least one scheme.');
   }
-  return items.map((item) => {
+  // `Array.from` reads a hole as `undefined`, so a sparse list faults instead of skipping it.
+  return Array.from(items, (item) => {
     if (typeof item !== 'string' || !schemePattern.test(item)) {
       throw fault(
         `url() protocols lists ${quote(item)}, which is not a scheme name. List a letter followed by letters, digits, +, -, or ., with no trailing colon.`,

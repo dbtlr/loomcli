@@ -72,5 +72,5 @@ async function writable(target: string, kind: PathKind, parent: string): Promise
   });
 }
 
-export { readable, writable };
+export { holds, readable, writable };
 export type { PathKind };
