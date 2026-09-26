@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0039 - The configuration plugin reads layered JSON files and fails only on the file the operator names
-description: The first-party configuration plugin answers the configuration tier from a user file derived from the application name and the project files the application lists, combined key by key with the first listed file winning. `--config` replaces every file for one run. A file the plugin discovered never breaks a run; a file the operator named, and a wrong value in any file, is a usage failure.
+description: The first-party configuration plugin answers the configuration tier from a user file derived from the application name and the project files the application lists, combined key by key with the first listed file winning. `--config` replaces every file for one run. A file the plugin discovered never breaks a run; a file the operator named, and a wrong value in the file that answers a request, is a usage failure.
 status: proposed
 created: 2026-09-26
 modified: 2026-09-26
@@ -17,7 +17,7 @@ An author climbs the plugin in rungs. Installing it and binding one option makes
 
 ## Decision
 
-- **The user file.** The plugin derives one user file from the application name, reading `host.platform` and `host.env` alone. On Windows it is `%APPDATA%\<app>\config.json`. The platform chooses only the variable; the plugin builds every path with the running process's path rules. On every other platform, macOS included, it is `$XDG_CONFIG_HOME/<app>/config.json`, or `$HOME/.config/<app>/config.json` when `XDG_CONFIG_HOME` is empty or unset. With no variable to derive it from, there is no user file. The user file needs nothing from the author beyond installing the plugin.
+- **The user file.** The plugin derives one user file from the application name, reading `host.platform` and `host.env` alone. On Windows it is `%APPDATA%\<app>\config.json`. The platform chooses only the variable; the plugin builds every path with the running process's path rules. On every other platform, macOS included, it is `$XDG_CONFIG_HOME/<app>/config.json`, or `$HOME/.config/<app>/config.json` when `XDG_CONFIG_HOME` is empty, unset, or a relative path. With no variable to derive it from, there is no user file. The user file needs nothing from the author beyond installing the plugin.
 - **Project files.** The application lists project files, `config({ files: ['.textstat.json'] })`. The first listed file is the most specific. A relative path resolves against `host.cwd`, and the plugin walks no parent directory. The user file always ranks after every project file.
 - **Key by key.** For each requested option, the first file in rank order that holds the option's path answers, and the answer's label names that file. A file with one key hides nothing else another file holds.
 - **`--config` replaces.** A run that gives `--config <path>` reads that file alone. The project files and the user file are not read, so a caller that pins a file gets a run that no ambient file changes.
