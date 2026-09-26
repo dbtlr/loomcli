@@ -366,7 +366,7 @@ test(
   inWorkspace((space) => {
     space.write('.app.json', json({ limits: { bytes: '1' } }));
     expect(received(space.run('project', []).stdout)).not.toHaveProperty('owner');
-    space.write('.app.json', json({ constructor: { name: 'own' } }));
+    space.write('.app.json', json({ constructor: 'own' }));
     expect(received(space.run('project', []).stdout)).toMatchObject({ owner: 'own' });
   }),
 );
@@ -414,6 +414,10 @@ test(
     expect(space.run('control-entry', []).stdout).toBe(
       'DeclarationError: Plugin "@loomcli/plugins/config" file 0 is not a path. Supply a nonempty path with no control character.\n',
     );
+    // A line separator is no control character, so the entry is accepted and its file is simply absent.
+    const separator = space.run('separator-entry', []);
+    expect(separator).toMatchObject({ status: 0, stderr: '' });
+    expect(received(separator.stdout)).toEqual(defaults);
   }),
 );
 
@@ -470,7 +474,8 @@ test(
     expect(space.run('project', ['--config', odd]).stderr).toBe(
       namedFailure(String.raw`a\u0085b\u2028c`, 'does not exist.'),
     );
-    const marked = `${String.fromCodePoint(57_344)}1${String.fromCodePoint(57_345)}m${String.fromCodePoint(57_346)}`;
+    // A well-formed style frame, which an unescaped warning would read as styling and strip.
+    const marked = `${String.fromCodePoint(57_344)}["style",[["foreground","red"]]]${String.fromCodePoint(57_345)}m${String.fromCodePoint(57_346)}`;
     const markedXdg = join(space.root, `x${marked}dg`);
     space.write('app/config.json', '[]', markedXdg);
     expect(space.run('none', [], { XDG_CONFIG_HOME: markedXdg }).stderr).toBe(

@@ -16,6 +16,7 @@ const settings = {
   none: () => undefined,
   'not-object': () => 5,
   project: () => ({ files: ['.app.json', 'shared/app.json'] }),
+  'separator-entry': () => ({ files: [`ok${String.fromCodePoint(8232)}.json`] }),
   twice: () => ({ files: ['.app.json', './.app.json'] }),
 };
 
@@ -74,10 +75,10 @@ function application(scenario) {
         extensions: [configInput({ path: 'title' })],
         type: 'string',
       })
-      // A path of Object.prototype member names, which only an own key may answer.
+      // A path that is an Object.prototype member name, which only an own key may answer.
       .option('owner', {
         description: 'The owner.',
-        extensions: [configInput({ path: 'constructor.name' })],
+        extensions: [configInput({ path: 'constructor' })],
         type: 'string',
       })
       .action(print('root'))
