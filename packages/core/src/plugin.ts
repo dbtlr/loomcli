@@ -288,7 +288,7 @@ function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
   const rejected = forbidden.find((key) => key in config);
   if (rejected !== undefined) {
     throw new DeclarationError(
-      `${sentence} declares ${rejected}. Remove it; a plugin option carries no schema or presence rule, and the middleware interprets the value.`,
+      `${sentence} declares ${rejected}. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.`,
     );
   }
   checkDescription(sentence, config.description);

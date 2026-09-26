@@ -73,7 +73,7 @@ switch (scenario) {
       })
       .argument('same', {
         required: true,
-        validate: z.array(z.string().min(2, 'Too short.')),
+        validate: z.string().min(2, 'Too short.'),
         variadic: true,
       })
       .option('last', {
@@ -82,16 +82,20 @@ switch (scenario) {
       });
     break;
   }
-  case 'collection': {
+  case 'each': {
     app = app.argument('files', {
       required: true,
-      validate: z
-        .array(z.string())
-        .transform((files) => ({ count: files.length, joined: files.join(':') })),
+      validate: z.string().transform((file) => file.toUpperCase()),
       variadic: true,
     });
     app = app.action(({ args, passthrough, host, out }) =>
-      out.print(JSON.stringify({ args, argv: host.argv, passthrough })),
+      out.print(
+        JSON.stringify({
+          args: { files: { count: args.files.length, joined: args.files.join(':') } },
+          argv: host.argv,
+          passthrough,
+        }),
+      ),
     );
     break;
   }
@@ -219,7 +223,7 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-if (!['absence', 'async', 'collection', 'undefined-output', 'rerun'].includes(scenario)) {
+if (!['absence', 'async', 'each', 'undefined-output', 'rerun'].includes(scenario)) {
   app = app.action(({ options, out }) => out.print(JSON.stringify(options)));
 }
 if (scenario !== 'rerun') {

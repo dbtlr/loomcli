@@ -78,14 +78,14 @@ switch (scenario) {
     app = app.option('file', {
       multiple: true,
       type: 'string',
-      validate: z.array(z.string()),
+      validate: z.string(),
       validateOmitted: true,
     });
     break;
   }
   case 'variadic': {
     app = app.argument('files', {
-      validate: z.array(z.string()),
+      validate: z.string(),
       validateOmitted: true,
       variadic: true,
     });

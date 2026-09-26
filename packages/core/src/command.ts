@@ -65,7 +65,7 @@ import type {
   DefaultConstraint,
   GlobalNameConstraint,
   Host,
-  MultipleConstraint,
+  PerValueConstraint,
   NameConstraint,
   OpenResult,
   OptionConfig,
@@ -1703,6 +1703,7 @@ export class CommandBuilder<
     config: Config &
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<
     Args & Record<Name, ArgumentValue<Config>>,
@@ -1725,7 +1726,7 @@ export class CommandBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result> {
     const input: OptionInput<Name, Config> = {

@@ -38,8 +38,8 @@ base.globalOption(wide, { type: 'boolean' });
 const union = Math.random() ? 'one' : 'two';
 // @ts-expect-error TS2345: A global name cannot promise several keys.
 base.globalOption(union, { type: 'boolean' });
-// @ts-expect-error TS2345: A multiple global's schema must accept an array.
-base.globalOption('values', { multiple: true, type: 'string', validate: z.string() });
+// @ts-expect-error TS2345: A multiple global's validator reads one value, never the array.
+base.globalOption('values', { multiple: true, type: 'string', validate: z.array(z.string()) });
 const invalidDefault = {
   default: 10,
   type: 'string',

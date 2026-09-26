@@ -18,7 +18,7 @@ function context(scenario: string, argv: string[] = []) {
   return JSON.parse(result.stdout);
 }
 
-test('every invocation schema call reads the routed path, passthrough, and supplied tokens', () => {
+test('every invocation validator call reads the routed path, passthrough, and supplied tokens', () => {
   const argv = [
     '--mode',
     'fast',
@@ -71,7 +71,12 @@ test('every invocation schema call reads the routed path, passthrough, and suppl
       {
         context: { ...shared, input: { global: false, kind: 'argument', name: 'files' } },
         label: 'files',
-        value: ['two', 'three'],
+        value: 'two',
+      },
+      {
+        context: { ...shared, input: { global: false, kind: 'argument', name: 'files' } },
+        label: 'files',
+        value: 'three',
       },
       {
         context: { ...shared, input: { global: false, kind: 'option', name: 'single' } },
@@ -81,7 +86,12 @@ test('every invocation schema call reads the routed path, passthrough, and suppl
       {
         context: { ...shared, input: { global: false, kind: 'option', name: 'multi' } },
         label: 'multi',
-        value: ['a', 'b'],
+        value: 'a',
+      },
+      {
+        context: { ...shared, input: { global: false, kind: 'option', name: 'multi' } },
+        label: 'multi',
+        value: 'b',
       },
     ],
     sameHost: true,
@@ -183,12 +193,12 @@ test('a schema another caller runs, and a foreign carrier, read no context', () 
   });
 });
 
-test('the context is a snapshot, so a schema that writes to it changes nothing', () => {
+test('the context is a snapshot, so a validator that writes to it changes nothing', () => {
   expect(context('snapshot', ['a', 'b', '--multi', 'x', '--', 'tail'])).toEqual({
     args: { files: ['a', 'b'] },
     options: { multi: ['x'] },
     passthrough: ['tail'],
-    seen: [{ command: [], files: ['a', 'b'], multi: ['x'], passthrough: ['tail'], value: ['x'] }],
+    seen: [{ command: [], files: ['a', 'b'], multi: ['x'], passthrough: ['tail'], value: 'x' }],
   });
 });
 

@@ -108,7 +108,7 @@ function application() {
       multiple: true,
       required: true,
       type: 'string',
-      validate: z.array(z.string().min(1, 'Supply a field name.')),
+      validate: z.string().min(1, 'Supply a field name.'),
     })
     .option('title', { extensions: [configKey('title')], type: 'string' })
     .action(print('select'));

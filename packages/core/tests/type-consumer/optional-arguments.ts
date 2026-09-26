@@ -44,12 +44,12 @@ new Command('tail').argument('files', { required: false, variadic: true }).actio
 
 new Command('validated-tail')
   .argument('files', {
-    validate: z.array(z.string()).transform((files) => files.length),
+    validate: z.string().transform((file) => file.length),
     variadic: true,
   })
   .action(({ args }) => {
-    const count: number = args.files;
-    return count;
+    const counts: number[] = args.files;
+    return counts;
   });
 
 new Command('defaulted-tail').argument('files', { default: ['a'], variadic: true });

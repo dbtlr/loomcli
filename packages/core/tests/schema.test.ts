@@ -66,7 +66,7 @@ test('async validation completes before dispatch and prepared defaults are reuse
   expect(failed.stdout).toBe('');
 });
 
-test('schema issues retain declaration and schema order, input kind, and collection path', () => {
+test('validator issues retain declaration and validator order, input kind, and value position', () => {
   expect(schema('issues', ['--last', 'bad', 'x', '--same', 'bad'])).toEqual({
     status: 2,
     stderr:
@@ -75,12 +75,12 @@ test('schema issues retain declaration and schema order, input kind, and collect
   });
 });
 
-test('a variadic schema transforms the whole collection and leaves passthrough and host argv intact', () => {
+test('a variadic validator transforms each value and the action joins the array, leaving passthrough and host argv intact', () => {
   const argv = ['one', 'two', '--', '--size', 'bad'];
-  expect(schema('collection', argv)).toEqual({
+  expect(schema('each', argv)).toEqual({
     status: 0,
     stderr: '',
-    stdout: `${JSON.stringify({ args: { files: { count: 2, joined: 'one:two' } }, argv, passthrough: ['--size', 'bad'] })}\n`,
+    stdout: `${JSON.stringify({ args: { files: { count: 2, joined: 'ONE:TWO' } }, argv, passthrough: ['--size', 'bad'] })}\n`,
   });
 });
 

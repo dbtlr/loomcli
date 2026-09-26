@@ -56,7 +56,7 @@ import type {
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
-  MultipleConstraint,
+  PerValueConstraint,
   NameConstraint,
   ExitCode,
   OptionConfig,
@@ -221,6 +221,7 @@ class ApplicationBuilder<
     config: Config &
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
     Args & Record<Name, ArgumentValue<Config>>,
@@ -244,7 +245,7 @@ class ApplicationBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
     Args,
@@ -270,7 +271,7 @@ class ApplicationBuilder<
         ? { 'This option name is already declared as a local option': Name }
         : unknown) &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<MultipleConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
     Args,

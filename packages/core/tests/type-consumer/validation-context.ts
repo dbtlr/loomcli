@@ -27,7 +27,7 @@ function describe(context: ValidationContext): string {
   return `${command.join(' ')}:${passthrough.length}:${String(supplied.args.name)}:${String(global)}`;
 }
 
-const types: { input: string[]; output: string[] } | undefined = undefined;
+const types: { input: string; output: string } | undefined = undefined;
 const reports: string[] = [];
 
 new Application('context-types')
@@ -40,8 +40,7 @@ new Application('context-types')
           if (context) {
             reports.push(describe(context));
           }
-          const output: string[] = Array.isArray(value) ? value.map(String) : [];
-          return { value: output };
+          return { value: String(value) };
         },
         vendor: 'type-consumer',
         version: 1,

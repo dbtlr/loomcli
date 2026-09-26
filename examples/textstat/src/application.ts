@@ -12,7 +12,6 @@ import { z } from 'zod';
 
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
-import { filesOrStdin } from './files-or-stdin.js';
 import type { Row } from './row.js';
 import { fatalError, rowCell } from './views.js';
 
@@ -44,7 +43,6 @@ export const textstat = new Application('textstat', {
 })
   .argument('files', {
     description: 'The files to count. Omit them to read piped text.',
-    validate: filesOrStdin,
     variadic: true,
   })
   .option('metric', {

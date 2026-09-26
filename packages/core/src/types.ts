@@ -84,12 +84,17 @@ interface ArgumentExtensions {
   extensions?: readonly ExtensionValue<'argument'>[];
 }
 /**
- * The tokens one declaration collects before validation: one string, or the whole collection. A
- * multiple option and a variadic argument collect alike, so they share this raw shape.
+ * The tokens one declaration collects before validation: one string, or several. A multiple option
+ * and a variadic argument collect alike, so they share this raw shape.
  */
 type RawValue<Config> = Config extends { multiple: true } | { variadic: true } ? string[] : string;
-type SchemaOutput<Schema, Raw> = Schema extends StandardSchemaV1
-  ? StandardSchemaV1.InferOutput<Schema>
+/** A multiple option and a variadic argument pass each value through the same validator. */
+type PerValue<Config, Value> = Config extends { multiple: true } | { variadic: true }
+  ? Value[]
+  : Value;
+/** The validated value: the validator's output for each value, or the raw shape without one. */
+type SchemaOutput<Config, Schema, Raw> = Schema extends StandardSchemaV1
+  ? PerValue<Config, StandardSchemaV1.InferOutput<Schema>>
   : Raw;
 type SchemaInput<Schema> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<Schema>
@@ -368,27 +373,31 @@ export type ScalarArgument = Presence &
 export type ArgumentConfig = VariadicArgument | ScalarArgument;
 export type ValidatedValue<Config, Raw> = Config extends unknown
   ? 'validate' extends keyof Config
-    ? SchemaOutput<Config['validate'], Raw>
+    ? SchemaOutput<Config, Config['validate'], Raw>
     : Raw
   : never;
-/** Keep each conditional declaration paired with its own schema input type. */
+/** Keep each conditional declaration paired with its own validator input type. */
 export type DefaultConstraint<Config> = Config extends unknown
   ? Config & {
       default?: 'validate' extends keyof Config
-        ? SchemaInput<Config['validate']>
+        ? PerValue<Config, SchemaInput<Config['validate']>>
         : RawValue<Config>;
     }
   : never;
 
 /**
- * A multiple option hands its whole collection to one schema, so the declared schema must accept a
- * `string[]` input. The key names the fault, the way the other declaration constraints do.
+ * A multiple option or a variadic argument passes each value to its validator alone, so the
+ * declared validator must accept one `string`. The key names the fault, the way the other
+ * declaration constraints do.
  */
-export type MultipleConstraint<Config> = Config extends { multiple: true }
+export type PerValueConstraint<Config> = Config extends { multiple: true } | { variadic: true }
   ? 'validate' extends keyof Config
-    ? string[] extends SchemaInput<Config['validate']>
+    ? // A validator that declares no types infers `never`, so it states nothing to reject.
+      [SchemaInput<Config['validate']>] extends [never]
       ? unknown
-      : { 'A multiple option schema must accept a string[] input': Config['validate'] }
+      : string extends SchemaInput<Config['validate']>
+        ? unknown
+        : { 'A validator of several values must accept one string input': Config['validate'] }
     : unknown
   : unknown;
 /**
@@ -404,12 +413,12 @@ export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted
       : Config extends { default: unknown }
         ? { 'A declared default rejects validateOmitted': never }
         : Config extends { multiple: true } | { variadic: true }
-          ? { 'A collected input validates its omission as an empty array': never }
+          ? { 'An input of several values receives no values as an empty array': never }
           : 'validate' extends keyof Config
             ? undefined extends SchemaInput<Config['validate']>
               ? unknown
-              : { 'A validateOmitted schema must accept an undefined input': Config['validate'] }
-            : { 'validateOmitted needs a validate schema to receive the omission': never }
+              : { 'A validateOmitted validator must accept an undefined input': Config['validate'] }
+            : { 'validateOmitted needs a validator to receive the omission': never }
   : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>

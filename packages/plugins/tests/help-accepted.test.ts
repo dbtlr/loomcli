@@ -65,19 +65,9 @@ test('a row derives its accepted values from a closed set of strings at every le
     '--faceted': 'Pick one. One of: a, b.  (default: a)',
     '--flag': null,
     '--many-annotated': 'One of: x, y.  (repeatable)',
-    '--many-contains': '(repeatable)',
-    '--many-counted': 'One of: x.  (repeatable)',
+    '--many-array': '(repeatable)',
     '--many-enum': 'One of: x, y.  (repeatable)',
-    '--many-items-annotated': 'One of: x.  (repeatable)',
-    '--many-items-any-annotated': 'One of: x.  (repeatable)',
-    '--many-items-any-narrow': '(repeatable)',
-    '--many-items-any-typed': 'One of: x.  (repeatable)',
-    '--many-items-narrow-const': '(repeatable)',
-    '--many-items-pattern': '(repeatable)',
-    '--many-items-typed': 'One of: x.  (repeatable)',
-    '--many-object': '(repeatable)',
-    '--many-prefix': '(repeatable)',
-    '--many-scalar': '(repeatable)',
+    '--many-pattern': '(repeatable)',
     '--marked': 'One of: m\uE000n.',
     '--nine': null,
     '--nine-repeating': 'One of: a, b, c, d, e, f, g, h.',
@@ -97,7 +87,7 @@ test('a row derives its accepted values from a closed set of strings at every le
   });
 });
 
-test('an argument row derives from its schema, prints an authored helpArgument sentence, and derives from items when variadic', () => {
+test('an argument row derives from its schema and prints an authored helpArgument sentence', () => {
   expect(section(pageOf(['pick', '--help']), 'ARGUMENTS')).toEqual([
     '  mode   The mode. One of: fast, slow.',
     '  size   A whole number.',
@@ -111,7 +101,10 @@ test.each([
   ['v-typed', ['  values  One of: x.']],
   ['v-annotated', ['  values  One of: x.']],
   ['v-narrow', ['  values']],
-  ['v-scalar', ['  values']],
-])('a variadic argument derives from items under the same keyword rules: %s', (name, rows) => {
-  expect(section(pageOf([name, '--help']), 'ARGUMENTS')).toEqual(rows);
-});
+  ['v-array', ['  values']],
+])(
+  'a variadic argument derives from the top of its schema under the same keyword rules: %s',
+  (name, rows) => {
+    expect(section(pageOf([name, '--help']), 'ARGUMENTS')).toEqual(rows);
+  },
+);

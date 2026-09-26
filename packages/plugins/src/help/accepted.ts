@@ -29,9 +29,6 @@ const annotations: ReadonlySet<string> = new Set([
   'writeOnly',
 ]);
 
-/** Keywords that bound how many tokens a collection takes and never which values each may be. */
-const counts: ReadonlySet<string> = new Set(['maxItems', 'minItems', 'uniqueItems']);
-
 /** Whether a published value is one JSON Schema object, read as a record of its keywords. */
 function isSchema(value: unknown): value is Schema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -91,24 +88,6 @@ function closedSet(schema: Schema): readonly string[] | undefined {
 }
 
 /**
- * The values a collection's `items` names, when the array level holds nothing else that could
- * narrow them: `type: 'array'`, `items`, an annotation, or a count keyword.
- */
-function itemsSet(schema: Schema): readonly string[] | undefined {
-  for (const [keyword, value] of Object.entries(schema)) {
-    const allowed =
-      keyword === 'items' ||
-      (keyword === 'type' && value === 'array') ||
-      annotations.has(keyword) ||
-      counts.has(keyword);
-    if (!allowed) {
-      return undefined;
-    }
-  }
-  return isSchema(schema.items) ? closedSet(schema.items) : undefined;
-}
-
-/**
  * One value as the list prints it: as written, or as its JSON string when it is empty or holds
  * whitespace, a comma, a double quote, a line terminator, or a control character. JSON escapes the
  * C0 controls; DEL and the C1 controls, which JSON leaves raw, print as their lowercase `\uXXXX`
@@ -124,13 +103,14 @@ function listed(value: string): string {
 
 /**
  * The sentence help derives from an input's schema: `One of: a, b, c.` for a closed set of at most
- * eight distinct strings, read under `items` for a collection. Anything else derives nothing.
+ * eight distinct strings. A multiple option or a variadic argument publishes the schema of each
+ * value, so it derives the same way. Anything else derives nothing.
  */
-function derived(schema: Schema | null, collection: boolean): string | undefined {
+function derived(schema: Schema | null): string | undefined {
   if (schema === null) {
     return undefined;
   }
-  const values = collection ? itemsSet(schema) : closedSet(schema);
+  const values = closedSet(schema);
   const distinct = [...new Set(values)];
   const [first] = distinct;
   if (first === undefined || distinct.length > maximumValues) {
@@ -147,14 +127,12 @@ function optionAccepts(option: OptionNode): string | undefined {
   if (option.type === 'boolean') {
     return undefined;
   }
-  return readExtension(option, helpInput)?.accepts ?? derived(option.schema, option.multiple);
+  return readExtension(option, helpInput)?.accepts ?? derived(option.schema);
 }
 
 /** The accepted-values sentence one argument's row prints, authored or derived as an option's is. */
 function argumentAccepts(argument: ArgumentNode): string | undefined {
-  return (
-    readExtension(argument, helpArgument)?.accepts ?? derived(argument.schema, argument.variadic)
-  );
+  return readExtension(argument, helpArgument)?.accepts ?? derived(argument.schema);
 }
 
 export { argumentAccepts, optionAccepts };

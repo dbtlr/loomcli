@@ -94,11 +94,11 @@ test.each([
   ],
   [
     'multiple',
-    'Option "file" collects its values and declares validateOmitted. Remove validateOmitted; an omitted collection reaches the schema as an empty array.',
+    'Option "file" takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
   ],
   [
     'variadic',
-    'Argument "files" collects its values and declares validateOmitted. Remove validateOmitted; an omitted collection reaches the schema as an empty array.',
+    'Argument "files" takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
   ],
   [
     'boolean',
@@ -106,7 +106,7 @@ test.each([
   ],
   [
     'unvalidated',
-    'Option "file" declares validateOmitted without a schema. Add validate or remove validateOmitted.',
+    'Option "file" declares validateOmitted without a validator. Add validate or remove validateOmitted.',
   ],
 ] satisfies [string, string][])(
   'the %s declaration throws from the declaring call while the module evaluates',

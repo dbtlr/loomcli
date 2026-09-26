@@ -32,8 +32,14 @@ switch (scenario) {
         default: ['a', 'b'],
         multiple: true,
         type: 'string',
-        validate: z.array(z.string()).transform((values) => values.join(':')),
+        validate: z.string().transform((value) => value.toUpperCase()),
       })
+      .action(report);
+    break;
+  }
+  case 'invalid-default': {
+    app = new Application('multiple')
+      .option('field', { default: ['a', ''], multiple: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }
@@ -49,7 +55,7 @@ switch (scenario) {
         multiple: true,
         short: 'F',
         type: 'string',
-        validate: counting(z.array(fieldName)),
+        validate: counting(fieldName),
       })
       .action(({ options, out }) => out.print(JSON.stringify({ calls, options })));
     break;
@@ -70,24 +76,28 @@ switch (scenario) {
       .action(report);
     break;
   }
-  case 'nonempty': {
+  case 'pathed': {
     app = new Application('multiple')
       .option('field', {
         multiple: true,
         type: 'string',
-        validate: z.array(z.string()).min(1, 'Supply at least one field.'),
+        validate: {
+          '~standard': {
+            validate: (value) =>
+              value === 'a'
+                ? { value }
+                : { issues: [{ message: 'Unknown name.', path: ['name'] }] },
+            vendor: 'fixture',
+            version: 1,
+          },
+        },
       })
       .action(report);
     break;
   }
-  case 'nonempty-required': {
+  case 'required-schema': {
     app = new Application('multiple')
-      .option('field', {
-        multiple: true,
-        required: true,
-        type: 'string',
-        validate: z.array(z.string()).min(1, 'Supply at least one field.'),
-      })
+      .option('field', { multiple: true, required: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }
@@ -118,6 +128,12 @@ switch (scenario) {
   case 'nonboolean-multiple': {
     app = new Application('multiple')
       .option('field', { multiple: 'yes', type: 'string' })
+      .action(report);
+    break;
+  }
+  case 'validated-string-default': {
+    app = new Application('multiple')
+      .option('field', { default: 'a', multiple: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }

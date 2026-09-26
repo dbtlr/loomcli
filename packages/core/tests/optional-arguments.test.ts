@@ -92,16 +92,16 @@ test.each([
   expect(result.stderr).toContain(diagnostic);
 });
 
-test('an omitted optional variadic argument reaches its schema as an empty collection', () => {
+test('an omitted optional variadic argument calls no validator and gives the action an empty array', () => {
   expect(optional('tail')).toEqual({
     status: 0,
     stderr: '',
-    stdout: '{"args":{"files":[]},"calls":1}\n',
+    stdout: '{"args":{"files":[]},"calls":0}\n',
   });
   expect(optional('tail', ['one', 'two'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: '{"args":{"files":["one","two"]},"calls":1}\n',
+    stdout: '{"args":{"files":["one","two"]},"calls":2}\n',
   });
 });
 
@@ -135,7 +135,7 @@ test('a raw default of the wrong shape throws from the declaring call', () => {
   expect(result.stdout).toBe('');
   expect(result.stderr).not.toContain('Invalid declaration:');
   expect(result.stderr).toContain(
-    'Argument "files" default must be an array of strings without a schema. Supply a string array default.',
+    'Argument "files" default must be an array of strings without a validator. Supply a string array default.',
   );
 });
 
