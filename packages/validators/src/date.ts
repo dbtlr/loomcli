@@ -24,7 +24,7 @@ function isRealDay(year: number, month: number, day: number): boolean {
 /** A calendar date as `YYYY-MM-DD`, kept as the token because a date has no time or zone. */
 function date(): Validator<string> {
   return createValidator({
-    inputSchema: { format: 'date', type: 'string' },
+    inputSchema: { type: 'string', format: 'date' },
     parse: (raw): ParseResult<string> => {
       const parts = layout.exec(raw)?.groups;
       const real =

@@ -57,8 +57,8 @@ function url(options?: UrlOptions): Validator<URL> {
       : `Expected an absolute URL with the scheme ${listing(protocols)}.`;
   return createValidator({
     inputSchema: {
-      format: 'uri',
       type: 'string',
+      format: 'uri',
       ...(protocols === undefined ? {} : { pattern: schemesPattern(protocols) }),
     },
     parse: (raw): ParseResult<URL> => {

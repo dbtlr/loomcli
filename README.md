@@ -47,7 +47,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/src/main.js README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It attaches Zod schemas directly through `validate`, with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](examples/textstat/src/table.ts) as its result, and emits it through one `out.results` call.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It declares its options with validators from [`@loomcli/validators`](docs/validators.md), ordinary Standard Schema values that core calls with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](examples/textstat/src/table.ts) as its result, and emits it through one `out.results` call.
 
 ## Run jsonkit
 

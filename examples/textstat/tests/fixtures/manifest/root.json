@@ -137,8 +137,8 @@
         "multiple": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "type": "string",
-          "pattern": "^[0-9]+$"
+          "type": "integer",
+          "minimum": 0
         },
         "env": "TEXTSTAT_MIN_BYTES",
         "default": {
@@ -156,8 +156,8 @@
         "multiple": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "type": "string",
-          "pattern": "^[0-9]+$"
+          "type": "integer",
+          "minimum": 0
         },
         "env": null,
         "default": null

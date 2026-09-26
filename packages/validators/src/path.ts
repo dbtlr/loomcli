@@ -54,7 +54,7 @@ function path(options?: PathOptions): Validator<string> {
   const kind = kindOf(declared.kind, access);
   const sentence = access === undefined ? 'Expected a path.' : sentences[access][kind];
   return createValidator({
-    inputSchema: { minLength: 1, type: 'string' },
+    inputSchema: { type: 'string', minLength: 1 },
     parse: (raw, context): ParseResult<string> | Promise<ParseResult<string>> => {
       if (raw === '' || raw.includes('\0')) {
         return reject(sentence);

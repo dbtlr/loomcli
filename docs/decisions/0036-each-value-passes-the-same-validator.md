@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0036 - Each value of a multiple option or variadic argument passes the same validator
 description: On a multiple option or a variadic argument, `validate` names the validator for one value. Core runs it on each value, reports each issue at its position, and gives the action the array of outputs. The input schema is the validator's own. This supersedes the ADR-0005 clause that rejected per-value validators and the ADR-0006 clauses that ran the validator on omission and kept presence rules out of the action.
-status: proposed
+status: accepted
 created: 2026-09-25
 modified: 2026-09-25
 ---
@@ -44,8 +44,9 @@ This is a breaking change. A whole-array validator, such as `z.array(z.string())
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that runs the validator once per value, positions its issues, validates each default value, and publishes the validator's schema unchanged, together with the help change and the migrated examples.
+Accepted 2026-09-25 with the implementation. Core runs the validator once per value, positions each issue, validates each default value, calls no validator when no value is supplied, and publishes the validator's schema unchanged. TypeScript rejects a validator whose input does not accept one `string`. Help reads accepted values from the top of the schema, and textstat and jsonkit use per-value validators, with textstat's `files` rule in its action.
 
 ## Changelog
 
 - 2026-09-25: Proposed with the validator catalog contract under [ADR-0037](0037-validators-ship-in-their-own-package-as-standard-schema-values.md).
+- 2026-09-25: Accepted with the implementation.

@@ -28,7 +28,7 @@ test('a rejected TEXTSTAT_MIN_BYTES names the variable after the option', () => 
   expect(count([], { TEXTSTAT_MIN_BYTES: '10KB' })).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Use non-negative decimal digits.\n',
+      'Invalid input: Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.\n',
     stdout: '',
   });
 });

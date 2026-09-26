@@ -65,18 +65,19 @@ test('jsonkit keeps a repeated field at its first position', () => {
   });
 });
 
-test.each([[['--field', '']], [['--field=']]])(
-  'jsonkit rejects the empty field name %j through the field schema',
-  (option) => {
-    withDocuments({ 'doc.json': document }, (cwd) => {
-      expect(invoke(main, ['select', ...option, '-f', 'doc.json'], { cwd })).toEqual({
-        status: 2,
-        stderr: 'jsonkit: --field at 0: Supply a nonempty field name.\n',
-        stdout: '',
-      });
+test.each([
+  [['--field', ''], 0],
+  [['--field='], 0],
+  [['--field', 'a', '-F', ''], 1],
+])('jsonkit rejects the empty field name in %j at its position', (option, position) => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['select', ...option, '-f', 'doc.json'], { cwd })).toEqual({
+      status: 2,
+      stderr: `jsonkit: --field at ${position}: Expected a nonempty value.\n`,
+      stdout: '',
     });
-  },
-);
+  });
+});
 
 test('jsonkit requires at least one field for select', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
@@ -165,5 +166,19 @@ test.each([
       stderr: `Expected an object at ${path}; found ${kind}\n`,
       stdout: '',
     });
+  });
+});
+
+test('the inspected graph publishes the text() input schema for --field', () => {
+  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(inspected.status).toBe(0);
+  const graph: {
+    root: { children: { name: string; options: { name: string; schema: unknown }[] }[] };
+  } = JSON.parse(inspected.stdout);
+  const found = graph.root.children.find((child) => child.name === 'select');
+  expect(found?.options.find((option) => option.name === 'field')?.schema).toEqual({
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    minLength: 1,
+    type: 'string',
   });
 });

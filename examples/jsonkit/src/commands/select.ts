@@ -1,5 +1,5 @@
 import { Command } from '@loomcli/core';
-import { z } from 'zod';
+import { text } from '@loomcli/validators';
 
 import { selectFields } from '../actions/select-fields.js';
 
@@ -13,6 +13,6 @@ export const select = new Command('select', {
     short: 'F',
     type: 'string',
     // A field names a key, so the empty string can never name one.
-    validate: z.array(z.string().nonempty('Supply a nonempty field name.')),
+    validate: text(),
   })
   .action(selectFields);

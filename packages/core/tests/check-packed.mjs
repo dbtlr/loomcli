@@ -125,6 +125,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'loom-runtime-consumer-'));
 try {
   pnpm(['pack', '--out', join(temporary, 'core.tgz')], join(root, 'packages/core'));
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
+  pnpm(['pack', '--out', join(temporary, 'validators.tgz')], join(root, 'packages/validators'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -132,6 +133,7 @@ try {
       dependencies: {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
+        '@loomcli/validators': 'file:./validators.tgz',
       },
       private: true,
       type: 'module',
@@ -206,6 +208,31 @@ try {
       `${name}: packed manifest document`,
     );
   }
+  const validators = join(temporary, 'dist/validators.js');
+  for (const name of selected) {
+    const accepted = run(
+      runtimes.get(name),
+      [validators, '--port', '443', '--mode', 'prod', '--tag', 'a', '--tag', 'b'],
+      temporary,
+    );
+    assert.equal(accepted.status, 0, accepted.output);
+    assert.equal(
+      accepted.stdout,
+      '{"listen":443,"mode":"prod","tags":["a","b"]}\n',
+      `${name}: packed validators output`,
+    );
+    const rejected = run(
+      runtimes.get(name),
+      [validators, '--workers', '0', '--tag', ''],
+      temporary,
+    );
+    assert.equal(rejected.status, 2, rejected.output);
+    assert.equal(
+      rejected.output,
+      'Invalid input: Option "--workers": Expected a whole number from 1 through 64.\nOption "--tag" at 0: Expected from 1 through 8 characters.\n',
+      `${name}: packed validators rejection`,
+    );
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -219,7 +246,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core and @loomcli/plugins ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, and the manifest document.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, the manifest document, and the validated and rejected options.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

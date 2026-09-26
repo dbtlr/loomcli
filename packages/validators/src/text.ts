@@ -131,8 +131,8 @@ function text(options?: TextOptions): Validator<string> {
   const length = lengthRule(minLength, maxLength);
   return createValidator({
     inputSchema: {
-      minLength,
       type: 'string',
+      minLength,
       ...(maxLength === undefined ? {} : { maxLength }),
       ...(pattern === undefined ? {} : { pattern: pattern.source }),
     },

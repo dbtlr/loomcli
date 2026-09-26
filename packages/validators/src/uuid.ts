@@ -7,7 +7,7 @@ const grouped = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0
 /** A UUID of any version in any letter case, read as lowercase so two spellings compare equal. */
 function uuid(): Validator<string> {
   return createValidator({
-    inputSchema: { format: 'uuid', type: 'string' },
+    inputSchema: { type: 'string', format: 'uuid' },
     parse: (raw): ParseResult<string> =>
       grouped.test(raw)
         ? { value: raw.toLowerCase() }

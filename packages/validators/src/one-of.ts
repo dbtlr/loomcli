@@ -42,7 +42,7 @@ function oneOf<const Values extends readonly [string, ...string[]]>(
   const listed: readonly Values[number][] = [...values];
   const sentence = `Expected one of: ${listed.join(', ')}.`;
   return createValidator({
-    inputSchema: { enum: [...listed], type: 'string' },
+    inputSchema: { type: 'string', enum: [...listed] },
     parse: (raw): ParseResult<Values[number]> => {
       const match = listed.find((value) => value === raw);
       return match === undefined ? reject(sentence) : { value: match };

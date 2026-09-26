@@ -8,7 +8,7 @@ import { manifest } from '@loomcli/plugins/manifest';
 import { table } from '@loomcli/plugins/table';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
-import { z } from 'zod';
+import { integer, oneOf } from '@loomcli/validators';
 
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
@@ -17,13 +17,9 @@ import { fatalError, rowCell } from './views.js';
 
 /**
  * The byte threshold rule, declared once because two option spellings carry it while the
- * deprecated one lives. It accepts decimal digits and hands the action a safe integer.
+ * deprecated one lives. It hands the action a non-negative whole number.
  */
-const byteThreshold = z
-  .string()
-  .regex(/^[0-9]+$/, 'Use non-negative decimal digits.')
-  .transform(Number)
-  .refine(Number.isSafeInteger, 'Use a number within the safe integer range.');
+const byteThreshold = integer({ min: 0 });
 
 export const textstat = new Application('textstat', {
   description: 'Count bytes, words, or lines across text sources.',
@@ -50,7 +46,7 @@ export const textstat = new Application('textstat', {
     description: 'What each row counts.',
     short: 'm',
     type: 'string',
-    validate: z.enum(['bytes', 'words', 'lines'], { error: 'Use bytes, words, or lines.' }),
+    validate: oneOf(['bytes', 'words', 'lines']),
   })
   .option('min-bytes', {
     default: '0',

@@ -112,6 +112,9 @@ importers:
       '@loomcli/plugins':
         specifier: workspace:*
         version: link:packages/plugins
+      '@loomcli/validators':
+        specifier: workspace:*
+        version: link:packages/validators
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
@@ -172,9 +175,9 @@ importers:
       '@loomcli/plugins':
         specifier: workspace:*
         version: link:../../packages/plugins
-      zod:
-        specifier: ^4.5.4
-        version: 4.5.4
+      '@loomcli/validators':
+        specifier: workspace:*
+        version: link:../../packages/validators
 
   examples/textstat:
     dependencies:
@@ -187,9 +190,9 @@ importers:
       '@loomcli/plugins':
         specifier: workspace:*
         version: link:../../packages/plugins
-      zod:
-        specifier: ^4.5.4
-        version: 4.5.4
+      '@loomcli/validators':
+        specifier: workspace:*
+        version: link:../../packages/validators
 
   packages/core:
     dependencies:
