@@ -286,7 +286,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, and the configured word from the named file and the user file.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, and the configured word from the named file and the user file.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

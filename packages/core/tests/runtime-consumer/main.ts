@@ -7,6 +7,11 @@ import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { versionLine } from '@loomcli/plugins/version/views';
 
+/** The branded header names a compact page, so the check reads the variant through the packed type. */
+function header(variant: HelpVariant): string {
+  return variant === 'compact' ? 'greeter help -h' : 'greeter help';
+}
+
 /**
  * The packed-package runtime consumer. It declares one required argument and one option, installs
  * the packed help and version plugins, carries one value of each help descriptor, and overrides
@@ -14,11 +19,6 @@ import { versionLine } from '@loomcli/plugins/version/views';
  * option. Declaration, parsing, plugin loading, view resolution, and output all run from the files
  * a registry consumer installs. The entry runs at module top level the way the examples run.
  */
-/** The branded header names a compact page, so the check reads the variant through the packed type. */
-function header(variant: HelpVariant): string {
-  return variant === 'compact' ? 'greeter help -h' : 'greeter help';
-}
-
 const greeter = new Application('greeter', {
   description: 'Greet one subject.',
   extensions: [
