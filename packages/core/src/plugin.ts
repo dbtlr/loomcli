@@ -8,16 +8,16 @@ import type { AnyExtension, DescriptorRegistry } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
 import { boundOptions } from './globals.js';
 import type { InputRecords } from './globals.js';
-import type { OptionNode } from './inspect.js';
+import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
 import type { Palette } from './style-state.js';
-import type { ThemeConstraint, ThemeMapping } from './style.js';
+import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
-import type { CommandAttachHook, Host, OptionValue, PluginOptionConfig } from './types.js';
+import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
@@ -98,12 +98,18 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
 
 /**
  * What a configuration source receives: the host, its own plugin's option values, resolved from
- * argv, the environment, and their defaults, and the `OptionNode` of every option core asks about.
+ * argv, the environment, and their defaults, the `OptionNode` of every option core asks about, and
+ * the ordinary channels a middleware and an action already read. Each request is a node inside
+ * `graph`, the graph `inspect()` returns for the run. `out` is the channel a middleware receives,
+ * and `style` the contextual style an action receives, so a source warns and escapes as they do.
  */
 interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly host: Host;
   readonly options: PluginOptionValues<Options>;
   readonly requests: readonly OptionNode[];
+  readonly graph: CommandGraph;
+  readonly out: Out;
+  readonly style: ContextualStyle;
 }
 
 /**

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0038 - A configuration source warns and reports input problems through the ordinary channels
 description: The configuration source's context gains the output channel, the style, and the graph a middleware or an action already reads, and a resolver that throws an `InputError` reports it with code 2 like an action does. This supersedes the ADR-0032 clause that made every throw from a source a plugin fault.
-status: proposed
+status: accepted
 created: 2026-09-26
 modified: 2026-09-26
 ---
@@ -37,8 +37,9 @@ Each need already has an ordinary answer elsewhere. A middleware and an action w
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that passes `out`, `style`, and `graph` to the resolver and reports a thrown `InputError` with code 2, proven by the configuration plugin's acceptance.
+Accepted 2026-09-26 with the implementation. The resolver receives `out`, `style`, and `graph`, a thrown `InputError` reports with code 2, and the configuration plugin's acceptance proves all four under Node and Bun.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the configuration plugin contract under [ADR-0039](0039-the-configuration-plugin-reads-layered-json-files-and-fails-only-on-the-file-the-operator-names.md).
+- 2026-09-26: Accepted with the implementation. A source's `out.results()` call is the results fault with a fifth kind, `source`, so its sentence names the caller as the middleware kind does, and the call is rethrown as that fault rather than wrapped as a plugin fault.

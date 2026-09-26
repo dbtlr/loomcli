@@ -100,6 +100,7 @@ export type {
   Ansi256Fallbacks,
   ColorFallbacks,
   ConcreteStyle,
+  ContextualStyle,
   Style,
   ThemeMapping,
   ThemeConstraint,

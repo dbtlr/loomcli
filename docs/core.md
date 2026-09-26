@@ -1292,7 +1292,7 @@ A declared result is a promise the Command makes, and core holds the action to i
 ```ts
 class ResultError extends InternalError {
   readonly path: readonly string[];
-  readonly kind: 'missing' | 'repeated' | 'undeclared' | 'middleware';
+  readonly kind: 'missing' | 'repeated' | 'undeclared' | 'middleware' | 'source';
   readonly cause: undefined;
 } // exit 1
 ```
@@ -1303,6 +1303,7 @@ class ResultError extends InternalError {
 | The action emitted twice                           | `Internal error: Command "count" emitted its result twice. Call out.results() once.`                                        |
 | `out.results` on a Command with no declared result | `Internal error: Command "get" declares no result. Declare one with result() or rows() before action().`                    |
 | `out.results` from a middleware                    | `Internal error: A middleware called out.results() on Command "count". Only the action emits a result.`                     |
+| `out.results` from a configuration source          | `Internal error: A configuration source called out.results() on Command "count". Only the action emits a result.`           |
 
 The root Command is named by that phrase rather than by a name, capitalized where it opens a sentence, as every diagnostic names it.
 

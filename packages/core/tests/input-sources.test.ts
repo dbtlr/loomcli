@@ -455,3 +455,82 @@ test.each([
 test('one variable bound on two sibling Commands is accepted', () => {
   expect(build('sibling-variable', 'inspect').stdout).toBe('inspected\n');
 });
+
+test('the source reads the graph inspect() returns, with each request a node inside it', () => {
+  const result = run(['select'], { FIXTURE_SOURCE: 'context', ...settings({ fields: ['a'] }) });
+  expect(result.status).toBe(0);
+  expect(line(result.stdout, 'context')).toBe(
+    'context:{"globals":[true,true,false,false],"name":"app","routed":true,"style":"function"}',
+  );
+});
+
+test('a source warns through lanes.warn, ahead of a takeover, and an override reaches it', () => {
+  const warned = 'Skipped a.json: the file is not valid JSON.\n';
+  expect(run([], { FIXTURE_SOURCE: 'warn' })).toEqual({
+    status: 0,
+    stderr: `⚠ ${warned}`,
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{"limit":"10"}\nresolved:0\n',
+  });
+  expect(run(['--help'], { FIXTURE_SOURCE: 'warn' })).toEqual({
+    status: 0,
+    stderr: `⚠ ${warned}`,
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nhelp\nresolved:0\n',
+  });
+  expect(run([], { FIXTURE_SOURCE: 'warn', FIXTURE_VIEWS: 'warn' }).stderr).toBe(
+    `warned: ${warned}`,
+  );
+});
+
+test('an InputError from the resolver is a usage failure that replaces every other problem', () => {
+  const failure = 'Invalid input: Option "--config": File "missing.json" does not exist.\n';
+  expect(run([], { FIXTURE_SOURCE: 'input-error' })).toEqual({
+    status: 2,
+    stderr: failure,
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nresolved:2\n',
+  });
+  // The required --max is never validated once the source has raised its own problem.
+  expect(run(['count'], { FIXTURE_SOURCE: 'input-error' })).toMatchObject({
+    status: 2,
+    stderr: failure,
+  });
+  expect(run(['--help'], { FIXTURE_SOURCE: 'input-error' })).toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nhelp\nresolved:0\n',
+  });
+  expect(run([], { FIXTURE_SOURCE: 'input-error', FIXTURE_VIEWS: 'input' }).stderr).toBe(
+    '[{"input":{"global":true,"kind":"option","name":"config"},"issues":[{"message":"File \\"missing.json\\" does not exist."}],"reason":"invalid","spelling":"--config"}]\n',
+  );
+  expect(run(['count', '--bogus'], { FIXTURE_SOURCE: 'input-error' }).stderr).toBe(
+    'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
+  );
+});
+
+test('out.results() in a source is the results fault with the source as its subject', () => {
+  expect(run(['count', '--max', '1'], { FIXTURE_SOURCE: 'results' })).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: A configuration source called out.results() on Command "count". Only the action emits a result.\n',
+    stdout:
+      'source:{"options":{"config":"fixture.json"},"requests":["limit","level","total"]}\nresolved:1\n',
+  });
+});
+
+test.each([
+  [
+    { FIXTURE_SOURCE: 'fatal' },
+    'Plugin "@fixture/config" failed in its configuration source: the source gave up.',
+  ],
+  [
+    { FIXTURE_SOURCE: 'input-error-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: Option "--limit": not from the resolver.',
+  ],
+])('%j stays a plugin fault with code 1', (env, sentence) => {
+  const result = run([], env);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(`Internal error: ${sentence}\n`);
+});

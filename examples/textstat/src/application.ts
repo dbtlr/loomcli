@@ -1,6 +1,8 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, override } from '@loomcli/core';
+import { config } from '@loomcli/plugins/config';
+import { configInput } from '@loomcli/plugins/config/extension';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
@@ -33,7 +35,15 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
-  plugins: [help(), version(), format(), manifest(), loomTheme(), explain()],
+  plugins: [
+    help(),
+    version(),
+    format(),
+    manifest(),
+    config({ files: ['.textstat.json'] }),
+    loomTheme(),
+    explain(),
+  ],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 })
@@ -52,6 +62,7 @@ export const textstat = new Application('textstat', {
     default: '0',
     description: 'Drop a source smaller than this many bytes.',
     env: 'TEXTSTAT_MIN_BYTES',
+    extensions: [configInput({ path: 'minBytes' })],
     type: 'string',
     validate: byteThreshold,
   })
@@ -64,6 +75,7 @@ export const textstat = new Application('textstat', {
   .option('total', {
     description: 'Add a total row.',
     env: 'TEXTSTAT_TOTAL',
+    extensions: [configInput({ path: 'total' })],
     short: 't',
     type: 'boolean',
   })

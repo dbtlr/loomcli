@@ -1977,6 +1977,8 @@ export interface DispatchInvocation {
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
   signal: AbortSignal;
+  /** The channel a configuration source writes through, whose results call names the source. */
+  sourceOut: Out<OpenResult>;
   style: ContextualStyle;
 }
 
@@ -2102,14 +2104,17 @@ async function fillScope(
       values: globals,
     },
     host: invocation.host,
+    inspected: invocation.inspected,
     locals:
       local.kind === 'parsed'
         ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
         : undefined,
+    out: invocation.sourceOut,
     plugins: graph.globals.plugins,
     request: (input, global) =>
       requestNode(invocation.inspected(), routed.path, { global, name: input.name }),
     signal: invocation.signal,
+    style: invocation.style,
   });
   return { globals, locals, sources };
 }

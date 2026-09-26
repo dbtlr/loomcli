@@ -31,6 +31,7 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
       '  -h, --help                   Show this help.',
       '  -V, --version                Print the version.',
       "      --manifest               Print this command's manifest as JSON.",
+      '      --config <config>        Read configuration from this file alone.',
       '      --explain                Explain the selected command and exit.',
       '',
       'EXAMPLES',
