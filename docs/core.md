@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the [manifest](#manifest) plugin is implemented under its contract, installed by both example applications. [Accepted values](#accepted-values) on help rows, `accepts`, and `helpArgument` are implemented, and the formatter's description names only its default. [Input sources](#input-sources), the environment binding and the configuration source, are implemented under accepted ADR-0032: core exports `SourceResolver`, `SourceContext`, and `SourceAnswer`, `inspect()` and the manifest publish `env`, and textstat binds `--min-bytes` and `--total` to variables.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the [manifest](#manifest) plugin is implemented under its contract, installed by both example applications. [Accepted values](#accepted-values) on help rows, `accepts`, and `helpArgument` are implemented, and the formatter's description names only its default. [Input sources](#input-sources), the environment binding and the configuration source, are implemented under accepted ADR-0032: core exports `SourceResolver`, `SourceContext`, and `SourceAnswer`, `inspect()` and the manifest publish `env`, and textstat binds `--min-bytes` and `--total` to variables. [Help variants](#help-variants), the middleware context's `spellings`, and `HelpPage.variant` are specified under proposed ADR-0040 and not yet implemented, so `-h` and `--help` still print one page.
 
 ## Application declarations
 
@@ -525,10 +525,10 @@ The environment and the configuration map into options, and everything downstrea
 - **One source.** An application has at most one configuration source. A second installed plugin that declares one is a declaration error from the Application constructor naming both plugins, as a second claim on the [signals slot](#signals-and-cancellation) is.
 - **Input problems from a source.** A resolver that throws or rejects with an `InputError` reports that error as a usage failure with code 2, with the message and problems the source gave it, as an action's `InputError` reports under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md). The source uses it for a mistake in the invocation that only it can see, such as a file the operator named that does not exist. Only the resolver's own throw or rejection reports this way; an `InputError` thrown while core reads the answers is a plugin fault. [ADR-0038](decisions/0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md) records the decision.
 - **Plugin faults.** A source that fails to load, throws anything other than an `InputError`, or answers with anything the answers rule does not allow is a fault of that plugin, an internal error with code 1. A throw while core reads the source's answers, a getter on the record or on an answer included, is reported as the resolver failure `Plugin "<id>" failed in its configuration source: <reason>.`, while a fault the answers rule raises keeps its own sentence. A missing or malformed configuration file is not a core fault: the configuration plugin decides how to treat one, and a source that answers nothing leaves every option to its default.
-- **Supplied in every sense.** A filled value satisfies `required`, and a list satisfies the at-least-one rule of a required multiple option by its length, so an empty list still reports the required message. A filled value never triggers `validateOmitted`, because the validator receives the filled value and not `undefined`. It appears in the [validation context](#validation-context)'s `supplied` record as the raw value. The action, the request, and the graph cannot tell which tier supplied a value. Provenance is internal to core's failure messages, and nothing publishes it.
+- **Supplied in every sense.** A filled value satisfies `required`, and a list satisfies the at-least-one rule of a required multiple option by its length, so an empty list still reports the required message. A filled value never triggers `validateOmitted`, because the validator receives the filled value and not `undefined`. It appears in the [validation context](#validation-context)'s `supplied` record as the raw value. The action, the request, and the graph cannot tell which tier supplied a value. Provenance is internal to core's failure messages, and nothing publishes it, except that a [middleware](#middleware) reads under `spellings` how its own plugin's options were typed, which a filled option never has.
 - **Diagnostics.** A failure on a filled value keeps the option as its subject, named by the spelling an operator would type under [Absence and defaults](#absence-and-defaults), and adds the source in parentheses after it: `Option "--limit" (from TEXTSTAT_LIMIT): Supply a whole number.`. An issue path follows the parenthesis, as in `Option "--field" (from fields in ./.acme.json) at 1: Supply a field name.`. The environment's label is the variable name, and the configuration source supplies the label of each answer, such as `limits.bytes in ./.acme.json`. A message about a value given in argv is unchanged. A fault on a filled value is an ordinary `InputProblem`, and `InputProblem` gains no field. A Boolean variable outside the grammar is an `invalid` problem whose one issue reads `Use true, false, 1, or 0.`. The parenthesized source appears in core's default text alone, so a view that renders `problems` cannot print it.
 - **Held faults.** Every environment and configuration fault is held like any validation fault under [Invocation](#invocation) and raised only at the dispatch boundary, so a takeover such as `--help` reports none. A Boolean variable outside the grammar and an issue on a filled value are validation-phase problems, collected in authoring order with the rest, the globals first. A plugin fault or an `InputError` from the source stops the stage, fills nothing more, and takes the place of every problem collected, as a validator's developer error does. The missing-subcommand error and a local structure fault keep their rank ahead of all of them, and after either one core runs no validation. A run cancelled while a source call is in flight awaits it, as it awaits a validator, and starts nothing further.
-- **Projections.** `inspect()` publishes `env` on both [`OptionNode`](#graph-inspection) variants, the bound variable or `null`, and the [manifest](#manifest) copies it into each option entry. Help prints no environment binding until the help-variants contract defines extended help, and there extended help alone prints it. A configuration binding is the declaring plugin's extension value, which `inspect()` already publishes under `extensions`, and core adds no fact for it.
+- **Projections.** `inspect()` publishes `env` on both [`OptionNode`](#graph-inspection) variants, the bound variable or `null`, and the [manifest](#manifest) copies it into each option entry. [Extended help](#help-variants) alone prints it, in the ENVIRONMENT block of [the help page](#the-help-page). A configuration binding is the declaring plugin's extension value, which `inspect()` already publishes under `extensions`, and core adds no fact for it.
 
 ### Input source declaration errors
 
@@ -1470,6 +1470,7 @@ An invocation runs one chain. After the global pre-scan and routing have selecte
 ```ts
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: PluginOptionValues<Options>;
+  readonly spellings: PluginOptionSpellings<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
   readonly request: Request | null;
@@ -1485,6 +1486,9 @@ interface Request {
   readonly options: Readonly<Record<string, unknown>>;
   readonly passthrough: readonly string[];
 }
+type PluginOptionSpellings<Options extends PluginOptions> = {
+  readonly [Name in keyof Options & string]?: string;
+};
 type ChainOutcome = 'dispatched' | 'taken-over' | 'cancelled';
 type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
   context: MiddlewareContext<OptionsOf<P>>,
@@ -1492,6 +1496,7 @@ type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
 ```
 
 - `options` holds the plugin's own option values, typed from its declaration. `Middleware` accepts the plugin type or its factory's type, with or without parameters, and the exported `OptionsOf` extracts the declared options from either, so `Middleware<typeof help>` reads them from the factory's annotated return type.
+- `spellings` holds, for each of the plugin's own options that the invocation supplied as a token, the spelling its last occurrence used: `--help`, `-h`, or `--no-total`, the spelling alone without a value attached with `=`, and `-t` for a letter inside a short group such as `-tV`. An option filled by the [input sources](#input-sources), or left to its default, has no entry, and neither does a plugin option the invocation did not supply. The record is frozen, and the exported `PluginOptionSpellings` types it from the declaration. A plugin reads the spellings of its own options alone, as it reads their values under `options`, so the action, the request, and the graph still cannot tell which tier supplied a value. [ADR-0040](decisions/0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md) records the decision, and [help variants](#help-variants) are its first reader.
 - `graph` is the frozen graph `inspect()` returns, and `command` is the routed node inside it, so `jsonkit get --help` renders help for `get`, `jsonkit --help` for the root, and `jsonkit cache --help` for the `cache` group. An unknown command fails in routing before any middleware runs, as it does today. The callable check on a group keeps its rank among the routing errors but is held and raised at the dispatch boundary, so a middleware can take over a group invocation and `jsonkit cache --verbose` still reports the missing subcommand when no middleware takes over.
 - `request` is the routed Command's invocation after parsing and validation, the exported `Request`: the argument values under `args`, the local option values under `options`, each as the validator output an action receives, and the passthrough tokens. It is `null` while core holds a fault and on a group, so a middleware never reads a half-parsed invocation. The records are untyped: a middleware runs ahead of every action and the graph carries no type for a value, so it checks what it reads. Every array and plain object is copied and frozen to any depth, so a middleware that reaches into one reaches its own copy and contributes nothing to what the action receives, which is a later contract; a value that is neither, a class instance or a `Date` a validator produced, is shared by reference because core cannot copy it meaningfully. Global and plugin option values are not here; a plugin reads its own under `options`.
 - `view` names the view the result renders through, on a Command that declares a [result](#results). It reads as the declaration's default until a middleware assigns one, and as `null` on a Command that declares none; it accepts a string alone. It is one value per run: the last assignment before the dispatch boundary wins, whichever middleware made it and whether or not that middleware had already called `next()`, and an assignment after the boundary changes nothing. A name the record does not hold, a non-string, or an assignment on a Command with no result is an internal error raised at the boundary, exit 1, naming the plugin, because a plugin that selects a view has the name checked first, as the [formatter](#formatter) does through its option's validator. Core spells no view name of its own.
@@ -1511,7 +1516,8 @@ import type { Middleware } from '@loomcli/core';
 import type { help } from './plugin.js';
 import { helpPage } from './views.js';
 
-const middleware: Middleware<typeof help> = ({ command, graph, out }) => out.render({ command, graph }, helpPage);
+const middleware: Middleware<typeof help> = ({ command, graph, out, spellings }) =>
+  out.render({ command, graph, variant: spellings.help === '-h' ? 'compact' : 'extended' }, helpPage);
 
 export default middleware;
 ```
@@ -1882,7 +1888,7 @@ jsonkit v0.2.0
 
 ### Help
 
-`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, the three extensions below, and the `onCommandAttach` hook of [Help in the manifest](#help-in-the-manifest). The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode }`. It calls `out.render({ command, graph }, helpPage)` and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph` and `command` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph and the routed node, a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }` and adds no public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
+`help()` declares one Boolean option, `help`, with the short spelling `h` and the description `Show this help.`, a middleware activated by it, the three extensions below, and the `onCommandAttach` hook of [Help in the manifest](#help-in-the-manifest). The middleware renders the [help page](#the-help-page) of the routed Command through the plugin's declared view, `helpPage`, a `DeclaredView<HelpPage>` where `HelpPage` is `{ readonly graph: CommandGraph; readonly command: CommandNode; readonly variant: HelpVariant }`. It derives the [variant](#help-variants) from `spellings.help`, calls `out.render({ command, graph, variant }, helpPage)`, and returns without calling `next()`, so the exit code is 0. The default function derives the page content from `graph`, `command`, and `variant` alone and ends the page with exactly one newline. The installed view escapes raw fragments before styling, as specified by the [help restyle](#help-and-version-restyle). Stdout holds the resolved page and one line terminator. An application overrides `helpPage` to change the page while `help()` stays installed, which is the acceptance target of the registry increment; the data it receives is the graph, the routed node, and the variant, and a replacement owns its own escaping, layout, and newline. The restyle retains `{ graph, command }`, help variants add `variant`, and neither adds a public structured page model or builder. `jsonkit --help` renders the root, `jsonkit get --help` renders `get`, and `jsonkit cache --help` renders the `cache` group, because the group's missing-subcommand fault is held before the chain and raised at the dispatch boundary, which the takeover never reaches. An unknown command still fails in routing, so `jsonkit nope --help` reports the unknown command. A fault core held from local parsing or validation is never raised under the takeover, so `jsonkit get --help` renders while `get` is missing its required `path`, and `jsonkit select --bogus --help` renders too. Like every plugin option, `--help` is consumed at any placement before `--`, and a structure fault the pre-scan reports still ranks ahead of the chain, so `textstat -ht` is the mixed-scope short group error rather than help. There is no `jsonkit help get` form: a `help` command would share the namespace with the application's own commands, and it would be a second way to say one thing.
 
 The page is derived from the graph by the rules below and nothing else, so a test compares the bytes of `jsonkit --help` with a page written by hand.
 
@@ -1894,9 +1900,12 @@ Three descriptors are exported from `@loomcli/plugins/help/extension`, and all a
 // @loomcli/plugins/help/views
 import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
 
+export type HelpVariant = 'compact' | 'extended';
+
 export interface HelpPage {
 	readonly graph: CommandGraph;
 	readonly command: CommandNode;
+	readonly variant: HelpVariant;
 }
 
 export declare const helpPage: DeclaredView<HelpPage>;
@@ -2035,19 +2044,20 @@ Help decides that its prose belongs in the [manifest](#manifest), and it supplie
 
 #### The help page
 
-The page rules below define content and layout. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. Help prints no [environment binding](#input-sources) until the help-variants contract defines extended help, and there extended help alone prints it.
+The page rules below define content and layout. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry, and the `env` each option node publishes. It reads no host facts. Each rule applies to both [variants](#help-variants) unless it names one: Details, ENVIRONMENT, and EXAMPLES print on the extended page alone, and the hints differ.
 
-The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Section titles are upper case at the left margin, and every other line is indented two spaces, so a line at the left margin is the masthead, a section title, or the closing hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
+The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Section titles are upper case at the left margin, and every other line is indented two spaces, so a line at the left margin is the masthead, a section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
 1. **Masthead.** `<path> · <description>`, with a space, U+00B7, and a space as the separator, or `<path>` alone when the node has no description. When the routed Command is deprecated, a second line `  Deprecated: <message>` follows in the same block.
-2. **Details.** The routed node's `details`, one authored line per page line, each indented two spaces. The page view splits on the same line terminators the schema recognizes, CRLF and each single terminator, and joins with LF, so an authored CR or NEL never reaches the page.
+2. **Details.** Extended alone. The routed node's `details`, one authored line per page line, each indented two spaces. The page view splits on the same line terminators the schema recognizes, CRLF and each single terminator, and joins with LF, so an authored CR or NEL never reaches the page.
 3. **USAGE.** One line per form, each beginning with `<path>`. The action form is `<path> <arguments> <required options> [options]`: each declared argument in declaration order as `<name>` when required and `[name]` when optional, with `...` inside the brackets for a variadic, so `<path>`, `[path]`, `<files...>`, and `[files...]`; then each visible required option, the node's own in declaration order and then the globals in `graph.globals` order, as `--long <placeholder>`, or `-s <placeholder>` for a `shortOnly` option, with `...` appended for a multiple option; then `[options]`, which is always present because the help option is one. A node with an action prints the action form. A node with a visible child prints the children form, `<path> <command> [options]`, after the action form when both apply. A group whose children are all hidden prints the children form alone, because it has no other form.
 4. **COMMANDS.** For a node with a visible child, one row per visible child in authoring order. The left cell is the child's name, followed by ` <command>` when the child is a group and by ` [command]` when it has an action and children. The right cell follows the right-cell rule below, with `deprecated` as its one possible fact.
 5. **ARGUMENTS.** For a node with arguments, one row per argument in declaration order. The left cell is the name, and the right cell follows the right-cell rule, with `default` as its one possible fact.
 6. **OPTIONS.** The routed node's visible local options in declaration order, one row each; on the root page of an Application with no children, the visible globals follow them in `graph.globals` order, in this one section. The left cell is the spellings, then ` <placeholder>` for a string option: `-f, --file <path>` with both spellings, `    --explain` with a long spelling alone, indented four spaces so the long spellings align, and `-m <metric>` for a `shortOnly` string option. A Boolean option's long spelling follows its polarity: `--total` for `positive`, `--no-total` for `negative`, and `--[no-]total` for `both`. The right cell follows the right-cell rule. A Boolean option with `negative` polarity carries the fact `default: true`, because its absent value is `true` and both of its spellings set it to `false`; the other polarities carry no default fact, because their absent value is `false`.
 7. **GLOBAL OPTIONS.** On every page except the root page of an Application with no children, the visible globals in `graph.globals` order, one row each under the OPTIONS rule, so the reader sees which options belong to this Command and which reach every Command.
-8. **EXAMPLES.** For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
-9. **Hint.** When the page printed COMMANDS: `Run <path> <command> --help for command details.`
+8. **ENVIRONMENT.** Extended alone. One row per visible option on this page that binds a variable, in the order OPTIONS and GLOBAL OPTIONS print them. The left cell is the variable's name, and the right cell is `Sets <spelling>.`, where the spelling is the long spelling the option's OPTIONS row shows, `--min-bytes` or `--[no-]color`, or the short spelling of a `shortOnly` option. A Boolean option's right cell adds one space and `One of: true, false, 1, 0.`, the values [Input sources](#input-sources) accepts, which state the option's value and not a spelling. A string option's right cell adds nothing, because its OPTIONS row states what it accepts. Neither cell carries a fact, and a deprecated option's row prints like any other. A hidden option prints no row, so a variable bound only to hidden options is not on the page.
+9. **EXAMPLES.** Extended alone. For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
+10. **Hints.** One block of up to two lines, each at the left margin. When the page printed COMMANDS, the first line is `Run <path> <command> --help for command details.` on the extended page and `Run <path> <command> -h for command details.` on the compact page. On the compact page alone, when the extended page of the same node would print Details, ENVIRONMENT, or EXAMPLES, the last line is `Run <path> --help for extended help.`
 
 The right-cell rule: the description when the member has one, then, for an option or an argument that has them, its [accepted values](#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>`, and `deprecated: <message>`. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
 
@@ -2131,12 +2141,102 @@ OPTIONS
       --config <config>        Read configuration from this file alone.
       --explain                Explain the selected command and exit.
 
+ENVIRONMENT
+  TEXTSTAT_MIN_BYTES  Sets --min-bytes.
+  TEXTSTAT_TOTAL      Sets --total. One of: true, false, 1, 0.
+
 EXAMPLES
   $ textstat one.txt two.txt
   $ textstat --metric words --total *.md
 ```
 
+`textstat -h` prints the compact page, without the details, ENVIRONMENT, and EXAMPLES blocks, and it points to the extended page because those blocks hold something:
+
+```text
+textstat · Count bytes, words, or lines across text sources.
+
+USAGE
+  textstat [files...] [options]
+
+ARGUMENTS
+  files  The files to count. Omit them to read piped text.
+
+OPTIONS
+  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
+      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+      --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)
+  -t, --total                  Add a total row.
+      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
+  -h, --help                   Show this help.
+  -V, --version                Print the version.
+      --manifest               Print this command's manifest as JSON.
+      --config <config>        Read configuration from this file alone.
+      --explain                Explain the selected command and exit.
+
+Run textstat --help for extended help.
+```
+
+jsonkit binds no variable, so its extended pages above have no ENVIRONMENT block. `jsonkit -h` prints both hints, the child hint first:
+
+```text
+jsonkit · Read and reshape one JSON document.
+
+USAGE
+  jsonkit [options]
+  jsonkit <command> [options]
+
+COMMANDS
+  get     Read one value at a path.
+  keys    List the keys at a path.
+  select  Keep the named fields of the document.
+  fetch   Read one value at a path.  (deprecated: Use get instead.)
+
+OPTIONS
+      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+
+GLOBAL OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.
+  -h, --help         Show this help.
+  -V, --version      Print the version.
+      --manifest     Print this command's manifest as JSON.
+      --explain      Explain the selected command and exit.
+
+Run jsonkit <command> -h for command details.
+Run jsonkit --help for extended help.
+```
+
+`jsonkit select -h` prints the `jsonkit select --help` page above unchanged, because `select` carries no details, examples, or variable, so the compact page has nothing to point to.
+
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+
+#### Help variants
+
+```ts
+// @loomcli/plugins/help/views
+export type HelpVariant = 'compact' | 'extended';
+```
+
+`-h` asks for compact help, which orients a reader who needs the syntax, and `--help` asks for extended help, which teaches. [ADR-0040](decisions/0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md) records the decision.
+
+- **Selection.** The middleware reads `spellings.help` from its [context](#middleware). `-h` selects `compact`. Every other case selects `extended`: `--help`, and a help option with no spelling, which only an input source could supply. Help's option binds no variable and carries no configuration binding, so the first-party plugin never meets that case, and the rule keeps the extended page as the answer to a request that names no variant. The last occurrence wins, as it does for a Boolean value, so `jsonkit -h --help` prints the extended page and `jsonkit --help -h` the compact page, and a letter in a short group is spelled `-h`, so `jsonkit -Vh` prints the compact page when help is installed ahead of version. Core supplies no variant fact and knows nothing of help.
+- **Compact.** The page rules above with Details, ENVIRONMENT, and EXAMPLES omitted, the child hint spelled `-h`, and the pointer `Run <path> --help for extended help.` when the extended page of the node would print one of the omitted blocks. The masthead keeps its deprecation line, and every row keeps its accepted values and facts, so the compact page loses no rule about what an input accepts.
+- **Extended.** Every block of the page rules, the ENVIRONMENT block included. Help prints no configuration binding on either page.
+- **Replacement.** `HelpPage` carries `variant`, and `helpPage` stays one declared view. A replacement receives the variant and decides what each one prints, and one that ignores it prints one page for both, as every replacement did before. A replacement never reads `spellings`.
+- **The manifest.** Help's values in the manifest are unchanged: it supplies `details` and `examples` whatever the variant, because the variant is a choice of page, not a fact of the Command.
+
+Compared with the page rules before this section, the changed rules are: `-h` prints the compact page; `--help` prints the page it printed before, plus the ENVIRONMENT block; the hint becomes a block that may hold the pointer; and `HelpPage` gains `variant`. The help option's row and description are unchanged.
+
+#### Help variants acceptance
+
+Help variants are proven when public APIs alone produce these results under Node and Bun:
+
+- **Example pages.** `textstat --help`, `textstat -h`, `jsonkit -h`, and `jsonkit select -h` print the pages above, byte for byte, with color and modifiers disabled, and `jsonkit --help` and `jsonkit select --help` print their pages unchanged. The example applications' help goldens are re-pinned to these pages.
+- **Selection.** `-h --help` prints the extended page, `--help -h` the compact page, and `-Vh` the compact page.
+- **Spellings.** A fixture plugin's middleware reads `--flag`, `-f`, and `--no-flag` for its typed options, `--name` for `--name=value`, the grouped letter as `-f`, and the last of several occurrences. An option filled from the environment or the configuration source, a defaulted option, and an option not supplied have no entry, another plugin's options and the application's options never appear, and the record is frozen.
+- **ENVIRONMENT.** A fixture page lists a local option, a global option, and a plugin option that bind variables, in the order OPTIONS and GLOBAL OPTIONS print them, and aligns a variable wider than the others. It spells a `shortOnly` option by its short spelling and a `both` Boolean as `--[no-]name`, adds the Boolean sentence to a Boolean row alone, prints a deprecated option's row, and prints no row for a hidden option.
+- **Hints.** A compact leaf page whose only extended block is ENVIRONMENT prints the pointer, a compact leaf with no extended block prints none, and a compact group page prints the child hint with `-h` ahead of the pointer.
+- **Replacement.** An `override(helpPage, …)` receives `variant` as `compact` under `-h` and `extended` under `--help`.
+- **Styles.** A themed extended page styles the ENVIRONMENT block and both hint lines under the [restyle](#help-and-version-restyle) mapping.
 
 #### Accepted values
 
@@ -2212,8 +2312,11 @@ The default help view applies this mapping. A style named below is a member of t
 | Application name added before an authored example | `highlight` |
 | Authored example command text | `primary` |
 | Example note | `dim` |
-| Hint words `Run` and `for command details.` | `dim` |
-| Hint application path and `--help` | `highlight` |
+| Hint words `Run`, `for command details.`, and `for extended help.` | `dim` |
+| Hint application path, `--help`, and `-h` | `highlight` |
+| ENVIRONMENT variable names | `highlight` |
+| ENVIRONMENT `Sets` and its closing period, and the Boolean sentence | `primary` |
+| ENVIRONMENT option spelling | `highlight` |
 | Hint `<command>` | `dim.italic` |
 
 Indentation, padding, spaces between styled parts, and newlines are unstyled. Spaces inside a styled text value retain that value's style. A placeholder's internal `...`, and the `...` after a required multiple option's placeholder, share its dim italic style. The `--[no-]name` spelling is one highlighted option spelling, not a placeholder. Deprecated rows keep their name and description styles. Only the deprecation fact uses warning, with surrounding parentheses and separators still dim. The text stays explicit when color is off, and no warning glyph is added.

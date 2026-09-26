@@ -58,6 +58,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0037](0037-validators-ship-in-their-own-package-as-standard-schema-values.md) | `@loomcli/validators` ships a catalog of validator factories built with one `createValidator`, each an ordinary Standard Schema value that publishes a sound input schema, so common input shapes need no schema library. | accepted |
 | [ADR-0038](0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md) | A configuration source warns through `out`, reads `style` and the graph, and reports a thrown `InputError` with code 2 like an action does; every other throw stays a plugin fault. | accepted |
 | [ADR-0039](0039-the-configuration-plugin-reads-layered-json-files-and-fails-only-on-the-file-the-operator-names.md) | The configuration plugin reads a user file derived from the application name and the project files the application lists, key by key with the first listed winning; `--config` replaces them for one run, a discovered file never breaks a run, and the named file and a wrong value are usage failures. | accepted |
+| [ADR-0040](0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md) | A middleware reads the spelling that supplied each of its own plugin's typed options, and help derives its variant from it: `-h` prints a compact page, and `--help` an extended page with details, examples, and an ENVIRONMENT block; core supplies no variant fact. | proposed |
 
 ## Adding a record
 

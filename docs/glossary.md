@@ -335,8 +335,16 @@ A public surface derived from the Command graph, such as help, a manifest, compl
 _Avoid_: Export, output format, adapter
 
 **Help page**:
-The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling.
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
 _Avoid_: Usage text, man page, help screen
+
+**Compact help**:
+The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and examples, ending with a pointer to `--help` when the extended page holds more.
+_Avoid_: Short help, summary, brief help
+
+**Extended help**:
+The help page `--help` prints, for a reader who is learning the Command: the whole page, with the details, the examples, and an ENVIRONMENT block for each visible option bound to a variable. Help prints it whenever the help option was not typed as `-h`.
+_Avoid_: Long help, full help, man page
 
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`. There is no encoding outside the view model: a machine view is a view like a table is.
