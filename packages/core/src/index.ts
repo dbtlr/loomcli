@@ -51,6 +51,7 @@ export type {
   Plugin,
   PluginDefinition,
   PluginOptions,
+  PluginOptionSpellings,
   PluginOptionValues,
   SourceAnswer,
   SourceContext,

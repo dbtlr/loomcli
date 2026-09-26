@@ -41,6 +41,34 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
   );
 });
 
+test('textstat -h prints the compact page and points to the details and examples it omits', () => {
+  expect(invoke(main, ['-h'])).toEqual(
+    page(
+      'textstat · Count bytes, words, or lines across text sources.',
+      '',
+      'USAGE',
+      '  textstat [files...] [options]',
+      '',
+      'ARGUMENTS',
+      '  files  The files to count. Omit them to read piped text.',
+      '',
+      'OPTIONS',
+      '  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)',
+      '      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)',
+      '      --minimum <minimum>      Drop a source smaller than this many bytes. The larger threshold wins.  (deprecated: Use --min-bytes instead.)',
+      '  -t, --total                  Add a total row.',
+      '      --format <format>        Select the output format, table by default. One of: table, json, jsonl.',
+      '  -h, --help                   Show this help.',
+      '  -V, --version                Print the version.',
+      "      --manifest               Print this command's manifest as JSON.",
+      '      --config <config>        Read configuration from this file alone.',
+      '      --explain                Explain the selected command and exit.',
+      '',
+      'Run textstat --help for details and examples.',
+    ),
+  );
+});
+
 test('textstat --version prints the name and the declared version', () => {
   expect(invoke(main, ['--version'])).toEqual({
     status: 0,

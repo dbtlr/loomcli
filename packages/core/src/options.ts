@@ -17,11 +17,13 @@ export interface OptionValues {
   strings: Map<string, string>;
   lists: Map<string, string[]>;
   booleans: Map<string, boolean>;
+  /** The spelling of the token that supplied each parsed option, which no input source writes. */
+  spellings: Map<string, string>;
 }
 
 /** Every parsed value lands in one of these maps; `lists` holds the repeated string options. */
 export function emptyValues(): OptionValues {
-  return { booleans: new Map(), lists: new Map(), strings: new Map() };
+  return { booleans: new Map(), lists: new Map(), spellings: new Map(), strings: new Map() };
 }
 
 /** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
@@ -171,6 +173,8 @@ function acceptValue({
   if (!repeatable && (values.strings.has(option.name) || values.booleans.has(option.name))) {
     throw new RepeatedOptionError(spelling);
   }
+  // A repeatable option records its last occurrence, because each one overwrites the entry.
+  values.spellings.set(option.name, spelling);
   if (option.type === 'boolean') {
     if (inline !== undefined) {
       throw new UnexpectedValueError(spelling, inline);
@@ -289,6 +293,7 @@ export function copyValues(values: OptionValues): OptionValues {
   return {
     booleans: new Map(values.booleans),
     lists: new Map([...values.lists].map(([name, list]) => [name, [...list]])),
+    spellings: new Map(values.spellings),
     strings: new Map(values.strings),
   };
 }
@@ -298,6 +303,7 @@ export function mergeValues(globals: OptionValues, locals: OptionValues): Option
   return {
     booleans: new Map([...globals.booleans, ...locals.booleans]),
     lists: new Map([...globals.lists, ...locals.lists]),
+    spellings: new Map([...globals.spellings, ...locals.spellings]),
     strings: new Map([...globals.strings, ...locals.strings]),
   };
 }

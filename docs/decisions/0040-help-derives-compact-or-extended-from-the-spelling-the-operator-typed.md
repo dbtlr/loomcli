@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0040 - Help derives compact or extended from the spelling the operator typed
 description: A middleware reads the spelling that supplied each of its own plugin's typed options, and help derives its variant from it, so -h prints a compact page and --help an extended page that adds details and examples. Core supplies no variant fact. This narrows the ADR-0032 clause that nothing publishes where a value came from.
-status: proposed
+status: accepted
 created: 2026-09-26
 modified: 2026-09-26
 ---
@@ -46,8 +46,9 @@ This answers one part of the question [ADR-0028](0028-plugins-run-code-at-lifecy
 
 ## Status
 
-Proposed with the [help variants](../core.md#help-variants) contract. It is accepted when the implementation proves the acceptance there under Node and Bun.
+Accepted 2026-09-26 with the implementation. Core records the spelling of each plugin option the pre-scan consumes, the middleware context carries the plugin's own spellings frozen, and help's acceptance proves the compact and extended pages under Node and Bun.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the help variants contract.
+- 2026-09-26: Accepted with the implementation.

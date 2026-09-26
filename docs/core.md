@@ -4,7 +4,7 @@ description: Public SDK, invocation phases, host capture, rendered and semantic 
 
 # Core reference
 
-Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the [manifest](#manifest) plugin is implemented under its contract, installed by both example applications. [Accepted values](#accepted-values) on help rows, `accepts`, and `helpArgument` are implemented, and the formatter's description names only its default. [Input sources](#input-sources), the environment binding and the configuration source, are implemented under accepted ADR-0032: core exports `SourceResolver`, `SourceContext`, and `SourceAnswer`, `inspect()` and the manifest publish `env`, and textstat binds `--min-bytes` and `--total` to variables. [Help variants](#help-variants), the middleware context's `spellings`, and `HelpPage.variant` are specified under proposed ADR-0040 and not yet implemented, so `-h` and `--help` still print one page.
+Core resolves marked strings under a destination-aware [rendering policy](#styles-and-rendering-policy). The [view registry](#views) is implemented under accepted ADR-0021: the package exports `view`, `override`, `lanes`, `View`, and `ViewContext`, and the retired `failures`, `renderFailure`, `FailureRenderer`, `Renderer`, and `RendererContext` are gone. The named [Loom theme](#loom-theme) and explicit color fallbacks are implemented under accepted ADR-0022 and ADR-0029. The results lane under [Results](#results) is implemented under accepted ADR-0023: `result()`, `rows()`, and `views()` are authoring calls, `out.results` is on every channel, and the package exports `RowView`, `DeclaredRowView`, `ResultError`, and `incompleteResult`. The [formatter](#formatter), the `onCommandAttach` [lifecycle hook](#lifecycle-hooks) with its exported `AttachedCommand`, `CommandAttachHook`, and `ResultView` types, and the [middleware](#middleware) context's `request`, typed by the exported `Request`, and `view` are implemented under accepted ADR-0028, and the invocation order in [Invocation](#invocation) describes the chain behind local parsing. The [table](#table) and [records](#records) pack views are implemented under the 2026-09-17 entries in ADR-0008 and ADR-0023. [Collecting extensions](#collecting-extensions), the `extensions` a [lifecycle hook](#lifecycle-hooks) reads, and [help's values in the manifest](#help-in-the-manifest) are implemented under accepted ADR-0031, and the [manifest](#manifest) plugin is implemented under its contract, installed by both example applications. [Accepted values](#accepted-values) on help rows, `accepts`, and `helpArgument` are implemented, and the formatter's description names only its default. [Input sources](#input-sources), the environment binding and the configuration source, are implemented under accepted ADR-0032: core exports `SourceResolver`, `SourceContext`, and `SourceAnswer`, `inspect()` and the manifest publish `env`, and textstat binds `--min-bytes` and `--total` to variables. [Help variants](#help-variants), the middleware context's `spellings` typed by the exported `PluginOptionSpellings`, and `HelpPage.variant` are implemented under accepted ADR-0040: `-h` prints the compact page and `--help` the extended page.
 
 ## Application declarations
 
@@ -2062,7 +2062,7 @@ The right-cell rule: the description when the member has one, then, for an optio
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
-The root of jsonkit has an action and six children, of which `fetch` is deprecated and `debug` and `paths` are hidden, and declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and seven children: the `doctor` Command the private `@loom/doctor` plugin attaches ahead of jsonkit's own, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -2074,6 +2074,7 @@ USAGE
   jsonkit <command> [options]
 
 COMMANDS
+  doctor  Check the host this application runs on.
   get     Read one value at a path.
   keys    List the keys at a path.
   select  Keep the named fields of the document.
@@ -2181,6 +2182,7 @@ USAGE
   jsonkit <command> [options]
 
 COMMANDS
+  doctor  Check the host this application runs on.
   get     Read one value at a path.
   keys    List the keys at a path.
   select  Keep the named fields of the document.

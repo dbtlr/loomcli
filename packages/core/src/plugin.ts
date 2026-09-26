@@ -35,6 +35,15 @@ type PluginOptionValues<Options extends PluginOptions> = {
   readonly [Name in keyof Options]: OptionValue<Options[Name]>;
 };
 
+/**
+ * The spelling that supplied each of one plugin's own options given as a token, such as `-h`,
+ * `--help`, or `--no-total`. An option filled by an input source, defaulted, or not supplied has
+ * no entry.
+ */
+type PluginOptionSpellings<Options extends PluginOptions> = Readonly<
+  Partial<Record<keyof Options & string, string>>
+>;
+
 /** Phantom key. It carries a plugin's declared options in a read position and holds no value. */
 declare const pluginOptions: unique symbol;
 declare const pluginTheme: unique symbol;
@@ -712,6 +721,21 @@ function pluginValues(inputs: readonly OptionInput[], values: OptionValues): Plu
   return resolved;
 }
 
+/** One plugin's own spellings for one run, frozen, so no plugin writes what another reads. */
+function pluginSpellings(
+  inputs: readonly OptionInput[],
+  values: OptionValues,
+): Readonly<Record<string, string>> {
+  const spelled: Record<string, string> = {};
+  for (const { name } of inputs) {
+    const spelling = values.spellings.get(name);
+    if (spelling !== undefined) {
+      spelled[name] = spelling;
+    }
+  }
+  return Object.freeze(spelled);
+}
+
 type ThemeOf<Contributor> = [Contributor] extends [never]
   ? {}
   : Contributor extends Plugin<PluginOptions, infer Theme>
@@ -731,6 +755,15 @@ export type {
   Plugin,
   PluginDefinition,
   PluginOptions,
+  PluginOptionSpellings,
   PluginOptionValues,
 };
-export { installPlugins, loadDefault, ownedSignals, plugin, pluginSentence, pluginValues };
+export {
+  installPlugins,
+  loadDefault,
+  ownedSignals,
+  plugin,
+  pluginSentence,
+  pluginSpellings,
+  pluginValues,
+};

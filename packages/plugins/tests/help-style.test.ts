@@ -44,6 +44,31 @@ test('help styles each semantic fragment, including deprecation punctuation and 
   });
 });
 
+test('a compact page styles the child hint and the pointer to the extended page', () => {
+  expect(run({ argv: ['-h'], rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      '\u001b[33;1mapp\u001b[39;22m \u001b[90m·\u001b[39m Read values.',
+      '',
+      '\u001b[90mUSAGE\u001b[39m',
+      '  \u001b[33mapp\u001b[39m \u001b[90;3m[options]\u001b[39;23m',
+      '  \u001b[33mapp\u001b[39m \u001b[90;3m<command>\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m',
+      '',
+      '\u001b[90mCOMMANDS\u001b[39m',
+      '  \u001b[33mget\u001b[39m  Read one.  \u001b[90m(\u001b[93mdeprecated: Use read.\u001b[90m)\u001b[39m',
+      '',
+      '\u001b[90mGLOBAL OPTIONS\u001b[39m',
+      '  \u001b[33m-h\u001b[90m,\u001b[39m \u001b[33m--help\u001b[39m     Show this help.',
+      '  \u001b[33m-V\u001b[90m,\u001b[39m \u001b[33m--version\u001b[39m  Print the version.',
+      '',
+      '\u001b[90mRun\u001b[39m \u001b[33mapp\u001b[39m \u001b[90;3m<command>\u001b[39;23m \u001b[33m-h\u001b[39m \u001b[90mfor command details.\u001b[39m',
+      '\u001b[90mRun\u001b[39m \u001b[33mapp\u001b[39m \u001b[33m--help\u001b[39m \u001b[90mfor details and examples.\u001b[39m',
+      '',
+    ].join('\n'),
+  });
+});
+
 test.each([
   [{}, '33'],
   [{ TERM: 'xterm-256color' }, '38;5;172'],
