@@ -7,7 +7,7 @@ const config = { default: '0', type: 'string', validate: number } satisfies Stri
 const app = new Application('schema-types')
   .argument('files', {
     required: true,
-    validate: z.array(z.string()).transform((files) => files.length),
+    validate: z.string().transform((file) => file.length),
     variadic: true,
   })
   .option('minimum', config)
@@ -21,7 +21,7 @@ const app = new Application('schema-types')
   });
 
 const handler: ActionHandler<typeof app> = ({ args, options }) => {
-  const count: number = args.files;
+  const counts: number[] = args.files;
   const minimum: number = options.minimum;
   const optional: number | undefined = options.optional;
   const required: number = options.required;
@@ -31,7 +31,7 @@ const handler: ActionHandler<typeof app> = ({ args, options }) => {
   const wrong: string = options.minimum;
   // @ts-expect-error TS2322: omission remains possible without a declared default
   const missing: number = options.optional;
-  return { count, maybe, minimum, missing, optional, raw, required, wrong };
+  return { counts, maybe, minimum, missing, optional, raw, required, wrong };
 };
 app.action(handler);
 
@@ -65,13 +65,13 @@ const rawArgument = { mode: 'raw', required: true, variadic: true } satisfies {
 const transformedArgument = {
   mode: 'schema',
   required: true,
-  validate: z.array(z.string()).transform((files) => files.length),
+  validate: z.string().transform((file) => file.length),
   variadic: true,
 } satisfies { mode: 'schema'; required: true; variadic: true; validate: unknown };
 const conditionalArgument = Math.random() > 0.5 ? rawArgument : transformedArgument;
 new Application('conditional').argument('files', conditionalArgument).action(({ args }) => {
-  const either: string[] | number = args.files;
-  // @ts-expect-error TS2322: a conditional schema can transform the array into a number
+  const either: string[] | number[] = args.files;
+  // @ts-expect-error TS2322: a conditional validator can transform each value into a number
   const unsafe: string[] = args.files;
   return { either, unsafe };
 });
@@ -105,7 +105,7 @@ new Application('async-types')
     return value;
   });
 new Application('element-types')
-  .argument('values', { required: true, validate: z.array(number), variadic: true })
+  .argument('values', { required: true, validate: number, variadic: true })
   .action(({ args }) => {
     const values: number[] = args.values;
     return values;

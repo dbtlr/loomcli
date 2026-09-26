@@ -288,7 +288,7 @@ function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
   const rejected = forbidden.find((key) => key in config);
   if (rejected !== undefined) {
     throw new DeclarationError(
-      `${sentence} declares ${rejected}. Remove it; a plugin option carries no schema or presence rule, and the middleware interprets the value.`,
+      `${sentence} declares ${rejected}. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.`,
     );
   }
   checkDescription(sentence, config.description);
@@ -698,7 +698,7 @@ function pluginValues(inputs: readonly OptionInput[], values: OptionValues): Plu
     } else if (config.multiple === true) {
       resolved[name] = collectedValue(values.lists.get(name), declared);
     } else {
-      // Build already proved that a string option without a schema declares a string default.
+      // Build already proved that a string option without a validator declares a string default.
       resolved[name] =
         values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
     }

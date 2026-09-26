@@ -99,7 +99,7 @@ function routed(views) {
       multiple: true,
       short: 'F',
       type: 'string',
-      validate: z.array(z.string().min(1, 'Supply a field name.')),
+      validate: z.string().min(1, 'Supply a field name.'),
     })
     .action(dispatch);
   const cache = new Command('cache').command(new Command('keys').action(dispatch));

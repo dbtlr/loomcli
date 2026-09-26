@@ -83,7 +83,7 @@ export interface Invocation {
    * grammar is still a problem of this phase, reported after the globals and before the locals.
    */
   plugins: readonly OptionInput[];
-  /** The run's cancellation signal, which stops this phase between two schema calls. */
+  /** The run's cancellation signal, which stops this phase between two validator calls. */
   signal: AbortSignal;
   sources: Provenance;
   supplied: SuppliedValues;
@@ -216,14 +216,14 @@ function missingMessage(
 
 /**
  * A multiple option collects its occurrences and a variadic argument collects the remaining
- * tokens, so either one carries the whole `string[]` as its raw value.
+ * tokens, so either one carries a `string[]` as its raw value and validates each value alone.
  */
 function collects(input: InputDeclaration) {
   return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
 }
 
 /**
- * The declaration flag that sends an omitted value to its own schema. Every declaration reads it
+ * The declaration flag that sends an omitted value to its own validator. Every declaration reads it
  * here, and the declaration rules below reject it wherever another rule already decides absence.
  */
 export function validatesOmission(input: InputDeclaration) {
@@ -241,17 +241,26 @@ function copied(value: string | string[] | undefined) {
   return Array.isArray(value) ? [...value] : value;
 }
 
-/** Without a schema the raw shape is the declared default's only contract. */
+/**
+ * Without a validator the raw shape is the declared default's only contract. With one, a default
+ * of several values must still be an array, because each of its values passes the validator.
+ */
 function holdsRawDefault(input: InputDeclaration) {
   const value = input.config.default;
-  return collects(input)
-    ? Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string')
-    : typeof value === 'string';
+  if (!collects(input)) {
+    return input.config.validate !== undefined || typeof value === 'string';
+  }
+  return (
+    Array.isArray(value) &&
+    (input.config.validate !== undefined ||
+      value.every((entry: unknown) => typeof entry === 'string'))
+  );
 }
 
 /**
- * `validateOmitted: true` is the one way an omitted scalar reaches its schema, so every other rule
- * that already decides absence rejects it, and the flag needs a schema to receive the omission.
+ * `validateOmitted: true` is the one way an omitted scalar reaches its validator, so every other
+ * rule that already decides absence rejects it, and the flag needs a validator to receive the
+ * omission.
  */
 function checkOmissionValidation(input: InputDeclaration, subject: string) {
   const { config } = input;
@@ -267,12 +276,12 @@ function checkOmissionValidation(input: InputDeclaration, subject: string) {
   }
   if (collects(input)) {
     throw new DeclarationError(
-      `${subject} collects its values and declares validateOmitted. Remove validateOmitted; an omitted collection reaches the schema as an empty array.`,
+      `${subject} takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.`,
     );
   }
   if (config.validate === undefined) {
     throw new DeclarationError(
-      `${subject} declares validateOmitted without a schema. Add validate or remove validateOmitted.`,
+      `${subject} declares validateOmitted without a validator. Add validate or remove validateOmitted.`,
     );
   }
 }
@@ -314,18 +323,18 @@ function checkDeclaration(input: InputDeclaration, subject: string) {
   if (validatesOmission(input)) {
     checkOmissionValidation(input, subject);
   }
-  const schema = config.validate;
+  const validator = config.validate;
   if (
-    schema !== undefined &&
-    (schema === null ||
-      (typeof schema !== 'object' && typeof schema !== 'function') ||
-      !schema['~standard'] ||
-      schema['~standard'].version !== 1 ||
-      typeof schema['~standard'].vendor !== 'string' ||
-      typeof schema['~standard'].validate !== 'function')
+    validator !== undefined &&
+    (validator === null ||
+      (typeof validator !== 'object' && typeof validator !== 'function') ||
+      !validator['~standard'] ||
+      validator['~standard'].version !== 1 ||
+      typeof validator['~standard'].vendor !== 'string' ||
+      typeof validator['~standard'].validate !== 'function')
   ) {
     throw new DeclarationError(
-      `${subject} validate must be a Standard Schema v1 object. Supply a compatible schema.`,
+      `${subject} validate must be a Standard Schema v1 object. Supply a compatible validator.`,
     );
   }
 }
@@ -365,12 +374,12 @@ async function validate(
   raw: unknown,
   context: ValidationContext,
 ): Promise<StandardSchemaV1.Result<unknown>> {
-  const schema = input.config.validate;
-  if (schema === undefined) {
+  const validator = input.config.validate;
+  if (validator === undefined) {
     return { value: raw };
   }
   try {
-    const result: unknown = await schema['~standard'].validate(raw, schemaOptions(context));
+    const result: unknown = await validator['~standard'].validate(raw, schemaOptions(context));
     if (result === null || typeof result !== 'object') {
       throw new Error('The validator returned an invalid Standard Schema result.');
     }
@@ -391,6 +400,48 @@ async function validate(
 }
 
 /**
+ * One validation of a declared value. A multiple option or a variadic argument passes each of its
+ * values through the validator in order, and each issue reads at its value's position before its
+ * own path, so the action receives the array of outputs. Every other input passes its value once.
+ * Each call reads a fresh context whose arrays are copies, so a write to them never reaches the
+ * next call. The host is the one captured object that every call and the action share.
+ */
+async function validateDeclared(
+  input: InputDeclaration,
+  raw: unknown,
+  call: { context: () => ValidationContext; signal?: AbortSignal },
+): Promise<StandardSchemaV1.Result<unknown>> {
+  const { context, signal } = call;
+  if (!collects(input) || input.config.validate === undefined) {
+    return validate(input, raw, context());
+  }
+  if (!Array.isArray(raw)) {
+    // The parser, the input sources, and the declaration rules only ever supply an array here.
+    throw new TypeError(`${declaredName(input)} reached validation without an array of values.`);
+  }
+  const outputs: unknown[] = [];
+  const issues: StandardSchemaV1.Issue[] = [];
+  for (const [position, value] of raw.entries()) {
+    if (signal?.aborted) {
+      // A cancelled run starts no further call; the run resolves its cancellation code instead.
+      break;
+    }
+    const result = await validate(input, value, context());
+    if (result.issues === undefined) {
+      outputs.push(result.value);
+    } else {
+      issues.push(
+        ...reported(result.issues).map((issue) => ({
+          message: issue.message,
+          path: [position, ...(issue.path ?? [])],
+        })),
+      );
+    }
+  }
+  return issues.length === 0 ? { value: outputs } : { issues };
+}
+
+/**
  * The dotted path an issue names inside a value, or `undefined` when the issue names the value
  * itself. Core's default text and an application's own view read a position through this one
  * helper, so a rejected item reads alike wherever its diagnostic is written.
@@ -403,13 +454,13 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
 }
 
 /**
- * The issues one rejection reports. A schema that returned none still rejected the value, so the
+ * The issues one rejection reports. A validator that returned none still rejected the value, so the
  * placeholder stands in for its silence. Reporting takes this list once: the reported problem
  * carries it and the default text is derived from it, so a view and core read the same issues.
  */
 function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
   return issues.length === 0
-    ? [{ message: 'The schema rejected this value without an explanation.' }]
+    ? [{ message: 'The validator rejected this value without an explanation.' }]
     : issues;
 }
 
@@ -420,6 +471,16 @@ function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   });
 }
 
+/** The fault a default of the wrong raw shape reports, by the shape its declaration expects. */
+function defaultShapeFault(input: InputDeclaration, subject: string) {
+  if (!collects(input)) {
+    return `${subject} default must be a string without a validator. Supply a string default.`;
+  }
+  return input.config.validate === undefined
+    ? `${subject} default must be an array of strings without a validator. Supply a string array default.`
+    : `${subject} default must be an array. Supply an array of values.`;
+}
+
 /** A declared `default: undefined` is a default, so presence is the key, never the value. */
 function hasDefault(input: InputDeclaration) {
   return Object.hasOwn(input.config, 'default');
@@ -428,7 +489,7 @@ function hasDefault(input: InputDeclaration) {
 /**
  * Every declaration rule that reads the declaration alone. It is synchronous, so the call that
  * declares an input applies it, and build applies it to an input a lifecycle hook declared; only
- * validating a default through its schema, which can be asynchronous, is left to `run()`. A
+ * validating a default through its validator, which can be asynchronous, is left to `run()`. A
  * contributor that declares under its own name, such as a plugin, supplies the subject its
  * diagnostics read with; every other caller is named by the declaration itself.
  */
@@ -437,20 +498,16 @@ export function checkDeclarations(inputs: readonly InputDeclaration[], named?: s
     checkDeclaration(input, named ?? declaredName(input));
   }
   for (const input of inputs.filter((entry) => hasDefault(entry))) {
-    if (input.config.validate === undefined && !holdsRawDefault(input)) {
+    if (!holdsRawDefault(input)) {
       const subject = named ?? declaredName(input);
-      throw new DeclarationError(
-        collects(input)
-          ? `${subject} default must be an array of strings without a schema. Supply a string array default.`
-          : `${subject} default must be a string without a schema. Supply a string default.`,
-      );
+      throw new DeclarationError(defaultShapeFault(input, subject));
     }
   }
 }
 
 /**
  * Every declared default, validated before any token is read. The host is captured by then, so a
- * default's schema reads the same Host its action will, under the `default` phase.
+ * default's validator reads the same Host its action will, under the `default` phase.
  */
 export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<DefaultValues> {
   const declarations = scoped(inputs);
@@ -458,14 +515,12 @@ export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<D
   for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
     const { input } = entry;
     const subject = declaredName(input);
-    const result = await validate(input, input.config.default, {
-      host,
-      input: identityOf(entry),
-      phase: 'default',
+    const result = await validateDeclared(input, input.config.default, {
+      context: () => ({ host, input: identityOf(entry), phase: 'default' }),
     });
     if (result.issues !== undefined) {
       throw new DeclarationError(
-        `${subject} has an invalid default. Fix the default or its schema.\n${messages(subject, reported(result.issues)).join('\n')}`,
+        `${subject} has an invalid default. Fix the default or its validator.\n${messages(subject, reported(result.issues)).join('\n')}`,
       );
     }
     defaults.set(input, result.value);
@@ -474,10 +529,10 @@ export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<D
 }
 
 /**
- * An array default reaches the action as its own copy, so an action that mutates its collection
- * rewrites neither the declaration nor the next invocation. A schema that returns a new array is
- * copied too, because a pass-through schema returns the declared array itself and cannot be told
- * apart from one that built its own. Every other output passes through unchanged.
+ * An array default reaches the action as its own copy, so an action that mutates its array
+ * rewrites neither the declaration nor the next invocation. One prepared default serves every
+ * invocation of a run, and an unvalidated default is the declared array itself, so each read
+ * copies it. Every other output passes through unchanged.
  */
 function freshDefault(value: unknown) {
   return Array.isArray(value) ? [...value] : value;
@@ -532,20 +587,40 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   const originOf = (input: InputDeclaration) =>
     input.kind === 'option' ? sources.labels.get(input.name) : undefined;
   /**
-   * One reading of the tokens and the route, built anew for each schema call. The route, the
-   * tail, and every collected value are copies, so a schema that writes to them reaches neither
-   * the parser's collections, nor the tail the action receives, nor the next schema of this
-   * invocation. The host is the captured object itself, the one the action receives.
+   * One reading of the tokens and the route, built anew for each validator call. The route, the
+   * tail, and every collected value are copies, so a validator that writes to them reaches neither
+   * the parser's collections, nor the tail the action receives, nor the next validator call of
+   * this invocation. Each copy is made on its first read and kept for the call, so a validator
+   * that never reads one never pays for it, however many values a list holds. The host is the
+   * captured object itself, the one the action receives.
    */
-  const facts = () => ({
-    command: [...invocation.command],
-    host: invocation.host,
-    passthrough: [...invocation.passthrough],
-    supplied: suppliedInputs(
-      declarations.map((entry) => entry.input),
-      supplied,
-    ),
-  });
+  const contextOf = (entry: ScopedInput): ValidationContext => {
+    const copies: {
+      command?: readonly string[];
+      passthrough?: readonly string[];
+      supplied?: SuppliedInputs;
+    } = {};
+    return {
+      get command() {
+        copies.command ??= [...invocation.command];
+        return copies.command;
+      },
+      host: invocation.host,
+      input: identityOf(entry),
+      get passthrough() {
+        copies.passthrough ??= [...invocation.passthrough];
+        return copies.passthrough;
+      },
+      phase: 'invocation',
+      get supplied() {
+        copies.supplied ??= suppliedInputs(
+          declarations.map((declared) => declared.input),
+          supplied,
+        );
+        return copies.supplied;
+      },
+    };
+  };
   const values = new Map<InputDeclaration, unknown>();
   const lines: string[] = [];
   const problems: InputProblem[] = [];
@@ -563,12 +638,11 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
     });
     lines.push(...messages(subject, issues));
   };
-  /** One path for every value the schema reads, so a raw shape and its issues meet it once. */
+  /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
-    const result = await validate(entry.input, raw, {
-      ...facts(),
-      input: identityOf(entry),
-      phase: 'invocation',
+    const result = await validateDeclared(entry.input, raw, {
+      context: () => contextOf(entry),
+      signal: invocation.signal,
     });
     if (result.issues === undefined) {
       values.set(entry.input, result.value);
@@ -583,7 +657,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   for (const entry of reportingOrder(invocation)) {
     if (invocation.signal.aborted) {
       /**
-       * A cancelled run starts no further schema call. The one already in flight was awaited
+       * A cancelled run starts no further validator call. The one already in flight was awaited
        * above, and whatever this phase collected is never raised, because the run resolves its
        * cancellation code instead.
        */
@@ -610,10 +684,10 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
           problems.push({ input: identityOf(entry), reason: 'missing', spelling });
           lines.push(missingMessage(input, spelling, { collected }));
         } else if (collected && !defaults.has(input)) {
-          // No occurrence is an accurate empty collection, so it reads like a supplied value.
-          await accept(entry, [], spelling);
+          // No occurrence has no value to validate, so the action receives an empty array.
+          values.set(input, []);
         } else if (validatesOmission(input)) {
-          // The flag sends the omission itself to the schema.
+          // The flag sends the omission itself to the validator.
           // An absence rule reads the context a supplied value reads, and reports input issues.
           await accept(entry, undefined, spelling);
         } else {

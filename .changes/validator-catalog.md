@@ -1,0 +1,2 @@
+- Add `@loomcli/validators`, a catalog of validators for common input shapes without a schema library: `text`, `integer`, `number`, `port`, `oneOf`, `url`, `uuid`, `date`, and `path`. Each factory returns a Standard Schema value that publishes a sound input schema, so help prints `One of: ...` for a `oneOf` input with no authored line. See the [validators reference](docs/validators.md).
+- Add `createValidator` to `@loomcli/validators`, which builds a validator from a parse function and an optional input schema, the same way every catalog factory is built.

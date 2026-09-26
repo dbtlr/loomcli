@@ -61,11 +61,11 @@ test('a run that fails to build installs no listener and keeps its declaration d
   });
 });
 
-test('a declared default its schema rejects installs no listener and still resolves 1', () => {
+test('a declared default its validator rejects installs no listener and still resolves 1', () => {
   expect(run('default-fault')).toEqual({
     status: 1,
     stderr:
-      'Invalid declaration: Option "level" has an invalid default. Fix the default or its schema.\nOption "level": Supply a level the schema accepts.\n',
+      'Invalid declaration: Option "level" has an invalid default. Fix the default or its validator.\nOption "level": Supply a level the schema accepts.\n',
     stdout: 'before:0:0\nadded:none\nresolved:1\n',
   });
 });

@@ -83,10 +83,10 @@ const threshold = z
   .refine((value) => value >= 0);
 
 // One zod validator per shape the contract names beside an unvalidated argument and a Boolean.
-// The shapes are an enum, a pattern behind a transform, a coerced integer, and a whole-tail array.
+// The shapes are an enum, a pattern behind a transform, a coerced integer, and a per-value tail.
 function zod() {
   const count = new Command('count')
-    .argument('files', { validate: z.array(z.string()), variadic: true })
+    .argument('files', { validate: z.string().min(1), variadic: true })
     .option('metric', { default: 'bytes', type: 'string', validate: enumeration })
     .option('min-bytes', { default: '0', type: 'string', validate: threshold })
     .option('timing', { hidden: true, type: 'boolean' })

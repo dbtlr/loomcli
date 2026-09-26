@@ -385,7 +385,7 @@ test.each([
 test('a declared default on a child Command is validated before any token is parsed', () => {
   expect(invokeGraph('child-invalid-default')).toEqual({
     chunks: [
-      'Invalid declaration: Option "depth" has an invalid default. Fix the default or its schema.\nOption "depth": Use decimal digits.\n',
+      'Invalid declaration: Option "depth" has an invalid default. Fix the default or its validator.\nOption "depth": Use decimal digits.\n',
     ],
     code: 1,
   });

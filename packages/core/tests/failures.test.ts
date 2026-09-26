@@ -160,7 +160,7 @@ test('a shortOnly option is named by the spelling an operator would type', () =>
   });
 });
 
-test('a rejected item in a collection keeps the path its schema reported', () => {
+test('a rejected value in a multiple option is reported at its position', () => {
   expect(reported(['-f', 'x', 'get', 'a', '-F', 'ok', '-F', ''])).toEqual({
     exitCode: 2,
     message: 'Option "--field" at 1: Supply a field name.',
@@ -237,10 +237,10 @@ test('a value that is not an override throws from the Application constructor', 
   });
 });
 
-test('a schema that rejects without an explanation reports the placeholder issue', () => {
+test('a validator that rejects without an explanation reports the placeholder issue', () => {
   expect(failures('empty-issues', ['--tag', 'x'])).toEqual({
     status: 2,
-    stderr: 'issue: The schema rejected this value without an explanation.\n',
+    stderr: 'issue: The validator rejected this value without an explanation.\n',
     stdout: 'resolved:2\n',
   });
 });

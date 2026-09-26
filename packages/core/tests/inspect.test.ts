@@ -572,11 +572,11 @@ test.each([
   ],
   [
     'foreign-schema',
-    'Option "size" validate must be a Standard Schema v1 object. Supply a compatible schema.',
+    'Option "size" validate must be a Standard Schema v1 object. Supply a compatible validator.',
   ],
   [
     'multiple-default',
-    'Option "field" default must be an array of strings without a schema. Supply a string array default.',
+    'Option "field" default must be an array of strings without a validator. Supply a string array default.',
   ],
 ] satisfies [string, string][])(
   'the call that declares the %s input throws before inspect() or run()',
@@ -589,14 +589,14 @@ test.each([
   },
 );
 
-test('inspect() leaves a default that only its schema rejects to run()', () => {
+test('inspect() leaves a default that only its validator rejects to run()', () => {
   expect(invokeInspect('schema-default', 'catch')).toEqual({ caught: false });
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [
     'schema-default',
     'run',
   ]);
   expect(result.stderr).toBe(
-    'Invalid declaration: Option "depth" has an invalid default. Fix the default or its schema.\nOption "depth": Use decimal digits.\n',
+    'Invalid declaration: Option "depth" has an invalid default. Fix the default or its validator.\nOption "depth": Use decimal digits.\n',
   );
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });

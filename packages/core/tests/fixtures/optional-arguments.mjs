@@ -15,7 +15,7 @@ const counting = (inner) => ({
   },
 });
 const report = ({ args, passthrough, out }) => out.print(JSON.stringify({ args, passthrough }));
-const strings = z.array(z.string());
+const string = z.string();
 
 let app = undefined;
 switch (scenario) {
@@ -61,7 +61,7 @@ switch (scenario) {
   }
   case 'tail': {
     app = new Application('optional')
-      .argument('files', { validate: counting(strings), variadic: true })
+      .argument('files', { validate: counting(string), variadic: true })
       .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
     break;
   }
@@ -88,7 +88,7 @@ switch (scenario) {
   }
   case 'tail-invalid-default': {
     app = new Application('optional')
-      .argument('files', { default: ['bad'], validate: z.array(digits), variadic: true })
+      .argument('files', { default: ['bad'], validate: digits, variadic: true })
       .action(report);
     break;
   }

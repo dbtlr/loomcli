@@ -212,7 +212,7 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
   ]);
   expect(result).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--metric": Use bytes, words, or lines.\n',
+    stderr: 'Invalid input: Option "--metric": Expected one of: bytes, words, lines.\n',
     stdout: '',
   });
 });
@@ -404,6 +404,24 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
+});
+
+test("the inspected graph publishes the catalog validators' input schemas", () => {
+  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(inspected.status).toBe(0);
+  const graph: { root: { options: { name: string; schema: unknown }[] } } = JSON.parse(
+    inspected.stdout,
+  );
+  const schemaOf = (name: string) =>
+    graph.root.options.find((entry) => entry.name === name)?.schema;
+  const draft = { $schema: 'https://json-schema.org/draft/2020-12/schema' };
+  expect(schemaOf('metric')).toEqual({
+    ...draft,
+    enum: ['bytes', 'words', 'lines'],
+    type: 'string',
+  });
+  expect(schemaOf('min-bytes')).toEqual({ ...draft, minimum: 0, type: 'integer' });
+  expect(schemaOf('minimum')).toEqual({ ...draft, minimum: 0, type: 'integer' });
 });
 
 test('the inspected graph reports the declared table and the formatter views on the root result', () => {

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0037 - Validators ship in their own package as Standard Schema values
 description: A new package, `@loomcli/validators`, ships a catalog of validator factories and `createValidator`. Each value is an ordinary Standard Schema value that publishes a sound input schema, so an author covers common input shapes without a schema library and core still cannot tell a catalog validator from a Zod schema.
-status: proposed
+status: accepted
 created: 2026-09-25
 modified: 2026-09-25
 ---
@@ -42,8 +42,9 @@ The package joins the release set the way `@loomcli/plugins` did. It lands with 
 
 ## Status
 
-Proposed. It moves to accepted with the implementation of the package, its factories and their soundness tests, and the examples' migration to the catalog.
+Accepted 2026-09-25 with the implementation. `@loomcli/validators` lands with `private: true` and ships the nine factories and `createValidator`. Each factory has a soundness test under a draft 2020-12 validator with format assertion, and textstat and jsonkit use the catalog in place of Zod.
 
 ## Changelog
 
 - 2026-09-25: Proposed with the contract in the validators reference.
+- 2026-09-25: Accepted with the implementation. The `url` protocols pattern leaves `-` unescaped, because `\-` outside a character class is a syntax error under the `u` flag a draft 2020-12 `pattern` is read with. `url` also rejects an absolute URI with an empty path, such as `mailto:`, because the published `format: 'uri'` refuses it and the soundness rule binds.

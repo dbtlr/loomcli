@@ -107,6 +107,8 @@ export default defineConfig({
         files: [
           'packages/plugins/src/manifest/document.ts',
           'packages/plugins/tests/manifest.test.ts',
+          'packages/validators/src/**',
+          'packages/validators/tests/catalog.test.ts',
         ],
         rules: {
           // The manifest document's key order is its wire contract, so its objects keep that order.

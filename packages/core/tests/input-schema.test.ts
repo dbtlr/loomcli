@@ -33,12 +33,17 @@ test('the input side alone is published: a transform behind a pattern reads as t
   });
 });
 
-test('a variadic argument and a coerced global publish the whole tail and the integer bounds', () => {
+test("a variadic argument publishes its validator's schema unchanged and a coerced global its integer bounds", () => {
   const graph = inspect('zod');
   expect(graph.root.children[0].arguments[0]).toMatchObject({
     name: 'files',
-    schema: { ...draft, items: { type: 'string' }, type: 'array' },
     variadic: true,
+  });
+  // Core builds no array schema around the validator's own.
+  expect(graph.root.children[0].arguments[0].schema).toEqual({
+    ...draft,
+    minLength: 1,
+    type: 'string',
   });
   expect(graph.globals[0]).toMatchObject({
     name: 'limit',

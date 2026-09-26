@@ -17,7 +17,7 @@ function shaped(json) {
 /** One string option whose schema is the given JSON Schema. */
 const one = (json, more = {}) => ({ type: 'string', validate: shaped(json), ...more });
 
-/** One multiple string option whose schema is the given JSON Schema. */
+/** One multiple string option whose validator publishes the given JSON Schema for each value. */
 const many = (json) => ({ multiple: true, type: 'string', validate: shaped(json) });
 
 const nine = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
@@ -64,30 +64,10 @@ const shapes = new Command('shapes', { description: 'Every derivation rule.' })
   .option('marked', one({ enum: ['m\uE000n'] }))
   .option('described', one({ enum: ['a', 'b'] }, { description: 'Pick one.' }))
   .option('faceted', one({ enum: ['a', 'b'] }, { default: 'a', description: 'Pick one.' }))
-  .option('many-enum', many({ items: { enum: ['x', 'y'], type: 'string' }, type: 'array' }))
-  .option(
-    'many-counted',
-    many({ items: { const: 'x' }, maxItems: 3, minItems: 1, type: 'array', uniqueItems: true }),
-  )
-  .option(
-    'many-annotated',
-    many({
-      default: [],
-      description: 'd',
-      items: { anyOf: [{ const: 'x' }, { const: 'y' }] },
-      type: 'array',
-    }),
-  )
-  .option(
-    'many-prefix',
-    many({ items: { enum: ['x'] }, prefixItems: [{ const: 'x' }], type: 'array' }),
-  )
-  .option(
-    'many-contains',
-    many({ contains: { const: 'x' }, items: { enum: ['x'] }, type: 'array' }),
-  )
-  .option('many-items-pattern', many({ items: { enum: ['x'], pattern: 'x' }, type: 'array' }))
-  .option('many-items-typed', many({ items: { const: 'x', type: 'string' }, type: 'array' }))
+  .option('many-enum', many({ enum: ['x', 'y'], type: 'string' }))
+  .option('many-annotated', many({ anyOf: [{ const: 'x' }, { const: 'y' }], description: 'd' }))
+  .option('many-pattern', many({ enum: ['x'], pattern: 'x' }))
+  .option('many-array', many({ items: { enum: ['x'] }, type: 'array' }))
   .option(
     'authored-over-enum',
     one({ enum: ['a'] }, { extensions: [helpInput({ accepts: 'Custom words.' })] }),
@@ -131,22 +111,6 @@ const shapes = new Command('shapes', { description: 'Every derivation rule.' })
   .option('sparse-any', one({ anyOf: sparse(2, { 1: { const: 'a' } }) }))
   .option('quoted-controls', one({ enum: ['b\bc', 'd\u007fe', 'f\u009bg'] }))
   .option('quoted-more', one({ enum: ['i\u0085j', 'k\tl', 'm\u00a0n'] }))
-  .option('many-object', many({ items: { enum: ['x'] }, type: 'object' }))
-  .option('many-scalar', many({ enum: ['x'] }))
-  .option('many-items-annotated', many({ items: { default: 'x', enum: ['x'] }, type: 'array' }))
-  .option('many-items-narrow-const', many({ items: { const: 'x', pattern: 'x' }, type: 'array' }))
-  .option(
-    'many-items-any-typed',
-    many({ items: { anyOf: [{ const: 'x' }], type: 'string' }, type: 'array' }),
-  )
-  .option(
-    'many-items-any-annotated',
-    many({ items: { anyOf: [{ const: 'x' }], title: 't' }, type: 'array' }),
-  )
-  .option(
-    'many-items-any-narrow',
-    many({ items: { anyOf: [{ const: 'x' }], minLength: 1 }, type: 'array' }),
-  )
   .action(() => {});
 
 /** Arguments derive from their schema too, and carry an authored sentence through helpArgument. */
@@ -162,7 +126,7 @@ const pick = new Command('pick', { description: 'Pick items.' })
     validate: shaped({ pattern: '^[0-9]+$', type: 'string' }),
   })
   .argument('names', {
-    validate: shaped({ items: { enum: ['x', 'y'] }, type: 'array' }),
+    validate: shaped({ enum: ['x', 'y'] }),
     variadic: true,
   })
   .action(() => {});
@@ -172,12 +136,12 @@ const variadic = (name, json) =>
   new Command(name).argument('values', { validate: shaped(json), variadic: true }).action(() => {});
 
 const variadics = [
-  variadic('v-const', { items: { const: 'x' }, type: 'array' }),
-  variadic('v-any', { items: { anyOf: [{ const: 'x' }, { enum: ['y'] }] }, type: 'array' }),
-  variadic('v-typed', { items: { enum: ['x'], type: 'string' }, type: 'array' }),
-  variadic('v-annotated', { items: { description: 'd', enum: ['x'] }, type: 'array' }),
-  variadic('v-narrow', { items: { enum: ['x'], pattern: 'x' }, type: 'array' }),
-  variadic('v-scalar', { enum: ['x'] }),
+  variadic('v-const', { const: 'x' }),
+  variadic('v-any', { anyOf: [{ const: 'x' }, { enum: ['y'] }] }),
+  variadic('v-typed', { enum: ['x'], type: 'string' }),
+  variadic('v-annotated', { description: 'd', enum: ['x'] }),
+  variadic('v-narrow', { enum: ['x'], pattern: 'x' }),
+  variadic('v-array', { items: { enum: ['x'] }, type: 'array' }),
 ];
 
 const app = variadics.reduce(

@@ -7,6 +7,7 @@ import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
+import { checkFilesOrStdin } from './files-or-stdin.js';
 import { totalRow } from './row.js';
 import type { Row } from './row.js';
 
@@ -24,9 +25,10 @@ interface Source {
 
 /**
  * The sources of one invocation. Supplied files are the whole selection, so no first file is the
- * whole rule for reading stdin. The schema has already ruled out an empty selection at a terminal.
+ * whole rule for reading stdin, once an empty selection at a terminal has been rejected.
  */
 function sources(files: readonly string[], host: Host): Source[] {
+  checkFilesOrStdin(files, host);
   const [named] = files;
   if (named === undefined) {
     return [{ failure: 'stdin', name: 'stdin', open: () => host.stdin }];
