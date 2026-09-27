@@ -35,6 +35,15 @@ type PluginOptionValues<Options extends PluginOptions> = {
   readonly [Name in keyof Options]: OptionValue<Options[Name]>;
 };
 
+/**
+ * The spelling that supplied each of one plugin's own options given as a token, such as `-h`,
+ * `--help`, or `--no-total`. An option filled by an input source, defaulted, or not supplied has
+ * no entry.
+ */
+type PluginOptionSpellings<Options extends PluginOptions> = Readonly<
+  Partial<Record<keyof Options & string, string>>
+>;
+
 /** Phantom key. It carries a plugin's declared options in a read position and holds no value. */
 declare const pluginOptions: unique symbol;
 declare const pluginTheme: unique symbol;
@@ -690,26 +699,40 @@ function collectedValue(collected: readonly string[] | undefined, declared: unkn
   return Array.isArray(declared) ? [...declared] : [];
 }
 
+/** One plugin option's value for one run: what a tier supplied, or the declared default. */
+function pluginValue({ config, name }: OptionInput, values: OptionValues) {
+  const declared: unknown = config.default;
+  if (config.type === 'boolean') {
+    return booleanValue(values, name, config);
+  }
+  if (config.multiple === true) {
+    return collectedValue(values.lists.get(name), declared);
+  }
+  // Build already proved that a string option without a validator declares a string default.
+  return values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
+}
+
 /**
  * One plugin's own option values for one run: what argv or an input source supplied, or the
  * declared default, filled without validation. A collected value and an array default are copied,
  * so a plugin that writes to what it received changes neither the declaration nor the next run.
+ * Entries become own keys even for a name such as `__proto__`, which assignment would not.
  */
 function pluginValues(inputs: readonly OptionInput[], values: OptionValues): PluginValues {
-  const resolved: PluginValues = {};
-  for (const { config, name } of inputs) {
-    const declared: unknown = config.default;
-    if (config.type === 'boolean') {
-      resolved[name] = booleanValue(values, name, config);
-    } else if (config.multiple === true) {
-      resolved[name] = collectedValue(values.lists.get(name), declared);
-    } else {
-      // Build already proved that a string option without a validator declares a string default.
-      resolved[name] =
-        values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
-    }
-  }
-  return resolved;
+  return Object.fromEntries(inputs.map((input) => [input.name, pluginValue(input, values)]));
+}
+
+/** One plugin's own spellings for one run, frozen, so no plugin writes what another reads. */
+function pluginSpellings(
+  inputs: readonly OptionInput[],
+  values: OptionValues,
+): Readonly<Record<string, string>> {
+  // Entries become own keys even for a name such as `__proto__`, which assignment would not.
+  const spelled = inputs.flatMap(({ name }): [string, string][] => {
+    const spelling = values.spellings.get(name);
+    return spelling === undefined ? [] : [[name, spelling]];
+  });
+  return Object.freeze(Object.fromEntries(spelled));
 }
 
 type ThemeOf<Contributor> = [Contributor] extends [never]
@@ -731,6 +754,15 @@ export type {
   Plugin,
   PluginDefinition,
   PluginOptions,
+  PluginOptionSpellings,
   PluginOptionValues,
 };
-export { installPlugins, loadDefault, ownedSignals, plugin, pluginSentence, pluginValues };
+export {
+  installPlugins,
+  loadDefault,
+  ownedSignals,
+  plugin,
+  pluginSentence,
+  pluginSpellings,
+  pluginValues,
+};

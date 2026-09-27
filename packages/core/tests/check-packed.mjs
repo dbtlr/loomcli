@@ -70,6 +70,24 @@ const styledPage = [
   '    \u001b[90mThe line this check compares.\u001b[39m',
   '',
 ].join('\n');
+/** The compact page `-h` prints: the page without the details and EXAMPLES, and a pointer to them. */
+const compactPage = [
+  'greeter · Greet one subject.',
+  '',
+  'USAGE',
+  '  greeter <subject> [options]',
+  '',
+  'ARGUMENTS',
+  '  subject  Who to greet. Any name.',
+  '',
+  'OPTIONS',
+  '  -g, --greeting <word>  The greeting to print.  (default: hello)',
+  '  -h, --help             Show this help.',
+  '  -V, --version          Print the version.',
+  '',
+  'Run greeter --help for details and examples.',
+  '',
+].join('\n');
 const invocations = [
   {
     argv: ['--help'],
@@ -91,6 +109,11 @@ const invocations = [
   // The consumer overrides both declared views the packed plugins publish.
   // Each branded line proves the registry resolved through the installed tarballs.
   { argv: ['--help'], expected: `greeter help\n${page}`, reads: 'the overridden help page' },
+  {
+    argv: ['-h'],
+    expected: `greeter help -h\n${compactPage}`,
+    reads: 'the compact help page, whose variant the core spelling selected',
+  },
   {
     argv: ['--version'],
     expected: 'greeter build\ngreeter v1.0.0\n',
@@ -263,7 +286,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, and the configured word from the named file and the user file.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, and the configured word from the named file and the user file.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

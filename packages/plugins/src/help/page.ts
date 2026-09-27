@@ -16,6 +16,7 @@ import {
 } from './cells.js';
 import type { Row, StringOption } from './cells.js';
 import { helpCommand } from './extension.js';
+import type { HelpPage, HelpVariant } from './views.js';
 
 /**
  * The members one page shows. A member is visible when it is not hidden, and this is the one place
@@ -198,35 +199,64 @@ function examples(graph: CommandGraph, command: CommandNode, context: ViewContex
   return isEmpty(lines) ? [] : [context.style.dim('EXAMPLES'), ...lines];
 }
 
-/** The closing hint, which the page prints when it printed COMMANDS. */
-function hint(path: string, children: readonly CommandNode[], { style }: ViewContext): string[] {
-  return isEmpty(children)
-    ? []
-    : [
-        `${style.dim('Run')} ${style.highlight(style.escape(path))} ${style.dim.italic('<command>')} ${style.highlight('--help')} ${style.dim('for command details.')}`,
-      ];
+/**
+ * The closing hints. The child hint prints when the page printed COMMANDS and spells the variant's
+ * own help option. The pointer prints on the compact page alone, when the extended page of the
+ * same node holds a block the compact page omitted.
+ */
+function hints(
+  {
+    children,
+    omitted,
+    path,
+    variant,
+  }: {
+    children: readonly CommandNode[];
+    omitted: boolean;
+    path: string;
+    variant: HelpVariant;
+  },
+  { style }: ViewContext,
+): string[] {
+  const run = `${style.dim('Run')} ${style.highlight(style.escape(path))}`;
+  const lines: string[] = [];
+  if (!isEmpty(children)) {
+    const spelling = variant === 'compact' ? '-h' : '--help';
+    lines.push(
+      `${run} ${style.dim.italic('<command>')} ${style.highlight(spelling)} ${style.dim('for command details.')}`,
+    );
+  }
+  if (variant === 'compact' && omitted) {
+    lines.push(`${run} ${style.highlight('--help')} ${style.dim('for details and examples.')}`);
+  }
+  return lines;
 }
 
 /**
- * The help page of one routed Command, derived from the graph and nothing else. It is a sequence of
- * blocks separated by one blank line, no block holds a blank line of its own, a block with nothing
- * to show is omitted, and the page carries no line terminator of its own at either end.
+ * The help page of one routed Command, derived from the graph and the variant and nothing else. It
+ * is a sequence of blocks separated by one blank line, no block holds a blank line of its own, a
+ * block with nothing to show is omitted, and the page carries no line terminator of its own at
+ * either end. The compact page omits Details and EXAMPLES.
  */
-function renderPage(graph: CommandGraph, command: CommandNode, context: ViewContext): string {
+function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
-  // They are the children usage form, the COMMANDS section, and the closing hint.
+  // They are the children usage form, the COMMANDS section, and the child hint.
   const children = visible(command.children);
+  const prose = details(command, context);
+  const listed = examples(graph, command, context);
+  const extended = variant === 'extended';
+  const omitted = !extended && !(isEmpty(prose) && isEmpty(listed));
   return [
     masthead(path, command, context),
-    details(command, context),
+    extended ? prose : [],
     usage({ children, command, graph }, context),
     commands(children, context),
     args(command, context),
     options(command, graph, context),
     globalOptions(graph, context),
-    examples(graph, command, context),
-    hint(path, children, context),
+    extended ? listed : [],
+    hints({ children, omitted, path, variant }, context),
   ]
     .filter((block) => !isEmpty(block))
     .map((block) => block.join('\n'))
