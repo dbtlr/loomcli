@@ -38,6 +38,43 @@ function build() {
     case 'equals-child-name': {
       return app.command(child('get=value')).action(dispatch);
     }
+    case 'slash-child-name': {
+      return app.command(child('get/all')).action(dispatch);
+    }
+    case 'dot-child-name': {
+      return app.command(child('.get')).action(dispatch);
+    }
+    case 'wide-child-name': {
+      return app.command(child('界')).action(dispatch);
+    }
+    // Every portable character in one name, with `.` and `-` after the first character.
+    case 'portable-child-name': {
+      return app.command(child('_Get.v2-all')).action(dispatch);
+    }
+    case 'space-application-name': {
+      return new Application('bad name').action(dispatch);
+    }
+    case 'newline-application-name': {
+      return new Application('a\nb').action(dispatch);
+    }
+    case 'empty-application-name': {
+      return new Application('').action(dispatch);
+    }
+    case 'hyphen-application-name': {
+      return new Application('-app').action(dispatch);
+    }
+    case 'dot-application-name': {
+      return new Application('.app').action(dispatch);
+    }
+    case 'slash-application-name': {
+      return new Application('bin/app').action(dispatch);
+    }
+    case 'nonstring-application-name': {
+      return new Application(7).action(dispatch);
+    }
+    case 'portable-application-name': {
+      return new Application('_App.v2-x').command(child('get')).action(dispatch);
+    }
     case 'empty-argument-name': {
       return app.argument('', { required: true }).action(dispatch);
     }

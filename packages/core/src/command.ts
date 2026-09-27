@@ -255,16 +255,30 @@ function checkCommandOptions(name: string, options: unknown): void {
   }
 }
 
-/** One name rule for every declared name in the graph, so a child and an argument read alike. */
+/** One name rule for an argument, option, or view name: a bare token the parser can read. */
 function isDeclaredName(name: unknown): name is string {
   return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
-/** An alias is a bare token the way a child name is, so it answers to the same name rule. */
+/**
+ * The portable name rule, for every name an operator types as a command at a shell prompt: the
+ * application name, every Command name, and every alias. The characters are the POSIX portable
+ * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
+ * shell hides.
+ */
+export function isPortableName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
+}
+
+/** The one correction every portable name diagnostic ends with. */
+export const portableNameCorrection =
+  'Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".';
+
+/** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
 function checkAliasName(command: string | null, alias: unknown): void {
-  if (!isDeclaredName(alias)) {
+  if (!isPortableName(alias)) {
     throw new DeclarationError(
-      `${commandSentence(command)} declares an alias named "${String(alias)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `${commandSentence(command)} declares an alias named "${String(alias)}". ${portableNameCorrection}`,
     );
   }
 }
@@ -360,9 +374,9 @@ function namedState<Globals>(
   name: unknown,
   options: unknown,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
-  if (!isDeclaredName(name)) {
+  if (!isPortableName(name)) {
     throw new DeclarationError(
-      `Command name "${String(name)}" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `Command name "${String(name)}" is invalid. ${portableNameCorrection}`,
     );
   }
   checkCommandOptions(name, options);

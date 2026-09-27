@@ -266,19 +266,59 @@ test.each([
   ],
   [
     'invalid-child-name',
-    'Command name "bad name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "bad name" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'empty-child-name',
-    'Command name "" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'hyphen-child-name',
-    'Command name "-get" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "-get" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'equals-child-name',
-    'Command name "get=value" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "get=value" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'slash-child-name',
+    'Command name "get/all" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'dot-child-name',
+    'Command name ".get" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'wide-child-name',
+    'Command name "界" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'space-application-name',
+    'Application name "bad name" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'newline-application-name',
+    'Application name "a\nb" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'empty-application-name',
+    'Application name "" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'hyphen-application-name',
+    'Application name "-app" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'dot-application-name',
+    'Application name ".app" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'slash-application-name',
+    'Application name "bin/app" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'nonstring-application-name',
+    'Application name "7" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'empty-argument-name',
@@ -364,7 +404,7 @@ test.each([
   ],
   [
     'late-child-invalid-name',
-    'Command name "-get" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "-get" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'late-child-foreign',
@@ -377,6 +417,20 @@ test.each([
       status: 0,
       stderr: '',
       stdout: `thrown:1: ${reason}\n`,
+    });
+  },
+);
+
+test.each([
+  ['portable-child-name', ['_Get.v2-all']],
+  ['portable-application-name', ['get']],
+] satisfies [string, string[]][])(
+  'a name of portable filename characters is accepted in the %s graph',
+  (scenario, argv) => {
+    expect(invoke(new URL('fixtures/graph.mjs', import.meta.url), [scenario, ...argv])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'dispatched\n{"chunks":[],"code":0}\n',
     });
   },
 );

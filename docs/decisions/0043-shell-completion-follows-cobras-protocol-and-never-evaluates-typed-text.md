@@ -48,3 +48,4 @@ Proposed with the shell completion contract. It moves to accepted when the compl
 ## Changelog
 
 - 2026-09-26: Proposed with the shell completion contract.
+- 2026-09-27: The application name, every Command name, and every alias are portable names, which `new Application()`, `new Command()`, and `alias()` enforce, so the Zsh `#compdef` comment always carries the name and the conditional this record and the contract stated is retired. The quoting, the identifier encoding, and the sentinel tests stay as defense in depth.

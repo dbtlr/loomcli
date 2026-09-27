@@ -105,7 +105,7 @@ test.each([
   ],
   [
     'invalid-nested-child-name',
-    'Command name "bad name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "bad name" is invalid. Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   [
     'late-nested-child',
@@ -134,7 +134,19 @@ test.each([
   ['repeated-alias', 'Command "keys" declares alias "ls" twice. Remove the repeated alias.'],
   [
     'invalid-alias-name',
-    'Command "keys" declares an alias named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command "keys" declares an alias named "bad name". Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'dot-alias-name',
+    'Command "keys" declares an alias named ".ls". Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'slash-alias-name',
+    'Command "keys" declares an alias named "ls/all". Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
+  ],
+  [
+    'nonstring-alias-name',
+    'Command "keys" declares an alias named "7". Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".',
   ],
   ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
   [
@@ -161,6 +173,15 @@ test.each([
     ).toEqual({ status: 0, stderr: '', stdout: `thrown:1: ${reason}\n` });
   },
 );
+
+test('an alias of portable filename characters routes to its Command', () => {
+  expect(
+    invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [
+      'portable-alias-name',
+      '_Ls.v2-all',
+    ]),
+  ).toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
+});
 
 // The root is never attached, so build is the first point at which a root group is final.
 test('a root group that declares a local option is rejected at build', () => {
