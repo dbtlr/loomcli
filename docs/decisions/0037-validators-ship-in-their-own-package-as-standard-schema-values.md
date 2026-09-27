@@ -48,3 +48,4 @@ Accepted 2026-09-25 with the implementation. `@loomcli/validators` lands with `p
 
 - 2026-09-25: Proposed with the contract in the validators reference.
 - 2026-09-25: Accepted with the implementation. The `url` protocols pattern leaves `-` unescaped, because `\-` outside a character class is a syntax error under the `u` flag a draft 2020-12 `pattern` is read with. `url` also rejects an absolute URI with an empty path, such as `mailto:`, because the published `format: 'uri'` refuses it and the soundness rule binds.
+- 2026-09-25: The maintainer published the `0.0.0` placeholder and bound the trusted publisher. An ordinary pull request removes `private` at 0.4.0 and merges immediately before the 0.5.0 cut, as `@loomcli/plugins` did before 0.2.0. The release run on that merge fails its plan, because 0.4.0 is absent from the registry for the new library and its files changed after the 0.4.0 cut commit; nothing is published, and the cut's run publishes the library.
