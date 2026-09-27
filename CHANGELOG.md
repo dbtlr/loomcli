@@ -6,6 +6,219 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.5.0 - 2026-09-27
+
+0.5.0 is the operator ergonomics release. An option now takes its value from argv, an environment variable, a configuration file, or its default, in that order, through one core input-source stage; the configuration plugin reads layered JSON files; a plugin can attach ordinary Commands to the root; `-h` prints compact help and `--help` the extended page; and the completion plugin prints Bash, Zsh, and Fish scripts that complete Command names, option spellings, and closed-set values without ever evaluating typed text. `@loomcli/validators` joins the release set as a catalog of Standard Schema validators.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, and `@loomcli/validators` to `0.5.0`. The four migrations below share one idea: a rule is checked at the earliest point that knows it, once, in one place. A declaration fault throws at the call, the attach, or the build that first sees it rather than at the first run; each value of a multiple option or variadic argument passes the same validator instead of the list passing once; a global option declares no presence rule, so a Command that needs its value checks for it; and application, Command, and alias names hold to the portable filename set.
+
+### Breaking Changes
+
+- Change when a declaration fault throws. Every authoring call, both constructors, `plugin()`, and every `command()` attach throw `DeclarationError` the moment their data is known to be bad, so a JavaScript author's invalid declaration throws when its module evaluates, with a stack at the offending line, instead of being reported by `run()` or `inspect()`. Only the root's finished-Command rules and lifecycle hook faults still surface from `run()` or `inspect()`, and a default its schema rejects surfaces from `run()` alone. Diagnostics keep their text, except that an invalid Command name now reads `Command name "bad name" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".` from `new Command()`. See [Declaration faults](docs/core.md#declaration-faults).
+- Change the Command graph to nest at most two levels below the root. `command()` on a named Command rejects a child that has children of its own: `Command "cache" attaches child "clear", which has children of its own. Nest Commands at most two levels below the root.` See [Nested Commands and groups](docs/core.md#nested-commands-and-groups).
+
+### Migration
+
+**Affected surface.** JavaScript authors, and TypeScript authors who pass values through `any`, whose declarations hold a fault; code that caught a declaration fault from `run()` or `inspect()`; and any application whose Command paths nest three or more levels below the root.
+
+**Why.** A fault known at the call now throws where the author made it, rather than from a stack inside core during a run. A bounded depth keeps every Command path discoverable and every attach check local.
+
+**Before and after.**
+
+The throw at the call. Before, a fault surfaced from `run()` as a diagnostic with exit code 1:
+
+```js
+const list = new Command('list').option('verbose', { multiple: true, type: 'boolean' });
+const code = await new Application('app').command(list).run(); // Invalid declaration: ..., code 1
+```
+
+After, the `option()` call throws `DeclarationError` when the module evaluates, so fix the declaration itself:
+
+```js
+const list = new Command('list').option('verbose', { type: 'boolean' });
+const code = await new Application('app').command(list).run();
+```
+
+The nesting cap. Before, a three-level path such as `app store cache clear` was accepted:
+
+```js
+const cache = new Command('cache').command(clear);
+const app = new Application('app').command(new Command('store').command(cache));
+```
+
+After, `command()` on `store` throws, so attach the group one level higher and route it as `app cache clear`:
+
+```js
+const cache = new Command('cache').command(clear);
+const app = new Application('app').command(cache);
+```
+
+**Steps.**
+
+1. Fix each declaration fault the application's modules now throw at import.
+2. Move any `try`/`catch` that expected a declaration fault from `run()` or `inspect()` to the call that makes the declaration.
+3. Attach each group that sits below a named Command to a shallower parent, or flatten its children into it.
+
+**Validation.** Import each module that builds the application and run its test command; no `DeclarationError` should throw, and `inspect()` should list every Command path at most two levels below the root.
+
+- Change `validate` on a multiple option or a variadic argument to name the validator for one value. Core runs it once for each value in order, and the action receives the array of outputs. An issue reads at its value's position, as `Option "--field" at 1: Expected a nonempty value.`
+- Change an omitted multiple option or variadic argument to call no validator. The action receives `[]`, and `required: true` remains the rule for at least one value.
+- Change a validated default of a multiple option or a variadic argument to an array of the validator's input type. Each default value passes through the validator, and a rejected one names its position. A default that is not an array throws `Option "field" default must be an array. Supply an array of values.` from the declaring call.
+- Change the input schema of a multiple option or a variadic argument to the validator's own schema, unchanged. Help reads its accepted values from the top of that schema instead of under `items`, and the manifest's `tokens` note says each token of such an input satisfies the schema alone.
+- Change input diagnostics to say "validator" where they said "schema", such as `default must be an array of strings without a validator.`
+
+### Migration
+
+**Affected surface.** A multiple option or a variadic argument that declares `validate` with a validator of the whole array, such as `z.array(...)`, a rule over the list, or a transform of the list. A manifest or help reader that looks for accepted values under `items`. Code that matches the text of the reworded diagnostics.
+
+**Why.** A validator now means the same thing wherever it is declared, so a validator such as `integer()` works on a single option and on a multiple one. See [ADR-0036](docs/decisions/0036-each-value-passes-the-same-validator.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+.option('field', {
+  multiple: true,
+  type: 'string',
+  validate: z.array(z.string().min(1)).max(3, 'Supply at most three fields.'),
+})
+```
+
+After:
+
+```ts
+.option('field', { multiple: true, type: 'string', validate: z.string().min(1) })
+.action(({ options }) => {
+  if (options.field.length > 3) {
+    throw new InputError('Option "--field": Supply at most three fields.', [
+      {
+        input: { global: false, kind: 'option', name: 'field' },
+        issues: [{ message: 'Supply at most three fields.' }],
+        reason: 'invalid',
+        spelling: '--field',
+      },
+    ]);
+  }
+  // ...
+});
+```
+
+**Steps.**
+
+1. Replace each `z.array(value)` validator on a multiple option or a variadic argument with `value`.
+2. Move any rule over the whole list, such as a count, uniqueness, or a rule for an empty list, into the action. Throw `InputError` from the action to keep exit code 2.
+3. Move any transform of the whole list into the action, which now receives the array of each value's output.
+4. Write a validated default of a multiple option or a variadic argument as an array of raw values, such as `default: ['a']` in place of `default: 'a'`.
+5. Read the accepted values of a multiple option or a variadic argument from the top of its input schema, beside the node's `multiple` or `variadic` flag.
+
+**Validation.** Run the application's type check: TypeScript rejects a validator on a multiple option or a variadic argument whose input does not accept one `string`. Run the application's tests for each migrated input with no values, one value, and a rejected value.
+
+- Remove presence rules from global options. `Application.globalOption()` rejects `required` and `validateOmitted`, whatever their value: TypeScript reports a compile error, and the call throws a `DeclarationError` for a JavaScript caller. An omitted global option is `undefined`, its default, or `[]`, so a Command that reads no such value, a plugin Command included, runs without it. See [ADR-0044](docs/decisions/0044-a-global-option-declares-no-presence-rule.md).
+
+### Migration
+
+**Affected surface.** Applications that pass `required` or `validateOmitted` to `Application.globalOption()`.
+
+**Why.** A global option's validation runs on every Command, so a rule that the value must be supplied failed Commands that never read it, such as a plugin's `doctor` or shell completion Command.
+
+**Before and after.**
+
+Before:
+
+```ts
+const configured = new Application('jsonkit').globalOption('file', {
+  required: true,
+  type: 'string',
+});
+
+export const getValue: ActionHandler<typeof get> = async ({ options, out }) =>
+  out.print(options.file);
+```
+
+After, the global is optional and each action that needs the value checks for it:
+
+```ts
+const configured = new Application('jsonkit').globalOption('file', { type: 'string' });
+
+export const getValue: ActionHandler<typeof get> = async ({ options, out }) => {
+  if (options.file === undefined) {
+    throw new InputError('Option "--file": Supply a file.', [
+      {
+        input: { global: true, kind: 'option', name: 'file' },
+        issues: [{ message: 'Supply a file.' }],
+        reason: 'invalid',
+        spelling: '--file',
+      },
+    ]);
+  }
+  return out.print(options.file);
+};
+```
+
+**Steps.**
+
+1. Remove `required` and `validateOmitted` from every `globalOption()` call.
+2. Where the omission rule lived in a validator under `validateOmitted`, remove that validator or keep only the part that checks a supplied value.
+3. In each action that needs the value, check for `undefined` and throw an `InputError`, or declare a default when one value fits every Command.
+4. Update the type of each read from `string` to `string | undefined` where no default was added.
+
+**Validation.** Run the application's type check; any remaining `required` or `validateOmitted` on a global is a compile error. Run each Command that does not read the global with the global omitted, and confirm it exits 0. Run each Command that does read it with the global omitted, and confirm it reports the input error with exit code 2.
+
+- Change the rule for the application name, every Command name, and every alias to the portable name: `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, not starting with `-` or `.`. `new Application()`, `new Command()`, and `alias()` throw a `DeclarationError` for any other name: `Application name "bad name" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".`, and the Command and alias diagnostics end with the same correction. Argument, option, and view names keep the declared-name rule: nonempty, not starting with `-`, and without whitespace or `=`. See [Application declarations](docs/core.md#application-declarations) and [Command declaration errors](docs/core.md#command-declaration-errors).
+
+### Migration
+
+**Affected surface.** Applications whose application name, Command name, or alias holds a character outside `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, or starts with `.`, such as a name with a slash, a colon, or a non-ASCII letter. The application name was never checked before, so an empty name or one with whitespace, a line terminator, or a leading hyphen was accepted too, and Command names and aliases rejected only an empty name, whitespace, `=`, and a leading hyphen. Code that matches the text of the Command name or alias diagnostic.
+
+**Why.** Each of these names is typed as a command at a shell prompt, and shell completion writes the application name into a script. One rule shared by all three keeps every name typeable and every script safe without a per-shell escape.
+
+**Before and after.**
+
+Before:
+
+```ts
+const app = new Application('my tool').command(new Command('get/all').alias('ls:all').action(run));
+```
+
+After:
+
+```ts
+const app = new Application('my-tool').command(new Command('get-all').alias('ls-all').action(run));
+```
+
+**Steps.**
+
+1. Rename each application name, Command name, and alias that holds a character outside the portable set or starts with `.`, and each application name that is empty or starts with `-`.
+2. Update any test or code that matches the old Command name or alias diagnostic text.
+
+**Validation.** Import the application's modules; a name outside the rule throws when its module evaluates. Run the application's own test command.
+
+### Changes
+
+- Add environment bindings. A local, global, or plugin option that is not `multiple` accepts `env`, the variable that supplies the option when argv does not. A filled value is supplied in every sense: it satisfies `required`, reaches the schema and the validation context's `supplied` record as the raw value, activates a plugin's middleware, and reads to the action exactly as the flag would. An empty variable is unset. A Boolean variable reads `true`, `1`, `false`, or `0`, case-insensitive, and any other value fails with `Option "--verbose" (from VERBOSE): Use true, false, 1, or 0.` A failure on a filled value names its source in parentheses after the option. See [Input sources](docs/core.md#input-sources).
+- Add configuration sources. A plugin definition may declare `source: { binding, load }`, and core loads it lazily and calls it once, with the host, the plugin's own option values, the `OptionNode` of every in-scope option that argv and the environment left unfilled, that holds no environment fault, and that carries the binding, the graph `inspect()` returns, and the `out` and `style` a middleware and an action read. Its answers fill after argv and the environment and before the declared default. A resolver that throws an `InputError` reports it as a usage failure with code 2, held like a validation fault in place of every collected problem; every other throw is a plugin fault with code 1, and its `out.results()` call is a `ResultError` of the kind `source`. Core exports `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`. An application installs at most one source.
+- Add `env` to every `OptionNode` that `inspect()` returns and to every option entry of the manifest: the bound variable, or `null`.
+- Bind textstat's `--min-bytes` to `TEXTSTAT_MIN_BYTES` and `--total` to `TEXTSTAT_TOTAL`.
+
+- Add plugin Commands. A plugin definition may declare `commands`, a list of Command values that core attaches to the root, in installation and list order and ahead of the application's own Commands. A plugin Command is an ordinary Command: it routes, validates, runs, and appears in help, `inspect()`, and the manifest like any other, and a name or alias that repeats another root child's fails the build. An application whose root declares arguments cannot install a plugin that brings Commands. See [Plugin Commands](docs/core.md#plugin-commands).
+
+- Add `@loomcli/validators`, a catalog of validators for common input shapes without a schema library: `text`, `integer`, `number`, `port`, `oneOf`, `url`, `uuid`, `date`, and `path`. Each factory returns a Standard Schema value that publishes a sound input schema, so help prints `One of: ...` for a `oneOf` input with no authored line. See the [validators reference](docs/validators.md).
+- Add `createValidator` to `@loomcli/validators`, which builds a validator from a parse function and an optional input schema, the same way every catalog factory is built.
+
+- Add the configuration plugin, `config()` at `@loomcli/plugins/config`, with its binding `configInput({ path })` at `@loomcli/plugins/config/extension`. An option that carries the binding reads a dotted path from JSON files: a user file derived from the application name, `$XDG_CONFIG_HOME/<name>/config.json`, `$HOME/.config/<name>/config.json`, or `%APPDATA%\<name>\config.json` on Windows, and the project files `config({ files })` lists, most specific first. Files answer key by key, the first listed winning and the user file last. `--config <path>` reads that file alone. A discovered file that is missing is silent, and one that cannot be read, is not JSON, or is not an object warns once and is skipped, while the named file and a value the option cannot take fail the run with code 2. A string option takes a JSON string or number, a Boolean option a JSON Boolean, and a multiple option an array of strings or numbers. See [Configuration](docs/core.md#configuration).
+- Install the configuration plugin in textstat with `.textstat.json` as its project file, and bind `--min-bytes` to `minBytes` and `--total` to `total`.
+
+- Change `-h` to print a compact help page: the extended page without the details and EXAMPLES blocks, with the child hint spelled `-h` and a closing `Run <path> --help for details and examples.` when the extended page holds either block. `--help` prints the page it printed before. `HelpPage` gains `variant`, typed by the exported `HelpVariant` at `@loomcli/plugins/help/views`, so a `helpPage` override can print a page per variant. See [Help variants](docs/core.md#help-variants).
+- Add `spellings` to the middleware context, typed by the exported `PluginOptionSpellings`: the spelling that supplied each of the plugin's own options given as a token, such as `-h`, `--help`, or `--no-total`. An option filled by an input source or left to its default has no entry. See [Middleware](docs/core.md#middleware).
+
+- Add `locate(graph, words)` and the `WordPosition` type. `locate` reads the words of an unfinished invocation against a graph `inspect()` returned, with the parser's own grammar, and reports where the last word sits: a Command name, an option spelling, an option's value, an argument, the passthrough tail, or nowhere. It runs no validator, input source, or middleware, and it throws nothing for any list of strings. See [Locating a word](docs/core.md#locating-a-word).
+- Add `graph` and `command` to the action context. Every action, an application's or a plugin Command's, reads the frozen graph `inspect()` returns for the run and the routed node inside it, the same two values the run's middleware receive. See [Invocation](docs/core.md#invocation).
+- Add the completion plugin, `completion()` from `@loomcli/plugins/completion`. It attaches a `completion` Command whose `bash`, `zsh`, and `fish` children print a script the operator's shell sources. On each Tab the script calls the application with the typed words and inserts the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. The scripts are ported from Cobra and never evaluate typed text. See [Completion](docs/core.md#completion).
+- Change the `@loomcli/plugins` license field to `MIT AND Apache-2.0`. The three completion script modules ported from Cobra stay under Apache-2.0, with Cobra's notice and license text shipped in the package; every other file stays MIT. An application that installs the package takes on no license obligation beyond keeping those notices with the files.
+
+- Add the MIT license text to every published package. `@loomcli/core`, `@loomcli/plugins`, and `@loomcli/validators` each ship a `LICENSE` file holding the MIT terms their manifests declare, and the repository root carries the same file.
+
 ## v0.4.0 - 2026-09-25
 
 0.4.0 adds the manifest: `--manifest` prints the routed Command's slice of the command graph as JSON, so an agent can build a correct invocation before it runs one. Every validated input publishes its JSON Schema as a graph fact, help rows state the values an input accepts, and collecting extensions let help and any other plugin supply prose to the manifest without the manifest knowing them.
