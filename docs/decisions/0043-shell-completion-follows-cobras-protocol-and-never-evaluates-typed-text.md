@@ -21,7 +21,7 @@ Loom's earlier design required a Loom-specific bridge that was lossless for newl
 - **Cobra's scripts, ported.** The Bash, Zsh, and Fish scripts are ported from Cobra, with Cobra's Apache-2.0 notice kept and the changes stated.
 - **No evaluation.** Every `eval` is removed, and so is every construct that expands an operand, such as Bash's `compgen -W`, through which Cobra's Bash script filters words without descriptions. A script filters offered words by string comparison. A script calls the program with an argument array, so a typed word reaches the application as text and pressing Tab never runs it. Quoting is removed without evaluation, and no expansion is performed, so `~`, `$HOME`, and `$(…)` reach the application as the characters typed. The script offers nothing when it cannot read the word under the cursor without evaluating it.
 - **Exact or omitted.** An offered word that holds a newline, a tab, or another control character is left out rather than cut, so completion never inserts a value other than the one the graph holds. This replaces the earlier corpus's lossless-framing requirement.
-- **The name as data.** The application name enters a script only as a single-quoted string in its shell's own quoting rules, which differ in Fish, as a function identifier with every character outside `A-Z`, `a-z`, `0-9`, and `_` mapped to `_`, and in a comment only when it is a portable file name. Any name therefore yields a safe script.
+- **The name as data.** The application name enters a script only as a single-quoted string in its shell's own quoting rules, which differ in Fish, as a function identifier that encodes every character outside `A-Z`, `a-z`, and `0-9` by its code point, so two names never share one identifier, and in a comment only when it is a portable file name. Any name therefore yields a safe script.
 - **What is offered.** Canonical Command names, option spellings, and the values of a closed set in an input's schema. An alias is never offered and never rewritten, because an alias is unadvertised and resolving it is the router's job. A hidden or deprecated Command or option is never offered, and one typed in full still routes.
 - **Print only.** The plugin prints scripts. Installing and uninstalling them, and PowerShell, are out of scope.
 
@@ -36,6 +36,8 @@ Loom's earlier design required a Loom-specific bridge that was lossless for newl
 ## Consequences
 
 The conformance tests drive the printed scripts in real Bash, Zsh, and Fish shells and hold command-injection sentinels in offered values, in typed words, and in an application name. They pin the removed `eval`, so a later sync from Cobra cannot bring it back without a failing test.
+
+This record supersedes the clause of [ADR-0002](0002-command-graph-is-a-tree-with-hidden-aliases.md) that a completion consumer reads aliases, which ADR-0002 carries as a dated entry. No projection reads `aliases` now.
 
 A word the shell cannot represent is not offered, and a value holding a line break is not completable. Expansions in earlier words are not performed, so a path written with `~` reaches the application unexpanded; completion reads it as structure alone, and the shell completes paths itself under directive `0`.
 
