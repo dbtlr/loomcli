@@ -8,10 +8,15 @@
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "type": "module",
   "exports": {
+    "./completion": {
+      "types": "./dist/src/completion/plugin.d.ts",
+      "import": "./dist/src/completion/plugin.js"
+    },
     "./config": {
       "types": "./dist/src/config/plugin.d.ts",
       "import": "./dist/src/config/plugin.js"

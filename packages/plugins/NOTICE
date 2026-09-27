@@ -1,0 +1,52 @@
+@loomcli/plugins
+
+This package includes software from Cobra.
+
+Cobra
+Copyright 2013-2023 The Cobra Authors
+Licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+Source: https://github.com/spf13/cobra at commit adbc8813901bba65827259daa8e22ff94ec1f30e
+
+The Bash, Zsh, and Fish completion scripts the completion plugin prints, in
+dist/src/completion/bash.js, zsh.js, and fish.js, are ported from these Cobra files:
+
+- bash_completionsV2.go
+- zsh_completions.go
+- fish_completions.go
+
+Changes made to the Cobra scripts:
+
+- Every eval is removed. The program is called with an argument array, so a
+  typed word reaches it as its characters and pressing Tab never runs it.
+- Every construct that expands an operand is removed, Bash's compgen -W
+  included. Offered words are filtered by string comparison.
+- Quoting is removed without evaluation or expansion: by a string-only decoder
+  in the Bash script, written for Bash 3.2, by the (Q) flag in Zsh, and by
+  Fish's own tokenizer (commandline -opc and commandline -oct). When the word
+  under the cursor holds an unclosed quote, the script offers nothing and does
+  not call the program.
+- The request carries every word before the cursor and the word under it, cut
+  at the cursor, so no empty word is appended afterward.
+- A nonzero exit, or an answer whose last line is not ":" followed by decimal
+  digits, offers nothing. An error directive offers nothing, file names
+  included.
+- ActiveHelp handling is removed, including the ActiveHelp environment variable
+  on the Fish request.
+- The application name enters a script only as data: as a single-quoted string
+  in the shell's own quoting, as the suffix of function identifiers in which
+  every character outside A-Z, a-z, and 0-9 is encoded by its code point, and
+  in the Zsh #compdef line as it is.
+- Offered values already carry the option's lead, such as --format=, so no
+  script adds a flag prefix, and the Bash script no longer trims the current
+  word after "=".
+- Bash without the bash-completion package builds its words from COMP_WORDS the
+  way _get_comp_words_by_ref -n =: does, and honors directives 8 and 16 with
+  compgen -f and compgen -d and a string comparison of file extensions. The
+  extension list is quoted when it is passed to _filedir.
+- Zsh no longer splits words with ${=...}, passes _describe its arguments as an
+  array, calls _files directly rather than through an _arguments action
+  string, and quotes each file extension as a pattern with the (b) flag.
+- Fish filters by prefix with a string comparison, keeps trailing empty lines
+  in the answer, and offers nothing rather than file names after an error.
+- Directive numbers are written as literals, and comments are adjusted.
