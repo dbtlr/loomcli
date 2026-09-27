@@ -4,7 +4,7 @@ title: ADR-0030 - An input carries its JSON Schema as a core graph fact, derived
 description: Graph build asks a validated input's Standard Schema for its input-side JSON Schema through the standard's converter and stores the plain result on the option or argument node, so the manifest, help, completion, and any later projection read one shape fact with no plugin installed. A result carries no schema.
 status: proposed
 created: 2026-09-18
-modified: 2026-09-25
+modified: 2026-09-26
 ---
 
 # ADR-0030 - An input carries its JSON Schema as a core graph fact, derived through the Standard JSON Schema channel
@@ -45,3 +45,4 @@ Proposed. It moves to accepted with the contract in `docs/core.md` and the imple
 - 2026-09-24: [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md), proposed, keeps this record's principle that nothing depends on the manifest and states its meaning: no projection, plugin, or core path reads a fact from the manifest. A plugin may still supply its own facts to the manifest through the manifest's collecting extension, and those facts stay on the graph for every other projection.
 - 2026-09-24: The help accepted-values contract in [Accepted values](../core.md#accepted-values) widens the help change this record's Consequences describe from a flat enum of strings to any closed set of strings the schema publishes, an `enum`, a `const`, or an `anyOf` of them, at the top level or under `items`, up to eight values, with an authored `accepts` line taking precedence.
 - 2026-09-25: [ADR-0036](0036-each-value-passes-the-same-validator.md), proposed, makes the validator of a multiple option or a variadic argument check one value. Its input schema is then the validator's own, unchanged, rather than a schema of the whole `string[]`, and the node's `multiple` or `variadic` flag says the input takes several values. Core still writes nothing into the fact. It binds when that record is accepted.
+- 2026-09-26: The shell completion contract in [Completion](../core.md#completion), written for [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md), reads the same closed sets through one shared derivation with no size bound. The eight-value limit in the entry above bounds what help lists, not what the schema derives, so completion offers every value of a larger set. It binds when that record is accepted.
