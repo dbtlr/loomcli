@@ -4,7 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ExtensionValue } from './extension.js';
-import type { ResultNode } from './inspect.js';
+import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
@@ -498,10 +498,16 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
             : undefined)
   : boolean;
 
+/**
+ * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
+ * `command` is the routed node inside it: the same two values the run's middleware receive.
+ */
 export interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly style: ContextualStyle;
   args: Args;
   options: Options;
+  readonly graph: CommandGraph;
+  readonly command: CommandNode;
   passthrough: string[];
   out: Out<Result>;
   host: Host;

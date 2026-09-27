@@ -306,15 +306,20 @@ function optionNodes(inputs: readonly InputDeclaration[], read: OptionScope) {
  */
 function commandNode(
   command: BuiltCommand,
-  place: { description?: string | undefined; path: readonly string[]; records: ExtensionRecords },
+  place: {
+    description?: string | undefined;
+    nodes: WeakMap<BuiltCommand, CommandNode>;
+    path: readonly string[];
+    records: ExtensionRecords;
+  },
 ): CommandNode {
-  const { path, records } = place;
+  const { nodes, path, records } = place;
   const node: CommandNode = {
     aliases: Object.freeze([...command.aliases]),
     arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot, records))),
     children: Object.freeze(
       [...command.children].map(([name, child]) =>
-        commandNode(child, { path: Object.freeze([...path, name]), records }),
+        commandNode(child, { nodes, path: Object.freeze([...path, name]), records }),
       ),
     ),
     deprecated: command.deprecated,
@@ -329,7 +334,9 @@ function commandNode(
     path,
     result: resultNode(command.result),
   };
-  return Object.freeze(node);
+  const frozen = Object.freeze(node);
+  nodes.set(command, frozen);
+  return frozen;
 }
 
 /** The declared result as plain data, or `null` on a Command that declares none. */
@@ -356,6 +363,7 @@ function inspectGraph(
 ): CommandGraph {
   const records = graph.extensions;
   const table = graph.globals.options;
+  const nodes = new WeakMap<BuiltCommand, CommandNode>();
   const inspected: CommandGraph = {
     description: facts.description,
     globals: Object.freeze([
@@ -367,12 +375,43 @@ function inspectGraph(
     name,
     root: commandNode(graph.root, {
       description: facts.description,
+      nodes,
       path: Object.freeze([]),
       records,
     }),
     version: facts.version,
   };
-  return Object.freeze(inspected);
+  const frozen = Object.freeze(inspected);
+  links.set(frozen, { graph, nodes });
+  return frozen;
+}
+
+/**
+ * The built graph behind one rendered graph, and each built Command's own node in it. The parser
+ * reads the built tables, so a reader of the rendered graph that must parse as the parser does
+ * reaches them here.
+ */
+interface GraphLink {
+  graph: BuiltGraph;
+  nodes: WeakMap<BuiltCommand, CommandNode>;
+}
+
+/** Every graph core rendered, keyed by the frozen object a caller holds. */
+const links = new WeakMap<CommandGraph, GraphLink>();
+
+/**
+ * The link of one rendered graph. A graph core did not render has none, which is a caller's
+ * programming error rather than an invocation fault.
+ */
+function linkOf(graph: CommandGraph): GraphLink {
+  const link = links.get(graph);
+  if (!link) {
+    throw new InternalError(
+      'The graph was not produced by inspect(). Pass the graph inspect() returned.',
+      undefined,
+    );
+  }
+  return link;
 }
 
 /**
@@ -396,4 +435,4 @@ function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
 }
 
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
-export { inspectGraph, nodeAt, resultNode };
+export { inspectGraph, linkOf, nodeAt, resultNode };

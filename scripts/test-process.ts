@@ -13,7 +13,7 @@ const exampleBindings = ['TEXTSTAT_', 'JSONKIT_'];
  * A binding set in the developer's shell would otherwise fill an option the test never set.
  * The test's own variables and the capture marker apply on top.
  */
-function childEnvironment(env: Record<string, string | undefined> | undefined) {
+export function childEnvironment(env: Record<string, string | undefined> | undefined) {
   const inherited = Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) => !exampleBindings.some((prefix) => name.startsWith(prefix)),

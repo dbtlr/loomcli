@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0043 - Shell completion follows Cobra's protocol and never evaluates typed text
 description: The completion plugin prints Bash, Zsh, and Fish scripts ported from Cobra, and a hidden __complete Command answers them in Cobra's line protocol. Every eval is removed, so pressing Tab never runs typed text; an offered word is exact or omitted; the application name enters a script as data; and aliases, hidden members, and deprecated members are never offered.
-status: proposed
+status: accepted
 created: 2026-09-26
 modified: 2026-09-27
 ---
@@ -43,9 +43,18 @@ A word the shell cannot represent is not offered, and a value holding a line bre
 
 ## Status
 
-Proposed with the shell completion contract. It moves to accepted when the completion plugin ships and its conformance tests pass in each shell under Node and Bun.
+Accepted 2026-09-27 with the implementation. The completion plugin ships, and its conformance tests pass in real Bash, Zsh, and Fish shells under Node and Bun.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the shell completion contract.
 - 2026-09-27: The application name, every Command name, and every alias are portable names, which `new Application()`, `new Command()`, and `alias()` enforce, so the Zsh `#compdef` comment always carries the name and the conditional this record and the contract stated is retired. The quoting, the identifier encoding, and the sentinel tests stay as defense in depth.
+- 2026-09-27: Cobra registers its Bash script with `-o default` when `compopt` is missing, as on Bash 3.2, so an error there still falls through to file names. The ported script registers without it on such a Bash and completes file names itself with `compgen -f`, only when the directive allows files and no word was offered, so an error, a failed call, or an unclosed quote offers nothing on every Bash. With `compopt` the registration is Cobra's.
+- 2026-09-27: The Fish script removes the quoting from the word under the cursor with `string unescape --style=script`, because Fish 3 reads no current token through `commandline -oct`. It still expands nothing, and the words before the cursor still come from `commandline -opc`.
+- 2026-09-27: The answer's words under `value` carry the lead, such as `--format=`, so the scripts add no flag prefix of their own.
+- 2026-09-27: Accepted with the implementation.
+- 2026-09-27: A word whose first character is `~` is left out of the answer, because Bash 3.2 and Fish insert it unescaped and it would expand when the line runs. The Bash script also escapes a leading `~` in every word it inserts.
+- 2026-09-27: Zsh's default Tab widget, `expand-or-complete`, expands a typed `$(…)` before any completion function runs, so in Zsh pressing Tab runs it whether or not the script is installed. The guarantee covers what the script does. Binding Tab to `complete-word`, with `bindkey '^I' complete-word`, avoids the expansion.
+- 2026-09-27: The Bash script calls no `compgen -f` or `compgen -d`, because in a completion Bash 3.2 expands the directory part of their word, so a typed `$((x[$(…)]))/` ran. It lists file names by pathname expansion of the dequoted word with only a trailing `*` unquoted, and it never rewrites a typed `$HOME` or `~`. With several matches, each entry holds its word escaped, so the common prefix readline inserts is escaped text.
+- 2026-09-27: The Zsh completion function is `_loom_<identifier>`, so no application name shadows a completion system function such as `_describe`. Each script generator throws a `DeclarationError` for a name outside the portable set, so a newline never reaches the `#compdef` line.
+- 2026-09-27: The Bash script escapes every `~` in a word it inserts, not only a leading one, because Bash expands a `~` after `=` or `:` in a word shaped like an assignment when the line runs.

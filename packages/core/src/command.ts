@@ -36,12 +36,13 @@ import {
 import type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
 import { nodeAt, resultNode, snapshot } from './inspect.js';
-import type { CommandGraph, OptionNode, ResultNode } from './inspect.js';
+import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
   compileOptions,
   copyValues,
   emptyValues,
   extractGlobals,
+  isOptionToken,
   mergeValues,
   parseInputs,
 } from './options.js';
@@ -97,7 +98,15 @@ export interface ArgumentSlot {
   variadic: boolean;
 }
 
+/**
+ * What one dispatch hands its action. `graph` and `command` are the run's inspected graph and the
+ * routed node inside it, the values its middleware read. Each builds on its first read, so a run
+ * whose action reads neither, whose chain is empty, and which asks no configuration source renders
+ * no graph and calls no converter.
+ */
 export interface DispatchInput {
+  command: () => CommandNode;
+  graph: () => CommandGraph;
   style: ContextualStyle;
   host: Host;
   /** The action's channel, whose `results` accepts whatever the routed declaration named. */
@@ -642,8 +651,23 @@ export function declareAction<Args, Options, Globals, Result>(
       `${commandSentence(state.name)} has multiple actions. Register one action.`,
     );
   }
+  // The graph and the routed node stay getters, because a spread would build the graph on every run.
   const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
-    handler({ ...context, out: declaredChannel(context.out) });
+    handler({
+      args: context.args,
+      get command() {
+        return context.command;
+      },
+      get graph() {
+        return context.graph;
+      },
+      host: context.host,
+      options: context.options,
+      out: declaredChannel(context.out),
+      passthrough: context.passthrough,
+      signal: context.signal,
+      style: context.style,
+    });
   return { ...state, action: stored };
 }
 
@@ -1519,7 +1543,7 @@ function bindDispatch<Args, Options, Globals>(
   action: Action<Args, Globals & Options>,
   globals: BuiltGlobals,
 ) {
-  return ({ host, out, passthrough, signal, style, values }: DispatchInput) => {
+  return ({ command, graph, host, out, passthrough, signal, style, values }: DispatchInput) => {
     const bound = state.bind(values);
     // Last resort: no typed path exists.
     // The graph erases the binder's generic relationship.
@@ -1530,6 +1554,12 @@ function bindDispatch<Args, Options, Globals>(
     const globalOptions = globals.bind(values) as Globals;
     return action({
       args: bound.args,
+      get command() {
+        return command();
+      },
+      get graph() {
+        return graph();
+      },
       host,
       options: { ...globalOptions, ...bound.options },
       out,
@@ -1910,14 +1940,21 @@ function candidatesOf(command: BuiltCommand): string[] {
   return [...command.children].filter(([, child]) => !child.hidden).map(([name]) => name);
 }
 
+/**
+ * Whether a token names one of the Command's children: the Command has children and the token is
+ * no option token. Routing and `locate` read a bare word through this rule.
+ */
+export function readsAsChild(command: BuiltCommand, token: string): boolean {
+  return command.children.size > 0 && !isOptionToken(token);
+}
+
 /** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
   const path: string[] = [];
   let index = 0;
-  while (command.children.size > 0) {
-    const token = tokens[index];
-    if (token === undefined || token === '--' || token.startsWith('-')) {
+  for (let token = tokens[index]; token !== undefined; token = tokens[index]) {
+    if (!readsAsChild(command, token)) {
       break;
     }
     const child = command.routes.get(token);
@@ -1943,27 +1980,38 @@ function bindArguments(
   positionals: readonly string[],
 ) {
   const values = new Map<InputDeclaration, string | string[]>();
-  let index = 0;
-  for (const slot of command.arguments) {
-    if (slot.variadic) {
-      const rest = positionals.slice(index);
-      // An empty tail binds nothing, so validation reads it as `[]` or reports the omission.
-      if (rest.length > 0) {
-        values.set(slot.input, rest);
-      }
-      index = positionals.length;
+  for (const [position, token] of positionals.entries()) {
+    const slot = argumentSlot(command.arguments, position);
+    if (!slot) {
+      throw new UnexpectedArgumentError(
+        path,
+        command.arguments.length,
+        positionals.slice(position),
+      );
+    }
+    // An empty variadic tail binds nothing, so validation reads it as `[]` or reports the omission.
+    const bound = values.get(slot.input);
+    if (!slot.variadic) {
+      values.set(slot.input, token);
+    } else if (Array.isArray(bound)) {
+      bound.push(token);
     } else {
-      const value = positionals[index];
-      if (value !== undefined) {
-        values.set(slot.input, value);
-        index += 1;
-      }
+      values.set(slot.input, [token]);
     }
   }
-  if (index < positionals.length) {
-    throw new UnexpectedArgumentError(path, command.arguments.length, positionals.slice(index));
-  }
   return values;
+}
+
+/**
+ * The slot the positional at one index fills: the slot at that index, else a variadic last slot,
+ * which accepts every later positional, else none. Binding and `locate` read positions through it.
+ */
+export function argumentSlot(
+  slots: readonly ArgumentSlot[],
+  position: number,
+): ArgumentSlot | undefined {
+  const last = slots.at(-1);
+  return slots[position] ?? (last?.variadic ? last : undefined);
 }
 
 /** One invocation after the pre-scan and routing, which the middleware chain runs on top of. */
@@ -2169,6 +2217,9 @@ async function readyDispatch(
       const channel = invocation.channel({ path, result: command.result, view });
       try {
         await local.dispatch({
+          // The run builds its graph once, so every read answers the same node.
+          command: () => nodeAt(invocation.inspected(), path),
+          graph: invocation.inspected,
           host: invocation.host,
           out: channel.out,
           passthrough: local.passthrough,

@@ -1,0 +1,87 @@
+@loomcli/plugins
+
+This package includes software from Cobra. Its license field reads
+"MIT AND Apache-2.0": the three ported script modules named below stay under
+the Apache License, Version 2.0, and every other file is under the MIT License.
+Neither license asks anything of an application that installs this
+package beyond keeping these notices with the files they cover.
+
+Cobra
+Copyright 2013-2023 The Cobra Authors
+Licensed under the Apache License, Version 2.0.
+A copy of the License is in licenses/cobra-LICENSE.txt, and at
+http://www.apache.org/licenses/LICENSE-2.0
+Source: https://github.com/spf13/cobra at commit adbc8813901bba65827259daa8e22ff94ec1f30e
+
+The Bash, Zsh, and Fish completion scripts the completion plugin prints, in
+dist/src/completion/bash.js, zsh.js, and fish.js, are ported from these Cobra files:
+
+- bash_completionsV2.go
+- zsh_completions.go
+- fish_completions.go
+
+Changes made to the Cobra scripts:
+
+- Every eval is removed. The program is called with an argument array, so a
+  typed word reaches it as its characters and pressing Tab never runs it.
+- Every construct that expands an operand is removed, Bash's compgen -W
+  included. Offered words are filtered by string comparison.
+- Quoting is removed without evaluation or expansion: by a string-only decoder
+  in the Bash script, written for Bash 3.2, by the (Q) flag in Zsh, and in
+  Fish by its own tokenizer (commandline -opc) for the words before the cursor
+  and by string unescape --style=script for the word under it. When the word
+  under the cursor holds an unclosed quote, the script offers nothing and does
+  not call the program.
+- The request carries every word before the cursor and the word under it, cut
+  at the cursor, so no empty word is appended afterward.
+- A nonzero exit, or an answer whose last line is not ":" followed by decimal
+  digits, offers nothing. An error directive offers nothing, file names
+  included.
+- ActiveHelp handling is removed, including the ActiveHelp environment variable
+  on the Fish request.
+- The application name enters a script only as data: as a single-quoted string
+  in the shell's own quoting, as the suffix of function identifiers in which
+  every character outside A-Z, a-z, and 0-9 is encoded by its code point, and
+  in the Zsh #compdef line and autoload check as it is.
+- Offered values already carry the option's lead, such as --format=, so no
+  script adds a flag prefix, and the Bash script no longer trims the current
+  word after "=".
+- The Bash script's dequoter reads $'...' as a "$" and a single-quoted string,
+  so such a word reaches the program with its escapes undecoded. Nothing in it
+  is evaluated.
+- Bash escapes every offered word with printf %q, and every "~" too, which the
+  printf of Bash 3.2 leaves bare and Bash expands after "=" or ":" in a word
+  shaped like an assignment. With several matches each entry holds its
+  word escaped, so the common prefix readline inserts is escaped text, and the
+  list shows the escaped words.
+- Bash calls no compgen -f or compgen -d, because in a completion Bash 3.2
+  expands the directory part of their word. Without _filedir, the script lists
+  file names by pathname expansion of the dequoted word with only a trailing
+  "*" unquoted, so nothing typed is expanded or run and a $HOME or "~" in the
+  word is never rewritten. It escapes each name itself rather than setting
+  -o filenames.
+- Bash without the bash-completion package builds its words from COMP_WORDS the
+  way _get_comp_words_by_ref -n =: does, and honors directives 8 and 16 with
+  that file listing and a string comparison of file extensions. The extension
+  list is quoted when it is passed to _filedir.
+- Bash without compopt, such as Bash 3.2, registers without -o default, so an
+  error or a failed call never falls through to file names. The script
+  completes file names itself with that file listing, only when the directive
+  allows files and no word was offered. Bash with compopt keeps Cobra's
+  registration.
+- Zsh no longer splits words with ${=...}, passes _describe its arguments as an
+  array, calls _files directly rather than through an _arguments action
+  string, and quotes each file extension as a pattern with the (b) flag.
+- Zsh escapes "\" and then ":" in each word and description it passes to
+  _describe, which reads a backslash as an escape.
+- Zsh sends $PREFIX, the word under the cursor cut at the cursor, rather than
+  the whole word under the cursor.
+- Zsh names its completion function _loom_<identifier> and its debug function
+  __loom_<identifier>_debug, so no application name shadows a completion system
+  function such as _describe, _files, or _arguments. The file still runs the
+  function when compinit autoloads it as _<name>.
+- Fish filters by prefix with a string comparison, keeps trailing empty lines
+  in the answer, and offers nothing rather than file names after an error. As
+  in Cobra's script, Fish completes every file name under directives 8 and 16.
+- Directive numbers are written as literals, and comments are adjusted.
+- Each script refuses an application name outside the portable name set.
