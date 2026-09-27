@@ -856,7 +856,7 @@ type OptionNode =
 ```
 
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
-- `aliases` holds the Command's [aliases](#aliases) in declaration order, and `[]` for the root and for a Command that declares none. A Command appears once, under its canonical name, so `path` never holds an alias. A completion consumer reads `aliases`; a help or manifest consumer omits them, because an alias is unadvertised.
+- `aliases` holds the Command's [aliases](#aliases) in declaration order, and `[]` for the root and for a Command that declares none. A Command appears once, under its canonical name, so `path` never holds an alias. Help, the manifest, and [completion](#completion) omit them, because an alias is unadvertised; routing and [`locate`](#locating-a-word) resolve them.
 - `hidden` and `deprecated` are the core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes: `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared message or `undefined`. The root reads `hidden: false` and `deprecated: undefined`. A listing projection omits a hidden node and marks a deprecated one, and the candidate list of a routing error is a listing; routing selects and parsing binds without reading either.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone. `env` is the variable the option's [environment binding](#input-sources) names, or `null` when it declares none, on an application option and a plugin option alike.
@@ -871,6 +871,53 @@ type OptionNode =
 const graph = app.inspect();
 const names = graph.root.children.map((child) => child.path.join(' '));
 ```
+
+### Locating a word
+
+```ts
+declare function locate(graph: CommandGraph, words: readonly string[]): WordPosition;
+
+type WordPosition =
+  | { readonly kind: 'command'; readonly command: CommandNode; readonly prefix: string }
+  | {
+      readonly kind: 'option';
+      readonly command: CommandNode;
+      readonly prefix: string;
+      readonly supplied: readonly string[];
+    }
+  | {
+      readonly kind: 'value';
+      readonly command: CommandNode;
+      readonly option: OptionNode;
+      readonly lead: string;
+      readonly prefix: string;
+    }
+  | { readonly kind: 'argument'; readonly command: CommandNode; readonly argument: ArgumentNode; readonly prefix: string }
+  | { readonly kind: 'passthrough'; readonly command: CommandNode; readonly prefix: string }
+  | { readonly kind: 'none' };
+```
+
+```ts
+import { locate } from '@loomcli/core';
+
+const graph = jsonkit.inspect();
+locate(graph, ['g']); // { kind: 'command', command: <root>, prefix: 'g' }
+locate(graph, ['ls', '--']); // { kind: 'option', command: <keys>, prefix: '--', supplied: [] }
+locate(graph, ['paths', '--format=j']); // { kind: 'value', option: <format>, lead: '--format=', prefix: 'j', ... }
+```
+
+`locate(graph, words)` reads an unfinished invocation against a graph and reports where its last word sits. [ADR-0042](decisions/0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md) records the decision. `words` holds the tokens after the application name, and the last one is the word being completed, which may be empty; an empty list reads as one empty word.
+
+- **One grammar.** Core's parser and `locate` read tokens through one implementation of the grammar under [Local options](#local-options) and [Global consumption and routing](#global-consumption-and-routing): the pre-scan of global and plugin options up to the first bare `--`, routing through canonical names and [aliases](#aliases), the first hyphen token committing to a Command, values after `=` or in the next token, short groups, Boolean options taking no value, variadic arguments, and passthrough. A change to the grammar changes both.
+- **Structure alone.** The words before the last are read with the grammar's structural rules alone. No validator, input source, or middleware runs, and no requirement is checked, because the line is unfinished. A structural fault among them, such as an unknown command, an unknown option, a repeated option that is not multiple, a missing value, an invalid token form, a mixed-scope short group, or an unexpected argument, gives `{ kind: 'none' }`. A string option at the end of the earlier words that is still waiting for its value is not a missing value, because the last word is its value. A commit to a group is not a fault here either, because a middleware may take such an invocation over: the group is the routed Command.
+- **The last word.** It is read as the parser would read the next token:
+  - after a bare `--` among the earlier words, `passthrough`;
+  - when the word before the last ends with a string option that takes its value from the next token, as a spelling alone or as the last letter of a short group, `value` for that option with `lead: ''`, unless the last word starts with a hyphen and is not empty, which the grammar never consumes as a separate value, giving `none`;
+  - a word that starts with `--` and holds `=`, when the part before the first `=` is the long spelling of a string option in scope, `value` for that option, with `lead` holding that part and the `=` and `prefix` holding the rest; a Boolean or unknown spelling before the `=` gives `none`;
+  - any other word that starts with `-`, `-` and `--` included, `option`;
+  - any other word, `command` while routing has not committed and the current Command has children, `argument` for the next positional the routed Command accepts, a variadic argument accepting every later one, and `none` when neither applies.
+- **The members.** `command` is the routed `CommandNode`, reached through a canonical name or an alias alike; for `command`, it is the node whose children the word would name. `prefix` is the part of the word being completed, the whole word except under `value` after an `=`. The options in scope are the graph's `globals` and the routed Command's `options`. `supplied` lists, in supplied order, the name of each option in scope that an earlier word supplied. Every node is the graph's own, so a reader compares by identity.
+- **Pure.** `locate` is synchronous, reads no host fact, and throws nothing for any array of strings. It reads neither `hidden` nor `deprecated`, because routing selects and parsing binds without reading either; the reader decides what to offer.
 
 ## Invocation
 
@@ -898,7 +945,7 @@ Each invocation follows this order:
 
 Error precedence follows these phases. A global structure error comes before a routing error, a routing error comes before a local structure error, and a local structure error comes before a validator issue. Unknown-command, missing-value, repetition, and unexpected-argument diagnostics return code 2. Local parsing and validation run ahead of the chain so that a middleware can read the invocation, and the held fault keeps its rank because it is raised at the point the chain would have parsed before this contract; a takeover never observes it. A run cancelled before the chain starts, an abort landing inside a validator included, resolves its cancellation code under [Signals and cancellation](#signals-and-cancellation), and the held fault is never raised; core awaits the validator in flight and starts no further one. A run cancelled while the chain is running and before it reaches the dispatch boundary never reaches it: the `next()` that would have reached it resolves `'cancelled'`, the held fault and any bad `view` assignment stay unobserved, and the code is the signal's; a cancellation that lands after the action dispatched changes nothing here, and `next()` still resolves `'dispatched'`. The held fault is what the run would have raised before this contract: the input error carrying every issue collected in authoring order, or a validator's developer error, which stops validation where it happens and takes the place of anything collected before it, as [Issues and validator failures](#issues-and-validator-failures) states, or a configuration source's plugin fault, which [Input sources](#input-sources) ranks. The consequence is that a validator runs on an invocation a middleware then takes over, `app get --help` included: this contract requires nothing of a validator it did not require before, so a validator that reads the host or awaits a network still does so on such an invocation, and one with a side effect performs it there. Whether a takeover should skip validation is the open question ADR-0028 records.
 
-An action receives `{ args, options, passthrough, out, host, signal, style }`. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals.
+An action receives `{ args, options, passthrough, graph, command, out, host, signal, style }`. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns, built for this run, and `command` is the routed node inside it: the same two values the run's [middleware](#middleware) receive, under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md). An application's action and a plugin Command's action receive them alike, so a Command whose job is to project the graph, such as [completion](#completion), does it in its own action. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals.
 
 The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()`, consume stdin, or track unrelated background work. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
 
@@ -1846,7 +1893,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -2246,7 +2293,7 @@ An option or an argument row states the values the input accepts, so a reader ch
 
 - **Authored.** An `accepts` value on the input's help extension, `helpInput` for an option and `helpArgument` for an argument, is the sentence, printed as written. It always wins, whatever the input's schema holds, so an author states a pattern, a range, or a long set in their own words. An `accepts` on a Boolean option is never shown.
 - **Derived.** Without `accepts`, help derives the sentence from the input's [input schema](#input-schema) when that schema is a closed set of strings: an `enum` whose members are all strings, a single string `const`, or an `anyOf` whose members are each such an `enum` or `const`, flattened in order, and a multiple option or a variadic argument reads the same shapes, because its input schema describes one value under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md). Help reads `enum`, `const`, and `anyOf` at the schema's top level, and derives nothing when more than one of the three sits at the same level. Every other keyword beside them must leave each listed value accepted, so help derives only when each one is `type: 'string'` or an annotation, `$schema`, `$id`, `$comment`, `title`, `description`, `default`, `examples`, `readOnly`, `writeOnly`, or `deprecated`, and the same holds inside each `anyOf` member. Any other keyword, such as `pattern`, `minLength`, `format`, or `not`, may narrow the set, so it derives nothing, and the author states the set with `accepts`. The sentence is `One of: ` followed by the values in the schema's order, separated by a comma and a space, and a closing period: `One of: bytes, words, lines.`
-- **Bounds.** A value that repeats prints once, at its first place, and counts once. A set of more than eight distinct values derives nothing, and neither does an empty set, any other shape, a `null` schema, or a set holding a member that is not a string; the row then prints as it would without accepted values. A member that is not a string derives nothing because the list prints tokens exactly, and help does not decide how a token spells a number, a Boolean, or `null`.
+- **Bounds.** A value that repeats prints once, at its first place, and counts once. Help lists no set of more than eight distinct values, and its row prints as it would without accepted values: eight bounds help's listing, not the derivation, so [completion](#completion) still offers every value of a larger set. An empty set derives nothing, and neither does any other shape, a `null` schema, or a set holding a member that is not a string; the row then prints as it would without accepted values. A member that is not a string derives nothing because the list prints tokens exactly, and help does not decide how a token spells a number, a Boolean, or `null`.
 - **Quoting.** A value that is empty or holds whitespace, a comma, a double quote, or a control character prints as its JSON string, `One of: "a b", c.`, so the list splits unambiguously. A line terminator inside it prints as its JSON escape, as a rendered default's does, so a row stays one line, and DEL and the C1 controls, which JSON leaves raw, print as their lowercase `\uXXXX` escapes, so no control character reaches the terminal. Every value is escaped before styling, as every graph string on the page is.
 - **Not the manifest's.** `accepts` is help's own fact for a human reader. Help does not supply it to the [manifest](#manifest), where an agent reads the exact `schema`.
 
@@ -2259,7 +2306,7 @@ Compared with the page rules before this section, the changed rules are: the rig
 Accepted values are proven when public APIs alone produce these results under Node and Bun:
 
 - **Example pages.** `textstat --help` prints the `--metric` and `--format` rows shown above, and `jsonkit --help` prints `--format` with `One of: records, json, jsonl.`. The quoted pages in this document and the example applications' help and manifest goldens are re-pinned for the formatter's new description.
-- **Derived shapes.** Fixture applications prove each shape the Derived rule names, a string `enum`, a single string `const`, and an `anyOf` of them, at every level it can appear: at the top level and as an `anyOf` member, on a single option, a multiple option, and a variadic argument. At each level, one case holds `type: 'string'` beside the shape and one holds an annotation such as `default`, and both still derive, and one holds a narrowing keyword, such as `pattern` or `minLength`, and derives nothing. Beside those, fixtures cover an `anyOf` mixing an `enum` member and a `const` member, flattened in order, with a value repeating across members printing once; a schema holding only a narrowing keyword such as `pattern`, with no closed set, deriving nothing; an `enum` beside a `const` or an `anyOf` at the same level deriving nothing; a repeated value printing once, an empty set and a nullable enum deriving nothing, eight values printing, nine deriving nothing, a set holding a number deriving nothing, and an argument row deriving from its schema.
+- **Derived shapes.** Fixture applications prove each shape the Derived rule names, a string `enum`, a single string `const`, and an `anyOf` of them, at every level it can appear: at the top level and as an `anyOf` member, on a single option, a multiple option, and a variadic argument. At each level, one case holds `type: 'string'` beside the shape and one holds an annotation such as `default`, and both still derive, and one holds a narrowing keyword, such as `pattern` or `minLength`, and derives nothing. Beside those, fixtures cover an `anyOf` mixing an `enum` member and a `const` member, flattened in order, with a value repeating across members printing once; a schema holding only a narrowing keyword such as `pattern`, with no closed set, deriving nothing; an `enum` beside a `const` or an `anyOf` at the same level deriving nothing; a repeated value printing once, an empty set and a nullable enum deriving nothing, eight values printing, nine deriving and help listing none, a set holding a number deriving nothing, and an argument row deriving from its schema.
 - **Authored.** An `accepts` wins over a derived list, prints for an input with a `null` or pattern schema, prints on an argument row through `helpArgument`, and is never shown on a Boolean option.
 - **Text.** A value that is empty or holds a space, a comma, a double quote, a line terminator, or a control character prints as its JSON string, a marker character in a value prints literally, and a row with no description starts its right cell with the sentence.
 
@@ -2866,6 +2913,67 @@ The configuration plugin is proven when textstat installs `config({ files: ['.te
 - **Escaping.** A `--config` path that holds U+001B prints it as `\u001b` in its failure and in the label of a filled value a validator rejects, and a user file path that holds it prints it as `\u001b` in its warning.
 - **Edges.** A bad `files` entry throws from `config()`, a file that starts with a byte order mark reads, two wrong values print two lines in request order, the user file's label shows its full path, the `problems` of a source `InputError` reach an override of the `InputError` view, and a local structure fault outranks a source `InputError`.
 - **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/config` and `@loomcli/plugins/config/extension`, compiles against their declarations, and reads a value from a file.
+
+### Completion
+
+```ts
+// @loomcli/plugins/completion
+import type { Plugin } from '@loomcli/core';
+
+export declare function completion(): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
+import { help } from '@loomcli/plugins/help';
+
+export const jsonkit = new Application('jsonkit', { plugins: [help(), completion()] });
+```
+
+```sh
+source <(jsonkit completion bash)   # in ~/.bashrc
+source <(jsonkit completion zsh)    # in ~/.zshrc, after compinit
+jsonkit completion fish | source    # in ~/.config/fish/config.fish
+```
+
+```text
+$ jsonkit completion __complete -- ke
+keys→List the keys at a path.
+:4
+```
+
+`completion()` is the completion plugin. Its identity is `@loomcli/plugins/completion`, and it declares no options, no middleware, and no extension; its whole contribution is one [plugin Command](#plugin-commands). `jsonkit completion zsh` prints a script, and the operator's shell sources it. From then on, each Tab runs the script, which calls `jsonkit completion __complete` with the words typed so far and inserts what it answers. The script holds no copy of the Command tree, so it never goes stale when the application changes. [ADR-0043](decisions/0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md) records the decision: the scripts and the answer follow [Cobra](https://github.com/spf13/cobra)'s, and nothing typed is ever evaluated. In the answer above, `→` stands for one tab character.
+
+- **The Commands.** `completion` is a group, `Print a shell completion script.`, with the children `bash`, `zsh`, and `fish`, each `Print the <Shell> completion script.`, and the hidden `__complete`, `Answer a completion script.` No child declares an argument or an option, and none declares a result, so `--format` never applies. A group cannot declare arguments beside children under [ADR-0004](decisions/0004-arguments-and-children-are-exclusive.md), so the shell is a child and not an argument, and `jsonkit completion` prints the missing-subcommand error that lists `bash, zsh, fish`. Printing is the whole feature: installing or removing a script, and PowerShell, are not offered.
+- **Exact bytes.** Each action writes through `host.stdout` in one write, because `out` styles text and appends a newline. A shell action writes its script, and `__complete` writes its answer; a failure in either writes nothing to stdout.
+- **The callback.** The script runs `<program> completion __complete -- <words>`, where `<program>` is the first word with its quoting removed and no expansion, and `<words>` are the words after it, the last cut at the cursor and empty when the cursor starts a new word. The words arrive in `passthrough`, so the pre-scan never reads one of them as an option and a typed `--help` activates nothing. `__complete` passes them to [`locate`](#locating-a-word) with the action's `graph`. Each Tab is an ordinary run: always-on middleware and the configuration source run as on any run, and the script discards stderr. Stdout that an always-on middleware, or a plugin activated through its environment binding, writes on a `__complete` run is read as offered words, so a plugin that writes to stdout on a run it does not own breaks completion.
+- **Offered words.** By the position `locate` reports:
+  - `command`: the canonical names of the node's children, each with its description, and directive `4`.
+  - `option`: the long spellings of the options in scope, a Boolean's negative spelling included, and also the short spellings when `prefix` is exactly `-`, each with its option's description, and directive `4`. An option in `supplied` is left out unless it is a multiple string option.
+  - `value` and `argument`: the values of the closed set the input's `schema` names, each written after `lead` under `value`, with no description, and directive `4`. The closed set is the one help derives for its [accepted values](#accepted-values), read through one package-internal module outside either subpath, beside `encode.ts`, that help and completion both import. The module returns the whole set, and each reader applies its own bound: help keeps its limit of eight under Bounds, and completion offers every value, so a Command with more than eight view names completes each of them. An input with no closed set, a `null` schema included, offers nothing with directive `0`, so the shell completes file names.
+  - `passthrough`: nothing, with directive `0`.
+  - `none`: nothing, with directive `1`.
+
+  A hidden or deprecated Command or option is never offered, and one typed in full still routes and completes past. An alias is never offered and never rewritten: `locate` routes through it, and completion reads no alias. Only words that start with `prefix`, compared by code unit, are offered, a value compared before `lead` is added to it, so `--format=j` offers `--format=json`, in graph order with repeats removed.
+- **The answer.** One line per offered word: the word, then, when it has a description, a tab and the description. The last line is `:` and the directive. Every line ends with a newline. The directive numbers are Cobra's: `1` error, `2` no space, `4` no file completion, `8` filter by file extension, `16` directories only, `32` keep order, and `0` the shell's default. The plugin writes `0`, `1`, or `4`, and the scripts honor all of them.
+- **Exact or omitted.** An offered word that holds a control character or a line separator, U+0000 through U+001F, U+007F through U+009F, U+2028, or U+2029, is left out rather than cut, so completion never inserts a value the graph does not hold. An empty value, a value holding a lone surrogate, which the shell would receive as U+FFFD, and a value that starts with `_activeHelp_ `, which Cobra's scripts read as help text, are left out too. A description is display text: its first line, with every such character removed, and no tab when nothing is left.
+- **The scripts.** The Bash, Zsh, and Fish scripts are ported from Cobra, with Cobra's Apache-2.0 notice kept beside them in the pack and the changes stated. Each inserts an offered word through its shell's own completion call as one exact value. The Bash script runs on Bash 3.2 and later, with or without the bash-completion package.
+- **No evaluation.** A script never evaluates text. Every `eval` in Cobra's scripts is removed, and so is every construct that expands an operand, such as Bash's `compgen -W`, which expands its word list: a script filters offered words by string comparison, and it honors directives `8` and `16` without evaluating an offered word. It calls the program with an argument array, so a typed word reaches the application as its characters and pressing Tab never runs it. It removes quoting without evaluating, through Zsh's `(Q)` flag, Fish's own tokenizer, and a string-only decoder in the Bash script, and it performs no expansion, so `~`, `$HOME`, and `$(…)` reach the application as typed. When the word under the cursor holds an unclosed quote, the script offers nothing and does not call the application. A nonzero exit, or an answer whose final line is not `:` followed by decimal digits, offers nothing.
+- **The name.** The application name reaches a script only as data: as a single-quoted string in its shell's quoting, for Bash and Zsh with each `'` written as `'\''`, and for Fish, whose single quotes read `\'` and `\\` as escapes, with each `\` written as `\\` and each `'` written as `\'`; as the suffix of a function identifier in which every character outside `A-Z`, `a-z`, and `0-9`, `_` included, is written as `_` and its code point's lowercase hexadecimal digits and another `_`, so `git-lfs` gives `git_2d_lfs` and no two names give one identifier, and in the Zsh `#compdef` comment only when the name uses the portable file name characters `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-` and does not start with `-` or `.`. Without that comment, the script registers through its `compdef` call alone. Any name therefore yields a script that runs nothing but completion.
+- **Where it installs.** A root that declares arguments cannot hold children, so textstat cannot install completion, as [Plugin Commands](#plugin-commands) states.
+
+#### Completion acceptance
+
+Completion is proven when jsonkit installs `completion()` and real Bash, Zsh, and Fish shells, driven through a pseudo-terminal, complete against the scripts `jsonkit completion bash`, `zsh`, and `fish` print, under Node and Bun. The run from a terminal needs the rule, decided in its own record, that a global option declares no omission rule, because jsonkit's `--file` otherwise rejects every run whose stdin is a terminal.
+
+- **Commands.** `jsonkit <Tab>` offers the root's visible children, and never `fetch`, which is deprecated, `debug`, which is hidden, or `ls`, which is an alias. `jsonkit ls --<Tab>` offers the options in scope at `keys`, the global and plugin options, and `jsonkit completion <Tab>` offers `bash`, `fish`, and `zsh` and never `__complete`.
+- **Options.** `jsonkit paths -<Tab>` offers long and short spellings, `--<Tab>` long spellings alone, and an option already given is not offered again, while `select`'s multiple `--field` is.
+- **Values.** `jsonkit paths --format <Tab>` and `--format=<Tab>` offer the view names, the second as whole words that begin `--format=`, and `jsonkit --file <Tab>` falls back to file names.
+- **Injection.** In a fixture application, a closed-set value `$(touch sentinel)`, one holding a backtick command, and one holding `;touch sentinel` are each inserted as text, a value holding a newline is not offered, a typed word `$(touch sentinel)` before the cursor is passed as text, and no sentinel file ever exists. The script printed for a hostile name, generated in a unit test because an Application rejects such a name, sources without running anything.
+- **Failing closed.** An unknown command earlier in the line, an unclosed quote under the cursor, and a callback that exits nonzero each offer nothing.
+- **Framing.** A unit test reads `__complete` answers for every position kind, descriptions with tabs and line breaks, and directive lines, byte for byte.
+- **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/completion`, compiles against its declaration, and prints a script.
 
 ### Example coverage
 

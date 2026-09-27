@@ -184,6 +184,10 @@ _Avoid_: Global pass, first pass
 The invocation phase that reads bare tokens from the root downward and selects the Command that will parse the remaining tokens.
 _Avoid_: Dispatch (for selection), resolution, matching
 
+**Word position**:
+Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tail, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
+_Avoid_: Slot (a single-owner contribution), cursor context, completion state
+
 **Dispatch**:
 Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
@@ -345,6 +349,10 @@ _Avoid_: Short help, summary, brief help
 **Extended help**:
 The help page `--help` prints, for a reader who is learning the Command: the whole page, with the details and the examples. Help prints it whenever the help option was not typed as `-h`.
 _Avoid_: Long help, full help, man page
+
+**Completion**:
+The projection a shell reads while the operator types: a printed script that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
+_Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`. There is no encoding outside the view model: a machine view is a view like a table is.
