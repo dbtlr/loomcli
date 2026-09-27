@@ -2,7 +2,7 @@
 
 ### Migration
 
-**Affected surface.** Applications whose application name, Command name, or alias holds a character outside `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, or starts with `.`, such as a name with a slash, a colon, or a non-ASCII letter. The application name was never checked before, so one with whitespace or a line terminator was accepted too, and Command names and aliases rejected only an empty name, whitespace, `=`, and a leading hyphen. Code that matches the text of the Command name or alias diagnostic.
+**Affected surface.** Applications whose application name, Command name, or alias holds a character outside `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, or starts with `.`, such as a name with a slash, a colon, or a non-ASCII letter. The application name was never checked before, so an empty name or one with whitespace, a line terminator, or a leading hyphen was accepted too, and Command names and aliases rejected only an empty name, whitespace, `=`, and a leading hyphen. Code that matches the text of the Command name or alias diagnostic.
 
 **Why.** Each of these names is typed as a command at a shell prompt, and shell completion writes the application name into a script. One rule shared by all three keeps every name typeable and every script safe without a per-shell escape.
 
@@ -22,7 +22,7 @@ const app = new Application('my-tool').command(new Command('get-all').alias('ls-
 
 **Steps.**
 
-1. Rename each application name, Command name, and alias that holds a character outside the portable set or starts with `.`.
+1. Rename each application name, Command name, and alias that holds a character outside the portable set or starts with `.`, and each application name that is empty or starts with `-`.
 2. Update any test or code that matches the old Command name or alias diagnostic text.
 
 **Validation.** Import the application's modules; a name outside the rule throws when its module evaluates. Run the application's own test command.
