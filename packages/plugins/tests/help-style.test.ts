@@ -44,6 +44,31 @@ test('help styles each semantic fragment, including deprecation punctuation and 
   });
 });
 
+test('a compact page styles the child hint and the pointer to the extended page', () => {
+  expect(run({ argv: ['-h'], rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      '\u001b[33;1mapp\u001b[39;22m \u001b[90m·\u001b[39m Read values.',
+      '',
+      '\u001b[90mUSAGE\u001b[39m',
+      '  \u001b[33mapp\u001b[39m \u001b[90;3m[options]\u001b[39;23m',
+      '  \u001b[33mapp\u001b[39m \u001b[90;3m<command>\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m',
+      '',
+      '\u001b[90mCOMMANDS\u001b[39m',
+      '  \u001b[33mget\u001b[39m  Read one.  \u001b[90m(\u001b[93mdeprecated: Use read.\u001b[90m)\u001b[39m',
+      '',
+      '\u001b[90mGLOBAL OPTIONS\u001b[39m',
+      '  \u001b[33m-h\u001b[90m,\u001b[39m \u001b[33m--help\u001b[39m     Show this help.',
+      '  \u001b[33m-V\u001b[90m,\u001b[39m \u001b[33m--version\u001b[39m  Print the version.',
+      '',
+      '\u001b[90mRun\u001b[39m \u001b[33mapp\u001b[39m \u001b[90;3m<command>\u001b[39;23m \u001b[33m-h\u001b[39m \u001b[90mfor command details.\u001b[39m',
+      '\u001b[90mRun\u001b[39m \u001b[33mapp\u001b[39m \u001b[33m--help\u001b[39m \u001b[90mfor details and examples.\u001b[39m',
+      '',
+    ].join('\n'),
+  });
+});
+
 test.each([
   [{}, '33'],
   [{ TERM: 'xterm-256color' }, '38;5;172'],
@@ -85,14 +110,14 @@ test.each(['0.0.0', 'v0.0.0', 'V0.0.0', '1.0.0\uE003'])(
     expect(
       run({
         argv: ['get', '--version'],
-        name: 'app\uE001',
+        name: 'app',
         rendering: { color: 'always', modifiers: 'always' },
         version,
       }),
     ).toEqual({
       status: 0,
       stderr: '',
-      stdout: `\u001b[33;1mapp\uE001\u001b[39;22m ${suffix}\n`,
+      stdout: `\u001b[33;1mapp\u001b[39;22m ${suffix}\n`,
     });
   },
 );
@@ -104,15 +129,15 @@ test('help measures wide and combining placeholders and escapes literal data bef
     status: 0,
     stderr: '',
     stdout: [
-      '界é · Literal \uE001red\uE002.',
+      'wide · Literal \uE001red\uE002.',
       '',
       '  Details \uE001.',
       '',
       'USAGE',
-      '  界é <界...> --field <界界>... [options]',
+      '  wide <界é...> --field <界界>... [options]',
       '',
       'ARGUMENTS',
-      '  界  Wide.',
+      '  界é  Wide.',
       '',
       'OPTIONS',
       '  -F, --field <界界>  Fields.  (required, repeatable, deprecated: Use new.)',
@@ -124,7 +149,7 @@ test('help measures wide and combining placeholders and escapes literal data bef
       '  -V, --version       Print the version.',
       '',
       'EXAMPLES',
-      '  $ 界é --field \uE002',
+      '  $ wide --field \uE002',
       '    Note \uE003.',
       '',
     ].join('\n'),
@@ -140,10 +165,10 @@ test('themed option cells separate spellings, placeholders, facts, and warning t
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toContain(
-    '\u001b[33;1m界é\u001b[39;22m \u001b[90m·\u001b[39m Literal \uE001red\uE002.\n',
+    '\u001b[33;1mwide\u001b[39;22m \u001b[90m·\u001b[39m Literal \uE001red\uE002.\n',
   );
   expect(result.stdout).toContain(
-    '  \u001b[33m界é\u001b[39m \u001b[90;3m<界...>\u001b[39;23m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>...\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m\n',
+    '  \u001b[33mwide\u001b[39m \u001b[90;3m<界é...>\u001b[39;23m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>...\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m\n',
   );
   expect(result.stdout).toContain(
     '  \u001b[33m-F\u001b[90m,\u001b[39m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>\u001b[39;23m  Fields.  \u001b[90m(required,\u001b[39m \u001b[90mrepeatable,\u001b[39m \u001b[93mdeprecated: Use new.\u001b[90m)\u001b[39m\n',
@@ -155,7 +180,7 @@ test('themed option cells separate spellings, placeholders, facts, and warning t
   expect(result.stdout).toContain(
     '  \u001b[33m-x\u001b[39m \u001b[90;3m<é>\u001b[39;23m              Short.\n',
   );
-  expect(result.stdout).toContain('  \u001b[90;3m界\u001b[39;23m  Wide.\n');
+  expect(result.stdout).toContain('  \u001b[90;3m界é\u001b[39;23m  Wide.\n');
 });
 
 test('a deprecated routed Command highlights only the deprecation line as warning', () => {

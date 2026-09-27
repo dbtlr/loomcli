@@ -181,7 +181,7 @@ function facts() {
   );
 }
 
-/** Arguments, variadics, and required options from two scopes, on a root that has both forms. */
+/** Arguments, variadics, and required local options, on a root that has both usage forms. */
 function usage() {
   const run = new Command('run', { description: 'Run one job.' })
     .argument('source', { description: 'Where to read.', required: true })
@@ -208,7 +208,7 @@ function usage() {
     plugins,
     version: '1.2.0',
   })
-    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('key', { description: 'The key to use.', type: 'string' })
     .globalOption('file', { description: 'The document to read.', short: 'f', type: 'string' })
     .command(run)
     .command(pack)
@@ -227,6 +227,28 @@ function prose() {
     plugins,
     version: '1.2.0',
   }).action(dispatch);
+}
+
+/**
+ * A root whose only extended block is EXAMPLES, a child whose only one is Details, and a child with
+ * neither, so each compact page shows whether it points to the extended page.
+ */
+function variants(views = []) {
+  const get = new Command('get', {
+    description: 'Read one value at a path.',
+    extensions: [helpCommand({ details: 'Reads the value at one dot path.' })],
+  }).action(dispatch);
+  const keys = new Command('keys', { description: 'List the keys at a path.' }).action(dispatch);
+  return new Application('app', {
+    description: 'A fixture application.',
+    extensions: [helpCommand({ examples: [{ command: 'get a.b' }] })],
+    plugins,
+    version: '1.2.0',
+    views,
+  })
+    .command(get)
+    .command(keys)
+    .action(dispatch);
 }
 
 /** A child of each listing shape: plain, deprecated, hidden, both, and an all-hidden group. */
@@ -276,11 +298,10 @@ function scoped() {
     plugins,
     version: '1.2.0',
   })
-    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('key', { description: 'The key to use.', type: 'string' })
     .globalOption('token', {
       description: 'The token to use.',
       hidden: true,
-      required: true,
       type: 'string',
     })
     .option('mode', {
@@ -290,6 +311,12 @@ function scoped() {
       type: 'string',
     })
     .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .option('secret', {
+      description: 'The secret to use.',
+      hidden: true,
+      required: true,
+      type: 'string',
+    })
     .command(run)
     .action(dispatch);
 }
@@ -329,6 +356,13 @@ const scenarios = {
   scoped,
   unlisted,
   usage,
+  variants: () => variants(),
+  'variants-page': () =>
+    variants([
+      override(helpPage, {
+        render: ({ command, variant }) => `${command.name ?? 'root'}:${variant}\n`,
+      }),
+    ]),
   version: () => versioned({ version: '1.2.0' }),
   'version-omitted': () => versioned({}),
   'version-prefixed': () => versioned({ version: 'v0.2.0' }),

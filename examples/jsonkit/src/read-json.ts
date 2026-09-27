@@ -6,6 +6,8 @@ import { text } from 'node:stream/consumers';
 import { FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
+import { checkFileOrStdin } from './file-or-stdin.js';
+
 /** One document source: the subject each failure names, and the connection it reads. */
 interface Source {
   /** A read failure names where the text came from, so a file failure keeps its path. */
@@ -21,8 +23,8 @@ function explain(error: unknown, fallback: string) {
 
 /**
  * The source of one invocation. A supplied file is the selection; without one the piped text is.
- * The `--file` schema decides whether omission is allowed, so the reader reads no terminal fact
- * and names the source and its connection alone.
+ * `readJson` has already decided whether omission is allowed, so this names the source and its
+ * connection alone.
  */
 function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {
@@ -37,6 +39,7 @@ function select(file: string | undefined, host: Host): Source {
 
 /** Every action reads its document here, so read and parse failures read the same everywhere. */
 export async function readJson(file: string | undefined, host: Host): Promise<unknown> {
+  checkFileOrStdin(file, host);
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) => {
     throw new FatalError(

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -70,6 +70,24 @@ const styledPage = [
   '    \u001b[90mThe line this check compares.\u001b[39m',
   '',
 ].join('\n');
+/** The compact page `-h` prints: the page without the details and EXAMPLES, and a pointer to them. */
+const compactPage = [
+  'greeter · Greet one subject.',
+  '',
+  'USAGE',
+  '  greeter <subject> [options]',
+  '',
+  'ARGUMENTS',
+  '  subject  Who to greet. Any name.',
+  '',
+  'OPTIONS',
+  '  -g, --greeting <word>  The greeting to print.  (default: hello)',
+  '  -h, --help             Show this help.',
+  '  -V, --version          Print the version.',
+  '',
+  'Run greeter --help for details and examples.',
+  '',
+].join('\n');
 const invocations = [
   {
     argv: ['--help'],
@@ -91,6 +109,11 @@ const invocations = [
   // The consumer overrides both declared views the packed plugins publish.
   // Each branded line proves the registry resolved through the installed tarballs.
   { argv: ['--help'], expected: `greeter help\n${page}`, reads: 'the overridden help page' },
+  {
+    argv: ['-h'],
+    expected: `greeter help -h\n${compactPage}`,
+    reads: 'the compact help page, whose variant the core spelling selected',
+  },
   {
     argv: ['--version'],
     expected: 'greeter build\ngreeter v1.0.0\n',
@@ -233,6 +256,40 @@ try {
       `${name}: packed validators rejection`,
     );
   }
+  // The packed configuration plugin reads the named file, then the user file the name derives.
+  const configured = join(temporary, 'dist/config.js');
+  await writeFile(join(temporary, 'settings.json'), '{ "greeting": { "word": "named" } }');
+  const xdg = join(temporary, 'xdg');
+  await mkdir(join(xdg, 'packed-config'), { recursive: true });
+  await writeFile(
+    join(xdg, 'packed-config', 'config.json'),
+    '{ "greeting": { "word": "configured" } }',
+  );
+  for (const name of selected) {
+    const named = run(runtimes.get(name), [configured, '--config', 'settings.json'], temporary);
+    assert.equal(named.status, 0, named.output);
+    assert.equal(named.stdout, 'named\n', `${name}: packed configuration from the named file`);
+    const user = run(runtimes.get(name), [configured], temporary, { XDG_CONFIG_HOME: xdg });
+    assert.equal(user.status, 0, user.output);
+    assert.equal(user.stdout, 'configured\n', `${name}: packed configuration from the user file`);
+  }
+  // The packed completion plugin prints each shell's script for the application's name.
+  const completing = join(temporary, 'dist/completion.js');
+  for (const name of selected) {
+    for (const [shell, first] of [
+      ['bash', '# Bash completion script, printed by the Loom completion plugin.\n'],
+      ['zsh', '#compdef packed-completion\n'],
+      ['fish', '# Fish completion script, printed by the Loom completion plugin.\n'],
+    ]) {
+      const printed = run(runtimes.get(name), [completing, 'completion', shell], temporary);
+      assert.equal(printed.status, 0, printed.output);
+      assert.ok(printed.stdout.startsWith(first), `${name}: packed ${shell} script first line`);
+      assert.ok(
+        printed.stdout.includes('packed_2d_completion'),
+        `${name}: packed ${shell} script function identifier`,
+      );
+    }
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -246,7 +303,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page, the overridden version line, the collected manifest values, the manifest document, and the validated and rejected options.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, and the three completion scripts.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

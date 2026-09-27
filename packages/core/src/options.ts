@@ -17,11 +17,13 @@ export interface OptionValues {
   strings: Map<string, string>;
   lists: Map<string, string[]>;
   booleans: Map<string, boolean>;
+  /** The spelling of the token that supplied each parsed option, which no input source writes. */
+  spellings: Map<string, string>;
 }
 
 /** Every parsed value lands in one of these maps; `lists` holds the repeated string options. */
 export function emptyValues(): OptionValues {
-  return { booleans: new Map(), lists: new Map(), strings: new Map() };
+  return { booleans: new Map(), lists: new Map(), spellings: new Map(), strings: new Map() };
 }
 
 /** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
@@ -146,12 +148,70 @@ export function compileOptions(declarations: readonly OptionDeclaration[], subje
   return spellings;
 }
 
+/**
+ * Whether a token reads as an option: it starts with a hyphen. Routing stops at one, and a
+ * separate value is never one. The parser and `locate` read each token through this rule.
+ */
+export function isOptionToken(token: string): boolean {
+  return token.startsWith('-');
+}
+
+/** A long option token and the inline value it carries after its first `=`, if any. */
+export interface LongToken {
+  spelling: string;
+  inline: string | undefined;
+}
+
+/**
+ * A token that starts with `--` split at its first `=` into the spelling and the inline value, or
+ * `undefined` for any other token. The parser and `locate` split long tokens through this rule.
+ */
+export function longToken(token: string): LongToken | undefined {
+  if (!token.startsWith('--')) {
+    return undefined;
+  }
+  const equals = token.indexOf('=');
+  return equals === -1
+    ? { inline: undefined, spelling: token }
+    : { inline: token.slice(equals + 1), spelling: token.slice(0, equals) };
+}
+
 function lookup(spellings: ReadonlyMap<string, OptionSpelling>, spelling: string) {
   const option = spellings.get(spelling);
   if (!option) {
     throw new UnknownOptionError(spelling);
   }
   return option;
+}
+
+/**
+ * The name of the string option one long spelling names in a table, which takes its value after
+ * `=`, or `undefined` for a Boolean, negative, short, or unknown spelling.
+ */
+export function longStringOption(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  spelling: string,
+): string | undefined {
+  const option = spellings.get(spelling);
+  return option?.type === 'string' && option.role === 'long' ? option.name : undefined;
+}
+
+/**
+ * A string option whose value the next token supplies, where the tokens ended first. A complete
+ * invocation reports it as a missing value; a partial one reads the next word as that value.
+ */
+export interface AwaitingValue {
+  name: string;
+  spelling: string;
+}
+
+/** What reading one option token did: it stood alone, took the next token, or ran out of tokens. */
+type OptionReading = 'alone' | 'next' | AwaitingValue;
+
+/** One option name a token newly supplied, with the index of that token in the list read. */
+export interface SuppliedOption {
+  name: string;
+  token: number;
 }
 
 function acceptValue({
@@ -166,20 +226,25 @@ function acceptValue({
   values: OptionValues;
   next: string | undefined;
   inline: string | undefined;
-}) {
+}): OptionReading {
   const repeatable = option.type === 'string' && option.multiple;
   if (!repeatable && (values.strings.has(option.name) || values.booleans.has(option.name))) {
     throw new RepeatedOptionError(spelling);
   }
+  // A repeatable option records its last occurrence, because each one overwrites the entry.
+  values.spellings.set(option.name, spelling);
   if (option.type === 'boolean') {
     if (inline !== undefined) {
       throw new UnexpectedValueError(spelling, inline);
     }
     values.booleans.set(option.name, option.value);
-    return false;
+    return 'alone';
   }
   const value = inline ?? next;
-  if (value === undefined || (inline === undefined && value.startsWith('-'))) {
+  if (value === undefined) {
+    return { name: option.name, spelling };
+  }
+  if (inline === undefined && isOptionToken(value)) {
     throw new MissingValueError(spelling);
   }
   if (repeatable) {
@@ -189,19 +254,18 @@ function acceptValue({
   } else {
     values.strings.set(option.name, value);
   }
-  return inline === undefined;
+  return inline === undefined ? 'next' : 'alone';
 }
 
 function parseOption(
   spellings: ReadonlyMap<string, OptionSpelling>,
   input: { token: string; next: string | undefined },
   values: OptionValues,
-) {
+): OptionReading {
   const { token, next } = input;
-  if (token.startsWith('--')) {
-    const equals = token.indexOf('=');
-    const spelling = equals === -1 ? token : token.slice(0, equals);
-    const inline = equals === -1 ? undefined : token.slice(equals + 1);
+  const long = longToken(token);
+  if (long) {
+    const { inline, spelling } = long;
     return acceptValue({ inline, next, option: lookup(spellings, spelling), spelling, values });
   }
   if (token === '-') {
@@ -215,11 +279,40 @@ function parseOption(
       throw new ShortGroupError({ reason: 'value-position', token: spelling });
     }
     const inline = suffix.startsWith('=') ? suffix.slice(1) : undefined;
-    if (acceptValue({ inline, next, option, spelling, values })) {
-      return true;
+    const reading = acceptValue({ inline, next, option, spelling, values });
+    if (reading !== 'alone') {
+      return reading;
     }
   }
-  return false;
+  return 'alone';
+}
+
+/** The state one scan carries from token to token, whichever scope it reads. */
+interface ScanState {
+  awaiting: AwaitingValue | undefined;
+  supplied: SuppliedOption[];
+  values: OptionValues;
+}
+
+/**
+ * Reads one option token into the scan and answers whether it took the next token too. The names
+ * it newly supplied join `supplied` in the order the values map first recorded them, so a repeated
+ * option keeps its first position.
+ */
+function readOption(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  input: { index: number; next: string | undefined; token: string },
+  state: ScanState,
+): boolean {
+  const known = state.values.spellings.size;
+  const reading = parseOption(spellings, input, state.values);
+  for (const name of [...state.values.spellings.keys()].slice(known)) {
+    state.supplied.push({ name, token: input.index });
+  }
+  if (typeof reading === 'object') {
+    state.awaiting = reading;
+  }
+  return reading === 'next';
 }
 
 /**
@@ -227,9 +320,9 @@ function parseOption(
  * pre-scan reads the globals alone, so a letter it does not own is only "not a global option".
  */
 function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: string) {
-  if (token.startsWith('--')) {
-    const equals = token.indexOf('=');
-    return spellings.has(equals === -1 ? token : token.slice(0, equals));
+  const long = longToken(token);
+  if (long) {
+    return spellings.has(long.spelling);
   }
   const group = token.slice(1).split('=')[0] ?? '';
   let global = '';
@@ -251,27 +344,58 @@ function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: st
   return true;
 }
 
+/**
+ * The pre-scan's reading of a token list that may stop short. `positions` holds the index in
+ * `tokens` of each `rest` token, and `awaiting` is the global option the last token left without
+ * its value.
+ */
+export interface GlobalScan {
+  awaiting: AwaitingValue | undefined;
+  positions: number[];
+  rest: string[];
+  supplied: SuppliedOption[];
+  values: OptionValues;
+}
+
 /** Consumes global options anywhere before the passthrough delimiter and leaves the rest routable. */
-export function extractGlobals(
+export function scanGlobals(
   spellings: ReadonlyMap<string, OptionSpelling>,
   tokens: readonly string[],
-) {
-  const values = emptyValues();
+): GlobalScan {
+  const state: ScanState = { awaiting: undefined, supplied: [], values: emptyValues() };
   const rest: string[] = [];
+  const positions: number[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token === undefined) {
       break;
     }
     if (token === '--') {
-      rest.push(...tokens.slice(index));
-      return { rest, values };
+      // One push per token, because a spread call would overflow the stack on a long list.
+      for (const [offset, tail] of tokens.slice(index).entries()) {
+        rest.push(tail);
+        positions.push(index + offset);
+      }
+      break;
     }
-    if (!token.startsWith('-') || !isGlobalToken(spellings, token)) {
+    if (!isOptionToken(token) || !isGlobalToken(spellings, token)) {
       rest.push(token);
-    } else if (parseOption(spellings, { next: tokens[index + 1], token }, values)) {
+      positions.push(index);
+    } else if (readOption(spellings, { index, next: tokens[index + 1], token }, state)) {
       index += 1;
     }
+  }
+  return { ...state, positions, rest };
+}
+
+/** The pre-scan of a complete invocation, where a global still waiting for its value is a fault. */
+export function extractGlobals(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  tokens: readonly string[],
+) {
+  const { awaiting, rest, values } = scanGlobals(spellings, tokens);
+  if (awaiting) {
+    throw new MissingValueError(awaiting.spelling);
   }
   return { rest, values };
 }
@@ -289,6 +413,7 @@ export function copyValues(values: OptionValues): OptionValues {
   return {
     booleans: new Map(values.booleans),
     lists: new Map([...values.lists].map(([name, list]) => [name, [...list]])),
+    spellings: new Map(values.spellings),
     strings: new Map(values.strings),
   };
 }
@@ -298,29 +423,64 @@ export function mergeValues(globals: OptionValues, locals: OptionValues): Option
   return {
     booleans: new Map([...globals.booleans, ...locals.booleans]),
     lists: new Map([...globals.lists, ...locals.lists]),
+    spellings: new Map([...globals.spellings, ...locals.spellings]),
     strings: new Map([...globals.strings, ...locals.strings]),
   };
 }
 
-export function parseInputs(
+/**
+ * One Command's reading of its own tokens, which may stop short. `delimited` says a bare `--` was
+ * read, and `awaiting` is the option the last token left without its value.
+ */
+export interface InputScan {
+  awaiting: AwaitingValue | undefined;
+  delimited: boolean;
+  options: OptionValues;
+  passthrough: string[];
+  positionals: string[];
+  supplied: SuppliedOption[];
+}
+
+/** Reads one Command's tokens into options, positionals, and the passthrough tail. */
+export function scanInputs(
   spellings: ReadonlyMap<string, OptionSpelling>,
   tokens: readonly string[],
-) {
-  const options = emptyValues();
+): InputScan {
+  const state: ScanState = { awaiting: undefined, supplied: [], values: emptyValues() };
   const positionals: string[] = [];
+  const read = (passthrough: string[], delimited: boolean): InputScan => ({
+    awaiting: state.awaiting,
+    delimited,
+    options: state.values,
+    passthrough,
+    positionals,
+    supplied: state.supplied,
+  });
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token === undefined) {
       break;
     }
     if (token === '--') {
-      return { options, passthrough: tokens.slice(index + 1), positionals };
+      return read(tokens.slice(index + 1), true);
     }
-    if (!token.startsWith('-')) {
+    if (!isOptionToken(token)) {
       positionals.push(token);
-    } else if (parseOption(spellings, { next: tokens[index + 1], token }, options)) {
+    } else if (readOption(spellings, { index, next: tokens[index + 1], token }, state)) {
       index += 1;
     }
   }
-  return { options, passthrough: [], positionals };
+  return read([], false);
+}
+
+/** Parses a complete invocation's local tokens, where a waiting option is a missing value. */
+export function parseInputs(
+  spellings: ReadonlyMap<string, OptionSpelling>,
+  tokens: readonly string[],
+) {
+  const { awaiting, options, passthrough, positionals } = scanInputs(spellings, tokens);
+  if (awaiting) {
+    throw new MissingValueError(awaiting.spelling);
+  }
+  return { options, passthrough, positionals };
 }

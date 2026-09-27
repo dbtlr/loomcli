@@ -37,3 +37,15 @@ test('a global declared after a colliding root-local option throws from globalOp
       'thrown:1: Option "quiet" is declared as a global option and as a local option on the root Command. Rename the local option.\n',
   });
 });
+
+test.each([
+  ['required', 'required'],
+  ['required-false', 'required'],
+  ['validate-omitted', 'validateOmitted'],
+])('a global option declaring %s throws from globalOption()', (scenario, key) => {
+  expect(invoke(fixture, [scenario])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `thrown:1: Global option "file" declares ${key}. Remove it; an omitted global option is absent, and a Command that needs its value checks for it.\n`,
+  });
+});

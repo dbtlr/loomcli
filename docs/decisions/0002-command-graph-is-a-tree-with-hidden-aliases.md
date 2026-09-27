@@ -4,7 +4,7 @@ title: ADR-0002 - The command graph is a tree, and hidden aliases replace multi-
 description: A Command value attaches at one point in one Application's graph. Extra operator spellings are hidden aliases that route to the Command but never appear in any report.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-25
+modified: 2026-09-27
 ---
 
 # ADR-0002 - The command graph is a tree, and hidden aliases replace multi-parent attachment
@@ -34,3 +34,5 @@ The unnamed root declares no aliases. A hidden alias never appears in a candidat
 - 2026-09-24: The manifest omits aliases, as [Graph inspection](../core.md#graph-inspection) states since the 2026-09-18 correction and the [Manifest](../core.md#manifest) contract repeats. The sentence above that a manifest consumer can read them no longer holds: an alias is unadvertised, so of the projections only a completion script reads it.
 - 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, moves the moment the tree rules throw. A Command value reached through two paths is rejected when its subtree joins the Application, and an alias that repeats a sibling's name or alias is rejected by the `command()` call that attaches it, rather than by graph build. The rules are unchanged. [ADR-0035](0035-a-command-path-nests-at-most-two-levels-below-the-root.md), proposed, caps the tree at two levels below the root. Both bind when those records are accepted.
 - 2026-09-25: ADR-0034 and ADR-0035 are accepted. The entry above binds as written.
+- 2026-09-26: [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md), proposed, supersedes the clause that a completion consumer reads aliases, and the 2026-09-24 entry's conclusion that a completion script is the one projection that reads them. Completion never offers or rewrites an alias; routing and `locate` resolve a typed alias. No projection reads `aliases`, and `inspect()` still publishes the field. It binds when that record is accepted.
+- 2026-09-27: ADR-0043 is accepted. The entry above binds as written.

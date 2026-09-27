@@ -1,91 +1,15 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode } from '@loomcli/core';
 
+import { closedSet } from '../closed-set.js';
+import type { Schema } from '../closed-set.js';
 import { escapeControls } from '../encode.js';
 import { terminator } from '../lines.js';
-import { isStrings, oneLine } from './cells.js';
+import { oneLine } from './cells.js';
 import { helpArgument, helpInput } from './extension.js';
-
-/** One JSON Schema object as the graph publishes it: plain data read one keyword at a time. */
-type Schema = Readonly<Record<string, unknown>>;
 
 /** The most values a derived list names; a larger set is the author's to state with `accepts`. */
 const maximumValues = 8;
-
-/**
- * Keywords that describe a schema without constraining the values it accepts, so a closed set
- * beside one still lists every value it accepts.
- */
-const annotations: ReadonlySet<string> = new Set([
-  '$comment',
-  '$id',
-  '$schema',
-  'default',
-  'deprecated',
-  'description',
-  'examples',
-  'readOnly',
-  'title',
-  'writeOnly',
-]);
-
-/** Whether a published value is one JSON Schema object, read as a record of its keywords. */
-function isSchema(value: unknown): value is Schema {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** The keywords that name a closed set of values at one level. */
-type ClosedKeyword = 'anyOf' | 'const' | 'enum';
-
-/** Whether a keyword names a closed set of values. */
-function isClosedKeyword(keyword: string): keyword is ClosedKeyword {
-  return keyword === 'anyOf' || keyword === 'const' || keyword === 'enum';
-}
-
-/**
- * The one closed-set keyword a level holds, when every other keyword beside it leaves each listed
- * value accepted: `type: 'string'` or an annotation. Two closed-set keywords at one level, or any
- * keyword that could narrow the set, answer `undefined`.
- */
-function closedKeyword(schema: Schema): ClosedKeyword | undefined {
-  const entries = Object.entries(schema);
-  const shapes = entries.map(([keyword]) => keyword).filter(isClosedKeyword);
-  const others = entries.filter(([keyword]) => !isClosedKeyword(keyword));
-  const harmless = others.every(
-    ([keyword, value]) => (keyword === 'type' && value === 'string') || annotations.has(keyword),
-  );
-  const [shape, second] = shapes;
-  return harmless && second === undefined ? shape : undefined;
-}
-
-/** The values one `enum` or `const` level names, or `undefined` for any other level. */
-function member(schema: Schema): readonly string[] | undefined {
-  const keyword = closedKeyword(schema);
-  if (keyword === 'enum') {
-    return isStrings(schema.enum) ? schema.enum : undefined;
-  }
-  if (keyword === 'const') {
-    return typeof schema.const === 'string' ? [schema.const] : undefined;
-  }
-  return undefined;
-}
-
-/** The values an `anyOf` names when every member is an `enum` or a `const`, flattened in order. */
-function flattened(members: unknown): readonly string[] | undefined {
-  if (!Array.isArray(members)) {
-    return undefined;
-  }
-  // `Array.from` reads a hole as `undefined`, so a sparse `anyOf` derives nothing.
-  const named = Array.from(members, (entry: unknown) =>
-    isSchema(entry) ? member(entry) : undefined,
-  );
-  return named.every((values) => values !== undefined) ? named.flat() : undefined;
-}
-
-/** The values one level names: an `enum`, a `const`, or an `anyOf` of those, flattened in order. */
-function closedSet(schema: Schema): readonly string[] | undefined {
-  return closedKeyword(schema) === 'anyOf' ? flattened(schema.anyOf) : member(schema);
-}
 
 /**
  * One value as the list prints it: as written, or as its JSON string when it is empty or holds
@@ -107,11 +31,7 @@ function listed(value: string): string {
  * value, so it derives the same way. Anything else derives nothing.
  */
 function derived(schema: Schema | null): string | undefined {
-  if (schema === null) {
-    return undefined;
-  }
-  const values = closedSet(schema);
-  const distinct = [...new Set(values)];
+  const distinct = closedSet(schema) ?? [];
   const [first] = distinct;
   if (first === undefined || distinct.length > maximumValues) {
     return undefined;

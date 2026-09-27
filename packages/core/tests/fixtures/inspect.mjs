@@ -30,7 +30,7 @@ function jsonkit(version) {
   return new Application('jsonkit', {
     version,
   })
-    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .globalOption('file', { short: 'f', type: 'string' })
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .command(get)
     .command(keys)

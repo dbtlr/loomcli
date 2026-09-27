@@ -50,11 +50,12 @@ const root = page(
   '  jsonkit <command> [options]',
   '',
   'COMMANDS',
-  '  doctor  Check the host this application runs on.',
-  '  get     Read one value at a path.',
-  '  keys    List the keys at a path.',
-  '  select  Keep the named fields of the document.',
-  '  fetch   Read one value at a path.  (deprecated: Use get instead.)',
+  '  doctor                Check the host this application runs on.',
+  '  completion <command>  Print a shell completion script.',
+  '  get                   Read one value at a path.',
+  '  keys                  List the keys at a path.',
+  '  select                Keep the named fields of the document.',
+  '  fetch                 Read one value at a path.  (deprecated: Use get instead.)',
   '',
   'OPTIONS',
   '      --format <format>  Select the output format, records by default. One of: records, json, jsonl.',
@@ -95,6 +96,39 @@ test('jsonkit --help prints the root page', () => {
   expect(invoke(main, ['--help'])).toEqual(root);
 });
 
+test('jsonkit -h prints the compact root page, the child hint ahead of the pointer', () => {
+  expect(invoke(main, ['-h'])).toEqual(
+    page(
+      'jsonkit · Read and reshape one JSON document.',
+      '',
+      'USAGE',
+      '  jsonkit [options]',
+      '  jsonkit <command> [options]',
+      '',
+      'COMMANDS',
+      '  doctor                Check the host this application runs on.',
+      '  completion <command>  Print a shell completion script.',
+      '  get                   Read one value at a path.',
+      '  keys                  List the keys at a path.',
+      '  select                Keep the named fields of the document.',
+      '  fetch                 Read one value at a path.  (deprecated: Use get instead.)',
+      '',
+      'OPTIONS',
+      '      --format <format>  Select the output format, records by default. One of: records, json, jsonl.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
+      "      --manifest     Print this command's manifest as JSON.",
+      '      --explain      Explain the selected command and exit.',
+      '',
+      'Run jsonkit <command> -h for command details.',
+      'Run jsonkit --help for details and examples.',
+    ),
+  );
+});
+
 test('jsonkit --help --version prints help and never loads the version middleware module', () => {
   const result = loaded(['--help', '--version']);
   expect(result.marks).toEqual(['loaded:help']);
@@ -107,6 +141,10 @@ test('jsonkit --version --help prints the same page, because help wins the tie',
 
 test('jsonkit select --help prints the leaf page of a Command with a required option', () => {
   expect(invoke(main, ['select', '--help'])).toEqual(select);
+});
+
+test('jsonkit select -h prints the extended page, because select has no details or examples', () => {
+  expect(invoke(main, ['select', '-h'])).toEqual(select);
 });
 
 test('jsonkit get --help renders while the required path is missing', () => {

@@ -52,6 +52,19 @@
       "env": null
     },
     {
+      "type": "string",
+      "name": "config",
+      "description": "Read configuration from this file alone.",
+      "deprecated": null,
+      "long": "--config",
+      "short": null,
+      "required": false,
+      "multiple": false,
+      "schema": null,
+      "env": null,
+      "default": null
+    },
+    {
       "type": "boolean",
       "name": "explain",
       "description": "Explain the selected command and exit.",

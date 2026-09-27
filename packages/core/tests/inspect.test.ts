@@ -49,7 +49,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         long: '--file',
         multiple: false,
         name: 'file',
-        required: true,
+        required: false,
         short: '-f',
         type: 'string',
         validateOmitted: false,

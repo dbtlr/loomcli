@@ -36,12 +36,13 @@ import {
 import type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
 import { nodeAt, resultNode, snapshot } from './inspect.js';
-import type { CommandGraph, OptionNode, ResultNode } from './inspect.js';
+import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
   compileOptions,
   copyValues,
   emptyValues,
   extractGlobals,
+  isOptionToken,
   mergeValues,
   parseInputs,
 } from './options.js';
@@ -97,7 +98,15 @@ export interface ArgumentSlot {
   variadic: boolean;
 }
 
+/**
+ * What one dispatch hands its action. `graph` and `command` are the run's inspected graph and the
+ * routed node inside it, the values its middleware read. Each builds on its first read, so a run
+ * whose action reads neither, whose chain is empty, and which asks no configuration source renders
+ * no graph and calls no converter.
+ */
 export interface DispatchInput {
+  command: () => CommandNode;
+  graph: () => CommandGraph;
   style: ContextualStyle;
   host: Host;
   /** The action's channel, whose `results` accepts whatever the routed declaration named. */
@@ -255,16 +264,30 @@ function checkCommandOptions(name: string, options: unknown): void {
   }
 }
 
-/** One name rule for every declared name in the graph, so a child and an argument read alike. */
+/** One name rule for an argument, option, or view name: a bare token the parser can read. */
 function isDeclaredName(name: unknown): name is string {
   return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
-/** An alias is a bare token the way a child name is, so it answers to the same name rule. */
+/**
+ * The portable name rule, for every name an operator types as a command at a shell prompt: the
+ * application name, every Command name, and every alias. The characters are the POSIX portable
+ * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
+ * shell hides.
+ */
+export function isPortableName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
+}
+
+/** The one correction every portable name diagnostic ends with. */
+export const portableNameCorrection =
+  'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
+
+/** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
 function checkAliasName(command: string | null, alias: unknown): void {
-  if (!isDeclaredName(alias)) {
+  if (!isPortableName(alias)) {
     throw new DeclarationError(
-      `${commandSentence(command)} declares an alias named "${String(alias)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `${commandSentence(command)} declares an alias named "${String(alias)}". ${portableNameCorrection}`,
     );
   }
 }
@@ -360,9 +383,9 @@ function namedState<Globals>(
   name: unknown,
   options: unknown,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
-  if (!isDeclaredName(name)) {
+  if (!isPortableName(name)) {
     throw new DeclarationError(
-      `Command name "${String(name)}" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `Command name "${String(name)}" is invalid. ${portableNameCorrection}`,
     );
   }
   checkCommandOptions(name, options);
@@ -565,10 +588,14 @@ export function declareAlias<Args, Options, Globals>(
       `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
     );
   }
+  // The call's own input is judged before the receiver's state.
+  // A non-string name then reports as an alias name instead of failing to print in the order diagnostic.
+  for (const alias of names) {
+    checkAliasName(name, alias);
+  }
   checkOpen(state, `declares alias "${first}"`, 'Declare aliases before action().');
   const aliases = [...state.aliases];
   for (const alias of names) {
-    checkAliasName(name, alias);
     if (alias === name) {
       throw new DeclarationError(
         `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
@@ -624,8 +651,23 @@ export function declareAction<Args, Options, Globals, Result>(
       `${commandSentence(state.name)} has multiple actions. Register one action.`,
     );
   }
+  // The graph and the routed node stay getters, because a spread would build the graph on every run.
   const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
-    handler({ ...context, out: declaredChannel(context.out) });
+    handler({
+      args: context.args,
+      get command() {
+        return context.command;
+      },
+      get graph() {
+        return context.graph;
+      },
+      host: context.host,
+      options: context.options,
+      out: declaredChannel(context.out),
+      passthrough: context.passthrough,
+      signal: context.signal,
+      style: context.style,
+    });
   return { ...state, action: stored };
 }
 
@@ -918,8 +960,8 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
 }
 
 /**
- * A view name is a bare token the way a child name is, and never an array index, because an
- * integer-like key does not keep the position the author gave it.
+ * A view name is a bare token the way an argument or option name is, and never an array index,
+ * because an integer-like key does not keep the position the author gave it.
  */
 function isViewName(name: string): boolean {
   return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
@@ -1501,7 +1543,7 @@ function bindDispatch<Args, Options, Globals>(
   action: Action<Args, Globals & Options>,
   globals: BuiltGlobals,
 ) {
-  return ({ host, out, passthrough, signal, style, values }: DispatchInput) => {
+  return ({ command, graph, host, out, passthrough, signal, style, values }: DispatchInput) => {
     const bound = state.bind(values);
     // Last resort: no typed path exists.
     // The graph erases the binder's generic relationship.
@@ -1512,6 +1554,12 @@ function bindDispatch<Args, Options, Globals>(
     const globalOptions = globals.bind(values) as Globals;
     return action({
       args: bound.args,
+      get command() {
+        return command();
+      },
+      get graph() {
+        return graph();
+      },
       host,
       options: { ...globalOptions, ...bound.options },
       out,
@@ -1738,7 +1786,7 @@ export class CommandBuilder<
   }
 
   /**
-   * Aliases are other bare tokens that route to this Command. They invalidate no call, and the
+   * Aliases are other portable names that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
   alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {
@@ -1892,14 +1940,21 @@ function candidatesOf(command: BuiltCommand): string[] {
   return [...command.children].filter(([, child]) => !child.hidden).map(([name]) => name);
 }
 
+/**
+ * Whether a token names one of the Command's children: the Command has children and the token is
+ * no option token. Routing and `locate` read a bare word through this rule.
+ */
+export function readsAsChild(command: BuiltCommand, token: string): boolean {
+  return command.children.size > 0 && !isOptionToken(token);
+}
+
 /** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
   const path: string[] = [];
   let index = 0;
-  while (command.children.size > 0) {
-    const token = tokens[index];
-    if (token === undefined || token === '--' || token.startsWith('-')) {
+  for (let token = tokens[index]; token !== undefined; token = tokens[index]) {
+    if (!readsAsChild(command, token)) {
       break;
     }
     const child = command.routes.get(token);
@@ -1925,27 +1980,38 @@ function bindArguments(
   positionals: readonly string[],
 ) {
   const values = new Map<InputDeclaration, string | string[]>();
-  let index = 0;
-  for (const slot of command.arguments) {
-    if (slot.variadic) {
-      const rest = positionals.slice(index);
-      // An empty tail binds nothing, so validation reads it as `[]` or reports the omission.
-      if (rest.length > 0) {
-        values.set(slot.input, rest);
-      }
-      index = positionals.length;
+  for (const [position, token] of positionals.entries()) {
+    const slot = argumentSlot(command.arguments, position);
+    if (!slot) {
+      throw new UnexpectedArgumentError(
+        path,
+        command.arguments.length,
+        positionals.slice(position),
+      );
+    }
+    // An empty variadic tail binds nothing, so validation reads it as `[]` or reports the omission.
+    const bound = values.get(slot.input);
+    if (!slot.variadic) {
+      values.set(slot.input, token);
+    } else if (Array.isArray(bound)) {
+      bound.push(token);
     } else {
-      const value = positionals[index];
-      if (value !== undefined) {
-        values.set(slot.input, value);
-        index += 1;
-      }
+      values.set(slot.input, [token]);
     }
   }
-  if (index < positionals.length) {
-    throw new UnexpectedArgumentError(path, command.arguments.length, positionals.slice(index));
-  }
   return values;
+}
+
+/**
+ * The slot the positional at one index fills: the slot at that index, else a variadic last slot,
+ * which accepts every later positional, else none. Binding and `locate` read positions through it.
+ */
+export function argumentSlot(
+  slots: readonly ArgumentSlot[],
+  position: number,
+): ArgumentSlot | undefined {
+  const last = slots.at(-1);
+  return slots[position] ?? (last?.variadic ? last : undefined);
 }
 
 /** One invocation after the pre-scan and routing, which the middleware chain runs on top of. */
@@ -1977,6 +2043,8 @@ export interface DispatchInvocation {
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
   signal: AbortSignal;
+  /** The channel a configuration source writes through, whose results call names the source. */
+  sourceOut: Out<OpenResult>;
   style: ContextualStyle;
 }
 
@@ -2102,14 +2170,17 @@ async function fillScope(
       values: globals,
     },
     host: invocation.host,
+    inspected: invocation.inspected,
     locals:
       local.kind === 'parsed'
         ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
         : undefined,
+    out: invocation.sourceOut,
     plugins: graph.globals.plugins,
     request: (input, global) =>
       requestNode(invocation.inspected(), routed.path, { global, name: input.name }),
     signal: invocation.signal,
+    style: invocation.style,
   });
   return { globals, locals, sources };
 }
@@ -2146,6 +2217,9 @@ async function readyDispatch(
       const channel = invocation.channel({ path, result: command.result, view });
       try {
         await local.dispatch({
+          // The run builds its graph once, so every read answers the same node.
+          command: () => nodeAt(invocation.inspected(), path),
+          graph: invocation.inspected,
           host: invocation.host,
           out: channel.out,
           passthrough: local.passthrough,

@@ -24,7 +24,7 @@ const get = new Command('get')
 const keys = new Command('keys').action(report('keys'));
 
 const app = new Application('jsonkit')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: digits })
   .option('pretty', { short: 'p', type: 'boolean' })

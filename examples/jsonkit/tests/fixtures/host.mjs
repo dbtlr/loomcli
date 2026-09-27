@@ -46,6 +46,10 @@ if (scenario === 'cwd') {
       terminal: { ...piped, stdin: { isTTY: true } },
     },
   });
+} else if (scenario === 'terminal-doctor') {
+  await jsonkit.run({
+    host: { argv: ['doctor'], terminal: { ...piped, stdin: { isTTY: true } } },
+  });
 } else if (scenario === 'terminal-file') {
   await withDocument('data.json', (cwd) =>
     jsonkit.run({

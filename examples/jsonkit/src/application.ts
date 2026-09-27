@@ -3,6 +3,7 @@ import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, InputError, override, UnknownCommandError } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
@@ -19,7 +20,6 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
-import { fileOrStdin } from './file-or-stdin.js';
 import type { Member } from './member.js';
 import { fatalError, inputProblems, unknownCommand } from './views.js';
 
@@ -36,7 +36,16 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  plugins: [help(), version(), format(), manifest(), loomTheme(), explain(), doctor()],
+  plugins: [
+    help(),
+    version(),
+    format(),
+    manifest(),
+    loomTheme(),
+    explain(),
+    doctor(),
+    completion(),
+  ],
   version: Package.version,
   views: [
     override(FatalError, fatalError),
@@ -48,8 +57,6 @@ const configured = new Application('jsonkit', {
   extensions: [helpInput({ placeholder: 'path' })],
   short: 'f',
   type: 'string',
-  validate: fileOrStdin,
-  validateOmitted: true,
 });
 
 declare module '@loomcli/core' {

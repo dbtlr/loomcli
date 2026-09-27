@@ -16,7 +16,7 @@ const list = new Command('list')
 const cache = new Command('cache').command(clear).command(list);
 
 const nested = new Application('nested')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { default: 'nested.json', short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .command(cache);

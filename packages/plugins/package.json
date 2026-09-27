@@ -2,16 +2,30 @@
   "name": "@loomcli/plugins",
   "version": "0.4.0",
   "description": "The Loom CLI plugin pack. Ships every first-party plugin as its own subpath export.",
-  "license": "MIT",
+  "license": "MIT AND Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "licenses",
+    "NOTICE"
   ],
   "type": "module",
   "exports": {
+    "./completion": {
+      "types": "./dist/src/completion/plugin.d.ts",
+      "import": "./dist/src/completion/plugin.js"
+    },
+    "./config": {
+      "types": "./dist/src/config/plugin.d.ts",
+      "import": "./dist/src/config/plugin.js"
+    },
+    "./config/extension": {
+      "types": "./dist/src/config/extension.d.ts",
+      "import": "./dist/src/config/extension.js"
+    },
     "./format": {
       "types": "./dist/src/format/plugin.d.ts",
       "import": "./dist/src/format/plugin.js"

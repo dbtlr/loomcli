@@ -19,7 +19,8 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
   if (kind === 'undeclared') {
     return `${routedSentence(command)} declares no result. Declare one with result() or rows() before action().`;
   }
-  return `A middleware called out.results() on ${routedSubject(command)}. Only the action emits a result.`;
+  const caller = kind === 'source' ? 'A configuration source' : 'A middleware';
+  return `${caller} called out.results() on ${routedSubject(command)}. Only the action emits a result.`;
 }
 
 /**
@@ -254,8 +255,8 @@ export class InternalError extends LoomError {
   }
 }
 
-/** The four ways the results lane is broken, each named where core meets it. */
-export type ResultFault = 'missing' | 'repeated' | 'undeclared' | 'middleware';
+/** The five ways the results lane is broken, each named where core meets it. */
+export type ResultFault = 'missing' | 'repeated' | 'undeclared' | 'middleware' | 'source';
 
 /**
  * Exit 1: the promise a declared result makes was not kept. It wraps no thrown value, so its

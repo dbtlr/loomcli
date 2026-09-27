@@ -53,12 +53,12 @@ const root = [
   '',
 ].join('\n');
 
-/** The page for `run`, which needs a required argument and two required options to be invoked. */
+/** The page for `run`, which needs a required argument and two required local options to be invoked. */
 const job = [
   'app run · Run one job.',
   '',
   'USAGE',
-  '  app run <source> [target] --out <out> --tag <tag>... --key <key> [options]',
+  '  app run <source> [target] --out <out> --tag <tag>... [options]',
   '',
   'ARGUMENTS',
   '  source  Where to read.',
@@ -70,7 +70,7 @@ const job = [
   '      --mode <mode>  How to run.',
   '',
   'GLOBAL OPTIONS',
-  '      --key <key>    The key to use.  (required)',
+  '      --key <key>    The key to use.',
   '  -f, --file <file>  The document to read.',
   '  -h, --help         Show this help.',
   '  -V, --version      Print the version.',

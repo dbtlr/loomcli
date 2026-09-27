@@ -4,7 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ExtensionValue } from './extension.js';
-import type { ResultNode } from './inspect.js';
+import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
@@ -420,6 +420,18 @@ export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted
               : { 'A validateOmitted validator must accept an undefined input': Config['validate'] }
             : { 'validateOmitted needs a validator to receive the omission': never }
   : unknown;
+/**
+ * A global option declares no presence rule, so its omission is always plain absence. A union
+ * config fails when any member declares the key, and a wide `OptionConfig` passes, because its
+ * members only allow the key.
+ */
+export type GlobalOmissionConstraint<Config> = [Extract<Config, { required: unknown }>] extends [
+  never,
+]
+  ? [Extract<Config, { validateOmitted: unknown }>] extends [never]
+    ? unknown
+    : { 'A global option declares no validateOmitted; its omission is plain absence': never }
+  : { 'A global option declares no required; the Commands that read it check for it': never };
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   :
@@ -486,10 +498,16 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
             : undefined)
   : boolean;
 
+/**
+ * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
+ * `command` is the routed node inside it: the same two values the run's middleware receive.
+ */
 export interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly style: ContextualStyle;
   args: Args;
   options: Options;
+  readonly graph: CommandGraph;
+  readonly command: CommandNode;
   passthrough: string[];
   out: Out<Result>;
   host: Host;

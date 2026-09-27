@@ -67,7 +67,7 @@ function rendering(value, views, plugins = []) {
 /** An application whose invocation omits a required option, so one usage failure reports. */
 function failing(views, plugins = []) {
   return new Application('views', { plugins, views })
-    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .option('file', { required: true, short: 'f', type: 'string' })
     .action(dispatch);
 }
 

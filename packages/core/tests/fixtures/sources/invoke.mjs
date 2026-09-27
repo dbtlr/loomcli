@@ -1,4 +1,12 @@
-import { Application, Command, plugin, validationContext } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  InputError,
+  lanes,
+  override,
+  plugin,
+  validationContext,
+} from '@loomcli/core';
 import { z } from 'zod';
 
 import { configKey } from './extension.mjs';
@@ -84,6 +92,13 @@ const recording = {
   },
 };
 
+/** The view overrides a test installs, so a source's warning and its InputError reach them. */
+const overrides = {
+  input: [override(InputError, { render: (failure) => `${JSON.stringify(failure.problems)}\n` })],
+  none: [],
+  warn: [override(lanes.warn, { render: (message) => `warned: ${message}` })],
+};
+
 const print =
   (label) =>
   ({ options, out }) =>
@@ -121,7 +136,10 @@ function application() {
     .option('name', { env: 'constructor', type: 'string' })
     .option('flag', { env: 'toString', type: 'boolean' })
     .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
-  return new Application('app', { plugins: (installed[process.argv[2]] ?? (() => []))() })
+  return new Application('app', {
+    plugins: (installed[process.argv[2]] ?? (() => []))(),
+    views: overrides[process.env.FIXTURE_VIEWS ?? 'none'],
+  })
     .globalOption('limit', {
       default: '10',
       env: 'FIXTURE_LIMIT',

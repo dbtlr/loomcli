@@ -1,6 +1,6 @@
 import { setTimeout as after } from 'node:timers/promises';
 
-import { readExtension } from '@loomcli/core';
+import { InputError, readExtension, ResultError } from '@loomcli/core';
 
 import { configKey } from './extension.mjs';
 
@@ -15,11 +15,52 @@ if (mode === 'import-fails') {
  * The fixture's configuration source. It prints what core handed it, then answers each requested
  * option whose key the settings in `FIXTURE_SETTINGS` hold.
  */
-const source = async ({ host, options, requests }) => {
+const source = async ({ graph, host, options, out, requests, style }) => {
   const names = requests.map((request) => request.name);
   process.stdout.write(`source:${JSON.stringify({ options, requests: names })}\n`);
   if (mode === 'throw') {
     throw new Error(process.env.FIXTURE_REASON ?? 'the settings file is locked');
+  }
+  if (mode === 'context') {
+    // The graph is the one inspect() returns, and each request is a node inside it.
+    const globals = requests.map((request) => graph.globals.includes(request));
+    const select = graph.root.children.find((child) => child.name === 'select');
+    const routed = select.options.some((option) => requests.includes(option));
+    process.stdout.write(
+      `context:${JSON.stringify({ globals, name: graph.name, routed, style: typeof style.escape })}\n`,
+    );
+  }
+  if (mode === 'warn') {
+    await out.warn(
+      `Skipped ${style.escape(host.env.FIXTURE_WARN_PATH ?? 'a.json')}: the file is not valid JSON.`,
+    );
+  }
+  if (mode === 'input-error') {
+    throw new InputError('Option "--config": File "missing.json" does not exist.', [
+      {
+        input: { global: true, kind: 'option', name: 'config' },
+        issues: [{ message: 'File "missing.json" does not exist.' }],
+        reason: 'invalid',
+        spelling: '--config',
+      },
+    ]);
+  }
+  if (mode === 'results') {
+    await out.results('x');
+  }
+  if (mode === 'fatal') {
+    out.fatal('the source gave up');
+  }
+  if (mode === 'result-error') {
+    // A ResultError the source built itself is not the fault of its own out.results() call.
+    throw new ResultError('middleware', ['bogus']);
+  }
+  if (mode === 'input-error-getter') {
+    return {
+      get limit() {
+        throw new InputError('Option "--limit": not from the resolver.', []);
+      },
+    };
   }
   if (mode === 'cancel') {
     globalThis.fixtureAbort();

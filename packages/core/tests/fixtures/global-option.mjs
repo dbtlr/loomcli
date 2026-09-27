@@ -16,6 +16,17 @@ const scenarios = {
       .globalOption('quiet', { type: 'boolean' })
       .action(action),
   original: () => base.action(action),
+  required: () => base.globalOption('file', { required: true, type: 'string' }).action(action),
+  'required-false': () =>
+    base.globalOption('file', { required: false, type: 'string' }).action(action),
+  'validate-omitted': () =>
+    base
+      .globalOption('file', {
+        type: 'string',
+        validate: { '~standard': { validate: (value) => ({ value }), vendor: 'test', version: 1 } },
+        validateOmitted: true,
+      })
+      .action(action),
 };
 const app = declare(scenarios[scenario]);
 process.exitCode = await app.run({ host: { argv: [] } });

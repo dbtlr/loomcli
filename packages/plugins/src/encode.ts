@@ -13,6 +13,15 @@ const hexDigitCount = 4;
 /** Each replaced character is exactly one UTF-16 code unit, so its code always sits at index 0. */
 const soleCodeUnit = 0;
 
+/** Each matched character replaced by its four-digit lowercase `\uXXXX` escape. */
+function escapeMatching(text: string, pattern: RegExp): string {
+  return text.replaceAll(
+    pattern,
+    (character) =>
+      `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
+  );
+}
+
 /**
  * Makes the rendered text safe under every rendering policy. `style.escape` neutralizes the
  * internal markup delimiters first; the C1 controls and DEL, U+007F through U+009F, are not among
@@ -30,9 +39,15 @@ export function encodeText(text: string, context: ViewContext): string {
  * leaves these raw, so JSON text passes through here before it prints.
  */
 export function escapeControls(text: string): string {
-  return text.replaceAll(
-    /[\u007F-\u009F]/gu,
-    (character) =>
-      `\\u${character.charCodeAt(soleCodeUnit).toString(hexRadix).padStart(hexDigitCount, '0')}`,
-  );
+  return escapeMatching(text, /[\u007F-\u009F]/gu);
+}
+
+/**
+ * The text with every control character and line separator, U+0000 through U+001F, U+007F through
+ * U+009F, U+2028, and U+2029, replaced by its four-digit lowercase `\uXXXX` escape. Raw text that
+ * never passes through JSON, such as a file path, is escaped with this before it reaches a label, a
+ * warning, or a failure.
+ */
+export function escapeControlCharacters(text: string): string {
+  return escapeMatching(text, /[\p{Cc}\p{Zl}\p{Zp}]/gu);
 }

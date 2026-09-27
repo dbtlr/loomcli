@@ -14,7 +14,9 @@ import {
   declareResult,
   declareResultViews,
   freshState,
+  isPortableName,
   layerOf,
+  portableNameCorrection,
 } from './command.js';
 import type {
   AfterAction,
@@ -56,6 +58,7 @@ import type {
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
+  GlobalOmissionConstraint,
   PerValueConstraint,
   NameConstraint,
   ExitCode,
@@ -272,7 +275,8 @@ class ApplicationBuilder<
         : unknown) &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
-      NoInfer<ValidateOmittedConstraint<Config>>,
+      NoInfer<ValidateOmittedConstraint<Config>> &
+      NoInfer<GlobalOmissionConstraint<Config>>,
   ): Application<
     Args,
     Options,
@@ -510,6 +514,7 @@ class ApplicationBuilder<
               invocationOutput.useRoute(path);
             },
             signal: controller.signal,
+            sourceOut: output.sourceOut,
             style: output.style,
           });
         }
@@ -733,12 +738,23 @@ function declareApplication(options: unknown): {
   };
 }
 
+/** The application name is typed as a command at the prompt, so it answers to the portable rule. */
+function checkApplicationName(name: unknown): string {
+  if (!isPortableName(name)) {
+    throw new DeclarationError(
+      `Application name "${String(name)}" is invalid. ${portableNameCorrection}`,
+    );
+  }
+  return name;
+}
+
 /** Constructor inference preserves the installed plugin tuple; globals start empty. */
 class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
-    super(name, declareApplication(options));
+    // The arguments evaluate in order, so the name is checked before any option is read.
+    super(checkApplicationName(name), declareApplication(options));
   }
 }
 

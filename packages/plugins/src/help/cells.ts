@@ -1,6 +1,7 @@
 import { pad, readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { isStrings } from '../closed-set.js';
 import { terminators } from '../lines.js';
 import { helpInput } from './extension.js';
 
@@ -100,12 +101,6 @@ const escapes: Readonly<Record<string, string>> = {
  */
 function oneLine(text: string): string {
   return text.replaceAll(terminators, (found) => escapes[found] ?? found);
-}
-
-/** Whether a value is a list of strings, which prints as its elements separated by a space. */
-function isStrings(value: unknown): value is readonly string[] {
-  // Spreading reads a hole as the `undefined` it is, which `every` alone would skip.
-  return Array.isArray(value) && [...value].every((entry: unknown) => typeof entry === 'string');
 }
 
 /**
@@ -246,7 +241,6 @@ export {
   column,
   deprecatedFacts,
   isEmpty,
-  isStrings,
   oneLine,
   optionCell,
   optionFacts,

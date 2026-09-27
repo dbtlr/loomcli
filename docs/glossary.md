@@ -48,7 +48,7 @@ The single object an action receives, carrying its parsed inputs, the passthroug
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
-The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands.
+The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands. A global option declares no presence rule, neither `required` nor `validateOmitted`, so its omission is always plain absence; a Command that needs the value checks for it.
 _Avoid_: Root options, inherited options, common flags
 
 **Application environment**:
@@ -130,8 +130,12 @@ _Avoid_: Rest arguments, trailing arguments, raw args
 The one name a Command is declared with. Every routed path, diagnostic, candidate list, and inspection report uses it, whichever token the operator typed.
 _Avoid_: Primary name, display name, real name
 
+**Portable name**:
+The one rule for every name an operator types as a command at a shell prompt: the application name, every Command name, and every alias. It holds characters from the POSIX portable filename set, `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, and starts with neither `-`, which reads as an option, nor `.`, which a shell hides. An argument or option name follows the declared-name rule instead: nonempty, not starting with `-`, and without whitespace or `=`. A view name follows that rule and is not integer-like.
+_Avoid_: Safe name, shell-safe name, identifier
+
 **Alias**:
-An unadvertised synonym that routes to a Command: another bare token for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
+An unadvertised synonym that routes to a Command: another portable name for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
 _Avoid_: Hidden alias, alternate command, shortcut
 
 **Hidden Command**:
@@ -183,6 +187,10 @@ _Avoid_: Global pass, first pass
 **Routing**:
 The invocation phase that reads bare tokens from the root downward and selects the Command that will parse the remaining tokens.
 _Avoid_: Dispatch (for selection), resolution, matching
+
+**Word position**:
+Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tail, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
+_Avoid_: Slot (a single-owner contribution), cursor context, completion state
 
 **Dispatch**:
 Handing the validated invocation to the selected Command's action.
@@ -335,8 +343,20 @@ A public surface derived from the Command graph, such as help, a manifest, compl
 _Avoid_: Export, output format, adapter
 
 **Help page**:
-The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling.
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
 _Avoid_: Usage text, man page, help screen
+
+**Compact help**:
+The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, ending with a pointer to `--help` when the extended page holds more.
+_Avoid_: Short help, summary, brief help
+
+**Extended help**:
+The help page `--help` prints, for a reader who is learning the Command: the whole page, with the details and the examples. Help prints it whenever the help option was not typed as `-h`.
+_Avoid_: Long help, full help, man page
+
+**Completion**:
+The projection a shell reads while the operator types: a printed script that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
+_Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`. There is no encoding outside the view model: a machine view is a view like a table is.
@@ -381,6 +401,10 @@ _Avoid_: Singleton, capability (for the position)
 **Configuration source**:
 The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
+
+**Configuration file**:
+A JSON file the first-party configuration plugin answers from: the user file it derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
+_Avoid_: Config, settings file, rc file, dotfile
 
 **Middleware**:
 A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.

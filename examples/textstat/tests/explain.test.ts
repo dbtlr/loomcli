@@ -70,6 +70,7 @@ test('the inspected graph carries the plugin option, the extension value, and th
     ['help', 'plugin'],
     ['version', 'plugin'],
     ['manifest', 'plugin'],
+    ['config', 'plugin'],
     ['explain', 'plugin'],
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.

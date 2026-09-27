@@ -6,8 +6,14 @@ import { inspectGraph, nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
-import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
-import type { BuiltPlugin, PluginOptions, PluginOptionValues, PluginValues } from './plugin.js';
+import { loadDefault, pluginSentence, pluginSpellings, pluginValues } from './plugin.js';
+import type {
+  BuiltPlugin,
+  PluginOptions,
+  PluginOptionSpellings,
+  PluginOptionValues,
+  PluginValues,
+} from './plugin.js';
 import type { ContextualStyle } from './style.js';
 import type {
   ActionChannel,
@@ -29,14 +35,17 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
 /**
  * What one middleware receives. `graph` is the frozen graph `inspect()` returns, built once for the
  * run, and `command` is the routed node inside it. `options` holds this plugin's own option values
- * and never another plugin's or the application's globals. `request` is the routed Command's
- * invocation, parsed and validated ahead of the chain, and `null` while core holds a fault and on a
- * group. `view` names the view the result renders through: it reads as the declaration's default
- * until a middleware assigns one, and as `null` on a Command that declares none. The last
- * assignment before the dispatch boundary wins, and one made after it changes nothing.
+ * and never another plugin's or the application's globals, and `spellings` holds the spelling that
+ * supplied each of them as a token, which a filled or defaulted option never has. `request` is the
+ * routed Command's invocation, parsed and validated ahead of the chain, and `null` while core holds
+ * a fault and on a group. `view` names the view the result renders through: it reads as the
+ * declaration's default until a middleware assigns one, and as `null` on a Command that declares
+ * none. The last assignment before the dispatch boundary wins, and one made after it changes
+ * nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: PluginOptionValues<Options>;
+  readonly spellings: PluginOptionSpellings<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
   readonly request: Request | null;
@@ -139,11 +148,12 @@ function isMiddlewareExport(value: unknown): value is (context: MiddlewareContex
   return typeof value === 'function';
 }
 
-/** One activated plugin in the chain, with the option values its own middleware reads. */
+/** One activated plugin in the chain, with the option values and spellings its middleware reads. */
 interface ChainEntry {
   identity: string;
   load: () => unknown;
   options: PluginValues;
+  spellings: Readonly<Record<string, string>>;
 }
 
 /**
@@ -173,6 +183,7 @@ function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues)
       // Activation proved the middleware exists, so the empty loader is never the one core calls.
       load: installed.middleware?.load ?? (() => undefined),
       options: pluginValues(installed.inputs, values),
+      spellings: pluginSpellings(installed.inputs, values),
     }));
 }
 
@@ -212,6 +223,8 @@ interface Invocation {
    * receives the channel the results lane builds for the Command that was routed.
    */
   out: Out<OpenResult>;
+  /** The channel a configuration source receives, whose results call names the source. */
+  sourceOut: Out<OpenResult>;
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
@@ -413,6 +426,7 @@ async function runChain(
       out: invocation.out,
       request: prepared.request,
       signal: invocation.signal,
+      spellings: entry.spellings,
       get view(): string | null {
         return selection.read();
       },
