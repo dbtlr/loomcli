@@ -1,4 +1,4 @@
-import type { EnvironmentOf, StandardSchemaV1, StringOption } from '@loomcli/core';
+import type { StandardSchemaV1, StringOption } from '@loomcli/core';
 import { Application, Command } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -13,6 +13,7 @@ const fileOrStdin: StandardSchemaV1<string | undefined, string> = {
 
 new Command('read')
   .argument('path', { validate: fileOrStdin, validateOmitted: true })
+  .option('file', { type: 'string', validate: fileOrStdin, validateOmitted: true })
   .option('output', { type: 'string', validate: fileOrStdin, validateOmitted: true })
   .action(({ args, options }) => {
     const file: string = options.file;
@@ -72,15 +73,3 @@ new Command('bad').argument('files', {
 new Application('bad').option('force', { type: 'boolean', validateOmitted: true });
 // @ts-expect-error TS2345: validateOmitted needs a validator to receive the omission.
 new Application('bad').option('file', { type: 'string', validateOmitted: true });
-
-const configured = new Application('registered').globalOption('file', {
-  short: 'f',
-  type: 'string',
-  validate: fileOrStdin,
-  validateOmitted: true,
-});
-declare module '@loomcli/core' {
-  interface Register {
-    environment: EnvironmentOf<typeof configured>;
-  }
-}

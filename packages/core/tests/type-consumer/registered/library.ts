@@ -7,7 +7,7 @@ import { build, colliding, direct, factory, summarize } from '../library/dist/li
 const help = extension('consumer/help', { schema: z.string(), target: 'command' });
 const enriched = build.extend(help('Application help.'));
 const app = new Application('consumer')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .command(enriched)
@@ -16,7 +16,7 @@ const app = new Application('consumer')
   // A library Command that declares a result attaches like any other.
   .command(summarize);
 new Application('collision')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   // @ts-expect-error TS2345: A library local key cannot collide with an Application global key.
@@ -54,7 +54,7 @@ type Invalid = EnvironmentOf<typeof build>;
 
 const chosen = Math.random() > 0.5 ? build : colliding;
 new Application('union')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   // @ts-expect-error TS2345: Every possible branch must have disjoint local keys.
@@ -62,7 +62,7 @@ new Application('union')
 new Application('explicit', {
   plugins: [vocabulary],
 })
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 
@@ -73,13 +73,13 @@ acceptApplication(
   new Application('annotation', {
     plugins: [vocabulary],
   })
-    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .globalOption('file', { short: 'f', type: 'string' })
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .globalOption('limit', { type: 'string', validate: z.string().transform(Number) }),
 );
 // @ts-expect-error TS2554: Constructor type parameters cannot forge global outputs.
 new Application<{ file: number }>('wrong-output')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 

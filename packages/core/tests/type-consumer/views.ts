@@ -150,7 +150,7 @@ const configured: ApplicationOptions = { plugins: [branding], views };
 new Application('inline', {
   views,
 })
-  .globalOption('file', { required: true, type: 'string' })
+  .globalOption('file', { default: 'inline.json', type: 'string' })
   .action(({ options }) => {
     const file: string = options.file;
     return file;
@@ -170,7 +170,7 @@ new Application('retired', { globals: {} });
 new Application('retired-failures', { failures: [] });
 
 export const jsonkit = new Application('jsonkit', configured)
-  .globalOption('file', { required: true, type: 'string' })
+  .globalOption('file', { type: 'string' })
   .option('pretty', { type: 'boolean' })
   .action(({ options, out }) => out.print(`${options.file}:${String(options.pretty)}`));
 

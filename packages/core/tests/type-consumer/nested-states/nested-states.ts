@@ -32,7 +32,7 @@ new Command('cache').command({ name: 'clear' });
 // Declaration emit must name a group's state, which keeps `command()` and `option()`.
 
 const configured = new Application('registered').globalOption('file', {
-  required: true,
+  default: 'registered.json',
   type: 'string',
 });
 declare module '@loomcli/core' {

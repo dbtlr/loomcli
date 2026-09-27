@@ -7,11 +7,7 @@ const configured = base
   .globalOption('quiet', { type: 'boolean' })
   .globalOption('limit', { default: '10', type: 'string', validate: z.string().transform(Number) })
   .globalOption('tags', { multiple: true, type: 'string' })
-  .globalOption('source', {
-    type: 'string',
-    validate: z.string().optional(),
-    validateOmitted: true,
-  });
+  .globalOption('source', { type: 'string', validate: z.string() });
 configured.action(({ options }) => {
   const local: boolean = options.local;
   const quiet: boolean = options.quiet;
@@ -47,6 +43,16 @@ const invalidDefault = {
 } satisfies OptionConfig;
 // @ts-expect-error TS2345: Global defaults use the schema input type.
 base.globalOption('count', invalidDefault);
+// @ts-expect-error TS2345: A global option's omission is plain absence, never a required input.
+base.globalOption('file', { required: true, type: 'string' });
+// @ts-expect-error TS2345: A global option declares no required key, false included.
+base.globalOption('file', { required: false, type: 'string' });
+// @ts-expect-error TS2345: A global option never sends its omission to a validator.
+base.globalOption('file', {
+  type: 'string',
+  validate: z.string().optional(),
+  validateOmitted: true,
+});
 // @ts-expect-error TS2339: A configured environment excludes root-local options.
 globals.local;
 // @ts-expect-error TS2322: A no-plugin Application retains its empty tuple through globalOption().

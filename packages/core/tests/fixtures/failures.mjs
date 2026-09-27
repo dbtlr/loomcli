@@ -104,7 +104,7 @@ function routed(views) {
     .action(dispatch);
   const cache = new Command('cache').command(new Command('keys').action(dispatch));
   return new Application('failures', { views })
-    .globalOption('file', { required: true, short: 'f', type: 'string' })
+    .globalOption('file', { short: 'f', type: 'string' })
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .command(get)
     .command(cache)
@@ -119,6 +119,17 @@ function build() {
   switch (scenario) {
     case 'usage': {
       return routed([override(UsageError, facts)]);
+    }
+    // A required local option and a required argument on the same Command, so a missing global
+    // Is never the demonstration; the aggregation is now entirely local.
+    case 'required': {
+      const get = new Command('get')
+        .argument('path', { required: true })
+        .option('depth', { required: true, short: 'd', type: 'string' })
+        .action(dispatch);
+      return new Application('failures', { views: [override(UsageError, facts)] })
+        .command(get)
+        .action(dispatch);
     }
     case 'derived': {
       return routed([override(UsageError, brand('usage')), override(InputError, brand('input'))]);

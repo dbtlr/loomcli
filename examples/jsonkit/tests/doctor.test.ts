@@ -14,6 +14,14 @@ test('jsonkit doctor routes to the plugin Command and runs its action', () => {
   });
 });
 
+test('jsonkit doctor runs at a terminal, because only the document Commands need --file or piped text', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-doctor'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'All checks passed.\n',
+  });
+});
+
 test('jsonkit doctor --help prints its page like any other Command', () => {
   expect(invoke(main, ['doctor', '--help'])).toEqual({
     status: 0,

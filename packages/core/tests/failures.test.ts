@@ -7,8 +7,8 @@ function failures(scenario: string, argv: string[] = []) {
 }
 
 /** The override serializes the failure, so a test reads the facts it received. */
-function reported(argv: string[], status = 2): unknown {
-  const result = failures('usage', argv);
+function reported(argv: string[], scenario = 'usage', status = 2): unknown {
+  const result = failures(scenario, argv);
   expect(result.stdout).toBe(`resolved:${status}\n`);
   expect(result.status).toBe(status);
   return JSON.parse(result.stderr);
@@ -108,21 +108,21 @@ test.each([
 );
 
 test('an omitted option and an omitted required argument aggregate as one input failure', () => {
-  expect(reported(['get'])).toEqual({
+  expect(reported(['get'], 'required')).toEqual({
     exitCode: 2,
     message:
-      'Option "--file" is required. Supply a value.\nArgument "path" requires a value. Supply a value for "path".',
+      'Argument "path" requires a value. Supply a value for "path".\nOption "--depth" is required. Supply a value.',
     name: 'InputError',
     problems: [
-      {
-        input: { global: true, kind: 'option', name: 'file' },
-        reason: 'missing',
-        spelling: '--file',
-      },
       {
         input: { global: false, kind: 'argument', name: 'path' },
         reason: 'missing',
         spelling: 'path',
+      },
+      {
+        input: { global: false, kind: 'option', name: 'depth' },
+        reason: 'missing',
+        spelling: '--depth',
       },
     ],
   });
@@ -179,8 +179,7 @@ test('a rejected value in a multiple option is reported at its position', () => 
 test('resolution takes the most derived override and falls back to the base one', () => {
   expect(failures('derived', ['get'])).toEqual({
     status: 2,
-    stderr:
-      'input: Option "--file" is required. Supply a value.\nArgument "path" requires a value. Supply a value for "path".\n',
+    stderr: 'input: Argument "path" requires a value. Supply a value for "path".\n',
     stdout: 'resolved:2\n',
   });
   expect(failures('derived', ['-f', 'x', 'nope'])).toEqual({

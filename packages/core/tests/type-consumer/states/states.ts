@@ -5,7 +5,7 @@ import { Application, Command } from '@loomcli/core';
 
 const freshCommand = new Command('fresh');
 const freshApplication = new Application('fresh').globalOption('file', {
-  required: true,
+  default: 'fresh.json',
   type: 'string',
 });
 const partial = new Command('partial').argument('path', { required: true });
@@ -23,7 +23,7 @@ finished.option;
 finished.action;
 
 const group = new Application('group')
-  .globalOption('file', { required: true, type: 'string' })
+  .globalOption('file', { default: 'group.json', type: 'string' })
   .command(finished);
 const openAfterChild = group.option('pretty', { type: 'boolean' }).command(finished);
 const application = openAfterChild.action(({ options, out }) => out.print(options.file));
@@ -87,7 +87,7 @@ const usedFinished = useCommand(finished);
 // A Command requirement may be satisfied by an Application with additional globals.
 
 new Application('superset')
-  .globalOption('file', { required: true, type: 'string' })
+  .globalOption('file', { default: 'superset.json', type: 'string' })
   .globalOption('depth', { type: 'string' })
   .command(finished);
 // @ts-expect-error TS2345: The receiving Application must supply the registered globals.
@@ -122,7 +122,7 @@ void usedFinished;
 // Each export below forces one such state through the packed declaration compile.
 
 const configured = new Application('registered').globalOption('file', {
-  required: true,
+  default: 'registered.json',
   type: 'string',
 });
 declare module '@loomcli/core' {

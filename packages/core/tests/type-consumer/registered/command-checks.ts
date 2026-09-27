@@ -87,7 +87,7 @@ void described;
 // @ts-expect-error TS2345: A local option cannot repeat a global option key.
 new Command('collision').option('file', { type: 'boolean' });
 new Application('collision')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   // @ts-expect-error TS2345: The root Command cannot repeat a global option key either.

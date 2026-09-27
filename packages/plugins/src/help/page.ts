@@ -68,9 +68,12 @@ function details(command: CommandNode, { style }: ViewContext): string[] {
     : prose.split(breaks).map((line) => `  ${style.primary(style.escape(line))}`);
 }
 
-/** The visible required options the action form names: the node's own, then the globals. */
-function requiredOptions(command: CommandNode, graph: CommandGraph): StringOption[] {
-  const reachable: readonly OptionNode[] = [...visible(command.options), ...visible(graph.globals)];
+/**
+ * The visible required options the action form names. Only a Command's own options can be
+ * required, because a global option declares no presence rule.
+ */
+function requiredOptions(command: CommandNode): StringOption[] {
+  const reachable: readonly OptionNode[] = visible(command.options);
   // Core rejects `required` on a Boolean option, so every option this keeps takes a value.
   return reachable.filter((option) => option.type === 'string').filter((option) => option.required);
 }
@@ -98,7 +101,7 @@ function usage(
   if (command.hasAction) {
     const parts = [
       ...command.arguments.map((argument) => argumentForm(argument, context)),
-      ...requiredOptions(command, graph).map((option) => optionForm(option, context)),
+      ...requiredOptions(command).map((option) => optionForm(option, context)),
       // `[options]` is always present, because the help option is one.
       style.dim.italic('[options]'),
     ];

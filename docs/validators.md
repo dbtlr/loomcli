@@ -217,7 +217,7 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 - textstat declares `--metric` with `oneOf(['bytes', 'words', 'lines'])` and `--min-bytes` and `--minimum` with `integer({ min: 0 })`, replacing their Zod schemas, so the rejected-value message for `TEXTSTAT_MIN_BYTES` reads `Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.` `inspect()` reports `metric` with the `enum` and `min-bytes` with `{ type: 'integer', minimum: 0 }` beside `$schema`.
 - textstat's `files` rule, a nonempty list or piped stdin, moves into its action under ADR-0036: an empty list with a terminal on stdin throws an `InputError` carrying one `invalid` problem for the argument, as [Example coverage](core.md#example-coverage-1) shows, so stderr still reads `Invalid input: Argument "files": Supply file arguments or pipe text to stdin.` with exit code 2.
 - jsonkit's `select` declares `--field` with `text()`, so `--field a -F ''` fails with `Option "--field" at 1: Expected a nonempty value.`, and `inspect()` reports `{ type: 'string', minLength: 1 }` beside `$schema`.
-- jsonkit's global `--file` keeps its hand-written validator, because it reads omission through `validateOmitted`.
+- jsonkit's global `--file` declares no validator. A global option declares no presence rule under [ADR-0044](decisions/0044-a-global-option-declares-no-presence-rule.md), so its file-or-stdin rule lives in the shared document reader, which throws an `InputError` for the option with exit code 2.
 
 ## Acceptance
 
