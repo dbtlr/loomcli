@@ -272,7 +272,7 @@ export function isPortableName(name: unknown): name is string {
 
 /** The one correction every portable name diagnostic ends with. */
 export const portableNameCorrection =
-  'Use A-Z, a-z, 0-9, ".", "_", and "-", and do not start with "-" or ".".';
+  'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
 
 /** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
 function checkAliasName(command: string | null, alias: unknown): void {
@@ -579,10 +579,14 @@ export function declareAlias<Args, Options, Globals>(
       `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
     );
   }
+  // The call's own input is judged before the receiver's state.
+  // A non-string name then reports as an alias name instead of failing to print in the order diagnostic.
+  for (const alias of names) {
+    checkAliasName(name, alias);
+  }
   checkOpen(state, `declares alias "${first}"`, 'Declare aliases before action().');
   const aliases = [...state.aliases];
   for (const alias of names) {
-    checkAliasName(name, alias);
     if (alias === name) {
       throw new DeclarationError(
         `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
@@ -932,8 +936,8 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
 }
 
 /**
- * A view name is a bare token the way a child name is, and never an array index, because an
- * integer-like key does not keep the position the author gave it.
+ * A view name is a bare token the way an argument or option name is, and never an array index,
+ * because an integer-like key does not keep the position the author gave it.
  */
 function isViewName(name: string): boolean {
   return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
@@ -1752,7 +1756,7 @@ export class CommandBuilder<
   }
 
   /**
-   * Aliases are other bare tokens that route to this Command. They invalidate no call, and the
+   * Aliases are other portable names that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
   alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {

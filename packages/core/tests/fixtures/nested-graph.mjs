@@ -93,6 +93,15 @@ function build() {
     case 'portable-alias-name': {
       return app.command(aliased('keys', '_Ls.v2-all')).action(dispatch);
     }
+    case 'digit-alias-name': {
+      return app.command(aliased('keys', '9Go_x')).action(dispatch);
+    }
+    case 'colon-alias-name': {
+      return app.command(aliased('keys', 'ls:all')).action(dispatch);
+    }
+    case 'symbol-alias-name': {
+      return app.command(aliased('keys', Symbol('ls'))).action(dispatch);
+    }
     case 'empty-alias': {
       return app.command(new Command('keys').alias().action(dispatch)).action(dispatch);
     }

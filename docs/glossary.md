@@ -131,11 +131,11 @@ The one name a Command is declared with. Every routed path, diagnostic, candidat
 _Avoid_: Primary name, display name, real name
 
 **Portable name**:
-The one rule for every name an operator types as a command at a shell prompt: the application name, every Command name, and every alias. It holds characters from the POSIX portable filename set, `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, and starts with neither `-`, which reads as an option, nor `.`, which a shell hides. An argument, option, or view name is a bare token instead and may hold any character but whitespace and `=`.
+The one rule for every name an operator types as a command at a shell prompt: the application name, every Command name, and every alias. It holds characters from the POSIX portable filename set, `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, and starts with neither `-`, which reads as an option, nor `.`, which a shell hides. An argument or option name follows the declared-name rule instead: nonempty, not starting with `-`, and without whitespace or `=`. A view name follows that rule and is not integer-like.
 _Avoid_: Safe name, shell-safe name, identifier
 
 **Alias**:
-An unadvertised synonym that routes to a Command: another bare token for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
+An unadvertised synonym that routes to a Command: another portable name for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
 _Avoid_: Hidden alias, alternate command, shortcut
 
 **Hidden Command**:

@@ -47,6 +47,13 @@ function build() {
     case 'wide-child-name': {
       return app.command(child('界')).action(dispatch);
     }
+    case 'colon-child-name': {
+      return app.command(child('get:all')).action(dispatch);
+    }
+    // A digit and an uppercase letter may open a name, and `_` may follow the first character.
+    case 'digit-child-name': {
+      return app.command(child('9Go_x')).action(dispatch);
+    }
     // Every portable character in one name, with `.` and `-` after the first character.
     case 'portable-child-name': {
       return app.command(child('_Get.v2-all')).action(dispatch);
@@ -73,7 +80,13 @@ function build() {
       return new Application(7).action(dispatch);
     }
     case 'portable-application-name': {
-      return new Application('_App.v2-x').command(child('get')).action(dispatch);
+      return new Application('App_.v2-x').command(child('get')).action(dispatch);
+    }
+    case 'colon-application-name': {
+      return new Application('app:cli').action(dispatch);
+    }
+    case 'digit-application-name': {
+      return new Application('9Go_x').command(child('get')).action(dispatch);
     }
     case 'empty-argument-name': {
       return app.argument('', { required: true }).action(dispatch);
