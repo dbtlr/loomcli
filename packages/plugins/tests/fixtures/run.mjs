@@ -181,7 +181,7 @@ function facts() {
   );
 }
 
-/** Arguments, variadics, and required options from two scopes, on a root that has both forms. */
+/** Arguments, variadics, and required local options, on a root that has both usage forms. */
 function usage() {
   const run = new Command('run', { description: 'Run one job.' })
     .argument('source', { description: 'Where to read.', required: true })
@@ -208,7 +208,7 @@ function usage() {
     plugins,
     version: '1.2.0',
   })
-    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('key', { description: 'The key to use.', type: 'string' })
     .globalOption('file', { description: 'The document to read.', short: 'f', type: 'string' })
     .command(run)
     .command(pack)
@@ -298,11 +298,10 @@ function scoped() {
     plugins,
     version: '1.2.0',
   })
-    .globalOption('key', { description: 'The key to use.', required: true, type: 'string' })
+    .globalOption('key', { description: 'The key to use.', type: 'string' })
     .globalOption('token', {
       description: 'The token to use.',
       hidden: true,
-      required: true,
       type: 'string',
     })
     .option('mode', {
@@ -312,6 +311,12 @@ function scoped() {
       type: 'string',
     })
     .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .option('secret', {
+      description: 'The secret to use.',
+      hidden: true,
+      required: true,
+      type: 'string',
+    })
     .command(run)
     .action(dispatch);
 }

@@ -1,27 +1,25 @@
-import { validationContext } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import { InputError } from '@loomcli/core';
+import type { Host } from '@loomcli/core';
 
 const MESSAGE = 'Supply a file or pipe JSON to stdin.';
 
 /**
  * The file is optional because piped text is the other source. Omission passes only when the host
  * reports that stdin is not a terminal, so an operator who supplies nothing at a prompt reads the
- * rule instead of a hung run. The declaration asks for this call with `validateOmitted: true`.
- * A default carries no invocation to judge, so only an invocation answers this rule, and another
- * caller's run, which carries no context at all, reads as the terminal case and keeps the rule
- * conservative.
+ * rule instead of a hung run. `--file` is a global option, and a global declares no omission rule,
+ * so the document reader checks it and throws the input error a validator would have reported, with
+ * the same text and exit code. Commands that read no document, such as `doctor`, never meet it.
  */
-export const fileOrStdin: StandardSchemaV1<string | undefined, string | undefined> = {
-  '~standard': {
-    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
-      if (typeof value === 'string') {
-        return { value };
-      }
-      const context = validationContext(options);
-      const piped = context?.phase === 'invocation' && !context.host.terminal.stdin.isTTY;
-      return piped ? { value: undefined } : { issues: [{ message: MESSAGE }] };
+export function checkFileOrStdin(file: string | undefined, host: Host): void {
+  if (file !== undefined || !host.terminal.stdin.isTTY) {
+    return;
+  }
+  throw new InputError(`Option "--file": ${MESSAGE}`, [
+    {
+      input: { global: true, kind: 'option', name: 'file' },
+      issues: [{ message: MESSAGE }],
+      reason: 'invalid',
+      spelling: '--file',
     },
-    vendor: 'jsonkit',
-    version: 1,
-  },
-};
+  ]);
+}

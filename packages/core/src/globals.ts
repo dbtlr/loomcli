@@ -12,6 +12,13 @@ import type { InputDeclaration, OptionInput, ValidatedInputs } from './validatio
 const globalSubject = 'the global options';
 
 /**
+ * The presence keys a global option may not declare, in the order its diagnostic names them. A
+ * global's validation runs on every Command, plugin Commands included, so a rule that a value must
+ * exist belongs to the Commands that read it.
+ */
+const omissionRules = ['required', 'validateOmitted'] as const;
+
+/**
  * Who declared one option that shares the globals table, or the Command that declares a local
  * option colliding with it. Every collision sentence is derived from a pair of these, so the
  * existing global-versus-local wording and the plugin wording read from one place.
@@ -147,6 +154,12 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
 ): GlobalsState<Globals & Record<Name, OptionValue<Config>>> {
   // A global option belongs to the application, not to one Command, so its facts read that way.
   const sentence = `Global option "${input.name}"`;
+  const rejected = omissionRules.find((key) => key in input.config);
+  if (rejected !== undefined) {
+    throw new DeclarationError(
+      `${sentence} declares ${rejected}. Remove it; an omitted global option is absent, and a Command that needs its value checks for it.`,
+    );
+  }
   checkDescription(sentence, input.config.description);
   checkHidden(sentence, input.config.hidden);
   checkDeprecated(sentence, input.config.deprecated);

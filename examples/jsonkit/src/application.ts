@@ -19,7 +19,6 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
-import { fileOrStdin } from './file-or-stdin.js';
 import type { Member } from './member.js';
 import { fatalError, inputProblems, unknownCommand } from './views.js';
 
@@ -48,8 +47,6 @@ const configured = new Application('jsonkit', {
   extensions: [helpInput({ placeholder: 'path' })],
   short: 'f',
   type: 'string',
-  validate: fileOrStdin,
-  validateOmitted: true,
 });
 
 declare module '@loomcli/core' {

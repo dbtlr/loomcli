@@ -131,13 +131,13 @@ test('a right cell carries the description, then the facts that apply, in one pa
   );
 });
 
-test('a root with children prints GLOBAL OPTIONS and its required global in the action form', () => {
+test('a root with children prints GLOBAL OPTIONS and the action form', () => {
   expect(run('usage', ['--help'])).toEqual(
     page(
       'app · Do the work.',
       '',
       'USAGE',
-      '  app --key <key> [options]',
+      '  app [options]',
       '  app <command> [options]',
       '',
       'COMMANDS',
@@ -145,7 +145,7 @@ test('a root with children prints GLOBAL OPTIONS and its required global in the 
       '  pack  Pack the files.',
       '',
       'GLOBAL OPTIONS',
-      '      --key <key>    The key to use.  (required)',
+      '      --key <key>    The key to use.',
       '  -f, --file <file>  The document to read.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
@@ -155,13 +155,13 @@ test('a root with children prints GLOBAL OPTIONS and its required global in the 
   );
 });
 
-test('the action form holds the arguments, then the node options, then the globals', () => {
+test('the action form holds the arguments, then the node required options', () => {
   expect(run('usage', ['run', '--help'])).toEqual(
     page(
       'app run · Run one job.',
       '',
       'USAGE',
-      '  app run <source> [target] --out <out> --tag <tag>... --key <key> [options]',
+      '  app run <source> [target] --out <out> --tag <tag>... [options]',
       '',
       'ARGUMENTS',
       '  source  Where to read.',
@@ -173,7 +173,7 @@ test('the action form holds the arguments, then the node options, then the globa
       '      --mode <mode>  How to run.',
       '',
       'GLOBAL OPTIONS',
-      '      --key <key>    The key to use.  (required)',
+      '      --key <key>    The key to use.',
       '  -f, --file <file>  The document to read.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
@@ -187,13 +187,13 @@ test('a required variadic argument prints its ellipsis inside the required brack
       'app pack · Pack the files.',
       '',
       'USAGE',
-      '  app pack <files...> --key <key> [options]',
+      '  app pack <files...> [options]',
       '',
       'ARGUMENTS',
       '  files  The files to pack.',
       '',
       'GLOBAL OPTIONS',
-      '      --key <key>    The key to use.  (required)',
+      '      --key <key>    The key to use.',
       '  -f, --file <file>  The document to read.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
@@ -312,13 +312,13 @@ test('a root whose children are all hidden prints no children form, no COMMANDS,
   );
 });
 
-test('a hidden option leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
+test('a hidden option, required ones included, leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
   expect(run('scoped', ['--help'])).toEqual(
     page(
       'app · Do the work.',
       '',
       'USAGE',
-      '  app --key <key> [options]',
+      '  app [options]',
       '  app <command> [options]',
       '',
       'COMMANDS',
@@ -328,7 +328,7 @@ test('a hidden option leaves the action form, OPTIONS, and GLOBAL OPTIONS, and d
       '      --mode <mode>  How to print.  (default: plain, deprecated: Use --style instead.)',
       '',
       'GLOBAL OPTIONS',
-      '      --key <key>  The key to use.  (required)',
+      '      --key <key>  The key to use.',
       '  -h, --help       Show this help.',
       '  -V, --version    Print the version.',
       '',
@@ -343,10 +343,10 @@ test('a hidden global option leaves GLOBAL OPTIONS on a non-root page', () => {
       'app run · Run one job.',
       '',
       'USAGE',
-      '  app run --key <key> [options]',
+      '  app run [options]',
       '',
       'GLOBAL OPTIONS',
-      '      --key <key>  The key to use.  (required)',
+      '      --key <key>  The key to use.',
       '  -h, --help       Show this help.',
       '  -V, --version    Print the version.',
     ),

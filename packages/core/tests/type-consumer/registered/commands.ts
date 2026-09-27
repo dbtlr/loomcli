@@ -23,7 +23,7 @@ const keys = new Command('keys').action(({ args, options, passthrough }) => {
 });
 
 const jsonkit = new Application('jsonkit')
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { default: 'jsonkit.json', short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
   .option('pretty', { short: 'p', type: 'boolean' })
@@ -34,7 +34,7 @@ const jsonkit = new Application('jsonkit')
 const configured = new Application('registered', {
   plugins: [plugin('registered/vocabulary', { options: { identifier: { type: 'boolean' } } })],
 })
-  .globalOption('file', { required: true, short: 'f', type: 'string' })
+  .globalOption('file', { default: 'registered.json', short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) });
 declare module '@loomcli/core' {

@@ -48,7 +48,7 @@ The single object an action receives, carrying its parsed inputs, the passthroug
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
-The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands.
+The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands. A global option declares no presence rule, neither `required` nor `validateOmitted`, so its omission is always plain absence; a Command that needs the value checks for it.
 _Avoid_: Root options, inherited options, common flags
 
 **Application environment**:

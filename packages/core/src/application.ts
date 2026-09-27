@@ -56,6 +56,7 @@ import type {
   DeclaredTypes,
   DefaultConstraint,
   GlobalNameConstraint,
+  GlobalOmissionConstraint,
   PerValueConstraint,
   NameConstraint,
   ExitCode,
@@ -272,7 +273,8 @@ class ApplicationBuilder<
         : unknown) &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
-      NoInfer<ValidateOmittedConstraint<Config>>,
+      NoInfer<ValidateOmittedConstraint<Config>> &
+      NoInfer<GlobalOmissionConstraint<Config>>,
   ): Application<
     Args,
     Options,

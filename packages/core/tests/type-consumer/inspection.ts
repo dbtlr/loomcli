@@ -11,7 +11,6 @@ import type {
 // `inspect()` answers in every authoring state, as `run()` and `name` do.
 
 const fresh = new Application('fresh').globalOption('file', {
-  required: true,
   short: 'f',
   type: 'string',
 });

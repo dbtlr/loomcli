@@ -148,7 +148,6 @@ test.each([
     'Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file'], 'Option "--file" requires a value. Supply a value after "--file".'],
-  [['get', 'a.b'], 'Option "--file" is required. Supply a value.'],
   [
     ['--file', '--quiet', 'nope'],
     'Option "--file" requires a value. Supply a value after "--file".',
