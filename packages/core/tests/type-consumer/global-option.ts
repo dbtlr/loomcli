@@ -48,6 +48,9 @@ const typed: OptionConfig = { type: 'string' };
 base.globalOption('typed', typed);
 // @ts-expect-error TS2345: A global option's omission is plain absence, never a required input.
 base.globalOption('file', { required: true, type: 'string' });
+declare const either: { type: 'string' } | { required: true; type: 'string' };
+// @ts-expect-error TS2345: A union config fails when any member declares a presence rule.
+base.globalOption('either', either);
 // @ts-expect-error TS2345: A global option declares no required key, false included.
 base.globalOption('file', { required: false, type: 'string' });
 // @ts-expect-error TS2345: A global option never sends its omission to a validator.
