@@ -9,7 +9,8 @@
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

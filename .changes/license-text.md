@@ -1,0 +1,1 @@
+- Add the MIT license text to every published package. `@loomcli/core`, `@loomcli/plugins`, and `@loomcli/validators` each ship a `LICENSE` file holding the MIT terms their manifests declare, and the repository root carries the same file.
