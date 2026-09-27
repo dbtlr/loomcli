@@ -255,16 +255,30 @@ function checkCommandOptions(name: string, options: unknown): void {
   }
 }
 
-/** One name rule for every declared name in the graph, so a child and an argument read alike. */
+/** One name rule for an argument, option, or view name: a bare token the parser can read. */
 function isDeclaredName(name: unknown): name is string {
   return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
-/** An alias is a bare token the way a child name is, so it answers to the same name rule. */
+/**
+ * The portable name rule, for every name an operator types as a command at a shell prompt: the
+ * application name, every Command name, and every alias. The characters are the POSIX portable
+ * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
+ * shell hides.
+ */
+export function isPortableName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
+}
+
+/** The one correction every portable name diagnostic ends with. */
+export const portableNameCorrection =
+  'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
+
+/** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
 function checkAliasName(command: string | null, alias: unknown): void {
-  if (!isDeclaredName(alias)) {
+  if (!isPortableName(alias)) {
     throw new DeclarationError(
-      `${commandSentence(command)} declares an alias named "${String(alias)}". Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `${commandSentence(command)} declares an alias named "${String(alias)}". ${portableNameCorrection}`,
     );
   }
 }
@@ -360,9 +374,9 @@ function namedState<Globals>(
   name: unknown,
   options: unknown,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
-  if (!isDeclaredName(name)) {
+  if (!isPortableName(name)) {
     throw new DeclarationError(
-      `Command name "${String(name)}" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".`,
+      `Command name "${String(name)}" is invalid. ${portableNameCorrection}`,
     );
   }
   checkCommandOptions(name, options);
@@ -565,10 +579,14 @@ export function declareAlias<Args, Options, Globals>(
       `${commandSentence(name)} declares an alias with no names. Supply at least one name.`,
     );
   }
+  // The call's own input is judged before the receiver's state.
+  // A non-string name then reports as an alias name instead of failing to print in the order diagnostic.
+  for (const alias of names) {
+    checkAliasName(name, alias);
+  }
   checkOpen(state, `declares alias "${first}"`, 'Declare aliases before action().');
   const aliases = [...state.aliases];
   for (const alias of names) {
-    checkAliasName(name, alias);
     if (alias === name) {
       throw new DeclarationError(
         `${commandSentence(name)} declares alias "${alias}", which is its own name. Remove the alias.`,
@@ -918,8 +936,8 @@ function collectArguments(state: Declared, subject: string): ArgumentSlot[] {
 }
 
 /**
- * A view name is a bare token the way a child name is, and never an array index, because an
- * integer-like key does not keep the position the author gave it.
+ * A view name is a bare token the way an argument or option name is, and never an array index,
+ * because an integer-like key does not keep the position the author gave it.
  */
 function isViewName(name: string): boolean {
   return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
@@ -1738,7 +1756,7 @@ export class CommandBuilder<
   }
 
   /**
-   * Aliases are other bare tokens that route to this Command. They invalidate no call, and the
+   * Aliases are other portable names that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
   alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {

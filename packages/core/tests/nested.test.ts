@@ -105,7 +105,7 @@ test.each([
   ],
   [
     'invalid-nested-child-name',
-    'Command name "bad name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command name "bad name" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
     'late-nested-child',
@@ -134,7 +134,27 @@ test.each([
   ['repeated-alias', 'Command "keys" declares alias "ls" twice. Remove the repeated alias.'],
   [
     'invalid-alias-name',
-    'Command "keys" declares an alias named "bad name". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command "keys" declares an alias named "bad name". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+  ],
+  [
+    'dot-alias-name',
+    'Command "keys" declares an alias named ".ls". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+  ],
+  [
+    'slash-alias-name',
+    'Command "keys" declares an alias named "ls/all". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+  ],
+  [
+    'nonstring-alias-name',
+    'Command "keys" declares an alias named "7". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+  ],
+  [
+    'colon-alias-name',
+    'Command "keys" declares an alias named "ls:all". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+  ],
+  [
+    'symbol-alias-name',
+    'Command "keys" declares an alias named "Symbol(ls)". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
   [
@@ -159,6 +179,18 @@ test.each([
     expect(
       invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, 'cache', 'clear']),
     ).toEqual({ status: 0, stderr: '', stdout: `thrown:1: ${reason}\n` });
+  },
+);
+
+test.each([
+  ['portable-alias-name', '_Ls.v2-all'],
+  ['digit-alias-name', '9Go_x'],
+] satisfies [string, string][])(
+  'the %s alias of portable filename characters routes to its Command',
+  (scenario, alias) => {
+    expect(
+      invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, alias]),
+    ).toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
   },
 );
 

@@ -33,14 +33,14 @@ const root = new Application(input.name ?? 'app', {
     new Command('get', { deprecated: 'Use read.', description: 'Read one.' }).action(() => {}),
   )
   .action(() => {});
-const leaf = new Application('界é', { description: 'Literal \uE001red\uE002.', plugins })
+const leaf = new Application('wide', { description: 'Literal \uE001red\uE002.', plugins })
   .extend(
     helpCommand({
       details: 'Details \uE001.',
       examples: [{ command: '--field \uE002', note: 'Note \uE003.' }],
     }),
   )
-  .argument('界', { description: 'Wide.', required: true, variadic: true })
+  .argument('界é', { description: 'Wide.', required: true, variadic: true })
   .option('field', {
     deprecated: 'Use new.',
     description: 'Fields.',

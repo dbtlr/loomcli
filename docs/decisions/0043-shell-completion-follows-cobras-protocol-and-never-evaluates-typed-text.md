@@ -4,7 +4,7 @@ title: ADR-0043 - Shell completion follows Cobra's protocol and never evaluates 
 description: The completion plugin prints Bash, Zsh, and Fish scripts ported from Cobra, and a hidden __complete Command answers them in Cobra's line protocol. Every eval is removed, so pressing Tab never runs typed text; an offered word is exact or omitted; the application name enters a script as data; and aliases, hidden members, and deprecated members are never offered.
 status: proposed
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0043 - Shell completion follows Cobra's protocol and never evaluates typed text
@@ -21,7 +21,7 @@ Loom's earlier design required a Loom-specific bridge that was lossless for newl
 - **Cobra's scripts, ported.** The Bash, Zsh, and Fish scripts are ported from Cobra, with Cobra's Apache-2.0 notice kept and the changes stated.
 - **No evaluation.** Every `eval` is removed, and so is every construct that expands an operand, such as Bash's `compgen -W`, through which Cobra's Bash script filters words without descriptions. A script filters offered words by string comparison. A script calls the program with an argument array, so a typed word reaches the application as text and pressing Tab never runs it. Quoting is removed without evaluation, and no expansion is performed, so `~`, `$HOME`, and `$(…)` reach the application as the characters typed. The script offers nothing when it cannot read the word under the cursor without evaluating it.
 - **Exact or omitted.** An offered word that holds a newline, a tab, or another control character is left out rather than cut, so completion never inserts a value other than the one the graph holds. This replaces the earlier corpus's lossless-framing requirement.
-- **The name as data.** The application name enters a script only as a single-quoted string in its shell's own quoting rules, which differ in Fish, as a function identifier that encodes every character outside `A-Z`, `a-z`, and `0-9` by its code point, so two names never share one identifier, and in a comment only when it is a portable file name. Any name therefore yields a safe script.
+- **The name as data.** The application name enters a script only as a single-quoted string in its shell's own quoting rules, which differ in Fish, as a function identifier that encodes every character outside `A-Z`, `a-z`, and `0-9` by its code point, so two names never share one identifier, and in the Zsh `#compdef` comment as it is, since every accepted name is a portable name. Any accepted name therefore yields a safe script.
 - **What is offered.** Canonical Command names, option spellings, and the values of a closed set in an input's schema. An alias is never offered and never rewritten, because an alias is unadvertised and resolving it is the router's job. A hidden or deprecated Command or option is never offered, and one typed in full still routes.
 - **Print only.** The plugin prints scripts. Installing and uninstalling them, and PowerShell, are out of scope.
 
@@ -48,3 +48,4 @@ Proposed with the shell completion contract. It moves to accepted when the compl
 ## Changelog
 
 - 2026-09-26: Proposed with the shell completion contract.
+- 2026-09-27: The application name, every Command name, and every alias are portable names, which `new Application()`, `new Command()`, and `alias()` enforce, so the Zsh `#compdef` comment always carries the name and the conditional this record and the contract stated is retired. The quoting, the identifier encoding, and the sentinel tests stay as defense in depth.
