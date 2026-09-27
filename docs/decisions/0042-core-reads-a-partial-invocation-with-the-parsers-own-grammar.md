@@ -39,3 +39,5 @@ Accepted 2026-09-27 with the implementation. `locate` reads words through the pa
 
 - 2026-09-26: Proposed with the shell completion contract.
 - 2026-09-27: Accepted with the implementation.
+- 2026-09-27: `locate` reads a graph `inspect()` returned. It throws an `InternalError` for any other graph, such as a spread copy or a `structuredClone`, because it reads the parser's tables through that graph's identity.
+- 2026-09-27: The last word goes through the parser's rules too. Whether a token is an option token, how a long token splits at its first `=`, and whether a bare word names a child are each one function that the parser and `locate` both call.

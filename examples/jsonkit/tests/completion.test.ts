@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { shellSuites, useSession } from '../../../scripts/test-shell.js';
+import type { SessionOptions } from '../../../scripts/test-shell.js';
 import { main } from './documents.js';
 
 /** The documents in each session's directory: `d` completes to `doc-`, and `a` to `alp`. */
@@ -12,6 +13,12 @@ const options = ['--explain', '--file', '--help', '--manifest', '--version'];
 /** The view names of the `paths` rows. */
 const views = ['json', 'jsonl', 'list', 'table'];
 
+/** Programs that answer nothing a script may offer, each with the case title it proves. */
+const failures: { callback: SessionOptions['callback']; title: string }[] = [
+  { callback: 'exits nonzero', title: 'a callback that exits nonzero' },
+  { callback: 'prints a bare colon', title: 'an answer whose directive line is a bare colon' },
+];
+
 /** Each word with how often it appears, so a comparison ignores the order a shell lists in. */
 function counts(words: readonly string[]): Map<string, number> {
   const tally = new Map<string, number>();
@@ -21,9 +28,9 @@ function counts(words: readonly string[]): Map<string, number> {
   return tally;
 }
 
-describe.each(shellSuites())('$title', ({ installed, shell }) => {
+describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   describe.skipIf(!installed)('jsonkit completes', () => {
-    const { complete } = useSession({ files, main, name: 'jsonkit', shell });
+    const { complete } = useSession({ files, main, name: 'jsonkit', shell, sources });
 
     describe('Commands', () => {
       it('jsonkit <Tab> lists the visible root children and never a deprecated, hidden, or alias name', async () => {
@@ -40,6 +47,15 @@ describe.each(shellSuites())('$title', ({ installed, shell }) => {
         const { listed } = await complete('jsonkit completion ');
         expect(counts(listed)).toEqual(counts(['bash', 'fish', 'zsh']));
       });
+
+      // Bash finds no completion for a quoted program word, so only Zsh and Fish type one.
+      it.each(shell === 'bash' ? ['jsonkit'] : ['jsonkit', "'jsonkit'"])(
+        '%s sel<Tab> inserts select, the program word read without its quotes',
+        async (program) => {
+          const { line } = await complete(`${program} sel`);
+          expect(line.trimEnd()).toBe(`${program} select`);
+        },
+      );
     });
 
     describe('Options', () => {
@@ -86,18 +102,25 @@ describe.each(shellSuites())('$title', ({ installed, shell }) => {
         const { line } = await complete('jsonkit --file d');
         expect(line).toBe('jsonkit --file doc-');
       });
+
+      it('jsonkit paths --format a<Tab> matches no view and offers no file name either', async () => {
+        await expect(complete('jsonkit paths --format a')).resolves.toMatchObject({
+          line: 'jsonkit paths --format a',
+          listed: [],
+        });
+      });
     });
 
     describe('Failing closed', () => {
       it('an unknown command earlier in the line inserts and lists nothing', async () => {
-        await expect(complete('jsonkit nope a')).resolves.toEqual({
+        await expect(complete('jsonkit nope a')).resolves.toMatchObject({
           line: 'jsonkit nope a',
           listed: [],
         });
       });
 
       it('an unclosed quote under the cursor inserts and lists nothing', async () => {
-        await expect(complete('jsonkit get "a')).resolves.toEqual({
+        await expect(complete('jsonkit get "a')).resolves.toMatchObject({
           line: 'jsonkit get "a',
           listed: [],
         });
@@ -105,20 +128,17 @@ describe.each(shellSuites())('$title', ({ installed, shell }) => {
     });
   });
 
-  describe.skipIf(!installed)('a failing jsonkit', () => {
-    const { complete } = useSession({
-      callback: 'exits nonzero',
-      files,
-      main,
-      name: 'jsonkit',
-      shell,
-    });
+  describe.skipIf(!installed).each(failures)(
+    'a failing jsonkit that $callback',
+    ({ callback, title }) => {
+      const { complete } = useSession({ callback, files, main, name: 'jsonkit', shell, sources });
 
-    it('a callback that exits nonzero inserts and lists nothing, file names included', async () => {
-      await expect(complete('jsonkit get a')).resolves.toEqual({
-        line: 'jsonkit get a',
-        listed: [],
+      it(`${title} inserts and lists nothing, file names included`, async () => {
+        await expect(complete('jsonkit get a')).resolves.toMatchObject({
+          line: 'jsonkit get a',
+          listed: [],
+        });
       });
-    });
-  });
+    },
+  );
 });

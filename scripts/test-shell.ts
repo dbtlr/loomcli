@@ -3,6 +3,7 @@ import {
   accessSync,
   chmodSync,
   constants,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -20,10 +21,14 @@ import { childEnvironment } from './test-process.js';
 const shells = ['bash', 'fish', 'zsh'] as const;
 type Shell = (typeof shells)[number];
 
-/** What one Tab did: the command line after it, and the words the shell listed. */
+/**
+ * What one Tab did: the command line after it, the words the shell listed, and the listing as the
+ * shell showed it, descriptions included.
+ */
 interface Completed {
   line: string;
   listed: string[];
+  listing: string;
 }
 
 /** An interactive shell with an application's completion script sourced. */
@@ -41,16 +46,29 @@ interface SessionOptions {
   main: URL;
   /** The session's working directory, which a test owns. */
   cwd: string;
-  /** `exits nonzero` replaces the program with one that exits 1 once the script is printed. */
-  callback?: 'answers' | 'exits nonzero';
+  /**
+   * What the program does once the script is printed: `exits nonzero` replaces it with one that
+   * exits 1, and `prints a bare colon` with one that answers `:` and no directive digits.
+   */
+  callback?: 'answers' | 'exits nonzero' | 'prints a bare colon';
+  /** Files the shell sources before the script, such as the bash-completion package. */
+  sources?: readonly string[];
 }
 
 /** Whether a shell's cases run, and the suite title that says why they skip when they do not. */
 interface ShellSuite {
   shell: Shell;
   installed: boolean;
+  /** Files each session sources before the script, which the suite's cases pass to `useSession`. */
+  sources: readonly string[];
   title: string;
 }
+
+/** Where Linux distributions install the bash-completion package's entry file. */
+const bashCompletionFiles = ['/usr/share/bash-completion/bash_completion', '/etc/bash_completion'];
+
+/** The Bash 3.2 macOS ships, which a Mac session prefers so the no-`compopt` path is proven. */
+const systemBash = '/bin/bash';
 
 const driver = fileURLToPath(new URL('zpty-driver.zsh', import.meta.url));
 
@@ -156,9 +174,17 @@ function setupLines(shell: Shell, script: string): string[] {
   }
 }
 
+/** The shell's executable: on macOS the system Bash when it exists, else the first on PATH. */
+function shellPath(shell: Shell): string | undefined {
+  if (shell === 'bash' && process.platform === 'darwin' && existsSync(systemBash)) {
+    return systemBash;
+  }
+  return findOnPath(shell);
+}
+
 /** The command line that starts each shell interactively without reading its startup files. */
 function shellCommand(shell: Shell, setup: string): string[] {
-  const path = findOnPath(shell) ?? shell;
+  const path = shellPath(shell) ?? shell;
   switch (shell) {
     case 'bash': {
       return [path, '--noprofile', '--norc', '-i'];
@@ -199,17 +225,19 @@ function plain(text: string): string {
  * the redrawn prompt or the read-back. Columns are separated by two or more spaces; a Bash
  * `(description)` and a Zsh `-- description` are dropped.
  */
-function listedWords(block: string): string[] {
-  const lines = block.split('\n').slice(1);
-  const end = lines.findIndex((line) => line.includes(prompt) || line.includes(readback));
-  return (end === -1 ? lines : lines.slice(0, end))
-    .map((line) =>
-      plain(line)
-        .replace(/ -- .*$/u, '')
-        .trim(),
-    )
+function listedWords(listing: string): string[] {
+  return listing
+    .split('\n')
+    .map((line) => line.replace(/ -- .*$/u, '').trim())
     .flatMap((line) => line.split(/\s{2,}/u))
     .filter((word) => word !== '' && !/^\(.*\)$/u.test(word));
+}
+
+/** The lines a Bash or Zsh listing printed below the line, as plain text. */
+function listingLines(block: string): string {
+  const lines = block.split('\n').slice(1);
+  const end = lines.findIndex((line) => line.includes(prompt) || line.includes(readback));
+  return (end === -1 ? lines : lines.slice(0, end)).map((line) => plain(line)).join('\n');
 }
 
 /** The line the read-back printed after the marker; Bash's comes back from history behind a `#`. */
@@ -221,13 +249,13 @@ function readLine(shell: Shell, block: string): string {
   return shell === 'bash' ? line.replace(/^\s*#/u, '') : line;
 }
 
-/** The words Fish would list for the line, from `complete -C` in a separate Fish. */
+/** What Fish would list for the line, from `complete -C` in a separate Fish: word, tab, text. */
 function fishListing(
   line: string,
   script: string,
   cwd: string,
   env: Record<string, string | undefined>,
-): string[] {
+): string {
   const result = spawnSync(
     'fish',
     ['--no-config', '-c', 'source $argv[1]; complete -C $argv[2]', script, line],
@@ -236,7 +264,12 @@ function fishListing(
   if (result.status !== 0) {
     throw new Error(`fish complete -C failed:\n${result.stdout}${result.stderr}`);
   }
-  return result.stdout
+  return result.stdout;
+}
+
+/** The words of a Fish listing: each line up to its tab. */
+function fishWords(listing: string): string[] {
+  return listing
     .split('\n')
     .filter((entry) => entry !== '')
     .map((entry) => entry.split('\t')[0] ?? entry);
@@ -247,23 +280,46 @@ function fishListing(
  * missing shell skips its cases, unless `LOOM_REQUIRE_SHELLS` is set, when it fails the suite.
  */
 function shellSuite(shell: Shell): ShellSuite {
-  const missing = [...new Set([shell, 'zsh'])].filter(
-    (command) => findOnPath(command) === undefined,
-  );
+  const needed: Shell[] = [shell, 'zsh'];
+  const missing = [...new Set(needed)].filter((command) => shellPath(command) === undefined);
   if (missing.length === 0) {
-    return { installed: true, shell, title: shell };
+    return { installed: true, shell, sources: [], title: shell };
   }
-  const reason = `${missing.join(' and ')} not installed`;
+  return skipped(shell, shell, `${missing.join(' and ')} not installed`);
+}
+
+/** A suite whose cases skip, or a failure when `LOOM_REQUIRE_SHELLS` requires them. */
+function skipped(shell: Shell, title: string, reason: string): ShellSuite {
   if (process.env.LOOM_REQUIRE_SHELLS) {
     throw new Error(`LOOM_REQUIRE_SHELLS is set, but ${reason}.`);
   }
-  console.warn(`Skipping the ${shell} completion cases: ${reason}.`);
-  return { installed: false, shell, title: `${shell} (skipped: ${reason})` };
+  console.warn(`Skipping the ${title} completion cases: ${reason}.`);
+  return { installed: false, shell, sources: [], title: `${title} (skipped: ${reason})` };
 }
 
-/** Every shell's suite, in the order `shells` lists them. */
+/**
+ * The Bash suite with the bash-completion package sourced first, so the script's
+ * `_init_completion` and `_filedir` paths run. Linux CI installs the package, so there
+ * `LOOM_REQUIRE_SHELLS` requires it; elsewhere a missing package skips the suite.
+ */
+function bashCompletionSuite(bash: ShellSuite): ShellSuite {
+  const title = 'bash with bash-completion';
+  const file = bashCompletionFiles.find((candidate) => existsSync(candidate));
+  if (!bash.installed || file === undefined) {
+    const reason = bash.installed ? 'bash-completion not installed' : 'bash not installed';
+    return process.platform === 'linux'
+      ? skipped('bash', title, reason)
+      : { installed: false, shell: 'bash', sources: [], title: `${title} (skipped: ${reason})` };
+  }
+  return { installed: true, shell: 'bash', sources: [file], title };
+}
+
+/** Every shell's suite, in the order `shells` lists them, the bash-completion variant after Bash. */
 function shellSuites(): ShellSuite[] {
-  return shells.map((shell) => shellSuite(shell));
+  return shells.flatMap((shell) => {
+    const suite = shellSuite(shell);
+    return shell === 'bash' ? [suite, bashCompletionSuite(suite)] : [suite];
+  });
 }
 
 /**
@@ -307,9 +363,12 @@ async function openSession(options: SessionOptions): Promise<Session> {
   const script = join(root, `script.${shell}`);
   writeFileSync(script, printed.stdout);
   const setup = join(root, `setup.${shell}`);
-  writeFileSync(setup, `${setupLines(shell, script).join('\n')}\n`);
+  const sourced = (options.sources ?? []).map((file) => `source ${quoted(file)}`);
+  writeFileSync(setup, `${[...sourced, ...setupLines(shell, script)].join('\n')}\n`);
   if (options.callback === 'exits nonzero') {
     writeExecutable(program, 'exit 1');
+  } else if (options.callback === 'prints a bare colon') {
+    writeExecutable(program, String.raw`printf ':\n'`);
   }
 
   const child = spawn('zsh', [driver, ...shellCommand(shell, setup)], {
@@ -384,8 +443,9 @@ async function openSession(options: SessionOptions): Promise<Session> {
       [send(line, String.raw`\t`), send('', String.raw`\x1d`)],
       `${readback}*${prompt}`,
     );
-    const listed = shell === 'fish' ? fishListing(line, script, cwd, env) : listedWords(block);
-    return { line: readLine(shell, block), listed };
+    const listing = shell === 'fish' ? fishListing(line, script, cwd, env) : listingLines(block);
+    const listed = shell === 'fish' ? fishWords(listing) : listedWords(listing);
+    return { line: readLine(shell, block), listed, listing };
   };
 
   return { close, complete };

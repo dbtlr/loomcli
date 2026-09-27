@@ -1,7 +1,29 @@
 /**
  * The two forms in which an application name enters a completion script, so the name reaches the
- * shell as data and never as source: a function identifier and a single-quoted string.
+ * shell as data and never as source: a function identifier and a single-quoted string. Each
+ * script takes only a portable name, which it checks at the call.
  */
+
+import { DeclarationError } from '@loomcli/core';
+
+/**
+ * Core's portable name rule for an application name: the POSIX portable filename set, starting
+ * with neither `-` nor `.`. `new Application()` enforces the same pattern.
+ */
+const portableName = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u;
+
+/**
+ * The name a script is printed for, checked against the portable name rule, so a newline, a
+ * quote, or a leading `-` never reaches the Zsh `#compdef` line or a registration call.
+ */
+function scriptName(name: string): string {
+  if (!portableName.test(name)) {
+    throw new DeclarationError(
+      `A completion script needs a portable application name, and "${name}" is not one. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".`,
+    );
+  }
+  return name;
+}
 
 /** The radix of the digits that encode one code point in an identifier. */
 const hexRadix = 16;
@@ -43,4 +65,4 @@ function fishQuoted(name: string): string {
   return `'${name.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
 }
 
-export { fishQuoted, identifier, posixQuoted };
+export { fishQuoted, identifier, posixQuoted, scriptName };

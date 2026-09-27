@@ -65,10 +65,22 @@ function reduce(graph, position) {
   return { ...reduced, own };
 }
 
-const cases = JSON.parse(process.argv[2] ?? '[]');
 const mode = process.argv[3] ?? 'own';
 
+/** The word count of each `long` case, too many for a call that spreads its arguments. */
+const longCount = 200_000;
+
+// `long` builds its word lists here, because they are too long for an argument.
+const cases =
+  mode === 'long'
+    ? [
+        ['--', ...Array.from({ length: longCount }, () => 'x'), ''],
+        ['paths', ...Array.from({ length: longCount }, () => 'x'), ''],
+      ]
+    : JSON.parse(process.argv[2] ?? '[]');
+
 // `foreign` hands locate a graph core did not produce, which is a caller's programming error.
+// Every other mode hands it the graph `inspect()` returned.
 const graph = mode === 'foreign' ? structuredClone(kit().inspect()) : kit().inspect();
 
 const answers = cases.map((words) => {

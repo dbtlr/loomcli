@@ -18,9 +18,9 @@ function unquoted(word: string): string {
   );
 }
 
-describe.each(shellSuites())('$title', ({ installed, shell }) => {
+describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   describe.skipIf(!installed)('typed text is never evaluated', () => {
-    const { complete, cwd } = useSession({ main: fixture, name: 'kit', shell });
+    const { complete, cwd } = useSession({ main: fixture, name: 'kit', shell, sources });
     const sentinel = () => existsSync(join(cwd(), 'sentinel'));
 
     it.each([
@@ -41,7 +41,8 @@ describe.each(shellSuites())('$title', ({ installed, shell }) => {
 
     it('the listed values leave out the one holding a newline and every other unsafe value', async () => {
       const { listed } = await complete('kit keys ');
-      expect(listed.toSorted()).toEqual(
+      // Bash lists each word escaped, as it would insert it.
+      expect(listed.map((word) => unquoted(word)).toSorted()).toEqual(
         ['plain', '$(touch sentinel)', '`touch sentinel`', ';touch sentinel'].toSorted(),
       );
       expect(sentinel()).toBe(false);
@@ -50,10 +51,54 @@ describe.each(shellSuites())('$title', ({ installed, shell }) => {
     it.each(['kit "$(touch sentinel)" ', 'kit $(touch sentinel) ', 'kit keys `touch sentinel` '])(
       'a typed word in %s reaches the program as text and runs nothing',
       async (typed) => {
-        await expect(complete(typed)).resolves.toEqual({ line: typed, listed: [] });
+        await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
         expect(sentinel()).toBe(false);
       },
     );
+
+    it.each([
+      [String.raw`\$`, '$(touch sentinel)'],
+      [String.raw`a\ `, 'a b'],
+    ])(
+      'several values that share a prefix insert the prefix after %s as quoted text',
+      async (typed, prefix) => {
+        const { line } = await complete(`kit odd values ${typed}`);
+        const inserted = line.slice('kit odd values '.length).trimEnd();
+        expect(line.startsWith('kit odd values ')).toBe(true);
+        expect(inserted).not.toBe(prefix);
+        expect(unquoted(inserted)).toBe(prefix);
+        expect(sentinel()).toBe(false);
+      },
+    );
+
+    it.each([
+      ['p', String.raw`p\q`],
+      ['r', String.raw`r\:s`],
+    ])('a value after %s that holds a backslash inserts as %s', async (typed, value) => {
+      const { line } = await complete(`kit odd values ${typed}`);
+      expect(unquoted(line.slice('kit odd values '.length).trimEnd())).toBe(value);
+    });
+
+    it('a description holding a colon and a backslash is shown as text and splits no word', async () => {
+      const { listed, listing } = await complete('kit odd ');
+      expect(listed.toSorted()).toEqual(['colon', 'values']);
+      expect(listing).toContain(String.raw`One: two \ three.`);
+      const { line } = await complete('kit odd c');
+      expect(line.trimEnd()).toBe('kit odd colon');
+    });
+
+    describe.runIf(shell === 'bash')('the Bash file fallback', () => {
+      it.each([
+        'kit --file $((x[$(touch sentinel)]))/',
+        // A shell parameter expansion, written so it reads as no template placeholder.
+        `kit --file \${HOME[$(touch sentinel)]}/`,
+        'kit --file $HOME/',
+      ])('reads %s as text: it runs nothing and rewrites nothing', async (typed) => {
+        const { line } = await complete(typed);
+        expect(line).toBe(typed);
+        expect(sentinel()).toBe(false);
+      });
+    });
 
     it('a typed $(...) value is read as the option value it is, and completion continues past it', async () => {
       const { line } = await complete('kit paths --field "$(touch sentinel)" --fo');

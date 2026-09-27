@@ -42,3 +42,4 @@ Accepted 2026-09-27 with the implementation. Every action, an application's or a
 - 2026-09-26: Proposed with the shell completion contract.
 - 2026-09-27: The two members are lazy. Reading either builds the run's graph once, so a run without middleware whose action reads neither calls no schema converter.
 - 2026-09-27: Accepted with the implementation.
+- 2026-09-27: A run that asks a configuration source builds the graph too, because the source reads it. A run calls no schema converter only when it has no middleware, asks no configuration source, and its action reads neither member.

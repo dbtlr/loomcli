@@ -1,4 +1,4 @@
-import { identifier, posixQuoted } from './name.js';
+import { identifier, posixQuoted, scriptName } from './name.js';
 
 /**
  * The Zsh completion script, ported from Cobra's `zsh_completions.go`.
@@ -7,7 +7,8 @@ import { identifier, posixQuoted } from './name.js';
  * package NOTICE records the attribution. The changes from Cobra:
  * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function identifiers by `identifier()`.
+ *   encoded into function identifiers by `identifier()`, and only a portable name, which
+ *   `scriptName()` checks at the call with a `DeclarationError`.
  * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
@@ -20,20 +21,28 @@ import { identifier, posixQuoted } from './name.js';
  * - `_describe` receives its arguments as an array; `_files` is called directly rather than through
  *   an `_arguments` action string, and each file extension is quoted as a pattern with the `(b)`
  *   flag, so no glob qualifier in it runs.
- * - The `#compdef` line carries the name as it is, because every accepted name is portable.
+ * - `\` and then `:` are escaped in each word and description passed to `_describe`, which reads a
+ *   backslash as an escape.
+ * - The last word of the request is `$PREFIX`, the word under the cursor cut at the cursor, rather
+ *   than the whole word under the cursor.
+ * - The completion function is `_loom_<id>` and the debug function `__loom_<id>_debug`, so no
+ *   application name shadows a completion system function such as `_describe`, `_files`, or
+ *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
+ * - The `#compdef` line and the autoload check carry the name as it is, because `scriptName()`
+ *   accepts only a portable name.
  */
 export function zshScript(name: string): string {
-  const id = identifier(name);
+  const id = identifier(scriptName(name));
   const quoted = posixQuoted(name);
   return `#compdef ${name}
-compdef _${id} ${quoted}
+compdef _loom_${id} ${quoted}
 
 # Zsh completion script, printed by the Loom completion plugin.
 # Ported from Cobra's zsh_completions.go, Copyright 2013-2023 The Cobra Authors,
 # under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 # The changes from Cobra are stated in the NOTICE file of @loomcli/plugins.
 
-__${id}_debug()
+__loom_${id}_debug()
 {
     local file="$BASH_COMP_DEBUG_FILE"
     if [[ -n \${file} ]]; then
@@ -41,7 +50,7 @@ __${id}_debug()
     fi
 }
 
-_${id}()
+_loom_${id}()
 {
     local shellCompDirectiveError=1
     local shellCompDirectiveNoSpace=2
@@ -53,46 +62,47 @@ _${id}()
     local out directive comp lastLine filter subdir result
     local -a completions request describe globs
 
-    __${id}_debug "\\n========= starting completion logic =========="
-    __${id}_debug "CURRENT: \${CURRENT}, words[*]: \${words[*]}"
+    __loom_${id}_debug "\\n========= starting completion logic =========="
+    __loom_${id}_debug "CURRENT: \${CURRENT}, words[*]: \${words[*]}"
 
     # The cursor is inside an unclosed quote, so the word under it cannot be
     # read without evaluating it: offer nothing and do not call the program.
     if [[ -n \${compstate[quote]} ]]; then
-        __${id}_debug "The word under the cursor holds an unclosed quote"
+        __loom_${id}_debug "The word under the cursor holds an unclosed quote"
         return 1
     fi
 
     # The user could have moved the cursor backwards on the command-line.
     # We need to trigger completion from the $CURRENT location, so the request
-    # holds the words up to the $CURRENT location. The (Q) flag removes one
-    # level of quoting and expands nothing, and each word reaches the program
-    # as its characters, in an argument array.
-    request=("\${(Q)words[1]}" completion __complete -- "\${(@Q)words[2,CURRENT]}")
-    __${id}_debug "About to call: \${request[*]}"
+    # holds the words before the $CURRENT location and then $PREFIX, the word
+    # under the cursor cut at the cursor. The (Q) flag removes one level of
+    # quoting and expands nothing, and each word reaches the program as its
+    # characters, in an argument array.
+    request=("\${(Q)words[1]}" completion __complete -- "\${(@Q)words[2,CURRENT-1]}" "\${(Q)PREFIX}")
+    __loom_${id}_debug "About to call: \${request[*]}"
 
     out=$("\${request[@]}" 2>/dev/null)
     if [[ $? -ne 0 ]]; then
-        __${id}_debug "The program exited nonzero"
+        __loom_${id}_debug "The program exited nonzero"
         return 1
     fi
-    __${id}_debug "completion output: \${out}"
+    __loom_${id}_debug "completion output: \${out}"
 
     # The last line is a colon and the directive's decimal digits.
     lastLine=\${out##*$'\\n'}
-    __${id}_debug "last line: \${lastLine}"
+    __loom_${id}_debug "last line: \${lastLine}"
     if [[ \${lastLine[1]} != : || -z \${lastLine[2,-1]} || \${lastLine[2,-1]} == *[^0-9]* ]]; then
-        __${id}_debug "The answer holds no directive line"
+        __loom_${id}_debug "The answer holds no directive line"
         return 1
     fi
     directive=$(( 10#\${lastLine[2,-1]} ))
     out=\${out%"$lastLine"}
 
-    __${id}_debug "directive: \${directive}"
-    __${id}_debug "completions: \${out}"
+    __loom_${id}_debug "directive: \${directive}"
+    __loom_${id}_debug "completions: \${out}"
 
     if [ $((directive & shellCompDirectiveError)) -ne 0 ]; then
-        __${id}_debug "Completion received error. Ignoring completions."
+        __loom_${id}_debug "Completion received error. Ignoring completions."
         return 1
     fi
 
@@ -104,11 +114,13 @@ _${id}()
             # If requested, completions are returned with a description.
             # The description is preceded by a TAB character.
             # For zsh's _describe, we need to use a : instead of a TAB.
-            # We first need to escape any : as part of the completion itself.
+            # We first need to escape any \\ and then any : in the word and the
+            # description, because _describe reads a backslash as an escape.
+            comp=\${comp//\\\\/\\\\\\\\}
             comp=\${comp//:/\\\\:}
             comp=\${comp//$tab/:}
 
-            __${id}_debug "Adding completion: \${comp}"
+            __loom_${id}_debug "Adding completion: \${comp}"
             completions+=("$comp")
         fi
     done <<< "$out"
@@ -119,16 +131,16 @@ _${id}()
         for filter in "\${lines[@]}"; do
             globs+=(-g "*.\${(b)filter}")
         done
-        __${id}_debug "File filtering patterns: \${globs[*]}"
+        __loom_${id}_debug "File filtering patterns: \${globs[*]}"
         _files "\${globs[@]}"
     elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
         # File completion for directories only
         subdir="\${lines[1]}"
         if [ -n "$subdir" ]; then
-            __${id}_debug "Listing directories in $subdir"
+            __loom_${id}_debug "Listing directories in $subdir"
             pushd -q -- "\${subdir}" >/dev/null 2>&1 || return 1
         else
-            __${id}_debug "Listing directories in ."
+            __loom_${id}_debug "Listing directories in ."
         fi
 
         _files -/
@@ -139,26 +151,26 @@ _${id}()
         return $result
     else
         if [ $((directive & shellCompDirectiveKeepOrder)) -ne 0 ]; then
-            __${id}_debug "Activating keep order."
+            __loom_${id}_debug "Activating keep order."
             describe+=(-V)
         fi
         describe+=(completions completions)
         if [ $((directive & shellCompDirectiveNoSpace)) -ne 0 ]; then
-            __${id}_debug "Activating nospace."
+            __loom_${id}_debug "Activating nospace."
             describe+=(-S '')
         fi
 
-        __${id}_debug "Calling _describe"
+        __loom_${id}_debug "Calling _describe"
         if _describe "\${describe[@]}"; then
-            __${id}_debug "_describe found some completions"
+            __loom_${id}_debug "_describe found some completions"
 
             # Return the success of having called _describe
             return 0
         else
-            __${id}_debug "_describe did not find completions."
-            __${id}_debug "Checking if we should do file completion."
+            __loom_${id}_debug "_describe did not find completions."
+            __loom_${id}_debug "Checking if we should do file completion."
             if [ $((directive & shellCompDirectiveNoFileComp)) -ne 0 ]; then
-                __${id}_debug "deactivating file completion"
+                __loom_${id}_debug "deactivating file completion"
 
                 # We must return an error code here to let zsh know that there were no
                 # completions found by _describe; this is what will trigger other
@@ -167,7 +179,7 @@ _${id}()
                 return 1
             else
                 # Perform file completion
-                __${id}_debug "Activating file completion"
+                __loom_${id}_debug "Activating file completion"
 
                 # We must return the result of this command, so it must be the
                 # last command, or else we must store its result to return it.
@@ -177,9 +189,10 @@ _${id}()
     fi
 }
 
-# don't run the completion function when being sourced
-if [ "$funcstack[1]" = "_${id}" ]; then
-    _${id}
+# Run the completion function when compinit autoloads this file as _${name},
+# and not when it is sourced.
+if [ "$funcstack[1]" = "_${name}" ]; then
+    _loom_${id}
 fi
 `;
 }

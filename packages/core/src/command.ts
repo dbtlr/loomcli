@@ -42,6 +42,7 @@ import {
   copyValues,
   emptyValues,
   extractGlobals,
+  isOptionToken,
   mergeValues,
   parseInputs,
 } from './options.js';
@@ -100,7 +101,8 @@ export interface ArgumentSlot {
 /**
  * What one dispatch hands its action. `graph` and `command` are the run's inspected graph and the
  * routed node inside it, the values its middleware read. Each builds on its first read, so a run
- * whose action reads neither and whose chain is empty renders no graph and calls no converter.
+ * whose action reads neither, whose chain is empty, and which asks no configuration source renders
+ * no graph and calls no converter.
  */
 export interface DispatchInput {
   command: () => CommandNode;
@@ -1938,14 +1940,21 @@ function candidatesOf(command: BuiltCommand): string[] {
   return [...command.children].filter(([, child]) => !child.hidden).map(([name]) => name);
 }
 
+/**
+ * Whether a token names one of the Command's children: the Command has children and the token is
+ * no option token. Routing and `locate` read a bare word through this rule.
+ */
+export function readsAsChild(command: BuiltCommand, token: string): boolean {
+  return command.children.size > 0 && !isOptionToken(token);
+}
+
 /** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
 export function route(root: BuiltCommand, tokens: readonly string[]) {
   let command = root;
   const path: string[] = [];
   let index = 0;
-  while (command.children.size > 0) {
-    const token = tokens[index];
-    if (token === undefined || token === '--' || token.startsWith('-')) {
+  for (let token = tokens[index]; token !== undefined; token = tokens[index]) {
+    if (!readsAsChild(command, token)) {
       break;
     }
     const child = command.routes.get(token);

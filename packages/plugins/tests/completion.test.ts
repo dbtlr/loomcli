@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, DeclarationError, locate } from '@loomcli/core';
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -29,6 +30,18 @@ const globalLines = [
   '--no-color\tColor output.',
   '--help\tShow this help.',
 ];
+
+/** A validator that accepts any value and publishes exactly the given input-side JSON Schema. */
+function shaped(json: Record<string, unknown>): StandardSchemaV1 & StandardJSONSchemaV1 {
+  return {
+    '~standard': {
+      jsonSchema: { input: () => json, output: () => ({}) },
+      validate: (value) => ({ value }),
+      vendor: 'fixture',
+      version: 1,
+    },
+  };
+}
 
 /** Lines joined as the answer frames them: each ends with a newline, the directive last. */
 function framed(lines: readonly string[], directive: number): string {
@@ -97,6 +110,24 @@ describe('the answer', () => {
       ),
     );
     expect(complete('paths', '--n')).toBe(framed(['--no-color\tColor output.'], 4));
+    expect(complete('paths', '-q')).toBe(framed([], 4));
+  });
+
+  it('a value is never offered empty, and never as a word whose first character is a tilde', () => {
+    const graph = new Application('kit')
+      .command(
+        new Command('one')
+          .option('v', { type: 'string', validate: shaped({ enum: ['', '~', '~root', 'a~b'] }) })
+          .argument('value', { validate: shaped({ enum: ['~root', 'b~c'] }) })
+          .action(() => {}),
+      )
+      .inspect();
+    // After a lead the word starts with a hyphen, and no shell expands a tilde after `--v=`.
+    expect(answer(graph, locate(graph, ['one', '--v=']))).toBe(
+      framed(['--v=~', '--v=~root', '--v=a~b'], 4),
+    );
+    expect(answer(graph, locate(graph, ['one', '--v', '']))).toBe(framed(['a~b'], 4));
+    expect(answer(graph, locate(graph, ['one', '']))).toBe(framed(['b~c'], 4));
   });
 
   it('a supplied option is not offered again unless it is a multiple string option', () => {
@@ -215,101 +246,131 @@ describe('the name', () => {
   });
 });
 
-/** Names that would run a command if a script put them into shell source as they are. */
+/** Names outside the portable set, several of which would run a command as shell source. */
 const hostileNames = [
+  'x\ntouch pwned\n',
   "evil'; touch pwned; echo '",
   '$(touch pwned)',
   '`touch pwned`',
   String.raw`back\'slash; touch pwned`,
+  '-x',
+  '.x',
+  '',
 ];
 
-/** A name single-quoted in Bash and Zsh. */
-function posixQuoted(name: string): string {
-  return `'${name.replaceAll("'", String.raw`'\''`)}'`;
+/** Portable names, including ones that match a Zsh completion system function's suffix. */
+const portableNames = ['kit', 'git-lfs', 'a.b_c', '9', 'describe', 'files', 'arguments'];
+
+/** One shell's script, and the command line a bare shell sources a script file with. */
+interface ScriptShell {
+  flags: string[];
+  script: (name: string) => string;
+  shell: string;
+  source: string;
 }
 
-/** A name single-quoted in Fish, whose single quotes read `\'` and `\\` as escapes. */
-function fishQuoted(name: string): string {
-  return `'${name.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
+/**
+ * Whether the shell runs here. A missing shell skips its case, unless `LOOM_REQUIRE_SHELLS` is
+ * set, when it fails the case, as it fails the conformance suites.
+ */
+function shellRuns(shell: string): boolean {
+  if (spawnSync(shell, ['-c', 'true']).error === undefined) {
+    return true;
+  }
+  if (process.env.LOOM_REQUIRE_SHELLS) {
+    throw new Error(`LOOM_REQUIRE_SHELLS is set, but ${shell} not installed.`);
+  }
+  return false;
+}
+
+/**
+ * Sources the script text from a file in a fresh directory, then runs `after`, and reports the
+ * run and whether a `pwned` file appeared. A file, because a spawned stdin is a socket on Linux,
+ * which `/dev/stdin` cannot open.
+ */
+function sourceScript({ flags, shell, source }: ScriptShell, text: string, after = '') {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-completion-'));
+  try {
+    const file = join(directory, 'script');
+    writeFileSync(file, text);
+    const result = spawnSync(shell, [...flags, '-c', `${source} '${file}'${after}`], {
+      cwd: directory,
+      encoding: 'utf8',
+      env: { HOME: directory, PATH: process.env.PATH },
+    });
+    return { pwned: existsSync(join(directory, 'pwned')), result };
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
 }
 
 describe('the scripts', () => {
-  /** Each script, how its shell quotes a name, and how a bare shell sources it from stdin. */
-  const scripts = [
-    {
-      flags: ['--noprofile', '--norc'],
-      quoted: posixQuoted,
-      script: bashScript,
-      shell: 'bash',
-      source: 'source /dev/stdin',
-    },
+  const bash: ScriptShell = {
+    flags: ['--noprofile', '--norc'],
+    script: bashScript,
+    shell: 'bash',
+    source: 'source',
+  };
+  const scripts: ScriptShell[] = [
+    bash,
     {
       flags: ['-f'],
-      quoted: posixQuoted,
       script: zshScript,
       shell: 'zsh',
-      source: 'autoload -U compinit; compinit -u -D; source /dev/stdin',
+      source: 'autoload -U compinit; compinit -u -D; source',
     },
-    {
-      flags: ['--no-config'],
-      quoted: fishQuoted,
-      script: fishScript,
-      shell: 'fish',
-      source: 'source /dev/stdin',
-    },
+    { flags: ['--no-config'], script: fishScript, shell: 'fish', source: 'source' },
   ];
 
-  it.each(scripts)(
-    'the $shell script carries a hostile name only quoted or encoded',
-    ({ quoted, script, shell }) => {
-      for (const name of hostileNames) {
-        const text = script(name);
-        expect(text).toContain(quoted(name));
-        expect(text).toContain(`_${identifier(name)}_`);
-        // The Zsh #compdef comment carries the name as it is, so it is set aside with the quoted form.
-        const rest = text
-          .split('\n')
-          .filter((line) => shell !== 'zsh' || line !== `#compdef ${name}`)
-          .join('\n')
-          .replaceAll(quoted(name), '')
-          // Fish triggers loading with the name and a space, one quoted string.
-          .replaceAll(quoted(`${name} `), '')
-          .replaceAll(identifier(name), '');
-        expect(rest).not.toMatch(/touch|pwned/u);
-      }
-    },
-  );
+  it.each(scripts)('the $shell script refuses a name outside the portable set', ({ script }) => {
+    for (const name of hostileNames) {
+      expect(() => script(name)).toThrow(DeclarationError);
+    }
+  });
 
   it.each(scripts)('the $shell script evaluates nothing', ({ script }) => {
     const text = script('kit');
     expect(text).not.toMatch(/\beval\b/u);
-    expect(text).not.toMatch(/compgen\s+-W/u);
+    expect(text).not.toMatch(/compgen\s+-[WfdG]/u);
     expect(text).not.toContain('_activeHelp_');
   });
 
+  it('the Bash script escapes a leading tilde in a word it inserts, which printf %q may leave bare', () => {
+    if (!shellRuns('bash')) {
+      return;
+    }
+    const { result } = sourceScript(
+      bash,
+      bashScript('kit'),
+      String.raw`; for word in "~root" "a b" "a~b"; do __kit_quote "$word"; printf '%s\n' "$quoted"; done`,
+    );
+    expect(result).toMatchObject({ status: 0, stderr: '' });
+    expect(result.stdout).toBe(String.raw`\~root
+a\ b
+a~b
+`);
+  });
+
+  it('the Zsh script for describe, files, or arguments defines none of the completion system functions', () => {
+    for (const name of ['describe', 'files', 'arguments']) {
+      const text = zshScript(name);
+      expect(text).not.toMatch(/^_(?:describe|files|arguments)\s*\(\)/mu);
+      expect(text).toMatch(new RegExp(String.raw`^_loom_${name}\(\)$`, 'mu'));
+      expect(text).toContain(`compdef _loom_${name} '${name}'`);
+    }
+  });
+
   it.each(scripts)(
-    'the $shell script sources without running anything for a hostile name',
-    ({ flags, script, shell, source }) => {
-      // A shell this machine lacks has nothing to source into; the conformance run requires each.
-      const probe = spawnSync(shell, ['-c', 'true']);
-      if (probe.error !== undefined) {
+    'the $shell script sources without running anything for every portable name',
+    (entry) => {
+      if (!shellRuns(entry.shell)) {
         return;
       }
-      const directory = mkdtempSync(join(tmpdir(), 'loom-completion-'));
-      try {
-        for (const name of hostileNames) {
-          const result = spawnSync(shell, [...flags, '-c', source], {
-            cwd: directory,
-            encoding: 'utf8',
-            env: { HOME: directory, PATH: process.env.PATH },
-            input: script(name),
-          });
-          expect(result.stderr).toBe('');
-          expect(result.status).toBe(0);
-          expect(existsSync(join(directory, 'pwned'))).toBe(false);
-        }
-      } finally {
-        rmSync(directory, { force: true, recursive: true });
+      for (const name of portableNames) {
+        const { pwned, result } = sourceScript(entry, entry.script(name));
+        expect(result.stderr).toBe('');
+        expect(result.status).toBe(0);
+        expect(pwned).toBe(false);
       }
     },
   );

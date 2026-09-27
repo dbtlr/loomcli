@@ -148,6 +148,34 @@ export function compileOptions(declarations: readonly OptionDeclaration[], subje
   return spellings;
 }
 
+/**
+ * Whether a token reads as an option: it starts with a hyphen. Routing stops at one, and a
+ * separate value is never one. The parser and `locate` read each token through this rule.
+ */
+export function isOptionToken(token: string): boolean {
+  return token.startsWith('-');
+}
+
+/** A long option token and the inline value it carries after its first `=`, if any. */
+export interface LongToken {
+  spelling: string;
+  inline: string | undefined;
+}
+
+/**
+ * A token that starts with `--` split at its first `=` into the spelling and the inline value, or
+ * `undefined` for any other token. The parser and `locate` split long tokens through this rule.
+ */
+export function longToken(token: string): LongToken | undefined {
+  if (!token.startsWith('--')) {
+    return undefined;
+  }
+  const equals = token.indexOf('=');
+  return equals === -1
+    ? { inline: undefined, spelling: token }
+    : { inline: token.slice(equals + 1), spelling: token.slice(0, equals) };
+}
+
 function lookup(spellings: ReadonlyMap<string, OptionSpelling>, spelling: string) {
   const option = spellings.get(spelling);
   if (!option) {
@@ -216,7 +244,7 @@ function acceptValue({
   if (value === undefined) {
     return { name: option.name, spelling };
   }
-  if (inline === undefined && value.startsWith('-')) {
+  if (inline === undefined && isOptionToken(value)) {
     throw new MissingValueError(spelling);
   }
   if (repeatable) {
@@ -235,10 +263,9 @@ function parseOption(
   values: OptionValues,
 ): OptionReading {
   const { token, next } = input;
-  if (token.startsWith('--')) {
-    const equals = token.indexOf('=');
-    const spelling = equals === -1 ? token : token.slice(0, equals);
-    const inline = equals === -1 ? undefined : token.slice(equals + 1);
+  const long = longToken(token);
+  if (long) {
+    const { inline, spelling } = long;
     return acceptValue({ inline, next, option: lookup(spellings, spelling), spelling, values });
   }
   if (token === '-') {
@@ -293,9 +320,9 @@ function readOption(
  * pre-scan reads the globals alone, so a letter it does not own is only "not a global option".
  */
 function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: string) {
-  if (token.startsWith('--')) {
-    const equals = token.indexOf('=');
-    return spellings.has(equals === -1 ? token : token.slice(0, equals));
+  const long = longToken(token);
+  if (long) {
+    return spellings.has(long.spelling);
   }
   const group = token.slice(1).split('=')[0] ?? '';
   let global = '';
@@ -344,11 +371,14 @@ export function scanGlobals(
       break;
     }
     if (token === '--') {
-      rest.push(...tokens.slice(index));
-      positions.push(...Array.from(tokens.slice(index), (_token, offset) => index + offset));
+      // One push per token, because a spread call would overflow the stack on a long list.
+      for (const [offset, tail] of tokens.slice(index).entries()) {
+        rest.push(tail);
+        positions.push(index + offset);
+      }
       break;
     }
-    if (!token.startsWith('-') || !isGlobalToken(spellings, token)) {
+    if (!isOptionToken(token) || !isGlobalToken(spellings, token)) {
       rest.push(token);
       positions.push(index);
     } else if (readOption(spellings, { index, next: tokens[index + 1], token }, state)) {
@@ -434,7 +464,7 @@ export function scanInputs(
     if (token === '--') {
       return read(tokens.slice(index + 1), true);
     }
-    if (!token.startsWith('-')) {
+    if (!isOptionToken(token)) {
       positionals.push(token);
     } else if (readOption(spellings, { index, next: tokens[index + 1], token }, state)) {
       index += 1;

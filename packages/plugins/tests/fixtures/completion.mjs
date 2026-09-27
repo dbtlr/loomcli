@@ -59,6 +59,30 @@ const debug = new Command('debug', { hidden: true })
   .option('dump', { type: 'boolean' })
   .action(() => {});
 
+/**
+ * Values a shell must insert as escaped text when several share a prefix or one holds a
+ * backslash, and a description holding `:` and `\`. The group is hidden, so no root listing
+ * shows it.
+ */
+const odd = new Command('odd', { hidden: true })
+  .command(
+    new Command('values')
+      .argument('value', {
+        validate: shaped({
+          enum: [
+            '$(touch sentinel)a',
+            '$(touch sentinel)b',
+            'a b1',
+            'a b2',
+            String.raw`p\q`,
+            String.raw`r\:s`,
+          ],
+        }),
+      })
+      .action(() => {}),
+  )
+  .command(new Command('colon', { description: 'One: two \\ three.' }).action(() => {}));
+
 const cache = new Command('cache', { description: String.fromCodePoint(1) })
   .command(new Command('clear').action(() => {}))
   .command(new Command('list', { description: 'List entries.' }).action(() => {}));
@@ -72,6 +96,7 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(keys)
   .command(fetch)
   .command(debug)
-  .command(cache);
+  .command(cache)
+  .command(odd);
 
 await app.run({ host: { argv: process.argv.slice(2) } });

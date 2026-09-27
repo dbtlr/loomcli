@@ -226,6 +226,13 @@ test('answers synchronously and throws nothing for hostile word lists', () => {
   }
 });
 
+test('reads 200000 words without exhausting the call stack', () => {
+  expect(locateAll([], 'long')).toEqual([
+    { command: [], kind: 'passthrough', own: true, prefix: '' },
+    { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: '' },
+  ]);
+});
+
 test('rejects a graph core did not produce as an internal error', () => {
   expect(locateAll([['k']], 'foreign')).toEqual([{ threw: 'InternalError' }]);
 });

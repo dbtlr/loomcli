@@ -1,10 +1,10 @@
 import type { BuiltCommand, BuiltGraph } from './command.js';
-import { argumentSlot, route } from './command.js';
+import { argumentSlot, readsAsChild, route } from './command.js';
 import { InternalError, UsageError } from './errors.js';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 import { linkOf } from './inspect.js';
 import type { AwaitingValue, GlobalScan, InputScan } from './options.js';
-import { longStringOption, scanGlobals, scanInputs } from './options.js';
+import { isOptionToken, longStringOption, longToken, scanGlobals, scanInputs } from './options.js';
 
 /**
  * Where the last word of an unfinished invocation sits. Every node is the given graph's own, so a
@@ -120,34 +120,37 @@ function valueOf(scope: Scope, name: string, word: { lead: string; prefix: strin
   return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix };
 }
 
-/** A word holding `=` after a long spelling is that option's value when it is a string option. */
-function inlineValue(scope: Scope, last: string): WordPosition {
-  const equals = last.indexOf('=');
-  const spelling = last.slice(0, equals);
+/** A long token with an inline value is that option's value when it names a string option. */
+function inlineValue(scope: Scope, spelling: string, inline: string): WordPosition {
   const name =
     longStringOption(scope.built.globals.options, spelling) ??
     longStringOption(scope.earlier.command.options, spelling);
-  return name === undefined
-    ? none
-    : valueOf(scope, name, { lead: last.slice(0, equals + 1), prefix: last.slice(equals + 1) });
+  return name === undefined ? none : valueOf(scope, name, { lead: `${spelling}=`, prefix: inline });
 }
 
 /** The word after a string option that ended the earlier words is that option's value. */
 function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): WordPosition {
-  // The grammar never consumes a separate value that starts with a hyphen.
-  const separate = last === '' || !last.startsWith('-');
-  return separate ? valueOf(scope, awaiting.name, { lead: '', prefix: last }) : none;
+  return isOptionToken(last) ? none : valueOf(scope, awaiting.name, { lead: '', prefix: last });
 }
 
 /** A bare word names a child until routing commits, and fills the next positional after. */
 function bareWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
-  if (!earlier.committed && earlier.command.children.size > 0) {
+  if (!earlier.committed && readsAsChild(earlier.command, last)) {
     return { command, kind: 'command', prefix: last };
   }
   const slot = argumentSlot(earlier.command.arguments, earlier.positionals);
   const argument = slot && command.arguments[earlier.command.arguments.indexOf(slot)];
   return argument ? { argument, command, kind: 'argument', prefix: last } : none;
+}
+
+/** An option token: a long token's inline value, or else an option spelling being completed. */
+function optionWord(scope: Scope, last: string): WordPosition {
+  const long = longToken(last);
+  if (long?.inline !== undefined) {
+    return inlineValue(scope, long.spelling, long.inline);
+  }
+  return { command: scope.command, kind: 'option', prefix: last, supplied: scope.earlier.supplied };
 }
 
 /** The last word, read as the parser would read the next token. */
@@ -159,13 +162,7 @@ function lastWord(scope: Scope, last: string): WordPosition {
   if (earlier.awaiting) {
     return awaitedValue(scope, earlier.awaiting, last);
   }
-  if (last.startsWith('--') && last.includes('=')) {
-    return inlineValue(scope, last);
-  }
-  if (last.startsWith('-')) {
-    return { command, kind: 'option', prefix: last, supplied: earlier.supplied };
-  }
-  return bareWord(scope, last);
+  return isOptionToken(last) ? optionWord(scope, last) : bareWord(scope, last);
 }
 
 /**

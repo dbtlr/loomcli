@@ -41,7 +41,7 @@ jobs:
 
       - name: Install the completion shells
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh fish
+        run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
 
       - name: Install the completion shells
         if: runner.os == 'macOS'
@@ -91,7 +91,7 @@ jobs:
 
       - name: Install the completion shells
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh fish
+        run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
 
       - name: Install the completion shells
         if: runner.os == 'macOS'

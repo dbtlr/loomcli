@@ -37,12 +37,14 @@ const activeHelpMarker = '_activeHelp_ ';
 
 /**
  * Whether a shell inserts the word exactly as the graph holds it. A control character or line
- * separator would be cut or reinterpreted, a lone surrogate reaches the shell as U+FFFD, and a
- * word starting with the ActiveHelp marker would print as help, so each is left out.
+ * separator would be cut or reinterpreted, a lone surrogate reaches the shell as U+FFFD, a word
+ * starting with the ActiveHelp marker would print as help, and a word starting with `~` inserts
+ * unescaped in Bash 3.2 and Fish and would expand when the line runs, so each is left out.
  */
 function isExact(word: string): boolean {
   return (
     word !== '' &&
+    !word.startsWith('~') &&
     !control.test(word) &&
     !/\p{Cs}/u.test(word) &&
     !word.startsWith(activeHelpMarker)

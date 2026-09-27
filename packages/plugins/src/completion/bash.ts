@@ -1,4 +1,4 @@
-import { identifier, posixQuoted } from './name.js';
+import { identifier, posixQuoted, scriptName } from './name.js';
 
 /**
  * The Bash completion script, ported from Cobra's `bash_completionsV2.go`.
@@ -7,7 +7,8 @@ import { identifier, posixQuoted } from './name.js';
  * package NOTICE records the attribution. The changes from Cobra:
  * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function identifiers by `identifier()`.
+ *   encoded into function identifiers by `identifier()`, and only a portable name, which
+ *   `scriptName()` checks at the call with a `DeclarationError`.
  * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
@@ -15,23 +16,33 @@ import { identifier, posixQuoted } from './name.js';
  * - A nonzero exit, or an answer whose last line is not `:` and decimal digits, offers nothing.
  * - Directive numbers are written as literals.
  * - Quoting is removed from each word by `__<id>_dequote`, a string-only decoder written for Bash
- *   3.2; an unclosed quote in the word under the cursor offers nothing without a call.
+ *   3.2; an unclosed quote in the word under the cursor offers nothing without a call. It reads
+ *   `$'...'` as a `$` and a single-quoted string, so such a word reaches the program with its
+ *   escapes undecoded; nothing in it is evaluated.
  * - Every `compgen -W` is removed; offered words are filtered by `[[ $comp == "$cur"* ]]`.
+ * - Every offered word is escaped by `__<id>_quote`, `printf %q` with a leading `~` escaped too,
+ *   which the `printf` of Bash 3.2 leaves bare. With several matches each entry holds its word
+ *   escaped, so the common prefix readline inserts is escaped text; the list shows escaped words.
+ * - No `compgen -f` or `compgen -d` is called, because in a completion Bash 3.2 expands the
+ *   directory part of its word. Without `_filedir`, `__<id>_offer_files` lists file names by
+ *   pathname expansion of the dequoted word with only a trailing `*` unquoted, so nothing typed
+ *   is expanded or run, and a `$HOME` or `~` in the word is never rewritten. It escapes each name
+ *   itself rather than setting `-o filenames`.
  * - Without the bash-completion package, `__<id>_comp_words` builds `words`, `cword`, and `cur`
- *   from `COMP_WORDS` as `-n =:` does, and directives 8 and 16 fall back to `compgen -f` and
- *   `compgen -d` with the extensions compared as strings.
+ *   from `COMP_WORDS` as `-n =:` does, and directives 8 and 16 fall back to `__<id>_offer_files`
+ *   with the extensions compared as strings.
  * - The extension list is quoted rather than expanded unquoted, and `_filedir` gets one argument
  *   rather than a command string.
  * - The current word is not trimmed after `=`; `__<id>_handle_special_char` trims the inserted
  *   words instead.
  * - An error, a failed call, or an unreadable answer turns default file completion off.
  * - Without `compopt`, as on Bash 3.2, the script registers without `-o default`, which it could
- *   not turn off, so an error never falls through to file names. `__<id>_complete_files` completes
- *   file names with `compgen -f` instead, only when the directive allows files and no word was
- *   offered. With `compopt` the registration is Cobra's.
+ *   not turn off, so an error never falls through to file names. `__<id>_offer_files` completes
+ *   file names instead, only when the directive allows files and no word was offered. With
+ *   `compopt` the registration is Cobra's.
  */
 export function bashScript(name: string): string {
-  const id = identifier(name);
+  const id = identifier(scriptName(name));
   const quoted = posixQuoted(name);
   return `# Bash completion script, printed by the Loom completion plugin.
 # Ported from Cobra's bash_completionsV2.go, Copyright 2013-2023 The Cobra Authors,
@@ -250,7 +261,7 @@ __${id}_process_completion_results() {
         # an error cannot fall through to file names. The script completes file
         # names itself when the directive allows them and no word was offered.
         if [[ $(type -t compopt) != builtin ]] && ((\${#COMPREPLY[@]} == 0 && (directive & shellCompDirectiveNoFileComp) == 0)); then
-            __${id}_complete_files
+            __${id}_offer_files any
         fi
     fi
 
@@ -258,35 +269,80 @@ __${id}_process_completion_results() {
     __${id}_handle_special_char "$cur" =
 }
 
-# File completion for Bash without compopt, in place of the default the
-# compspec does not register. Like readline's own, it completes the part of the
-# word after the last = or : that is a word break, and a directory ends in /.
-# Each name is escaped with printf %q, a leading ~ excepted, because the
-# compspec has no filenames option to quote it.
-__${id}_complete_files() {
-    local word=$cur dequoted file comp
+# Escapes one word into the caller's quoted variable the way printf %q does,
+# and a leading ~ too, which the printf of Bash 3.2 leaves bare, so the
+# inserted text never expands.
+__${id}_quote() {
+    printf -v quoted "%q" "$1" &>/dev/null || quoted=$(printf "%q" "$1")
+    if [[ $quoted == '~'* ]]; then
+        quoted="\\\\$quoted"
+    fi
+}
 
+# Lists the file names that start with the word under the cursor into the
+# caller's names array; a directory ends in /. Like readline's own, it reads
+# the part of the word after the last = or : that is a word break. The dequoted
+# word is expanded as a quoted pattern with only a trailing * unquoted, so
+# nothing in it is expanded or run and no $HOME or ~ in it is rewritten.
+__${id}_file_names() {
+    local word=$cur dequoted candidate failglob=0
+
+    names=()
     if [[ $COMP_WORDBREAKS == *=* ]]; then
         word=\${word##*=}
     fi
     if [[ $COMP_WORDBREAKS == *:* ]]; then
         word=\${word##*:}
     fi
-    __${id}_dequote "$word" || return
-    while IFS='' read -r file; do
-        [[ -z $file ]] && continue
-        [[ -d $file ]] && file+=/
-        printf -v comp "%q" "$file" &>/dev/null || comp=$(printf "%q" "$file")
-        if [[ $file == '~'* ]]; then
-            comp=\${comp#'\\'}
-        fi
-        COMPREPLY+=("$comp")
-    done < <(compgen -f -- "$dequoted")
+    __${id}_dequote "$word" || return 1
+    if shopt -q failglob; then
+        failglob=1
+        shopt -u failglob
+    fi
+    for candidate in "$dequoted"*; do
+        [[ -e $candidate || -L $candidate ]] || continue
+        [[ -d $candidate ]] && candidate+=/
+        names+=("$candidate")
+    done
+    if ((failglob)); then
+        shopt -s failglob
+    fi
+    return 0
 }
 
-# File completion filtered by the offered extensions, compared as strings.
+# Offers the file names __${id}_file_names lists: all of them (any), only the
+# directories (dirs), or the directories and the names that end in an offered
+# extension, compared as strings (extensions). Each is escaped by
+# __${id}_quote, because the compspec has no filenames option to quote it, and
+# a sole directory takes no space after it.
+__${id}_offer_files() {
+    local kind=$1 names=() name filter keep quoted
+
+    __${id}_file_names || return 1
+    for name in "\${names[@]}"; do
+        keep=1
+        if [[ $name != */ && $kind != any ]]; then
+            keep=0
+            if [[ $kind == extensions ]]; then
+                for filter in "\${completions[@]}"; do
+                    [[ $name == *."$filter" ]] && keep=1
+                done
+            fi
+        fi
+        if ((keep)); then
+            __${id}_quote "$name"
+            COMPREPLY+=("$quoted")
+        fi
+    done
+    if ((\${#COMPREPLY[@]} == 1)) && [[ \${COMPREPLY[0]} == */ && $(type -t compopt) == builtin ]]; then
+        compopt -o nospace
+    fi
+    return 0
+}
+
+# File completion filtered by the offered extensions.
 __${id}_filter_file_extensions() {
-    local fullFilter="" filter file
+    local fullFilter="" filter
 
     if declare -F _filedir >/dev/null 2>&1; then
         for filter in "\${completions[@]}"; do
@@ -296,22 +352,7 @@ __${id}_filter_file_extensions() {
         _filedir "$fullFilter"
         return
     fi
-    if [[ $(type -t compopt) == builtin ]]; then
-        compopt -o filenames
-    fi
-    while IFS='' read -r file; do
-        [[ -z $file ]] && continue
-        if [[ -d $file ]]; then
-            COMPREPLY+=("$file")
-            continue
-        fi
-        for filter in "\${completions[@]}"; do
-            if [[ $file == *."$filter" ]]; then
-                COMPREPLY+=("$file")
-                break
-            fi
-        done
-    done < <(compgen -f -- "$cur")
+    __${id}_offer_files extensions
 }
 
 # File completion for directories only, inside the offered directory if any.
@@ -327,13 +368,7 @@ __${id}_filter_directories() {
     if declare -F _filedir >/dev/null 2>&1; then
         _filedir -d
     else
-        if [[ $(type -t compopt) == builtin ]]; then
-            compopt -o filenames
-        fi
-        local directory
-        while IFS='' read -r directory; do
-            [[ -n $directory ]] && COMPREPLY+=("$directory")
-        done < <(compgen -d -- "$cur")
+        __${id}_offer_files dirs
     fi
     if [[ -n $subdir ]]; then
         popd >/dev/null 2>&1
@@ -353,13 +388,13 @@ __${id}_handle_completion_types() {
         # If there are no completions, we don't need to do anything
         (( \${#completions[@]} == 0 )) && return 0
 
-        local tab=$'\\t' compline comp
+        local tab=$'\\t' compline quoted
 
         # Strip any description, escape the completion to handle special
         # characters, and keep only the completions that match
         for compline in "\${completions[@]}"; do
-            printf -v comp "%q" "\${compline%%$tab*}" &>/dev/null || comp=$(printf "%q" "\${compline%%$tab*}")
-            [[ $comp == "$cur"* ]] && COMPREPLY+=("$comp")
+            __${id}_quote "\${compline%%$tab*}"
+            [[ $quoted == "$cur"* ]] && COMPREPLY+=("$quoted")
         done
         ;;
 
@@ -377,7 +412,7 @@ __${id}_handle_standard_completion_case() {
     (( \${#completions[@]} == 0 )) && return 0
 
     local longest=0
-    local compline comp
+    local compline quoted
     # Look for the longest completion so that we can format things nicely
     for compline in "\${completions[@]}"; do
         [[ -z $compline ]] && continue
@@ -385,32 +420,29 @@ __${id}_handle_standard_completion_case() {
         # Before checking if the completion matches what the user typed,
         # we need to strip any description and escape the completion to handle special
         # characters because those escape characters are part of what the user typed.
-        # Don't call "printf" in a sub-shell because it will be much slower
-        # since we are in a loop.
-        printf -v comp "%q" "\${compline%%$tab*}" &>/dev/null || comp=$(printf "%q" "\${compline%%$tab*}")
+        __${id}_quote "\${compline%%$tab*}"
 
         # Only consider the completions that match
-        [[ $comp == "$cur"* ]] || continue
+        [[ $quoted == "$cur"* ]] || continue
 
-        # The completions matches.  Add it to the list of full completions including
-        # its description.  We don't escape the completion because it may get printed
-        # in a list if there are more than one and we don't want show escape characters
-        # in that list.
-        COMPREPLY+=("$compline")
+        # The completion matches. Add it escaped, with its description after the
+        # tab, so the common prefix readline inserts for several matches is
+        # escaped text too. The list shows the escaped words.
+        if [[ $compline == *$tab* ]]; then
+            COMPREPLY+=("$quoted$tab\${compline#*$tab}")
+        else
+            COMPREPLY+=("$quoted")
+        fi
 
-        # Strip any description before checking the length, and again, don't escape
-        # the completion because this length is only used when printing the completions
-        # in a list and we don't want show escape characters in that list.
-        comp=\${compline%%$tab*}
-        if ((\${#comp}>longest)); then
-            longest=\${#comp}
+        if ((\${#quoted}>longest)); then
+            longest=\${#quoted}
         fi
     done
 
-    # If there is a single completion left, remove the description text and escape any special characters
+    # If there is a single completion left, remove the description text
     if ((\${#COMPREPLY[*]} == 1)); then
         __${id}_debug "COMPREPLY[0]: \${COMPREPLY[0]}"
-        COMPREPLY[0]=$(printf "%q" "\${COMPREPLY[0]%%$tab*}")
+        COMPREPLY[0]=\${COMPREPLY[0]%%$tab*}
         __${id}_debug "Removed description from single completion, which is now: \${COMPREPLY[0]}"
     else
         # Format the descriptions
