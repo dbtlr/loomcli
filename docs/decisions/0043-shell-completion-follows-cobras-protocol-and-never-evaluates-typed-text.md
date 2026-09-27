@@ -4,7 +4,7 @@ title: ADR-0043 - Shell completion follows Cobra's protocol and never evaluates 
 description: The completion plugin prints Bash, Zsh, and Fish scripts ported from Cobra, and a hidden __complete Command answers them in Cobra's line protocol. Every eval is removed, so pressing Tab never runs typed text; an offered word is exact or omitted; the application name enters a script as data; and aliases, hidden members, and deprecated members are never offered.
 status: proposed
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0043 - Shell completion follows Cobra's protocol and never evaluates typed text
