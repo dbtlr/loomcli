@@ -20,9 +20,10 @@ import { identifier, posixQuoted, scriptName } from './name.js';
  *   `$'...'` as a `$` and a single-quoted string, so such a word reaches the program with its
  *   escapes undecoded; nothing in it is evaluated.
  * - Every `compgen -W` is removed; offered words are filtered by `[[ $comp == "$cur"* ]]`.
- * - Every offered word is escaped by `__<id>_quote`, `printf %q` with a leading `~` escaped too,
- *   which the `printf` of Bash 3.2 leaves bare. With several matches each entry holds its word
- *   escaped, so the common prefix readline inserts is escaped text; the list shows escaped words.
+ * - Every offered word is escaped by `__<id>_quote`, `printf %q` with every `~` escaped too,
+ *   which the `printf` of Bash 3.2 leaves bare and Bash expands after `=` or `:` in a word shaped
+ *   like an assignment. With several matches each entry holds its word escaped, so the common
+ *   prefix readline inserts is escaped text; the list shows escaped words.
  * - No `compgen -f` or `compgen -d` is called, because in a completion Bash 3.2 expands the
  *   directory part of its word. Without `_filedir`, `__<id>_offer_files` lists file names by
  *   pathname expansion of the dequoted word with only a trailing `*` unquoted, so nothing typed
@@ -270,13 +271,23 @@ __${id}_process_completion_results() {
 }
 
 # Escapes one word into the caller's quoted variable the way printf %q does,
-# and a leading ~ too, which the printf of Bash 3.2 leaves bare, so the
-# inserted text never expands.
+# and every ~ as \\~, so the inserted text never expands. The printf of Bash 3.2
+# leaves every ~ bare, and Bash expands one at the start of a word or after
+# = or : in a word shaped like an assignment. Each part between two ~ goes
+# through printf alone, so no ~ is escaped twice where printf escapes it.
 __${id}_quote() {
-    printf -v quoted "%q" "$1" &>/dev/null || quoted=$(printf "%q" "$1")
-    if [[ $quoted == '~'* ]]; then
-        quoted="\\\\$quoted"
-    fi
+    local rest=$1 tilde='~' part
+    quoted=''
+    while :; do
+        part=\${rest%%"$tilde"*}
+        if [[ -n $part ]]; then
+            printf -v part "%q" "$part" &>/dev/null || part=$(printf "%q" "$part")
+            quoted+=$part
+        fi
+        [[ $rest == *"$tilde"* ]] || break
+        quoted+='\\~'
+        rest=\${rest#*"$tilde"}
+    done
 }
 
 # Lists the file names that start with the word under the cursor into the

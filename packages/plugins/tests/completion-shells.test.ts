@@ -100,6 +100,18 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       });
     });
 
+    describe.runIf(shell === 'bash')('the Bash quoting of a ~', () => {
+      // Bash expands a ~ after = or : in a word shaped like an assignment when the line runs.
+      it.each([
+        ['a=', String.raw`a=\~root`],
+        ['x', String.raw`x:\~root`],
+        ['b', String.raw`b=\~root`],
+      ])('a value completed from %s inserts every ~ escaped as %s', async (typed, inserted) => {
+        const { line } = await complete(`kit odd values ${typed}`);
+        expect(line.slice('kit odd values '.length).trimEnd()).toBe(inserted);
+      });
+    });
+
     it('a typed $(...) value is read as the option value it is, and completion continues past it', async () => {
       const { line } = await complete('kit paths --field "$(touch sentinel)" --fo');
       expect(line.trimEnd()).toBe('kit paths --field "$(touch sentinel)" --format');

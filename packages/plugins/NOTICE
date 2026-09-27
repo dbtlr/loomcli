@@ -45,8 +45,9 @@ Changes made to the Cobra scripts:
 - The Bash script's dequoter reads $'...' as a "$" and a single-quoted string,
   so such a word reaches the program with its escapes undecoded. Nothing in it
   is evaluated.
-- Bash escapes every offered word with printf %q, and a leading "~" too, which
-  the printf of Bash 3.2 leaves bare. With several matches each entry holds its
+- Bash escapes every offered word with printf %q, and every "~" too, which the
+  printf of Bash 3.2 leaves bare and Bash expands after "=" or ":" in a word
+  shaped like an assignment. With several matches each entry holds its
   word escaped, so the common prefix readline inserts is escaped text, and the
   list shows the escaped words.
 - Bash calls no compgen -f or compgen -d, because in a completion Bash 3.2

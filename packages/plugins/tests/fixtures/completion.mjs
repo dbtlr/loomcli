@@ -60,9 +60,9 @@ const debug = new Command('debug', { hidden: true })
   .action(() => {});
 
 /**
- * Values a shell must insert as escaped text when several share a prefix or one holds a
- * backslash, and a description holding `:` and `\`. The group is hidden, so no root listing
- * shows it.
+ * Values a shell must insert as escaped text when several share a prefix, one holds a
+ * backslash, or one holds a `~` after `=` or `:`, and a description holding `:` and `\`. The
+ * group is hidden, so no root listing shows it.
  */
 const odd = new Command('odd', { hidden: true })
   .command(
@@ -76,6 +76,10 @@ const odd = new Command('odd', { hidden: true })
             'a b2',
             String.raw`p\q`,
             String.raw`r\:s`,
+            'a=~root',
+            'x:~root',
+            'b=~root1',
+            'b=~root2',
           ],
         }),
       })

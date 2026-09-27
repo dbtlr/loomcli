@@ -335,19 +335,21 @@ describe('the scripts', () => {
     expect(text).not.toContain('_activeHelp_');
   });
 
-  it('the Bash script escapes a leading tilde in a word it inserts, which printf %q may leave bare', () => {
+  it('the Bash script escapes every tilde in a word it inserts, which printf %q may leave bare', () => {
     if (!shellRuns('bash')) {
       return;
     }
     const { result } = sourceScript(
       bash,
       bashScript('kit'),
-      String.raw`; for word in "~root" "a b" "a~b"; do __kit_quote "$word"; printf '%s\n' "$quoted"; done`,
+      String.raw`; for word in "~root" "a b" "a~b" "a=~root" "~~"; do __kit_quote "$word"; printf '%s\n' "$quoted"; done`,
     );
     expect(result).toMatchObject({ status: 0, stderr: '' });
     expect(result.stdout).toBe(String.raw`\~root
 a\ b
-a~b
+a\~b
+a=\~root
+\~\~
 `);
   });
 
