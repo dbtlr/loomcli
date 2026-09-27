@@ -19,6 +19,7 @@ export {
   UsageError,
 } from './errors.js';
 export { extension, readExtension } from './extension.js';
+export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
@@ -35,6 +36,7 @@ export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
 export type { IncompleteResult } from './lanes.js';
+export type { WordPosition } from './locate.js';
 export type {
   AnyDeclaredView,
   DeclaredRowView,
