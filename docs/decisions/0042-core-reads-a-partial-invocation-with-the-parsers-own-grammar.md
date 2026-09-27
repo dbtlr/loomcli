@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0042 - Core reads a partial invocation with the parser's own grammar
 description: Core exports locate(graph, words), a pure function that reads the words of an unfinished invocation against the graph and reports where the last word sits. The parser and locate share one implementation of the token grammar, so completion never keeps a second copy of it.
-status: proposed
+status: accepted
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0042 - Core reads a partial invocation with the parser's own grammar
@@ -33,8 +33,9 @@ The parser is refactored in the implementation so that its token reading is the 
 
 ## Status
 
-Proposed with the shell completion contract. It moves to accepted when the implementation ships `locate` over the parser's own token reading and the completion plugin reads positions from it under Node and Bun.
+Accepted 2026-09-27 with the implementation. `locate` reads words through the parser's own scan functions, and the completion plugin reads its positions in the conformance run in Bash, Zsh, and Fish under Node and Bun.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the shell completion contract.
+- 2026-09-27: Accepted with the implementation.

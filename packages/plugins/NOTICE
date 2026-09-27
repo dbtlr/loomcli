@@ -22,8 +22,9 @@ Changes made to the Cobra scripts:
 - Every construct that expands an operand is removed, Bash's compgen -W
   included. Offered words are filtered by string comparison.
 - Quoting is removed without evaluation or expansion: by a string-only decoder
-  in the Bash script, written for Bash 3.2, by the (Q) flag in Zsh, and by
-  Fish's own tokenizer (commandline -opc and commandline -oct). When the word
+  in the Bash script, written for Bash 3.2, by the (Q) flag in Zsh, and in
+  Fish by its own tokenizer (commandline -opc) for the words before the cursor
+  and by string unescape --style=script for the word under it. When the word
   under the cursor holds an unclosed quote, the script offers nothing and does
   not call the program.
 - The request carries every word before the cursor and the word under it, cut
@@ -44,6 +45,10 @@ Changes made to the Cobra scripts:
   way _get_comp_words_by_ref -n =: does, and honors directives 8 and 16 with
   compgen -f and compgen -d and a string comparison of file extensions. The
   extension list is quoted when it is passed to _filedir.
+- Bash without compopt, such as Bash 3.2, registers without -o default, so an
+  error or a failed call never falls through to file names. The script
+  completes file names itself with compgen -f, only when the directive allows
+  files and no word was offered. Bash with compopt keeps Cobra's registration.
 - Zsh no longer splits words with ${=...}, passes _describe its arguments as an
   array, calls _files directly rather than through an _arguments action
   string, and quotes each file extension as a pattern with the (b) flag.

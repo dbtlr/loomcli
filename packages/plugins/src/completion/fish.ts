@@ -14,9 +14,10 @@ import { identifier, fishQuoted } from './name.js';
  *   adds no flag prefix of its own.
  * - A nonzero exit, or an answer whose last line is not `:` and decimal digits, offers nothing.
  * - Directive numbers are written as literals.
- * - Quoting is removed by Fish's own tokenizer, `commandline -opc` and `commandline -oct`, which
- *   expands nothing, after `commandline --is-valid`; status 2, an unclosed quote, offers nothing
- *   without a call.
+ * - Quoting is removed without expansion, after `commandline --is-valid`: from the words before
+ *   the cursor by Fish's own tokenizer, `commandline -opc`, and from the word under it by
+ *   `string unescape --style=script`, because Fish 3 reads no current token through
+ *   `commandline -oct`. Status 2, an unclosed quote, offers nothing without a call.
  * - The prefix filter compares strings rather than a regular expression.
  * - The ActiveHelp environment variable is no longer set on the request.
  * - Trailing empty lines are no longer dropped from the answer.
@@ -49,10 +50,11 @@ function __${id}_perform_completion
         return 1
     end
 
-    # Fish's own tokenizer removes the quoting and expands nothing: every
-    # word before the cursor, then the word under it, cut at the cursor.
+    # Fish's own tokenizer and string unescape remove the quoting and expand
+    # nothing: every word before the cursor, then the word under it, cut at
+    # the cursor. Fish 3 reads no current token through commandline -oct.
     set -l args (commandline -opc)
-    set -l current (commandline -oct | string collect)
+    set -l current (commandline -ct | string unescape --style=script | string collect)
 
     __${id}_debug "args: $args"
     __${id}_debug "current: $current"
@@ -195,7 +197,7 @@ function __${id}_prepare_completions
     # may not already be filtered so as to allow fish to match on different
     # criteria than the prefix. The filter compares strings.
     if test $nospace -ne 0; or test $nofiles -eq 0
-        set -l prefix (commandline -oct | string collect)
+        set -l prefix (commandline -ct | string unescape --style=script | string collect)
         set -l length (string length -- "$prefix")
         __${id}_debug "prefix: $prefix"
 

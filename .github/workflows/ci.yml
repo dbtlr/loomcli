@@ -18,6 +18,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       LOOM_TEST_RUNTIME: node
+      LOOM_REQUIRE_SHELLS: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -38,6 +39,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install the completion shells
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
+
+      - name: Install the completion shells
+        if: runner.os == 'macOS'
+        run: brew install fish
+
       - name: Build, check types, and run process tests
         run: pnpm verify
 
@@ -54,6 +63,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       LOOM_TEST_RUNTIME: bun
+      LOOM_REQUIRE_SHELLS: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -78,6 +88,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install the completion shells
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
+
+      - name: Install the completion shells
+        if: runner.os == 'macOS'
+        run: brew install fish
 
       - name: Build, check types, and run process tests
         run: pnpm verify

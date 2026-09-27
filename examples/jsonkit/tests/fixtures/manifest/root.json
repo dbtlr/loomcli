@@ -146,6 +146,70 @@
         "children": []
       },
       {
+        "name": "completion",
+        "path": [
+          "completion"
+        ],
+        "description": "Print a shell completion script.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": false,
+        "result": null,
+        "arguments": [],
+        "options": [],
+        "children": [
+          {
+            "name": "bash",
+            "path": [
+              "completion",
+              "bash"
+            ],
+            "description": "Print the Bash completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "zsh",
+            "path": [
+              "completion",
+              "zsh"
+            ],
+            "description": "Print the Zsh completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "fish",
+            "path": [
+              "completion",
+              "fish"
+            ],
+            "description": "Print the Fish completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "arguments": [],
+            "options": [],
+            "children": []
+          }
+        ]
+      },
+      {
         "name": "get",
         "path": [
           "get"

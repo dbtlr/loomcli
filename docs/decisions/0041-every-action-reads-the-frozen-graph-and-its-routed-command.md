@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0041 - Every action reads the frozen graph and its routed Command
 description: The action context gains graph and command, the same frozen CommandGraph and routed CommandNode a middleware reads, so a Command whose job is to project the graph, such as shell completion, does that job in its own action. No plugin-specific lane exists.
-status: proposed
+status: accepted
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0041 - Every action reads the frozen graph and its routed Command
@@ -35,8 +35,10 @@ An application may now write its own projection, such as a `commands` listing, a
 
 ## Status
 
-Proposed with the shell completion contract. It moves to accepted when the implementation passes `graph` and `command` to every action and the completion plugin's actions read them under Node and Bun.
+Accepted 2026-09-27 with the implementation. Every action, an application's or a plugin Command's, receives `graph` and `command`, and the completion plugin's actions read them in the conformance run in Bash, Zsh, and Fish under Node and Bun.
 
 ## Changelog
 
 - 2026-09-26: Proposed with the shell completion contract.
+- 2026-09-27: The two members are lazy. Reading either builds the run's graph once, so a run without middleware whose action reads neither calls no schema converter.
+- 2026-09-27: Accepted with the implementation.

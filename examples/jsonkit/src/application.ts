@@ -3,6 +3,7 @@ import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, InputError, override, UnknownCommandError } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
@@ -35,7 +36,16 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
-  plugins: [help(), version(), format(), manifest(), loomTheme(), explain(), doctor()],
+  plugins: [
+    help(),
+    version(),
+    format(),
+    manifest(),
+    loomTheme(),
+    explain(),
+    doctor(),
+    completion(),
+  ],
   version: Package.version,
   views: [
     override(FatalError, fatalError),

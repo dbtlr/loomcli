@@ -2113,7 +2113,7 @@ The right-cell rule: the description when the member has one, then, for an optio
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
-The root of jsonkit has an action and seven children: the `doctor` Command the private `@loom/doctor` plugin attaches ahead of jsonkit's own, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and eight children: the `doctor` Command the private `@loom/doctor` plugin attaches and the `completion` group the [completion](#completion) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -2125,11 +2125,12 @@ USAGE
   jsonkit <command> [options]
 
 COMMANDS
-  doctor  Check the host this application runs on.
-  get     Read one value at a path.
-  keys    List the keys at a path.
-  select  Keep the named fields of the document.
-  fetch   Read one value at a path.  (deprecated: Use get instead.)
+  doctor                Check the host this application runs on.
+  completion <command>  Print a shell completion script.
+  get                   Read one value at a path.
+  keys                  List the keys at a path.
+  select                Keep the named fields of the document.
+  fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
       --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -2233,11 +2234,12 @@ USAGE
   jsonkit <command> [options]
 
 COMMANDS
-  doctor  Check the host this application runs on.
-  get     Read one value at a path.
-  keys    List the keys at a path.
-  select  Keep the named fields of the document.
-  fetch   Read one value at a path.  (deprecated: Use get instead.)
+  doctor                Check the host this application runs on.
+  completion <command>  Print a shell completion script.
+  get                   Read one value at a path.
+  keys                  List the keys at a path.
+  select                Keep the named fields of the document.
+  fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
       --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -2962,14 +2964,14 @@ keys→List the keys at a path.
   A hidden or deprecated Command or option is never offered, and one typed in full still routes and completes past. An alias is never offered and never rewritten: `locate` routes through it, and completion reads no alias. Only words that start with `prefix`, compared by code unit, are offered, a value compared before `lead` is added to it, so `--format=j` offers `--format=json`, in graph order with repeats removed.
 - **The answer.** One line per offered word: the word, then, when it has a description, a tab and the description. The last line is `:` and the directive. Every line ends with a newline. The directive numbers are Cobra's: `1` error, `2` no space, `4` no file completion, `8` filter by file extension, `16` directories only, `32` keep order, and `0` the shell's default. The plugin writes `0`, `1`, or `4`, and the scripts honor all of them.
 - **Exact or omitted.** An offered word that holds a control character or a line separator, U+0000 through U+001F, U+007F through U+009F, U+2028, or U+2029, is left out rather than cut, so completion never inserts a value the graph does not hold. An empty value, a value holding a lone surrogate, which the shell would receive as U+FFFD, and a value that starts with `_activeHelp_ `, which Cobra's scripts read as help text, are left out too. A description is display text: its first line, with every such character removed, and no tab when nothing is left.
-- **The scripts.** The Bash, Zsh, and Fish scripts are ported from Cobra, with Cobra's Apache-2.0 notice kept beside them in the pack and the changes stated. Each inserts an offered word through its shell's own completion call as one exact value. The Bash script runs on Bash 3.2 and later, with or without the bash-completion package.
-- **No evaluation.** A script never evaluates text. Every `eval` in Cobra's scripts is removed, and so is every construct that expands an operand, such as Bash's `compgen -W`, which expands its word list: a script filters offered words by string comparison, and it honors directives `8` and `16` without evaluating an offered word. It calls the program with an argument array, so a typed word reaches the application as its characters and pressing Tab never runs it. It removes quoting without evaluating, through Zsh's `(Q)` flag, Fish's own tokenizer, and a string-only decoder in the Bash script, and it performs no expansion, so `~`, `$HOME`, and `$(…)` reach the application as typed. When the word under the cursor holds an unclosed quote, the script offers nothing and does not call the application. A nonzero exit, or an answer whose final line is not `:` followed by decimal digits, offers nothing.
+- **The scripts.** The Bash, Zsh, and Fish scripts are ported from Cobra, with Cobra's Apache-2.0 notice kept beside them in the pack and the changes stated. Each inserts an offered word through its shell's own completion call as one exact value. The Bash script runs on Bash 3.2 and later, with or without the bash-completion package. A Bash without `compopt`, such as 3.2, cannot turn default file completion off, so there the script registers without it and completes file names itself with `compgen -f`, only when the directive allows files and no word was offered.
+- **No evaluation.** A script never evaluates text. Every `eval` in Cobra's scripts is removed, and so is every construct that expands an operand, such as Bash's `compgen -W`, which expands its word list: a script filters offered words by string comparison, and it honors directives `8` and `16` without evaluating an offered word. It calls the program with an argument array, so a typed word reaches the application as its characters and pressing Tab never runs it. It removes quoting without evaluating, through Zsh's `(Q)` flag, Fish's own tokenizer and `string unescape`, and a string-only decoder in the Bash script, and it performs no expansion, so `~`, `$HOME`, and `$(…)` reach the application as typed. When the word under the cursor holds an unclosed quote, the script offers nothing and does not call the application. A nonzero exit, or an answer whose final line is not `:` followed by decimal digits, offers nothing.
 - **The name.** The application name reaches a script only as data: as a single-quoted string in its shell's quoting, for Bash and Zsh with each `'` written as `'\''`, and for Fish, whose single quotes read `\'` and `\\` as escapes, with each `\` written as `\\` and each `'` written as `\'`; as the suffix of a function identifier in which every character outside `A-Z`, `a-z`, and `0-9`, `_` included, is written as `_` and its code point's lowercase hexadecimal digits and another `_`, so `git-lfs` gives `git_2d_lfs` and no two names give one identifier, and in the Zsh `#compdef` comment as it is, because a portable name holds nothing a comment cannot carry. The quoting and the identifier encoding stay, because `.` and `-` are portable and neither is an identifier character, so any name the constructor accepts yields a script that runs nothing but completion.
 - **Where it installs.** A root that declares arguments cannot hold children, so textstat cannot install completion, as [Plugin Commands](#plugin-commands) states.
 
 #### Completion acceptance
 
-Completion is proven when jsonkit installs `completion()` and real Bash, Zsh, and Fish shells, driven through a pseudo-terminal, complete against the scripts `jsonkit completion bash`, `zsh`, and `fish` print, under Node and Bun. The run from a terminal relies on [ADR-0044](decisions/0044-a-global-option-declares-no-presence-rule.md): a global option declares no presence rule, so jsonkit's `--file` rule lives in its document reader and a completion request never meets it.
+Completion is proven when jsonkit installs `completion()` and real Bash, Zsh, and Fish shells, driven through a pseudo-terminal, complete against the scripts `jsonkit completion bash`, `zsh`, and `fish` print, under Node and Bun. The line each Tab leaves is read back from the shell; the words Bash and Zsh list are read from the terminal, and the words Fish lists from `complete -C` in a separate Fish that sources the same script. The run from a terminal relies on [ADR-0044](decisions/0044-a-global-option-declares-no-presence-rule.md): a global option declares no presence rule, so jsonkit's `--file` rule lives in its document reader and a completion request never meets it.
 
 - **Commands.** `jsonkit <Tab>` offers the root's visible children, and never `fetch`, which is deprecated, `debug`, which is hidden, or `ls`, which is an alias. `jsonkit ls --<Tab>` offers the options in scope at `keys`, the global and plugin options, and `jsonkit completion <Tab>` offers `bash`, `fish`, and `zsh` and never `__complete`.
 - **Options.** `jsonkit paths -<Tab>` offers long and short spellings, `--<Tab>` long spellings alone, and an option already given is not offered again, while `select`'s multiple `--field` is.

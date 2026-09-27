@@ -273,6 +273,23 @@ try {
     assert.equal(user.status, 0, user.output);
     assert.equal(user.stdout, 'configured\n', `${name}: packed configuration from the user file`);
   }
+  // The packed completion plugin prints each shell's script for the application's name.
+  const completing = join(temporary, 'dist/completion.js');
+  for (const name of selected) {
+    for (const [shell, first] of [
+      ['bash', '# Bash completion script, printed by the Loom completion plugin.\n'],
+      ['zsh', '#compdef packed-completion\n'],
+      ['fish', '# Fish completion script, printed by the Loom completion plugin.\n'],
+    ]) {
+      const printed = run(runtimes.get(name), [completing, 'completion', shell], temporary);
+      assert.equal(printed.status, 0, printed.output);
+      assert.ok(printed.stdout.startsWith(first), `${name}: packed ${shell} script first line`);
+      assert.ok(
+        printed.stdout.includes('packed_2d_completion'),
+        `${name}: packed ${shell} script function identifier`,
+      );
+    }
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -286,7 +303,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, and the configured word from the named file and the user file.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, and the three completion scripts.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

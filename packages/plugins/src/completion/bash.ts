@@ -25,6 +25,10 @@ import { identifier, posixQuoted } from './name.js';
  * - The current word is not trimmed after `=`; `__<id>_handle_special_char` trims the inserted
  *   words instead.
  * - An error, a failed call, or an unreadable answer turns default file completion off.
+ * - Without `compopt`, as on Bash 3.2, the script registers without `-o default`, which it could
+ *   not turn off, so an error never falls through to file names. `__<id>_complete_files` completes
+ *   file names with `compgen -f` instead, only when the directive allows files and no word was
+ *   offered. With `compopt` the registration is Cobra's.
  */
 export function bashScript(name: string): string {
   const id = identifier(name);
@@ -242,10 +246,42 @@ __${id}_process_completion_results() {
         __${id}_filter_directories
     else
         __${id}_handle_completion_types
+        # Without compopt the compspec carries no default file completion, so
+        # an error cannot fall through to file names. The script completes file
+        # names itself when the directive allows them and no word was offered.
+        if [[ $(type -t compopt) != builtin ]] && ((\${#COMPREPLY[@]} == 0 && (directive & shellCompDirectiveNoFileComp) == 0)); then
+            __${id}_complete_files
+        fi
     fi
 
     __${id}_handle_special_char "$cur" :
     __${id}_handle_special_char "$cur" =
+}
+
+# File completion for Bash without compopt, in place of the default the
+# compspec does not register. Like readline's own, it completes the part of the
+# word after the last = or : that is a word break, and a directory ends in /.
+# Each name is escaped with printf %q, a leading ~ excepted, because the
+# compspec has no filenames option to quote it.
+__${id}_complete_files() {
+    local word=$cur dequoted file comp
+
+    if [[ $COMP_WORDBREAKS == *=* ]]; then
+        word=\${word##*=}
+    fi
+    if [[ $COMP_WORDBREAKS == *:* ]]; then
+        word=\${word##*:}
+    fi
+    __${id}_dequote "$word" || return
+    while IFS='' read -r file; do
+        [[ -z $file ]] && continue
+        [[ -d $file ]] && file+=/
+        printf -v comp "%q" "$file" &>/dev/null || comp=$(printf "%q" "$file")
+        if [[ $file == '~'* ]]; then
+            comp=\${comp#'\\'}
+        fi
+        COMPREPLY+=("$comp")
+    done < <(compgen -f -- "$dequoted")
 }
 
 # File completion filtered by the offered extensions, compared as strings.
@@ -478,7 +514,7 @@ __start_${id}()
 if [[ $(type -t compopt) = "builtin" ]]; then
     complete -o default -F __start_${id} ${quoted}
 else
-    complete -o default -o nospace -F __start_${id} ${quoted}
+    complete -o nospace -F __start_${id} ${quoted}
 fi
 
 # ex: ts=4 sw=4 et filetype=sh
