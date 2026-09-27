@@ -699,26 +699,27 @@ function collectedValue(collected: readonly string[] | undefined, declared: unkn
   return Array.isArray(declared) ? [...declared] : [];
 }
 
+/** One plugin option's value for one run: what a tier supplied, or the declared default. */
+function pluginValue({ config, name }: OptionInput, values: OptionValues) {
+  const declared: unknown = config.default;
+  if (config.type === 'boolean') {
+    return booleanValue(values, name, config);
+  }
+  if (config.multiple === true) {
+    return collectedValue(values.lists.get(name), declared);
+  }
+  // Build already proved that a string option without a validator declares a string default.
+  return values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
+}
+
 /**
  * One plugin's own option values for one run: what argv or an input source supplied, or the
  * declared default, filled without validation. A collected value and an array default are copied,
  * so a plugin that writes to what it received changes neither the declaration nor the next run.
+ * Entries become own keys even for a name such as `__proto__`, which assignment would not.
  */
 function pluginValues(inputs: readonly OptionInput[], values: OptionValues): PluginValues {
-  const resolved: PluginValues = {};
-  for (const { config, name } of inputs) {
-    const declared: unknown = config.default;
-    if (config.type === 'boolean') {
-      resolved[name] = booleanValue(values, name, config);
-    } else if (config.multiple === true) {
-      resolved[name] = collectedValue(values.lists.get(name), declared);
-    } else {
-      // Build already proved that a string option without a validator declares a string default.
-      resolved[name] =
-        values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
-    }
-  }
-  return resolved;
+  return Object.fromEntries(inputs.map((input) => [input.name, pluginValue(input, values)]));
 }
 
 /** One plugin's own spellings for one run, frozen, so no plugin writes what another reads. */
@@ -726,14 +727,12 @@ function pluginSpellings(
   inputs: readonly OptionInput[],
   values: OptionValues,
 ): Readonly<Record<string, string>> {
-  const spelled: Record<string, string> = {};
-  for (const { name } of inputs) {
+  // Entries become own keys even for a name such as `__proto__`, which assignment would not.
+  const spelled = inputs.flatMap(({ name }): [string, string][] => {
     const spelling = values.spellings.get(name);
-    if (spelling !== undefined) {
-      spelled[name] = spelling;
-    }
-  }
-  return Object.freeze(spelled);
+    return spelling === undefined ? [] : [[name, spelling]];
+  });
+  return Object.freeze(Object.fromEntries(spelled));
 }
 
 type ThemeOf<Contributor> = [Contributor] extends [never]

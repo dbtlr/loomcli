@@ -46,6 +46,13 @@ test('another plugin and the application keep their spellings from a middleware'
   });
 });
 
+test('an option named __proto__ keeps its value and its spelling as own entries', () => {
+  const read = spellingsOf(['--__proto__']);
+  // JSON.parse creates an own `__proto__` key, where an object literal would set the prototype.
+  expect(read.spellings).toEqual(JSON.parse('{"__proto__":"--__proto__"}'));
+  expect(Object.hasOwn(read.options, '__proto__')).toBe(true);
+});
+
 test('the spellings record is frozen', () => {
   expect(spellingsOf(['-q']).frozen).toBe(true);
 });

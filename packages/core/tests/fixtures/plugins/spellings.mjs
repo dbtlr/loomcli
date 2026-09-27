@@ -20,6 +20,8 @@ const spelled = () =>
       }),
     },
     options: {
+      // A name an object literal would read as its prototype, which must stay an own entry.
+      ['__proto__']: { type: 'boolean' },
       flag: { polarity: 'both', short: 'f', type: 'boolean' },
       from: { extensions: [configKey('from')], type: 'string' },
       level: { env: 'FIXTURE_LEVEL', type: 'string' },
