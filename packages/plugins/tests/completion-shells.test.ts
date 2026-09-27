@@ -92,10 +92,19 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         'kit --file $((x[$(touch sentinel)]))/',
         // A shell parameter expansion, written so it reads as no template placeholder.
         `kit --file \${HOME[$(touch sentinel)]}/`,
-        'kit --file $HOME/',
       ])('reads %s as text: it runs nothing and rewrites nothing', async (typed) => {
         const { line } = await complete(typed);
         expect(line).toBe(typed);
+        expect(sentinel()).toBe(false);
+      });
+
+      // A Bash with compopt hands the fallback to its own default file completion, which may
+      // Append a file name found under the expanded directory while leaving the typed text.
+      it('reads kit --file $HOME/ as text: the typed word stays and nothing runs', async () => {
+        const typed = 'kit --file $HOME/';
+        const { line } = await complete(typed);
+        expect(line.startsWith(typed)).toBe(true);
+        expect(line).not.toContain(process.env.HOME ?? '\u0000');
         expect(sentinel()).toBe(false);
       });
     });
