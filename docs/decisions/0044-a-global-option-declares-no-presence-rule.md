@@ -33,7 +33,7 @@ This record supersedes the ADR-0026 clause that `globalOption()` takes the same 
 
 ## Consequences
 
-An application that declared a required global moves the rule into the actions that read it. jsonkit's file-or-stdin rule moves from the `--file` validator into its shared document reader, which throws the same `InputError` with the same text and exit code. That reader check stays until a content-stream input replaces it.
+An application that declared a required global moves the rule into the actions that read it. jsonkit's file-or-stdin rule moves from the `--file` validator into its shared document reader, which throws the same `InputError` with the same text and exit code. The reader runs in the action, after the validation phase, so the `--file` problem no longer joins other input problems in one failure: `jsonkit select` at a terminal with neither `--field` nor a file reports the missing `--field` first, and the `--file` rule on the next run. That reader check stays until a content-stream input replaces it.
 
 `OptionNode.required` and `OptionNode.validateOmitted` stay in the graph and read `false` on every global option, so a projection does not branch on scope.
 

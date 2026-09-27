@@ -120,8 +120,8 @@ function build() {
     case 'usage': {
       return routed([override(UsageError, facts)]);
     }
-    // A required local option and a required argument on the same Command, so a missing global
-    // Is never the demonstration; the aggregation is now entirely local.
+    // A required local option and a required argument on one Command omitted together.
+    // A global option declares no presence rule, so the aggregation reads local inputs.
     case 'required': {
       const get = new Command('get')
         .argument('path', { required: true })

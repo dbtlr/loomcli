@@ -311,6 +311,12 @@ function scoped() {
       type: 'string',
     })
     .option('trace', { description: 'Trace the run.', hidden: true, type: 'boolean' })
+    .option('secret', {
+      description: 'The secret to use.',
+      hidden: true,
+      required: true,
+      type: 'string',
+    })
     .command(run)
     .action(dispatch);
 }

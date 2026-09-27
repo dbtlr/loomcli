@@ -155,7 +155,7 @@ test('a root with children prints GLOBAL OPTIONS and the action form', () => {
   );
 });
 
-test('the action form holds the arguments, then the node options, then the globals', () => {
+test('the action form holds the arguments, then the node required options', () => {
   expect(run('usage', ['run', '--help'])).toEqual(
     page(
       'app run · Run one job.',
@@ -312,7 +312,7 @@ test('a root whose children are all hidden prints no children form, no COMMANDS,
   );
 });
 
-test('a hidden option leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
+test('a hidden option, required ones included, leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
   expect(run('scoped', ['--help'])).toEqual(
     page(
       'app · Do the work.',

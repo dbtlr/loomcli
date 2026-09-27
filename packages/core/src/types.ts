@@ -421,9 +421,9 @@ export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted
             : { 'validateOmitted needs a validator to receive the omission': never }
   : unknown;
 /** A global option declares no presence rule, so its omission is always plain absence. */
-export type GlobalOmissionConstraint<Config> = 'required' extends keyof Config
+export type GlobalOmissionConstraint<Config> = Config extends { required: unknown }
   ? { 'A global option declares no required; the Commands that read it check for it': never }
-  : 'validateOmitted' extends keyof Config
+  : Config extends { validateOmitted: unknown }
     ? { 'A global option declares no validateOmitted; its omission is plain absence': never }
     : unknown;
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }

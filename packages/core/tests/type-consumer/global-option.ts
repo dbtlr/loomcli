@@ -43,6 +43,9 @@ const invalidDefault = {
 } satisfies OptionConfig;
 // @ts-expect-error TS2345: Global defaults use the schema input type.
 base.globalOption('count', invalidDefault);
+const typed: OptionConfig = { type: 'string' };
+// A config typed as the wide OptionConfig declares no presence rule, so it stays a valid global.
+base.globalOption('typed', typed);
 // @ts-expect-error TS2345: A global option's omission is plain absence, never a required input.
 base.globalOption('file', { required: true, type: 'string' });
 // @ts-expect-error TS2345: A global option declares no required key, false included.
