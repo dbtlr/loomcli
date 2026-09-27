@@ -2,8 +2,8 @@
 
 This package includes software from Cobra. Its license field reads
 "MIT AND Apache-2.0": the three ported script modules named below stay under
-the Apache License, Version 2.0, and every other file is under the MIT License.
-Neither license asks anything of an application that installs this
+the Apache License, Version 2.0, and every other file is under the MIT License
+in LICENSE. Neither license asks anything of an application that installs this
 package beyond keeping these notices with the files they cover.
 
 Cobra
