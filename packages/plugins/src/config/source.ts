@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import { InputError, readExtension } from '@loomcli/core';
+import { escapeControlCharacters, InputError, readExtension } from '@loomcli/core';
 import type {
   CommandGraph,
   ContextualStyle,
@@ -13,7 +13,6 @@ import type {
   SourceResolver,
 } from '@loomcli/core';
 
-import { escapeControlCharacters } from '../encode.js';
 import { configInput } from './extension.js';
 import type { config } from './plugin.js';
 

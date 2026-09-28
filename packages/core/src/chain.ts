@@ -2,7 +2,7 @@ import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
 import { prepareDispatch, routeInvocation } from './command.js';
 import { InternalError, reasonOf, routedSubject, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
-import { inspectGraph, nodeAt } from './inspect.js';
+import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
@@ -214,10 +214,13 @@ interface Invocation {
   /** The action's own channel, built from the routed Command's declaration when it dispatches. */
   channel: (binding: ResultBinding) => ActionChannel;
   defaults: DefaultValues;
-  facts: { description: string | undefined; version: string };
   graph: BuiltGraph;
   host: Host;
-  name: string;
+  /**
+   * The graph `inspect()` returns, built at most once for the run. A configuration source reads
+   * its requests from it, the chain reads it after the source, and an `onFailure` hook reads it too.
+   */
+  inspected: () => CommandGraph;
   /**
    * The invocation's own channel. A middleware reads it as the neutral `Out`, and the action
    * receives the channel the results lane builds for the Command that was routed.
@@ -228,7 +231,10 @@ interface Invocation {
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
-  /** The routed path, published where routing resolved it, which output names in its own line. */
+  /**
+   * The path routing walked, published as each name routes, which output names in its own line
+   * and a failure view reads. An unknown Command leaves the partial path published.
+   */
   route: (path: readonly string[]) => void;
   signal: AbortSignal;
 }
@@ -380,7 +386,7 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
 
 /** The whole chain, answering with the failure it raised when a middleware caught that failure. */
 async function runChain(
-  invocation: Invocation & { inspected: () => CommandGraph },
+  invocation: Invocation,
   routed: RoutedInvocation,
   prepared: Prepared,
 ): Promise<LoomError | undefined> {
@@ -466,16 +472,9 @@ async function runChain(
  * raised and nothing later in the chain runs.
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
-  const routed = routeInvocation(invocation.graph, invocation.host.argv);
-  invocation.route(routed.path);
-  // The graph `inspect()` returns, built at most once for the run.
-  // A configuration source reads its requests from it, and the chain reads it after the source.
-  let graph: CommandGraph | undefined = undefined;
-  const inspected = () =>
-    (graph ??= inspectGraph(invocation.name, invocation.graph, invocation.facts));
-  const run = { ...invocation, inspected };
-  const prepared = await prepareDispatch(invocation.graph, routed, run);
-  const raised = await runChain(run, routed, prepared);
+  const routed = routeInvocation(invocation.graph, invocation.host.argv, invocation.route);
+  const prepared = await prepareDispatch(invocation.graph, routed, invocation);
+  const raised = await runChain(invocation, routed, prepared);
   if (raised) {
     // The chain resolved because a middleware caught the rejection.
     // The failure it caught still decides the exit code.

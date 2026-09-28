@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0046 - A failure view reads where the run was, and plugins add hint lines
 description: Every failure view's context gains the application name and the Command path routing walked, filled where run() catches the failure. Plugins add hint lines to a failure through an optional onFailure lifecycle hook that reads the graph and the Command at that path, and the view receives the hints. A broken hook follows the broken-view rule. Core keeps an issue's own fields and rewrites only its path.
-status: proposed
+status: accepted
 created: 2026-09-27
 modified: 2026-09-27
 ---
@@ -19,7 +19,7 @@ The second is advice that belongs to a plugin rather than to core, such as an ac
 
 Core also reduces each issue a validator returns to `{ message, path }` when it reads the issue, and again when it prefixes a value's position on a multiple option or a variadic argument. A field a validator attaches for a machine reader, such as an issue code a validator catalog could publish, is gone before any view sees it.
 
-[ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) names lifecycle hooks `on<Event>` and leaves open a hook beside the middleware chain. [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) rejected before, after, and on-error hooks as a replacement for the chain. A hook that adds lines to a failure core is already rendering replaces nothing the chain does. It receives the failure typed `Readonly<LoomError>`, as a failure view does, and cannot catch, change, or suppress it, and a working hook cannot change the exit code; a broken one forces 1, as a broken view does.
+[ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) names lifecycle hooks `on<Event>` and leaves open a hook beside the middleware chain. [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) rejected before, after, and on-error hooks as a replacement for the chain. A hook that adds lines to a failure core is already rendering replaces nothing the chain does. It receives the failure typed `Readonly<LoomError>`, as a failure view does. Core does not freeze the failure, so a JavaScript hook that assigns to it steps outside the contract. A hook cannot catch or suppress the failure, and a working hook cannot change the exit code, which core reads before any hook runs; a broken one forces 1, as a broken view does.
 
 ## Decision
 
@@ -58,8 +58,9 @@ A validator may attach its own fields to an issue, and they reach an `InputError
 
 ## Status
 
-Proposed with the failure hint contract. It moves to accepted when the implementation passes `application`, `path`, and `hints` to every failure view, calls `onFailure` under the rules above, keeps an issue's own fields, and the private `@loom/explain` plugin's hint and the acceptance in [Failure hints](../core.md#failure-hints) pass under Node and Bun.
+Accepted 2026-09-27 with the implementation. Every failure view receives `application`, `path`, and `hints`, `run()` calls `onFailure` under the rules above, core keeps an issue's own fields, and the private `@loom/explain` plugin's hint and the acceptance in [Failure hints](../core.md#failure-hints) pass under Node and Bun.
 
 ## Changelog
 
 - 2026-09-27: Proposed with the failure hint contract.
+- 2026-09-27: Accepted with the implementation.

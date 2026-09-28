@@ -39,6 +39,8 @@ import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
+import { reportFailure } from './hints.js';
+import type { BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
@@ -72,7 +74,7 @@ import type {
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
 import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
-import { buildViews, describeFailure, viewIdentities } from './view.js';
+import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
 /**
@@ -446,6 +448,10 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
     let primary: unknown = noPrimary;
+    // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
+    let walked: readonly string[] = Object.freeze([]);
+    let reached: BuiltRun | undefined = undefined;
+    const scene = (): FailureScene => ({ application: this.#name, built: reached, path: walked });
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -491,6 +497,10 @@ class ApplicationBuilder<
           },
         });
         const { graph } = built;
+        // The graph `inspect()` returns, built at most once for the run, whoever reads it first.
+        let inspectedGraph: CommandGraph | undefined = undefined;
+        const inspected = () => (inspectedGraph ??= inspectGraph(this.#name, graph, built.facts));
+        reached = { inspected, plugins: built.plugins };
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const defaults = await prepareInputs(inputs, host);
         graphBuilt = true;
@@ -503,14 +513,14 @@ class ApplicationBuilder<
           await runInvocation({
             channel: (binding) => invocationOutput.channel(binding),
             defaults,
-            facts: built.facts,
             graph,
             host,
-            name: this.#name,
+            inspected,
             out: output.out,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
             route: (path) => {
+              walked = path;
               invocationOutput.useRoute(path);
             },
             signal: controller.signal,
@@ -534,17 +544,10 @@ class ApplicationBuilder<
           output ??= new Output(captureHost(undefined, stderr), controller.signal);
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
-            const report = describeFailure(registry ?? noViews, failure, output.context('stderr'));
-            if (report.kind === 'rendered') {
-              // The view owns the trailing newline; output resolves its marked text.
-              await output.report(report.text);
-            } else {
+            // A broken failure view or onFailure hook forces 1 over the failure's own code.
+            const sink = { output, registry: registry ?? noViews, stderr };
+            if (await reportFailure(sink, failure, scene())) {
               code = 1;
-              // `report.text` is core's default text, which already ends in `\n`.
-              await reportPlainly(
-                stderr,
-                `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
-              );
             }
           }
         } catch {
@@ -569,15 +572,9 @@ class ApplicationBuilder<
         if (!silenced(fault, controller.signal, cancellation())) {
           code = code === 0 ? 1 : code;
           try {
-            const report = describeFailure(registry ?? noViews, fault, output?.context('stderr'));
-            if (report.kind === 'rendered') {
-              await output?.report(report.text);
-            } else {
+            const sink = output && { output, registry: registry ?? noViews, stderr };
+            if (sink && (await reportFailure(sink, fault, scene()))) {
               code = 1;
-              await reportPlainly(
-                stderr,
-                `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`,
-              );
             }
           } catch {
             reportingFailed = true;
@@ -597,8 +594,9 @@ class ApplicationBuilder<
       }
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
-       * failure view or destination in that run is reported as text without changing it. The
-       * signal decides the code whatever the action did afterward, so this reading comes last.
+       * failure view, onFailure hook, or destination in that run is reported as text without
+       * changing it. The signal decides the code whatever the action did afterward, so this
+       * reading comes last.
        */
       code = cancellation() ?? code;
       process.exitCode = code;

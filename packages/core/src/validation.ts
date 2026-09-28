@@ -339,6 +339,11 @@ function checkDeclaration(input: InputDeclaration, subject: string) {
   }
 }
 
+/**
+ * One issue a validator returned, checked where it enters. Core keeps every own enumerable field
+ * the issue carries and rewrites only `path`, reducing each segment to its key, so a field core
+ * never reads, such as a validator's issue code, reaches a failure view unchanged.
+ */
 function readIssue(issue: unknown): StandardSchemaV1.Issue {
   if (issue === null || typeof issue !== 'object' || !('message' in issue)) {
     throw new Error('The validator returned an invalid Standard Schema issue.');
@@ -349,7 +354,7 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
   }
   const suppliedPath = 'path' in issue ? issue.path : undefined;
   if (suppliedPath === undefined) {
-    return { message };
+    return { ...issue, message };
   }
   if (!Array.isArray(suppliedPath)) {
     throw new Error('The validator returned an invalid Standard Schema issue path.');
@@ -362,7 +367,7 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
     }
     return key;
   });
-  return { message, path };
+  return { ...issue, message, path };
 }
 
 /**
@@ -430,12 +435,10 @@ async function validateDeclared(
     if (result.issues === undefined) {
       outputs.push(result.value);
     } else {
-      issues.push(
-        ...reported(result.issues).map((issue) => ({
-          message: issue.message,
-          path: [position, ...(issue.path ?? [])],
-        })),
-      );
+      // The issue keeps its own fields, and only its path gains the value's position.
+      for (const issue of reported(result.issues)) {
+        issues.push({ ...issue, path: [position, ...(issue.path ?? [])] });
+      }
     }
   }
   return issues.length === 0 ? { value: outputs } : { issues };

@@ -52,10 +52,10 @@ test('a failed diagnostic write gets exactly one fallback attempt', () => {
   });
 });
 
-test('a failure while rendering an exception uses plain fallback output', () => {
+test('an action that throws an Error whose message cannot be read reports the fixed reason', () => {
   expect(invoke(new URL('fixtures/output.mjs', import.meta.url), ['renderer-failed'])).toEqual({
     status: 1,
-    stderr: 'Internal error: Could not write invocation output.\n',
+    stderr: 'Internal error: The thrown value has no readable message.\n',
     stdout: '{"code":1,"events":[],"listeners":0}\n',
   });
 });

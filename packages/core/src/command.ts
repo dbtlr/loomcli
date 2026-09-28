@@ -1948,8 +1948,16 @@ export function readsAsChild(command: BuiltCommand, token: string): boolean {
   return command.children.size > 0 && !isOptionToken(token);
 }
 
-/** Bare tokens, names or aliases, select children until a Command has none; a hyphen commits. */
-export function route(root: BuiltCommand, tokens: readonly string[]) {
+/**
+ * Bare tokens, names or aliases, select children until a Command has none; a hyphen commits.
+ * `walked` receives the path after each name routes, so an unknown Command leaves its caller
+ * holding the partial path walked before it.
+ */
+export function route(
+  root: BuiltCommand,
+  tokens: readonly string[],
+  walked?: (path: readonly string[]) => void,
+) {
   let command = root;
   const path: string[] = [];
   let index = 0;
@@ -1964,6 +1972,7 @@ export function route(root: BuiltCommand, tokens: readonly string[]) {
     // An alias routes like the canonical name, and the path it walks reports that name alone.
     command = child.command;
     path.push(child.name);
+    walked?.(Object.freeze([...path]));
     index += 1;
   }
   return { command, path, tokens: tokens.slice(index) };
@@ -2022,10 +2031,17 @@ export interface RoutedInvocation {
   tokens: readonly string[];
 }
 
-/** Consumes the globals table, then routes the remaining bare tokens to a Command. */
-export function routeInvocation(graph: BuiltGraph, argv: readonly string[]): RoutedInvocation {
+/**
+ * Consumes the globals table, then routes the remaining bare tokens to a Command. `walked`
+ * receives the path as routing extends it, the partial path of an unknown Command included.
+ */
+export function routeInvocation(
+  graph: BuiltGraph,
+  argv: readonly string[],
+  walked: (path: readonly string[]) => void,
+): RoutedInvocation {
   const scan = extractGlobals(graph.globals.options, [...argv]);
-  const routed = route(graph.root, scan.rest);
+  const routed = route(graph.root, scan.rest, walked);
   return {
     command: routed.command,
     path: routed.path,

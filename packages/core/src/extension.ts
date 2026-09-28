@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { asSentence, DeclarationError, reasonOf } from './errors.js';
 import { isPlainObject } from './facts.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
+import { isThenable } from './thenable.js';
 import type { AttachedCommand } from './types.js';
 
 /** The three declaration kinds an extension can name, each with its own node in the graph. */
@@ -421,14 +422,6 @@ function issueText(issues: unknown): string {
   }
   // The sentence the caller composes ends the diagnostic, so this text carries no full stop.
   return 'The schema rejected this value without an explanation';
-}
-
-/**
- * Whether one schema answered with a promise. A thenable object and a promise from another realm
- * are as unwaitable here as a native one, so the test is the contract and not the class.
- */
-function isThenable(value: object): boolean {
-  return 'then' in value && typeof value.then === 'function';
 }
 
 /** The schema one descriptor answers with, which a JavaScript author can leave out. */

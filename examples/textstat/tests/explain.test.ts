@@ -61,6 +61,17 @@ test('textstat explains an otherwise invalid invocation instead of rejecting it'
   });
 });
 
+test('an unknown option on the root gains the hint that names the application alone', () => {
+  withDirectory((cwd) => {
+    expect(invoke(main, ['--bogus'], { cwd })).toEqual({
+      status: 2,
+      stderr:
+        'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --explain" to explain this command.\n',
+      stdout: '',
+    });
+  });
+});
+
 test('the inspected graph carries the plugin option, the extension value, and the version', () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(result.status).toBe(0);
