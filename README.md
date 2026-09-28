@@ -73,7 +73,7 @@ node examples/jsonkit/dist/src/main.js --file package.json get repository.url
 node examples/jsonkit/dist/src/main.js --file package.json get workspaces.1
 ```
 
-The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path exits 65, `EX_DATAERR`; an unreadable file and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
+The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path, an unreadable file, and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
 
 `--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
 
