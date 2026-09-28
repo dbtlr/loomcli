@@ -326,15 +326,19 @@ A failure core wraps around an unexpected exception, a broken view, or a broken 
 _Avoid_: Unhandled error, bug (in output)
 
 **Diagnostic**:
-The text core writes to stderr for one failure: the sentence, its correction, and the category prefix the view chooses.
+The text core writes to stderr for one failure: the sentence, its correction, the category prefix the view chooses, and the hints the view prints.
 _Avoid_: Error message (when the class is meant), log line
 
 **Failure view**:
-The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the stderr view context. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first.
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, and the hints plugins added. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
+**Hint**:
+A line a plugin adds under a failure message through its `onFailure` lifecycle hook. Hints from every installed plugin accumulate in installation order and reach the failure view, which decides whether to print them; core's default text prints each on its own line under the sentence. A hint adds to a diagnostic and never replaces a view.
+_Avoid_: Suggestion (for the line itself), tip, help text, note
+
 **Issue**:
-One Standard Schema rejection returned by a validator, with its message and optional path inside the value.
+One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so a field such as an issue code reaches a failure view.
 _Avoid_: Validation error, problem (for the schema-level record)
 
 **Problem**:
@@ -395,7 +399,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure `run()` renders after graph build and returns hints. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:

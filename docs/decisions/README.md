@@ -64,6 +64,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md) | Shell completion ports Cobra's scripts and speaks its `__complete` protocol, with every `eval` removed, offered words exact or omitted, the application name as data, and no alias, hidden, or deprecated member offered. | accepted |
 | [ADR-0044](0044-a-global-option-declares-no-presence-rule.md) | A global option declares neither `required` nor `validateOmitted`, so its omission is always plain absence and a Command that needs the value checks for it. | accepted |
 | [ADR-0045](0045-a-failure-class-declares-its-exit-code.md) | A failure class declares its exit code as a static field from 1 through 125, read from the nearest ancestor that declares one; a reserved code throws at construction, core exports the sysexits names, and the code holds from an action, a middleware, or a configuration source. | proposed |
+| [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md) | Every failure view reads the application name and the Command path routing walked, and plugins add hint lines through an `onFailure` lifecycle hook that reads the graph; a broken hook follows the broken-view rule, and core keeps an issue's own fields. | proposed |
 
 ## Adding a record
 
