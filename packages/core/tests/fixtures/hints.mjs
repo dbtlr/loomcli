@@ -204,6 +204,16 @@ const scenarios = {
     new Application('store', {
       plugins: [twice, hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
     }).action(({ out }) => out.fatal('The action failed.')),
+  // A JavaScript hook steps outside the contract and assigns the code, which core already read.
+  'assigns-exit-code': () =>
+    routed({
+      plugins: [
+        hinting('fixture/one', (failure) => {
+          failure.exitCode = 0;
+          return 'hinted';
+        }),
+      ],
+    }).action(dispatch),
   'before-build': () =>
     new Application('store', {
       plugins: [hinting('fixture/one', () => 'never')],

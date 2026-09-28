@@ -79,6 +79,14 @@ test('a fault reported after the primary outcome receives hook calls of its own'
   });
 });
 
+test('a JavaScript hook that assigns exitCode leaves the resolved code alone', () => {
+  expect(run('assigns-exit-code', ['cache', 'clear', '--bogus'])).toEqual({
+    status: 2,
+    stderr: `${unknownBogus}hinted\n`,
+    stdout: 'hook:fixture/one:UnknownOptionError:[cache,clear]\nresolved:2\n',
+  });
+});
+
 test('a hook reads the same graph a middleware read, built once for the run', () => {
   expect(run('shared-graph').stderr).toBe('The action failed.\nsame graph: true\n');
 });

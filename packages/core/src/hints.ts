@@ -30,7 +30,9 @@ interface FailureHookContext {
 
 /**
  * A plugin's `onFailure` hook: a synchronous function that returns one hint, a list of hints, or
- * nothing for a failure `run()` renders after graph build. It cannot change the failure.
+ * nothing for a failure `run()` renders after graph build. It receives the failure typed read-only,
+ * as a failure view does. Core does not freeze the failure, and it reads the exit code before any
+ * hook runs, so a working hook cannot change the code.
  */
 type FailureHook = (
   failure: Readonly<LoomError>,
