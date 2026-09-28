@@ -4,7 +4,7 @@ title: ADR-0007 - Failures are public classes with typed facts, rendered by clas
 description: Every failure run() reports is an instance of a public class carrying the facts its sentence interpolates and its exit code. Renderers are registered per class on the constructor, resolved along the prototype chain. A working renderer cannot change the exit code, and a broken one is an internal failure that never escapes.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-27
+modified: 2026-09-28
 ---
 
 # ADR-0007 - Failures are public classes with typed facts, rendered by class-keyed renderers registered on the Application
@@ -39,3 +39,4 @@ An application registers renderers through the constructor's `failures` option a
 - 2026-09-27: [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md), proposed, adds hint lines beside class-keyed views. A plugin's `onFailure` hook adds hints to each failure `run()` renders after graph build; the view receives them, core's default text prints them under its sentence, and an override decides whether to print them. No hook runs for a build-time `DeclarationError`, the fault for which a plugin's overrides are not consulted either. A broken hook, one that throws, returns a value that is not a string or an array of strings, or returns a promise, follows the broken-view rule beside it: its hints are dropped, the failure still renders with every other plugin's hints, one internal-error line names the plugin, and the run returns 1 whichever code the failure carried, except in a cancelled run, which keeps its signal's code. Every failure view, the one for a build-time `DeclarationError` included, also reads `application` and `path`, and the failure classes gain no field. It binds when that record is accepted.
 - 2026-09-27: [ADR-0045](0045-a-failure-class-declares-its-exit-code.md) is accepted, so its entry above binds.
 - 2026-09-27: ADR-0046 is accepted. The entry above binds as written.
+- 2026-09-28: [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), proposed, makes an `InternalError` a defect: the operator sees one generic message with no reason, class name, or code detail, and the run exits 1. The Consequences clause that `InternalError` reaches registered views stands, and `override(InternalError, view)` is how an author replaces the generic message. Core's default text for `InternalError` changes when the author development view's record lands, not with ADR-0047. An author fault that reaches a shipped application, such as a `DeclarationError` raised during a run, is either an operator message or a defect under ADR-0047. It binds when ADR-0047 is accepted.
