@@ -75,6 +75,16 @@ const source = async ({ graph, host, options, out, requests, style }) => {
       },
     };
   }
+  if (mode === 'declared-value-getter') {
+    return {
+      limit: {
+        label: 'limit in fixture.json',
+        get value() {
+          throw new RegistryUnavailableError();
+        },
+      },
+    };
+  }
   if (mode === 'input-error-getter') {
     return {
       get limit() {

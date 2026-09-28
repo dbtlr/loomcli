@@ -537,6 +537,10 @@ test.each([
     { FIXTURE_SOURCE: 'declared-getter' },
     'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
   ],
+  [
+    { FIXTURE_SOURCE: 'declared-value-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
+  ],
 ])('%j stays a plugin fault with code 1', (env, sentence) => {
   const result = run([], env);
   expect(result.status).toBe(1);
