@@ -11,7 +11,7 @@ function run(scenario: string, argv: string[], env: Record<string, string> = {})
 
 /** The diagnostic one held fault reports, under the prefix its class carries. */
 function input(sentence: string) {
-  return `Invalid input: ${sentence}\n`;
+  return `app: ${sentence}\n`;
 }
 
 /** The diagnostic one bad view assignment reports, under the prefix its class carries. */

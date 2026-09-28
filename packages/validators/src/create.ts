@@ -19,6 +19,7 @@ interface ValidatorDefinition<Output> {
   inputSchema?: Readonly<Record<string, unknown>>;
 }
 
+/** The vendor every Standard Schema value this package builds reports. */
 const vendor = '@loomcli/validators';
 
 const target = 'draft-2020-12';
@@ -142,5 +143,5 @@ function createValidator<Output>(
   return Object.freeze({ '~standard': Object.freeze({ ...props, jsonSchema: converter(schema) }) });
 }
 
-export { createValidator };
+export { createValidator, vendor };
 export type { ParseResult, Validator, ValidatorDefinition };

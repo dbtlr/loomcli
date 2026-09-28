@@ -306,7 +306,7 @@ const scenarios = {
   'default-rejected': () =>
     new Application('store', {
       plugins: [
-        hinting('fixture/one', (failure, { command }) => `command at [${command.path.join(',')}]`),
+        hinting('fixture/one', (_failure, { command }) => `command at [${command.path.join(',')}]`),
       ],
     })
       .option('level', { default: 'loud', type: 'string', validate: refuses })
@@ -324,7 +324,7 @@ const scenarios = {
   'lying-filter': () => broken(() => Lying.of('held')),
   'marked-hint': () =>
     routed({
-      plugins: [hinting('fixture/one', (failure, { style }) => `plain ${style.bold('bold')}`)],
+      plugins: [hinting('fixture/one', (_failure, { style }) => `plain ${style.bold('bold')}`)],
       rendering: { modifiers: 'always' },
     }).action(dispatch),
   none: () =>
@@ -356,7 +356,7 @@ const scenarios = {
     return new Application('store', {
       plugins: [
         reader,
-        hinting('fixture/one', (failure, { graph }) => `same graph: ${String(graph === seen)}`),
+        hinting('fixture/one', (_failure, { graph }) => `same graph: ${String(graph === seen)}`),
       ],
     }).action(({ out }) => out.fatal('The action failed.'));
   },
@@ -391,6 +391,12 @@ const scenarios = {
         hinting('fixture/two', () => 'shared'),
       ],
     }).action(dispatch),
+  // Two rejected options, so one input failure writes two problem lines above the hints.
+  'two-problems': () =>
+    new Application('store', { plugins: [hinting('fixture/one', () => ['first', 'second'])] })
+      .option('left', { type: 'string', validate: refuses })
+      .option('right', { type: 'string', validate: refuses })
+      .action(dispatch),
 };
 
 const build = scenarios[scenario];

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import { escapeControlCharacters, InputError, readExtension } from '@loomcli/core';
+import { escapeControlCharacters, InputError, issuePath, readExtension } from '@loomcli/core';
 import type {
   CommandGraph,
   ContextualStyle,
@@ -48,12 +48,36 @@ interface Ranking {
   readonly named: string | undefined;
 }
 
-/** The clause that ends a warning or a failure about a file that cannot be used. */
+/** The clause that says why a file cannot be used, after its name in a warning or a failure. */
 type Clause =
   | 'does not exist.'
   | 'could not be read.'
   | 'is not valid JSON.'
   | 'does not hold a JSON object.';
+
+/** What the operator does about one clause: for the file `--config` named, and for a discovered file. */
+interface Fix {
+  readonly named: string;
+  /** Absent for a clause a discovered file is silent about. */
+  readonly discovered?: string;
+}
+
+/** The one table of fixes, so each sentence the plugin writes ends with its step. */
+const fixes: Readonly<Record<Clause, Fix>> = {
+  'could not be read.': {
+    discovered: 'Make it readable, or remove it.',
+    named: 'Supply a file this process can read.',
+  },
+  'does not exist.': { named: 'Supply the path of an existing file.' },
+  'does not hold a JSON object.': {
+    discovered: 'Write its settings as one JSON object, or remove it.',
+    named: 'Write its settings as one JSON object.',
+  },
+  'is not valid JSON.': {
+    discovered: 'Correct its syntax, or remove it.',
+    named: 'Correct its syntax, or supply another file.',
+  },
+};
 
 /** What reading one file found: its top-level object, or the clause that says why it is skipped. */
 type Reading =
@@ -172,7 +196,7 @@ async function read(file: RankedFile): Promise<Reading> {
 
 /** The failure a `--config` file that cannot be used raises: a usage failure on the option itself. */
 function namedFailure(file: RankedFile, clause: Clause): InputError {
-  const message = `File "${file.shown}" ${clause}`;
+  const message = `File "${file.shown}" ${clause} ${fixes[clause].named}`;
   return new InputError(`Option "--config": ${message}`, [
     {
       input: { global: true, kind: 'option', name: 'config' },
@@ -185,7 +209,8 @@ function namedFailure(file: RankedFile, clause: Clause): InputError {
 
 /**
  * Every ranked file the run can use, read once each in rank order. A discovered file that does not
- * exist is silent, one that is broken warns once and is skipped, and the named file fails the run.
+ * exist is silent, one that is broken warns once with its fix and is skipped, and the named file
+ * fails the run.
  */
 async function readUsable(
   files: readonly RankedFile[],
@@ -198,10 +223,13 @@ async function readUsable(
       usable.push({ file, object: reading.object });
     } else if (file.named) {
       throw namedFailure(file, reading.clause);
-    } else if (reading.clause !== 'does not exist.') {
-      await channels.out.warn(
-        `Skipped ${channels.style.escape(file.shown)}: the file ${reading.clause}`,
-      );
+    } else {
+      const fix = fixes[reading.clause].discovered;
+      if (fix !== undefined) {
+        await channels.out.warn(
+          `Skipped ${channels.style.escape(file.shown)}: the file ${reading.clause} ${fix}`,
+        );
+      }
     }
   }
   return usable;
@@ -282,13 +310,15 @@ function spellingOf(request: OptionNode): string {
   return request.short ?? `--${request.name}`;
 }
 
-/** The lines one wrong value reports, one per issue, each naming the option, its origin, and any position. */
+/**
+ * The lines one wrong value reports, one per issue, each naming the option, its origin, and any
+ * position. The position is read and escaped as core's own validation lines read it.
+ */
 function wrongValueLines(subject: string, issues: readonly Issue[]): string[] {
   return issues.map((issue) => {
-    const position = issue.path
-      ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
-      .join('.');
-    return `${subject}${position ? ` at ${position}` : ''}: ${issue.message}`;
+    const path = issuePath(issue);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `${subject}${position}: ${issue.message}`;
   });
 }
 
@@ -320,7 +350,8 @@ function answer(request: OptionNode, usable: readonly UsableFile[], graph: Comma
 
 /**
  * The value at a request's path in the first usable file that holds one, with the label that names
- * the path and the file, or `undefined` when the option carries no binding or no file answers.
+ * the path and the file, each escaped for quoting, or `undefined` when the option carries no
+ * binding or no file answers.
  */
 function locate(
   request: OptionNode,
@@ -335,7 +366,7 @@ function locate(
   return answering === undefined
     ? undefined
     : {
-        label: `${binding.path} in ${answering.file.shown}`,
+        label: `${escapeControlCharacters(binding.path)} in ${answering.file.shown}`,
         value: valueAt(answering.object, segments),
       };
 }

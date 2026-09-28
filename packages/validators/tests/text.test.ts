@@ -23,10 +23,22 @@ describe('accepted tokens pass unchanged and satisfy the published schema', () =
     ['maxLength 2 two astral code points', text({ maxLength: 2 }), '😀😀'],
     ['minLength 3 three astral code points', text({ minLength: 3 }), '😀😀😀'],
     ['exactly 2 astral code points', text({ maxLength: 2, minLength: 2 }), '𝒜𝒜'],
-    ['an anchored pattern', text({ pattern: /^[a-z]+$/ }), 'abc'],
-    ['a pattern that needs the u flag', text({ pattern: /^\p{L}+$/u }), 'éß'],
-    ['a dot matches one astral code point', text({ pattern: /^.$/ }), '😀'],
-    ['an unanchored pattern matches anywhere', text({ pattern: /b/ }), 'abc'],
+    ['an anchored pattern', text({ message: 'Expected letters.', pattern: /^[a-z]+$/ }), 'abc'],
+    [
+      'a pattern that needs the u flag',
+      text({ message: 'Expected letters.', pattern: /^\p{L}+$/u }),
+      'éß',
+    ],
+    [
+      'a dot matches one astral code point',
+      text({ message: 'Expected one character.', pattern: /^.$/ }),
+      '😀',
+    ],
+    [
+      'an unanchored pattern matches anywhere',
+      text({ message: 'Expected a b.', pattern: /b/ }),
+      'abc',
+    ],
   ];
 
   it.each(accepted)('%s', async (_name, validator, token) => {
@@ -89,12 +101,6 @@ describe('rejected tokens read the one sentence for the configuration', () => {
       'Expected from 1 through 32 characters.',
     ],
     [
-      'a pattern without a message',
-      text({ pattern: lower }),
-      'ABC',
-      'Expected a value that matches the required pattern.',
-    ],
-    [
       'a pattern with a message',
       text({ message: 'Expected lowercase letters.', pattern: lower }),
       'ABC',
@@ -102,21 +108,21 @@ describe('rejected tokens read the one sentence for the configuration', () => {
     ],
     [
       'a token that fails length and pattern reads the length sentence',
-      text({ maxLength: 3, pattern: lower }),
+      text({ maxLength: 3, message: 'Expected lowercase letters.', pattern: lower }),
       'ABCDE',
       'Expected from 1 through 3 characters.',
     ],
     [
       'the empty string under a pattern reads the length sentence',
-      text({ pattern: lower }),
+      text({ message: 'Expected lowercase letters.', pattern: lower }),
       '',
       'Expected a nonempty value.',
     ],
     [
       'a dot under the u flag',
-      text({ pattern: /^.$/ }),
+      text({ message: 'Expected one character.', pattern: /^.$/ }),
       'ab',
-      'Expected a value that matches the required pattern.',
+      'Expected one character.',
     ],
   ];
 
@@ -130,7 +136,13 @@ test('text() publishes minLength 1 and nothing else', () => {
 });
 
 test('text() publishes each bound and the pattern source', () => {
-  expect(published(text({ maxLength: 32, minLength: 0, pattern: /^[a-z]+$/u }))).toEqual({
+  const validator = text({
+    maxLength: 32,
+    message: 'Expected lowercase letters.',
+    minLength: 0,
+    pattern: /^[a-z]+$/u,
+  });
+  expect(published(validator)).toEqual({
     $schema: dialect,
     maxLength: 32,
     minLength: 0,
@@ -178,28 +190,28 @@ describe('an option that can never work throws from the call', () => {
     ],
     [
       'a pattern that is not a RegExp',
-      { pattern: '^a$' },
+      { message: 'Expected a.', pattern: '^a$' },
       'text() pattern is not a RegExp. Supply a regular expression literal.',
     ],
     [
       'a pattern with the g flag',
-      { pattern: /a/g },
+      { message: 'Expected a.', pattern: /a/g },
       'text() pattern carries the flag g. Supply a pattern with no flag other than u.',
     ],
     [
       'a pattern with the y flag',
-      { pattern: /a/uy },
+      { message: 'Expected a.', pattern: /a/uy },
       'text() pattern carries the flag y. Supply a pattern with no flag other than u.',
     ],
     [
       'a pattern with two other flags',
-      { pattern: /a/giu },
+      { message: 'Expected a.', pattern: /a/giu },
       'text() pattern carries the flags gi. Supply a pattern with no flag other than u.',
     ],
     [
       'a pattern that does not compile under u',
       // oxlint-disable-next-line no-useless-escape -- The identity escape is valid only without u.
-      { pattern: /\-/ },
+      { message: 'Expected a hyphen.', pattern: /\-/ },
       'text() pattern does not compile under the u flag. Supply a pattern that is valid with the u flag.',
     ],
     [
@@ -213,6 +225,11 @@ describe('an option that can never work throws from the call', () => {
       'text() message is not a nonempty string. Supply one sentence that states the expectation.',
     ],
     [
+      'a pattern without a message',
+      { pattern: /a/ },
+      'text() pattern has no message to describe it. Supply a message that states what the pattern accepts.',
+    ],
+    [
       'a message without a pattern',
       { message: 'Expected lowercase letters.' },
       'text() message has no pattern to describe. Supply a pattern or leave out message.',
@@ -224,4 +241,17 @@ describe('an option that can never work throws from the call', () => {
       declarationFault(message),
     );
   });
+});
+
+test('a pattern without a message is a type error and throws at the call', () => {
+  expect(
+    faultOf(() =>
+      // @ts-expect-error TS2345: Only the author can say what the pattern accepts, so message is required.
+      text({ pattern: /^[a-z]+$/u }),
+    ),
+  ).toEqual(
+    declarationFault(
+      'text() pattern has no message to describe it. Supply a message that states what the pattern accepts.',
+    ),
+  );
 });

@@ -1,19 +1,37 @@
+import type { StandardSchemaV1 } from '@loomcli/core';
+
+import {
+  textExactLengthIssue,
+  textLengthRangeIssue,
+  textMaxLengthIssue,
+  textMinLengthIssue,
+  textNonemptyIssue,
+  textPatternIssue,
+} from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, readOptions } from './faults.js';
 import { reject } from './issues.js';
 
-interface TextOptions {
-  minLength?: number;
-  maxLength?: number;
-  pattern?: RegExp;
-  message?: string;
-}
+/**
+ * The bounds on a token's length, and a pattern with the author's sentence for what it accepts.
+ * Only the author can say what a pattern accepts, so `message` comes with `pattern` or not at all.
+ */
+type TextOptions = { minLength?: number; maxLength?: number } & (
+  | { pattern?: undefined; message?: undefined }
+  | { pattern: RegExp; message: string }
+);
 
-/** The length rule for the effective bounds: a test and the sentence it fails with. */
+/** The length rule for the effective bounds: a test and the issue it fails with. */
 interface LengthRule {
   fits: (count: number) => boolean;
-  sentence: string;
+  issue: StandardSchemaV1.Issue;
+}
+
+/** The pattern rule: the pattern under the `u` flag and the issue carrying the author's sentence. */
+interface PatternRule {
+  pattern: RegExp;
+  issue: StandardSchemaV1.Issue;
 }
 
 const noLength = 0;
@@ -61,7 +79,7 @@ function patternOf(value: unknown): RegExp | undefined {
   }
 }
 
-function messageOf(value: unknown, pattern: RegExp | undefined): string | undefined {
+function messageOf(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -70,40 +88,52 @@ function messageOf(value: unknown, pattern: RegExp | undefined): string | undefi
       'text() message is not a nonempty string. Supply one sentence that states the expectation.',
     );
   }
-  if (pattern === undefined) {
-    throw fault(
-      'text() message has no pattern to describe. Supply a pattern or leave out message.',
-    );
-  }
   return value;
 }
 
-function characters(count: number): string {
-  return count === oneCharacter ? '1 character' : `${count} characters`;
+/** The pattern rule, or undefined without a pattern; a pattern and a message each need the other. */
+function patternRule(
+  pattern: RegExp | undefined,
+  message: string | undefined,
+): PatternRule | undefined {
+  if (pattern === undefined) {
+    if (message !== undefined) {
+      throw fault(
+        'text() message has no pattern to describe. Supply a pattern or leave out message.',
+      );
+    }
+    return undefined;
+  }
+  if (message === undefined) {
+    throw fault(
+      'text() pattern has no message to describe it. Supply a message that states what the pattern accepts.',
+    );
+  }
+  return { issue: textPatternIssue.issue({ message }), pattern };
 }
 
-/** The sentence for bounds with a `maxLength`, where `min` is `minLength` after its default. */
-function boundedSentence(min: number, max: number): string {
+/** The issue for bounds with a `maxLength`, where `min` is `minLength` after its default. */
+function boundedIssue(min: number, max: number): StandardSchemaV1.Issue {
   if (min === max) {
-    return `Expected exactly ${characters(min)}.`;
+    return textExactLengthIssue.issue({ length: min });
   }
   if (min === noLength) {
-    return `Expected at most ${characters(max)}.`;
+    return textMaxLengthIssue.issue({ max });
   }
-  return `Expected from ${min} through ${max} characters.`;
+  return textLengthRangeIssue.issue({ max, min });
 }
 
 /** The length rule for the effective bounds, or undefined when every length passes. */
 function lengthRule(min: number, max: number | undefined): LengthRule | undefined {
   if (max !== undefined) {
-    return { fits: (count) => count >= min && count <= max, sentence: boundedSentence(min, max) };
+    return { fits: (count) => count >= min && count <= max, issue: boundedIssue(min, max) };
   }
   if (min === noLength) {
     return undefined;
   }
-  const sentence =
-    min === oneCharacter ? 'Expected a nonempty value.' : `Expected at least ${characters(min)}.`;
-  return { fits: (count) => count >= min, sentence };
+  const issue =
+    min === oneCharacter ? textNonemptyIssue.issue({}) : textMinLengthIssue.issue({ min });
+  return { fits: (count) => count >= min, issue };
 }
 
 /**
@@ -125,23 +155,21 @@ function text(options?: TextOptions): Validator<string> {
       `text() minLength ${minLength} is above maxLength ${maxLength}. Supply a minLength at or below maxLength.`,
     );
   }
-  const pattern = patternOf(declared.pattern);
-  const patternSentence =
-    messageOf(declared.message, pattern) ?? 'Expected a value that matches the required pattern.';
+  const matching = patternRule(patternOf(declared.pattern), messageOf(declared.message));
   const length = lengthRule(minLength, maxLength);
   return createValidator({
     inputSchema: {
       type: 'string',
       minLength,
       ...(maxLength === undefined ? {} : { maxLength }),
-      ...(pattern === undefined ? {} : { pattern: pattern.source }),
+      ...(matching === undefined ? {} : { pattern: matching.pattern.source }),
     },
     parse: (raw): ParseResult<string> => {
       if (length !== undefined && !length.fits(codePoints(raw))) {
-        return reject(length.sentence);
+        return reject(length.issue);
       }
-      if (pattern !== undefined && !pattern.test(raw)) {
-        return reject(patternSentence);
+      if (matching !== undefined && !matching.pattern.test(raw)) {
+        return reject(matching.issue);
       }
       return { value: raw };
     },

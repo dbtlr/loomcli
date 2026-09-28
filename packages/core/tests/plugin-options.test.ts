@@ -59,12 +59,12 @@ test('a declared default is copied afresh for each run', () => {
 test('a structure fault in a plugin option is the pre-scan input error a global option produces', () => {
   expect(settings(['--mode'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--mode" requires a value. Supply a value after "--mode".\n',
+    stderr: 'app: Option "--mode" requires a value. Supply a value after "--mode".\n',
     stdout: 'resolved:2\n',
   });
   expect(settings(['-q', 'get', 'a.b', '-q'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "-q" can be supplied only once. Remove the repeated option.\n',
+    stderr: 'app: Option "-q" can be supplied only once. Remove the repeated option.\n',
     stdout: 'resolved:2\n',
   });
 });
@@ -73,7 +73,7 @@ test('a short group that mixes a plugin letter reads it as a global option', () 
   expect(settings(['-qZ', 'get', 'a.b'])).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
+      'app: A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
     stdout: 'resolved:2\n',
   });
 });

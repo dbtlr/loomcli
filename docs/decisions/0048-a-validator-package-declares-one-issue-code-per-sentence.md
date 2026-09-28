@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0048 - A validator package declares one issue code per sentence, read through a typed descriptor
 description: "@loomcli/validators exports issueCode(code, config), which declares one issue code with a parameter schema and the one sentence it prints. A validator built with createValidator rejects with the code's issue, and an author's failure view reads the typed parameters through code.read(issue) with no assertion. Codes are namespaced by package, parameters hold the rule's settings and never the rejected value, core is unchanged, and text() requires message beside pattern."
-status: proposed
+status: accepted
 created: 2026-09-28
 modified: 2026-09-28
 ---
@@ -52,8 +52,10 @@ This record supersedes ADR-0037's clause that issues carry no code, which ADR-00
 
 ## Status
 
-Proposed 2026-09-28. It moves to accepted when `@loomcli/validators` exports `issueCode` and the catalog's codes, every catalog rejection carries its code and parameters, `text()` requires `message` beside `pattern`, and an `InputError` override reads a catalog code's typed parameters through `read`, under Node.js and Bun.
+Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: `@loomcli/validators` exports `issueCode` and the catalog's 23 codes, every catalog rejection carries its code and parameters, `text()` requires `message` beside `pattern`, and an `InputError` override reads a catalog code's typed parameters through `read`, under Node.js and Bun.
 
 ## Changelog
 
 - 2026-09-28: Proposed with the issue code contract.
+- 2026-09-28: Accepted; `issueCode`, the catalog's 23 codes, and the required `text()` message ship under Node.js and Bun. `issue` and `read` declare `this: void`, so either can be passed or destructured apart from its descriptor, as [Issue codes](../validators.md#issue-codes) shows.
+- 2026-09-28: Under [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), core's issue for a validator that rejects with no issues now ends with its fix: `The validator rejected this value without an explanation. Supply a different value.` It still carries no code, so the "Core's issues carry no code" bullet holds with the longer sentence.

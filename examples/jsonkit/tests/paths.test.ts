@@ -49,7 +49,7 @@ test('a walk that throws leaves its written rows behind, under the line and the 
   withDocuments({ 'doc.json': refused }, (cwd) => {
     expect(invoke(main, ['paths', '-f', 'doc.json'], { cwd })).toEqual({
       status: 1,
-      stderr: `${incomplete(2, 2)}Cannot walk boom\n`,
+      stderr: `${incomplete(2, 2)}Cannot walk boom. Remove the "boom" key from the document.\n`,
       stdout: 'kind  object with 2 keys\npath  .\n\nkind  string\npath  name\n',
     });
   });
@@ -74,8 +74,7 @@ test('the hidden Command stays off the help page and out of the candidate list',
     expect(invoke(main, ['--help'], { cwd }).stdout).not.toContain('paths');
     expect(invoke(main, ['typo', '-f', 'doc.json'], { cwd })).toEqual({
       status: 2,
-      stderr:
-        'jsonkit: unknown command "typo"; try doctor, completion, get, keys, select, fetch.\n',
+      stderr: 'jsonkit: unknown command "typo"; try doctor, completion, get, keys, select.\n',
       stdout: '',
     });
   });

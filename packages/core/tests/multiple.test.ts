@@ -45,7 +45,7 @@ test("the action receives the array of each value's validator output", () => {
 test('required is checked before any validator, so it answers an omission first', () => {
   expect(multiple('required-schema')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--field" is required. Supply at least one value.\n',
+    stderr: 'multiple: Option "--field" is required. Supply at least one value.\n',
     stdout: '',
   });
 });
@@ -59,7 +59,7 @@ test('a multiple validator runs once per value and reports each issue at its pos
   expect(multiple('schema', ['-F', '', '--field', 'a', '-F', ''])).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Option "--field" at 0: Supply a field name.\nOption "--field" at 2: Supply a field name.\n',
+      'multiple: Option "--field" at 0: Supply a field name.\nmultiple: Option "--field" at 2: Supply a field name.\n',
     stdout: '',
   });
 });
@@ -86,7 +86,7 @@ test('each per-value call reads its own context, so a write in one call never re
 test('a value issue with its own path reads after the value position', () => {
   expect(multiple('pathed', ['--field', 'a', '--field', 'b'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--field" at 1.name: Unknown name.\n',
+    stderr: 'multiple: Option "--field" at 1.name: Unknown name.\n',
     stdout: '',
   });
 });
@@ -124,7 +124,7 @@ test('a multiple default without a validator stays a raw string array', () => {
 test('a required multiple option reports absence as a validation issue', () => {
   expect(multiple('required')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--field" is required. Supply at least one value.\n',
+    stderr: 'multiple: Option "--field" is required. Supply at least one value.\n',
     stdout: '',
   });
   expect(multiple('required', ['-F', 'a'])).toEqual({

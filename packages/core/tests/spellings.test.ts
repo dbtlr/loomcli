@@ -55,18 +55,18 @@ test('the global alias and a local alias of the same letter case stay separate',
 test('a hyphen token commits to the Command that owns the spelling', () => {
   expect(invokeSpellings(['count', '--field', 'select'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Command "count" accepts no arguments. Remove the supplied values.\n',
+    stderr: 'spellings: Command "count" accepts no arguments. Remove the supplied values.\n',
     stdout: '',
   });
   expect(invokeSpellings(['--field', 'name', 'select'])).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Unknown option "--field". Supply a declared option; prefix a hyphenated path with "./".\n',
+      'spellings: Unknown option "--field". Supply a declared option; prefix a hyphenated path with "./".\n',
     stdout: '',
   });
   expect(invokeSpellings(['cache', '--field', 'x'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Command "cache" requires a subcommand. Use one of: set.\n',
+    stderr: 'spellings: Command "cache" requires a subcommand. Use one of: set.\n',
     stdout: '',
   });
 });

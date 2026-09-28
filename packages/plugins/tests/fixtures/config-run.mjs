@@ -11,6 +11,7 @@ const settings = {
   absolute: () => ({ files: [process.env.FIXTURE_ABSOLUTE] }),
   'bad-entry': () => ({ files: ['ok.json', 7] }),
   'bad-list': () => ({ files: '.app.json' }),
+  'bidi-path': () => ({ files: ['.app.json'] }),
   'control-entry': () => ({ files: [`ok${String.fromCodePoint(1)}.json`] }),
   'list-settings': () => ['.app.json'],
   none: () => undefined,
@@ -33,7 +34,9 @@ const views = {
 
 /** Every value shape and spelling the plugin's rules touch, bound to dotted paths. */
 function application(scenario) {
-  const bound = scenario === 'bad-path' ? 'a..b' : 'limits.bytes';
+  // A right-to-left override in a key, which every diagnostic that quotes the path escapes.
+  const paths = { 'bad-path': 'a..b', 'bidi-path': `li\u{202e}mits.bytes` };
+  const bound = paths[scenario] ?? 'limits.bytes';
   return (
     new Application('app', {
       plugins: [config(settings[scenario]?.()), help()],

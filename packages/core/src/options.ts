@@ -318,6 +318,9 @@ function readOption(
 /**
  * A hyphen token belongs to the globals when its long spelling or every short letter does. The
  * pre-scan reads the globals alone, so a letter it does not own is only "not a global option".
+ * The scan stops at a global value option, because the letters after it may be the value the
+ * operator meant to pass: the token then belongs to the globals, and parsing reports the
+ * value-position fault that names that option alone.
  */
 function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: string) {
   const long = longToken(token);
@@ -329,8 +332,12 @@ function isGlobalToken(spellings: ReadonlyMap<string, OptionSpelling>, token: st
   let other = '';
   for (let index = 0; index < group.length; index += 1) {
     const letter = group.charAt(index);
-    if (spellings.has(`-${letter}`)) {
+    const option = spellings.get(`-${letter}`);
+    if (option) {
       global = global === '' ? letter : global;
+      if (option.type === 'string') {
+        break;
+      }
     } else {
       other = other === '' ? letter : other;
     }

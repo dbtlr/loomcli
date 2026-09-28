@@ -139,7 +139,7 @@ test('an unknown option gains the hint that names the explain spelling for the r
     expect(invoke(main, ['get', '--bogus', '-f', 'doc.json'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+        'jsonkit: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });

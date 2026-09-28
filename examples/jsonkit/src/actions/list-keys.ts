@@ -13,7 +13,9 @@ export const listKeys: ActionHandler<typeof keys> = async ({ args, options, host
   const where = path === undefined ? 'the root' : path;
   const record = isRecord(value)
     ? value
-    : out.fatal(`Expected an object at ${where}; found ${describeKind(value)}`);
+    : out.fatal(
+        `Expected an object at ${where}; found ${describeKind(value)}. Run jsonkit paths to find the paths that hold objects.`,
+      );
   for (const key of Object.keys(record)) {
     await out.print(style.escape(key));
   }

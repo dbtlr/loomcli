@@ -49,7 +49,7 @@ test('a supplied value still reaches the same schema as its own string', () => {
 test("an issue from the omitted call is an input error naming the option's long form", () => {
   expect(omitted('option-issue')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--file": Supply a file or pipe JSON to stdin.\n',
+    stderr: 'omitted: Option "--file": Supply a file or pipe JSON to stdin.\n',
     stdout: '',
   });
   expect(omitted('option-issue', ['-f', 'doc.json'])).toEqual({
@@ -78,7 +78,7 @@ test('an omitted scalar argument with validateOmitted reaches its schema the sam
 test('an issue from an omitted argument names the argument', () => {
   expect(omitted('argument-issue')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Argument "path": Supply a path or pipe JSON to stdin.\n',
+    stderr: 'omitted: Argument "path": Supply a path or pipe JSON to stdin.\n',
     stdout: '',
   });
 });

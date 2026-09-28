@@ -1,3 +1,4 @@
+import { oneOfIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault } from './faults.js';
@@ -42,12 +43,12 @@ function oneOf<const Values extends readonly [string, ...string[]]>(
   for (const item of listed) {
     checkValue(item, seen);
   }
-  const sentence = `Expected one of: ${listed.join(', ')}.`;
+  const issue = oneOfIssue.issue({ values: listed });
   return createValidator({
     inputSchema: { type: 'string', enum: [...listed] },
     parse: (raw): ParseResult<Values[number]> => {
       const match = listed.find((value) => value === raw);
-      return match === undefined ? reject(sentence) : { value: match };
+      return match === undefined ? reject(issue) : { value: match };
     },
   });
 }

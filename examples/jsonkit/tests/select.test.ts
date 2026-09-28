@@ -30,8 +30,24 @@ test('jsonkit warns about a missing field and prints the fields it found', () =>
       }),
     ).toEqual({
       status: 0,
-      stderr: '⚠ Field not found: gone\n',
+      stderr: '⚠ Field not found: "gone". Run jsonkit keys to list the fields.\n',
       stdout: '{\n  "name": "loom"\n}\n',
+    });
+  });
+});
+
+test('jsonkit quotes a missing field and escapes its markup and bidirectional controls', () => {
+  const field = `\uE000["style",[["foreground","red"]]]\uE001g\u{202e}one.\uE002`;
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(
+      invoke(main, ['--file', 'doc.json', 'select', '-F', field], {
+        cwd,
+        env: { TERM: 'xterm-256color' },
+      }),
+    ).toEqual({
+      status: 0,
+      stderr: `⚠ Field not found: "\uE000["style",[["foreground","red"]]]\uE001g\\u202eone.\uE002". Run jsonkit keys to list the fields.\n`,
+      stdout: '{}\n',
     });
   });
 });
@@ -45,7 +61,8 @@ test('jsonkit prints an empty object when every requested field is missing', () 
       }),
     ).toEqual({
       status: 0,
-      stderr: '⚠ Field not found: gone\n⚠ Field not found: lost\n',
+      stderr:
+        '⚠ Field not found: "gone". Run jsonkit keys to list the fields.\n⚠ Field not found: "lost". Run jsonkit keys to list the fields.\n',
       stdout: '{}\n',
     });
   });
@@ -97,7 +114,7 @@ test.each([
   withDocuments({ 'doc.json': contents }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json', 'select', '-F', 'name'], { cwd })).toEqual({
       status: 1,
-      stderr: `Expected an object at the root; found ${kind}\n`,
+      stderr: `Expected an object at the root; found ${kind}. Supply a document whose root is an object.\n`,
       stdout: '',
     });
   });
@@ -147,7 +164,7 @@ test.each(['missing', 'nested.gone', 'tags.2'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', 'keys', path], { cwd })).toEqual({
         status: 65,
-        stderr: `Path not found: ${path}\n`,
+        stderr: `Path not found: "${path}". Run jsonkit keys to list the keys at the root.\n`,
         stdout: '',
       });
     });
@@ -163,7 +180,7 @@ test.each([
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json', 'keys', path], { cwd })).toEqual({
       status: 1,
-      stderr: `Expected an object at ${path}; found ${kind}\n`,
+      stderr: `Expected an object at ${path}; found ${kind}. Run jsonkit paths to find the paths that hold objects.\n`,
       stdout: '',
     });
   });

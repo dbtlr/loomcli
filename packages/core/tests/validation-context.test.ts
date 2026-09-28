@@ -211,5 +211,5 @@ test('a Zod schema validates as it does without the context', () => {
   ]);
   expect(failed.status).toBe(2);
   expect(failed.stdout).toBe('');
-  expect(failed.stderr).toBe('Invalid input: Option "--size": Use decimal digits.\n');
+  expect(failed.stderr).toBe('context: Option "--size": Use decimal digits.\n');
 });

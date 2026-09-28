@@ -72,7 +72,7 @@ test("textstat --format yaml is the validator's issue at exit 2", () => {
     const result = invoke(main, ['--format', 'yaml', 'one.txt'], { cwd });
     expect(result).toEqual({
       status: 2,
-      stderr: 'Invalid input: Option "--format": Supply one of table, json, jsonl.\n',
+      stderr: 'textstat: Option "--format": Supply one of table, json, jsonl.\n',
       stdout: '',
     });
   });
@@ -92,7 +92,7 @@ test('textstat --format twice follows the ordinary string-option rule and is rej
     expect(result).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Option "--format" can be supplied only once. Remove the repeated option.\n',
+        'textstat: Option "--format" can be supplied only once. Remove the repeated option.\n',
       stdout: '',
     });
   });

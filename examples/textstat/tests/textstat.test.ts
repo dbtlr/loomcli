@@ -64,6 +64,7 @@ test.each([
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(`Cannot read file: ${file}: `);
   expect(result.stderr).toContain(reason);
+  expect(result.stderr).toMatch(/[^.]\. Supply readable files, or pipe text to stdin\.\n$/u);
 });
 
 test('textstat prints no table when a later source cannot be read', () => {
@@ -121,7 +122,7 @@ test.each([
 test('textstat asks for files or piped text when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Argument "files": Supply file arguments or pipe text to stdin.\n',
+    stderr: 'textstat: Argument "files": Supply file arguments or pipe text to stdin.\n',
     stdout: '',
   });
 });
@@ -138,14 +139,19 @@ test('textstat reports a stdin connection that closed before it ended', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['closed-early']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toMatch(/^Cannot read stdin: .+\n$/u);
+  expect(result.stderr).toMatch(
+    /^Cannot read stdin: .+[^.]\. Supply readable files, or pipe text to stdin\.\n$/u,
+  );
 });
 
 test('textstat reports the reason a stdin read failed', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['unreadable']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe('Cannot read stdin: The connection failed.\n');
+  // The reason already ends with a period, so the fix follows it with no second one.
+  expect(result.stderr).toBe(
+    'Cannot read stdin: The connection failed. Supply readable files, or pipe text to stdin.\n',
+  );
 });
 
 test('textstat never reads stdin when files are supplied', () => {
@@ -212,7 +218,7 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
   ]);
   expect(result).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--metric": Expected one of: bytes, words, lines.\n',
+    stderr: 'textstat: Option "--metric": Expected one of: bytes, words, lines.\n',
     stdout: '',
   });
 });

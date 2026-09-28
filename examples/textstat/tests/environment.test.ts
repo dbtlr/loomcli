@@ -28,7 +28,7 @@ test('a rejected TEXTSTAT_MIN_BYTES names the variable after the option', () => 
   expect(count([], { TEXTSTAT_MIN_BYTES: '10KB' })).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.\n',
+      'textstat: Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.\n',
     stdout: '',
   });
 });
@@ -40,7 +40,7 @@ test('TEXTSTAT_TOTAL reads the Boolean grammar', () => {
   expect(count([], { TEXTSTAT_TOTAL: '0' }).stdout).toBe('COUNT  SOURCE\n    3  stdin\n');
   expect(count([], { TEXTSTAT_TOTAL: 'yes' })).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--total" (from TEXTSTAT_TOTAL): Use true, false, 1, or 0.\n',
+    stderr: 'textstat: Option "--total" (from TEXTSTAT_TOTAL): Use true, false, 1, or 0.\n',
     stdout: '',
   });
 });

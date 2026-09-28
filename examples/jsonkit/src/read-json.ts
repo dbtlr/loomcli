@@ -17,8 +17,13 @@ interface Source {
   stream: Readable;
 }
 
-function explain(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+/**
+ * The reason a runtime gave, or the fallback, as one sentence ending in a period. A reason that
+ * already ends with one keeps it, so the fix that follows never reads after two periods.
+ */
+function explain(error: unknown, fallback: string): string {
+  const reason = error instanceof Error ? error.message : fallback;
+  return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
 /**
@@ -43,7 +48,7 @@ export async function readJson(file: string | undefined, host: Host): Promise<un
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) => {
     throw new FatalError(
-      `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')}`,
+      `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')} Supply a readable file, or pipe JSON to stdin.`,
     );
   });
   try {
@@ -51,7 +56,7 @@ export async function readJson(file: string | undefined, host: Host): Promise<un
     return document;
   } catch (error: unknown) {
     throw new FatalError(
-      `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')}`,
+      `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')} Correct its syntax, or supply another document.`,
     );
   }
 }

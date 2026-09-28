@@ -537,31 +537,31 @@ type FailureReport =
 
 /**
  * The text core writes for one failure. Resolution walks the registry as `resolveFailure` defines
- * it and falls to core's own default text, which escapes the raw facts it interpolates. A
- * `FatalError` keeps the authored marked message it was given. The default text writes each hint on
- * its own line under the sentence, as marked text it does not escape; an override decides for
- * itself. An unrendered report carries the default text without hints, which the plain fallback
- * path writes.
+ * it and falls to core's own default text, which opens a usage failure with the context's
+ * application name and escapes the raw facts it interpolates. A `FatalError` keeps the authored
+ * marked message it was given. The default text writes each hint on its own line under the
+ * sentence, as marked text it does not escape; an override decides for itself. An unrendered report
+ * carries the same default text without hints, which the plain fallback path writes.
  */
 function describeFailure(
   registry: ViewRegistry,
   failure: LoomError,
   context: FailureViewContext,
 ): FailureReport {
+  const text = defaultText(failure, context.application);
   const replacement = resolveFailure(registry, failure);
   if (!replacement) {
-    const sentence =
-      failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure));
+    const sentence = failure instanceof FatalError ? text : escapeText(text);
     const hints = context.hints.map((hint) => `${hint}\n`).join('');
     return { kind: 'rendered', text: `${sentence}${hints}` };
   }
   try {
-    const text = callView(replacement, failure.name)(failure, context);
-    return typeof text === 'string'
-      ? { kind: 'rendered', text }
-      : { kind: 'unrendered', reason: notTextReason(text), text: defaultText(failure) };
+    const rendered = callView(replacement, failure.name)(failure, context);
+    return typeof rendered === 'string'
+      ? { kind: 'rendered', text: rendered }
+      : { kind: 'unrendered', reason: notTextReason(rendered), text };
   } catch (error) {
-    return { kind: 'unrendered', reason: reasonOf(error), text: defaultText(failure) };
+    return { kind: 'unrendered', reason: reasonOf(error), text };
   }
 }
 

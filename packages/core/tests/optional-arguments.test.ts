@@ -32,7 +32,7 @@ test('an optional argument schema reads a supplied token and skips omission', ()
   });
   const failed = optional('schema', ['']);
   expect(failed.status).toBe(2);
-  expect(failed.stderr).toBe('Invalid input: Argument "path": Supply a path.\n');
+  expect(failed.stderr).toBe('optional: Argument "path": Supply a path.\n');
 });
 
 test('a declared default fills an omitted argument through its schema', () => {
@@ -120,7 +120,7 @@ test('a required variadic argument still rejects an empty tail', () => {
   const missing = optional('tail-required');
   expect(missing.status).toBe(2);
   expect(missing.stderr).toBe(
-    'Invalid input: Argument "files" requires at least one value. Supply a value for "files".\n',
+    'optional: Argument "files" requires at least one value. Supply a value for "files".\n',
   );
   expect(optional('tail-required', ['one'])).toEqual({
     status: 0,

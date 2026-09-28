@@ -8,9 +8,9 @@ const first = 0;
 /** The index of the last item, counted from the end. */
 const last = -1;
 
-/** A rejection: one issue with no path and no code, carrying the configuration's one sentence. */
-function reject(message: string): StandardSchemaV1.FailureResult {
-  return { issues: [{ message }] };
+/** A rejection: one issue with no path, carrying the configuration's code and one sentence. */
+function reject(issue: StandardSchemaV1.Issue): StandardSchemaV1.FailureResult {
+  return { issues: [issue] };
 }
 
 /** Joins items as a sentence lists them: `a`, `a or b`, or `a, b, or c`. */

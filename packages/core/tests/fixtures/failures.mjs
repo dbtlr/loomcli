@@ -70,6 +70,14 @@ const digits = {
     version: 1,
   },
 };
+/** A schema that rejects every value at a path segment the test supplies. */
+const keyed = {
+  '~standard': {
+    validate: (value) => ({ issues: [{ message: 'Supply a known key.', path: [value] }] }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
 const speed = {
   '~standard': {
     validate: () => ({ issues: [{ message: 'Use fast or slow.' }] }),
@@ -95,6 +103,7 @@ function routed(views) {
     .argument('path', { required: true })
     .option('depth', { short: 'd', type: 'string', validate: digits })
     .option('mode', { short: 'm', shortOnly: true, type: 'string', validate: speed })
+    .option('key', { type: 'string', validate: keyed })
     .option('field', {
       multiple: true,
       short: 'F',
@@ -119,6 +128,10 @@ function build() {
   switch (scenario) {
     case 'usage': {
       return routed([override(UsageError, facts)]);
+    }
+    // No override, so core's own default text answers every failure.
+    case 'default': {
+      return routed([]);
     }
     // A required local option and a required argument on one Command omitted together.
     // A global option declares no presence rule, so the aggregation reads local inputs.

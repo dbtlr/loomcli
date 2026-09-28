@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, InternalError, override } from '@loomcli/core';
 import { json, jsonl } from '@loomcli/plugins/format/views';
 
 const [scenario, color] = process.argv.slice(2);
@@ -28,6 +28,7 @@ const scenarios = {
   'json-undefined': () => json(),
   'jsonl-array': () => jsonl(),
   'jsonl-bigint': () => jsonl(),
+  'jsonl-bigint-cause': () => jsonl(),
   'jsonl-controls': () => jsonl(),
   'jsonl-empty-array': () => jsonl(),
   'jsonl-map': () => jsonl({ map: (rows) => rows.map((row) => row.count) }),
@@ -44,6 +45,7 @@ const values = {
   'json-undefined': undefined,
   'jsonl-array': [{ count: 1 }, { count: 2 }],
   'jsonl-bigint': 10n,
+  'jsonl-bigint-cause': 10n,
   'jsonl-controls': controls,
   'jsonl-empty-array': [],
   'jsonl-map': [{ count: 1 }, { count: 2 }],
@@ -54,8 +56,14 @@ const values = {
 const view = scenarios[scenario]();
 const value = values[scenario];
 
+// The internal failure wraps the error the view threw, so its cause is the view's own cause.
+const causeView = override(InternalError, {
+  render: (failure) => `cause: ${failure.cause.cause.constructor.name}\n`,
+});
+
 const app = new Application('format-views', {
   rendering: color === undefined ? {} : { color },
+  views: scenario === 'jsonl-bigint-cause' ? [causeView] : [],
 }).action(({ out }) => out.render(value, view));
 
 const code = await app.run({ host: { argv: [] } });

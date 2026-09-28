@@ -169,7 +169,7 @@ test('overwriting the statics of core classes changes no code core resolves', ()
     }),
   ).toEqual({
     status: 2,
-    stderr: 'Invalid input: Unknown command "bogus". Use one of: known.\n',
+    stderr: 'exits: Unknown command "bogus". Use one of: known.\n',
     stdout: 'resolved:2\n',
   });
   // The DeclarationError a reserved code raises keeps code 1 and constructs without recursion.

@@ -137,11 +137,11 @@ test.each([
   ],
   [
     ['-qp', '--file', 'data.json', 'get', 'a.b'],
-    'Short group "-qp" mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'A short group mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
   ],
   [
     ['-qZ', '--file', 'data.json', 'get', 'a.b'],
-    'Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
   ],
   [
     ['--file', 'data.json', 'get', '--pretty', 'a.b'],
@@ -159,14 +159,14 @@ test.each([
   // Omission is a validation problem, so an omitted argument aggregates with a rejected value.
   [
     ['--file', 'data.json', '--limit', 'abc', 'get'],
-    'Option "--limit": Use decimal digits.\nArgument "path" requires a value. Supply a value for "path".',
+    'Option "--limit": Use decimal digits.\njsonkit: Argument "path" requires a value. Supply a value for "path".',
   ],
   [['--file', 'data.json', '--limit', 'abc', 'keys'], 'Option "--limit": Use decimal digits.'],
 ] satisfies [string[], string][])('rejects %j without dispatch', (argv, reason) => {
   const result = invokeCommands(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`jsonkit: ${reason}\n`);
 });
 
 function invokeAuthoring(scenario: string, argv: string[] = []) {
@@ -205,21 +205,21 @@ test.each([
 );
 
 test.each([
-  ['root', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
-  ['forked', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
+  ['root', ['get'], 'copies: The root Command accepts no arguments. Remove the supplied values.'],
+  ['forked', ['get'], 'copies: The root Command accepts no arguments. Remove the supplied values.'],
   [
     'composed',
     ['--verbose'],
-    'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+    'copies: Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
   ],
-  ['plain', ['ls'], 'Unknown command "ls". Use one of: keys.'],
+  ['plain', ['ls'], 'plain: Unknown command "ls". Use one of: keys.'],
 ] satisfies [string, string[], string][])(
   'leaves the %s receiver without the later declaration for %j',
-  (scenario, argv, reason) => {
+  (scenario, argv, line) => {
     const result = invokeAuthoring(scenario, argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+    expect(result.stderr).toBe(`${line}\n`);
   },
 );
 
@@ -229,10 +229,10 @@ test('validation reports the globals in authoring order, then the Command declar
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(
     [
-      'Invalid input: Option "--alpha": alpha rejected.',
-      'Option "--beta": beta rejected.',
-      'Option "--local": local rejected.',
-      'Argument "path": path rejected.',
+      'order: Option "--alpha": alpha rejected.',
+      'order: Option "--beta": beta rejected.',
+      'order: Option "--local": local rejected.',
+      'order: Argument "path": path rejected.',
       '',
     ].join('\n'),
   );
@@ -252,7 +252,7 @@ test.each([
   const result = invokeOrder(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`order: ${reason}\n`);
 });
 
 test.each([

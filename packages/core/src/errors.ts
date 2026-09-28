@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { escapeControlCharacters } from './controls.js';
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
 import { ignoreRejection, isThenable } from './thenable.js';
@@ -27,17 +28,38 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
 }
 
 /**
- * The clause that offers the candidates, which is absent when there are none: every child of the
- * Command is hidden, so the diagnostic ends after the sentence that names the fault.
+ * Raw text an operator typed, quoted inside a sentence. It is escaped, so a control character or a
+ * bidirectional control in a token cannot reorder or break the line. The failure's public field
+ * keeps the raw value.
  */
-function offering(candidates: readonly string[]): string {
-  return candidates.length === 0 ? '' : ` Use one of: ${candidates.join(', ')}.`;
+function quoted(text: string): string {
+  return `"${escapeControlCharacters(text)}"`;
+}
+
+/**
+ * The clause that states a routing fault's fix: the candidates, or, when the Command offers none
+ * because every child is hidden or deprecated, the kind of name to supply.
+ */
+function offering(candidates: readonly string[], kind: 'command' | 'subcommand'): string {
+  return candidates.length === 0
+    ? ` Supply the name of a declared ${kind}.`
+    : ` Use one of: ${candidates.join(', ')}.`;
+}
+
+/**
+ * The sentence for a group routed without a subcommand. The root has no name to repeat, and the
+ * default text already opens with the application name, so the root's sentence names no Command.
+ */
+function nonCallableMessage(command: readonly string[], candidates: readonly string[]): string {
+  return command.length === 0
+    ? `A command is required.${offering(candidates, 'command')}`
+    : `${routedSentence(command)} requires a subcommand.${offering(candidates, 'subcommand')}`;
 }
 
 /**
  * The two short-group faults. A value option that is not last in its group names that option's
- * spelling; a group that mixes scopes names the whole group and the two letters that disagree.
- * The extra letters shape the sentence alone, so `token` and `reason` are the reported facts.
+ * spelling; a group that mixes scopes names only the two letters that disagree, because the rest
+ * of the group may hold an inline value. `token` keeps the whole group as the reported fact.
  */
 type ShortGroupFault =
   | { reason: 'value-position'; token: string }
@@ -45,8 +67,8 @@ type ShortGroupFault =
 
 function shortGroupMessage(fault: ShortGroupFault): string {
   return fault.reason === 'value-position'
-    ? `Value option "${fault.token}" must be last in its short group. Supply its value in the next token.`
-    : `Short group "${fault.token}" mixes the global option "-${fault.global}" with "-${fault.other}", which is not a global option. Supply global options as separate tokens, and local options after their command name.`;
+    ? `Value option ${quoted(fault.token)} must be last in its short group. Supply its value in the next token.`
+    : `A short group mixes the global option ${quoted(`-${fault.global}`)} with ${quoted(`-${fault.other}`)}, which is not a global option. Supply global options as separate tokens, and local options after their command name.`;
 }
 
 /**
@@ -62,15 +84,22 @@ function undeclarableMessage(className: string, declared: unknown): string {
 }
 
 /**
- * Core's own text for one failure: its message under the category prefix its class carries, with
- * the trailing newline every view's text carries. The four categories are disjoint branches of the
- * hierarchy, so one ordered test reads every class, and a class without a prefix of its own writes
- * the sentence alone. It is the default view of every failure class and the text the plain
- * fallback path writes, so it runs no application code and nothing downstream composes its newline.
+ * Core's own text for one failure: its message under the prefix its class carries, with the
+ * trailing newline every view's text carries. The application name opens every line of a usage
+ * failure's message, one line for each problem it reports, so the operator reads who is speaking
+ * on each; the declaration and internal categories keep their category prefixes on the first
+ * line. The four categories are disjoint branches of the hierarchy, so one ordered test reads every
+ * class, and a class without a prefix of its own writes the sentence alone, even when it declares a
+ * usage error's exit code. It is the default view of every failure class and the text
+ * the plain fallback path writes, so it runs no application code and nothing downstream composes
+ * its newline.
  */
-export function defaultText(failure: LoomError): string {
+export function defaultText(failure: LoomError, application: string): string {
   if (failure instanceof UsageError) {
-    return `Invalid input: ${failure.message}\n`;
+    return failure.message
+      .split('\n')
+      .map((line) => `${application}: ${line}\n`)
+      .join('');
   }
   if (failure instanceof DeclarationError) {
     return `Invalid declaration: ${failure.message}\n`;
@@ -208,7 +237,7 @@ export class UnknownCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(token: string, candidates: readonly string[]) {
-    super(`Unknown command "${token}".${offering(candidates)}`);
+    super(`Unknown command ${quoted(token)}.${offering(candidates, 'command')}`);
     this.candidates = candidates;
     this.name = 'UnknownCommandError';
     this.token = token;
@@ -221,7 +250,7 @@ export class NonCallableCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(command: readonly string[], candidates: readonly string[]) {
-    super(`${routedSentence(command)} requires a subcommand.${offering(candidates)}`);
+    super(nonCallableMessage(command, candidates));
     this.candidates = candidates;
     this.command = command;
     this.name = 'NonCallableCommandError';
@@ -251,7 +280,7 @@ export class UnknownOptionError extends UsageError {
 
   constructor(spelling: string) {
     super(
-      `Unknown option "${spelling}". Supply a declared option; prefix a hyphenated path with "./".`,
+      `Unknown option ${quoted(spelling)}. Supply a declared option; prefix a hyphenated path with "./".`,
     );
     this.name = 'UnknownOptionError';
     this.spelling = spelling;
@@ -262,7 +291,7 @@ export class MissingValueError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(`Option "${spelling}" requires a value. Supply a value after "${spelling}".`);
+    super(`Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`);
     this.name = 'MissingValueError';
     this.spelling = spelling;
   }
@@ -274,7 +303,7 @@ export class UnexpectedValueError extends UsageError {
   readonly value: string;
 
   constructor(spelling: string, value: string) {
-    super(`Boolean option "${spelling}" does not accept a value. Supply the flag alone.`);
+    super(`Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`);
     this.name = 'UnexpectedValueError';
     this.spelling = spelling;
     this.value = value;
@@ -285,7 +314,7 @@ export class RepeatedOptionError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(`Option "${spelling}" can be supplied only once. Remove the repeated option.`);
+    super(`Option ${quoted(spelling)} can be supplied only once. Remove the repeated option.`);
     this.name = 'RepeatedOptionError';
     this.spelling = spelling;
   }

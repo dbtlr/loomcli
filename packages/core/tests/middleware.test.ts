@@ -74,7 +74,7 @@ test('an unknown command fails in routing before any middleware runs', () => {
   expect(result.marks).toEqual([]);
   expect(result).toMatchObject({
     status: 2,
-    stderr: 'Invalid input: Unknown command "nope". Use one of: get, cache.\n',
+    stderr: 'app: Unknown command "nope". Use one of: get, cache.\n',
   });
 });
 
@@ -90,7 +90,7 @@ test('the callable check still rejects a group when no middleware takes over', (
   const result = run('wrapped', ['cache']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'ℹ outer:start\nℹ inner:start\nℹ inner:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ inner:cleanup\nℹ outer:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ outer:cleanup\nInvalid input: Command "cache" requires a subcommand. Use one of: clear.\n',
+    'ℹ outer:start\nℹ inner:start\nℹ inner:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ inner:cleanup\nℹ outer:rejected:Command "cache" requires a subcommand. Use one of: clear.\nℹ outer:cleanup\napp: Command "cache" requires a subcommand. Use one of: clear.\n',
   );
 });
 
@@ -153,7 +153,7 @@ test('a middleware that throws its own failure while unwinding leaves the caught
   const result = run('recatching', ['get']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\nInvalid input: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
+    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\napp: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
   );
   expect(result.stdout).toBe('resolved:2\n');
 });
@@ -162,7 +162,7 @@ test('a wrapper reads a caught failure as taken-over when the action never ran',
   const result = run('wrapped-catching', ['get']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'ℹ outer:start\nℹ catching:caught:Argument "path" requires a value. Supply a value for "path".\nℹ outer:taken-over\nℹ outer:cleanup\nInvalid input: Argument "path" requires a value. Supply a value for "path".\n',
+    'ℹ outer:start\nℹ catching:caught:Argument "path" requires a value. Supply a value for "path".\nℹ outer:taken-over\nℹ outer:cleanup\napp: Argument "path" requires a value. Supply a value for "path".\n',
   );
 });
 
@@ -191,7 +191,7 @@ test('a failure thrown before next() resolves through the failure path with its 
   });
   expect(run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'usage' })).toEqual({
     status: 2,
-    stderr: 'Invalid input: the plugin rejected the invocation\n',
+    stderr: 'app: the plugin rejected the invocation\n',
     stdout: 'resolved:2\n',
   });
 });

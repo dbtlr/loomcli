@@ -77,12 +77,12 @@ function json(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** The failure the named file prints for one clause. */
+/** The failure the named file prints for one clause and its fix. */
 function namedFailure(path: string, clause: string): string {
-  return `Invalid input: Option "--config": File "${path}" ${clause}\n`;
+  return `textstat: Option "--config": File "${path}" ${clause}\n`;
 }
 
-/** The warning a discovered file prints for one clause. */
+/** The warning a discovered file prints for one clause and its fix. */
 function skipped(file: string, clause: string): string {
   return `⚠ Skipped ${file}: the file ${clause}\n`;
 }
@@ -152,7 +152,7 @@ test(
     const fromProject = space.textstat(files);
     expect(fromProject.status).toBe(2);
     expect(fromProject.stderr).toMatch(
-      /^Invalid input: Option "--min-bytes" \(from minBytes in \.textstat\.json\): /u,
+      /^textstat: Option "--min-bytes" \(from minBytes in \.textstat\.json\): /u,
     );
     rmSync(join(space.project, '.textstat.json'));
     const user = space.write(space.xdg, 'textstat/config.json', json({ minBytes: -1 }));
@@ -172,19 +172,25 @@ test(
     });
     expect(space.textstat([...files, '--config', 'missing.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('missing.json', 'does not exist.'),
+      stderr: namedFailure('missing.json', 'does not exist. Supply the path of an existing file.'),
       stdout: '',
     });
     space.write(space.project, 'broken.json', '{');
     expect(space.textstat([...files, '--config', 'broken.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('broken.json', 'is not valid JSON.'),
+      stderr: namedFailure(
+        'broken.json',
+        'is not valid JSON. Correct its syntax, or supply another file.',
+      ),
       stdout: '',
     });
     space.write(space.project, 'list.json', '[]');
     expect(space.textstat([...files, '--config', 'list.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('list.json', 'does not hold a JSON object.'),
+      stderr: namedFailure(
+        'list.json',
+        'does not hold a JSON object. Write its settings as one JSON object.',
+      ),
       stdout: '',
     });
     const help = space.textstat(['--config', 'missing.json', '--help']);
@@ -204,14 +210,14 @@ test(
     mkdirSync(join(space.project, '.textstat.json'));
     expect(space.textstat(files)).toEqual({
       status: 0,
-      stderr: skipped('.textstat.json', 'could not be read.'),
+      stderr: skipped('.textstat.json', 'could not be read. Make it readable, or remove it.'),
       stdout: both,
     });
     rmSync(join(space.project, '.textstat.json'), { recursive: true });
     const broken: readonly (readonly [string, string])[] = [
-      ['', 'is not valid JSON.'],
-      ['{"minBytes": ', 'is not valid JSON.'],
-      ['[5]', 'does not hold a JSON object.'],
+      ['', 'is not valid JSON. Correct its syntax, or remove it.'],
+      ['{"minBytes": ', 'is not valid JSON. Correct its syntax, or remove it.'],
+      ['[5]', 'does not hold a JSON object. Write its settings as one JSON object, or remove it.'],
     ];
     for (const [content, clause] of broken) {
       space.write(space.project, '.textstat.json', content);
@@ -225,7 +231,12 @@ test(
     const user = space.write(space.xdg, 'textstat/config.json', 'null');
     const help = space.textstat(['--help']);
     expect(help.status).toBe(0);
-    expect(help.stderr).toBe(skipped(user, 'does not hold a JSON object.'));
+    expect(help.stderr).toBe(
+      skipped(
+        user,
+        'does not hold a JSON object. Write its settings as one JSON object, or remove it.',
+      ),
+    );
     expect(help.stdout.startsWith('textstat')).toBe(true);
   }),
 );
@@ -238,15 +249,14 @@ test(
     space.write(space.project, '.textstat.json', json({ total: 'yes' }));
     expect(space.textstat(files)).toEqual({
       status: 2,
-      stderr:
-        'Invalid input: Option "--total" (from total in .textstat.json): Use true or false.\n',
+      stderr: 'textstat: Option "--total" (from total in .textstat.json): Use true or false.\n',
       stdout: '',
     });
     space.write(space.project, '.textstat.json', json({ minBytes: { max: 5 } }));
     expect(space.textstat(files)).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\n',
+        'textstat: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\n',
       stdout: '',
     });
   }),

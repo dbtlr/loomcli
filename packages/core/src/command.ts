@@ -1932,12 +1932,15 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
 }
 
 /**
- * The names a routing failure offers: the canonical names of the visible children, in authoring
- * order. A candidate list is a listing, so a hidden child is absent from it, and a parent whose
- * children are all hidden offers none.
+ * The names a routing failure offers: the canonical names of the visible, current children, in
+ * authoring order. A candidate list is a listing, so a hidden or a deprecated child is absent from
+ * it, as completion leaves them out, and a parent whose children are all hidden or deprecated
+ * offers none. A deprecated child typed in full still routes.
  */
 function candidatesOf(command: BuiltCommand): string[] {
-  return [...command.children].filter(([, child]) => !child.hidden).map(([name]) => name);
+  return [...command.children]
+    .filter(([, child]) => !child.hidden && child.deprecated === undefined)
+    .map(([name]) => name);
 }
 
 /**

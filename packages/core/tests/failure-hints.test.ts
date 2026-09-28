@@ -7,7 +7,7 @@ function run(scenario: string, argv: string[] = []) {
 }
 
 const unknownBogus =
-  'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n';
+  'store: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n';
 
 /** The context one failure view read, which the `where` override serializes as one line. */
 function seen(argv: string[], scenario = 'context') {
@@ -89,6 +89,14 @@ test("two plugins' hints print under core's default text in installation order, 
     stderr: `${unknownBogus}first\nshared\nshared\n`,
     stdout:
       'hook:fixture/one:UnknownOptionError:[cache,clear]\nhook:fixture/two:UnknownOptionError:[cache,clear]\nresolved:2\n',
+  });
+});
+
+test('hints under a diagnostic of several problem lines stay unprefixed', () => {
+  expect(run('two-problems', ['--left', 'x', '--right', 'y'])).toEqual({
+    status: 2,
+    stderr: 'store: Option "--left": No.\nstore: Option "--right": No.\nfirst\nsecond\n',
+    stdout: 'hook:fixture/one:InputError:[]\nresolved:2\n',
   });
 });
 
@@ -246,6 +254,6 @@ test('a hook suggests a visible global or local spelling, never a hidden or depr
 
 test('a hook suggests a visible child by its canonical name, never an alias', () => {
   expect(run('candidates', ['cache', 'nope']).stderr).toBe(
-    'Invalid input: Unknown command "nope". Use one of: clear, list.\nchildren: clear list\n',
+    'store: Unknown command "nope". Use one of: clear, list.\nchildren: clear list\n',
   );
 });

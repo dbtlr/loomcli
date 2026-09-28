@@ -3,6 +3,9 @@ import { expect, test } from 'vite-plus/test';
 import { invoke } from '../../../scripts/test-process.js';
 import { document, main, withDocuments } from './documents.js';
 
+/** The fix a parse failure ends with, as a pattern, after the parser's own reason. */
+const parseFix = String.raw`Correct its syntax, or supply another document\.`;
+
 const summary = [
   'key   name',
   'kind  string',
@@ -37,18 +40,32 @@ test('jsonkit preserves JSON strings that resemble recognized style markup', () 
   expect(result).toEqual({ status: 0, stderr: '', stdout: `${JSON.stringify(literal)}\n` });
 });
 
+test('jsonkit quotes an unresolved path and escapes its bidirectional controls', () => {
+  const override = '\u{202e}';
+  for (const [path, shown] of [
+    ['name.', 'name.'],
+    [`a${override}b`, String.raw`a\u202eb`],
+  ]) {
+    expect(invoke(main, ['get', path], { input: '{"name": "loom"}' })).toEqual({
+      status: 65,
+      stderr: `Path not found: "${shown}". Run jsonkit keys to list the keys at the root.\n`,
+      stdout: '',
+    });
+  }
+});
+
 test('jsonkit renders document error messages literally', () => {
   const path = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
   for (const command of ['get', 'keys']) {
     expect(invoke(main, [command, path], { input: '{}' })).toEqual({
       status: 65,
-      stderr: `Path not found: ${path}\n`,
+      stderr: `Path not found: "${path}". Run jsonkit keys to list the keys at the root.\n`,
       stdout: '',
     });
   }
   expect(invoke(main, ['keys', path], { input: JSON.stringify({ [path]: 1 }) })).toEqual({
     status: 1,
-    stderr: `Expected an object at ${path}; found number\n`,
+    stderr: `Expected an object at ${path}; found number. Run jsonkit paths to find the paths that hold objects.\n`,
     stdout: '',
   });
 });
@@ -104,7 +121,7 @@ test.each(['missing', 'nested.missing', 'tags.2', 'name.length', 'tags.first'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['get', path, '--file', 'doc.json'], { cwd })).toEqual({
         status: 65,
-        stderr: `Path not found: ${path}\n`,
+        stderr: `Path not found: "${path}". Run jsonkit keys to list the keys at the root.\n`,
         stdout: '',
       });
     });
@@ -189,7 +206,7 @@ test.each([
   withDocuments({ 'doc.json': contents }, (cwd) => {
     expect(invoke(main, ['keys', '-f', 'doc.json'], { cwd })).toEqual({
       status: 1,
-      stderr: `Expected an object at the root; found ${kind}\n`,
+      stderr: `Expected an object at the root; found ${kind}. Run jsonkit paths to find the paths that hold objects.\n`,
       stdout: '',
     });
   });
@@ -203,6 +220,7 @@ test.each([[[]], [['get', 'name']], [['keys']]])(
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Cannot read file: missing.json: ');
     expect(result.stderr).toContain('ENOENT');
+    expect(result.stderr).toMatch(/[^.]\. Supply a readable file, or pipe JSON to stdin\.\n$/u);
   },
 );
 
@@ -215,8 +233,9 @@ test.each([
     const result = invoke(main, ['--file', file], { cwd });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(`Cannot parse JSON in ${file}: `);
-    expect(result.stderr.trimEnd().length).toBeGreaterThan(`Cannot parse JSON in ${file}: `.length);
+    expect(result.stderr).toMatch(
+      new RegExp(`^Cannot parse JSON in ${file}: .+[^.]\\. ${parseFix}\\n$`, 'u'),
+    );
   });
 });
 
@@ -238,7 +257,9 @@ test.each(['', '{"name":', 'not json at all'])(
     const result = invoke(main, [], { input });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Cannot parse JSON in stdin: ');
+    expect(result.stderr).toMatch(
+      new RegExp(`^Cannot parse JSON in stdin: .+[^.]\\. ${parseFix}\\n$`, 'u'),
+    );
   },
 );
 
@@ -278,7 +299,7 @@ test.each(['summary', 'gets', 'Get', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: unknown command "${name}"; try doctor, completion, get, keys, select, fetch.\n`,
+        stderr: `jsonkit: unknown command "${name}"; try doctor, completion, get, keys, select.\n`,
         stdout: '',
       });
     });
@@ -300,7 +321,7 @@ test('jsonkit keeps the default text for a failure class it registers no view fo
     expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+        'jsonkit: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });
@@ -337,14 +358,19 @@ test('jsonkit reports the reason a stdin read failed', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['unreadable']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe('Cannot read stdin: The connection failed.\n');
+  // The reason already ends with a period, so the fix follows it with no second one.
+  expect(result.stderr).toBe(
+    'Cannot read stdin: The connection failed. Supply a readable file, or pipe JSON to stdin.\n',
+  );
 });
 
 test('jsonkit reports a stdin connection that closed before it ended', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['closed-early']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toMatch(/^Cannot read stdin: .+\n$/u);
+  expect(result.stderr).toMatch(
+    /^Cannot read stdin: .+[^.]\. Supply a readable file, or pipe JSON to stdin\.\n$/u,
+  );
 });
 
 test('jsonkit never reads stdin when the file global is supplied', () => {
