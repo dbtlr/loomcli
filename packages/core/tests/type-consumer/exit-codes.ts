@@ -124,6 +124,20 @@ class AnyCodeError extends FatalError {
   }
 }
 
+// The instance's code is a read-only accessor, so a subclass cannot replace it with a property.
+class ShadowError extends FatalError {
+  // @ts-expect-error TS2610: A property cannot override the accessor the class code backs.
+  override readonly exitCode = EX_DATAERR;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ShadowError';
+  }
+}
+
+// @ts-expect-error TS2540: No throw may assign its own code.
+new RegistryUnavailableError('The registry answered 503.').exitCode = EX_DATAERR;
+
 // @ts-expect-error TS2554: The constructor takes the message alone.
 const perThrow = new RegistryUnavailableError('The registry answered 503.', 69);
 
@@ -139,4 +153,4 @@ void reported;
 void bases;
 void perThrow;
 
-export { AnyCodeError, MissingDocumentError, ShellError, StrictUsageError, ZeroError };
+export { AnyCodeError, MissingDocumentError, ShadowError, ShellError, StrictUsageError, ZeroError };

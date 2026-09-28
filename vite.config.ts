@@ -104,6 +104,14 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/errors.ts'],
+        rules: {
+          // Core captures its own failure classes' codes once every class is declared.
+          // That capture runs below the exported classes, before any application code can run.
+          'import/exports-last': 'off',
+        },
+      },
+      {
         files: [
           'packages/plugins/src/manifest/document.ts',
           'packages/plugins/tests/manifest.test.ts',

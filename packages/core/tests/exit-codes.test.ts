@@ -1,4 +1,4 @@
-import { expect, test } from 'vite-plus/test';
+import { describe, expect, it, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
@@ -56,6 +56,8 @@ test.each([
   ['InterruptError', 'declares exit code 130.'],
   ['FractionError', 'declares exit code 3.5.'],
   ['StringError', 'declares an exit code that is not a finite number.'],
+  ['NaNError', 'declares an exit code that is not a finite number.'],
+  ['InfinityError', 'declares an exit code that is not a finite number.'],
 ])('%s throws a DeclarationError at construction', (name, clause) => {
   const message = `Failure class "${name}" ${clause} ${correction}`;
   // Outside a run the construction throws at that line.
@@ -68,6 +70,112 @@ test.each([
   expect(exits('reserved', { FIXTURE_CLASS: name })).toEqual({
     status: 1,
     stderr: `Invalid declaration: ${message}\n`,
+    stdout: 'resolved:1\n',
+  });
+});
+
+/** The sentence for a value that inherits from a failure class but was never constructed as one. */
+const unconstructed =
+  'Internal error: A thrown value inherits from a failure class but was never constructed as one.\n';
+
+describe.each(['action', 'middleware', 'source'])('a failure raised from a %s', (where) => {
+  function tampered(variant: string, value?: unknown) {
+    return exits('tampered', {
+      FIXTURE_CASE: variant,
+      FIXTURE_WHERE: where,
+      ...(value === undefined ? {} : { FIXTURE_VALUE: JSON.stringify(value) }),
+    });
+  }
+
+  it.each([200, 300, 0, '69', 'abc'])(
+    'rejects a strict-mode assignment of %j to its exitCode as an internal error',
+    (value) => {
+      const result = tampered('assigned', value);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/^Internal error: .+\n$/u);
+      expect(result.stderr).not.toContain('The registry answered 503.');
+    },
+  );
+
+  it.each([200, 0, '69', 'abc'])(
+    'ignores a sloppy-mode assignment of %j and exits with its class code',
+    (value) => {
+      expect(tampered('assigned-sloppy', value)).toMatchObject({
+        status: 69,
+        stderr: 'The registry answered 503.\n',
+      });
+    },
+  );
+
+  it.each([65, 200, 0, '69'])(
+    'keeps its class code when a subclass instance field shadows exitCode with %j',
+    (value) => {
+      expect(tampered('field', value)).toMatchObject({ status: 1, stderr: 'Shadowed.\n' });
+    },
+  );
+
+  it.each(['created', 'reprototyped', 'foreign'])(
+    'reports a %s object that was never constructed as an internal error with code 1',
+    (variant) => {
+      expect(tampered(variant, 75)).toMatchObject({ status: 1, stderr: unconstructed });
+    },
+  );
+});
+
+test('one class keeps the code captured at its first construction', () => {
+  // A static reassigned between two constructions leaves both instances with the first code.
+  expect(exits('captured', { FIXTURE_CASE: 'reassigned' })).toEqual({
+    status: 69,
+    stderr: 'Second.\n',
+    stdout: 'instances:69,69\nresolved:69\n',
+  });
+  // A static getter is read once, so a second read's answer never reaches a failure.
+  expect(exits('captured', { FIXTURE_CASE: 'flipping' })).toEqual({
+    status: 69,
+    stderr: 'Second.\n',
+    stdout: 'instances:69,69\nresolved:69\n',
+  });
+  // A reserved static written after construction reaches neither the instance nor the process.
+  expect(exits('captured', { FIXTURE_CASE: 'mutated' })).toEqual({
+    status: 69,
+    stderr: 'Mutated.\n',
+    stdout: 'instance:69\nresolved:69\n',
+  });
+});
+
+test('a static getter that throws reports its error as an internal error with code 1', () => {
+  expect(exits('unreadable')).toEqual({
+    status: 1,
+    stderr: 'Internal error: The code table is unavailable.\n',
+    stdout: 'resolved:1\n',
+  });
+});
+
+test('overwriting the statics of core classes changes no code core resolves', () => {
+  expect(exits('core-statics', { FIXTURE_CASE: 'fatal' })).toEqual({
+    status: 1,
+    stderr: 'Stopped.\n',
+    stdout: 'resolved:1\n',
+  });
+  // A subclass that declares nothing reads its core ancestor's captured code.
+  expect(exits('core-statics', { FIXTURE_CASE: 'fatal', FIXTURE_THROWN: 'subclass' })).toEqual({
+    status: 1,
+    stderr: 'Config is unreadable.\n',
+    stdout: 'resolved:1\n',
+  });
+  expect(
+    invoke(new URL('fixtures/exit-codes.mjs', import.meta.url), ['core-statics', 'bogus'], {
+      env: { FIXTURE_CASE: 'usage' },
+    }),
+  ).toEqual({
+    status: 2,
+    stderr: 'Invalid input: Unknown command "bogus". Use one of: known.\n',
+    stdout: 'resolved:2\n',
+  });
+  // The DeclarationError a reserved code raises keeps code 1 and constructs without recursion.
+  expect(exits('core-statics', { FIXTURE_CASE: 'declaration' })).toEqual({
+    status: 1,
+    stderr: `Invalid declaration: Failure class "InterruptError" declares exit code 130. ${correction}\n`,
     stdout: 'resolved:1\n',
   });
 });

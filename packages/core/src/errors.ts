@@ -98,28 +98,75 @@ export function commandSentence(name: string | null): string {
 }
 
 /**
+ * Each failure class's code, captured at the first construction of the class or of a subclass that
+ * declares none, so a static changed afterward cannot give one class a second code. Core's own
+ * classes are captured when this module loads, so no write to their statics reaches a failure.
+ */
+const classCodes = new WeakMap<object, FailureExitCode>();
+
+/** Each constructed failure's code, which its `exitCode` reports and `run()` resolves. */
+const failureCodes = new WeakMap<LoomError, FailureExitCode>();
+
+/**
+ * The code one class exits with: the code captured for it, or else its own static when it declares
+ * one, or else its parent's. `constructed` names the class the diagnostic reports, the one the
+ * failing construction named.
+ */
+function classCode(target: object, constructed: { readonly name: string }): FailureExitCode {
+  const captured = classCodes.get(target);
+  if (captured !== undefined) {
+    return captured;
+  }
+  const parent = Reflect.getPrototypeOf(target);
+  const declared: unknown =
+    Object.hasOwn(target, 'exitCode') || parent === null
+      ? Reflect.get(target, 'exitCode')
+      : classCode(parent, constructed);
+  if (!isFailureExitCode(declared)) {
+    throw new DeclarationError(undeclarableMessage(constructed.name, declared));
+  }
+  classCodes.set(target, declared);
+  return declared;
+}
+
+/**
+ * The code a failure exits with. A value that inherits from a failure class without having been
+ * constructed holds none, and `toFailure` reports it as an internal error, so it reads 1.
+ */
+export function exitCodeOf(failure: LoomError): FailureExitCode {
+  return failureCodes.get(failure) ?? 1;
+}
+
+/**
  * Every failure `run()` reports is an instance of a public class. Each class carries the facts its
  * sentence interpolates, so a view reads them instead of parsing prose. The exit code is a static
- * field the class declares, read from the nearest ancestor that declares one, so one class exits
- * with one code and a projection reads it without an instance; the instance reports the same
- * value. `message` never carries a category prefix; the default views add it.
+ * field the class declares, read from the nearest ancestor that declares one and captured at the
+ * class's first construction, so one class exits with one code and a projection reads it without
+ * an instance. The instance reports the same value through a read-only accessor, which no subclass
+ * property and no assignment replaces. `message` never carries a category prefix; the default
+ * views add it.
  */
 export abstract class LoomError extends Error {
   static readonly exitCode: FailureExitCode = 1;
-  readonly exitCode: FailureExitCode;
 
   /**
-   * Reads the constructed class's code. A code outside 1 through 125 throws a `DeclarationError`
-   * in place of the failure, because core never clamps or replaces a code.
+   * Reads the constructed class's code, captured at its first construction. A code outside 1
+   * through 125 throws a `DeclarationError` in place of the failure and captures nothing, because
+   * core never clamps or replaces a code.
    */
   constructor(message: string) {
-    const declared: unknown = new.target.exitCode;
-    if (!isFailureExitCode(declared)) {
-      throw new DeclarationError(undeclarableMessage(new.target.name, declared));
-    }
+    const code = classCode(new.target, new.target);
     super(message);
-    this.exitCode = declared;
+    failureCodes.set(this, code);
     this.name = 'LoomError';
+  }
+
+  /**
+   * The code this failure exits with. An accessor without a setter, so a subclass cannot declare it
+   * as a property, and an assignment throws in strict mode code and is ignored in sloppy mode code.
+   */
+  get exitCode(): FailureExitCode {
+    return exitCodeOf(this);
   }
 }
 
@@ -329,7 +376,40 @@ export function notTextReason(value: unknown): string {
   return `The view returned ${typeof value} instead of a string.`;
 }
 
-/** Every thrown value reaches reporting as a failure class; anything else is internal. */
+/**
+ * Every thrown value reaches reporting as a failure class; anything else is internal. A value that
+ * inherits from a failure class without having been constructed holds no code, so it is internal
+ * too.
+ */
 export function toFailure(thrown: unknown): LoomError {
-  return thrown instanceof LoomError ? thrown : new InternalError(reasonOf(thrown), thrown);
+  if (!(thrown instanceof LoomError)) {
+    return new InternalError(reasonOf(thrown), thrown);
+  }
+  return failureCodes.has(thrown)
+    ? thrown
+    : new InternalError(
+        'A thrown value inherits from a failure class but was never constructed as one.',
+        thrown,
+      );
+}
+
+// Core's own classes are captured now, before any application code can write their statics.
+for (const Class of [
+  LoomError,
+  UsageError,
+  InputError,
+  UnknownCommandError,
+  NonCallableCommandError,
+  UnexpectedArgumentError,
+  UnknownOptionError,
+  MissingValueError,
+  UnexpectedValueError,
+  RepeatedOptionError,
+  ShortGroupError,
+  DeclarationError,
+  FatalError,
+  InternalError,
+  ResultError,
+]) {
+  classCodes.set(Class, Class.exitCode);
 }

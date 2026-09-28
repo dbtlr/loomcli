@@ -32,7 +32,7 @@ import type {
   ResultMethod,
 } from './command.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import { DeclarationError, InternalError, reasonOf, toFailure } from './errors.js';
+import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
@@ -530,7 +530,7 @@ class ApplicationBuilder<
         primary = error;
         try {
           const failure = toFailure(error);
-          code = failure.exitCode;
+          code = exitCodeOf(failure);
           output ??= new Output(captureHost(undefined, stderr), controller.signal);
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
