@@ -1,5 +1,6 @@
 import { posix, win32 } from 'node:path';
 
+import { pathIssue, pathReadableIssue, pathWritableIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, readOptions } from './faults.js';
@@ -13,19 +14,6 @@ interface PathOptions {
 }
 
 type PathAccess = 'read' | 'write';
-
-const sentences: Record<PathAccess, Record<PathKind, string>> = {
-  read: {
-    any: 'Expected a readable file or directory that exists.',
-    directory: 'Expected a readable directory that exists.',
-    file: 'Expected a readable file that exists.',
-  },
-  write: {
-    any: 'Expected a writable path, or a new path in a writable directory.',
-    directory: 'Expected a writable directory, or a new directory in a writable directory.',
-    file: 'Expected a writable file, or a new file in a writable directory.',
-  },
-};
 
 function accessOf(value: unknown): PathAccess | undefined {
   if (value === undefined || value === 'read' || value === 'write') {
@@ -52,12 +40,15 @@ function path(options?: PathOptions): Validator<string> {
   const declared = readOptions('path', options);
   const access = accessOf(declared.access);
   const kind = kindOf(declared.kind, access);
-  const sentence = access === undefined ? 'Expected a path.' : sentences[access][kind];
+  const issue =
+    access === undefined
+      ? pathIssue.issue({})
+      : (access === 'read' ? pathReadableIssue : pathWritableIssue).issue({ kind });
   return createValidator({
     inputSchema: { type: 'string', minLength: 1 },
     parse: (raw, context): ParseResult<string> | Promise<ParseResult<string>> => {
       if (raw === '' || raw.includes('\0')) {
-        return reject(sentence);
+        return reject(issue);
       }
       const { cwd, platform } = context.host;
       const rules = platform === 'win32' ? win32 : posix;
@@ -69,7 +60,7 @@ function path(options?: PathOptions): Validator<string> {
         access === 'read'
           ? readable(resolved, kind)
           : writable(resolved, kind, rules.dirname(resolved));
-      return probe.then((passes) => (passes ? { value: resolved } : reject(sentence)));
+      return probe.then((passes) => (passes ? { value: resolved } : reject(issue)));
     },
   });
 }

@@ -75,7 +75,9 @@ test('path() called directly throws the context sentence', () => {
 });
 
 test('the empty string and a NUL character are rejected before anything is read', async () => {
-  await expect(rejection(path(), '')).resolves.toEqual(rejectedWith('Expected a path.'));
+  await expect(rejection(path(), '')).resolves.toEqual(
+    rejectedWith('Expected a nonempty path with no NUL character.'),
+  );
   await expect(rejection(path({ access: 'read' }), 'a\0b')).resolves.toEqual(
     rejectedWith('Expected a readable file that exists.'),
   );
@@ -132,7 +134,9 @@ describe('inside a run with no access', () => {
   });
 
   it('the empty string is rejected', () => {
-    expect(run({}, '/loom/work', '')).toEqual(refused('Expected a path.'));
+    expect(run({}, '/loom/work', '')).toEqual(
+      refused('Expected a nonempty path with no NUL character.'),
+    );
   });
 });
 

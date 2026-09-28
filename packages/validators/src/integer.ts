@@ -1,10 +1,11 @@
 import {
+  boundsIssue,
   boundsSchema,
-  boundsSentence,
   readBounds,
   withinBounds,
   withoutNegativeZero,
 } from './bounds.js';
+import { integerCodes } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
@@ -33,12 +34,12 @@ function integer(options?: IntegerOptions): Validator<number> {
     factory: 'integer',
     requirement: 'a safe integer',
   });
-  const sentence = boundsSentence('a whole number', bounds);
+  const issue = boundsIssue(integerCodes, bounds);
   return createValidator({
     inputSchema: boundsSchema('integer', bounds),
     parse: (raw): ParseResult<number> => {
       const value = readInteger(raw);
-      return value !== undefined && withinBounds(value, bounds) ? { value } : reject(sentence);
+      return value !== undefined && withinBounds(value, bounds) ? { value } : reject(issue);
     },
   });
 }

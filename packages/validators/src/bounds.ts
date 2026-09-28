@@ -1,3 +1,6 @@
+import type { StandardSchemaV1 } from '@loomcli/core';
+
+import type { BoundCodes } from './codes.js';
 import { fault, readOptions } from './faults.js';
 
 /** Inclusive bounds on a numeric factory, either or both absent. */
@@ -48,18 +51,18 @@ function withoutNegativeZero(value: number): number {
   return value === zero ? zero : value;
 }
 
-/** The one sentence for a numeric configuration, each bound printed as JavaScript prints it. */
-function boundsSentence(noun: string, { max, min }: Bounds): string {
+/** The one issue for a numeric configuration, under the code for the bounds it declares. */
+function boundsIssue(codes: BoundCodes, { max, min }: Bounds): StandardSchemaV1.Issue {
   if (min !== undefined && max !== undefined) {
-    return `Expected ${noun} from ${String(min)} through ${String(max)}.`;
+    return codes.range.issue({ max, min });
   }
   if (min !== undefined) {
-    return `Expected ${noun} of at least ${String(min)}.`;
+    return codes.min.issue({ min });
   }
   if (max !== undefined) {
-    return `Expected ${noun} of at most ${String(max)}.`;
+    return codes.max.issue({ max });
   }
-  return `Expected ${noun}.`;
+  return codes.unbounded.issue({});
 }
 
 /** The published schema for a numeric type, with each declared bound. */
@@ -71,5 +74,5 @@ function boundsSchema(type: 'integer' | 'number', { max, min }: Bounds) {
   };
 }
 
-export { boundsSchema, boundsSentence, readBounds, withinBounds, withoutNegativeZero };
+export { boundsIssue, boundsSchema, readBounds, withinBounds, withoutNegativeZero };
 export type { Bounds };

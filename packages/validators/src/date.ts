@@ -1,3 +1,4 @@
+import { dateIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
@@ -23,6 +24,7 @@ function isRealDay(year: number, month: number, day: number): boolean {
 
 /** A calendar date as `YYYY-MM-DD`, kept as the token because a date has no time or zone. */
 function date(): Validator<string> {
+  const issue = dateIssue.issue({});
   return createValidator({
     inputSchema: { type: 'string', format: 'date' },
     parse: (raw): ParseResult<string> => {
@@ -30,7 +32,7 @@ function date(): Validator<string> {
       const real =
         parts !== undefined &&
         isRealDay(Number(parts.year), Number(parts.month), Number(parts.day));
-      return real ? { value: raw } : reject('Expected a date as YYYY-MM-DD, such as 2026-09-25.');
+      return real ? { value: raw } : reject(issue);
     },
   });
 }

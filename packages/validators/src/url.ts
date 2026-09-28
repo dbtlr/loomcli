@@ -1,7 +1,8 @@
+import { urlIssue, urlSchemeIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, quote, readOptions } from './faults.js';
-import { listing, reject } from './issues.js';
+import { reject } from './issues.js';
 import { schemePattern, uriPattern } from './uri-grammar.js';
 
 interface UrlOptions {
@@ -52,10 +53,7 @@ function url(options?: UrlOptions): Validator<URL> {
   const protocols = protocolsOf(readOptions('url', options).protocols);
   // The WHATWG parser lowercases the scheme and ends `protocol` with a colon.
   const listed = new Set(protocols?.map((protocol) => `${protocol.toLowerCase()}:`));
-  const sentence =
-    protocols === undefined
-      ? 'Expected an absolute URL, such as https://example.com.'
-      : `Expected an absolute URL with the scheme ${listing(protocols)}.`;
+  const issue = protocols === undefined ? urlIssue.issue({}) : urlSchemeIssue.issue({ protocols });
   return createValidator({
     inputSchema: {
       type: 'string',
@@ -64,12 +62,12 @@ function url(options?: UrlOptions): Validator<URL> {
     },
     parse: (raw): ParseResult<URL> => {
       if (!uriPattern.test(raw) || !URL.canParse(raw)) {
-        return reject(sentence);
+        return reject(issue);
       }
       const parsed = new URL(raw);
       return protocols === undefined || listed.has(parsed.protocol)
         ? { value: parsed }
-        : reject(sentence);
+        : reject(issue);
     },
   });
 }

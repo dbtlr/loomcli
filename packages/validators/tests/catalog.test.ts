@@ -2,18 +2,42 @@ import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');
 
-test('the root export holds the nine factories and createValidator', () => {
+test('the root export holds the nine factories, createValidator, issueCode, and the catalog codes', () => {
   expect(Object.keys(catalog).toSorted()).toEqual([
     'createValidator',
     'date',
+    'dateIssue',
     'integer',
+    'integerIssue',
+    'integerMaxIssue',
+    'integerMinIssue',
+    'integerRangeIssue',
+    'issueCode',
     'number',
+    'numberIssue',
+    'numberMaxIssue',
+    'numberMinIssue',
+    'numberRangeIssue',
     'oneOf',
+    'oneOfIssue',
     'path',
+    'pathIssue',
+    'pathReadableIssue',
+    'pathWritableIssue',
     'port',
+    'portIssue',
     'text',
+    'textExactLengthIssue',
+    'textLengthRangeIssue',
+    'textMaxLengthIssue',
+    'textMinLengthIssue',
+    'textNonemptyIssue',
+    'textPatternIssue',
     'url',
+    'urlIssue',
+    'urlSchemeIssue',
     'uuid',
+    'uuidIssue',
   ]);
 });
 
@@ -41,7 +65,7 @@ test.each([
 test.each([
   [
     'text',
-    catalog.text({ maxLength: 8, pattern: /^a/u }),
+    catalog.text({ maxLength: 8, message: 'Expected a leading a.', pattern: /^a/u }),
     '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","minLength":1,"maxLength":8,"pattern":"^a"}',
   ],
   [

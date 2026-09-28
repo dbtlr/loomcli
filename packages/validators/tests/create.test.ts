@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { expect, expectTypeOf, test } from 'vite-plus/test';
 
-import { createValidator } from '../src/index.js';
+import { createValidator, issueCode } from '../src/index.js';
 import type { ParseResult, Validator } from '../src/index.js';
 import { declarationFault, faultOf, published, verdict } from './support.js';
 
@@ -31,6 +31,34 @@ test('parse decides the verdict for each raw string', async () => {
   await expect(verdict(lowercase, 'ABC')).resolves.toEqual({
     issues: [{ message: 'Expected lowercase letters.' }],
   });
+});
+
+test('an issue with a code and parameters passes through unchanged', async () => {
+  const shout = issueCode('@acme/checks/shout', {
+    message: ({ word }: { word: string }) => `Expected ${word} in capitals.`,
+    schema: {
+      '~standard': {
+        validate: (value: unknown) =>
+          value !== null &&
+          typeof value === 'object' &&
+          'word' in value &&
+          typeof value.word === 'string'
+            ? { value: { word: value.word } }
+            : { issues: [{ message: 'Expected { word: string }.' }] },
+        vendor: 'acme',
+        version: 1,
+      },
+    },
+  });
+  const issue = shout.issue({ word: 'NAME' });
+  const validator = createValidator({
+    parse: (raw) => (raw === raw.toUpperCase() ? { value: raw } : { issues: [issue] }),
+  });
+  const result = await verdict(validator, 'name');
+  expect(result.issues?.[0]).toBe(issue);
+  expect(result.issues).toEqual([
+    { code: '@acme/checks/shout', message: 'Expected NAME in capitals.', params: { word: 'NAME' } },
+  ]);
 });
 
 test('the output type is inferred from the value parse returns', async () => {

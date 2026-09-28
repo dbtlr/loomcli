@@ -23,21 +23,22 @@ export async function verdict<Output>(validator: StandardSchemaV1<string, Output
 }
 
 /**
- * The result of one direct call, and whether any issue message repeats the token.
- * The empty token is inside every string, so it never counts as repeated.
+ * The messages of one direct call's issues, and whether any of them repeats the token.
+ * The empty token is inside every string, so it never counts as repeated. Each issue's code and
+ * parameters are pinned under `codes.test.ts`.
  */
 export async function rejection(validator: StandardSchemaV1<string, unknown>, token: string) {
   const result = await verdict(validator, token);
-  const messages = result.issues?.map((issue) => issue.message) ?? [];
+  const messages = result.issues?.map((issue) => issue.message);
   return {
-    repeatsToken: token !== '' && messages.some((message) => message.includes(token)),
-    result,
+    messages,
+    repeatsToken: token !== '' && (messages ?? []).some((message) => message.includes(token)),
   };
 }
 
 /** What `rejection` reads for a token rejected with exactly one issue carrying the message. */
 export function rejectedWith(message: string) {
-  return { repeatsToken: false, result: { issues: [{ message }] } };
+  return { messages: [message], repeatsToken: false };
 }
 
 /** What the call threw: whether it was a `DeclarationError`, and its message. */
@@ -56,4 +57,13 @@ export function faultOf(call: () => unknown) {
 /** What `faultOf` reads for a `DeclarationError` carrying the message. */
 export function declarationFault(message: string) {
   return { declaration: true, message };
+}
+
+/**
+ * An issue built by hand, as another validator or a schema library would return it, with fields
+ * the Standard Schema issue type does not name.
+ */
+export function foreignIssue(fields: { message: string } & Record<string, unknown>) {
+  const issue: StandardSchemaV1.Issue = fields;
+  return issue;
 }
