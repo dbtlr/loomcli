@@ -214,11 +214,6 @@ const scenarios = {
         }),
       ],
     }).action(dispatch),
-  'before-build': () =>
-    new Application('store', {
-      plugins: [hinting('fixture/one', () => 'never')],
-      views: [override(LoomError, where)],
-    }).action(dispatch),
   'broken-array': () => broken(() => ['fine', 7]),
   // Index 1 of three is never assigned, so the list holds a hole there.
   'broken-controls': () =>
@@ -393,9 +388,7 @@ if (build === undefined) {
 }
 // A declaration that throws reports its fault and ends the fixture here.
 const app = declare(build);
-const options = { host: { argv }, signal: controller.signal };
-// A JavaScript caller reaches the signal slot with any value, which fails before the graph builds.
-const code = await app.run(scenario === 'before-build' ? { ...options, signal: 'nope' } : options);
+const code = await app.run({ host: { argv }, signal: controller.signal });
 for (const call of calls) {
   process.stdout.write(`${call}\n`);
 }

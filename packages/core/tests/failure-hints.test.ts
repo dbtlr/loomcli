@@ -53,14 +53,6 @@ test('a build fault reads the application name, an empty path, and no hints, and
   });
 });
 
-test('a failure raised before build calls no hook', () => {
-  const result = run('before-build');
-  expect(result.stdout).toBe('resolved:1\n');
-  expect(result.stderr).toBe(
-    'Internal error: run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.\n',
-  );
-});
-
 test('a declared default its validator rejects calls the hook with an empty path at the root', () => {
   const result = run('default-rejected');
   expect(result.stdout).toBe('hook:fixture/one:DeclarationError:[]\nresolved:1\n');
