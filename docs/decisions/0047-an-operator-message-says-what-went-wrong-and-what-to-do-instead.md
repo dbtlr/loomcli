@@ -57,3 +57,4 @@ Proposed 2026-09-28. It moves to accepted when the audited messages in [Failure 
 ## Changelog
 
 - 2026-09-28: Proposed with the failure message rules.
+- 2026-09-28: The suggestions contract in [Suggestions](../core.md#suggestions) narrows the Pointers clause: core's sentence still never names a suggestion, and a plugin's own override of the failure's view may state one as the fix, as the suggestions plugin does. The same contract adds an audit row: core's default text opens every `UsageError` with the application name and a colon in place of `Invalid input: `, the form operator-facing tools such as docker, heroku, and terraform use; `Invalid declaration: ` stays. Both bind when this record is accepted.
