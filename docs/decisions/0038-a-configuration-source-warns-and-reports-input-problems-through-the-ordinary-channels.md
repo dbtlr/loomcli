@@ -4,7 +4,7 @@ title: ADR-0038 - A configuration source warns and reports input problems throug
 description: The configuration source's context gains the output channel, the style, and the graph a middleware or an action already reads, and a resolver that throws an `InputError` reports it with code 2 like an action does. This supersedes the ADR-0032 clause that made every throw from a source a plugin fault.
 status: accepted
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0038 - A configuration source warns and reports input problems through the ordinary channels
@@ -43,3 +43,4 @@ Accepted 2026-09-26 with the implementation. The resolver receives `out`, `style
 
 - 2026-09-26: Proposed with the configuration plugin contract under [ADR-0039](0039-the-configuration-plugin-reads-layered-json-files-and-fails-only-on-the-file-the-operator-names.md).
 - 2026-09-26: Accepted with the implementation. A source's `out.results()` call is the results fault with a fifth kind, `source`, so its sentence names the caller as the middleware kind does, and the call is rethrown as that fault rather than wrapped as a plugin fault.
+- 2026-09-27: [ADR-0045](0045-a-failure-class-declares-its-exit-code.md), proposed, widens the input-problems carve-out from an `InputError` to any `LoomError` the resolver throws or rejects with, which reports with its class's code: 2 for an `InputError` as above, 1 for the `FatalError` that `out.fatal()` throws, and the declared code for an application's own failure class. Each is held and raised at the dispatch boundary as an `InputError` is. A plain `Error`, and any throw while core reads the answers, stays a plugin fault with code 1. This binds when ADR-0045 is accepted.
