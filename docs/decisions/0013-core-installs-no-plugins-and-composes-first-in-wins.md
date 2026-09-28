@@ -4,7 +4,7 @@ title: ADR-0013 - Core installs no plugins by default, and contributions compose
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-24
+modified: 2026-09-27
 ---
 
 # ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots
@@ -41,3 +41,4 @@ An application that wants help output installs the help plugin. Core stays small
 - 2026-09-24: [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md), proposed, adds the configuration source to the contribution kinds as a single-owner position: a plugin definition may declare one `source`, and a second installed plugin that declares one fails at build naming both plugins, as a second claim on the signals slot does. The fixed precedence of argv, environment, configuration, and default is core-owned, and no plugin reorders it, which keeps this record's rejection of plugin-reorderable precedence. It binds when that record is accepted.
 - 2026-09-25: [ADR-0033](0033-a-plugin-attaches-ordinary-commands-to-the-root.md), proposed, adds Commands to the contribution kinds: a plugin definition may list Commands, which attach to the root in installation order before the application's own. A plugin Command does not resolve first-in-wins; a name or alias that repeats another root child's fails the build under the ordinary sibling rules. It binds when that record is accepted.
 - 2026-09-25: ADR-0033 is accepted. The entry above binds as written: a plugin Command composes by the collision rule, never first-in-wins.
+- 2026-09-27: [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md), proposed, narrows the hook clause above for `onFailure`: hooks still run in installation order, but each receives the failure and its context alone, and their hints accumulate in that order. It binds when that record is accepted.
