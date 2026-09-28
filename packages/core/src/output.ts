@@ -211,7 +211,7 @@ export class Output {
   // Every fault the output path raised beside its calls, reported after the primary outcome.
   // A source a sequence stopped on and a results-lane fault are both such faults.
   private readonly stops: unknown[] = [];
-  // The routed Command an incomplete sequence names, published once routing resolved it.
+  // The path routing walked, which an incomplete sequence names, updated as each name routes.
   private route: readonly string[] = [];
   /**
    * The channel every caller writes through. It is typed with the result left open, because the
@@ -336,7 +336,7 @@ export class Output {
     this.registry = registry;
   }
 
-  /** The routed path, published once routing resolved it, which an incomplete sequence names. */
+  /** The path routing walked, updated as each name routes, which an incomplete sequence names. */
   useRoute(path: readonly string[]): void {
     this.route = path;
   }
