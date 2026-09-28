@@ -209,7 +209,13 @@ const scenarios = {
     routed({
       plugins: [
         hinting('fixture/one', (failure) => {
-          failure.exitCode = 0;
+          // The instance code is an accessor without a setter, so this strict mode assignment throws.
+          // The hook catches it to show that no assignment reaches the code run() resolves.
+          try {
+            failure.exitCode = 0;
+          } catch {
+            // Ignored: the resolved code stays the class's.
+          }
           return 'hinted';
         }),
       ],
