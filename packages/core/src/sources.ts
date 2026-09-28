@@ -1,4 +1,4 @@
-import { asSentence, InputError, InternalError, reasonOf, ResultError } from './errors.js';
+import { asSentence, InternalError, LoomError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject, isProseLine } from './facts.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
@@ -44,11 +44,11 @@ interface SourceStage {
  * What the stage found beside the values it filled. `labels` names where each filled option's value
  * came from, by option name, and `rejected` names the variable of each Boolean option whose value
  * is outside the grammar. Both are internal to core's failure messages. `fault` is a configuration
- * source's own fault, or the `InputError` its resolver threw, which stops the stage and takes the
- * place of every validation problem.
+ * source's own fault, or the failure its resolver threw, which stops the stage and takes the place
+ * of every validation problem.
  */
 interface SourceOutcome {
-  fault: InternalError | InputError | undefined;
+  fault: LoomError | undefined;
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
 }
@@ -266,10 +266,10 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   try {
     answers = await resolver(context);
   } catch (error) {
-    // The resolver's own InputError is a usage failure.
-    // Its out.results() call is the results fault that names it.
+    // The resolver's own failure reports with its class's code, as an action's does.
+    // That covers an InputError, the FatalError out.fatal() throws, and its out.results() fault.
     // Every other throw is the plugin's fault.
-    if (error instanceof InputError || (error instanceof ResultError && error.kind === 'source')) {
+    if (error instanceof LoomError) {
       throw error;
     }
     throw sourceFailure(sentence, error);
@@ -357,12 +357,9 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
     }
     return { fault: undefined, labels, rejected };
   } catch (error) {
-    // The resolver's InputError reports as a usage failure.
+    // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
-    const fault =
-      error instanceof InternalError || error instanceof InputError
-        ? error
-        : new InternalError(reasonOf(error), error);
+    const fault = error instanceof LoomError ? error : new InternalError(reasonOf(error), error);
     return { fault, labels, rejected };
   }
 }

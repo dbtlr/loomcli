@@ -18,6 +18,24 @@ export {
   UnknownOptionError,
   UsageError,
 } from './errors.js';
+export {
+  EX_CANTCREAT,
+  EX_CONFIG,
+  EX_DATAERR,
+  EX_IOERR,
+  EX_NOHOST,
+  EX_NOINPUT,
+  EX_NOPERM,
+  EX_NOUSER,
+  EX_OSERR,
+  EX_OSFILE,
+  EX_PROTOCOL,
+  EX_SOFTWARE,
+  EX_TEMPFAIL,
+  EX_UNAVAILABLE,
+  EX_USAGE,
+} from './exit-codes.js';
+export type { FailureExitCode } from './exit-codes.js';
 export { extension, readExtension } from './extension.js';
 export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';

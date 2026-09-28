@@ -1,5 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { isFailureExitCode } from './exit-codes.js';
+import type { FailureExitCode } from './exit-codes.js';
 import type { InputIdentity } from './types.js';
 
 /** The same subject at the start of a sentence, where a token fault names its Command. */
@@ -47,6 +49,18 @@ function shortGroupMessage(fault: ShortGroupFault): string {
 }
 
 /**
+ * The sentence for a class whose declared code no failure may exit with. The class is named by its
+ * constructor, because the subclass has not yet set the instance's `name`.
+ */
+function undeclarableMessage(className: string, declared: unknown): string {
+  const clause =
+    typeof declared === 'number' && Number.isFinite(declared)
+      ? `declares exit code ${String(declared)}.`
+      : 'declares an exit code that is not a finite number.';
+  return `Failure class "${className}" ${clause} Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.`;
+}
+
+/**
  * Core's own text for one failure: its message under the category prefix its class carries, with
  * the trailing newline every view's text carries. The four categories are disjoint branches of the
  * hierarchy, so one ordered test reads every class, and a class without a prefix of its own writes
@@ -85,24 +99,36 @@ export function commandSentence(name: string | null): string {
 
 /**
  * Every failure `run()` reports is an instance of a public class. Each class carries the facts its
- * sentence interpolates, so a view reads them instead of parsing prose, and the exit status is
- * a field of the base, so a subclass inherits it. `message` never carries a category prefix; the
- * default views add it.
+ * sentence interpolates, so a view reads them instead of parsing prose. The exit code is a static
+ * field the class declares, read from the nearest ancestor that declares one, so one class exits
+ * with one code and a projection reads it without an instance; the instance reports the same
+ * value. `message` never carries a category prefix; the default views add it.
  */
 export abstract class LoomError extends Error {
-  readonly exitCode: 1 | 2;
+  static readonly exitCode: FailureExitCode = 1;
+  readonly exitCode: FailureExitCode;
 
-  constructor(message: string, exitCode: 1 | 2) {
+  /**
+   * Reads the constructed class's code. A code outside 1 through 125 throws a `DeclarationError`
+   * in place of the failure, because core never clamps or replaces a code.
+   */
+  constructor(message: string) {
+    const declared: unknown = new.target.exitCode;
+    if (!isFailureExitCode(declared)) {
+      throw new DeclarationError(undeclarableMessage(new.target.name, declared));
+    }
     super(message);
-    this.exitCode = exitCode;
+    this.exitCode = declared;
     this.name = 'LoomError';
   }
 }
 
 /** Exit 2: the invocation, not the application, is wrong. */
 export abstract class UsageError extends LoomError {
+  static override readonly exitCode: FailureExitCode = 2;
+
   constructor(message: string) {
-    super(message, 2);
+    super(message);
     this.name = 'UsageError';
   }
 }
@@ -231,15 +257,18 @@ export class ShortGroupError extends UsageError {
 /** Exit 1: the declaration is wrong, so the author reads the diagnostic. */
 export class DeclarationError extends LoomError {
   constructor(message: string) {
-    super(message, 1);
+    super(message);
     this.name = 'DeclarationError';
   }
 }
 
-/** Exit 1: the application ended the invocation itself. An application may subclass it. */
+/**
+ * Exit 1: the application ended the invocation itself. An application may subclass it, and the
+ * subclass may declare its own exit code.
+ */
 export class FatalError extends LoomError {
   constructor(message: string) {
-    super(message, 1);
+    super(message);
     this.name = 'FatalError';
   }
 }
@@ -249,7 +278,7 @@ export class InternalError extends LoomError {
   readonly cause: unknown;
 
   constructor(message: string, cause: unknown) {
-    super(message, 1);
+    super(message);
     this.cause = cause;
     this.name = 'InternalError';
   }

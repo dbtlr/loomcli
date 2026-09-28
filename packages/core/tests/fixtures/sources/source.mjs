@@ -1,6 +1,6 @@
 import { setTimeout as after } from 'node:timers/promises';
 
-import { InputError, readExtension, ResultError } from '@loomcli/core';
+import { EX_UNAVAILABLE, FatalError, InputError, readExtension, ResultError } from '@loomcli/core';
 
 import { configKey } from './extension.mjs';
 
@@ -9,6 +9,16 @@ const mode = process.env.FIXTURE_SOURCE ?? 'answer';
 
 if (mode === 'import-fails') {
   throw new Error('the source module failed to evaluate');
+}
+
+/** An application's own failure that declares a sysexits code, raised from the source. */
+class RegistryUnavailableError extends FatalError {
+  static exitCode = EX_UNAVAILABLE;
+
+  constructor() {
+    super('The settings registry is unavailable.');
+    this.name = 'RegistryUnavailableError';
+  }
 }
 
 /**
@@ -54,6 +64,16 @@ const source = async ({ graph, host, options, out, requests, style }) => {
   if (mode === 'result-error') {
     // A ResultError the source built itself is not the fault of its own out.results() call.
     throw new ResultError('middleware', ['bogus']);
+  }
+  if (mode === 'declared') {
+    throw new RegistryUnavailableError();
+  }
+  if (mode === 'declared-getter') {
+    return {
+      get limit() {
+        throw new RegistryUnavailableError();
+      },
+    };
   }
   if (mode === 'input-error-getter') {
     return {
@@ -113,4 +133,12 @@ const source = async ({ graph, host, options, out, requests, style }) => {
   return answers;
 };
 
-export default source;
+/** The resolver core calls. One mode throws where it is called, before any promise exists. */
+function resolver(context) {
+  if (mode === 'declared-sync') {
+    throw new RegistryUnavailableError();
+  }
+  return source(context);
+}
+
+export default resolver;

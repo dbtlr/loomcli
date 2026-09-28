@@ -1,5 +1,5 @@
 import { Application, plugin } from '@loomcli/core';
-import type { CancellationReason, ExitCode, Plugin } from '@loomcli/core';
+import type { CancellationReason, ExitCode, FailureExitCode, Plugin } from '@loomcli/core';
 
 const cancellable = new Application('cancellable').action(({ signal }) => signal.aborted);
 
@@ -18,7 +18,8 @@ function signals(): Plugin {
 // @ts-expect-error TS2322: SIGHUP is outside the closed set the signals slot accepts.
 const hangup = plugin('@consumer/hangup', { signals: ['SIGHUP'] });
 
-// Every member of the widened `ExitCode`, so a further member would fail to compile here.
+// Every member of the widened `ExitCode`: core's codes by name, and the range a class declares.
+// A further member outside the declarable range would fail to compile here.
 function describe(status: ExitCode): string {
   switch (status) {
     case 0: {
@@ -37,8 +38,8 @@ function describe(status: ExitCode): string {
       return 'terminated';
     }
     default: {
-      const exhaustive: never = status;
-      return exhaustive;
+      const declared: FailureExitCode = status;
+      return `declared ${String(declared)}`;
     }
   }
 }

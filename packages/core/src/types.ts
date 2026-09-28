@@ -3,6 +3,7 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import type { FailureExitCode } from './exit-codes.js';
 import type { ExtensionValue } from './extension.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -123,7 +124,8 @@ export type NameConstraint<Name extends string, Whole extends string = Name> =
         : LiteralNameFault
       : LiteralNameFault;
 
-export type ExitCode = 0 | 1 | 2 | 130 | 143;
+/** The status `run()` resolves: success, a failure class's code, or a cancellation code. */
+export type ExitCode = 0 | FailureExitCode | 130 | 143;
 export interface InputTerminal {
   isTTY: boolean;
 }
