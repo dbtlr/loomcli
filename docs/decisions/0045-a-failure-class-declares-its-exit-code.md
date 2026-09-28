@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0045 - A failure class declares its exit code
 description: A failure class states its exit code as a static field, read from the nearest ancestor that declares one, so one class exits with one code wherever it is raised. The declarable codes are 1 through 125, a reserved code throws a DeclarationError at construction, and core exports the sysexits names. A configuration source's LoomError reports with its class's code.
-status: proposed
+status: accepted
 created: 2026-09-27
 modified: 2026-09-27
 ---
@@ -46,8 +46,9 @@ The manifest's `exitCodes` keeps the five codes core resolves itself. A declared
 
 ## Status
 
-Proposed with the declared exit code contract in [Declared exit codes](../core.md#declared-exit-codes). It moves to accepted when core's classes declare their codes as static fields, a reserved code throws the diagnostic above at construction, the fifteen constants and `FailureExitCode` are exported, a failure class raised from an action, a middleware, and a configuration source keeps its code, and `jsonkit get missing -f doc.json` exits 65 under Node and Bun.
+Accepted 2026-09-27 with the implementation. `LoomError` declares 1 and `UsageError` 2 as static fields, and every other core class inherits its code. A reserved code throws the diagnostic above at construction. `@loomcli/core` exports the fifteen constants and `FailureExitCode`. A failure class raised from an action, a middleware, and a configuration source keeps its code, and `jsonkit get missing -f doc.json` and `jsonkit keys missing -f doc.json` exit 65 under Node and Bun.
 
 ## Changelog
 
 - 2026-09-27: Proposed with the declared exit code contract.
+- 2026-09-27: Accepted with the implementation.
