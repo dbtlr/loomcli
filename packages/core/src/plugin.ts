@@ -8,6 +8,7 @@ import type { AnyExtension, DescriptorRegistry } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
 import { boundOptions } from './globals.js';
 import type { InputRecords } from './globals.js';
+import type { FailureHook } from './hints.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
@@ -58,6 +59,7 @@ interface DeclaredPlugin {
   options?: PluginOptions;
   middleware?: { activate?: unknown; load?: unknown };
   onCommandAttach?: unknown;
+  onFailure?: unknown;
   extensions?: readonly AnyExtension[];
   views?: unknown;
   signals?: unknown;
@@ -140,9 +142,9 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
 
 /**
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
- * creating and installing the value runs none of its code: a hook runs at graph build, the
- * middleware runs inside an invocation, and the configuration source runs in the input-source
- * stage when an unfilled option carries its binding.
+ * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
+ * `onFailure` runs when `run()` renders a failure, the middleware runs inside an invocation, and the
+ * configuration source runs in the input-source stage when an unfilled option carries its binding.
  */
 interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
@@ -155,6 +157,7 @@ interface PluginDefinition<
     load: () => Promise<{ default: Middleware<Plugin<Options>> }>;
   };
   onCommandAttach?: CommandAttachHook;
+  onFailure?: FailureHook;
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
@@ -167,8 +170,9 @@ interface PluginDefinition<
 
 /**
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
- * none of its code: a hook runs at graph build, and the middleware runs inside an invocation, so an
- * installed plugin an invocation never reaches costs that invocation its hooks alone. Every rule
+ * none of its code: `onCommandAttach` runs at graph build, `onFailure` runs when `run()` renders a
+ * failure, and the middleware runs inside an invocation, so an installed plugin an invocation never
+ * reaches costs that invocation its hooks alone. Every rule
  * that one definition carries on its own throws here, before the value exists.
  */
 function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(
@@ -538,6 +542,24 @@ function readHook(identity: string, declared: unknown): CommandAttachHook | unde
   return declared;
 }
 
+/** Being callable is the whole claim, as it is for `onCommandAttach`; `run()` checks what it returns. */
+function isFailureHook(value: unknown): value is FailureHook {
+  return typeof value === 'function';
+}
+
+/** One plugin's `onFailure` hook, or `undefined` for a plugin that declares none. */
+function readFailureHook(identity: string, declared: unknown): FailureHook | undefined {
+  if (declared === undefined) {
+    return undefined;
+  }
+  if (!isFailureHook(declared)) {
+    throw new DeclarationError(
+      `${pluginSentence(identity)} declares onFailure that is not a function. Supply a function of the failure and its context.`,
+    );
+  }
+  return declared;
+}
+
 /**
  * One plugin's configuration source: the identity of the binding that marks an option as
  * configuration-bound, and the loader that fetches the resolver's module.
@@ -601,6 +623,8 @@ interface BuiltPlugin {
   theme: Palette | undefined;
   /** The hook core calls once per Command at graph build, or nothing where none is declared. */
   onCommandAttach: CommandAttachHook | undefined;
+  /** The hook core calls for each failure `run()` renders after graph build, or nothing. */
+  onFailure: FailureHook | undefined;
   /** The plugin's own `views` slot, read once the validated theme is in place. */
   views: unknown;
   identity: string;
@@ -663,6 +687,7 @@ function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin 
   const commands = readCommands(named, declaration.commands);
   const middleware = readMiddleware(named, declaration.middleware, names);
   const onCommandAttach = readHook(named, declaration.onCommandAttach);
+  const onFailure = readFailureHook(named, declaration.onFailure);
   buildViews(
     { declares: true, sentence: pluginSentence(named) },
     declaration.views,
@@ -675,6 +700,7 @@ function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin 
     inputs,
     middleware,
     onCommandAttach,
+    onFailure,
     records: build.records,
     signals,
     source,

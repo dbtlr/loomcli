@@ -51,6 +51,7 @@ export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
 export type { InputProblem, ResultFault } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
+export type { FailureHook, FailureHookContext } from './hints.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
 export type { IncompleteResult } from './lanes.js';
@@ -61,6 +62,8 @@ export type {
   DeclaredView,
   DeclaredViewBrand,
   FailureClass,
+  FailureView,
+  FailureViewContext,
   ViewContribution,
   ViewOverride,
 } from './view.js';

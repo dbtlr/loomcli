@@ -49,11 +49,34 @@ type AnyDeclaredView = (View<never> | RowView<never>) &
 type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
 
 /**
- * One stored view function, with the data type erased. A registry holds one entry per key and
- * cannot carry a type parameter per entry, so `override(key, replacement)` is where the
- * replacement is typed against the key it answers.
+ * What every failure view reads: the stderr view context, where the run was, and the hints the
+ * installed plugins' `onFailure` hooks returned. `run()` fills it where it catches the failure, so
+ * no failure class carries these facts. `path` holds the canonical names routing walked, `[]`
+ * before routing, and `hints` is `[]` when no hook contributed.
  */
-type ViewFunction = (data: never, context: ViewContext) => unknown;
+interface FailureViewContext extends ViewContext {
+  readonly application: string;
+  readonly path: readonly string[];
+  readonly hints: readonly string[];
+}
+
+/**
+ * A failure class's view. A `View<Failure>` written against `ViewContext` is assignable to it,
+ * because its function reads less of the context.
+ */
+interface FailureView<Failure extends LoomError> {
+  render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
+  /** A failure view has one shape, as a view does. */
+  row?: never;
+}
+
+/**
+ * One stored view function, with the data type and the context erased. A registry holds one entry
+ * per key and cannot carry a type parameter per entry, so `override(key, replacement)` is where the
+ * replacement is typed against the key it answers: a failure class's view reads the failure view
+ * context, and every other view reads the view context.
+ */
+type ViewFunction = (data: never, context: never) => unknown;
 
 /** One stored row function, with the row type erased for the same reason. */
 type RowFunction = (row: never, index: number, context: ViewContext) => unknown;
@@ -201,7 +224,7 @@ function override<Row>(key: DeclaredRowView<Row>, replacement: NoInfer<RowView<R
 function override<Failure extends LoomError>(
   // The brand is excluded so a declared view never satisfies this overload's key.
   key: FailureClass<Failure> & { readonly [declaredView]?: never },
-  replacement: NoInfer<View<Failure>>,
+  replacement: NoInfer<FailureView<Failure>>,
 ): ViewOverride;
 function override(key: object, replacement: StoredView): ViewOverride {
   const stored: StoredView = {
@@ -402,9 +425,10 @@ interface ResolvedView {
 function readStored(stored: StoredView): ResolvedView {
   // Last resort: no typed path exists.
   // A registry holds one entry per key and cannot carry a type parameter per entry.
-  // A stored view value therefore reads back with its data type erased.
+  // A stored view value therefore reads back with its data type and its context erased.
   // It holds because `override(key, replacement)` typed the replacement against its key's data.
   // Resolution reaches a stored value through that key alone.
+  // A failure key is resolved by `describeFailure` alone, which passes the failure view context.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return stored as ResolvedView;
 }
@@ -514,24 +538,24 @@ type FailureReport =
 /**
  * The text core writes for one failure. Resolution walks the registry as `resolveFailure` defines
  * it and falls to core's own default text, which escapes the raw facts it interpolates. A
- * `FatalError` keeps the authored marked message it was given.
+ * `FatalError` keeps the authored marked message it was given. The default text writes each hint on
+ * its own line under the sentence, as marked text it does not escape; an override decides for
+ * itself. An unrendered report carries the default text without hints, which the plain fallback
+ * path writes.
  */
 function describeFailure(
   registry: ViewRegistry,
   failure: LoomError,
-  context?: ViewContext,
+  context: FailureViewContext,
 ): FailureReport {
   const replacement = resolveFailure(registry, failure);
   if (!replacement) {
-    return {
-      kind: 'rendered',
-      text: failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure)),
-    };
+    const sentence =
+      failure instanceof FatalError ? defaultText(failure) : escapeText(defaultText(failure));
+    const hints = context.hints.map((hint) => `${hint}\n`).join('');
+    return { kind: 'rendered', text: `${sentence}${hints}` };
   }
   try {
-    if (context === undefined) {
-      throw new Error('Missing rendering context.');
-    }
     const text = callView(replacement, failure.name)(failure, context);
     return typeof text === 'string'
       ? { kind: 'rendered', text }
@@ -548,6 +572,8 @@ export type {
   DeclaredViewBrand,
   FailureClass,
   FailureReport,
+  FailureView,
+  FailureViewContext,
   ResolvedRowView,
   ViewContribution,
   ViewContributions,

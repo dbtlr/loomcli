@@ -160,7 +160,7 @@ test('a shortOnly option is named by the spelling an operator would type', () =>
   });
 });
 
-test('a rejected value in a multiple option is reported at its position', () => {
+test('a rejected value in a multiple option is reported at its position, with its own fields', () => {
   expect(reported(['-f', 'x', 'get', 'a', '-F', 'ok', '-F', ''])).toEqual({
     exitCode: 2,
     message: 'Option "--field" at 1: Supply a field name.',
@@ -168,7 +168,17 @@ test('a rejected value in a multiple option is reported at its position', () => 
     problems: [
       {
         input: { global: false, kind: 'option', name: 'field' },
-        issues: [{ message: 'Supply a field name.', path: [1] }],
+        // Zod's own issue fields survive, and core rewrites only the path.
+        issues: [
+          {
+            code: 'too_small',
+            inclusive: true,
+            message: 'Supply a field name.',
+            minimum: 1,
+            origin: 'string',
+            path: [1],
+          },
+        ],
         reason: 'invalid',
         spelling: '--field',
       },
