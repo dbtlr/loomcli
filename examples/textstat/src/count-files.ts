@@ -24,6 +24,15 @@ interface Source {
 }
 
 /**
+ * The reason a read failed, as one sentence ending in a period. A reason that already ends with one
+ * keeps it, so the fix that follows never reads after two periods.
+ */
+function explain(error: unknown): string {
+  const reason = error instanceof Error ? error.message : 'The source could not be read.';
+  return reason.endsWith('.') ? reason : `${reason}.`;
+}
+
+/**
  * The sources of one invocation. Supplied files are the whole selection, so no first file is the
  * whole rule for reading stdin, once an empty selection at a terminal has been rejected.
  */
@@ -70,8 +79,9 @@ async function countAll(
   let total = 0;
   for (const source of selected) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : 'The source could not be read.';
-      throw new FatalError(`Cannot read ${source.failure}: ${reason}`);
+      throw new FatalError(
+        `Cannot read ${source.failure}: ${explain(error)} Supply readable files, or pipe text to stdin.`,
+      );
     });
     if (counts.bytes >= minimum) {
       total += counts.counted;

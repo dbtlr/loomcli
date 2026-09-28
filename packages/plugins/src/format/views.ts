@@ -10,21 +10,26 @@ function identity<Data>(data: Readonly<Data>): unknown {
   return data;
 }
 
-/** Runs `JSON.stringify`, wrapping a thrown error in one plain message with its cause attached. */
+/** The step both encode failures end with: the fix is in the action that supplied the value. */
+const encodeFix = 'Emit plain JSON data from the action.';
+
+/**
+ * Runs `JSON.stringify`, wrapping a thrown error in one fixed message. The engine's reason differs
+ * between runtimes and can hold data, so it stays on the error's `cause` and out of the message.
+ */
 function tryStringify(value: unknown, indent: number | undefined): string | undefined {
   try {
     return JSON.stringify(value, undefined, indent);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : 'An unknown error occurred';
-    throw new Error(`The value cannot be encoded as JSON: ${reason}.`, { cause: error });
+    throw new Error(`The value cannot be encoded as JSON. ${encodeFix}`, { cause: error });
   }
 }
 
-/** `JSON.stringify`, with an `undefined` result turned into the same plain message as a throw. */
+/** `JSON.stringify`, with an `undefined` result turned into a fixed message like a throw's. */
 function stringify(value: unknown, indent?: number): string {
   const encoded = tryStringify(value, indent);
   if (encoded === undefined) {
-    throw new Error('The value cannot be encoded as JSON: the value is undefined.');
+    throw new Error(`The value cannot be encoded as JSON, because it is undefined. ${encodeFix}`);
   }
   return encoded;
 }

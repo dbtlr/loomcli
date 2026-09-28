@@ -34,7 +34,9 @@ async function* from(path: string, value: unknown): AsyncGenerator<Entry> {
   yield { kind: describeKind(value), path };
   for (const [segment, member] of members(value)) {
     if (segment === REFUSED) {
-      throw new FatalError(`Cannot walk ${join(path, segment)}`);
+      throw new FatalError(
+        `Cannot walk ${join(path, segment)}. Remove the "${REFUSED}" key from the document.`,
+      );
     }
     yield* from(join(path, segment), member);
   }

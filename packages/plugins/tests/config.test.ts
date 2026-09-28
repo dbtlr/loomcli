@@ -83,12 +83,12 @@ function received(stdout: string): unknown {
 
 const defaults = { fields: [], limit: '10', quiet: true, total: false };
 
-/** The failure the named file prints for one clause. */
+/** The failure the named file prints for one clause and its fix. */
 function namedFailure(path: string, clause: string): string {
   return `app: Option "--config": File "${path}" ${clause}\n`;
 }
 
-/** The warning a discovered file prints for one clause. */
+/** The warning a discovered file prints for one clause and its fix. */
 function skipped(file: string, clause: string): string {
   return `⚠ Skipped ${file}: the file ${clause}\n`;
 }
@@ -181,24 +181,30 @@ test(
     });
     expect(space.run('project', ['--config', 'missing.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('missing.json', 'does not exist.'),
+      stderr: namedFailure('missing.json', 'does not exist. Supply the path of an existing file.'),
       stdout: 'resolved:2\n',
     });
     space.write('broken.json', '{');
     expect(space.run('project', ['--config', 'broken.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('broken.json', 'is not valid JSON.'),
+      stderr: namedFailure(
+        'broken.json',
+        'is not valid JSON. Correct its syntax, or supply another file.',
+      ),
       stdout: 'resolved:2\n',
     });
     space.write('list.json', '[]');
     expect(space.run('project', ['--config', 'list.json'])).toEqual({
       status: 2,
-      stderr: namedFailure('list.json', 'does not hold a JSON object.'),
+      stderr: namedFailure(
+        'list.json',
+        'does not hold a JSON object. Write its settings as one JSON object.',
+      ),
       stdout: 'resolved:2\n',
     });
     mkdirSync(join(space.project, 'dir.json'));
     expect(space.run('project', ['--config', 'dir.json']).stderr).toBe(
-      namedFailure('dir.json', 'could not be read.'),
+      namedFailure('dir.json', 'could not be read. Supply a file this process can read.'),
     );
     // The takeover reports nothing, and a run that needs no value reads no file.
     const help = space.run('project', ['--config', 'missing.json', '--help']);
@@ -245,7 +251,7 @@ test(
     const warned = space.run('project', []);
     expect(warned).toMatchObject({
       status: 0,
-      stderr: `${skipped('.app.json', 'could not be read.')}${skipped('shared/app.json', 'is not valid JSON.')}`,
+      stderr: `${skipped('.app.json', 'could not be read. Make it readable, or remove it.')}${skipped('shared/app.json', 'is not valid JSON. Correct its syntax, or remove it.')}`,
     });
     expect(received(warned.stdout)).toEqual({ ...defaults, title: 'user' });
     rmSync(join(space.project, '.app.json'), { recursive: true });
@@ -255,7 +261,7 @@ test(
     const result = space.run('project', ['--help']);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe(
-      `${skipped('.app.json', 'is not valid JSON.')}${skipped('shared/app.json', 'does not hold a JSON object.')}${skipped(user, 'does not hold a JSON object.')}`,
+      `${skipped('.app.json', 'is not valid JSON. Correct its syntax, or remove it.')}${skipped('shared/app.json', 'does not hold a JSON object. Write its settings as one JSON object, or remove it.')}${skipped(user, 'does not hold a JSON object. Write its settings as one JSON object, or remove it.')}`,
     );
     expect(result.stdout.startsWith('app')).toBe(true);
   }),
@@ -424,7 +430,9 @@ test(
   'a file listed twice is read and warned about once, and an absolute path is used as written',
   inWorkspace((space) => {
     space.write('.app.json', '{');
-    expect(space.run('twice', []).stderr).toBe(skipped('.app.json', 'is not valid JSON.'));
+    expect(space.run('twice', []).stderr).toBe(
+      skipped('.app.json', 'is not valid JSON. Correct its syntax, or remove it.'),
+    );
     const absolute = space.write(
       'elsewhere/settings.json',
       json({ title: 'absolute' }),
@@ -443,7 +451,7 @@ test(
     expect(received(space.run('project', []).stdout)).toMatchObject({ title: 'bom' });
     space.write('empty.json', '');
     expect(space.run('project', ['--config', 'empty.json']).stderr).toBe(
-      namedFailure('empty.json', 'is not valid JSON.'),
+      namedFailure('empty.json', 'is not valid JSON. Correct its syntax, or supply another file.'),
     );
   }),
 );
@@ -454,7 +462,7 @@ test(
     const escape = String.fromCodePoint(27);
     const escaped = String.raw`esc\u001bape`;
     expect(space.run('project', ['--config', `esc${escape}ape`]).stderr).toBe(
-      namedFailure(escaped, 'does not exist.'),
+      namedFailure(escaped, 'does not exist. Supply the path of an existing file.'),
     );
     space.write(`esc${escape}ape`, json({ limits: { bytes: 'x' } }));
     expect(space.run('project', ['--config', `esc${escape}ape`]).stderr).toBe(
@@ -465,20 +473,26 @@ test(
     expect(space.run('none', [], { XDG_CONFIG_HOME: xdg }).stderr).toBe(
       skipped(
         join(space.root, String.raw`x\u001bdg`, 'app', 'config.json'),
-        'does not hold a JSON object.',
+        'does not hold a JSON object. Write its settings as one JSON object, or remove it.',
       ),
     );
     // A C1 control and a line separator escape too, and a style marker prints literally.
     const odd = `a${String.fromCodePoint(133)}b${String.fromCodePoint(8232)}c`;
     expect(space.run('project', ['--config', odd]).stderr).toBe(
-      namedFailure(String.raw`a\u0085b\u2028c`, 'does not exist.'),
+      namedFailure(
+        String.raw`a\u0085b\u2028c`,
+        'does not exist. Supply the path of an existing file.',
+      ),
     );
     // A well-formed style frame, which an unescaped warning would read as styling and strip.
     const marked = `${String.fromCodePoint(57_344)}["style",[["foreground","red"]]]${String.fromCodePoint(57_345)}m${String.fromCodePoint(57_346)}`;
     const markedXdg = join(space.root, `x${marked}dg`);
     space.write('app/config.json', '[]', markedXdg);
     expect(space.run('none', [], { XDG_CONFIG_HOME: markedXdg }).stderr).toBe(
-      skipped(join(markedXdg, 'app', 'config.json'), 'does not hold a JSON object.'),
+      skipped(
+        join(markedXdg, 'app', 'config.json'),
+        'does not hold a JSON object. Write its settings as one JSON object, or remove it.',
+      ),
     );
   }),
 );

@@ -73,7 +73,7 @@ text(
 | `min` 1 or more, `maxLength` above it | `Expected from 1 through 32 characters.` |
 
 - **Pattern failures.** A pattern failure reads `message`, the author's one sentence describing what the pattern accepts, such as `Expected lowercase letters, digits, and hyphens.` `message` is required whenever `pattern` is given, because only the author can say what the pattern accepts. A token that fails both reports the length sentence.
-- **Faults.** A `minLength` or `maxLength` that is not a non-negative safe integer, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, a `pattern` whose source does not compile under `u`, a `message` that is empty or not a string, a `message` without a `pattern`, and a `pattern` without a `message`.
+- **Faults.** A `minLength` or `maxLength` that is not a non-negative safe integer, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, a `pattern` whose source does not compile under `u`, a `message` that is empty or not a string, a `message` without a `pattern`, and a `pattern` without a `message`, which reads `text() pattern has no message to describe it. Supply a message that states what the pattern accepts.`
 
 ### integer
 
@@ -227,12 +227,12 @@ issueCode<Params>(
 interface IssueCode<Params> {
   readonly code: string;
   readonly schema: StandardSchemaV1<Params>;
-  issue(params: Params): StandardSchemaV1.Issue;
-  read(issue: StandardSchemaV1.Issue): Params | undefined;
+  issue(this: void, params: Params): StandardSchemaV1.Issue;
+  read(this: void, issue: StandardSchemaV1.Issue): Params | undefined;
 }
 ```
 
-The schema's input and output are one type, so `read` validates what `issue` stored.
+The schema's input and output are one type, so `read` validates what `issue` stored. `issue` and `read` declare `this: void`: neither reads its descriptor through `this`, so either can be passed or destructured on its own.
 
 ```ts
 import { Application, InputError, issuePath, override } from '@loomcli/core';
@@ -273,7 +273,7 @@ A validator package declares one issue code for each sentence its validators pri
 - **Declaring a code.** `issueCode(code, { schema, message })` returns a frozen descriptor. `schema` is a Standard Schema that validates the parameters and answers synchronously. `message` builds the code's one sentence from its parameters. Any package that ships validators built with `createValidator` declares its codes this way; the catalog is the first.
 - **The code string.** A code is the declaring package's name, as a plugin identity names its package, then `/` and a rule name of lowercase letters and digits in words joined by single hyphens: `@loomcli/validators/integer-range`.
 - **Rejecting with a code.** `parse` returns `{ issues: [code.issue(params)] }`. `issue` validates `params` through the schema and returns a frozen issue with `message`, the sentence `message` built; `code`, the code string; and `params`, the schema's output. `createValidator` passes the issue through unchanged, and core keeps its fields under [Issues and validator failures](core.md#issues-and-validator-failures).
-- **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, or no code at all. Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
+- **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, or no code at all. Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation. Supply a different value.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
 - **One sentence per code.** A code identifies one sentence, and its parameters are exactly that sentence's blanks, with one fixed shape per code. Parameters hold the rule's settings and never the rejected value.
 - **No per-call rewording.** A factory takes no argument that replaces its sentence. `text()`'s `message` describes the pattern and is the sentence of `text-pattern`. Every other rewording is an override keyed on a code.
 - **Faults.** `issueCode` throws a `DeclarationError` at the call for a code outside the grammar, a `schema` that is not a Standard Schema, and a `message` that is not a function. `issue` throws one for parameters the schema rejects. `issue` and `read` throw one when the schema answers with a promise.

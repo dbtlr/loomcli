@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0047 - An operator message says what went wrong and what to do instead
 description: Every operator message Loom ships names what went wrong and says what to do instead, leaves plugin-dependent pointers to hint lines, repeats no value it cannot vouch for, escapes what it repeats, bidirectional controls included, and quotes no text Loom did not write. A defect shows the operator one generic message, and an author fault that reaches a shipped application is classified as an operator message or a defect.
-status: proposed
+status: accepted
 created: 2026-09-28
 modified: 2026-09-28
 ---
@@ -52,9 +52,10 @@ Core's `InternalError` default text keeps its current form until the author deve
 
 ## Status
 
-Proposed 2026-09-28. It moves to accepted when the audited messages in [Failure messages](../failure-messages.md#9-audit) ship with the rewritten text, `escapeControlCharacters` escapes the listed format characters, and core's routing candidates leave out deprecated Commands, under Node.js and Bun.
+Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: the audited messages in [Failure messages](../failure-messages.md#9-audit) ship with the rewritten text, core's default text opens every `UsageError` with the application name, `escapeControlCharacters` and core's quoted tokens escape the listed format characters, core's routing candidates leave out deprecated Commands, and the example applications' sentences end with their fix, under Node.js and Bun.
 
 ## Changelog
 
 - 2026-09-28: Proposed with the failure message rules.
 - 2026-09-28: The suggestions contract in [Suggestions](../core.md#suggestions) narrows the Pointers clause, edited above while this record is proposed: core's sentence still never names a suggestion, and a plugin's own override of the failure's view may state one as the fix, as the suggestions plugin does. The same contract adds an audit row: core's default text opens every `UsageError` with the application name and a colon in place of `Invalid input: `, the form operator-facing tools such as docker, heroku, and terraform use; `Invalid declaration: ` stays. Both bind when this record is accepted.
+- 2026-09-28: Accepted; the audited messages ship with the rewritten text under Node.js and Bun, so the Pointers clause and the prefix row above bind. The text changes ship in the same change fragment as the breaking `text()` change, because a pull request carries one fragment; they stay non-breaking as the Consequences state.

@@ -1,14 +1,14 @@
 ---
-description: The voice rule every failure message Loom ships follows, with before-and-after examples for contributors and application authors, how a defect and a leaked author fault reach an operator, and the audit of the Loom-owned messages the rule changes.
+description: The voice rule every failure message Loom ships follows, with before-and-after examples for contributors and application authors, how a defect and a leaked author fault reach an operator, and the audit record of the Loom-owned messages the rule changed.
 ---
 
 # Failure messages
 
-A failure message tells its reader what went wrong and what to do instead. This page states the rule every message Loom ships follows, and shows an application author how to follow it in their own messages. [ADR-0047](decisions/0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) records the decision. The record is proposed and the rules are not yet implemented: until the audit lands, Loom's messages keep their current text, and the Current column of the [audit](#9-audit) shows it. [Failure views](core.md#failure-views) describe how core renders a failure, and [Issue codes](validators.md#issue-codes) describe how an author rewords a catalog sentence.
+A failure message tells its reader what went wrong and what to do instead. This page states the rule every message Loom ships follows, and shows an application author how to follow it in their own messages. [ADR-0047](decisions/0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) records the decision. Loom's messages follow the rules, and the [audit](#9-audit) records each message the rules changed, with its text before and after. [Failure views](core.md#failure-views) describe how core renders a failure, and [Issue codes](validators.md#issue-codes) describe how an author rewords a catalog sentence.
 
 ```text
-Before: Invalid input: Option "--config": File "settings.json" is not valid JSON.
-After:  Invalid input: Option "--config": File "settings.json" is not valid JSON. Correct its syntax, or supply another file.
+Before: textstat: Option "--config": File "settings.json" is not valid JSON.
+After:  textstat: Option "--config": File "settings.json" is not valid JSON. Correct its syntax, or supply another file.
 ```
 
 The rules below bind every operator message Loom ships: core, `@loomcli/plugins`, and `@loomcli/validators`. Loom cannot check a message an application writes. For an application, the rules are guidance, and the example applications model rules 2 and 3.
@@ -29,7 +29,7 @@ For a rejected value, the catalog's `Expected ...` sentence is the second part, 
 
 | Before                                   | After                                                                              | What changed                          |
 | ---------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------- |
-| `Invalid input: Argument "path": Expected a path.` | `Invalid input: Argument "path": Expected a nonempty path with no NUL character.` | The accepted form is specific.       |
+| `app: Argument "path": Expected a path.` | `app: Argument "path": Expected a nonempty path with no NUL character.` | The accepted form is specific. |
 | `Unknown command "nope".`                | `Unknown command "nope". Supply the name of a declared command.`                   | The sentence gains its fix.           |
 | `Path not found: a.b`                    | `Path not found: a.b. Run jsonkit keys to list the keys at the root.`              | An application names its own Command. |
 
@@ -78,9 +78,9 @@ Moving a check earlier, so the fault cannot reach a shipped application, is sepa
 
 ## 9. Audit
 
-The audit lists every operator message Loom ships and checks it against rules 2 through 6. Author messages are swept mechanically for rule 2. The Loom-owned operator messages below change. Core's defect lines, the `InternalError` default, the broken `onFailure` hook line, and `Rendering the failure failed`, follow rule 7 and change with the author development view, not in this audit.
+The audit listed every operator message Loom ships and checked it against rules 2 through 6. Author messages were swept mechanically for rule 2. The table records the Loom-owned operator messages the audit changed, with the text each had before and has now. Core's defect lines, the `InternalError` default, the broken `onFailure` hook line, and `Rendering the failure failed`, follow rule 7 and change with the author development view, not in this audit.
 
-| Source                                                      | Current                                                                              | Target                                                                                                           | Rule |
+| Source                                                      | Before                                                                               | After                                                                                                            | Rule |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ---- |
 | `UnknownCommandError`, `NonCallableCommandError` candidates | A deprecated child is listed. For example: `Use one of: get, keys, select, fetch.`                | A deprecated child is left out, as [ADR-0043](decisions/0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md) leaves it out of completion. For example: `Use one of: get, keys, select.` | 2 |
 | Core, every `UsageError`                                    | The category prefix `Invalid input: ` opens the diagnostic.                          | The application name and a colon open it, `jsonkit: Unknown command "nope". Use one of: get, keys.`, the form docker, heroku, and terraform use, so the operator reads who is speaking and not a parser category. `Invalid declaration: ` stays, because it is an author message. | 2 |
@@ -103,4 +103,4 @@ The audit lists every operator message Loom ships and checks it against rules 2 
 
 The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator sees the generic message once the author development view lands.
 
-The example applications are audited against rules 2 and 3 too: every `fatal`, `warn`, `FatalError`, and view sentence in jsonkit and textstat gains its fix, and jsonkit's `Cannot parse JSON` and textstat's `Cannot read` keep their runtime reasons under rule 6.
+The example applications were audited against rules 2 and 3 too: every `fatal`, `warn`, and `FatalError` sentence in jsonkit and textstat ends with its fix, such as `Field not found: name. Run jsonkit keys to list the fields.`, and jsonkit's `Cannot parse JSON` and `Cannot read` and textstat's `Cannot read` keep their runtime reasons under rule 6, each closed by one period before the fix. jsonkit's branded `InputError` and `UnknownCommandError` views keep their text until they give way to core's default text, as [Example coverage](core.md#example-coverage) describes.

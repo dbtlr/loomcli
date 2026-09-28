@@ -60,18 +60,25 @@ test("jsonl() honors each element's toJSON", () => {
 
 test('a top-level undefined value makes json() throw, reported at exit 1', () => {
   expect(run('json-undefined')).toEqual(
-    faulted('The value cannot be encoded as JSON: the value is undefined.'),
+    faulted(
+      'The value cannot be encoded as JSON, because it is undefined. Emit plain JSON data from the action.',
+    ),
   );
 });
 
-test('a bigint makes jsonl() throw, reported at exit 1', () => {
-  // JSON.stringify's own bigint message differs between engines.
-  // Only the plugin's wrapping and the mention of BigInt are asserted here.
-  const result = run('jsonl-bigint');
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('resolved:1\n');
-  expect(result.stderr).toMatch(/^Internal error: The value cannot be encoded as JSON: .+\.\n$/u);
-  expect(result.stderr).toMatch(/BigInt/u);
+test('a bigint makes jsonl() throw one fixed sentence with no engine reason, reported at exit 1', () => {
+  expect(run('jsonl-bigint')).toEqual(
+    faulted('The value cannot be encoded as JSON. Emit plain JSON data from the action.'),
+  );
+});
+
+test("the encode failure keeps the engine's error as its cause", () => {
+  // The fixture's InternalError view prints the thrown error's cause, which the default text omits.
+  expect(run('jsonl-bigint-cause')).toEqual({
+    status: 1,
+    stderr: 'cause: TypeError\n',
+    stdout: 'resolved:1\n',
+  });
 });
 
 test.each(['never', 'always'] as const)(

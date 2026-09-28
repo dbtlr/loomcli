@@ -24,7 +24,7 @@ export class PathNotFoundError extends FatalError {
   static override readonly exitCode = EX_DATAERR;
 
   constructor(path: string) {
-    super(`Path not found: ${path}`);
+    super(`Path not found: ${path}. Run jsonkit keys to list the keys at the root.`);
     this.name = 'PathNotFoundError';
   }
 }
