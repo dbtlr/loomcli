@@ -347,7 +347,11 @@ _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Hint**:
 A line a plugin adds under a failure message through its `onFailure` lifecycle hook. Hints from every installed plugin accumulate in installation order and reach the failure view, which decides whether to print them; core's default text prints each on its own line under the sentence. A hint adds to a diagnostic and never replaces a view.
-_Avoid_: Suggestion (for the line itself), tip, help text, note
+_Avoid_: Suggestion (a hint is a line under the sentence, not the near match inside it), tip, help text, note
+
+**Suggestion**:
+The near match a plugin's failure view offers as the fix inside the sentence for a mistyped Command or option, such as `Did you mean "get"?`. It is never an alias, a hidden member, or a deprecated member, and core's own sentence never offers one.
+_Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
 
 **Issue**:
 One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so an issue code and its parameters reach a failure view.
