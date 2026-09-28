@@ -165,6 +165,27 @@ test('a failure view that throws a value whose message cannot be read writes the
   });
 });
 
+test.each([
+  ['broken-multiline', String.raw`line one\u000aline two`],
+  [
+    'broken-controls',
+    `red${['001b', '000d', '2028', '2029'].map((hex) => `\\u${hex}`).join('')}end`,
+  ],
+])(
+  'a broken hook whose reason holds a line break or a control character (%s) writes one line',
+  (scenario, reason) => {
+    expect(run(scenario, ['cache', 'clear', '--bogus']).stderr).toBe(
+      `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: ${reason}\n`,
+    );
+  },
+);
+
+test('a broken failure view whose reason holds a line break writes one line', () => {
+  expect(run('broken-view-multiline', ['cache', 'clear', '--bogus']).stderr).toBe(
+    `${unknownBogus}Internal error: Rendering the failure failed: ${String.raw`line one\u000aline two`}\n`,
+  );
+});
+
 test('two broken hooks write their lines in installation order', () => {
   expect(run('two-broken', ['cache', 'clear', '--bogus']).stderr).toBe(
     `${unknownBogus}still here\nInternal error: Plugin "fixture/first" failed in onFailure: First failed.\nInternal error: Plugin "fixture/second" failed in onFailure: The hook returned a value that is not a string or an array of strings.\n`,

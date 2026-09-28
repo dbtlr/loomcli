@@ -41,13 +41,3 @@ export function encodeText(text: string, context: ViewContext): string {
 export function escapeControls(text: string): string {
   return escapeMatching(text, /[\u007F-\u009F]/gu);
 }
-
-/**
- * The text with every control character and line separator, U+0000 through U+001F, U+007F through
- * U+009F, U+2028, and U+2029, replaced by its four-digit lowercase `\uXXXX` escape. Raw text that
- * never passes through JSON, such as a file path, is escaped with this before it reaches a label, a
- * warning, or a failure.
- */
-export function escapeControlCharacters(text: string): string {
-  return escapeMatching(text, /[\p{Cc}\p{Zl}\p{Zp}]/gu);
-}

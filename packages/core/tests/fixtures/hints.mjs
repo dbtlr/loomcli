@@ -182,6 +182,10 @@ function proxied(held) {
   });
 }
 
+/** A reason holding a line break, then ESC, CR, and the line and paragraph separators. */
+const multiline = 'line one\nline two';
+const controls = [27, 13, 8232, 8233].map((code) => String.fromCodePoint(code)).join('');
+
 /** One scenario per unreadable error, each thrown by a broken hook beside a working one. */
 const unreadableScenarios = Object.fromEntries(
   Object.entries(unreadable).map(([kind, raise]) => [
@@ -207,8 +211,16 @@ const scenarios = {
     }).action(dispatch),
   'broken-array': () => broken(() => ['fine', 7]),
   // Index 1 of three is never assigned, so the list holds a hole there.
+  'broken-controls': () =>
+    broken(() => {
+      throw new Error(`red${controls}end`);
+    }),
   'broken-hole': () => broken(() => Object.assign([], { 0: 'a', 2: 'c' })),
   'broken-lying-filter': () => broken(() => Lying.of(7)),
+  'broken-multiline': () =>
+    broken(() => {
+      throw new Error(multiline);
+    }),
   'broken-number': () => broken(() => 7),
   'broken-promise': () => broken(async () => 'late'),
   'broken-proxied': () => broken(() => proxied([7])),
@@ -226,6 +238,16 @@ const scenarios = {
         hinting('fixture/fine', () => 'still here'),
       ],
       views: [override(UsageError, breaks)],
+    }).action(dispatch),
+  'broken-view-multiline': () =>
+    routed({
+      views: [
+        override(UsageError, {
+          render: () => {
+            throw new Error(multiline);
+          },
+        }),
+      ],
     }).action(dispatch),
   'broken-view-unreadable': () =>
     routed({

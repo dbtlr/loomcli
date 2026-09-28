@@ -1,5 +1,6 @@
 export { Application } from './application.js';
 export { Command } from './command.js';
+export { escapeControlCharacters } from './controls.js';
 export { validationContext, validationContextKey } from './context.js';
 export {
   DeclarationError,

@@ -1,5 +1,6 @@
 import type { Writable } from 'node:stream';
 
+import { escapeControlCharacters } from './controls.js';
 import { reasonOf } from './errors.js';
 import type { LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
@@ -182,7 +183,9 @@ function collectHints(
   const hints = answers.flatMap(({ answer }) => (answer.kind === 'hints' ? answer.hints : []));
   const broken = answers.flatMap(({ answer, identity }) =>
     answer.kind === 'broken'
-      ? [`Internal error: ${pluginSentence(identity)} failed in onFailure: ${answer.reason}\n`]
+      ? [
+          `Internal error: ${pluginSentence(identity)} failed in onFailure: ${escapeControlCharacters(answer.reason)}\n`,
+        ]
       : [],
   );
   return { broken, hints: Object.freeze(hints) };
@@ -190,14 +193,15 @@ function collectHints(
 
 /**
  * What the plain fallback path writes after one failure's diagnostic: core's default text and the
- * view's own line when the view broke, then each broken hook's line.
+ * view's own line when the view broke, then each broken hook's line. Each line escapes the control
+ * characters and line separators in its reason, so it stays one line and writes no raw control.
  */
 function plainLines(report: FailureReport, broken: readonly string[]): string {
   // `report.text` is core's default text, which already ends in `\n`.
   const fallback =
     report.kind === 'rendered'
       ? ''
-      : `${report.text}Internal error: Rendering the failure failed: ${report.reason}\n`;
+      : `${report.text}Internal error: Rendering the failure failed: ${escapeControlCharacters(report.reason)}\n`;
   return `${fallback}${broken.join('')}`;
 }
 
