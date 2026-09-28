@@ -122,6 +122,7 @@ test.each([
   ['broken-lying-filter', 'The hook returned a value that is not a string or an array of strings.'],
   ['broken-proxied', 'The hook returned a value that is not a string or an array of strings.'],
   ['broken-promise', 'The hook returned a promise instead of hints.'],
+  ['broken-callable-thenable', 'The hook returned a promise instead of hints.'],
   ['broken-rejecting', 'The hook returned a promise instead of hints.'],
 ])(
   'a broken hook (%s) loses its own hints, writes its one line, and returns 1',

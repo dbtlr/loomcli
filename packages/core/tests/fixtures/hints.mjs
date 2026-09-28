@@ -221,6 +221,10 @@ const scenarios = {
       ],
     }).action(dispatch),
   'broken-array': () => broken(() => ['fine', 7]),
+  'broken-callable-thenable': () =>
+    // A function with a callable then is a thenable under Promises/A+, so the shape is the fixture.
+    // oxlint-disable-next-line unicorn/no-thenable
+    broken(() => Object.assign(() => undefined, { then: () => undefined })),
   'broken-controls': () =>
     broken(() => {
       throw new Error(`red${controls}end`);
