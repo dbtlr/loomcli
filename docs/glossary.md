@@ -204,7 +204,7 @@ _Avoid_: Environment (for the whole object), process, platform, context
 The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which signal ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, and 130 and 143 are signals.
 
 **Declared exit code**:
-The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one, so every failure of one class exits with one code. It is a whole number from 1 through 125; 0 and 126 and above are reserved.
+The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one and captured at the class's first construction, so every failure of one class exits with one code. It is a whole number from 1 through 125; 0 and 126 and above are reserved.
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:

@@ -530,19 +530,47 @@ test('out.results() in a source is the results fault with the source as its subj
 
 test.each([
   [
-    { FIXTURE_SOURCE: 'fatal' },
-    'Plugin "@fixture/config" failed in its configuration source: the source gave up.',
-  ],
-  [
     { FIXTURE_SOURCE: 'input-error-getter' },
     'Plugin "@fixture/config" failed in its configuration source: Option "--limit": not from the resolver.',
   ],
   [
-    { FIXTURE_SOURCE: 'result-error' },
-    'Plugin "@fixture/config" failed in its configuration source: A middleware called out.results() on Command "bogus". Only the action emits a result.',
+    { FIXTURE_SOURCE: 'declared-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
+  ],
+  [
+    { FIXTURE_SOURCE: 'declared-value-getter' },
+    'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
   ],
 ])('%j stays a plugin fault with code 1', (env, sentence) => {
   const result = run([], env);
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(`Internal error: ${sentence}\n`);
 });
+
+test.each(['declared', 'declared-sync'])(
+  'a failure class the resolver raises in %s mode reports with its declared code',
+  (mode) => {
+    expect(run(['count'], { FIXTURE_SOURCE: mode })).toMatchObject({
+      status: 69,
+      stderr: 'The settings registry is unavailable.\n',
+    });
+    // The failure is held like any source fault, so a takeover reports nothing.
+    expect(run(['--help'], { FIXTURE_SOURCE: mode })).toMatchObject({
+      status: 0,
+      stderr: '',
+    });
+  },
+);
+
+test.each([
+  [{ FIXTURE_SOURCE: 'fatal' }, 'the source gave up\n'],
+  [
+    { FIXTURE_SOURCE: 'result-error' },
+    'Internal error: A middleware called out.results() on Command "bogus". Only the action emits a result.\n',
+  ],
+])(
+  'a core failure class the resolver raises in %j reports as itself with code 1',
+  (env, stderr) => {
+    expect(run([], env)).toMatchObject({ status: 1, stderr });
+  },
+);

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0045 - A failure class declares its exit code
 description: A failure class states its exit code as a static field, read from the nearest ancestor that declares one, so one class exits with one code wherever it is raised. The declarable codes are 1 through 125, a reserved code throws a DeclarationError at construction, and core exports the sysexits names. A configuration source's LoomError reports with its class's code.
-status: proposed
+status: accepted
 created: 2026-09-27
 modified: 2026-09-27
 ---
@@ -19,7 +19,7 @@ A failure is raised from three places: an action, a middleware, and a configurat
 
 ## Decision
 
-- **A static declaration.** A failure class states its exit code as a static field, `static override readonly exitCode = EX_UNAVAILABLE;`. Core reads the code from the thrown failure's class, walking to the nearest ancestor that declares one. The instance's `exitCode` reports the class's value, so a view keeps reading `failure.exitCode`, and a projection reads the class's code without an instance. One class never exits with two codes.
+- **A static declaration.** A failure class states its exit code as a static field, `static override readonly exitCode = EX_UNAVAILABLE;`. Core reads the code from the failure's class at the class's first construction, walking to the nearest ancestor that declares one, and keeps it. The instance's `exitCode` is a read-only accessor that reports the class's value, so a view keeps reading `failure.exitCode`, and a projection reads the class's code without an instance. One class never exits with two codes.
 - **The declarable range.** A class declares 1, 2, or a code from 3 through 125. 1 and 2 keep core's meanings: an application failure and invalid input. 0 and every code from 126 up are reserved: 0 is success, 126 and 127 belong to the shell, and 128 plus a signal number reports a signal, which covers 130 and 143. The exported `FailureExitCode` type is the union of the declarable codes, and `ExitCode`, which `run()` resolves, widens to `0 | FailureExitCode | 130 | 143`.
 - **Two checks.** `LoomError` types its static as `FailureExitCode`, so TypeScript rejects a literal outside the range and a plain `number` on the class line, as a class static side that incorrectly extends its base (TS2417). At run time `LoomError`'s constructor reads the class's code and, when it is not declarable, throws a `DeclarationError` that names the class, the code, and the range: `Failure class "PathNotFoundError" declares exit code 130. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.` The class is named by its constructor's `name`, `new.target.name`, because the subclass has not yet set the instance's `name`. A value that is not a finite number reads `declares an exit code that is not a finite number.` in place of `declares exit code 130.` Core never clamps a code. Inside a run the fault reports as `Invalid declaration:` with code 1.
 - **Wherever it is raised.** The code holds when the failure is raised from an action, from a middleware, and from a configuration source. The source carve-out of ADR-0038 widens from `InputError` to any `LoomError` the resolver throws or rejects with, which reports with its class's code. A plain `Error`, and any throw while core reads the source's answers, stays a plugin fault with code 1. Cancellation still outranks every failure code, and a broken failure view or destination still returns 1.
@@ -46,8 +46,10 @@ The manifest's `exitCodes` keeps the five codes core resolves itself. A declared
 
 ## Status
 
-Proposed with the declared exit code contract in [Declared exit codes](../core.md#declared-exit-codes). It moves to accepted when core's classes declare their codes as static fields, a reserved code throws the diagnostic above at construction, the fifteen constants and `FailureExitCode` are exported, a failure class raised from an action, a middleware, and a configuration source keeps its code, and `jsonkit get missing -f doc.json` exits 65 under Node and Bun.
+Accepted 2026-09-27 with the implementation. `LoomError` declares 1 and `UsageError` 2 as static fields, and every other core class inherits its code. A reserved code throws the diagnostic above at construction. `@loomcli/core` exports the fifteen constants and `FailureExitCode`. A failure class raised from an action, a middleware, and a configuration source keeps its code, and `jsonkit get missing -f doc.json` and `jsonkit keys missing -f doc.json` exit 65 under Node and Bun.
 
 ## Changelog
 
 - 2026-09-27: Proposed with the declared exit code contract.
+- 2026-09-27: Accepted with the implementation.
+- 2026-09-27: Core captures each class's code once, at the class's first construction, and captures its own classes when the package loads, so a static written or answered differently later gives no class a second code. The instance's `exitCode` is a read-only accessor, so a TypeScript subclass cannot override it, and no subclass property or assignment changes the code `run()` resolves. A value that inherits from a failure class without being constructed by one reports as an internal error with code 1, so `run()` never passes an undeclarable code to the process.

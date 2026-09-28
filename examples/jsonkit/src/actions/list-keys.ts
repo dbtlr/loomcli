@@ -9,14 +9,11 @@ import { resolvePath } from '../resolve-path.js';
 export const listKeys: ActionHandler<typeof keys> = async ({ args, options, host, out, style }) => {
   const document = await readJson(options.file, host);
   const path: string | undefined = args.path;
-  const found =
-    path === undefined
-      ? { value: document }
-      : (resolvePath(document, path) ?? out.fatal(`Path not found: ${path}`));
+  const value = path === undefined ? document : resolvePath(document, path);
   const where = path === undefined ? 'the root' : path;
-  const record = isRecord(found.value)
-    ? found.value
-    : out.fatal(`Expected an object at ${where}; found ${describeKind(found.value)}`);
+  const record = isRecord(value)
+    ? value
+    : out.fatal(`Expected an object at ${where}; found ${describeKind(value)}`);
   for (const key of Object.keys(record)) {
     await out.print(style.escape(key));
   }

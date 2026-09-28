@@ -41,7 +41,7 @@ test('jsonkit renders document error messages literally', () => {
   const path = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
   for (const command of ['get', 'keys']) {
     expect(invoke(main, [command, path], { input: '{}' })).toEqual({
-      status: 1,
+      status: 65,
       stderr: `Path not found: ${path}\n`,
       stdout: '',
     });
@@ -99,11 +99,11 @@ test.each([
 });
 
 test.each(['missing', 'nested.missing', 'tags.2', 'name.length', 'tags.first'])(
-  'jsonkit reports the unresolved path %s',
+  'jsonkit reports the unresolved path %s with EX_DATAERR',
   (path) => {
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['get', path, '--file', 'doc.json'], { cwd })).toEqual({
-        status: 1,
+        status: 65,
         stderr: `Path not found: ${path}\n`,
         stdout: '',
       });
