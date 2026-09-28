@@ -9,6 +9,7 @@ import type { Output } from './output.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { ContextualStyle } from './style.js';
+import { ignoreRejection, isThenable } from './thenable.js';
 import { describeFailure } from './view.js';
 import type { FailureReport, FailureViewContext, ViewRegistry } from './view.js';
 
@@ -61,16 +62,6 @@ interface FailureSink {
 /** What one hook answered: its hints, or why it broke. */
 type HookAnswer = { kind: 'hints'; hints: readonly string[] } | { kind: 'broken'; reason: string };
 
-/** Whether one returned value is a promise or another thenable, which a synchronous hook never returns. */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'then' in value &&
-    typeof value.then === 'function'
-  );
-}
-
 /** Every hint a returned list holds, or `undefined` for a value that is not a list of strings alone. */
 function listedHints(returned: unknown): readonly string[] | undefined {
   if (!Array.isArray(returned)) {
@@ -82,8 +73,8 @@ function listedHints(returned: unknown): readonly string[] | undefined {
 }
 
 /**
- * The hints one returned value holds. A promise is a broken answer whose rejection is adopted and
- * swallowed here, because an unobserved rejection would end the process before the run reports.
+ * The hints one returned value holds. A hook is synchronous, so a returned promise is a broken
+ * answer: it receives a rejection handler and is otherwise ignored, as a failure view's is.
  */
 function readHints(returned: unknown): HookAnswer {
   if (returned === undefined) {
@@ -93,7 +84,7 @@ function readHints(returned: unknown): HookAnswer {
     return { hints: [returned], kind: 'hints' };
   }
   if (isThenable(returned)) {
-    void Promise.resolve(returned).then(undefined, () => undefined);
+    ignoreRejection(returned);
     return { kind: 'broken', reason: 'The hook returned a promise instead of hints.' };
   }
   const hints = listedHints(returned);

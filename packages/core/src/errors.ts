@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
+import { ignoreRejection, isThenable } from './thenable.js';
 import type { InputIdentity } from './types.js';
 
 /** The same subject at the start of a sentence, where a token fault names its Command. */
@@ -369,11 +370,12 @@ export function reasonOf(thrown: unknown): string {
 
 /**
  * Why a returned value is not the text a view owes. A view is synchronous, so a returned promise is
- * a non-string return like any other, and its rejection is adopted and swallowed here: an
- * unobserved rejection would end the process before the invocation could report anything.
+ * a non-string return like any other: it receives a rejection handler and is otherwise ignored.
  */
 export function notTextReason(value: unknown): string {
-  void Promise.resolve(value).catch(() => undefined);
+  if (isThenable(value)) {
+    ignoreRejection(value);
+  }
   return `The view returned ${typeof value} instead of a string.`;
 }
 
