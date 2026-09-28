@@ -41,7 +41,7 @@ An author climbs these rungs, and each pays only for itself:
 
 **Soundness.** A published input schema is sound, not complete. Every token the validator accepts satisfies it, so it may be looser than the validator and never stricter. A constraint the validator applies but cannot state soundly is left out: `path` publishes no existence. The rule binds every factory and every author of a `createValidator` value that declares `inputSchema`.
 
-**Messages.** A rejection returns one issue with no path and no code. Its message states the expectation in one plain sentence, beginning `Expected`, and never repeats the caller's token, because a rejected value may be a secret. Each factory configuration has one message for every way a token can fail, so `integer({ min: 1, max: 10 })` answers `Expected a whole number from 1 through 10.` for `abc` and for `11` alike. `text` with a `pattern` is the one exception: its length rule and its pattern each keep their own sentence. Core prefixes the message with the input's subject under [Issues and validator failures](core.md#issues-and-validator-failures).
+**Messages.** A rejection returns one issue with no path, carrying its code and parameters under [Issue codes](#issue-codes). Its message states the expectation in one plain sentence, beginning `Expected`, and never repeats the caller's token, because a rejected value may be a secret. Each factory configuration has one message for every way a token can fail, so `integer({ min: 1, max: 10 })` answers `Expected a whole number from 1 through 10.` for `abc` and for `11` alike. `text` with a `pattern` is the one exception: its length rule and its pattern each keep their own sentence. Core prefixes the message with the input's subject under [Issues and validator failures](core.md#issues-and-validator-failures). Every message follows the rules in [Failure messages](failure-messages.md).
 
 **Faults at the call.** A factory argument that can never work throws a `DeclarationError` from the factory call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Each factory lists its faults. A fault message names the factory and the argument, states the problem, then the correction, as `integer() min 5 is above max 1. Supply a min at or below max.` and `oneOf() lists "dev" twice. List each value once.` TypeScript rejects what its types can express; the runtime check covers the rest for JavaScript callers and widened values.
 
@@ -50,7 +50,12 @@ An author climbs these rungs, and each pays only for itself:
 ### text
 
 ```ts
-text(options?: { minLength?: number; maxLength?: number; pattern?: RegExp; message?: string }): Validator<string>
+text(
+  options?: { minLength?: number; maxLength?: number } & (
+    | { pattern?: undefined; message?: undefined }
+    | { pattern: RegExp; message: string }
+  ),
+): Validator<string>
 ```
 
 - **Accepts** a string whose length, counted in Unicode code points, is at least `minLength` and at most `maxLength`, and which `pattern` matches when one is given. `minLength` defaults to `1`, so `text()` rejects the empty string; `text({ minLength: 0 })` accepts it.
@@ -67,8 +72,8 @@ text(options?: { minLength?: number; maxLength?: number; pattern?: RegExp; messa
 | `min` equal to `maxLength`      | `Expected exactly 8 characters.`             |
 | `min` 1 or more, `maxLength` above it | `Expected from 1 through 32 characters.` |
 
-- **Pattern failures.** A pattern failure reads `message`, or `Expected a value that matches the required pattern.` when none is given. A token that fails both reports the length sentence.
-- **Faults.** A `minLength` or `maxLength` that is not a non-negative safe integer, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, a `pattern` whose source does not compile under `u`, a `message` that is empty or not a string, and a `message` without a `pattern`.
+- **Pattern failures.** A pattern failure reads `message`, the author's one sentence describing what the pattern accepts, such as `Expected lowercase letters, digits, and hyphens.` `message` is required whenever `pattern` is given, because only the author can say what the pattern accepts. A token that fails both reports the length sentence.
+- **Faults.** A `minLength` or `maxLength` that is not a non-negative safe integer, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, a `pattern` whose source does not compile under `u`, a `message` that is empty or not a string, a `message` without a `pattern`, and a `pattern` without a `message`.
 
 ### integer
 
@@ -174,7 +179,7 @@ path(options?: { access?: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' 
 - **Defaults.** A default beside `access` is probed on every run, like every default, so a missing default file fails every run, even one that supplies another path. Resolve a fallback path in the action instead of declaring one as the default.
 - **The context.** `path` reads `host.cwd` and `host.platform` from the [validation context](core.md#validation-context), so it runs only inside a Loom run.
 - **Publishes** `{ type: 'string', minLength: 1 }`. Existence, kind, and access are runtime state, not a shape of the token, so none is published.
-- **Message.** One sentence per configuration: `Expected a path.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
+- **Message.** One sentence per configuration: `Expected a nonempty path with no NUL character.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
 - **Faults.** `kind` without `access`, and an `access` or `kind` outside its set.
 
 ## createValidator
@@ -206,9 +211,106 @@ const branch = createValidator({
 
 The catalog factories are built with `createValidator`, so a catalog validator and an author's own share every rule above.
 
+## Issue codes
+
+```ts
+import type { StandardSchemaV1 } from '@loomcli/core';
+
+issueCode<Params>(
+  code: string,
+  config: {
+    schema: StandardSchemaV1<Params>;
+    message: (params: Params) => string;
+  },
+): IssueCode<Params>
+
+interface IssueCode<Params> {
+  readonly code: string;
+  readonly schema: StandardSchemaV1<Params>;
+  issue(params: Params): StandardSchemaV1.Issue;
+  read(issue: StandardSchemaV1.Issue): Params | undefined;
+}
+```
+
+The schema's input and output are one type, so `read` validates what `issue` stored.
+
+```ts
+import { Application, InputError, issuePath, override } from '@loomcli/core';
+import { integer, integerRangeIssue } from '@loomcli/validators';
+
+// `serve --workers 99` writes `serve: --workers takes from 1 to 64 workers.` and exits 2.
+// Every other issue keeps its catalog sentence.
+export const serve = new Application('serve', {
+  views: [
+    override(InputError, {
+      render: (failure, { hints, style }) =>
+        [
+          ...failure.problems
+            .flatMap((problem) =>
+              problem.reason === 'missing'
+                ? [`${problem.spelling} is required. Supply a value.`]
+                : problem.issues.map((issue) => {
+                    const at = issuePath(issue);
+                    const subject = at === undefined ? problem.spelling : `${problem.spelling} at ${at}`;
+                    const range = integerRangeIssue.read(issue);
+                    return range === undefined
+                      ? `${subject}: ${issue.message}`
+                      : `${subject} takes from ${String(range.min)} to ${String(range.max)} workers.`;
+                  }),
+            )
+            .map((line) => `serve: ${style.escape(line)}`),
+          ...hints,
+        ]
+          .map((line) => `${line}\n`)
+          .join(''),
+    }),
+  ],
+}).option('workers', { type: 'string', validate: integer({ min: 1, max: 64 }) }).action(() => {});
+```
+
+A validator package declares one issue code for each sentence its validators print, and an author rewords a sentence by reading its code in an `InputError` view override. The message rules every code's sentence follows are in [Failure messages](failure-messages.md). [ADR-0048](decisions/0048-a-validator-package-declares-one-issue-code-per-sentence.md) records the decision.
+
+- **Declaring a code.** `issueCode(code, { schema, message })` returns a frozen descriptor. `schema` is a Standard Schema that validates the parameters and answers synchronously. `message` builds the code's one sentence from its parameters. Any package that ships validators built with `createValidator` declares its codes this way; the catalog is the first.
+- **The code string.** A code is the declaring package's name, as a plugin identity names its package, then `/` and a rule name of lowercase letters and digits in words joined by single hyphens: `@loomcli/validators/integer-range`.
+- **Rejecting with a code.** `parse` returns `{ issues: [code.issue(params)] }`. `issue` validates `params` through the schema and returns a frozen issue with `message`, the sentence `message` built; `code`, the code string; and `params`, the schema's output. `createValidator` passes the issue through unchanged, and core keeps its fields under [Issues and validator failures](core.md#issues-and-validator-failures).
+- **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, or no code at all. Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
+- **One sentence per code.** A code identifies one sentence, and its parameters are exactly that sentence's blanks, with one fixed shape per code. Parameters hold the rule's settings and never the rejected value.
+- **No per-call rewording.** A factory takes no argument that replaces its sentence. `text()`'s `message` describes the pattern and is the sentence of `text-pattern`. Every other rewording is an override keyed on a code.
+- **Faults.** `issueCode` throws a `DeclarationError` at the call for a code outside the grammar, a `schema` that is not a Standard Schema, and a `message` that is not a function. `issue` throws one for parameters the schema rejects. `issue` and `read` throw one when the schema answers with a promise.
+
+The catalog declares these codes. Each is exported under the name in the second column, and each code below is written without its `@loomcli/validators/` prefix. A blank in braces is a parameter. A list parameter prints as the factory's message bullet shows it.
+
+| Code                | Export                  | Parameters                                  | Sentence                                               |
+| ------------------- | ----------------------- | ------------------------------------------- | ------------------------------------------------------ |
+| `text-nonempty`     | `textNonemptyIssue`     | none                                        | `Expected a nonempty value.`                           |
+| `text-min-length`   | `textMinLengthIssue`    | `{ min: number }`                           | `Expected at least {min} characters.`                  |
+| `text-max-length`   | `textMaxLengthIssue`    | `{ max: number }`                           | `Expected at most {max} characters.`                   |
+| `text-exact-length` | `textExactLengthIssue`  | `{ length: number }`                        | `Expected exactly {length} characters.`                |
+| `text-length-range` | `textLengthRangeIssue`  | `{ min: number; max: number }`              | `Expected from {min} through {max} characters.`        |
+| `text-pattern`      | `textPatternIssue`      | `{ message: string }`                       | `{message}`                                            |
+| `integer`           | `integerIssue`          | none                                        | `Expected a whole number.`                             |
+| `integer-range`     | `integerRangeIssue`     | `{ min: number; max: number }`              | `Expected a whole number from {min} through {max}.`    |
+| `integer-min`       | `integerMinIssue`       | `{ min: number }`                           | `Expected a whole number of at least {min}.`           |
+| `integer-max`       | `integerMaxIssue`       | `{ max: number }`                           | `Expected a whole number of at most {max}.`            |
+| `number`            | `numberIssue`           | none                                        | `Expected a number.`                                   |
+| `number-range`      | `numberRangeIssue`      | `{ min: number; max: number }`              | `Expected a number from {min} through {max}.`          |
+| `number-min`        | `numberMinIssue`        | `{ min: number }`                           | `Expected a number of at least {min}.`                 |
+| `number-max`        | `numberMaxIssue`        | `{ max: number }`                           | `Expected a number of at most {max}.`                  |
+| `port`              | `portIssue`             | none                                        | `Expected a port number from 1 through 65535.`         |
+| `one-of`            | `oneOfIssue`            | `{ values: readonly string[] }`             | `Expected one of: {values}.`                           |
+| `url`               | `urlIssue`              | none                                        | `Expected an absolute URL, such as https://example.com.` |
+| `url-scheme`        | `urlSchemeIssue`        | `{ protocols: readonly string[] }`          | `Expected an absolute URL with the scheme {protocols}.` |
+| `uuid`              | `uuidIssue`             | none                                        | `Expected a UUID, such as 123e4567-e89b-12d3-a456-426614174000.` |
+| `date`              | `dateIssue`             | none                                        | `Expected a date as YYYY-MM-DD, such as 2026-09-25.`   |
+| `path`              | `pathIssue`             | none                                        | `Expected a nonempty path with no NUL character.`      |
+| `path-readable`     | `pathReadableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a readable {kind} that exists.`              |
+| `path-writable`     | `pathWritableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a writable {kind}, or a new {kind} in a writable directory.` |
+
+A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
+
 ## Package
 
-- The root export holds the nine factories, `createValidator`, and the `Validator` and `ParseResult` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the nine factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 - Under ADR-0037, the package joins the synchronized release set the way `@loomcli/plugins` did under [ADR-0020](decisions/0020-first-party-plugins-ship-in-one-package-as-subpaths.md) and [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder from a minimal manifest without `private` and binds the npm trusted publisher, an ordinary pull request removes `private` at the current synchronized version, and the next release cut publishes it. The root `build` script and `scripts/clean.mjs` list it, and the packed-consumer check that installs the published tarballs covers it beside core and plugins.
 
@@ -223,6 +325,7 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 
 - **Soundness.** For each factory, a table of accepted tokens validates, under Ajv's draft 2020-12 validator with `ajv-formats` in full mode and `unicodeRegExp` on, the value the token stands for against the published schema: the number for `integer`, `number`, and `port`, and the token for every other factory. A test fails when any accepted token breaks the schema. The table includes each factory's edges: code points outside the Basic Multilingual Plane for `text`, `-0`, leading zeros, and safe-integer limits for the numbers, the leap day for `date`, including `0000-02-29` accepted and `0100-02-29` rejected, since a `Date.UTC` check maps years below 100 to the 1900s, mixed case for `uuid` and a `protocols` scheme, a `protocols` scheme containing `+`, `-`, or `.`, and for `url` the tokens RFC 3986 rejects and the WHATWG parser repairs.
 - **Rejection.** For each factory, a table of rejected tokens pins the one message and shows the token is absent from it.
+- **Issue codes.** Each rejected token's issue carries the code and parameters the table under [Issue codes](#issue-codes) names, and the code's `read` returns those parameters for it and `undefined` for every other code's issue, a Zod issue, and an issue whose parameters fail the schema. An `InputError` override that reads `integerRangeIssue` rewrites that sentence through `run()` and leaves every other issue's sentence as the catalog wrote it. Each listed `issueCode` fault throws a `DeclarationError`, and `text({ pattern })` without `message` is a type error and throws one at the call.
 - **Faults.** Each listed fault throws `DeclarationError` from the factory call.
 - **Context.** A context-free factory validates when called directly; `path` called directly throws the context sentence; `path` inside a run resolves against a host override's `cwd`, using temporary directories for the `read` and `write` checks.
 - **Multiple options and variadic arguments.** Core runs the validator once per value, reports each issue at its position, validates each default value, publishes the validator's schema unchanged, and calls nothing when no value is supplied, under ADR-0036.
@@ -233,5 +336,4 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 - `dateTime` and `duration`. No settled use shows how an operator would type them; an author who needs one builds it with `createValidator`.
 - `email` and a JSON validator. Every simple email rule rejects a real address somewhere, and a JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Issue codes, which enter with a reader: custom failure rendering keyed by code.
 - Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers and length, and a composition utility.

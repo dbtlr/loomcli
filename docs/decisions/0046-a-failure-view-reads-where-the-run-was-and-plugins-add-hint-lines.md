@@ -4,7 +4,7 @@ title: ADR-0046 - A failure view reads where the run was, and plugins add hint l
 description: Every failure view's context gains the application name and the Command path routing walked, filled where run() catches the failure. Plugins add hint lines to a failure through an optional onFailure lifecycle hook that reads the graph and the Command at that path, and the view receives the hints. A broken hook follows the broken-view rule. Core keeps an issue's own fields and rewrites only its path.
 status: accepted
 created: 2026-09-27
-modified: 2026-09-27
+modified: 2026-09-28
 ---
 
 # ADR-0046 - A failure view reads where the run was, and plugins add hint lines
@@ -64,3 +64,4 @@ Accepted 2026-09-27 with the implementation. Every failure view receives `applic
 
 - 2026-09-27: Proposed with the failure hint contract.
 - 2026-09-27: Accepted with the implementation.
+- 2026-09-28: [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), proposed, makes hint lines the only place a pointer that depends on installed plugins appears, and removes a deprecated Command from `candidates` on the routing errors, the rule ADR-0043 applies to completion, so the Consequences clause that `candidates` is unchanged no longer holds for deprecated children. [ADR-0048](0048-a-validator-package-declares-one-issue-code-per-sentence.md), proposed, gives the validator catalog the issue code this record's Consequences anticipate, with no core change. Both bind when accepted.

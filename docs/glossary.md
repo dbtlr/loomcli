@@ -143,7 +143,7 @@ A full Command kept off every listing. It routes, runs, and has its own help pag
 _Avoid_: Secret command, unlisted command, alias (for this concept)
 
 **Deprecated member**:
-A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every page that includes it shows beside it; a member that is also hidden appears in none. A candidate list names it without the message, because it holds names alone.
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every page that includes it shows beside it; a member that is also hidden appears in none. A candidate list leaves it out, as the [Candidates](#candidates) entry states.
 _Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:
@@ -151,7 +151,7 @@ The descent from the root through child names or aliases to the selected Command
 _Avoid_: Command chain, breadcrumb
 
 **Candidates**:
-The canonical child names a routing failure offers, in authoring order. An alias or a hidden Command never appears among them, and a deprecated Command appears by name alone.
+The canonical child names a routing failure offers, in authoring order. An alias, a hidden Command, or a deprecated Command never appears among them.
 _Avoid_: Suggestions, available commands
 
 ## Compilation and invocation
@@ -325,9 +325,21 @@ _Avoid_: Abort, panic, crash
 A failure core wraps around an unexpected exception, a broken view, a broken `onFailure` hook, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
+**Defect**:
+A failure only the author can fix, met on a shipped application: an unexpected exception, a broken view, hook, or result contract, or an author fault that reached the operator. It is the application's equivalent of an HTTP 500, so the operator sees one generic message with no reason, class name, or code detail.
+_Avoid_: Bug, crash, internal error (for the concept rather than the class)
+
 **Diagnostic**:
 The text core writes to stderr for one failure: the sentence, its correction, the category prefix the view chooses, and the hints the view prints.
 _Avoid_: Error message (when the class is meant), log line
+
+**Operator message**:
+Any message that runs after the application is built and shipped, read by the operator who ran it and cannot change its code. Every operator message Loom ships says what went wrong and what to do instead.
+_Avoid_: User message, runtime error, end-user error
+
+**Author message**:
+A message that runs while the author develops the application, such as a declaration fault, addressed to the author who can change the code. It never prints on a shipped application.
+_Avoid_: Developer error (for the message), debug message
 
 **Failure view**:
 The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, and the hints plugins added. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
@@ -338,8 +350,12 @@ A line a plugin adds under a failure message through its `onFailure` lifecycle h
 _Avoid_: Suggestion (for the line itself), tip, help text, note
 
 **Issue**:
-One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so a field such as an issue code reaches a failure view.
+One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so an issue code and its parameters reach a failure view.
 _Avoid_: Validation error, problem (for the schema-level record)
+
+**Issue code**:
+The namespaced name of one sentence a validator package prints, such as `@loomcli/validators/integer-range`, carried on an issue with that sentence's parameters, the rule's settings. An author reads it through the package's typed descriptor to reword the sentence.
+_Avoid_: Error code, message key, validation code
 
 **Problem**:
 One entry in an input error: an omitted required input or a rejected value together with its issues.
