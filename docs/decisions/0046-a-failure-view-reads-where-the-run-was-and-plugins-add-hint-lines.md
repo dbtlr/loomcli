@@ -19,7 +19,7 @@ The second is advice that belongs to a plugin rather than to core, such as an ac
 
 Core also reduces each issue a validator returns to `{ message, path }` when it reads the issue, and again when it prefixes a value's position on a multiple option or a variadic argument. A field a validator attaches for a machine reader, such as an issue code a validator catalog could publish, is gone before any view sees it.
 
-[ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) names lifecycle hooks `on<Event>` and leaves open a hook beside the middleware chain. [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) rejected before, after, and on-error hooks as a replacement for the chain. A hook that adds lines to a failure core is already rendering replaces nothing the chain does. It cannot catch, change, or suppress the failure, and it cannot change the exit code.
+[ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) names lifecycle hooks `on<Event>` and leaves open a hook beside the middleware chain. [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md) rejected before, after, and on-error hooks as a replacement for the chain. A hook that adds lines to a failure core is already rendering replaces nothing the chain does. It cannot catch, change, or suppress the failure, and a working hook cannot change the exit code; a broken one forces 1, as a broken view does.
 
 ## Decision
 
@@ -35,7 +35,7 @@ A failure carries what went wrong, and the run carries where it happened. Plugin
 - **Issue fields survive.** Where core reads an issue and where it rebuilds one to prefix a value's position, it keeps the issue's own fields and rewrites only `path`. Core still reads nothing but `message` and `path`.
 - **Plugins alone.** `onFailure` is on the plugin definition alone, as `onCommandAttach` is. An application that wants its own hint writes an override or installs a small local plugin.
 
-This record narrows ADR-0028's composition clause, that each hook receives what the previous plugin's hook returned, for `onFailure`: hooks still run in installation order, and their hints accumulate. It answers, for failures, the question ADR-0028 left open of a hook beside the chain.
+This record narrows ADR-0028's composition clause, that each hook receives what the previous plugin's hook returned, and ADR-0013's restatement of it, for `onFailure`: hooks still run in installation order, and their hints accumulate. It answers, for failures, the question ADR-0028 left open of a hook beside the chain.
 
 ## Considered options
 
@@ -54,7 +54,7 @@ A validator may attach its own fields to an issue, and they reach an `InputError
 
 `candidates` on the routing errors is unchanged. A plugin that wants a different candidate list, such as the spellings nearest a typo, derives it from the graph.
 
-[Failure views](../core.md#failure-views) and [Failure hints](../core.md#failure-hints) state the contract. ADR-0005, ADR-0007, ADR-0021, and ADR-0028 carry dated entries that bind when this record is accepted.
+[Failure views](../core.md#failure-views) and [Failure hints](../core.md#failure-hints) state the contract. ADR-0005, ADR-0007, ADR-0013, ADR-0021, and ADR-0028 carry dated entries that bind when this record is accepted, and ADR-0017 carries a dated pointer recording that its rejection of on-error hooks as a replacement for the chain stands.
 
 ## Status
 
