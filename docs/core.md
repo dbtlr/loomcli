@@ -1161,7 +1161,7 @@ Core's default views add the category prefixes: `Invalid input: ` for every `Usa
 
 `ShortGroupError.reason` is `'value-position'` for a value option that is not last in its group, and `'mixed-scope'` for a group that mixes a global letter with one the globals do not own. `ShortGroupError.token` holds what each reason names: the single option's spelling, such as `-d`, for `'value-position'`, and the whole group, such as `-qZ`, for `'mixed-scope'`.
 
-`InternalError` wraps an unexpected exception or a non-error throw. Its message is the thrown error's message, or `An unknown error occurred.` A validator that throws stays a `DeclarationError`, because only a returned issue states a validation verdict.
+`InternalError` wraps an unexpected exception or a non-error throw. Its message is the thrown error's message, `An unknown error occurred.` for a thrown value that is not an Error, or `The thrown value has no readable message.` for an Error whose message is not a string or cannot be read. A validator that throws stays a `DeclarationError`, because only a returned issue states a validation verdict.
 
 `FatalError` is the class `out.fatal()` throws. An application can subclass it and override the view for the subclass, which is how one fatal type implies one diagnostic, and the subclass can declare its own exit code.
 
