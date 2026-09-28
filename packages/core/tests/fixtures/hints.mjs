@@ -167,6 +167,21 @@ const refuses = {
   },
 };
 
+/** An array whose own `filter` answers a list other than the one it holds. */
+class Lying extends Array {
+  filter() {
+    return [{ toString: () => 'from filter' }];
+  }
+}
+
+/** An array whose proxy answers a `filter` of its own, which core must never call. */
+function proxied(held) {
+  return new Proxy(held, {
+    get: (target, key, receiver) =>
+      key === 'filter' ? () => ['from filter'] : Reflect.get(target, key, receiver),
+  });
+}
+
 /** One scenario per unreadable error, each thrown by a broken hook beside a working one. */
 const unreadableScenarios = Object.fromEntries(
   Object.entries(unreadable).map(([kind, raise]) => [
@@ -191,8 +206,12 @@ const scenarios = {
       views: [override(LoomError, where)],
     }).action(dispatch),
   'broken-array': () => broken(() => ['fine', 7]),
+  // Index 1 of three is never assigned, so the list holds a hole there.
+  'broken-hole': () => broken(() => Object.assign([], { 0: 'a', 2: 'c' })),
+  'broken-lying-filter': () => broken(() => Lying.of(7)),
   'broken-number': () => broken(() => 7),
   'broken-promise': () => broken(async () => 'late'),
+  'broken-proxied': () => broken(() => proxied([7])),
   'broken-rejecting': () => broken(() => Promise.reject(new Error('Rejected late.'))),
   'broken-throws': () =>
     broken(() => {
@@ -264,6 +283,7 @@ const scenarios = {
           .option('name', { multiple: true, type: 'string', validate: coded })
           .action(dispatch),
       ),
+  'lying-filter': () => broken(() => Lying.of('held')),
   'marked-hint': () =>
     routed({
       plugins: [hinting('fixture/one', (failure, { style }) => `plain ${style.bold('bold')}`)],
@@ -280,6 +300,7 @@ const scenarios = {
       views: [override(UsageError, bracketed)],
     }).action(dispatch),
   plain: () => routed().action(dispatch),
+  proxied: () => broken(() => proxied(['held'])),
   // A middleware and the hook read the same graph, built once for the run.
   'shared-graph': () => {
     let seen = null;

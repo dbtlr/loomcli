@@ -62,14 +62,45 @@ interface FailureSink {
 /** What one hook answered: its hints, or why it broke. */
 type HookAnswer = { kind: 'hints'; hints: readonly string[] } | { kind: 'broken'; reason: string };
 
-/** Every hint a returned list holds, or `undefined` for a value that is not a list of strings alone. */
+/** The string one index of a returned list holds, read once, or `undefined` for a hole or a non-string. */
+function heldString(listed: readonly unknown[], index: number): string | undefined {
+  if (!Object.hasOwn(listed, index)) {
+    return undefined;
+  }
+  const held = listed[index];
+  return typeof held === 'string' ? held : undefined;
+}
+
+/** The first `length` strings a list holds, copied into a frozen array, or `undefined` at a gap. */
+function copiedHints(listed: readonly unknown[], length: number): readonly string[] | undefined {
+  const hints: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const hint = heldString(listed, index);
+    if (hint === undefined) {
+      return undefined;
+    }
+    hints.push(hint);
+  }
+  return Object.freeze(hints);
+}
+
+/**
+ * Every hint a returned list holds, copied by index into a fresh frozen array, or `undefined` for a
+ * value that is not a list of strings alone. The copy calls no method on the returned value, so an
+ * array subclass or a proxy cannot answer a list other than the one it holds. A hole is not a hint.
+ * The length is read once, so a getter cannot grow the list while it is copied.
+ */
 function listedHints(returned: unknown): readonly string[] | undefined {
   if (!Array.isArray(returned)) {
     return undefined;
   }
   const listed: readonly unknown[] = returned;
-  const hints = listed.filter((hint): hint is string => typeof hint === 'string');
-  return hints.length === listed.length ? hints : undefined;
+  // A proxy answers its own length, so a length no array can hold is not a list.
+  const { length } = listed;
+  if (!Number.isSafeInteger(length) || length < 0) {
+    return undefined;
+  }
+  return copiedHints(listed, length);
 }
 
 /**

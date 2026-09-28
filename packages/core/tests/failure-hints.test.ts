@@ -118,6 +118,9 @@ test.each([
   ['broken-throws', 'Cannot suggest.'],
   ['broken-number', 'The hook returned a value that is not a string or an array of strings.'],
   ['broken-array', 'The hook returned a value that is not a string or an array of strings.'],
+  ['broken-hole', 'The hook returned a value that is not a string or an array of strings.'],
+  ['broken-lying-filter', 'The hook returned a value that is not a string or an array of strings.'],
+  ['broken-proxied', 'The hook returned a value that is not a string or an array of strings.'],
   ['broken-promise', 'The hook returned a promise instead of hints.'],
   ['broken-rejecting', 'The hook returned a promise instead of hints.'],
 ])(
@@ -128,6 +131,18 @@ test.each([
       `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: ${reason}\n`,
     );
     expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
+  },
+);
+
+test.each(['lying-filter', 'proxied'])(
+  'a returned array (%s) contributes the strings it holds, whatever its own methods answer',
+  (scenario) => {
+    expect(run(scenario, ['cache', 'clear', '--bogus'])).toEqual({
+      status: 2,
+      stderr: `${unknownBogus}held\nstill here\n`,
+      stdout:
+        'hook:fixture/broken:UnknownOptionError:[cache,clear]\nhook:fixture/fine:UnknownOptionError:[cache,clear]\nresolved:2\n',
+    });
   },
 );
 
