@@ -91,6 +91,26 @@ test.each([
     },
   ],
   [
+    ['-fhunter2', 'get', 'a'],
+    {
+      message:
+        'Value option "-f" must be last in its short group. Supply its value in the next token.',
+      name: 'ShortGroupError',
+      reason: 'value-position',
+      token: '-f',
+    },
+  ],
+  [
+    ['-qfhunter2', 'get', 'a'],
+    {
+      message:
+        'Value option "-f" must be last in its short group. Supply its value in the next token.',
+      name: 'ShortGroupError',
+      reason: 'value-position',
+      token: '-f',
+    },
+  ],
+  [
     ['-qZ', '-f', 'x'],
     {
       message:
