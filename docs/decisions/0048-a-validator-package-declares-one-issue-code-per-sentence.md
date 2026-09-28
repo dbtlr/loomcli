@@ -58,3 +58,4 @@ Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: `@loomcli/vali
 
 - 2026-09-28: Proposed with the issue code contract.
 - 2026-09-28: Accepted; `issueCode`, the catalog's 23 codes, and the required `text()` message ship under Node.js and Bun. `issue` and `read` declare `this: void`, so either can be passed or destructured apart from its descriptor, as [Issue codes](../validators.md#issue-codes) shows.
+- 2026-09-28: Under [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), core's issue for a validator that rejects with no issues now ends with its fix: `The validator rejected this value without an explanation. Supply a different value.` It still carries no code, so the "Core's issues carry no code" bullet holds with the longer sentence.

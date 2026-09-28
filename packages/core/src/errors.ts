@@ -58,8 +58,8 @@ function nonCallableMessage(command: readonly string[], candidates: readonly str
 
 /**
  * The two short-group faults. A value option that is not last in its group names that option's
- * spelling; a group that mixes scopes names the whole group and the two letters that disagree.
- * The extra letters shape the sentence alone, so `token` and `reason` are the reported facts.
+ * spelling; a group that mixes scopes names only the two letters that disagree, because the rest
+ * of the group may hold an inline value. `token` keeps the whole group as the reported fact.
  */
 type ShortGroupFault =
   | { reason: 'value-position'; token: string }
@@ -68,7 +68,7 @@ type ShortGroupFault =
 function shortGroupMessage(fault: ShortGroupFault): string {
   return fault.reason === 'value-position'
     ? `Value option ${quoted(fault.token)} must be last in its short group. Supply its value in the next token.`
-    : `Short group ${quoted(fault.token)} mixes the global option ${quoted(`-${fault.global}`)} with ${quoted(`-${fault.other}`)}, which is not a global option. Supply global options as separate tokens, and local options after their command name.`;
+    : `A short group mixes the global option ${quoted(`-${fault.global}`)} with ${quoted(`-${fault.other}`)}, which is not a global option. Supply global options as separate tokens, and local options after their command name.`;
 }
 
 /**

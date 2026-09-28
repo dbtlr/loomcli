@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import { escapeControlCharacters, InputError, readExtension } from '@loomcli/core';
+import { escapeControlCharacters, InputError, issuePath, readExtension } from '@loomcli/core';
 import type {
   CommandGraph,
   ContextualStyle,
@@ -310,13 +310,15 @@ function spellingOf(request: OptionNode): string {
   return request.short ?? `--${request.name}`;
 }
 
-/** The lines one wrong value reports, one per issue, each naming the option, its origin, and any position. */
+/**
+ * The lines one wrong value reports, one per issue, each naming the option, its origin, and any
+ * position. The position is read and escaped as core's own validation lines read it.
+ */
 function wrongValueLines(subject: string, issues: readonly Issue[]): string[] {
   return issues.map((issue) => {
-    const position = issue.path
-      ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
-      .join('.');
-    return `${subject}${position ? ` at ${position}` : ''}: ${issue.message}`;
+    const path = issuePath(issue);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `${subject}${position}: ${issue.message}`;
   });
 }
 
@@ -348,7 +350,8 @@ function answer(request: OptionNode, usable: readonly UsableFile[], graph: Comma
 
 /**
  * The value at a request's path in the first usable file that holds one, with the label that names
- * the path and the file, or `undefined` when the option carries no binding or no file answers.
+ * the path and the file, each escaped for quoting, or `undefined` when the option carries no
+ * binding or no file answers.
  */
 function locate(
   request: OptionNode,
@@ -363,7 +366,7 @@ function locate(
   return answering === undefined
     ? undefined
     : {
-        label: `${binding.path} in ${answering.file.shown}`,
+        label: `${escapeControlCharacters(binding.path)} in ${answering.file.shown}`,
         value: valueAt(answering.object, segments),
       };
 }

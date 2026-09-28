@@ -30,22 +30,65 @@ const grammar =
 /** The Standard Schema version this package reads. */
 const standardVersion = 1;
 
-/** Whether a value answers the Standard Schema v1 contract, as core checks a validator. */
+/** Whether a value is an object or a function, which alone can carry fields. */
+function isObjectLike(value: unknown): value is object {
+  return value !== null && (typeof value === 'object' || typeof value === 'function');
+}
+
+/**
+ * Whether a value answers the Standard Schema v1 contract, as core checks a validator. A value
+ * whose fields throw when read, through a getter or a proxy trap, is not a Standard Schema.
+ */
 function isStandardSchema(value: unknown): boolean {
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+  try {
+    if (!isObjectLike(value)) {
+      return false;
+    }
+    const standard: unknown = '~standard' in value ? value['~standard'] : undefined;
+    return (
+      standard !== null &&
+      typeof standard === 'object' &&
+      'version' in standard &&
+      standard.version === standardVersion &&
+      'vendor' in standard &&
+      typeof standard.vendor === 'string' &&
+      'validate' in standard &&
+      typeof standard.validate === 'function'
+    );
+  } catch {
     return false;
   }
-  const standard: unknown = '~standard' in value ? value['~standard'] : undefined;
-  return (
-    standard !== null &&
-    typeof standard === 'object' &&
-    'version' in standard &&
-    standard.version === standardVersion &&
-    'vendor' in standard &&
-    typeof standard.vendor === 'string' &&
-    'validate' in standard &&
-    typeof standard.validate === 'function'
-  );
+}
+
+/** What a schema's synchronous result says: the parameters it outputs, or that it rejects them. */
+type Verdict<Params> = { kind: 'accepted'; params: Params } | { kind: 'rejected' };
+
+/**
+ * The verdict a schema's result states, or `undefined` for a value that is not a Standard Schema
+ * result: a success must hold its own `value` and no issues, and a failure an issues array. Both
+ * `issue` and `read` read a result here, so neither keeps parameters the schema never output. A
+ * getter or a proxy trap that throws while the result is read propagates to the caller.
+ */
+function verdictOf<Params>(result: StandardSchemaV1.Result<Params>): Verdict<Params> | undefined {
+  if (!isObjectLike(result)) {
+    return undefined;
+  }
+  if (result.issues === undefined) {
+    return Object.hasOwn(result, 'value') ? { kind: 'accepted', params: result.value } : undefined;
+  }
+  const issues: unknown = result.issues;
+  return Array.isArray(issues) ? { kind: 'rejected' } : undefined;
+}
+
+/** The verdict a result states, where a result that throws while it is read states none. */
+function verdictOrNothing<Params>(
+  result: StandardSchemaV1.Result<Params>,
+): Verdict<Params> | undefined {
+  try {
+    return verdictOf(result);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -54,12 +97,7 @@ function isStandardSchema(value: unknown): boolean {
  */
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   try {
-    return (
-      (typeof value === 'object' || typeof value === 'function') &&
-      value !== null &&
-      'then' in value &&
-      typeof value.then === 'function'
-    );
+    return isObjectLike(value) && 'then' in value && typeof value.then === 'function';
   } catch {
     return false;
   }
@@ -98,36 +136,69 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
   checkDeclaration(code, config);
   const { message, schema } = config;
 
-  /** The schema's synchronous answer; a promise faults, since neither caller can wait for it. */
-  function validate(value: unknown): StandardSchemaV1.Result<Params> {
-    const result = schema['~standard'].validate(value);
-    if (isThenable(result)) {
+  /** The schema's synchronous result; a promise faults, since neither caller can wait for it. */
+  function settled(
+    answer: StandardSchemaV1.Result<Params> | Promise<StandardSchemaV1.Result<Params>>,
+  ): StandardSchemaV1.Result<Params> {
+    if (isThenable(answer)) {
       // The unawaited answer may still reject, and an unobserved rejection would end the process.
-      void Promise.resolve(result).catch(() => undefined);
+      void Promise.resolve(answer).catch(() => undefined);
       throw fault(
         `Issue code ${JSON.stringify(code)} has a schema that answers with a promise. Supply a schema that validates synchronously.`,
       );
     }
-    return result;
+    return answer;
+  }
+
+  /** The schema's answer to the parameters `issue` was given; a throw is the declaration's fault. */
+  function declaredAnswer(params: Params) {
+    try {
+      return schema['~standard'].validate(params);
+    } catch {
+      throw fault(
+        `Issue code ${JSON.stringify(code)} has a schema that throws in issue(). Supply a schema that returns its issues instead of throwing.`,
+      );
+    }
+  }
+
+  /**
+   * The verdict `issue` builds from. Anything but a well-formed synchronous result is the
+   * declaration's fault, so a result that throws while it is read is not a result either.
+   */
+  function declaredVerdict(params: Params): Verdict<Params> {
+    const verdict = verdictOrNothing(settled(declaredAnswer(params)));
+    if (verdict === undefined) {
+      throw fault(
+        `Issue code ${JSON.stringify(code)} has a schema that answers with a value that is not a Standard Schema result. Supply a schema that returns its value or its issues.`,
+      );
+    }
+    return verdict;
   }
 
   return Object.freeze({
     code,
     issue: (params: Params): StandardSchemaV1.Issue => {
-      const result = validate(params);
-      if (result.issues !== undefined) {
+      const verdict = declaredVerdict(params);
+      if (verdict.kind === 'rejected') {
         throw fault(
           `Issue code ${JSON.stringify(code)} rejects the parameters passed to issue(). Supply parameters its schema accepts.`,
         );
       }
-      return Object.freeze({ code, message: message(result.value), params: result.value });
+      return Object.freeze({ code, message: message(verdict.params), params: verdict.params });
     },
+    // Core hands a failure view a plain-object copy of each issue a validator returned.
+    // Reading the copy's own fields runs no getter, and its parameters reach the schema as they are.
     read: (issue: StandardSchemaV1.Issue): Params | undefined => {
-      if (!('code' in issue) || issue.code !== code) {
+      const candidate: unknown = issue;
+      if (!isObjectLike(candidate) || !('code' in candidate) || candidate.code !== code) {
         return undefined;
       }
-      const result = validate('params' in issue ? issue.params : undefined);
-      return result.issues === undefined ? result.value : undefined;
+      const params = 'params' in candidate ? candidate.params : undefined;
+      if (!isObjectLike(params)) {
+        return undefined;
+      }
+      const verdict = verdictOf(settled(schema['~standard'].validate(params)));
+      return verdict?.kind === 'accepted' ? verdict.params : undefined;
     },
     schema,
   });

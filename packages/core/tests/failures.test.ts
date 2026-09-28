@@ -94,10 +94,30 @@ test.each([
     ['-qZ', '-f', 'x'],
     {
       message:
-        'Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+        'A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
       name: 'ShortGroupError',
       reason: 'mixed-scope',
       token: '-qZ',
+    },
+  ],
+  [
+    ['-qmhunter2', '-f', 'x'],
+    {
+      message:
+        'A short group mixes the global option "-q" with "-m", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+      name: 'ShortGroupError',
+      reason: 'mixed-scope',
+      token: '-qmhunter2',
+    },
+  ],
+  [
+    ['-qm=hunter2', '-f', 'x'],
+    {
+      message:
+        'A short group mixes the global option "-q" with "-m", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+      name: 'ShortGroupError',
+      reason: 'mixed-scope',
+      token: '-qm=hunter2',
     },
   ],
 ] satisfies [string[], Record<string, unknown>][])(
@@ -286,7 +306,7 @@ test.each([
   [
     'a mixed short group',
     [`-q${rightToLeft}`],
-    `failures: Short group "-q${rightToLeftEscape}" mixes the global option "-q" with "-${rightToLeftEscape}", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n`,
+    `failures: A short group mixes the global option "-q" with "-${rightToLeftEscape}", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n`,
   ],
   [
     'an issue path',

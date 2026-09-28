@@ -31,7 +31,7 @@ For a rejected value, the catalog's `Expected ...` sentence is the second part, 
 | ---------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------- |
 | `app: Argument "path": Expected a path.` | `app: Argument "path": Expected a nonempty path with no NUL character.` | The accepted form is specific. |
 | `Unknown command "nope".`                | `Unknown command "nope". Supply the name of a declared command.`                   | The sentence gains its fix.           |
-| `Path not found: a.b`                    | `Path not found: a.b. Run jsonkit keys to list the keys at the root.`              | An application names its own Command. |
+| `Path not found: a.b`                    | `Path not found: "a.b". Run jsonkit keys to list the keys at the root.`          | An application names its own Command. |
 
 ## 3. Leave plugin pointers to hint lines
 
@@ -103,4 +103,4 @@ The audit listed every operator message Loom ships and checked it against rules 
 
 The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator sees the generic message once the author development view lands.
 
-The example applications were audited against rules 2 and 3 too: every `fatal`, `warn`, and `FatalError` sentence in jsonkit and textstat ends with its fix, such as `Field not found: name. Run jsonkit keys to list the fields.`, and jsonkit's `Cannot parse JSON` and `Cannot read` and textstat's `Cannot read` keep their runtime reasons under rule 6, each closed by one period before the fix. jsonkit's branded `InputError` and `UnknownCommandError` views keep their text until they give way to core's default text, as [Example coverage](core.md#example-coverage) describes.
+The example applications were audited against rules 2 and 3 too: every `fatal`, `warn`, and `FatalError` sentence in jsonkit and textstat ends with its fix, such as `Field not found: "name". Run jsonkit keys to list the fields.`, each quoting the path or field it repeats so a trailing dot stays inside the quotes, and jsonkit's `Cannot parse JSON` and `Cannot read` and textstat's `Cannot read` keep their runtime reasons under rule 6, each closed by one period before the fix. jsonkit's branded `InputError` and `UnknownCommandError` views keep their text until they give way to core's default text, as [Example coverage](core.md#example-coverage) describes.

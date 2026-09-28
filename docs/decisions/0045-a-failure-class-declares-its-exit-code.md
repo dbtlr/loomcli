@@ -4,7 +4,7 @@ title: ADR-0045 - A failure class declares its exit code
 description: A failure class states its exit code as a static field, read from the nearest ancestor that declares one, so one class exits with one code wherever it is raised. The declarable codes are 1 through 125, a reserved code throws a DeclarationError at construction, and core exports the sysexits names. A configuration source's LoomError reports with its class's code.
 status: accepted
 created: 2026-09-27
-modified: 2026-09-27
+modified: 2026-09-28
 ---
 
 # ADR-0045 - A failure class declares its exit code
@@ -53,3 +53,4 @@ Accepted 2026-09-27 with the implementation. `LoomError` declares 1 and `UsageEr
 - 2026-09-27: Proposed with the declared exit code contract.
 - 2026-09-27: Accepted with the implementation.
 - 2026-09-27: Core captures each class's code once, at the class's first construction, and captures its own classes when the package loads, so a static written or answered differently later gives no class a second code. The instance's `exitCode` is a read-only accessor, so a TypeScript subclass cannot override it, and no subclass property or assignment changes the code `run()` resolves. A value that inherits from a failure class without being constructed by one reports as an internal error with code 1, so `run()` never passes an undeclarable code to the process.
+- 2026-09-28: Accepted [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) replaces the `Invalid input:` prefix the Consequences name: core's default text opens every `UsageError` with the application name and a colon. An author class that declares 2 without extending `UsageError` still takes neither that prefix nor a `UsageError` override.

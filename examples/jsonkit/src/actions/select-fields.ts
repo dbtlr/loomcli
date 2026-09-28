@@ -1,3 +1,4 @@
+import { escapeControlCharacters } from '@loomcli/core';
 import type { ActionHandler } from '@loomcli/core';
 
 import type { select } from '../commands/select.js';
@@ -19,7 +20,7 @@ export const selectFields: ActionHandler<typeof select> = async ({ options, host
       selected.set(field, record[field]);
     } else {
       await out.warn(
-        `Field not found: ${style.escape(field)}. Run jsonkit keys to list the fields.`,
+        `Field not found: "${style.escape(escapeControlCharacters(field))}". Run jsonkit keys to list the fields.`,
       );
     }
   }

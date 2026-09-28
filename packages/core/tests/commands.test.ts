@@ -137,11 +137,11 @@ test.each([
   ],
   [
     ['-qp', '--file', 'data.json', 'get', 'a.b'],
-    'Short group "-qp" mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'A short group mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
   ],
   [
     ['-qZ', '--file', 'data.json', 'get', 'a.b'],
-    'Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
   ],
   [
     ['--file', 'data.json', 'get', '--pretty', 'a.b'],

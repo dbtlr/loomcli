@@ -279,6 +279,25 @@ test(
 );
 
 test(
+  'a key that holds a right-to-left override is escaped wherever a diagnostic quotes it',
+  inWorkspace((space) => {
+    const key = `li\u{202e}mits`;
+    space.write('.app.json', JSON.stringify({ [key]: { bytes: { max: 5 } } }));
+    expect(space.run('bidi-path', []).stderr).toBe(
+      wrong(
+        String.raw`Option "--limit" (from li\u202emits.bytes in .app.json): Use a string or a number.`,
+      ),
+    );
+    space.write('.app.json', JSON.stringify({ [key]: { bytes: 'abc' } }));
+    expect(space.run('bidi-path', []).stderr).toBe(
+      wrong(
+        String.raw`Option "--limit" (from li\u202emits.bytes in .app.json): Supply a whole number.`,
+      ),
+    );
+  }),
+);
+
+test(
   'a value follows the option type, and a wrong value is a usage failure naming the file',
   inWorkspace((space) => {
     space.write(

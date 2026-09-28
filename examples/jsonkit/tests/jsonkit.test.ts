@@ -40,12 +40,26 @@ test('jsonkit preserves JSON strings that resemble recognized style markup', () 
   expect(result).toEqual({ status: 0, stderr: '', stdout: `${JSON.stringify(literal)}\n` });
 });
 
+test('jsonkit quotes an unresolved path and escapes its bidirectional controls', () => {
+  const override = '\u{202e}';
+  for (const [path, shown] of [
+    ['name.', 'name.'],
+    [`a${override}b`, String.raw`a\u202eb`],
+  ]) {
+    expect(invoke(main, ['get', path], { input: '{"name": "loom"}' })).toEqual({
+      status: 65,
+      stderr: `Path not found: "${shown}". Run jsonkit keys to list the keys at the root.\n`,
+      stdout: '',
+    });
+  }
+});
+
 test('jsonkit renders document error messages literally', () => {
   const path = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
   for (const command of ['get', 'keys']) {
     expect(invoke(main, [command, path], { input: '{}' })).toEqual({
       status: 65,
-      stderr: `Path not found: ${path}. Run jsonkit keys to list the keys at the root.\n`,
+      stderr: `Path not found: "${path}". Run jsonkit keys to list the keys at the root.\n`,
       stdout: '',
     });
   }
@@ -107,7 +121,7 @@ test.each(['missing', 'nested.missing', 'tags.2', 'name.length', 'tags.first'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['get', path, '--file', 'doc.json'], { cwd })).toEqual({
         status: 65,
-        stderr: `Path not found: ${path}. Run jsonkit keys to list the keys at the root.\n`,
+        stderr: `Path not found: "${path}". Run jsonkit keys to list the keys at the root.\n`,
         stdout: '',
       });
     });

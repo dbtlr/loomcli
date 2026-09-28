@@ -255,6 +255,41 @@ test('a catalog code rejects parameters of another shape', () => {
   );
 });
 
+/** The parameters an issue carries, read without claiming the issue's shape. */
+function paramsOf(issue: StandardSchemaV1.Issue): unknown {
+  return 'params' in issue ? issue.params : undefined;
+}
+
+/** One list parameter, read without claiming the parameters' shape. */
+function listOf(params: unknown, key: 'protocols' | 'values'): unknown {
+  return typeof params === 'object' && params !== null && key in params
+    ? Object.getOwnPropertyDescriptor(params, key)?.value
+    : undefined;
+}
+
+test('a catalog issue freezes its parameters and every list inside them', () => {
+  const range = catalog.integerRangeIssue.issue({ max: 2, min: 1 });
+  expect(Object.isFrozen(paramsOf(range))).toBe(true);
+  const oneOf = paramsOf(catalog.oneOfIssue.issue({ values: ['a', 'b'] }));
+  expect(Object.isFrozen(oneOf)).toBe(true);
+  expect(Object.isFrozen(listOf(oneOf, 'values'))).toBe(true);
+  const scheme = paramsOf(catalog.urlSchemeIssue.issue({ protocols: ['https'] }));
+  expect(Object.isFrozen(scheme)).toBe(true);
+  expect(Object.isFrozen(listOf(scheme, 'protocols'))).toBe(true);
+  expect(
+    Object.isFrozen(catalog.oneOfIssue.read(catalog.oneOfIssue.issue({ values: ['a'] }))?.values),
+  ).toBe(true);
+});
+
+test('a catalog code reads parameters with an extra key as undefined', () => {
+  const code = catalog.integerRangeIssue.code;
+  expect(
+    catalog.integerRangeIssue.read(
+      foreignIssue({ code, message: 'x', params: { extra: 0, max: 2, min: 1 } }),
+    ),
+  ).toBe(undefined);
+});
+
 describe('a count of 1 reads character', () => {
   it.each([
     [catalog.textMinLengthIssue.issue({ min: 1 }), 'Expected at least 1 character.'],

@@ -44,7 +44,7 @@ export const unknownCommand: View<UnknownCommandError> = {
   render: (failure, { style }) => {
     const named = `unknown command "${failure.token}"`;
     const [first] = failure.candidates;
-    // A parent whose children are all hidden offers no candidate.
+    // A parent whose children are all hidden or deprecated offers no candidate.
     // The line then ends after its first clause rather than pointing at an empty list.
     const line =
       first === undefined ? `${named}.` : `${named}; try ${failure.candidates.join(', ')}.`;

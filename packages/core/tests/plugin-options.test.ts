@@ -73,7 +73,7 @@ test('a short group that mixes a plugin letter reads it as a global option', () 
   expect(settings(['-qZ', 'get', 'a.b'])).toEqual({
     status: 2,
     stderr:
-      'app: Short group "-qZ" mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
+      'app: A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
     stdout: 'resolved:2\n',
   });
 });

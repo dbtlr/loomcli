@@ -113,7 +113,7 @@ test('a mixed-scope short group is the pre-scan error rather than help', () => {
   expect(run('cells', ['-ht'])).toEqual({
     status: 2,
     stderr:
-      'app: Short group "-ht" mixes the global option "-h" with "-t", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
+      'app: A short group mixes the global option "-h" with "-t", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
     stdout: '',
   });
 });

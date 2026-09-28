@@ -330,7 +330,7 @@ A failure only the author can fix, met on a shipped application: an unexpected e
 _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
-The text core writes to stderr for one failure: the prefix the view chooses, the application name for a usage failure or a category such as `Internal error: ` otherwise, then the sentence, its correction, and the hints the view prints.
+The text core writes to stderr for one failure: the prefix the view chooses, which is the application name for a usage failure, a category such as `Internal error: ` for a declaration or internal failure, and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints.
 _Avoid_: Error message (when the class is meant), log line
 
 **Operator message**:
