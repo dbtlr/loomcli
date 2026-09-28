@@ -215,12 +215,13 @@ const scenarios = {
       ],
     }).action(dispatch),
   'broken-array': () => broken(() => ['fine', 7]),
-  // Index 1 of three is never assigned, so the list holds a hole there.
   'broken-controls': () =>
     broken(() => {
       throw new Error(`red${controls}end`);
     }),
-  'broken-hole': () => broken(() => Object.assign([], { 0: 'a', 2: 'c' })),
+  'broken-hole': () =>
+    // Index 1 of three is never assigned, so the list holds a hole there.
+    broken(() => Object.assign([], { 0: 'a', 2: 'c' })),
   'broken-lying-filter': () => broken(() => Lying.of(7)),
   'broken-multiline': () =>
     broken(() => {
