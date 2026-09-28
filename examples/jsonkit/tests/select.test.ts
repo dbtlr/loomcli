@@ -142,11 +142,11 @@ test('jsonkit lists the root keys when the keys path is omitted', () => {
 });
 
 test.each(['missing', 'nested.gone', 'tags.2'])(
-  'jsonkit reports the unresolved keys path %s',
+  'jsonkit reports the unresolved keys path %s with EX_DATAERR',
   (path) => {
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', 'keys', path], { cwd })).toEqual({
-        status: 1,
+        status: 65,
         stderr: `Path not found: ${path}\n`,
         stdout: '',
       });
