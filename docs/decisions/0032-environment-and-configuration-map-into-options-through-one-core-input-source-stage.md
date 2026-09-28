@@ -4,7 +4,7 @@ title: ADR-0032 - Environment and configuration map into options through one cor
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
 status: accepted
 created: 2026-09-24
-modified: 2026-09-26
+modified: 2026-09-27
 ---
 
 # ADR-0032 - Environment and configuration map into options through one core input-source stage
@@ -52,3 +52,4 @@ Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean
 - 2026-09-26: [ADR-0038](0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md), proposed, supersedes the clause that every throw from a source is a fault of that plugin: a thrown `InputError` reports with code 2, and the source context gains `out`, `style`, and `graph`. Every other rule here stands.
 - 2026-09-26: [ADR-0040](0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md), proposed, narrows the clause that nothing publishes provenance: a middleware reads, under `spellings`, the spelling that supplied each of its own plugin's typed options, and a filled option has no entry. It also settles the projection this record deferred: help prints no environment binding on either variant, because help teaches command-line syntax. The action, the request, and the graph still cannot tell which tier supplied a value, and every other rule here stands. It binds when that record is accepted.
 - 2026-09-26: [ADR-0040](0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md) is accepted, so the entry above binds.
+- 2026-09-27: [ADR-0045](0045-a-failure-class-declares-its-exit-code.md), proposed, widens the ADR-0038 carve-out to any `LoomError`. This binds when ADR-0045 is accepted.
