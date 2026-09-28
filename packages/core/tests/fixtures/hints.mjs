@@ -391,6 +391,12 @@ const scenarios = {
         hinting('fixture/two', () => 'shared'),
       ],
     }).action(dispatch),
+  // Two rejected options, so one input failure writes two problem lines above the hints.
+  'two-problems': () =>
+    new Application('store', { plugins: [hinting('fixture/one', () => ['first', 'second'])] })
+      .option('left', { type: 'string', validate: refuses })
+      .option('right', { type: 'string', validate: refuses })
+      .action(dispatch),
 };
 
 const build = scenarios[scenario];

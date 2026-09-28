@@ -83,9 +83,9 @@ test('problems report the globals, then a rejected plugin variable, then the loc
   expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
     [
       'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
-      'Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, 1, or 0.',
-      'Option "--max": Supply a whole number.',
-      'Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.',
+      'app: Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, 1, or 0.',
+      'app: Option "--max": Supply a whole number.',
+      'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.',
       '',
     ].join('\n'),
   );

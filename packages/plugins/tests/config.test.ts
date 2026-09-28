@@ -331,7 +331,7 @@ test(
     space.write('.app.json', json({ fields: ['a', {}, null] }));
     expect(space.run('project', []).stderr).toBe(
       wrong(
-        'Option "--fields" (from fields in .app.json) at 1: Use a string or a number.\nOption "--fields" (from fields in .app.json) at 2: Use a string or a number.',
+        'Option "--fields" (from fields in .app.json) at 1: Use a string or a number.\napp: Option "--fields" (from fields in .app.json) at 2: Use a string or a number.',
       ),
     );
     space.write('.app.json', json({ title: null }));
@@ -342,7 +342,7 @@ test(
     space.write('.app.json', '{"title": 1e400, "fields": [-0, 1e21, -1e400]}');
     expect(space.run('project', []).stderr).toBe(
       wrong(
-        'Option "--fields" (from fields in .app.json) at 2: Use a string or a number.\nOption "--title" (from title in .app.json): Use a string or a number.',
+        'Option "--fields" (from fields in .app.json) at 2: Use a string or a number.\napp: Option "--title" (from title in .app.json): Use a string or a number.',
       ),
     );
     space.write('.app.json', '{"fields": [-0, 1e21]}');
@@ -351,7 +351,7 @@ test(
 );
 
 test(
-  'an empty array fills a multiple option, and two wrong values print in request order',
+  'an empty array fills a multiple option, and two wrong values print in request order, each line opening with the application name',
   inWorkspace((space) => {
     space.write('.app.json', json({ fields: [] }));
     space.write('app/config.json', json({ fields: ['user'] }), space.xdg);
@@ -360,7 +360,7 @@ test(
     expect(space.run('project', []).stderr).toBe(
       [
         'app: Option "--limit" (from limits.bytes in .app.json): Use a string or a number.',
-        'Option "--title" (from title in .app.json): Use a string or a number.',
+        'app: Option "--title" (from title in .app.json): Use a string or a number.',
         '',
       ].join('\n'),
     );

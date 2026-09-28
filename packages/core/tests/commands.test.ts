@@ -159,7 +159,7 @@ test.each([
   // Omission is a validation problem, so an omitted argument aggregates with a rejected value.
   [
     ['--file', 'data.json', '--limit', 'abc', 'get'],
-    'Option "--limit": Use decimal digits.\nArgument "path" requires a value. Supply a value for "path".',
+    'Option "--limit": Use decimal digits.\njsonkit: Argument "path" requires a value. Supply a value for "path".',
   ],
   [['--file', 'data.json', '--limit', 'abc', 'keys'], 'Option "--limit": Use decimal digits.'],
 ] satisfies [string[], string][])('rejects %j without dispatch', (argv, reason) => {
@@ -230,9 +230,9 @@ test('validation reports the globals in authoring order, then the Command declar
   expect(result.stderr).toBe(
     [
       'order: Option "--alpha": alpha rejected.',
-      'Option "--beta": beta rejected.',
-      'Option "--local": local rejected.',
-      'Argument "path": path rejected.',
+      'order: Option "--beta": beta rejected.',
+      'order: Option "--local": local rejected.',
+      'order: Argument "path": path rejected.',
       '',
     ].join('\n'),
   );

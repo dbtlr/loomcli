@@ -92,6 +92,14 @@ test("two plugins' hints print under core's default text in installation order, 
   });
 });
 
+test('hints under a diagnostic of several problem lines stay unprefixed', () => {
+  expect(run('two-problems', ['--left', 'x', '--right', 'y'])).toEqual({
+    status: 2,
+    stderr: 'store: Option "--left": No.\nstore: Option "--right": No.\nfirst\nsecond\n',
+    stdout: 'hook:fixture/one:InputError:[]\nresolved:2\n',
+  });
+});
+
 test('an override receives the hints and prints them in its own form', () => {
   expect(run('override-hints', ['cache', 'clear', '--bogus']).stderr).toBe(
     'usage: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n  (first)\n  (second)\n',

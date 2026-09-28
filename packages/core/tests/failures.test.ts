@@ -314,6 +314,33 @@ test('the default text opens a usage failure with the application name', () => {
 
 test.each([
   [
+    'two invalid inputs',
+    ['get', 'x', '-d', 'abc', '-m', 'fast'],
+    'failures: Option "--depth": Use decimal digits.\nfailures: Option "-m": Use fast or slow.\n',
+  ],
+  [
+    'a missing input beside an invalid one',
+    ['get', '-d', 'abc'],
+    'failures: Argument "path" requires a value. Supply a value for "path".\nfailures: Option "--depth": Use decimal digits.\n',
+  ],
+])(
+  'the default text opens every problem line of %s with the application name',
+  (_subject, argv, stderr) => {
+    expect(failures('default', argv)).toEqual({ status: 2, stderr, stdout: 'resolved:2\n' });
+  },
+);
+
+test('the plain fallback path opens every problem line with the application name', () => {
+  expect(failures('broken-usage', ['get', 'x', '-d', 'abc', '-m', 'fast'])).toEqual({
+    status: 1,
+    stderr:
+      'failures: Option "--depth": Use decimal digits.\nfailures: Option "-m": Use fast or slow.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+    stdout: 'resolved:1\n',
+  });
+});
+
+test.each([
+  [
     'an unknown command',
     [`a${rightToLeft}b`],
     `failures: Unknown command "a${rightToLeftEscape}b". Use one of: get, cache.\n`,

@@ -70,7 +70,7 @@ test('validator issues retain declaration and validator order, input kind, and v
   expect(schema('issues', ['--last', 'bad', 'x', '--same', 'bad'])).toEqual({
     status: 2,
     stderr:
-      'schema: Option "--same": First.\nOption "--same": Second.\nArgument "same" at 0: Too short.\nOption "--last": Last.\n',
+      'schema: Option "--same": First.\nschema: Option "--same": Second.\nschema: Argument "same" at 0: Too short.\nschema: Option "--last": Last.\n',
     stdout: '',
   });
 });

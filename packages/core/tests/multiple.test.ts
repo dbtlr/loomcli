@@ -59,7 +59,7 @@ test('a multiple validator runs once per value and reports each issue at its pos
   expect(multiple('schema', ['-F', '', '--field', 'a', '-F', ''])).toEqual({
     status: 2,
     stderr:
-      'multiple: Option "--field" at 0: Supply a field name.\nOption "--field" at 2: Supply a field name.\n',
+      'multiple: Option "--field" at 0: Supply a field name.\nmultiple: Option "--field" at 2: Supply a field name.\n',
     stdout: '',
   });
 });

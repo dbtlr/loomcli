@@ -85,17 +85,21 @@ function undeclarableMessage(className: string, declared: unknown): string {
 
 /**
  * Core's own text for one failure: its message under the prefix its class carries, with the
- * trailing newline every view's text carries. A usage failure opens with the application name, so
- * the operator reads who is speaking; the declaration and internal categories keep their category
- * prefixes. The four categories are disjoint branches of the hierarchy, so one ordered test reads
- * every class, and a class without a prefix of its own writes the sentence alone, even when it
- * declares a usage error's exit code. It is the default view of every failure class and the text
+ * trailing newline every view's text carries. The application name opens every line of a usage
+ * failure's message, one line for each problem it reports, so the operator reads who is speaking
+ * on each; the declaration and internal categories keep their category prefixes on the first
+ * line. The four categories are disjoint branches of the hierarchy, so one ordered test reads every
+ * class, and a class without a prefix of its own writes the sentence alone, even when it declares a
+ * usage error's exit code. It is the default view of every failure class and the text
  * the plain fallback path writes, so it runs no application code and nothing downstream composes
  * its newline.
  */
 export function defaultText(failure: LoomError, application: string): string {
   if (failure instanceof UsageError) {
-    return `${application}: ${failure.message}\n`;
+    return failure.message
+      .split('\n')
+      .map((line) => `${application}: ${line}\n`)
+      .join('');
   }
   if (failure instanceof DeclarationError) {
     return `Invalid declaration: ${failure.message}\n`;
