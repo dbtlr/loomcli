@@ -4,7 +4,7 @@ title: ADR-0047 - An operator message says what went wrong and what to do instea
 description: Every operator message Loom ships names what went wrong and says what to do instead, leaves plugin-dependent pointers to hint lines, repeats no value it cannot vouch for, escapes what it repeats, bidirectional controls included, and quotes no text Loom did not write. A defect shows the operator one generic message, and an author fault that reaches a shipped application is classified as an operator message or a defect.
 status: accepted
 created: 2026-09-28
-modified: 2026-09-28
+modified: 2026-09-29
 ---
 
 # ADR-0047 - An operator message says what went wrong and what to do instead
