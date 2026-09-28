@@ -595,8 +595,8 @@ class ApplicationBuilder<
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
        * failure view, onFailure hook, or destination in that run is reported as text without
-       * changing it. The
-       * signal decides the code whatever the action did afterward, so this reading comes last.
+       * changing it. The signal decides the code whatever the action did afterward, so this
+       * reading comes last.
        */
       code = cancellation() ?? code;
       process.exitCode = code;
