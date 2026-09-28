@@ -131,6 +131,25 @@ test.each([
   },
 );
 
+test.each(['getter', 'object', 'proxy', 'symbol'])(
+  'a hook that throws a value whose message cannot be read (%s) writes the fixed reason and keeps the failure',
+  (kind) => {
+    const result = run(`broken-unreadable-${kind}`, ['cache', 'clear', '--bogus']);
+    expect(result.stderr).toBe(
+      `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: The thrown value has no readable message.\n`,
+    );
+    expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
+  },
+);
+
+test('a failure view that throws a value whose message cannot be read writes the fixed reason', () => {
+  expect(run('broken-view-unreadable', ['cache', 'clear', '--bogus'])).toEqual({
+    status: 1,
+    stderr: `${unknownBogus}Internal error: Rendering the failure failed: The thrown value has no readable message.\n`,
+    stdout: 'resolved:1\n',
+  });
+});
+
 test('two broken hooks write their lines in installation order', () => {
   expect(run('two-broken', ['cache', 'clear', '--bogus']).stderr).toBe(
     `${unknownBogus}still here\nInternal error: Plugin "fixture/first" failed in onFailure: First failed.\nInternal error: Plugin "fixture/second" failed in onFailure: The hook returned a value that is not a string or an array of strings.\n`,

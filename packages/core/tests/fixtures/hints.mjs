@@ -53,6 +53,34 @@ const breaks = {
 
 const dispatch = ({ out }) => out.print('dispatched');
 
+/** An error whose message cannot be read as a string, in each way a JavaScript author can write. */
+const unreadable = {
+  getter: () =>
+    Object.defineProperty(new Error('x'), 'message', {
+      get() {
+        throw new Error('The getter failed.');
+      },
+    }),
+  object: () =>
+    Object.defineProperty(new Error('x'), 'message', {
+      value: {
+        toString() {
+          throw new Error('The conversion failed.');
+        },
+      },
+    }),
+  proxy: () =>
+    new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('The trap failed.');
+        },
+      },
+    ),
+  symbol: () => Object.defineProperty(new Error('x'), 'message', { value: Symbol('message') }),
+};
+
 /**
  * A two-level graph: a group with a visible child, a hidden child, and an aliased child, and
  * options of each listing kind on the root and on the child, so a hook's candidates are visible.
@@ -139,7 +167,19 @@ const refuses = {
   },
 };
 
+/** One scenario per unreadable error, each thrown by a broken hook beside a working one. */
+const unreadableScenarios = Object.fromEntries(
+  Object.entries(unreadable).map(([kind, raise]) => [
+    `broken-unreadable-${kind}`,
+    () =>
+      broken(() => {
+        throw raise();
+      }),
+  ]),
+);
+
 const scenarios = {
+  ...unreadableScenarios,
   // The action fails, then a plugin's misused next() is reported after it.
   'after-primary': () =>
     new Application('store', {
@@ -167,6 +207,16 @@ const scenarios = {
         hinting('fixture/fine', () => 'still here'),
       ],
       views: [override(UsageError, breaks)],
+    }).action(dispatch),
+  'broken-view-unreadable': () =>
+    routed({
+      views: [
+        override(UsageError, {
+          render: () => {
+            throw unreadable.getter();
+          },
+        }),
+      ],
     }).action(dispatch),
   'build-fault': () =>
     new Application('store', {
