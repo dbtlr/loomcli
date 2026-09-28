@@ -50,12 +50,12 @@ An author climbs these rungs, and each pays only for itself:
 ### text
 
 ```ts
-text(options?: TextOptions): Validator<string>
-
-type TextOptions = { minLength?: number; maxLength?: number } & (
-  | { pattern?: undefined; message?: undefined }
-  | { pattern: RegExp; message: string }
-);
+text(
+  options?: { minLength?: number; maxLength?: number } & (
+    | { pattern?: undefined; message?: undefined }
+    | { pattern: RegExp; message: string }
+  ),
+): Validator<string>
 ```
 
 - **Accepts** a string whose length, counted in Unicode code points, is at least `minLength` and at most `maxLength`, and which `pattern` matches when one is given. `minLength` defaults to `1`, so `text()` rejects the empty string; `text({ minLength: 0 })` accepts it.
@@ -216,21 +216,23 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 ```ts
 import type { StandardSchemaV1 } from '@loomcli/core';
 
-issueCode<Schema extends StandardSchemaV1>(
+issueCode<Params>(
   code: string,
   config: {
-    schema: Schema;
-    message: (params: StandardSchemaV1.InferOutput<Schema>) => string;
+    schema: StandardSchemaV1<Params>;
+    message: (params: Params) => string;
   },
-): IssueCode<Schema>
+): IssueCode<Params>
 
-interface IssueCode<Schema extends StandardSchemaV1 = StandardSchemaV1> {
+interface IssueCode<Params> {
   readonly code: string;
-  readonly schema: Schema;
-  issue(params: StandardSchemaV1.InferInput<Schema>): StandardSchemaV1.Issue;
-  read(issue: StandardSchemaV1.Issue): StandardSchemaV1.InferOutput<Schema> | undefined;
+  readonly schema: StandardSchemaV1<Params>;
+  issue(params: Params): StandardSchemaV1.Issue;
+  read(issue: StandardSchemaV1.Issue): Params | undefined;
 }
 ```
+
+The schema's input and output are one type, so `read` validates what `issue` stored.
 
 ```ts
 import { Application, InputError, issuePath, override } from '@loomcli/core';
@@ -263,7 +265,7 @@ export const serve = new Application('serve', {
           .join(''),
     }),
   ],
-}).option('workers', { type: 'string', validate: integer({ min: 1, max: 64 }) });
+}).option('workers', { type: 'string', validate: integer({ min: 1, max: 64 }) }).action(() => {});
 ```
 
 A validator package declares one issue code for each sentence its validators print, and an author rewords a sentence by reading its code in an `InputError` view override. The message rules every code's sentence follows are in [Failure messages](failure-messages.md). [ADR-0048](decisions/0048-a-validator-package-declares-one-issue-code-per-sentence.md) records the decision.
@@ -271,7 +273,7 @@ A validator package declares one issue code for each sentence its validators pri
 - **Declaring a code.** `issueCode(code, { schema, message })` returns a frozen descriptor. `schema` is a Standard Schema that validates the parameters and answers synchronously. `message` builds the code's one sentence from its parameters. Any package that ships validators built with `createValidator` declares its codes this way; the catalog is the first.
 - **The code string.** A code is the declaring package's name, as a plugin identity names its package, then `/` and a rule name of lowercase letters and digits in words joined by single hyphens: `@loomcli/validators/integer-range`.
 - **Rejecting with a code.** `parse` returns `{ issues: [code.issue(params)] }`. `issue` validates `params` through the schema and returns a frozen issue with `message`, the sentence `message` built; `code`, the code string; and `params`, the schema's output. `createValidator` passes the issue through unchanged, and core keeps its fields under [Issues and validator failures](core.md#issues-and-validator-failures).
-- **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, or no code at all. Core's own issues, a missing value and the Boolean grammar `Use true, false, 1, or 0.`, carry no code; `InputProblem.reason` separates a missing input from an invalid one.
+- **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, or no code at all. Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
 - **One sentence per code.** A code identifies one sentence, and its parameters are exactly that sentence's blanks, with one fixed shape per code. Parameters hold the rule's settings and never the rejected value.
 - **No per-call rewording.** A factory takes no argument that replaces its sentence. `text()`'s `message` describes the pattern and is the sentence of `text-pattern`. Every other rewording is an override keyed on a code.
 - **Faults.** `issueCode` throws a `DeclarationError` at the call for a code outside the grammar, a `schema` that is not a Standard Schema, and a `message` that is not a function. `issue` throws one for parameters the schema rejects. `issue` and `read` throw one when the schema answers with a promise.
@@ -285,7 +287,7 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `text-max-length`   | `textMaxLengthIssue`    | `{ max: number }`                           | `Expected at most {max} characters.`                   |
 | `text-exact-length` | `textExactLengthIssue`  | `{ length: number }`                        | `Expected exactly {length} characters.`                |
 | `text-length-range` | `textLengthRangeIssue`  | `{ min: number; max: number }`              | `Expected from {min} through {max} characters.`        |
-| `text-pattern`      | `textPatternIssue`      | `{ pattern: string; message: string }`      | `{message}`                                            |
+| `text-pattern`      | `textPatternIssue`      | `{ message: string }`                       | `{message}`                                            |
 | `integer`           | `integerIssue`          | none                                        | `Expected a whole number.`                             |
 | `integer-range`     | `integerRangeIssue`     | `{ min: number; max: number }`              | `Expected a whole number from {min} through {max}.`    |
 | `integer-min`       | `integerMinIssue`       | `{ min: number }`                           | `Expected a whole number of at least {min}.`           |
@@ -304,7 +306,7 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `path-readable`     | `pathReadableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a readable {kind} that exists.`              |
 | `path-writable`     | `pathWritableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a writable {kind}, or a new {kind} in a writable directory.` |
 
-A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s parameters hold the pattern's `source` and the author's `message`, which are the rule's settings.
+A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
 
 ## Package
 
