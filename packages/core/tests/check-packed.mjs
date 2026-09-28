@@ -252,7 +252,7 @@ try {
     assert.equal(rejected.status, 2, rejected.output);
     assert.equal(
       rejected.output,
-      'Invalid input: Option "--workers": Expected a whole number from 1 through 64.\nOption "--tag" at 0: Expected from 1 through 8 characters.\n',
+      'validators: Option "--workers": Expected a whole number from 1 through 64.\nOption "--tag" at 0: Expected from 1 through 8 characters.\n',
       `${name}: packed validators rejection`,
     );
   }

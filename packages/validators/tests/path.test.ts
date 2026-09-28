@@ -37,7 +37,7 @@ function accepted(resolved: string) {
 
 /** The run of a rejected token: core reports the one sentence as invalid input. */
 function refused(message: string) {
-  return { status: 2, stderr: `Invalid input: Option "--target": ${message}\n`, stdout: '' };
+  return { status: 2, stderr: `probe: Option "--target": ${message}\n`, stdout: '' };
 }
 
 test('path() publishes a nonempty string and nothing about the filesystem', () => {

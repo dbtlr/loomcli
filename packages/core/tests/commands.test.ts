@@ -166,7 +166,7 @@ test.each([
   const result = invokeCommands(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`jsonkit: ${reason}\n`);
 });
 
 function invokeAuthoring(scenario: string, argv: string[] = []) {
@@ -205,21 +205,21 @@ test.each([
 );
 
 test.each([
-  ['root', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
-  ['forked', ['get'], 'The root Command accepts no arguments. Remove the supplied values.'],
+  ['root', ['get'], 'copies: The root Command accepts no arguments. Remove the supplied values.'],
+  ['forked', ['get'], 'copies: The root Command accepts no arguments. Remove the supplied values.'],
   [
     'composed',
     ['--verbose'],
-    'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+    'copies: Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
   ],
-  ['plain', ['ls'], 'Unknown command "ls". Use one of: keys.'],
+  ['plain', ['ls'], 'plain: Unknown command "ls". Use one of: keys.'],
 ] satisfies [string, string[], string][])(
   'leaves the %s receiver without the later declaration for %j',
-  (scenario, argv, reason) => {
+  (scenario, argv, line) => {
     const result = invokeAuthoring(scenario, argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+    expect(result.stderr).toBe(`${line}\n`);
   },
 );
 
@@ -229,7 +229,7 @@ test('validation reports the globals in authoring order, then the Command declar
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(
     [
-      'Invalid input: Option "--alpha": alpha rejected.',
+      'order: Option "--alpha": alpha rejected.',
       'Option "--beta": beta rejected.',
       'Option "--local": local rejected.',
       'Argument "path": path rejected.',
@@ -252,7 +252,7 @@ test.each([
   const result = invokeOrder(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`order: ${reason}\n`);
 });
 
 test.each([

@@ -249,8 +249,82 @@ test('a value that is not an override throws from the Application constructor', 
 test('a validator that rejects without an explanation reports the placeholder issue', () => {
   expect(failures('empty-issues', ['--tag', 'x'])).toEqual({
     status: 2,
-    stderr: 'issue: The validator rejected this value without an explanation.\n',
+    stderr:
+      'issue: The validator rejected this value without an explanation. Supply a different value.\n',
     stdout: 'resolved:2\n',
+  });
+});
+
+/** A right-to-left override, which would reorder the rest of a line on a terminal. */
+const rightToLeft = '\u{202e}';
+
+/** The escape a sentence writes in the override's place, backslash included. */
+const rightToLeftEscape = String.raw`\u202e`;
+
+/** A developer emoji: a zero-width joiner between two emoji, which is ordinary text. */
+const developer = '\u{1f469}\u{200d}\u{1f4bb}';
+
+test('the default text opens a usage failure with the application name', () => {
+  expect(failures('default', ['-f', 'x', 'nope'])).toEqual({
+    status: 2,
+    stderr: 'failures: Unknown command "nope". Use one of: get, cache.\n',
+    stdout: 'resolved:2\n',
+  });
+});
+
+test.each([
+  [
+    'an unknown command',
+    [`a${rightToLeft}b`],
+    `failures: Unknown command "a${rightToLeftEscape}b". Use one of: get, cache.\n`,
+  ],
+  [
+    'an unknown option',
+    ['get', 'x', `--a${rightToLeft}b`],
+    `failures: Unknown option "--a${rightToLeftEscape}b". Supply a declared option; prefix a hyphenated path with "./".\n`,
+  ],
+  [
+    'a mixed short group',
+    [`-q${rightToLeft}`],
+    `failures: Short group "-q${rightToLeftEscape}" mixes the global option "-q" with "-${rightToLeftEscape}", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n`,
+  ],
+  [
+    'an issue path',
+    ['get', 'x', '--key', `a${rightToLeft}b`],
+    `failures: Option "--key" at a${rightToLeftEscape}b: Supply a known key.\n`,
+  ],
+])('the default text escapes a right-to-left override in %s', (_subject, argv, stderr) => {
+  expect(failures('default', argv)).toEqual({ status: 2, stderr, stdout: 'resolved:2\n' });
+});
+
+test('the default text keeps a zero-width joiner inside an emoji as it is', () => {
+  expect(failures('default', [developer])).toEqual({
+    status: 2,
+    stderr: `failures: Unknown command "${developer}". Use one of: get, cache.\n`,
+    stdout: 'resolved:2\n',
+  });
+});
+
+test('a failure keeps the raw token while its sentence escapes it', () => {
+  expect(reported([`a${rightToLeft}b`])).toEqual({
+    candidates: ['get', 'cache'],
+    exitCode: 2,
+    message: `Unknown command "a${rightToLeftEscape}b". Use one of: get, cache.`,
+    name: 'UnknownCommandError',
+    token: `a${rightToLeft}b`,
+  });
+  expect(reported([`-q${rightToLeft}`])).toMatchObject({
+    name: 'ShortGroupError',
+    reason: 'mixed-scope',
+    token: `-q${rightToLeft}`,
+  });
+  expect(reported(['get', 'x', `--a${rightToLeft}`])).toMatchObject({
+    message: `Unknown option "--a${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,
+    name: 'UnknownOptionError',
+    spelling: `--a${rightToLeft}`,
+  });
+  expect(reported(['get', 'x', '--key', `a${rightToLeft}b`])).toMatchObject({
+    problems: [{ issues: [{ path: [`a${rightToLeft}b`] }] }],
   });
 });
 
@@ -258,7 +332,7 @@ test('a broken view on a usage class writes the default text and returns 1', () 
   expect(failures('broken-usage', ['-f', 'x', 'nope'])).toEqual({
     status: 1,
     stderr:
-      'Invalid input: Unknown command "nope". Use one of: get, cache.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+      'failures: Unknown command "nope". Use one of: get, cache.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
     stdout: 'resolved:1\n',
   });
 });

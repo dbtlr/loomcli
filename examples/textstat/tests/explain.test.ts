@@ -66,7 +66,7 @@ test('an unknown option on the root gains the hint that names the application al
     expect(invoke(main, ['--bogus'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --explain" to explain this command.\n',
+        'textstat: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --explain" to explain this command.\n',
       stdout: '',
     });
   });

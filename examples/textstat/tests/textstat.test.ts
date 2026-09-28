@@ -121,7 +121,7 @@ test.each([
 test('textstat asks for files or piped text when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
-    stderr: 'Invalid input: Argument "files": Supply file arguments or pipe text to stdin.\n',
+    stderr: 'textstat: Argument "files": Supply file arguments or pipe text to stdin.\n',
     stdout: '',
   });
 });
@@ -212,7 +212,7 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
   ]);
   expect(result).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--metric": Expected one of: bytes, words, lines.\n',
+    stderr: 'textstat: Option "--metric": Expected one of: bytes, words, lines.\n',
     stdout: '',
   });
 });

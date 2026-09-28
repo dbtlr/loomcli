@@ -69,12 +69,12 @@ test.each([
 test('a Boolean variable outside the grammar is a usage failure naming the variable', () => {
   expect(run(['count', '--max', '1'], { FIXTURE_TOTAL: 'yes' }, 'plain')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
+    stderr: 'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
     stdout: 'schema:file:{}\nresolved:2\n',
   });
   // A negative-only option is named by the one spelling an operator types for it.
   expect(run(['count', '--max', '1'], { FIXTURE_QUIET: ' true' }, 'plain').stderr).toBe(
-    'Invalid input: Option "--no-quiet" (from FIXTURE_QUIET): Use true, false, 1, or 0.\n',
+    'app: Option "--no-quiet" (from FIXTURE_QUIET): Use true, false, 1, or 0.\n',
   );
 });
 
@@ -82,7 +82,7 @@ test('problems report the globals, then a rejected plugin variable, then the loc
   const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'yes', FIXTURE_VERBOSE: 'yes' };
   expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
     [
-      'Invalid input: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
+      'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
       'Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, 1, or 0.',
       'Option "--max": Supply a whole number.',
       'Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.',
@@ -128,7 +128,7 @@ test('a bad variable and a failing source report nothing under --help', () => {
   });
   expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
+    stderr: 'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
     stdout: 'resolved:2\n',
   });
   expect(run([], { FIXTURE_SOURCE: 'throw' })).toEqual({
@@ -158,7 +158,7 @@ test('a Boolean variable outside the grammar keeps the source unloaded', () => {
     }),
   ).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
+    stderr: 'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
     stdout: 'schema:file:{}\nlog:{"level":"info","verbose":false}\nresolved:2\n',
   });
 });
@@ -174,22 +174,22 @@ test('a source answers a multiple option with a list, and an empty string fills'
 
 test('an empty list still reports the required message of a required multiple option', () => {
   expect(run(['select'], settings({ fields: [] })).stderr).toBe(
-    'Invalid input: Option "--fields" (from fields in fixture.json) is required. Supply at least one value.\n',
+    'app: Option "--fields" (from fields in fixture.json) is required. Supply at least one value.\n',
   );
 });
 
 test('a failure on a filled value names its source, and an argv message is unchanged', () => {
   expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain').stderr).toBe(
-    'Invalid input: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
+    'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
   );
   expect(run([], settings({ 'limits.bytes': 'many' })).stderr).toBe(
-    'Invalid input: Option "--limit" (from limits.bytes in fixture.json): Supply a whole number.\n',
+    'app: Option "--limit" (from limits.bytes in fixture.json): Supply a whole number.\n',
   );
   expect(run(['--limit', 'many'], {}, 'plain').stderr).toBe(
-    'Invalid input: Option "--limit": Supply a whole number.\n',
+    'app: Option "--limit": Supply a whole number.\n',
   );
   expect(run(['select'], settings({ fields: ['a', ''] })).stderr).toBe(
-    'Invalid input: Option "--fields" (from fields in fixture.json) at 1: Supply a field name.\n',
+    'app: Option "--fields" (from fields in fixture.json) at 1: Supply a field name.\n',
   );
 });
 
@@ -197,13 +197,13 @@ test('with a local parse fault, a plugin option still fills and activates and a 
   expect(run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' })).toEqual({
     status: 2,
     stderr:
-      'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
+      'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nlog:{"verbose":true}\nresolved:2\n',
   });
   expect(run(['cache'], { FIXTURE_VERBOSE: '1' }, 'plain')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Command "cache" requires a subcommand. Use one of: clear.\n',
+    stderr: 'app: Command "cache" requires a subcommand. Use one of: clear.\n',
     stdout: 'log:{"verbose":true}\nresolved:2\n',
   });
 });
@@ -212,7 +212,7 @@ test('a local parse fault is reported ahead of a source fault', () => {
   const result = run(['count', '--bogus'], { FIXTURE_SOURCE: 'throw' });
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
+    'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
   );
 });
 
@@ -484,7 +484,7 @@ test('a source warns through lanes.warn, ahead of a takeover, and an override re
 });
 
 test('an InputError from the resolver is a usage failure that replaces every other problem', () => {
-  const failure = 'Invalid input: Option "--config": File "missing.json" does not exist.\n';
+  const failure = 'app: Option "--config": File "missing.json" does not exist.\n';
   expect(run([], { FIXTURE_SOURCE: 'input-error' })).toEqual({
     status: 2,
     stderr: failure,
@@ -506,7 +506,7 @@ test('an InputError from the resolver is a usage failure that replaces every oth
     '[{"input":{"global":true,"kind":"option","name":"config"},"issues":[{"message":"File \\"missing.json\\" does not exist."}],"reason":"invalid","spelling":"--config"}]\n',
   );
   expect(run(['count', '--bogus'], { FIXTURE_SOURCE: 'input-error' }).stderr).toBe(
-    'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
+    'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
   );
 });
 

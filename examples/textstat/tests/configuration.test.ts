@@ -79,7 +79,7 @@ function json(value: unknown): string {
 
 /** The failure the named file prints for one clause. */
 function namedFailure(path: string, clause: string): string {
-  return `Invalid input: Option "--config": File "${path}" ${clause}\n`;
+  return `textstat: Option "--config": File "${path}" ${clause}\n`;
 }
 
 /** The warning a discovered file prints for one clause. */
@@ -152,7 +152,7 @@ test(
     const fromProject = space.textstat(files);
     expect(fromProject.status).toBe(2);
     expect(fromProject.stderr).toMatch(
-      /^Invalid input: Option "--min-bytes" \(from minBytes in \.textstat\.json\): /u,
+      /^textstat: Option "--min-bytes" \(from minBytes in \.textstat\.json\): /u,
     );
     rmSync(join(space.project, '.textstat.json'));
     const user = space.write(space.xdg, 'textstat/config.json', json({ minBytes: -1 }));
@@ -238,15 +238,14 @@ test(
     space.write(space.project, '.textstat.json', json({ total: 'yes' }));
     expect(space.textstat(files)).toEqual({
       status: 2,
-      stderr:
-        'Invalid input: Option "--total" (from total in .textstat.json): Use true or false.\n',
+      stderr: 'textstat: Option "--total" (from total in .textstat.json): Use true or false.\n',
       stdout: '',
     });
     space.write(space.project, '.textstat.json', json({ minBytes: { max: 5 } }));
     expect(space.textstat(files)).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\n',
+        'textstat: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\n',
       stdout: '',
     });
   }),

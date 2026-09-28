@@ -7,7 +7,7 @@ function run(scenario: string, argv: string[] = []) {
 }
 
 const unknownBogus =
-  'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n';
+  'store: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n';
 
 /** The context one failure view read, which the `where` override serializes as one line. */
 function seen(argv: string[], scenario = 'context') {
@@ -246,6 +246,6 @@ test('a hook suggests a visible global or local spelling, never a hidden or depr
 
 test('a hook suggests a visible child by its canonical name, never an alias', () => {
   expect(run('candidates', ['cache', 'nope']).stderr).toBe(
-    'Invalid input: Unknown command "nope". Use one of: clear, list.\nchildren: clear list\n',
+    'store: Unknown command "nope". Use one of: clear, list.\nchildren: clear list\n',
   );
 });

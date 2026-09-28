@@ -17,7 +17,7 @@ const partial = 'PATHS\n0: one.txt\n';
 test('a source that throws under an awaited call reports its own code and diagnostic', () => {
   expect(incomplete('source-awaited')).toEqual({
     status: 2,
-    stderr: `${line('Command "count"', 1, 1)}Invalid input: The source failed.\n`,
+    stderr: `${line('Command "count"', 1, 1)}incomplete: The source failed.\n`,
     stdout: `${partial}resolved:2\n`,
   });
 });
@@ -25,7 +25,7 @@ test('a source that throws under an awaited call reports its own code and diagno
 test('the same failure under an unawaited call is a deferred fault that returns 1', () => {
   expect(incomplete('source-deferred')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 1, 1)}Invalid input: The source failed.\n`,
+    stderr: `${line('Command "count"', 1, 1)}incomplete: The source failed.\n`,
     stdout: `${partial}resolved:1\n`,
   });
 });
@@ -57,7 +57,7 @@ test('a row view that throws mid-sequence leaves the rows before it written', ()
 test('an awaited call that lets a thrown failure class propagate keeps that class code', () => {
   expect(incomplete('view-row-class')).toEqual({
     status: 2,
-    stderr: `${line('Command "count"', 2, 1)}Invalid input: The view refused.\n`,
+    stderr: `${line('Command "count"', 2, 1)}incomplete: The view refused.\n`,
     stdout: `${partial}resolved:2\n`,
   });
 });

@@ -56,7 +56,7 @@ test('an override keyed by a declared row view supersedes its whole shape', () =
 test('an override for a view no installed plugin declares is inert', () => {
   expect(views('inert')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--file" is required. Supply a value.\n',
+    stderr: 'views: Option "--file" is required. Supply a value.\n',
     stdout: 'resolved:2\n',
   });
 });
@@ -160,7 +160,7 @@ test('a lane view rendered through out.render writes its message with no newline
 test('a failure the action raised stays primary over an unawaited broken render', () => {
   expect(views('render-then-failure')).toEqual({
     status: 2,
-    stderr: 'Invalid input: Option "--file" is required. Supply a value.\n',
+    stderr: 'views: Option "--file" is required. Supply a value.\n',
     stdout: 'resolved:2\n',
   });
 });

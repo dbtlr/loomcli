@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { schemaOptions } from './context.js';
+import { escapeControlCharacters } from './controls.js';
 import { DeclarationError, InputError } from './errors.js';
 import type { InputProblem } from './errors.js';
 import { booleanValue } from './options.js';
@@ -463,14 +464,24 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
  */
 function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
   return issues.length === 0
-    ? [{ message: 'The validator rejected this value without an explanation.' }]
+    ? [
+        {
+          message:
+            'The validator rejected this value without an explanation. Supply a different value.',
+        },
+      ]
     : issues;
 }
 
+/**
+ * One line per issue under the input's subject. A path segment can hold text the operator typed,
+ * such as a key of a record, so the line escapes the path; `issuePath` keeps it raw for a view.
+ */
 function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   return issues.map((issue) => {
     const path = issuePath(issue);
-    return `${subject}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`;
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `${subject}${position}: ${issue.message}`;
   });
 }
 

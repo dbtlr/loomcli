@@ -79,7 +79,7 @@ test.each([
     const result = invokeNested(argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+    expect(result.stderr).toBe(`nested: ${reason}\n`);
   },
 );
 
@@ -221,7 +221,7 @@ test.each([
   const result = invokeNested(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`nested: ${reason}\n`);
 });
 
 test('a root group dispatches the child a bare token selects', () => {
@@ -237,14 +237,14 @@ test('a root group dispatches the child a bare token selects', () => {
 });
 
 test.each([
-  [[], 'The root Command requires a subcommand. Use one of: get, keys.'],
-  [['--verbose'], 'The root Command requires a subcommand. Use one of: get, keys.'],
-  [['--file', 'data.json'], 'The root Command requires a subcommand. Use one of: get, keys.'],
+  [[], 'A command is required. Use one of: get, keys.'],
+  [['--verbose'], 'A command is required. Use one of: get, keys.'],
+  [['--file', 'data.json'], 'A command is required. Use one of: get, keys.'],
 ] satisfies [string[], string][])('rejects the root group invocation %j', (argv, reason) => {
   const result = invokeNestedRoot(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`Invalid input: ${reason}\n`);
+  expect(result.stderr).toBe(`nested-root: ${reason}\n`);
 });
 
 test.each([

@@ -278,7 +278,7 @@ test.each(['summary', 'gets', 'Get', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: unknown command "${name}"; try doctor, completion, get, keys, select, fetch.\n`,
+        stderr: `jsonkit: unknown command "${name}"; try doctor, completion, get, keys, select.\n`,
         stdout: '',
       });
     });
@@ -300,7 +300,7 @@ test('jsonkit keeps the default text for a failure class it registers no view fo
     expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+        'jsonkit: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });
