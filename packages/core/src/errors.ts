@@ -142,9 +142,9 @@ export function exitCodeOf(failure: LoomError): FailureExitCode {
  * sentence interpolates, so a view reads them instead of parsing prose. The exit code is a static
  * field the class declares, read from the nearest ancestor that declares one and captured at the
  * class's first construction, so one class exits with one code and a projection reads it without
- * an instance. The instance reports the same value through a read-only accessor, which no subclass
- * property and no assignment replaces. `message` never carries a category prefix; the default
- * views add it.
+ * an instance. The instance reports the same value through a read-only accessor, and no subclass
+ * property or assignment changes the code `run()` resolves. `message` never carries a category
+ * prefix; the default views add it.
  */
 export abstract class LoomError extends Error {
   static readonly exitCode: FailureExitCode = 1;
@@ -162,8 +162,9 @@ export abstract class LoomError extends Error {
   }
 
   /**
-   * The code this failure exits with. An accessor without a setter, so a subclass cannot declare it
-   * as a property, and an assignment throws in strict mode code and is ignored in sloppy mode code.
+   * The code this failure exits with. An accessor without a setter, so a TypeScript subclass cannot
+   * declare it as a property, and an assignment throws in strict mode code and is ignored in sloppy
+   * mode code.
    */
   get exitCode(): FailureExitCode {
     return exitCodeOf(this);
