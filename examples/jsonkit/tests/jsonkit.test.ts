@@ -300,7 +300,7 @@ test('jsonkit keeps the default text for a failure class it registers no view fo
     expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'Invalid input: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\n',
+        'Invalid input: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });

@@ -133,3 +133,14 @@ test('the inspected graph carries the plugin option, the extension value, and th
     ],
   });
 });
+
+test('an unknown option gains the hint that names the explain spelling for the routed Command', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['get', '--bogus', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 2,
+      stderr:
+        'Invalid input: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+      stdout: '',
+    });
+  });
+});
