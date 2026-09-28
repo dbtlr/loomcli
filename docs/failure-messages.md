@@ -4,7 +4,7 @@ description: The voice rule every failure message Loom ships follows, with befor
 
 # Failure messages
 
-A failure message tells its reader what went wrong and what to do instead. This page states the rule every message Loom ships follows, and shows an application author how to follow it in their own messages. [ADR-0047](decisions/0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) records the decision. [Failure views](core.md#failure-views) describe how core renders a failure, and [Issue codes](validators.md#issue-codes) describe how an author rewords a catalog sentence.
+A failure message tells its reader what went wrong and what to do instead. This page states the rule every message Loom ships follows, and shows an application author how to follow it in their own messages. [ADR-0047](decisions/0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) records the decision. The record is proposed and the rules are not yet implemented: until the audit lands, Loom's messages keep their current text, and the Current column of the [audit](#9-audit) shows it. [Failure views](core.md#failure-views) describe how core renders a failure, and [Issue codes](validators.md#issue-codes) describe how an author rewords a catalog sentence.
 
 ```text
 Before: Invalid input: Option "--config": File "settings.json" is not valid JSON.
@@ -61,7 +61,7 @@ The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not appl
 
 ## 7. A defect shows one generic message
 
-A defect is a failure only the author can fix: an unexpected exception, a broken view or `onFailure` hook, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. The operator sees one generic, friendly message with no reason, no class name, and no code detail, and the run exits 1.
+A defect is a failure only the author can fix: an unexpected exception, a broken view or `onFailure` hook, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. The operator sees one generic, friendly message with no reason, no class name, and no code detail. The run exits 1, or keeps its cancellation code when the run was cancelled, as [Signals and cancellation](core.md#signals-and-cancellation) ranks it.
 
 - **Replacing it.** An author replaces the message with the existing `override(InternalError, view)`, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
 - **The author's detail.** The author sees the detail while developing, in a separate author development view. That view, how a run knows it is in development, and the generic wording are a later record's contract. Until it lands, core's current `InternalError` text under [Failure classes](core.md#failure-classes) stands, and it changes when that contract lands.
