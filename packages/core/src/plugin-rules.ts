@@ -44,11 +44,11 @@ const slotTaken = registerRule('@loomcli/core/slot-taken', {
   headline: 'Slot already claimed',
 });
 
-/** A plugin identity that is not a nonempty string. */
-const pluginIdentity = registerRule('@loomcli/core/plugin-identity', {
+/** A plugin, extension, or view identity outside the identity grammar. */
+const invalidIdentity = registerRule('@loomcli/core/invalid-identity', {
   explanation:
-    "A plugin's identity keys its contributions and names it in every diagnostic, so it is a nonempty string, by convention the package name.",
-  headline: 'Invalid plugin identity',
+    'An identity keys what a plugin, an extension, or a view contributes, names it in every diagnostic, and prefixes the identities of the rules its package declares. So it is a package name as npm spells one, scoped or not, then any subpath segments, each after a / and each of lowercase letters and digits in words joined by single hyphens.',
+  headline: 'Invalid identity',
 });
 
 /** A validator or a presence rule on a plugin option. */
@@ -221,6 +221,7 @@ export {
   extensionWithoutSchema,
   foreignValue,
   invalidExtensionValue,
+  invalidIdentity,
   invalidPacket,
   middlewareActivation,
   notAFunction,
@@ -228,7 +229,6 @@ export {
   notAnObject,
   overrideKey,
   overrideTwice,
-  pluginIdentity,
   pluginInstalledTwice,
   pluginOptionRule,
   renderingPolicyRule,

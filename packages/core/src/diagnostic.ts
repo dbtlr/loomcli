@@ -1,17 +1,8 @@
 import { registerRule } from './diagnostic-text.js';
 import type { DiagnosticRule } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
+import { isRuleIdentity } from './identity.js';
 import { ruleDocs, ruleIdentity, ruleProse } from './rules.js';
-
-/**
- * A package name as npm spells one, scoped or not, then zero or more subpath segments and a rule
- * name, each after a `/` and each of lowercase letters and digits in words joined by single
- * hyphens: `@loomcli/core/spelling-taken` or `@loomcli/plugins/manifest/failure-name-conflict`. The
- * subpath names the part of the package that owns the rule. It is the grammar of a validator
- * package's issue codes.
- */
-const identityGrammar =
-  /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/u;
 
 /** Whether a text holds a character other than whitespace. */
 function isFilled(value: unknown): value is string {
@@ -81,7 +72,7 @@ export function diagnosticRule(
   identity: string,
   definition: { readonly headline: string; readonly explanation: string; readonly docs?: string },
 ): DiagnosticRule {
-  if (typeof identity !== 'string' || !identityGrammar.test(identity)) {
+  if (!isRuleIdentity(identity)) {
     throw new DeclarationError(ruleIdentity, {
       correction:
         'Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".',

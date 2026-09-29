@@ -4,7 +4,7 @@ title: ADR-0020 - First-party plugins ship in one package as separately installa
 description: Every first-party plugin ships in @loomcli/plugins as its own subpath export with the identity <package>/<plugin>, installed one at a time through the ordinary plugins list. The package has no root export and installs nothing on import.
 status: accepted
 created: 2026-09-09
-modified: 2026-09-24
+modified: 2026-09-30
 ---
 
 # ADR-0020 - First-party plugins ship in one package as separately installable subpaths
@@ -45,3 +45,4 @@ This record refines the identity convention ADR-0013 carries in its dated entry 
 - 2026-09-24: Proposed [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) supersedes the clause that a subpath imports nothing from a sibling, and the rest of that sentence stands. A subpath may import a sibling's declarations module at `<subpath>/extension` to supply values to a collecting extension the sibling declares, and never a sibling's entry, middleware, or views module. An application that installs one plugin still bundles one plugin. ADR-0031 also supersedes, until the manifest plugin ships, the clause that each subpath is a complete plugin: `@loomcli/plugins/manifest/extension` ships alone, because help supplies values through it. It binds when ADR-0031 is accepted.
 - 2026-09-24: [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) is accepted, so the two clauses it supersedes no longer bind: help's entry imports `@loomcli/plugins/manifest/extension`, which ships ahead of the manifest plugin. The rules both declarations modules share live in a pack module outside any subpath, and no subpath imports a sibling's entry, middleware, or views module.
 - 2026-09-24: The manifest plugin ships at `@loomcli/plugins/manifest` beside its declarations module, so the clause that each subpath is a complete plugin binds again in full; the exception [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md) recorded has ended. The pack gains a second module outside any subpath, `packages/plugins/src/encode.ts`, the JSON text escaping the formatter's views and the manifest's document share, so neither imports the other's views.
+- 2026-09-30: [ADR-0052](0052-a-plugin-extension-and-view-identity-follows-one-grammar.md), proposed, makes the `<package>/<plugin>` convention a rule: a plugin, extension, or view identity is an npm package name followed by zero or more kebab-case subpath segments, checked at the declaring call. Every first-party identity already follows it. It binds when that record is accepted.

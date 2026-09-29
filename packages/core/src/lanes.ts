@@ -5,7 +5,7 @@ import { view } from './view.js';
 import type { AnyDeclaredView, DeclaredView } from './view.js';
 
 /**
- * The identity prefix core's own views take, the package name by the plugin-identity convention.
+ * The identity prefix core's own views take, the package name by the plugin identity convention.
  * Core compiles from `src` alone, so the name is spelled here rather than read from the manifest.
  */
 const core = '@loomcli/core';

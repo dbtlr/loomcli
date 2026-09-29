@@ -21,6 +21,7 @@ import type { FactSite } from './facts.js';
 import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
+import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
@@ -32,7 +33,6 @@ import {
   notAFunction,
   notAList,
   notAnObject,
-  pluginIdentity,
   pluginInstalledTwice,
   pluginOptionRule,
   signalClaimedTwice,
@@ -256,29 +256,6 @@ function nodeOf(value: unknown): BuiltPlugin | undefined {
 function entryCode(value: unknown): unknown {
   const node = nodeOf(value);
   return node ? spelled(`plugin(${quoteString(node.identity)}, ${elided})`) : value;
-}
-
-/** The fix every plugin identity fault shares. */
-const identityCorrection = 'Supply a nonempty string, such as the package name.';
-
-/** The identity one plugin declares, which is a nonempty string. */
-function readIdentity(identity: unknown): string {
-  const findings = [{ arguments: [identity, spelled(elided)], call: 'plugin', mark: '0' }];
-  if (typeof identity !== 'string') {
-    throw new DeclarationError(pluginIdentity, {
-      correction: identityCorrection,
-      findings,
-      sentence: 'A plugin declares an identity that is not a string.',
-    });
-  }
-  if (identity === '') {
-    throw new DeclarationError(pluginIdentity, {
-      correction: identityCorrection,
-      findings,
-      sentence: 'A plugin declares an empty identity.',
-    });
-  }
-  return identity;
 }
 
 /** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
@@ -895,8 +872,8 @@ function defineExtensions(
  * copy is reported from the list that defines it. The views list is read against core's view
  * identities, and the Application reads it again against every other contributor's.
  */
-function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin {
-  const named = readIdentity(identity);
+function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
+  checkIdentity('plugin', named);
   const declaration = definitionOf(named, definition);
   const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
   const build: PluginRegisters = { descriptors: new Map(), records: new Map() };

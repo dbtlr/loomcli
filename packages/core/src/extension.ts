@@ -5,6 +5,7 @@ import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import { partOf } from './facts.js';
 import type { FactSite } from './facts.js';
+import { checkIdentity } from './identity.js';
 import { flagNotBoolean } from './input-rules.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 import { isPlainObject } from './plain.js';
@@ -116,6 +117,7 @@ function extension<Target extends ExtensionTarget, Schema extends StandardSchema
   identity: string,
   config: { schema: Schema; target: Target; collect?: boolean | undefined },
 ): Extension<Target, Schema, boolean> {
+  checkIdentity('extension', identity);
   // `Object.assign` returns the same function object, so the value carries the descriptor itself.
   function create(input: StandardSchemaV1.InferInput<Schema>): ExtensionValue<Target> {
     return new ExtensionCarrier<Target>({ descriptor, input });

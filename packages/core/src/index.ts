@@ -3,6 +3,7 @@ export { Command } from './command.js';
 export { escapeControlCharacters } from './controls.js';
 export { validationContext, validationContextKey } from './context.js';
 export { diagnosticRule } from './diagnostic.js';
+export { isRuleIdentity } from './identity.js';
 export type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 export {
   DeclarationError,

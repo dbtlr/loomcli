@@ -91,6 +91,8 @@ const scenarios = {
     });
     return plugin('@acme/notes', { extensions: [descriptor] });
   },
+  'extension-deep': () =>
+    extension('@loomcli/plugins/help/page/input', { schema: accepting, target: 'option' }),
   'extension-defined-twice': () => {
     const copy = extension('@acme/notes/command', { schema: accepting, target: 'command' });
     return plugin('@acme/notes', { extensions: [note, copy] });
@@ -103,6 +105,9 @@ const scenarios = {
       .inspect();
     return readExtension(graph.root, copy);
   },
+  'extension-identity': () =>
+    extension('@acme/notes/Command', { schema: accepting, target: 'command' }),
+  'extension-identity-kind': () => extension(7, { schema: accepting, target: 'command' }),
   'extension-invalid': () =>
     new Command('get').extend(
       extension('@acme/limit/command', {
@@ -139,6 +144,7 @@ const scenarios = {
       type: 'string',
     }),
   'extension-twice': () => new Command('get').extend(note('a'), note('b')),
+  'extension-unscoped': () => extension('notes', { schema: accepting, target: 'command' }),
   'extension-value': () => new Command('get').extend({ identity: '@acme/notes/command' }),
   'failure-exit-code': () => {
     class OffScaleError extends FatalError {
@@ -189,14 +195,17 @@ const scenarios = {
     }),
   'packet-build': () => new Application('probe', { packet: { build: 'staging' } }),
   'packet-object': () => new Application('probe', { packet: 'development' }),
+  'plugin-deep': () => plugin('@loomcli/plugins/help/page', {}),
   'plugin-definition': () => plugin('@acme/log', 'debug'),
   'plugin-empty-identity': () => plugin('', {}),
   'plugin-entry': () => new Application('probe', { plugins: [{ identity: '@acme/log' }] }),
-  'plugin-identity': () => plugin(7, {}),
+  'plugin-identity': () => plugin('Help', {}),
+  'plugin-identity-kind': () => plugin(7, {}),
   'plugin-twice': () => {
     const log = plugin('@acme/log', {});
     return new Application('probe', { plugins: [log, log] });
   },
+  'plugin-unscoped': () => plugin('help', {}),
   'plugins-not-list': () => new Application('probe', { plugins: 'log' }),
   'rendering-field': () => new Application('probe', { rendering: { color: 'yes' } }),
   'rendering-object': () => new Application('probe', { rendering: 'auto' }),
@@ -252,7 +261,11 @@ const scenarios = {
     plugin('@acme/brand', {
       views: [view('@acme/page', { render }), view('@acme/page', { render })],
     }),
+  'view-deep': () => view('@loomcli/core/lanes/stdout', { render }),
+  'view-identity': () => view('@acme', { render }),
+  'view-identity-kind': () => view(null, { render }),
   'view-neither': () => view('@acme/page', {}),
+  'view-unscoped': () => view('page', { render }),
   'views-entry': () => plugin('@acme/brand', { views: [render] }),
   'views-not-list': () => plugin('@acme/brand', { views: 'page' }),
 };

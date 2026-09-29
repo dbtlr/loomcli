@@ -57,11 +57,11 @@ const thrown = [
   ],
   [
     'empty-identity',
-    'A plugin declares an empty identity. Supply a nonempty string, such as the package name.',
+    'A plugin declares the identity "", which is not a package name with optional kebab-case subpath segments. Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
   ],
   [
     'identity-not-string',
-    'A plugin declares an identity that is not a string. Supply a nonempty string, such as the package name.',
+    'A plugin declares the identity 7, which is not a package name with optional kebab-case subpath segments. Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
   ],
   [
     'plugins-not-array',

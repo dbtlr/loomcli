@@ -17,7 +17,7 @@ const dispatch = ({ out }) => out.print('dispatched');
 
 /** A plugin whose only contribution is one hint for every failure, so a test reads hint order. */
 function pointer(name) {
-  return plugin(`fixture/${name}`, { onFailure: () => `${name} hint.` });
+  return plugin(`fixture/${name.toLowerCase()}`, { onFailure: () => `${name} hint.` });
 }
 
 /** A view that names who wrote it, so a test reads which override resolved. */
