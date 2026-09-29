@@ -101,7 +101,7 @@ import type {
   ValidateOmittedConstraint,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
-import { captureConfig, checkDeclarations, prepareInputs } from './validation.js';
+import { checkDeclarations, prepareInputs } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
@@ -310,7 +310,7 @@ class ApplicationBuilder<
     Result
   > {
     const input: ArgumentInput<Name, Config> = {
-      config: captureConfig(config),
+      config,
       kind: 'argument',
       name,
     };
@@ -334,7 +334,7 @@ class ApplicationBuilder<
     Result
   > {
     const input: OptionInput<Name, Config> = {
-      config: captureConfig(config),
+      config,
       kind: 'option',
       name,
     };
@@ -371,7 +371,7 @@ class ApplicationBuilder<
       });
     }
     const input: OptionInput<Name, Config> = {
-      config: captureConfig(config),
+      config,
       kind: 'option',
       name,
     };

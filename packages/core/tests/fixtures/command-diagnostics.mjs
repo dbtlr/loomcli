@@ -14,6 +14,7 @@ const scenarios = {
   'alias-own-name': () => new Command('keys').alias('ls', 'keys'),
   'alias-portable': () => new Command('keys').alias('ls', 'bad name'),
   'alias-without-names': () => new Command('keys').alias(),
+  'app-option-config': () => new Application('probe').option('format'),
   'application-description': () => new Application('probe', { description: '  ' }),
   'application-hidden': () => new Application('probe', { hidden: true }),
   'application-name': () => new Application('bad name'),
@@ -22,6 +23,7 @@ const scenarios = {
   'argument-after-optional': () => new Command('keys').argument('path', {}).argument('name', {}),
   'argument-beside-child': () =>
     new Command('store').command(leaf('get')).argument('files', { variadic: true }),
+  'argument-config': () => new Command('get').argument('path', 'text'),
   'argument-hidden': () => new Command('get').argument('path', { hidden: true }),
   'argument-name': () => new Command('get').argument('-path', {}),
   'argument-twice': () =>
@@ -41,16 +43,40 @@ const scenarios = {
   'command-hidden': () => new Command('fetch', { hidden: 'yes' }),
   'command-name': () => new Command('bad name'),
   'command-options': () => new Command('get', 'fast'),
+  'global-option-config': () => new Application('probe').globalOption('quiet', null),
   'group-option': () =>
     new Command('store').command(
       new Command('cache').option('verbose', { type: 'boolean' }).command(leaf('clear')),
     ),
+  'hook-argument-config': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) =>
+            command.name === 'count' ? command.argument('path') : command,
+        }),
+      ],
+    })
+      .command(leaf('count'))
+      .inspect(),
+  'hook-option-config': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) =>
+            command.name === 'count' ? command.option('format') : command,
+        }),
+      ],
+    })
+      .command(leaf('count'))
+      .inspect(),
   'multiple-actions': () => new Command('get').action(act).action(act),
   'multiple-results': () =>
     new Command('get').result({ views: { plain: { render } } }).rows({ views: { lines: { row } } }),
   'nesting-depth': () => new Command('cache').command(new Command('clear').command(leaf('all'))),
   'not-a-command': () => new Command('store').command({ name: 'get' }),
   'option-after-action': () => new Command('get').action(act).option('raw', { type: 'boolean' }),
+  'option-config': () => new Command('get').option('format'),
   'option-description': () =>
     new Command('get').option('raw', { description: '', type: 'boolean' }),
   'optional-before-required': () =>

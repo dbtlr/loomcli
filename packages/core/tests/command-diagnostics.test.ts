@@ -149,7 +149,8 @@ const shared = {
   'not-an-object': [
     "Core reads the options of a Command and of the Application, a plugin's",
     'definition, its options record, each of its option declarations, its middleware,',
-    'and its source by their keys. A value of any other kind has no keys to read.',
+    'its source, and the config of an argument or option by their keys. A value of',
+    'any other kind has no keys to read.',
   ],
 };
 
@@ -242,6 +243,19 @@ const cases: Record<string, Expected> = {
     rule: 'alias-without-names',
     sentence: 'Command "keys" declares an alias with no names.',
   },
+  'app-option-config': {
+    correction: "Supply an option config object, such as { type: 'string' }.",
+    findings: [
+      [
+        '    new Application(…)',
+        "      .option('format', undefined)",
+        '                        ^^^^^^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Option "format" declares a config that is not an object.',
+  },
   'application-description': {
     correction: 'Supply a one-line summary.',
     findings: [
@@ -330,6 +344,20 @@ const cases: Record<string, Expected> = {
     headline: 'ARGUMENTS BESIDE CHILDREN',
     rule: 'arguments-beside-children',
     sentence: 'Command "store" declares argument "files" and attaches child "get".',
+  },
+  'argument-config': {
+    correction: 'Supply an argument config object, such as {}.',
+    findings: [
+      [
+        '    // get',
+        "    new Command('get')",
+        "      .argument('path', 'text')",
+        '                        ^^^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Argument "path" declares a config that is not an object.',
   },
   'argument-hidden': {
     correction: 'Remove it.',
@@ -503,6 +531,19 @@ const cases: Record<string, Expected> = {
     rule: 'not-an-object',
     sentence: 'Command "get" declares options that are not an object.',
   },
+  'global-option-config': {
+    correction: "Supply an option config object, such as { type: 'string' }.",
+    findings: [
+      [
+        '    new Application(…)',
+        "      .globalOption('quiet', null)",
+        '                             ^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Option "quiet" declares a config that is not an object.',
+  },
   'group-option': {
     correction: 'Register an action or remove the option.',
     findings: [
@@ -516,6 +557,34 @@ const cases: Record<string, Expected> = {
     headline: 'OPTION ON A GROUP',
     rule: 'group-option',
     sentence: 'Command "cache" declares option "verbose" but registers no action to receive it.',
+  },
+  'hook-argument-config': {
+    correction: 'Supply an argument config object, such as {}.',
+    findings: [
+      [
+        '    // count',
+        "    new Command('count')",
+        "      .argument('path', undefined)",
+        '                        ^^^^^^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Argument "path" declares a config that is not an object.',
+  },
+  'hook-option-config': {
+    correction: "Supply an option config object, such as { type: 'string' }.",
+    findings: [
+      [
+        '    // count',
+        "    new Command('count')",
+        "      .option('format', undefined)",
+        '                        ^^^^^^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Option "format" declares a config that is not an object.',
   },
   'multiple-actions': {
     correction: 'Register one action.',
@@ -592,6 +661,20 @@ const cases: Record<string, Expected> = {
     headline: 'DECLARED AFTER THE ACTION',
     rule: 'declared-after-action',
     sentence: 'Command "get" declares option "raw" after its action.',
+  },
+  'option-config': {
+    correction: "Supply an option config object, such as { type: 'string' }.",
+    findings: [
+      [
+        '    // get',
+        "    new Command('get')",
+        "      .option('format', undefined)",
+        '                        ^^^^^^^^^',
+      ],
+    ],
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Option "format" declares a config that is not an object.',
   },
   'option-description': {
     correction: 'Supply a one-line summary.',

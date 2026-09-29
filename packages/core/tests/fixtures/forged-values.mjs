@@ -41,6 +41,7 @@ const scenarios = {
   'application-bare': () => new Application(bare),
   'argument-after-action': () => new Command('get').action(act).argument(forged, {}),
   'argument-bare': () => new Command('get').argument(bare, {}),
+  'argument-config-bare': () => new Command('get').argument(bare, 'text'),
   'command-bare': () => new Command(bare),
   'default-view': () =>
     new Command('store').command(
@@ -65,8 +66,11 @@ const scenarios = {
       extensions: [extension(forged, { schema: accepting, target: 'option' })('x')],
     }),
   'global-option-bare': () => new Application('probe').globalOption(bare, { type: 'string' }),
+  'global-option-config-bare': () => new Application('probe').globalOption(bare, null),
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
+  'option-config-bare': () => new Command('get').option(bare, undefined),
+  'option-config-forged': () => new Command('get').option('format', forged),
   'plugin-definition': () => plugin(forged, 5),
   'plugin-list': () => plugin(forged, { commands: 'check' }),
   'plugin-twice': () => {

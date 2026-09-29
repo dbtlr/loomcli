@@ -129,6 +129,7 @@ import type {
 } from './types.js';
 import {
   captureConfig,
+  checkInputConfig,
   checkDeclarations,
   declaringSite,
   inputPlace,
@@ -697,12 +698,15 @@ export function declareArgument<
   Config extends ArgumentConfig,
 >(
   state: CommandState<Args, Options, Globals>,
-  input: ArgumentInput<Name, Config>,
+  declared: ArgumentInput<Name, Config>,
 ): CommandState<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
   // A name of another kind then reports as a declared name instead of failing to print in the order diagnostic.
+  // The config is judged right after its name, and only then captured.
   const { name } = state;
-  checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], input);
+  checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], declared);
+  checkInputConfig(declared, { call: 'argument', path: pathOf(name) });
+  const input = { ...declared, config: captureConfig(declared.config) };
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'argument',
@@ -739,12 +743,15 @@ export function declareOption<
   Config extends OptionConfig,
 >(
   state: CommandState<Args, Options, Globals>,
-  input: OptionInput<Name, Config>,
+  declared: OptionInput<Name, Config>,
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
-  const site = inputSite(state.name, pathOf(state.name), input);
   // The call's own input is judged before the receiver's state, as alias() judges its names.
-  checkOptionName(input.name, site);
+  // The config is judged right after its name, and only then captured.
+  checkOptionName(declared.name, inputSite(state.name, pathOf(state.name), declared));
+  checkInputConfig(declared, { call: 'option', path: pathOf(state.name) });
+  const input = { ...declared, config: captureConfig(declared.config) };
+  const site = inputSite(state.name, pathOf(state.name), input);
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'option',
@@ -1605,11 +1612,11 @@ class AttachedCommandValue implements AttachedCommand {
   }
 
   argument(name: string, config: ArgumentConfig): AttachedCommand {
-    return this.#declare({ config: captureConfig(config), kind: 'argument', name });
+    return this.#declare({ config, kind: 'argument', name });
   }
 
   option(name: string, config: OptionConfig): AttachedCommand {
-    return this.#declare({ config: captureConfig(config), kind: 'option', name });
+    return this.#declare({ config, kind: 'option', name });
   }
 
   views(
@@ -1646,8 +1653,14 @@ class AttachedCommandValue implements AttachedCommand {
   }
 
   /** One input the running hook declared, which the Command's own names now hold. */
-  #declare(input: InputDeclaration): AttachedCommand {
+  #declare(raw: InputDeclaration): AttachedCommand {
     const { declared, identity } = this.#state;
+    checkInputConfig(raw, { call: raw.kind, path: this.#state.path });
+    // Each kind captures its own config, so the input keeps the pairing its kind declares.
+    const input: InputDeclaration =
+      raw.kind === 'argument'
+        ? { ...raw, config: captureConfig(raw.config) }
+        : { ...raw, config: captureConfig(raw.config) };
     return this.#derive(
       { identity, input, kind: 'input' },
       { ...declared, inputs: [...declared.inputs, input] },
@@ -2295,7 +2308,7 @@ export class CommandBuilder<
     Result
   > {
     const input: ArgumentInput<Name, Config> = {
-      config: captureConfig(config),
+      config,
       kind: 'argument',
       name,
     };
@@ -2312,7 +2325,7 @@ export class CommandBuilder<
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result> {
     const input: OptionInput<Name, Config> = {
-      config: captureConfig(config),
+      config,
       kind: 'option',
       name,
     };
