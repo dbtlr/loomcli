@@ -1,9 +1,4 @@
-import {
-  invalidDeprecated,
-  invalidDescription,
-  invalidVersion,
-  misplacedListingFact,
-} from './command-rules.js';
+import { misplacedListingFact, notOneLine } from './command-rules.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 import { flagNotBoolean } from './input-rules.js';
@@ -151,7 +146,7 @@ export function checkDescription(site: FactSite, value: unknown): string | undef
     return undefined;
   }
   if (!isProseLine(value)) {
-    throw factFault(invalidDescription, site, {
+    throw factFault(notOneLine, site, {
       correction: 'Supply a one-line summary.',
       fact: 'description',
       sentence: `${site.subject} description must hold a character other than whitespace and no line terminator.`,
@@ -186,7 +181,7 @@ export function checkDeprecated(site: FactSite, value: unknown): string | undefi
     return undefined;
   }
   if (!isProseLine(value)) {
-    throw factFault(invalidDeprecated, site, {
+    throw factFault(notOneLine, site, {
       correction: 'Supply a one-line migration path, such as "Use get instead.".',
       fact: 'deprecated',
       sentence: `${site.subject} deprecated message must hold a character other than whitespace and no line terminator.`,
@@ -224,7 +219,7 @@ export function checkVersion(site: FactSite, value: unknown): string {
     return '0.0.0';
   }
   if (!isProseLine(value)) {
-    throw factFault(invalidVersion, site, {
+    throw factFault(notOneLine, site, {
       correction: 'Supply a string such as "1.2.0".',
       fact: 'version',
       sentence: `${site.subject} version must be a string that holds a character other than whitespace and no line terminator.`,

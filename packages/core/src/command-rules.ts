@@ -181,25 +181,11 @@ const unknownDefaultView = registerRule('@loomcli/core/unknown-default-view', {
   headline: 'Default view not declared',
 });
 
-/** A description that is not one line of prose. */
-const invalidDescription = registerRule('@loomcli/core/invalid-description', {
+/** A description, a deprecated message, or an Application version that is not one line of prose. */
+const notOneLine = registerRule('@loomcli/core/not-one-line', {
   explanation:
-    'Help, the manifest, and every other listing print a description on one line beside the name it describes, so it holds prose and no line break.',
-  headline: 'Description not one line',
-});
-
-/** A deprecated message that is not one line of prose. */
-const invalidDeprecated = registerRule('@loomcli/core/invalid-deprecated', {
-  explanation:
-    'A listing prints the deprecated message on one line beside the member it retires, and an operator or an agent follows it to the replacement, so it holds prose and no line break. A bare true names no replacement.',
-  headline: 'Deprecated message not one line',
-});
-
-/** An Application version that is not one line of prose. */
-const invalidVersion = registerRule('@loomcli/core/invalid-version', {
-  explanation:
-    '--version and the manifest print the version on one line, as the package manifest spells it, so it is a string that holds prose and no line break.',
-  headline: 'Version not one line',
+    'Help, --version, the manifest, and every other listing print a description, a deprecated message, and a version on one line beside what each names, so each holds prose and no line break. An operator or an agent follows a deprecated message to the replacement, so a bare true names none, and a version is a string as the package manifest spells it.',
+  headline: 'Text not one line',
 });
 
 /** `hidden` or `deprecated` on the Application or on an argument. */
@@ -219,13 +205,11 @@ export {
   declaredAfterAction,
   declaredName,
   groupOption,
-  invalidDeprecated,
-  invalidDescription,
-  invalidVersion,
   misplacedListingFact,
   multipleActions,
   multipleResults,
   nestingDepth,
+  notOneLine,
   notACommand,
   optionalArgumentLast,
   portableName,

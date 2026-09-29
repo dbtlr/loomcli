@@ -54,19 +54,6 @@ const explanations = {
     'children. A local option is never inherited, so no action reads an option a',
     'group declares.',
   ],
-  'invalid-deprecated': [
-    'A listing prints the deprecated message on one line beside the member it',
-    'retires, and an operator or an agent follows it to the replacement, so it holds',
-    'prose and no line break. A bare true names no replacement.',
-  ],
-  'invalid-description': [
-    'Help, the manifest, and every other listing print a description on one line',
-    'beside the name it describes, so it holds prose and no line break.',
-  ],
-  'invalid-version': [
-    '--version and the manifest print the version on one line, as the package',
-    'manifest spells it, so it is a string that holds prose and no line break.',
-  ],
   'misplaced-listing-fact': [
     'hidden and deprecated keep a named Command or an option off a listing, or mark',
     'it retired. The root is the entry point of every page, and an argument cannot',
@@ -89,6 +76,13 @@ const explanations = {
   'not-a-command': [
     'A Command value carries the declaration that routing, parsing, and help read.',
     'Any other value carries none.',
+  ],
+  'not-one-line': [
+    'Help, --version, the manifest, and every other listing print a description, a',
+    'deprecated message, and a version on one line beside what each names, so each',
+    'holds prose and no line break. An operator or an agent follows a deprecated',
+    'message to the replacement, so a bare true names none, and a version is a string',
+    'as the package manifest spells it.',
   ],
   'optional-argument-last': [
     'Positional tokens fill the arguments in order, and an operator leaves out an',
@@ -256,8 +250,8 @@ const cases: Record<string, Expected> = {
         '                               ^^^^^^^^^^^^^^^^^',
       ],
     ],
-    headline: 'DESCRIPTION NOT ONE LINE',
-    rule: 'invalid-description',
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
     sentence:
       'The Application description must hold a character other than whitespace and no line terminator.',
   },
@@ -292,8 +286,8 @@ const cases: Record<string, Expected> = {
     findings: [
       ["    new Application('probe', { version: 1 })", '                               ^^^^^^^^^^'],
     ],
-    headline: 'VERSION NOT ONE LINE',
-    rule: 'invalid-version',
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
     sentence:
       'The Application version must be a string that holds a character other than whitespace and no line terminator.',
   },
@@ -461,8 +455,8 @@ const cases: Record<string, Expected> = {
         '                           ^^^^^^^^^^^^^^^^',
       ],
     ],
-    headline: 'DEPRECATED MESSAGE NOT ONE LINE',
-    rule: 'invalid-deprecated',
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
     sentence:
       'Command "fetch" deprecated message must hold a character other than whitespace and no line terminator.',
   },
@@ -474,8 +468,8 @@ const cases: Record<string, Expected> = {
         '                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^',
       ],
     ],
-    headline: 'DESCRIPTION NOT ONE LINE',
-    rule: 'invalid-description',
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
     sentence:
       'Command "get" description must hold a character other than whitespace and no line terminator.',
   },
@@ -609,8 +603,8 @@ const cases: Record<string, Expected> = {
         '                       ^^^^^^^^^^^^^^^',
       ],
     ],
-    headline: 'DESCRIPTION NOT ONE LINE',
-    rule: 'invalid-description',
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
     sentence:
       'Command "get" option "raw" description must hold a character other than whitespace and no line terminator.',
   },
