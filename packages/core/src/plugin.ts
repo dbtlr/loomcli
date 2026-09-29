@@ -380,8 +380,11 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
     if (entry.theme !== undefined) {
       claim('theme', index);
     }
-    for (const descriptor of entry.descriptors.values()) {
-      registerDescriptor(descriptors, descriptor, partFinding(site, [index]));
+    for (const [key, descriptor] of entry.descriptors) {
+      registerDescriptor(descriptors, descriptor, {
+        identity: key,
+        place: partFinding(site, [index]),
+      });
     }
     // An empty claim leaves the signals slot free.
     if (entry.signals.length > 0) {
@@ -769,19 +772,22 @@ function readSource(
   const { binding, load } = declared;
   // A fault about one key marks the key, or the source itself when the key is absent.
   const keyFinding = (key: string) => partFinding(site, key in declared ? [key] : []);
-  const listed = (declaration.extensions ?? []).some((descriptor) => descriptor === binding);
-  if (!listed || !isDescriptor(binding)) {
+  // The plugin's own extensions were admitted first, so a listed binding is in the registry.
+  // Its identity is read from there, where admission read it once, and never from the binding again.
+  const bound = [...own.build.descriptors].find(([, descriptor]) => descriptor === binding);
+  if (bound === undefined) {
     throw new DeclarationError(sourceBinding, {
       correction: 'Supply a descriptor the plugin lists under extensions.',
       findings: [keyFinding('binding')],
       sentence: `${sentence} declares a source binding that is not one of its extensions.`,
     });
   }
-  if (binding.target !== 'option') {
+  const [bindingIdentity, { target }] = bound;
+  if (target !== 'option') {
     throw new DeclarationError(sourceBinding, {
       correction: 'Supply an extension that applies to options.',
       findings: [keyFinding('binding')],
-      sentence: `${sentence} declares source binding ${quoted(binding.identity)}, which applies to ${appliesTo(binding.target)}.`,
+      sentence: `${sentence} declares source binding ${quoted(bindingIdentity)}, which applies to ${appliesTo(target)}.`,
     });
   }
   if (!isLoader(load)) {
@@ -792,7 +798,7 @@ function readSource(
     });
   }
   const carrier = own.inputs.find((input) =>
-    Object.hasOwn(own.build.records.get(input) ?? {}, binding.identity),
+    Object.hasOwn(own.build.records.get(input) ?? {}, bindingIdentity),
   );
   if (carrier) {
     const option = pluginOptionSite(
@@ -806,7 +812,7 @@ function readSource(
       sentence: `${option.subject} carries its own source binding.`,
     });
   }
-  return { binding: binding.identity, load };
+  return { binding: bindingIdentity, load };
 }
 
 /** One plugin's declarations, read once at its `plugin()` call. */
@@ -862,7 +868,10 @@ function defineExtensions(
         sentence: `${pluginSentence(identity)} holds a value that is not an extension.`,
       });
     }
-    registerDescriptor(build.descriptors, descriptor, partFinding(site, [index]));
+    registerDescriptor(build.descriptors, descriptor, {
+      holder: pluginSentence(identity),
+      place: partFinding(site, [index]),
+    });
   }
 }
 

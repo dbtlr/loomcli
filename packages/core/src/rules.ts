@@ -145,7 +145,7 @@ const failureExitCode = registerRule('@loomcli/core/failure-exit-code', {
 /** A diagnostic rule identity outside the `<package>[/<subpath>...]/<kebab-case-rule>` grammar. */
 const ruleIdentity = registerRule('@loomcli/core/rule-identity', {
   explanation:
-    "A rule's identity names the package that declares it and the rule inside it, so tooling keys on it and two packages never share one. It follows the grammar of a validator package's issue codes: a package name, any kebab-case subpath segments that name the part of the package that owns the rule, and a kebab-case rule name, joined by /.",
+    "A rule's identity names the package that declares it and the rule inside it, so tooling keys on it and two packages never share one. It is an identity, a package name and any kebab-case subpath segments that name the part of the package that owns the rule, then a kebab-case rule name, joined by /.",
   headline: 'Invalid rule identity',
 });
 

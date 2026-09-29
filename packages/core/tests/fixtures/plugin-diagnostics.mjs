@@ -105,6 +105,17 @@ const scenarios = {
       .inspect();
     return readExtension(graph.root, copy);
   },
+  'extension-hand-built-identity': () =>
+    plugin('@acme/notes', {
+      extensions: [
+        Object.assign(() => ({}), {
+          collect: false,
+          identity: 'Not A Valid/ID_',
+          schema: accepting,
+          target: 'command',
+        }),
+      ],
+    }),
   'extension-identity': () =>
     extension('@acme/notes/Command', { schema: accepting, target: 'command' }),
   'extension-identity-kind': () => extension(7, { schema: accepting, target: 'command' }),

@@ -1217,8 +1217,8 @@ function joinSubtree(
     });
   }
   scope.owners.set(node, { name: parent.name, placement });
-  for (const descriptor of node.declared.descriptors.values()) {
-    registerDescriptor(scope.descriptors, descriptor);
+  for (const [key, descriptor] of node.declared.descriptors) {
+    registerDescriptor(scope.descriptors, descriptor, { identity: key });
   }
   const path = childPath(parent, name);
   checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));

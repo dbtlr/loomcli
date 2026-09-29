@@ -47,7 +47,7 @@ const slotTaken = registerRule('@loomcli/core/slot-taken', {
 /** A plugin, extension, or view identity outside the identity grammar. */
 const invalidIdentity = registerRule('@loomcli/core/invalid-identity', {
   explanation:
-    'An identity keys what a plugin, an extension, or a view contributes, names it in every diagnostic, and prefixes the identities of the rules its package declares. So it is a package name as npm spells one, scoped or not, then any subpath segments, each after a / and each of lowercase letters and digits in words joined by single hyphens.',
+    'An identity keys what a plugin, an extension, or a view contributes, names it in every diagnostic, and prefixes the identities of the rules its package declares, so it is a package name as npm spells one, scoped or not, then any subpath segments, each after a / and each of lowercase letters and digits in words joined by single hyphens.',
   headline: 'Invalid identity',
 });
 

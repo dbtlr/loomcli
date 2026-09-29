@@ -1,4 +1,5 @@
 import { elided, spelled } from './diagnostic-text.js';
+import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
 import { invalidIdentity } from './plugin-rules.js';
 
@@ -47,17 +48,27 @@ function isRuleIdentity(value: unknown): value is string {
 }
 
 /**
+ * The fault for one identity outside the grammar. `subject` opens the sentence and says who
+ * declares or holds it, such as `A plugin declares the identity`.
+ */
+function identityFault(subject: string, identity: unknown, findings: readonly Finding[]) {
+  return new DeclarationError(invalidIdentity, {
+    correction: 'Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
+    findings,
+    sentence: `${subject} ${quoted(identity)}, which is not a package name with optional kebab-case subpath segments.`,
+  });
+}
+
+/**
  * Checks the identity one `plugin()`, `extension()`, or `view()` call declares, at the call, so a
  * fault throws before the value exists. The finding marks the identity on the rebuilt call.
  */
 function checkIdentity(call: IdentityCall, identity: unknown): asserts identity is string {
   if (!isIdentity(identity)) {
-    throw new DeclarationError(invalidIdentity, {
-      correction: 'Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
-      findings: [{ arguments: [identity, spelled(elided)], call, mark: '0' }],
-      sentence: `${declarers[call]} declares the identity ${quoted(identity)}, which is not a package name with optional kebab-case subpath segments.`,
-    });
+    throw identityFault(`${declarers[call]} declares the identity`, identity, [
+      { arguments: [identity, spelled(elided)], call, mark: '0' },
+    ]);
   }
 }
 
-export { isRuleIdentity, checkIdentity };
+export { checkIdentity, identityFault, isIdentity, isRuleIdentity };

@@ -60,8 +60,8 @@ const explanations = {
   ],
   'invalid-identity': [
     'An identity keys what a plugin, an extension, or a view contributes, names it in',
-    'every diagnostic, and prefixes the identities of the rules its package declares.',
-    'So it is a package name as npm spells one, scoped or not, then any subpath',
+    'every diagnostic, and prefixes the identities of the rules its package declares,',
+    'so it is a package name as npm spells one, scoped or not, then any subpath',
     'segments, each after a / and each of lowercase letters and digits in words',
     'joined by single hyphens.',
   ],
@@ -125,10 +125,9 @@ const explanations = {
   ],
   'rule-identity': [
     "A rule's identity names the package that declares it and the rule inside it, so",
-    'tooling keys on it and two packages never share one. It follows the grammar of a',
-    "validator package's issue codes: a package name, any kebab-case subpath segments",
-    'that name the part of the package that owns the rule, and a kebab-case rule',
-    'name, joined by /.',
+    'tooling keys on it and two packages never share one. It is an identity, a',
+    'package name and any kebab-case subpath segments that name the part of the',
+    'package that owns the rule, then a kebab-case rule name, joined by /.',
   ],
   'rule-prose': [
     "A rule's banner prints its headline, and its explanation teaches why the rule",
@@ -430,6 +429,11 @@ const cases: Record<string, Expected> = {
     rule: 'two-package-copies',
     sentence:
       'Extension "@acme/notes/command" was read through a descriptor that did not define the stored value.',
+  },
+  'extension-hand-built-identity': {
+    ...identityCase('', "plugin('@acme/notes', { extensions: […] })", '…', ''),
+    sentence:
+      'Plugin "@acme/notes" holds the extension identity "Not A Valid/ID_", which is not a package name with optional kebab-case subpath segments.',
   },
   'extension-identity': identityCase(
     'An extension',
