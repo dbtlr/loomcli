@@ -53,3 +53,23 @@ test('jsonkit fetch --manifest carries the deprecation, and debug --manifest pri
   });
   expect(pinned('root')).not.toContain('"name": "debug"');
 });
+
+/** The routed entry's declared failures, parsed at the boundary. */
+const declared = z.object({
+  command: z.object({
+    failures: z.array(z.object({ exitCode: z.number(), meaning: z.string(), name: z.string() })),
+  }),
+});
+
+test('the hidden Commands that read a document declare invalid-json, and the table names it once', () => {
+  const invalidJson = {
+    exitCode: 65,
+    meaning: 'The document is not valid JSON.',
+    name: 'invalid-json',
+  };
+  for (const name of ['debug', 'paths']) {
+    const printed = JSON.parse(invoke(main, [name, '--manifest']).stdout);
+    expect(declared.parse(printed).command.failures).toEqual([invalidJson]);
+  }
+  expect(pinned('root')).toContain('"65": "Declared failures: invalid-json, path-not-found"');
+});
