@@ -9,6 +9,7 @@ import type {
   CommandGraph,
   CommandNode,
   FailureHook,
+  FailureHookContext,
   FailureView,
   FailureViewContext,
   LoomError,
@@ -20,83 +21,105 @@ import Package from '../../package.json' with { type: 'json' };
 import { nearest } from './match.js';
 
 /**
- * The near matches the hook found, keyed by the failure instance core hands to both the hook and
- * the view. A failure view's context carries no graph, so the hook is where the graph is read.
+ * The sentence the hook wrote, keyed by the failure instance core hands to both the hook and the
+ * view. A failure view's context carries no graph, so the hook is where the graph is read, and the
+ * view reads nothing of the failure but its message when no sentence was recorded.
  */
-const found = new WeakMap<Readonly<LoomError>, readonly string[]>();
+const sentences = new WeakMap<Readonly<LoomError>, string>();
 
-/** A member an operator is never pointed at: hidden, deprecated, or, for a Command, an alias. */
+/** A member an operator may be pointed at: neither hidden nor deprecated. */
 function offered(member: CommandNode | OptionNode): boolean {
   return !member.hidden && member.deprecated === undefined;
 }
 
-/** The canonical names of the children of the Command routing reached, in authoring order. */
-function commandNames(command: CommandNode): string[] {
+/**
+ * The canonical name of each child of the Command routing reached, in authoring order. A node
+ * carries its aliases apart from its name, so no alias is ever a candidate.
+ */
+function commandNames(command: CommandNode): string[][] {
   return command.children
     .filter(offered)
-    .flatMap(({ name }) => (typeof name === 'string' ? [name] : []));
+    .flatMap(({ name }) => (typeof name === 'string' ? [[name]] : []));
 }
 
 /**
- * The long spellings, and a Boolean's negative spelling, of the globals and then the routed
- * Command's options, each long spelling ahead of its negative. A short spelling is never offered.
+ * The spellings of each option in the globals and then the routed Command's options: the long
+ * spelling, and a Boolean's negative spelling after it. A short spelling is never offered.
  */
-function optionSpellings(graph: CommandGraph, command: CommandNode): string[] {
+function optionSpellings(graph: CommandGraph, command: CommandNode): string[][] {
   return [...graph.globals, ...command.options]
     .filter(offered)
-    .flatMap((option) =>
-      option.type === 'boolean' ? [option.long, option.negative] : [option.long],
-    )
-    .filter((spelling) => typeof spelling === 'string');
+    .map((option) =>
+      (option.type === 'boolean' ? [option.long, option.negative] : [option.long]).filter(
+        (spelling) => typeof spelling === 'string',
+      ),
+    );
 }
 
-const suggest: FailureHook = (failure, { command, graph }) => {
-  if (failure instanceof UnknownCommandError) {
-    found.set(failure, nearest(failure.token, commandNames(command), 'command'));
-  } else if (failure instanceof UnknownOptionError) {
-    found.set(failure, nearest(failure.spelling, optionSpellings(graph, command), 'option'));
+/**
+ * The sentence that names what the operator typed and offers the matches as its fix, or
+ * `undefined` when nothing matched. Every quoted text is escaped, a declared option name included,
+ * because the declared-name rule allows a control character.
+ */
+function sentence(kind: string, typed: string, names: readonly string[]): string | undefined {
+  const quoted = names.map((name) => escapeControlCharacters(name));
+  const [first, second] = quoted;
+  if (first === undefined) {
+    return undefined;
+  }
+  const fix =
+    second === undefined
+      ? `Did you mean "${first}"?`
+      : `Did you mean one of these: ${quoted.join(', ')}?`;
+  return `Unknown ${kind} "${escapeControlCharacters(typed)}". ${fix}`;
+}
+
+function suggestion(
+  failure: Readonly<LoomError>,
+  { command, graph }: FailureHookContext,
+): string | undefined {
+  // A failure an action built may carry a replaced field, so the typed word is checked first.
+  if (failure instanceof UnknownCommandError && typeof failure.token === 'string') {
+    return sentence(
+      'command',
+      failure.token,
+      nearest(failure.token, commandNames(command), 'command'),
+    );
+  }
+  if (failure instanceof UnknownOptionError && typeof failure.spelling === 'string') {
+    const spellings = optionSpellings(graph, command);
+    return sentence('option', failure.spelling, nearest(failure.spelling, spellings, 'option'));
+  }
+  return undefined;
+}
+
+const suggest: FailureHook = (failure, context) => {
+  const written = suggestion(failure, context);
+  if (written !== undefined) {
+    sentences.set(failure, written);
   }
   return undefined;
 };
 
-/** The fix that replaces core's clause: one name, or the names in rank order. */
-function fix(names: readonly string[]): string {
-  const quoted = names.map((name) => escapeControlCharacters(name));
-  const [only, second] = quoted;
-  return second === undefined
-    ? `Did you mean "${only ?? ''}"?`
-    : `Did you mean one of these: ${quoted.join(', ')}?`;
-}
-
 /**
  * The failure's lines as core's default text writes a usage error, each opened by the application
- * name and the whole escaped, then each hint on its own line. With no match the sentence is the
- * failure's own message, so the bytes are core's.
+ * name and the whole escaped, then each hint on its own line. With no recorded sentence the lines
+ * are the failure's own message, so the bytes are core's.
  */
-function written(
+function render(
   failure: Readonly<LoomError>,
-  subject: string,
   { application, hints, style }: FailureViewContext,
 ): string {
-  const names = found.get(failure) ?? [];
-  const [first] = names;
-  const sentence = first === undefined ? failure.message : `Unknown ${subject}. ${fix(names)}`;
-  const lines = sentence
+  const lines = (sentences.get(failure) ?? failure.message)
     .split('\n')
     .map((line) => `${application}: ${line}\n`)
     .join('');
   return `${style.escape(lines)}${hints.map((hint) => `${hint}\n`).join('')}`;
 }
 
-const unknownCommand: FailureView<UnknownCommandError> = {
-  render: (failure, context) =>
-    written(failure, `command "${escapeControlCharacters(failure.token)}"`, context),
-};
+const unknownCommand: FailureView<UnknownCommandError> = { render };
 
-const unknownOption: FailureView<UnknownOptionError> = {
-  render: (failure, context) =>
-    written(failure, `option "${escapeControlCharacters(failure.spelling)}"`, context),
-};
+const unknownOption: FailureView<UnknownOptionError> = { render };
 
 /**
  * A plugin that offers the declared name nearest a mistyped Command or option as the fix inside

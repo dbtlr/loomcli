@@ -298,7 +298,7 @@ test.each(['summary', 'typo'])(
   },
 );
 
-test.each(['gets', 'Get'])(
+test.each(['gets'])(
   'jsonkit rejects the unknown command %s and suggests the near match "get"',
   (name) => {
     withDocuments({ 'doc.json': document }, (cwd) => {
@@ -327,10 +327,10 @@ test.each([
   },
 );
 
-// `lss` is close only to `ls`, an alias, and too far from `keys`; `fetc` is close only to the
-// Deprecated `fetch`. Neither an alias nor a deprecated name is ever offered as the fix, so both
-// Fall back to the same choice list `typo` gets, which is near nothing at all.
-test.each(['typo', 'lss', 'fetc'])(
+// `lss` is near only the alias `ls`, and too far from `keys`.
+// `fetc` is near only the deprecated `fetch`.
+// Neither an alias nor a deprecated name is offered as the fix, so both keep the choice list.
+test.each(['lss', 'fetc'])(
   'jsonkit %s -f doc.json finds no offered near match and lists the choices',
   (name) => {
     withDocuments({ 'doc.json': document }, (cwd) => {

@@ -235,9 +235,9 @@ test('textstat --totl one.txt suggests the near option and points at the help an
   });
 });
 
-// `--minimun` is close only to the deprecated `--minimum`, and too far from `--min-bytes`; a
-// Deprecated spelling is never offered as the fix, so the sentence stays core's default text.
-// `--timin` is close only to the hidden `--timing`, which is never offered either.
+// `--minimun` is near only the deprecated `--minimum`, and too far from `--min-bytes`.
+// `--timin` is near only the hidden `--timing`.
+// Neither a deprecated nor a hidden option is offered as the fix, so both keep core's text.
 test.each(['--minimun', '--timin'])(
   'textstat %s one.txt finds no offered near option and keeps the default text',
   (option) => {

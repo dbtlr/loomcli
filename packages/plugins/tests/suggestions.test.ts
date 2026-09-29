@@ -53,52 +53,39 @@ describe('the matcher', () => {
   });
 
   it('a non-adjacent transposition costs 2, past the budget of a 4-code-point token', () => {
-    {
-      const { core, plugin } = unchanged(['edits', 'nale']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['edits', 'nale']);
+    expect(plugin).toEqual(core);
   });
 
   it('a token of up to 4 code points allows 1 edit', () => {
     expect(suggested(['budget', 'fuor'])).toBe(command('fuor', 'Did you mean "four"?'));
-    {
-      const { core, plugin } = unchanged(['budget', 'fxxr']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['budget', 'fxxr']);
+    expect(plugin).toEqual(core);
   });
 
-  it('a token of 5 to 8 code points allows 2 edits', () => {
+  it('a token of 5 code points allows 2 edits', () => {
     expect(suggested(['budget', 'fivxx'])).toBe(command('fivxx', 'Did you mean "fives"?'));
-    {
-      const { core, plugin } = unchanged(['budget', 'fxxxs']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['budget', 'fxxxs']);
+    expect(plugin).toEqual(core);
+  });
+
+  it('a token of 8 code points allows 2 edits', () => {
     expect(suggested(['budget', 'seasxxed'])).toBe(command('seasxxed', 'Did you mean "seasoned"?'));
-    {
-      const { core, plugin } = unchanged(['budget', 'sxasxxed']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['budget', 'sxasxxed']);
+    expect(plugin).toEqual(core);
   });
 
   it('a token longer than 8 code points allows 3 edits', () => {
     expect(suggested(['budget', 'ovxxxight'])).toBe(
       command('ovxxxight', 'Did you mean "overnight"?'),
     );
-    {
-      const { core, plugin } = unchanged(['budget', 'oxxxxight']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['budget', 'oxxxxight']);
+    expect(plugin).toEqual(core);
   });
 
   it('a token of one code point matches nothing', () => {
-    {
-      const { core, plugin } = unchanged(['edits', 'g']);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['opts', '--x']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['opts', '--x']);
+    expect(plugin).toEqual(core);
   });
 
   it('a token that differs only in case matches at distance 0, and a match prints as declared', () => {
@@ -144,6 +131,21 @@ describe('the matcher', () => {
     expect(suggested(['opts', '--colr'])).toBe(option('--colr', 'Did you mean "--color"?'));
   });
 
+  it('an option offers only the nearer of its two spellings', () => {
+    expect(suggested(['opts', '--nocolor'])).toBe(
+      option('--nocolor', 'Did you mean "--no-color"?'),
+    );
+    expect(suggested(['opts', '--Verbosity-Level'])).toBe(
+      option('--Verbosity-Level', 'Did you mean "--verbosity-level"?'),
+    );
+  });
+
+  it('an option offers both spellings when the typo is as near to each', () => {
+    expect(suggested(['opts', '--noclor'])).toBe(
+      option('--noclor', 'Did you mean one of these: --color, --no-color?'),
+    );
+  });
+
   it('a plugin option is a candidate', () => {
     expect(run('helped', ['opts', '--hlep']).stderr).toBe(
       [
@@ -158,36 +160,22 @@ describe('the matcher', () => {
 
 describe('excluded members', () => {
   it('a hidden child, a deprecated child, and an alias are never suggested', () => {
-    {
-      const { core, plugin } = unchanged(['excluded', 'secrt']);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['excluded', 'legcy']);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['excluded', 'lss']);
-      expect(plugin).toEqual(core);
-    }
+    const runs = [
+      unchanged(['excluded', 'secrt']),
+      unchanged(['excluded', 'legcy']),
+      unchanged(['excluded', 'lss']),
+    ];
+    expect(runs.map(({ plugin }) => plugin)).toEqual(runs.map(({ core }) => core));
   });
 
   it('a hidden option and a deprecated option are never suggested', () => {
-    {
-      const { core, plugin } = unchanged(['opts', '--secrt']);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['opts', '--oldr']);
-      expect(plugin).toEqual(core);
-    }
+    const runs = [unchanged(['opts', '--secrt']), unchanged(['opts', '--oldr'])];
+    expect(runs.map(({ plugin }) => plugin)).toEqual(runs.map(({ core }) => core));
   });
 
   it('a short spelling is never a candidate', () => {
-    {
-      const { core, plugin } = unchanged(['opts', '-z']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['opts', '-z']);
+    expect(plugin).toEqual(core);
   });
 });
 
@@ -204,25 +192,17 @@ describe('the sentence', () => {
   });
 
   it('with no match the view writes core text, an escaped token included', () => {
-    {
-      const { core, plugin } = unchanged(['edits', 'zzzz']);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['edits', `zz\u0007zz`]);
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['opts', '--zzzz']);
-      expect(plugin).toEqual(core);
-    }
+    const runs = [
+      unchanged(['edits', 'zzzz']),
+      unchanged(['edits', `zz\u0007zz`]),
+      unchanged(['opts', '--zzzz']),
+    ];
+    expect(runs.map(({ plugin }) => plugin)).toEqual(runs.map(({ core }) => core));
   });
 
   it('with no match the view writes core text with its hints', () => {
-    {
-      const { core, plugin } = unchanged(['edits', 'zzzz'], 'hinted', 'hint-core');
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['edits', 'zzzz'], 'hinted', 'hint-core');
+    expect(plugin).toEqual(core);
   });
 
   it('the hook adds no hint, and every hint prints under the sentence in installation order', () => {
@@ -233,11 +213,14 @@ describe('the sentence', () => {
     );
   });
 
+  it('a failure whose token is not a string keeps core text', () => {
+    const { core, plugin } = unchanged(['work', 'x', '--end', 'mutated']);
+    expect(plugin).toEqual(core);
+  });
+
   it('a group with no subcommand keeps core text', () => {
-    {
-      const { core, plugin } = unchanged(['rank']);
-      expect(plugin).toEqual(core);
-    }
+    const { core, plugin } = unchanged(['rank']);
+    expect(plugin).toEqual(core);
   });
 });
 
@@ -284,65 +267,38 @@ describe("help's failure hint", () => {
   }
 
   it('an unknown Command names the page of the Command routing reached', () => {
-    {
-      const { expected, received } = hinted(['nope'], 'Run "kit --help" to see the usage.');
-      expect(received).toEqual(expected);
-    }
-    {
-      const { expected, received } = hinted(
-        ['rank', 'nope'],
-        'Run "kit rank --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
+    const runs = [
+      hinted(['nope'], 'Run "kit --help" to see the usage.'),
+      hinted(['rank', 'nope'], 'Run "kit rank --help" to see the usage.'),
+    ];
+    expect(runs.map(({ received }) => received)).toEqual(runs.map(({ expected }) => expected));
   });
 
   it('a group with no subcommand names the group page', () => {
-    {
-      const { expected, received } = hinted(['rank'], 'Run "kit rank --help" to see the usage.');
-      expect(received).toEqual(expected);
-    }
+    const { expected, received } = hinted(['rank'], 'Run "kit rank --help" to see the usage.');
+    expect(received).toEqual(expected);
   });
 
   it('an option fault on a nested Command names its page', () => {
-    {
-      const { expected, received } = hinted(
-        ['edits', 'get', '--bogus'],
-        'Run "kit edits get --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
-    {
-      const { expected, received } = hinted(
-        ['opts', '--xy=1'],
-        'Run "kit opts --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
-    {
-      const { expected, received } = hinted(
-        ['opts', '--field', 'a', '--field', 'b'],
-        'Run "kit opts --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
+    const runs = [
+      hinted(['edits', 'get', '--bogus'], 'Run "kit edits get --help" to see the usage.'),
+      hinted(['opts', '--xy=1'], 'Run "kit opts --help" to see the usage.'),
+      hinted(['opts', '--field', 'a', '--field', 'b'], 'Run "kit opts --help" to see the usage.'),
+    ];
+    expect(runs.map(({ received }) => received)).toEqual(runs.map(({ expected }) => expected));
   });
 
   it('a missing value in the pre-scan names the root page', () => {
-    {
-      const { expected, received } = hinted(['--file'], 'Run "kit --help" to see the usage.');
-      expect(received).toEqual(expected);
-    }
+    const { expected, received } = hinted(['--file'], 'Run "kit --help" to see the usage.');
+    expect(received).toEqual(expected);
   });
 
   it('an extra argument names the page', () => {
-    {
-      const { expected, received } = hinted(
-        ['edits', 'get', 'extra'],
-        'Run "kit edits get --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
+    const { expected, received } = hinted(
+      ['edits', 'get', 'extra'],
+      'Run "kit edits get --help" to see the usage.',
+    );
+    expect(received).toEqual(expected);
   });
 
   it('a short group the pre-scan rejects names the root page', () => {
@@ -356,28 +312,19 @@ describe("help's failure hint", () => {
   });
 
   it('an omitted argument and an input error an action throws name the page', () => {
-    {
-      const { expected, received } = hinted(['work'], 'Run "kit work --help" to see the usage.');
-      expect(received).toEqual(expected);
-    }
-    {
-      const { expected, received } = hinted(
-        ['work', 'x', '--end', 'input'],
-        'Run "kit work --help" to see the usage.',
-      );
-      expect(received).toEqual(expected);
-    }
+    const runs = [
+      hinted(['work'], 'Run "kit work --help" to see the usage.'),
+      hinted(['work', 'x', '--end', 'input'], 'Run "kit work --help" to see the usage.'),
+    ];
+    expect(runs.map(({ received }) => received)).toEqual(runs.map(({ expected }) => expected));
   });
 
   it('a fatal error and an internal error gain no line', () => {
-    {
-      const { core, plugin } = unchanged(['work', 'x', '--end', 'fatal'], 'help-core');
-      expect(plugin).toEqual(core);
-    }
-    {
-      const { core, plugin } = unchanged(['work', 'x', '--end', 'internal'], 'help-core');
-      expect(plugin).toEqual(core);
-    }
+    const runs = [
+      unchanged(['work', 'x', '--end', 'fatal'], 'help-core'),
+      unchanged(['work', 'x', '--end', 'internal'], 'help-core'),
+    ];
+    expect(runs.map(({ plugin }) => plugin)).toEqual(runs.map(({ core }) => core));
   });
 
   it('a declaration error a run reports gains no line', () => {

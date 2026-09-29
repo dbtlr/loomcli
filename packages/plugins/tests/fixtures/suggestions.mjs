@@ -59,6 +59,12 @@ const endings = {
   internal: () => {
     throw new Error('boom');
   },
+  // A failure whose token an action replaced with a value that is not a string.
+  mutated: () => {
+    const failure = new UnknownCommandError('gte', []);
+    Object.defineProperty(failure, 'token', { value: 42 });
+    throw failure;
+  },
 };
 
 /**
@@ -82,6 +88,7 @@ function kit(declared) {
       new Command('opts')
         .option('field', { type: 'string' })
         .option('color', { polarity: 'both', type: 'boolean' })
+        .option('verbosity-level', { polarity: 'both', type: 'boolean' })
         .option('ééé', { type: 'boolean' })
         .option('xy', { type: 'boolean' })
         .option('keep', { short: 'k', type: 'boolean' })
