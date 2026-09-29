@@ -94,14 +94,14 @@ function suggestion(
 }
 
 /**
- * Records the sentence for this run, and forgets any an earlier run recorded for the same instance,
- * because an application may keep one failure and throw it again where nothing is near.
+ * Records the sentence for this run. It first forgets any an earlier run recorded for the same
+ * instance, because an application may keep one failure and throw it again where nothing is near,
+ * and a hook that throws midway must not leave the earlier sentence behind.
  */
 const suggest: FailureHook = (failure, context) => {
+  sentences.delete(failure);
   const written = suggestion(failure, context);
-  if (written === undefined) {
-    sentences.delete(failure);
-  } else {
+  if (written !== undefined) {
     sentences.set(failure, written);
   }
   return undefined;

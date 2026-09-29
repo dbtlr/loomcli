@@ -229,6 +229,18 @@ describe('the sentence', () => {
     );
   });
 
+  it('a hook that throws on a failure instance thrown again leaves no earlier suggestion', () => {
+    const shared = new URL('fixtures/suggestions-shared.mjs', import.meta.url);
+    expect(invoke(shared, ['near', 'break', 'far']).stderr).toBe(
+      [
+        'kit: Unknown option "--fiel". Did you mean "--field"?',
+        'kit: Unknown option "--fiel". Supply a declared option; prefix a hyphenated path with "./".',
+        'Internal error: Plugin "@loomcli/plugins/suggestions" failed in onFailure: The spelling cannot be read.',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('a group with no subcommand keeps core text', () => {
     const { core, plugin } = unchanged(['rank']);
     expect(plugin).toEqual(core);
