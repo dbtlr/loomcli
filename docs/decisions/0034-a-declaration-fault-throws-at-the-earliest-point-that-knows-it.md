@@ -4,7 +4,7 @@ title: ADR-0034 - A declaration fault throws at the earliest point that knows it
 description: A declaration fault throws from the authoring call, constructor, or attach that first holds the data proving it, and only a declaration a later step may still add to waits for graph build. It supersedes the clause that graph build repeats the authoring rules for JavaScript authors.
 status: accepted
 created: 2026-09-25
-modified: 2026-09-25
+modified: 2026-09-29
 ---
 
 # ADR-0034 - A declaration fault throws at the earliest point that knows it
@@ -46,3 +46,4 @@ Accepted 2026-09-25 with the implementation. Each authoring call, both construct
 ## Changelog
 
 - 2026-09-25: Accepted with the implementation.
+- 2026-09-29: [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, keeps every moment this record assigns and changes what a fault carries. A `DeclarationError`'s `message` holds its whole Developer Diagnostic as plain text, and a rule table's text is split into the fault's `sentence` and its `correction`, so the clause that every existing diagnostic keeps its text holds for the two together, not for `message`. A fault at a call or an attach still throws there and stops the module, and the runtime prints the diagnostic. A build fault that `run()` reports renders by build under [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md). Both bind when accepted.

@@ -4,7 +4,7 @@ title: ADR-0011 - Bun-first developer workflow with a portable published core
 description: Bun is the project's development runtime. The published core is portable ESM that uses no Bun-only API, and the supported runtimes are stated only from executable evidence, never from CI pins.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-08
+modified: 2026-09-29
 ---
 
 # ADR-0011 - Bun-first developer workflow with a portable published core
@@ -33,3 +33,4 @@ Explicit minimum Node and Bun versions and the TypeScript baseline remain open u
 
 - 2026-09-08: The core package is named `@loomcli/core` before its first publication. References to `@loom/core` above name the same library. The architectural decision is unchanged.
 - 2026-09-08: Windows left the CI matrix. By this record's own rule that support is stated only from executable evidence, the supported platforms are macOS and Linux, and Windows is unverified. The decision is unchanged; the platform sentence in Context is historical.
+- 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md), proposed, moves the example applications from `tsc` to `Bun.build`, so the examples use the build Loom applications use, and adds `@loomcli/loom/build`, whose `packet()` is a `Bun.build` plugin. Core stays portable: it reads the packet as data and uses no Bun-only API, and each bundle still runs under Node and Bun. The published packages keep `tsc`, because they ship declarations. It binds when accepted.
