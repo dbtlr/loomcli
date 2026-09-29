@@ -614,7 +614,8 @@ class ApplicationBuilder<
        * foreign throw that is not carried is a deferred fault, offered to the translators here,
        * where core would otherwise wrap it as an internal error.
        */
-      const replaced = translatedFrom.get(primary);
+      // A primary no translator answered replaced nothing, so even a thrown `undefined` is reported.
+      const replaced = translatedFrom.get(primary) ?? noPrimary;
       const deferred = new Set<LoomError>();
       for (const cause of output?.stopped ?? []) {
         if (!carried(primary, cause) && cause !== replaced) {

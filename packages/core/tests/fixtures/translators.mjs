@@ -78,6 +78,12 @@ async function* failingRows() {
   throw new UnavailableError('source');
 }
 
+/** A row source that yields one row and then throws `undefined`, which no translator answers. */
+async function* undefinedRows() {
+  yield { name: 'one' };
+  throw undefined;
+}
+
 /** A rows Command whose action hands `source` to out.results() the way `emit` does. */
 function sequencing(emit, source, translators = [answering(SyntaxError, 'application')]) {
   return new Application('translators', { translators })
@@ -585,6 +591,11 @@ function build() {
         brokenRows,
         [translate(SyntaxError, brokenTranslators['broken-throws'])],
       );
+    }
+    case 'sequence-undefined': {
+      return sequencing((pending) => {
+        void pending;
+      }, undefinedRows);
     }
     case 'sequence-failure': {
       return sequencing(

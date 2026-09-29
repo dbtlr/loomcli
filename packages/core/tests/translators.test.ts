@@ -203,6 +203,14 @@ test("a deferred row source's broken translator reports its defect, keeping both
   );
 });
 
+test('a deferred row source that throws undefined is still a fault that returns 1', () => {
+  expect(run('sequence-undefined')).toEqual({
+    status: 1,
+    stderr: `${incompleteLine}Internal error: An unknown error occurred.\n`,
+    stdout: 'one\nresolved:1\n',
+  });
+});
+
 test('a failure a deferred row source throws is never offered and returns 1', () => {
   expect(run('sequence-failure')).toEqual({
     status: 1,
