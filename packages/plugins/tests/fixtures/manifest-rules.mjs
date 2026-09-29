@@ -33,6 +33,30 @@ class ThrowingGetterError extends FatalError {
   }
 }
 
+/** A failure class that declares 200 and whose static `name` getter throws, so reading its name fails. */
+class ThrowingNameError extends FatalError {
+  static exitCode = 200;
+
+  static get name() {
+    throw new TypeError('The name getter broke.');
+  }
+
+  constructor() {
+    super('Unreachable.');
+    this.name = 'ThrowingNameError';
+  }
+}
+
+/** A failure class behind a proxy whose `prototype` read throws, so it cannot be read as a class. */
+const throwingPrototype = new Proxy(BadDataError, {
+  get(target, key, receiver) {
+    if (key === 'prototype') {
+      throw new TypeError('The prototype read broke.');
+    }
+    return Reflect.get(target, key, receiver);
+  },
+});
+
 /** One declared failure with one field replaced. */
 const failure = (fields) => ({
   failures: [{ failure: BadDataError, meaning: 'The data is bad.', name: 'bad-data', ...fields }],
@@ -48,7 +72,9 @@ const cases = {
   'failure-function': failure({ failure: () => 'bad' }),
   'failure-meaning-on-two-lines': failure({ meaning: 'The data\nis bad.' }),
   'failure-missing': { failures: [{ meaning: 'The data is bad.', name: 'bad-data' }] },
+  'failure-name-getter-throws': failure({ failure: ThrowingNameError }),
   'failure-name-uppercase': failure({ name: 'Bad-data' }),
+  'failure-prototype-throws': failure({ failure: throwingPrototype }),
   'failure-valid': failure({}),
   'note-on-two-lines': { examples: [{ command: 'get a', note: 'One.\nTwo.' }] },
   valid: { details: 'First line.\nSecond line.', examples: [{ command: 'get a', note: 'One.' }] },

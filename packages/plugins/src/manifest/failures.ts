@@ -10,11 +10,18 @@ const firstDeclarable = 1;
  */
 const firstReserved = 126;
 
-/** Whether a value is a class that extends `LoomError`, read by its `prototype` as core reads it. */
-function isFailureClass(value: unknown): value is { readonly name: string } {
-  return (
-    typeof value === 'function' && 'prototype' in value && value.prototype instanceof LoomError
-  );
+/**
+ * Whether a value is a class that extends `LoomError`, read by its `prototype` as core reads it.
+ * A read that throws, such as a proxy's, answers `false`, since the value cannot be read as a class.
+ */
+function isFailureClass(value: unknown): value is object {
+  try {
+    return (
+      typeof value === 'function' && 'prototype' in value && value.prototype instanceof LoomError
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Whether a declared static is a code a failure may exit with: a whole number from 1 through 125. */
@@ -41,24 +48,33 @@ function undeclarableMessage(className: string, declared: unknown): string {
 }
 
 /**
- * The code a failure class declares, read from its static and walking to the nearest ancestor that
- * declares one. A static getter that throws declares no number, so it answers `undefined`: a throw
- * inside a zod transform makes zod retry the parse asynchronously, which core rejects with the
- * wrong fault and whose rejected retry nothing handles.
+ * One static of a failure class, walking to the nearest ancestor that declares it. A static getter
+ * that throws answers `undefined`: a throw inside a zod transform makes zod retry the parse
+ * asynchronously, which core rejects with the wrong fault and whose rejected retry nothing handles.
  */
-function declaredCode(failureClass: object): unknown {
+function readStatic(failureClass: object, key: 'exitCode' | 'name'): unknown {
   try {
-    return Reflect.get(failureClass, 'exitCode');
+    return Reflect.get(failureClass, key);
   } catch {
     return undefined;
   }
 }
 
 /**
+ * The name core gives a failure class in its sentence, its constructor's `name`.
+ * A static `name` that throws or is not a string reads as the empty name an anonymous class has.
+ */
+function classNameOf(failureClass: object): string {
+  const name = readStatic(failureClass, 'name');
+  return typeof name === 'string' ? name : '';
+}
+
+/**
  * A failure class, output as the exit code it declares. The class's static is read when the value
- * is made, so no failure is constructed and the class itself never reaches the graph. Its input
- * type is `unknown`, because no typed path names a class without an assertion, so a value that is
- * not a failure class is rejected at run time alone.
+ * is made, so no failure is constructed and the class itself never reaches the graph. Every read of
+ * the class is guarded, so the author's throw never escapes into zod. Its input type is `unknown`,
+ * because no typed path names a class without an assertion, so a value that is not a failure class
+ * is rejected at run time alone.
  */
 const failure = z.unknown().transform((value, context) => {
   if (!isFailureClass(value)) {
@@ -68,9 +84,12 @@ const failure = z.unknown().transform((value, context) => {
     });
     return z.NEVER;
   }
-  const declared = declaredCode(value);
+  const declared = readStatic(value, 'exitCode');
   if (!isDeclarableCode(declared)) {
-    context.addIssue({ code: 'custom', message: undeclarableMessage(value.name, declared) });
+    context.addIssue({
+      code: 'custom',
+      message: undeclarableMessage(classNameOf(value), declared),
+    });
     return z.NEVER;
   }
   return declared;

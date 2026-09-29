@@ -205,6 +205,20 @@ test('a failure class whose static exit code getter throws is rejected at the ca
   );
 });
 
+test('a failure class whose static name getter throws is rejected at the call under the empty name an anonymous class has', () => {
+  expect(rule('failure-name-getter-throws')).toEqual(
+    invalid(
+      'Failure class "" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+    ),
+  );
+});
+
+test('a value whose prototype read throws is rejected at the call as not a failure class', () => {
+  expect(rule('failure-prototype-throws')).toEqual(
+    invalid('Supply a failure class, a class that extends LoomError.'),
+  );
+});
+
 test('the manifest rejects an undeclarable class with the sentence core throws when it is constructed', () => {
   const core = z.object({ message: z.string() }).parse(rule('core-reserved'));
   expect(rule('failure-code-200')).toEqual(invalid(core.message));
