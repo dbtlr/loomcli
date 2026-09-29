@@ -128,6 +128,30 @@ test('one name with two meanings is a declaration error naming the name and both
   );
 });
 
+test('a conflicting meaning is quoted with its control characters escaped', () => {
+  expect(invoke(fixture, ['meaning-conflict-controls', '--manifest'])).toEqual(
+    conflict(
+      String.raw`Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "Bad \u202eevil\u009b" on "x" on Command "select".`,
+    ),
+  );
+});
+
+test('one name with two codes on one Command is a declaration error naming that Command twice', () => {
+  expect(invoke(fixture, ['same-command-code-conflict', '--manifest'])).toEqual(
+    conflict(
+      'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "get".',
+    ),
+  );
+});
+
+test('one name with two meanings on one Command is a declaration error naming that Command twice', () => {
+  expect(invoke(fixture, ['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
+    conflict(
+      'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "get".',
+    ),
+  );
+});
+
 test('a conflict never reaches a run without --manifest', () => {
   expect(invoke(fixture, ['code-conflict', 'get'])).toEqual({
     status: 0,
@@ -137,8 +161,8 @@ test('a conflict never reaches a run without --manifest', () => {
 });
 
 /** What one manifest value case reports: no fault, or the declaration error its call raised. */
-function rule(name: string): unknown {
-  const result = invoke(new URL('fixtures/manifest-rules.mjs', import.meta.url), [name]);
+function rule(name: string, mode: string[] = []): unknown {
+  const result = invoke(new URL('fixtures/manifest-rules.mjs', import.meta.url), [name, ...mode]);
   expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
@@ -171,4 +195,23 @@ test('a failure class whose static exit code is 200 is rejected at the call', ()
       'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
     ),
   );
+});
+
+test('a failure class whose static exit code getter throws is rejected at the call as declaring no finite code', () => {
+  expect(rule('failure-code-getter-throws')).toEqual(
+    invalid(
+      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+    ),
+  );
+});
+
+test('the manifest rejects an undeclarable class with the sentence core throws when it is constructed', () => {
+  const core = z.object({ message: z.string() }).parse(rule('core-reserved'));
+  expect(rule('failure-code-200')).toEqual(invalid(core.message));
+});
+
+test('the extension stores a declared failure as its name, code, and meaning, in that key order', () => {
+  const stored = rule('failure-valid', ['--stored']);
+  expect(stored).toEqual({ exitCode: 65, meaning: 'The data is bad.', name: 'bad-data' });
+  expect(Object.keys(Object(stored))).toEqual(['name', 'exitCode', 'meaning']);
 });

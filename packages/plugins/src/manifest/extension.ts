@@ -14,7 +14,7 @@ const example = z.object({ command: line, note: line.optional() });
  */
 const declaredFailure = z
   .object({ failure, meaning: line, name: failureName })
-  .transform((entry) => ({ exitCode: entry.failure, meaning: entry.meaning, name: entry.name }));
+  .transform((entry) => ({ name: entry.name, exitCode: entry.failure, meaning: entry.meaning }));
 
 /**
  * The manifest's collecting extension on Commands, as declarations alone. The author and any

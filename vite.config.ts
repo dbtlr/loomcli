@@ -114,6 +114,7 @@ export default defineConfig({
       {
         files: [
           'packages/plugins/src/manifest/document.ts',
+          'packages/plugins/src/manifest/extension.ts',
           'packages/plugins/tests/manifest.test.ts',
           'packages/validators/src/**',
           'packages/validators/tests/catalog.test.ts',

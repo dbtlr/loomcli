@@ -1,4 +1,4 @@
-import { DeclarationError, readExtension } from '@loomcli/core';
+import { DeclarationError, escapeControlCharacters, readExtension } from '@loomcli/core';
 import type {
   ArgumentNode,
   CommandGraph,
@@ -208,7 +208,9 @@ function commandSubject(node: CommandNode): string {
 function conflictError(first: Declaration, second: Declaration): DeclarationError {
   const sameCode = first.failure.exitCode === second.failure.exitCode;
   const clause = ({ failure }: Declaration) =>
-    sameCode ? `meaning "${failure.meaning}"` : `exit code ${String(failure.exitCode)}`;
+    sameCode
+      ? `meaning "${escapeControlCharacters(failure.meaning)}"`
+      : `exit code ${String(failure.exitCode)}`;
   return new DeclarationError(
     `Failure "${first.failure.name}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}. Declare one code and one meaning for each failure name.`,
   );

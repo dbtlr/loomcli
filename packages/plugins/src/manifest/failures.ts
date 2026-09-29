@@ -4,7 +4,10 @@ import { z } from 'zod';
 /** The lowest code a failure class may declare, since 0 is success. */
 const firstDeclarable = 1;
 
-/** The first code no failure class may declare, as core's own check reads it. */
+/**
+ * The first code no failure class may declare.
+ * It mirrors core's own check under Declared exit codes, which core does not export.
+ */
 const firstReserved = 126;
 
 /** Whether a value is a class that extends `LoomError`, read by its `prototype` as core reads it. */
@@ -24,7 +27,11 @@ function isDeclarableCode(value: unknown): value is number {
   );
 }
 
-/** Core's sentence for a class whose declared code no failure may exit with, as it reads it. */
+/**
+ * Core's sentence for a class whose declared code no failure may exit with.
+ * It mirrors, word for word, the sentence core throws when such a class is constructed.
+ * Core does not export that sentence, so a test compares the two for one class.
+ */
 function undeclarableMessage(className: string, declared: unknown): string {
   const clause =
     typeof declared === 'number' && Number.isFinite(declared)
@@ -34,10 +41,24 @@ function undeclarableMessage(className: string, declared: unknown): string {
 }
 
 /**
+ * The code a failure class declares, read from its static and walking to the nearest ancestor that
+ * declares one. A static getter that throws declares no number, so it answers `undefined`: a throw
+ * inside a zod transform makes zod retry the parse asynchronously, which core rejects with the
+ * wrong fault and whose rejected retry nothing handles.
+ */
+function declaredCode(failureClass: object): unknown {
+  try {
+    return Reflect.get(failureClass, 'exitCode');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A failure class, output as the exit code it declares. The class's static is read when the value
- * is made, walking to the nearest ancestor that declares one, so no failure is constructed and the
- * class itself never reaches the graph. Its input type is `unknown`, because no typed path names a
- * class without an assertion, so a value that is not a failure class is rejected at run time alone.
+ * is made, so no failure is constructed and the class itself never reaches the graph. Its input
+ * type is `unknown`, because no typed path names a class without an assertion, so a value that is
+ * not a failure class is rejected at run time alone.
  */
 const failure = z.unknown().transform((value, context) => {
   if (!isFailureClass(value)) {
@@ -47,7 +68,7 @@ const failure = z.unknown().transform((value, context) => {
     });
     return z.NEVER;
   }
-  const declared: unknown = Reflect.get(value, 'exitCode');
+  const declared = declaredCode(value);
   if (!isDeclarableCode(declared)) {
     context.addIssue({ code: 'custom', message: undeclarableMessage(value.name, declared) });
     return z.NEVER;

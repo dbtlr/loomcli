@@ -21,6 +21,18 @@ class ReservedError extends FatalError {
   }
 }
 
+/** A failure class whose static `exitCode` getter throws, so reading its code fails. */
+class ThrowingGetterError extends FatalError {
+  static get exitCode() {
+    throw new TypeError('The getter broke.');
+  }
+
+  constructor() {
+    super('Unreachable.');
+    this.name = 'ThrowingGetterError';
+  }
+}
+
 /** One declared failure with one field replaced. */
 const failure = (fields) => ({
   failures: [{ failure: BadDataError, meaning: 'The data is bad.', name: 'bad-data', ...fields }],
@@ -31,6 +43,7 @@ const cases = {
   'blank-prose-line': { details: 'First line.\n\nThird line.' },
   'command-on-two-lines': { examples: [{ command: 'get a\nget b' }] },
   'failure-code-200': failure({ failure: ReservedError }),
+  'failure-code-getter-throws': failure({ failure: ThrowingGetterError }),
   'failure-foreign-class': failure({ failure: Error }),
   'failure-function': failure({ failure: () => 'bad' }),
   'failure-meaning-on-two-lines': failure({ meaning: 'The data\nis bad.' }),
@@ -41,16 +54,32 @@ const cases = {
   valid: { details: 'First line.\nSecond line.', examples: [{ command: 'get a', note: 'One.' }] },
 };
 
-const value = cases[process.argv[2]];
+const [name, mode] = process.argv.slice(2);
 
-// The constructor that carries the value validates it, so a faulty value throws there.
-try {
-  new Application('app')
-    .command(new Command('get', { extensions: [manifestCommand(value)] }).action(() => {}))
-    .inspect();
-  process.stdout.write(`${JSON.stringify({ fault: null })}\n`);
-} catch (error) {
-  process.stdout.write(
-    `${JSON.stringify({ fault: error.constructor.name, message: error.message })}\n`,
-  );
+/** The sentence core's own construction of `ReservedError` throws, which the manifest mirrors. */
+function coreReserved() {
+  try {
+    new ReservedError();
+    return { fault: null };
+  } catch (error) {
+    return { fault: error.constructor.name, message: error.message };
+  }
 }
+
+/** One case's outcome: its fault, or with `--stored`, the first failure `get`'s value stores. */
+function outcome() {
+  // The constructor that carries the value validates it, so a faulty value throws there.
+  try {
+    const graph = new Application('app')
+      .command(new Command('get', { extensions: [manifestCommand(cases[name])] }).action(() => {}))
+      .inspect();
+    const [get] = graph.root.children;
+    return mode === '--stored'
+      ? get.extensions['@loomcli/plugins/manifest/command'][0].failures[0]
+      : { fault: null };
+  } catch (error) {
+    return { fault: error.constructor.name, message: error.message };
+  }
+}
+
+process.stdout.write(`${JSON.stringify(name === 'core-reserved' ? coreReserved() : outcome())}\n`);

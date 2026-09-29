@@ -158,12 +158,40 @@ function conflicting(second) {
     .action(dispatch);
 }
 
+/**
+ * An application where `get` declares `invalid-json` twice with two different entries, once in the
+ * author's value and once in a plugin's value supplied at attach.
+ */
+function conflictingOnOneCommand(second) {
+  const invalidJson = {
+    failure: BadDataError,
+    meaning: 'The document is not valid JSON.',
+    name: 'invalid-json',
+  };
+  const again = plugin('@fixture/again', {
+    onCommandAttach: (command) =>
+      command.name === 'get'
+        ? command.extend(manifestCommand({ failures: [{ ...second, name: 'invalid-json' }] }))
+        : command,
+  });
+  const get = new Command('get', {
+    extensions: [manifestCommand({ failures: [invalidJson] })],
+  }).action(dispatch);
+  return new Application('app', { plugins: [manifest(), again] }).command(get).action(dispatch);
+}
+
 const scenarios = {
   app: application,
   'code-conflict': () =>
     conflicting({ failure: PlainError, meaning: 'The document is not valid JSON.' }),
   'meaning-conflict': () =>
     conflicting({ failure: BadDataError, meaning: 'The document cannot be parsed.' }),
+  'meaning-conflict-controls': () =>
+    conflicting({ failure: BadDataError, meaning: 'Bad \u202Eevil\u009B" on "x' }),
+  'same-command-code-conflict': () =>
+    conflictingOnOneCommand({ failure: PlainError, meaning: 'The document is not valid JSON.' }),
+  'same-command-meaning-conflict': () =>
+    conflictingOnOneCommand({ failure: BadDataError, meaning: 'The document cannot be parsed.' }),
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
