@@ -122,7 +122,9 @@ const explanations = {
   'rule-identity': [
     "A rule's identity names the package that declares it and the rule inside it, so",
     'tooling keys on it and two packages never share one. It follows the grammar of a',
-    "validator package's issue codes: a package name, /, and a kebab-case rule name.",
+    "validator package's issue codes: a package name, any kebab-case subpath segments",
+    'that name the part of the package that owns the rule, and a kebab-case rule',
+    'name, joined by /.',
   ],
   'rule-prose': [
     "A rule's banner prints its headline, and its explanation teaches why the rule",
@@ -745,7 +747,8 @@ const cases: Record<string, Expected> = {
     sentence: 'Diagnostic rule "@acme/retry/retry-limit" declares an empty explanation.',
   },
   'rule-identity': {
-    correction: 'Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
+    correction:
+      'Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
     findings: [
       bare(
         "diagnosticRule('Retry Limit', { explanation: 'Each retry repeats.', headline: 'Retry limit' })",
@@ -755,7 +758,7 @@ const cases: Record<string, Expected> = {
     headline: 'INVALID RULE IDENTITY',
     rule: 'rule-identity',
     sentence:
-      'Diagnostic rule "Retry Limit" has no package part or a rule name that is not kebab-case.',
+      'Diagnostic rule "Retry Limit" has no package part, or a subpath or rule name that is not kebab-case.',
   },
   'signal-twice': {
     correction: 'Claim each signal once.',

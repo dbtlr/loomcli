@@ -22,11 +22,12 @@ interface IssueCodeConfig<Params> {
 }
 
 /**
- * A package name as npm spells one, scoped or not, then `/` and a rule name of lowercase letters
- * and digits in words joined by single hyphens: `@loomcli/validators/integer-range`.
+ * A package name as npm spells one, scoped or not, then zero or more subpath segments and a rule
+ * name, each after a `/` and each of lowercase letters and digits in words joined by single
+ * hyphens: `@loomcli/validators/integer-range`. It is the grammar of a diagnostic rule's identity.
  */
 const grammar =
-  /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*\/[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+  /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/u;
 
 /** The Standard Schema version this package reads. */
 const standardVersion = 1;
@@ -119,8 +120,8 @@ function checkDeclaration(code: unknown, config: unknown): void {
   if (typeof code !== 'string' || !grammar.test(code)) {
     throw fault(issueCodeName, declarationAt(code, config, '0'), {
       correction:
-        'Supply a code such as "@acme/validators/port-range", with a rule of lowercase letters and digits in words joined by single hyphens.',
-      sentence: `issueCode() code ${quote(code)} is not a package name, a slash, and a rule name.`,
+        'Supply a code such as "@acme/validators/port-range", with each subpath segment and the rule of lowercase letters and digits in words joined by single hyphens.',
+      sentence: `issueCode() code ${quote(code)} is not a package name, any subpath segments, and a rule name joined by slashes.`,
     });
   }
   if (!isPlainObject(config)) {

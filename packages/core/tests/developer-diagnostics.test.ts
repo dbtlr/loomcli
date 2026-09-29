@@ -116,25 +116,48 @@ test('diagnosticRule() returns a frozen descriptor', () => {
   });
 });
 
-const identityFix = 'Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".';
+test('diagnosticRule() accepts subpath segments between the package and the rule name', () => {
+  expect(diagnostics('subpath-identity')).toBe('@acme/retry/backoff/retry-limit\n');
+});
+
+const identityFix =
+  'Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".';
 
 test.each([
   [
     'bad-identity',
     'rule-identity',
-    'Diagnostic rule "Retry Limit" has no package part or a rule name that is not kebab-case.',
+    'Diagnostic rule "Retry Limit" has no package part, or a subpath or rule name that is not kebab-case.',
     identityFix,
   ],
   [
     'uppercase-rule',
     'rule-identity',
-    'Diagnostic rule "@acme/retry/Retry-Limit" has no package part or a rule name that is not kebab-case.',
+    'Diagnostic rule "@acme/retry/Retry-Limit" has no package part, or a subpath or rule name that is not kebab-case.',
     identityFix,
   ],
   [
     'no-package',
     'rule-identity',
-    'Diagnostic rule "retry-limit" has no package part or a rule name that is not kebab-case.',
+    'Diagnostic rule "retry-limit" has no package part, or a subpath or rule name that is not kebab-case.',
+    identityFix,
+  ],
+  [
+    'empty-segment',
+    'rule-identity',
+    'Diagnostic rule "@acme/retry//retry-limit" has no package part, or a subpath or rule name that is not kebab-case.',
+    identityFix,
+  ],
+  [
+    'uppercase-segment',
+    'rule-identity',
+    'Diagnostic rule "@acme/retry/Backoff/retry-limit" has no package part, or a subpath or rule name that is not kebab-case.',
+    identityFix,
+  ],
+  [
+    'trailing-slash',
+    'rule-identity',
+    'Diagnostic rule "@acme/retry/backoff/" has no package part, or a subpath or rule name that is not kebab-case.',
     identityFix,
   ],
   [

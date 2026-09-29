@@ -43,8 +43,8 @@ const explanations = {
   ],
   'issue-code-name': [
     'An issue code names the package that declares it and the one sentence it prints,',
-    'so a view rewords that sentence by its code. It is a package name, /, and a',
-    'kebab-case rule name.',
+    'so a view rewords that sentence by its code. It is a package name, any',
+    'kebab-case subpath segments, and a kebab-case rule name, joined by /.',
   ],
   'issue-code-schema': [
     "issue() and read() check an issue's parameters with the code's schema",
@@ -177,11 +177,12 @@ const cases: Record<string, Expected> = {
   },
   'issue-code-name': {
     correction:
-      'Supply a code such as "@acme/validators/port-range", with a rule of lowercase letters and digits in words joined by single hyphens.',
+      'Supply a code such as "@acme/validators/port-range", with each subpath segment and the rule of lowercase letters and digits in words joined by single hyphens.',
     findings: [marked("issueCode('Bad Code', { message: …, schema: … })", "'Bad Code'")],
     headline: 'INVALID ISSUE CODE',
     rule: 'issue-code-name',
-    sentence: 'issueCode() code "Bad Code" is not a package name, a slash, and a rule name.',
+    sentence:
+      'issueCode() code "Bad Code" is not a package name, any subpath segments, and a rule name joined by slashes.',
   },
   'issue-code-schema': {
     correction: 'Supply a schema that returns its issues instead of throwing.',

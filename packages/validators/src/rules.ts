@@ -71,10 +71,10 @@ const patternMessage = catalogRule('pattern-message', {
   headline: 'Pattern and message apart',
 });
 
-/** An issue code outside the `<package>/<kebab-case-rule>` grammar. */
+/** An issue code outside the `<package>[/<subpath>...]/<kebab-case-rule>` grammar. */
 const issueCodeName = catalogRule('issue-code-name', {
   explanation:
-    'An issue code names the package that declares it and the one sentence it prints, so a view rewords that sentence by its code. It is a package name, /, and a kebab-case rule name.',
+    'An issue code names the package that declares it and the one sentence it prints, so a view rewords that sentence by its code. It is a package name, any kebab-case subpath segments, and a kebab-case rule name, joined by /.',
   headline: 'Invalid issue code',
 });
 

@@ -112,7 +112,7 @@ function reports(argv: string[]) {
 }
 
 /** The banner of the failure-name conflict, 80 columns wide. */
-const banner = `-- FAILURE NAME CONFLICT ${'-'.repeat(16)} @loomcli/plugins/failure-name-conflict`;
+const banner = `-- FAILURE NAME CONFLICT ${'-'.repeat(7)} @loomcli/plugins/manifest/failure-name-conflict`;
 
 /** The rule's explanation as an 80-column diagnostic wraps it. */
 const explanation = [

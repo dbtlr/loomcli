@@ -212,7 +212,9 @@ describe('faults', () => {
     ['a trailing hyphen', '@acme/checks/range-'],
     ['an underscore', '@acme/checks/in_range'],
     ['a space', '@acme/checks/in range'],
-    ['a second slash', 'checks/range/min'],
+    ['an empty subpath segment', '@acme/checks//range'],
+    ['an uppercase subpath segment', '@acme/checks/Ports/range'],
+    ['a trailing slash', '@acme/checks/ports/'],
     ['a code that is not a string', 42],
   ];
 
@@ -220,19 +222,22 @@ describe('faults', () => {
     const config = { message: () => 'Expected a value.', schema: rangeSchema };
     expect(faultOf(() => Reflect.apply(issueCode, undefined, [code, config]))).toEqual(
       declarationFault(
-        `issueCode() code ${typeof code === 'string' ? JSON.stringify(code) : String(code)} is not a package name, a slash, and a rule name. Supply a code such as "@acme/validators/port-range", with a rule of lowercase letters and digits in words joined by single hyphens.`,
+        `issueCode() code ${typeof code === 'string' ? JSON.stringify(code) : String(code)} is not a package name, any subpath segments, and a rule name joined by slashes. Supply a code such as "@acme/validators/port-range", with each subpath segment and the rule of lowercase letters and digits in words joined by single hyphens.`,
       ),
     );
   });
 
-  it.each(['@loomcli/validators/integer-range', 'checks/range2', '@acme/my.checks/a-1-b'])(
-    'the code %s is accepted',
-    (code) => {
-      expect(
-        issueCode(code, { message: () => 'Expected a value.', schema: rangeSchema }).code,
-      ).toBe(code);
-    },
-  );
+  it.each([
+    '@loomcli/validators/integer-range',
+    'checks/range2',
+    '@acme/my.checks/a-1-b',
+    '@acme/checks/ports/range',
+    'checks/range/min',
+  ])('the code %s is accepted', (code) => {
+    expect(issueCode(code, { message: () => 'Expected a value.', schema: rangeSchema }).code).toBe(
+      code,
+    );
+  });
 
   const configs: [string, unknown, string][] = [
     [
