@@ -218,6 +218,17 @@ describe('the sentence', () => {
     expect(plugin).toEqual(core);
   });
 
+  it('a failure instance thrown again where nothing is near keeps core text', () => {
+    const shared = new URL('fixtures/suggestions-shared.mjs', import.meta.url);
+    expect(invoke(shared, ['near', 'far']).stderr).toBe(
+      [
+        'kit: Unknown option "--fiel". Did you mean "--field"?',
+        'kit: Unknown option "--fiel". Supply a declared option; prefix a hyphenated path with "./".',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('a group with no subcommand keeps core text', () => {
     const { core, plugin } = unchanged(['rank']);
     expect(plugin).toEqual(core);
