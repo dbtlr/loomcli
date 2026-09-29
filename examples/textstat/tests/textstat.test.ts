@@ -12,7 +12,7 @@ test('textstat prints one table for the counted files, with the total only when 
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     writeFileSync(join(directory, 'two words.txt'), 'é');
     expect(
-      invoke(new URL('../dist/src/main.js', import.meta.url), ['one.txt', 'two words.txt'], {
+      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt'], {
         cwd: directory,
       }),
     ).toEqual({
@@ -21,13 +21,9 @@ test('textstat prints one table for the counted files, with the total only when 
       stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n',
     });
     expect(
-      invoke(
-        new URL('../dist/src/main.js', import.meta.url),
-        ['one.txt', 'two words.txt', '--total'],
-        {
-          cwd: directory,
-        },
-      ),
+      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt', '--total'], {
+        cwd: directory,
+      }),
     ).toEqual({
       status: 0,
       stderr: '',
@@ -45,7 +41,7 @@ test('textstat prints the header alone when the byte threshold filters every sou
     writeFileSync(join(directory, 'large.txt'), 'hello');
     expect(
       invoke(
-        new URL('../dist/src/main.js', import.meta.url),
+        new URL('../dist/main.js', import.meta.url),
         ['small.txt', 'large.txt', '--min-bytes', '6'],
         { cwd: directory },
       ),
@@ -59,7 +55,7 @@ test.each([
   ['missing-fixture.txt', 'ENOENT'],
   ['.', 'EISDIR'],
 ])('textstat preserves the file-read reason for %s', (file, reason) => {
-  const result = invoke(new URL('../dist/src/main.js', import.meta.url), [file]);
+  const result = invoke(new URL('../dist/main.js', import.meta.url), [file]);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(`Cannot read file: ${file}: `);
@@ -72,7 +68,7 @@ test('textstat prints no table when a later source cannot be read', () => {
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     const result = invoke(
-      new URL('../dist/src/main.js', import.meta.url),
+      new URL('../dist/main.js', import.meta.url),
       ['one.txt', 'missing-fixture.txt', '--total'],
       { cwd: directory },
     );
@@ -89,7 +85,7 @@ test('textstat widens the count column past the header for a large count', () =>
   try {
     writeFileSync(join(directory, 'big.txt'), 'a'.repeat(123_456));
     expect(
-      invoke(new URL('../dist/src/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
+      invoke(new URL('../dist/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
     ).toEqual({ status: 0, stderr: '', stdout: ' COUNT  SOURCE\n123456  big.txt\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
@@ -178,13 +174,9 @@ test.each([
       writeFileSync(join(directory, 'one.txt'), 'hello world\n');
       writeFileSync(join(directory, 'two.txt'), 'é\tthree\r\nlast');
       expect(
-        invoke(
-          new URL('../dist/src/main.js', import.meta.url),
-          ['one.txt', ...options, 'two.txt'],
-          {
-            cwd: directory,
-          },
-        ),
+        invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', ...options, 'two.txt'], {
+          cwd: directory,
+        }),
       ).toEqual({ status: 0, stderr: '', stdout });
     } finally {
       rmSync(directory, { force: true, recursive: true });
@@ -201,7 +193,7 @@ test.each([
     writeFileSync(join(directory, 'empty.txt'), '');
     expect(
       invoke(
-        new URL('../dist/src/main.js', import.meta.url),
+        new URL('../dist/main.js', import.meta.url),
         ['--metric', metric, 'empty.txt', '--total'],
         { cwd: directory },
       ),
@@ -212,7 +204,7 @@ test.each([
 });
 
 test.each(['unsupported', ''])('textstat rejects metric %j before file access', (metric) => {
-  const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
+  const result = invoke(new URL('../dist/main.js', import.meta.url), [
     '--metric',
     metric,
     'missing-fixture.txt',
@@ -226,7 +218,7 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
 });
 
 test('textstat --totl one.txt suggests the near option and points at the help and explain pages', () => {
-  const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['--totl', 'one.txt']);
+  const result = invoke(new URL('../dist/main.js', import.meta.url), ['--totl', 'one.txt']);
   expect(result).toEqual({
     status: 2,
     stderr:
@@ -241,7 +233,7 @@ test('textstat --totl one.txt suggests the near option and points at the help an
 test.each(['--minimun', '--timin'])(
   'textstat %s one.txt finds no offered near option and keeps the default text',
   (option) => {
-    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [option, 'one.txt']);
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [option, 'one.txt']);
     expect(result).toEqual({
       status: 2,
       stderr: `textstat: Unknown option "${option}". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --help" to see the usage.\nRun "textstat --explain" to explain this command.\n`,
@@ -265,7 +257,7 @@ test.each([
       writeFileSync(join(directory, 'large.txt'), 'hello');
       expect(
         invoke(
-          new URL('../dist/src/main.js', import.meta.url),
+          new URL('../dist/main.js', import.meta.url),
           ['empty.txt', 'small.txt', 'large.txt', '--min-bytes', minimum, '--total'],
           { cwd: directory },
         ),
@@ -279,7 +271,7 @@ test.each([
 test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
   'textstat rejects minimum %j before file access',
   (minimum) => {
-    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [
       `--min-bytes=${minimum}`,
       'missing-fixture.txt',
     ]);
@@ -293,7 +285,7 @@ test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
 test.each(['-1', '1.5', '10KB'])(
   'textstat rejects %j on the deprecated spelling by the shared rule',
   (minimum) => {
-    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [
       `--minimum=${minimum}`,
       'missing-fixture.txt',
     ]);
@@ -317,7 +309,7 @@ test.each([
       writeFileSync(join(directory, 'large.txt'), 'hello');
       expect(
         invoke(
-          new URL('../dist/src/main.js', import.meta.url),
+          new URL('../dist/main.js', import.meta.url),
           ['small.txt', 'large.txt', ...options],
           {
             cwd: directory,
@@ -334,14 +326,10 @@ test('textstat --timing reports the elapsed time on stderr after the rows', () =
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-timing-'));
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
-    const result = invoke(
-      new URL('../dist/src/main.js', import.meta.url),
-      ['one.txt', '--timing'],
-      {
-        cwd: directory,
-        env: { TERM: 'xterm-256color' },
-      },
-    );
+    const result = invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', '--timing'], {
+      cwd: directory,
+      env: { TERM: 'xterm-256color' },
+    });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('COUNT  SOURCE\n    6  one.txt\n');
     // The number is a measurement, so the line shape is the whole assertion.
@@ -355,7 +343,7 @@ test.each([
   [{ NO_COLOR: '1', TERM: 'xterm-256color' }, /^ℹ elapsed: \d+ms\n$/u],
   [{ NO_COLOR: '1', TERM: 'linux' }, /^i elapsed: \d+ms\n$/u],
 ])('textstat timing keeps the captured glyph under %j', (env, diagnostic) => {
-  const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['--timing'], {
+  const result = invoke(new URL('../dist/main.js', import.meta.url), ['--timing'], {
     env: {
       CI: '',
       ConEmuTask: '',
@@ -378,9 +366,9 @@ test('textstat preserves a filename that resembles valid style markup', () => {
   const name = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
   try {
     writeFileSync(join(directory, name), 'x');
-    expect(
-      invoke(new URL('../dist/src/main.js', import.meta.url), [name], { cwd: directory }),
-    ).toEqual({ status: 0, stderr: '', stdout: `COUNT  SOURCE\n    1  ${name}\n` });
+    expect(invoke(new URL('../dist/main.js', import.meta.url), [name], { cwd: directory })).toEqual(
+      { status: 0, stderr: '', stdout: `COUNT  SOURCE\n    1  ${name}\n` },
+    );
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -390,7 +378,7 @@ test('textstat renders an unreadable source name literally', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-error-markers-'));
   const name = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
   try {
-    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [name], {
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [name], {
       cwd: directory,
     });
     expect(result.status).toBe(1);
@@ -416,7 +404,7 @@ test.each([
 ] satisfies [string[], string, string][])(
   'textstat counts piped stdin for %j',
   (args, input, stdout) => {
-    expect(invoke(new URL('../dist/src/main.js', import.meta.url), args, { input })).toEqual({
+    expect(invoke(new URL('../dist/main.js', import.meta.url), args, { input })).toEqual({
       status: 0,
       stderr: '',
       stdout,
@@ -429,7 +417,7 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     expect(
-      invoke(new URL('../dist/src/main.js', import.meta.url), ['one.txt'], {
+      invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
         cwd: directory,
         input: 'piped text that is longer',
       }),
@@ -484,7 +472,7 @@ test.each([
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-palette-'));
   try {
     writeFileSync(join(directory, 'total'), 'abc');
-    const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['total', '--total'], {
+    const result = invoke(new URL('../dist/main.js', import.meta.url), ['total', '--total'], {
       cwd: directory,
       env,
     });
@@ -500,7 +488,7 @@ test.each([
 
 test.each(['json', 'jsonl'])('summary styling leaves the %s result fields unchanged', (format) => {
   const result = invoke(
-    new URL('../dist/src/main.js', import.meta.url),
+    new URL('../dist/main.js', import.meta.url),
     ['--total', '--format', format],
     { env: { FORCE_COLOR: '1' }, input: 'abc' },
   );
@@ -522,7 +510,7 @@ test.each(['json', 'jsonl'])('summary styling leaves the %s result fields unchan
 
 test('NO_COLOR keeps the total row content and layout without foreground escapes', () => {
   expect(
-    invoke(new URL('../dist/src/main.js', import.meta.url), ['--total'], {
+    invoke(new URL('../dist/main.js', import.meta.url), ['--total'], {
       env: { COLORTERM: 'truecolor', FORCE_COLOR: '', NO_COLOR: '1' },
       input: 'abc',
     }),

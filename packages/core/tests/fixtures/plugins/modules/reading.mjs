@@ -32,7 +32,7 @@ const middleware = async ({ command, graph, next, out }) => {
   try {
     readExtension(command, twin);
   } catch (error) {
-    await out.print(`mismatch:${error.name}:${error.message}`);
+    await out.print(`mismatch:${error.name}:${error.sentence ?? error.message}`);
   }
   // The stored output is frozen to any depth, so a projection cannot write through the graph.
   const frozen = [];

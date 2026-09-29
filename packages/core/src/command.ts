@@ -4,7 +4,6 @@ import {
   commandSentence,
   commandSubject,
   DeclarationError,
-  InternalError,
   NonCallableCommandError,
   ResultError,
   toFailure,
@@ -37,7 +36,7 @@ import {
 } from './facts.js';
 import type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
-import { nodeAt, resultNode, snapshot } from './inspect.js';
+import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
   compileOptions,
@@ -2162,7 +2161,7 @@ function requestNode(
   const options = place.global ? graph.globals : nodeAt(graph, path).options;
   const node = options.find((option) => option.name === place.name);
   if (!node) {
-    throw new InternalError(`Option "${place.name}" is not in the inspected graph.`, undefined);
+    throw graphMismatch(`Option "${place.name}" is not in the inspected graph.`);
   }
   return node;
 }

@@ -7,7 +7,7 @@ import { stashed } from './stashing.mjs';
 const middleware = async ({ next, out }) => {
   const outcome = await next();
   await out.info(`caller:${outcome}`);
-  await stashed.next().catch((error) => out.info(`caller:${error.message}`));
+  await stashed.next().catch((error) => out.info(`caller:${error.sentence ?? error.message}`));
 };
 
 export default middleware;

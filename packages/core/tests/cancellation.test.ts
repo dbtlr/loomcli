@@ -55,8 +55,7 @@ test('a caller signal already aborted at entry resolves 130 having loaded nothin
 test('a run that fails to build installs no listener and keeps its declaration diagnostic', () => {
   expect(run('build-fault')).toEqual({
     status: 1,
-    stderr:
-      'Invalid declaration: Plugin "@fixture/failing" failed in onCommandAttach for the root Command: the hook broke.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: 'before:0:0\nadded:none\nresolved:1\n',
   });
 });
@@ -64,8 +63,7 @@ test('a run that fails to build installs no listener and keeps its declaration d
 test('a declared default its validator rejects installs no listener and still resolves 1', () => {
   expect(run('default-fault')).toEqual({
     status: 1,
-    stderr:
-      'Invalid declaration: Option "level" has an invalid default. Fix the default or its validator.\nOption "level": Supply a level the schema accepts.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: 'before:0:0\nadded:none\nresolved:1\n',
   });
 });
@@ -73,8 +71,7 @@ test('a declared default its validator rejects installs no listener and still re
 test('a run signal that is not an AbortSignal is an internal error with code 1', () => {
   expect(run('not-a-signal')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: 'before:0:0\nafter:0:0\nresolved:1\n',
   });
 });
@@ -83,9 +80,7 @@ test('an invalid signal reports its diagnostic to the host stderr override, not 
   const result = run('not-a-signal-host');
   expect(result.stderr).toBe('');
   expect(result.stdout).toBe(
-    `before:0:0\ncaptured:${JSON.stringify(
-      'Internal error: run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.\n',
-    )}\nresolved:1\n`,
+    `before:0:0\ncaptured:${JSON.stringify('app: Something went wrong.\n')}\nresolved:1\n`,
   );
 });
 
@@ -123,8 +118,7 @@ test("a wrapper reads 'cancelled' whether the chain took over or continued", () 
 test('a cancelled run whose failure view throws still resolves the cancellation code', () => {
   expect(run('broken-renderer', { LOOM_FIXTURE_THROW: 'fatal' })).toEqual({
     status: 130,
-    stderr:
-      'the action stopped the invocation\nInternal error: Rendering the failure failed: the failure renderer could not answer\n',
+    stderr: 'the action stopped the invocation\napp: Something went wrong.\n',
     stdout: [
       'before:0:0',
       'during:0:0',

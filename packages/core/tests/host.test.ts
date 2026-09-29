@@ -9,7 +9,7 @@ test('capture reads each override once and shares stderr with fallback reporting
   expect(JSON.parse(result.stdout)).toEqual({
     actionSawFirst: true,
     code: 1,
-    first: ['Internal error: Could not write invocation output.\n'],
+    first: ['host: Something went wrong.\n'],
     hostReads: 1,
     second: [],
     stderrReads: 1,
@@ -55,7 +55,7 @@ test('build diagnostics use the captured output override', () => {
     status: 1,
     stderr: '',
     stdout: `${JSON.stringify({
-      chunks: ['Invalid declaration: The root Command has no action. Register an action.\n'],
+      chunks: ['bad: Something went wrong.\n'],
       code: 1,
     })}\n`,
   });

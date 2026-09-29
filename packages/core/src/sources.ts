@@ -1,4 +1,4 @@
-import { asSentence, InternalError, LoomError, reasonOf } from './errors.js';
+import { asSentence, foreignFailure, InternalError, LoomError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject, isProseLine } from './facts.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
@@ -6,6 +6,12 @@ import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
+import {
+  foreignThrow,
+  foreignThrowCorrection,
+  sourceAnswers,
+  sourceAnswersCorrection,
+} from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type { Host, Out } from './types.js';
 import type { OptionInput } from './validation.js';
@@ -159,7 +165,11 @@ const ruleFaults = new WeakSet<InternalError>();
 
 /** A fault the answers rule names, recorded so that reading the answers rethrows it unframed. */
 function ruleFault(message: string): InternalError {
-  const fault = new InternalError(message, undefined);
+  const fault = new InternalError(sourceAnswers, {
+    cause: undefined,
+    correction: sourceAnswersCorrection,
+    sentence: message,
+  });
   ruleFaults.add(fault);
   return fault;
 }
@@ -233,10 +243,11 @@ interface SourceCall {
 
 /** The fault of a source that threw, while it ran or while core read what it returned. */
 function sourceFailure(sentence: string, error: unknown): InternalError {
-  return new InternalError(
-    `${sentence} failed in its configuration source: ${asSentence(reasonOf(error))}`,
-    error,
-  );
+  return new InternalError(foreignThrow, {
+    cause: error,
+    correction: foreignThrowCorrection,
+    sentence: `${sentence} failed in its configuration source: ${asSentence(reasonOf(error))}`,
+  });
 }
 
 /**
@@ -362,7 +373,7 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   } catch (error) {
     // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
-    const fault = error instanceof LoomError ? error : new InternalError(reasonOf(error), error);
+    const fault = error instanceof LoomError ? error : foreignFailure(error);
     return { fault, labels, rejected };
   }
 }

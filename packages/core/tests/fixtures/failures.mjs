@@ -33,7 +33,10 @@ const facts = {
     })}\n`,
 };
 
-const brand = (label) => ({ render: (failure) => `${label}: ${failure.message}\n` });
+// A declaration fault holds its sentence apart from the diagnostic its message carries.
+const brand = (label) => ({
+  render: (failure) => `${label}: ${failure.sentence ?? failure.message}\n`,
+});
 const breaks = {
   render: () => {
     throw new Error('Cannot render the failure.');
@@ -120,8 +123,12 @@ function routed(views) {
     .action(dispatch);
 }
 
+// A test that reads a broken contract's own sentence runs the fixture as a development build.
+const packet =
+  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+
 function ending(views, action) {
-  return new Application('failures', { views }).action(action);
+  return new Application('failures', { ...packet, views }).action(action);
 }
 
 function build() {

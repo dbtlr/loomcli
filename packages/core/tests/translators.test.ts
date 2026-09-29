@@ -2,9 +2,30 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function run(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/translators.mjs', import.meta.url), [scenario, ...argv]);
+function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+  return invoke(new URL('fixtures/translators.mjs', import.meta.url), [scenario, ...argv], { env });
 }
+
+/** One scenario run as a development build, which prints a defect's Developer Diagnostic. */
+function develop(scenario: string) {
+  return run(scenario, [], { FIXTURE_BUILD: 'development' });
+}
+
+/** What a distributed build prints for every defect: the generic message, once. */
+const generic = 'translators: Something went wrong.\n';
+
+/** The banner of the broken-translator rule, 80 columns wide. */
+const brokenBanner = `-- BROKEN TRANSLATOR ${'-'.repeat(27)} @loomcli/core/broken-translator`;
+
+/** The explanation and correction every broken translator's diagnostic closes with. */
+const brokenClose = [
+  'A translator turns a foreign throw into a failure synchronously. A throw, or any',
+  'answer other than a failure or undefined, leaves core no failure to report, so',
+  'it consults no later translator.',
+  '',
+  'Return a failure, or undefined to pass, and throw nothing from the translator.',
+  '',
+].join('\n');
 
 /** A run whose foreign throw one translator answered with the fixture's 69 failure. */
 function translated(from: string, calls: readonly string[]) {
@@ -22,7 +43,7 @@ test('a foreign throw from an action exits with the translated class code and re
 test('a throw no translator answers stays an internal error with exit 1', () => {
   expect(run('untranslated')).toEqual({
     status: 1,
-    stderr: 'Internal error: The value is not a function.\n',
+    stderr: generic,
     stdout: 'resolved:1\n',
   });
 });
@@ -93,7 +114,7 @@ test.each([
 test("a cancelled run whose throw has an unreadable name keeps its cancellation code and never reports the name getter's error", () => {
   expect(run('cancelled-name')).toEqual({
     status: 130,
-    stderr: 'Internal error: Could not write invocation output.\n',
+    stderr: generic,
     stdout: 'resolved:130\n',
   });
 });
@@ -101,46 +122,58 @@ test("a cancelled run whose throw has an unreadable name keeps its cancellation 
 test('a middleware throw during unwinding stays the unwinding internal error', () => {
   expect(run('unwinding')).toEqual({
     status: 1,
-    stderr: 'Internal error: The unwinding failed.\n',
+    stderr: generic,
     stdout: 'dispatched\nresolved:1\n',
   });
 });
 
 test.each([
   ['broken-throws', 'threw: The translator failed.'],
-  ['broken-string', 'returned a string instead of a failure. Return a failure or undefined.'],
-  ['broken-promise', 'returned a promise instead of a failure. Return a failure or undefined.'],
+  ['broken-string', 'returned a string instead of a failure.'],
+  ['broken-promise', 'returned a promise instead of a failure.'],
 ])('%s is a defect, and no later translator is called', (scenario, clause) => {
-  expect(run(scenario)).toEqual({
-    status: 1,
-    stderr: `Internal error: The translator the Application registered for "SyntaxError" ${clause}\n`,
-    stdout: 'resolved:1\n',
-  });
+  expect(run(scenario)).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
+  const developed = develop(scenario);
+  expect(developed).toMatchObject({ status: 1, stdout: 'resolved:1\n' });
+  const opening = `${brokenBanner}\n\nThe translator the Application registered for "SyntaxError" ${clause}\n\n`;
+  expect(developed.stderr.slice(0, opening.length)).toBe(opening);
+  expect(developed.stderr.slice(-brokenClose.length - 2)).toBe(`\n\n${brokenClose}`);
+});
+
+test("a throwing translator's diagnostic shows the translator's own source, then its throw, then the original throw", () => {
+  const { stderr } = develop('broken-throws');
+  expect(stderr).toMatch(/\n> +\d+ \|     throw new Error\('The translator failed\.'\);\n/u);
+  const translator = stderr.indexOf('\nHolds Error: The translator failed.\n    at ');
+  const original = stderr.indexOf('\nHolds SyntaxError: Unexpected token.\n    at ');
+  expect(translator).toBeGreaterThan(stderr.indexOf('\nAggregateError: '));
+  expect(original).toBeGreaterThan(translator);
+});
+
+test("a translator that returned a non-failure shows the original throw's source and chain", () => {
+  const { stderr } = develop('broken-string');
+  expect(stderr).toMatch(/\n> +\d+ \|   throw new SyntaxError\('Unexpected token\.'\);\n/u);
+  expect(stderr).toContain('\n\nSyntaxError: Unexpected token.\n    at ');
+  expect(stderr).not.toContain('Holds ');
 });
 
 test('the key name and reason of a broken translator are escaped onto one line', () => {
-  expect(run('broken-escaped')).toEqual({
-    status: 1,
-    stderr:
-      'Internal error: The translator the Application registered for "Escaped\\u202eError" threw: The translator failed\\u000d\\u000aforged\\u202eline.\n',
-    stdout: 'resolved:1\n',
-  });
+  expect(run('broken-escaped')).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
+  expect(develop('broken-escaped').stderr).toContain(
+    '\n\nThe translator the Application registered for "Escaped\\u202eError" threw: The translator failed\\u000d\\u000aforged\\u202eline.\n\n',
+  );
 });
 
 test('a broken translator a plugin registered is named by its identity', () => {
-  expect(run('broken-plugin')).toEqual({
-    status: 1,
-    stderr:
-      'Internal error: The translator plugin "@fixture/broken" registered for "SyntaxError" threw: The translator failed.\n',
-    stdout: 'resolved:1\n',
-  });
+  expect(run('broken-plugin')).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
+  expect(develop('broken-plugin').stderr).toContain(
+    '\n\nThe translator plugin "@fixture/broken" registered for "SyntaxError" threw: The translator failed.\n\n',
+  );
 });
 
 test("a throwing translator's defect keeps both throws, the translator's first", () => {
   expect(run('defect-cause-throws')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: The translator the Application registered for "SyntaxError" threw: The translator failed.\n',
+    stderr: generic,
     stdout: 'cause:AggregateError:translator,original\nresolved:1\n',
   });
 });
@@ -148,8 +181,7 @@ test("a throwing translator's defect keeps both throws, the translator's first",
 test("a translator that returns a non-failure keeps the original throw as the defect's cause", () => {
   expect(run('defect-cause-returned')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: The translator the Application registered for "SyntaxError" returned a string instead of a failure. Return a failure or undefined.\n',
+    stderr: generic,
     stdout: 'cause:original\nresolved:1\n',
   });
 });
@@ -157,10 +189,12 @@ test("a translator that returns a non-failure keeps the original throw as the de
 test('a translator that returns an unconstructed failure meets the unconstructed-failure rule', () => {
   expect(run('broken-unconstructed')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: A thrown value inherits from a failure class but was never constructed as one.\n',
+    stderr: generic,
     stdout: 'resolved:1\n',
   });
+  expect(develop('broken-unconstructed').stderr).toMatch(
+    /^-- FAILURE NEVER CONSTRUCTED -+ @loomcli\/core\/unconstructed-failure\n/u,
+  );
 });
 
 test('a translated failure carries the foreign throw as its cause only when the translator passes it', () => {
@@ -175,7 +209,7 @@ test('a sequence source the action let propagate reports once, as the translated
   expect(result.status).toBe(69);
   expect(result.stdout).toBe('one\napplication:SyntaxError\nresolved:69\n');
   expect(result.stderr).toContain('Unavailable from application.\n');
-  expect(result.stderr).not.toContain('Internal error');
+  expect(result.stderr).not.toContain('Something went wrong');
 });
 
 const incompleteLine = 'Output is incomplete: the root Command stopped after 1 rows, 1 written.\n';
@@ -198,15 +232,16 @@ test.each([
 test("a deferred row source's broken translator reports its defect, keeping both throws", () => {
   const result = run('sequence-broken');
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    `${incompleteLine}Internal error: The translator the Application registered for "SyntaxError" threw: The translator failed.\n`,
+  expect(result.stderr).toBe(`${incompleteLine}${generic}`);
+  expect(develop('sequence-broken').stderr).toContain(
+    `${incompleteLine}${brokenBanner}\n\nThe translator the Application registered for "SyntaxError" threw: The translator failed.\n\n`,
   );
 });
 
 test('a deferred row source that throws undefined is still a fault that returns 1', () => {
   expect(run('sequence-undefined')).toEqual({
     status: 1,
-    stderr: `${incompleteLine}Internal error: An unknown error occurred.\n`,
+    stderr: `${incompleteLine}${generic}`,
     stdout: 'one\nresolved:1\n',
   });
 });

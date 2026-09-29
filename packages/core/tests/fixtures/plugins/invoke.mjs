@@ -155,7 +155,9 @@ function application() {
       await after(0);
       if (process.env.LOOM_FIXTURE_MISUSE === 'after-return') {
         const module = await import('./modules/misuse.mjs');
-        await module.stashed.next().catch((error) => out.info(`misuse:${error.message}`));
+        await module.stashed
+          .next()
+          .catch((error) => out.info(`misuse:${error.sentence ?? error.message}`));
       }
       if (process.env.LOOM_FIXTURE_ACTION === 'fatal') {
         out.fatal('the action stopped the invocation');

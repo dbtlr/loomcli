@@ -66,17 +66,16 @@ test.each([
     stderr: '',
     stdout: `thrown:DeclarationError:1: ${message}\n`,
   });
-  // Inside a run the fault reports as a declaration failure with code 1.
+  // Inside a run the fault is a defect a distributed build reports generically, with code 1.
   expect(exits('reserved', { FIXTURE_CLASS: name })).toEqual({
     status: 1,
-    stderr: `Invalid declaration: ${message}\n`,
+    stderr: `exits: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
 
-/** The sentence for a value that inherits from a failure class but was never constructed as one. */
-const unconstructed =
-  'Internal error: A thrown value inherits from a failure class but was never constructed as one.\n';
+/** A value that inherits from a failure class without being constructed is a defect, reported generically. */
+const unconstructed = 'exits: Something went wrong.\n';
 
 describe.each(['action', 'middleware', 'source'])('a failure raised from a %s', (where) => {
   function tampered(variant: string, value?: unknown) {
@@ -92,7 +91,7 @@ describe.each(['action', 'middleware', 'source'])('a failure raised from a %s', 
     (value) => {
       const result = tampered('assigned', value);
       expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/^Internal error: .+\n$/u);
+      expect(result.stderr).toBe('exits: Something went wrong.\n');
       expect(result.stderr).not.toContain('The registry answered 503.');
     },
   );
@@ -146,7 +145,7 @@ test('one class keeps the code captured at its first construction', () => {
 test('a static getter that throws reports its error as an internal error with code 1', () => {
   expect(exits('unreadable')).toEqual({
     status: 1,
-    stderr: 'Internal error: The code table is unavailable.\n',
+    stderr: 'exits: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -175,7 +174,7 @@ test('overwriting the statics of core classes changes no code core resolves', ()
   // The DeclarationError a reserved code raises keeps code 1 and constructs without recursion.
   expect(exits('core-statics', { FIXTURE_CASE: 'declaration' })).toEqual({
     status: 1,
-    stderr: `Invalid declaration: Failure class "InterruptError" declares exit code 130. ${correction}\n`,
+    stderr: `exits: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
@@ -199,8 +198,7 @@ test('a cancelled run resolves the signal code over the declared one', () => {
 test('a broken view of the class falls back to the default text and returns 1', () => {
   expect(exits('broken')).toEqual({
     status: 1,
-    stderr:
-      'The registry answered 503.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+    stderr: 'The registry answered 503.\nexits: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });

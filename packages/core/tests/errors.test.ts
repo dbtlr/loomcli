@@ -21,12 +21,7 @@ test.each([
     2,
     'fixture: Unknown option "-f". Supply a declared option; prefix a hyphenated path with "./".\n',
   ],
-  [
-    'actionless',
-    [],
-    1,
-    'Invalid declaration: The root Command has no action. Register an action.\n',
-  ],
+  ['actionless', [], 1, 'fixture: Something went wrong.\n'],
   [
     'extra',
     ['x'],
@@ -35,8 +30,8 @@ test.each([
   ],
   ['fatal', [], 1, 'Expected failure.\n'],
   ['throw-fatal', [], 1, 'Expected failure.\n'],
-  ['unexpected', [], 1, 'Internal error: Unexpected failure.\n'],
-  ['unknown-throw', [], 1, 'Internal error: An unknown error occurred.\n'],
+  ['unexpected', [], 1, 'fixture: Something went wrong.\n'],
+  ['unknown-throw', [], 1, 'fixture: Something went wrong.\n'],
 ] satisfies [string, string[], number, string][])(
   '%s completes without rejecting or dispatching after a failure',
   (scenario, args, status, stderr) => {

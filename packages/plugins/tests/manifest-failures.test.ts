@@ -103,12 +103,30 @@ test('a class that declares no code lists 1, a class that declares 2 lists 2, an
   expect(table['2']).toBe('Invalid invocation inputs');
 });
 
-/** The report one failure-name conflict produces, whichever Command was routed. */
+/** One invocation's report in each build, so a test compares both at once. */
+function reports(argv: string[]) {
+  return {
+    development: invoke(fixture, argv, { env: { FIXTURE_BUILD: 'development' } }),
+    distributed: invoke(fixture, argv),
+  };
+}
+
+/** The banner a declaration fault with no rule of its own opens under, 80 columns wide. */
+const banner = `-- INVALID DECLARATION ${'-'.repeat(57)}`;
+
+/**
+ * The report one failure-name conflict produces in each build, whichever Command was routed: a
+ * development build states the sentence under the declaration banner, and a distributed build
+ * writes the generic message.
+ */
 function conflict(sentence: string) {
   return {
-    status: 1,
-    stderr: `Invalid declaration: ${sentence} Declare one code and one meaning for each failure name.\n`,
-    stdout: '',
+    development: {
+      status: 1,
+      stderr: `${banner}\n\n${sentence} Declare one code and one meaning for each failure name.\n`,
+      stdout: '',
+    },
+    distributed: { status: 1, stderr: 'app: Something went wrong.\n', stdout: '' },
   };
 }
 
@@ -116,12 +134,12 @@ test('one name with two codes is a declaration error naming the name and both Co
   const report = conflict(
     'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select".',
   );
-  expect(invoke(fixture, ['code-conflict', '--manifest'])).toEqual(report);
-  expect(invoke(fixture, ['code-conflict', 'get', '--manifest'])).toEqual(report);
+  expect(reports(['code-conflict', '--manifest'])).toEqual(report);
+  expect(reports(['code-conflict', 'get', '--manifest'])).toEqual(report);
 });
 
 test('one name with two meanings is a declaration error naming the name and both Commands', () => {
-  expect(invoke(fixture, ['meaning-conflict', 'select', '--manifest'])).toEqual(
+  expect(reports(['meaning-conflict', 'select', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "select".',
     ),
@@ -129,7 +147,7 @@ test('one name with two meanings is a declaration error naming the name and both
 });
 
 test('a conflicting meaning is quoted with its control characters escaped', () => {
-  expect(invoke(fixture, ['meaning-conflict-controls', '--manifest'])).toEqual(
+  expect(reports(['meaning-conflict-controls', '--manifest'])).toEqual(
     conflict(
       String.raw`Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "Bad \u202eevil\u009b" on "x" on Command "select".`,
     ),
@@ -137,7 +155,7 @@ test('a conflicting meaning is quoted with its control characters escaped', () =
 });
 
 test('one name with two codes on one Command is a declaration error naming that Command twice', () => {
-  expect(invoke(fixture, ['same-command-code-conflict', '--manifest'])).toEqual(
+  expect(reports(['same-command-code-conflict', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "get".',
     ),
@@ -145,7 +163,7 @@ test('one name with two codes on one Command is a declaration error naming that 
 });
 
 test('one name with two meanings on one Command is a declaration error naming that Command twice', () => {
-  expect(invoke(fixture, ['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
+  expect(reports(['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "get".',
     ),

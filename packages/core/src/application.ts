@@ -31,6 +31,7 @@ import type {
   CommandState,
   ResultMethod,
 } from './command.js';
+import { escapeControlCharacters } from './controls.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
@@ -39,8 +40,8 @@ import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
-import { reportFailure } from './hints.js';
-import type { BuiltRun, FailureScene } from './hints.js';
+import { destinationReport, reportFailure } from './hints.js';
+import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
@@ -51,6 +52,7 @@ import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
+import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
 import { readTranslations, translateThrow } from './translators.js';
@@ -67,6 +69,7 @@ import type {
   PerValueConstraint,
   NameConstraint,
   ExitCode,
+  Host,
   OptionConfig,
   OptionValue,
   ResultViews,
@@ -162,12 +165,22 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
     return undefined;
   }
   if (!(signal instanceof AbortSignal)) {
-    throw new InternalError(
-      'run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.',
-      undefined,
-    );
+    throw new InternalError(runOptions, {
+      cause: undefined,
+      correction: 'Supply the signal of an AbortController.',
+      sentence: 'run() received a signal that is not an AbortSignal.',
+    });
   }
   return signal;
+}
+
+/**
+ * The build fact file, `loom.packet.json`, that the entry imports and hands to the Application.
+ * `build` is typed `string`, because a JSON module types its members that way, and the Application
+ * constructor accepts `development` or `distributed` alone. Core ignores every other member.
+ */
+export interface Packet {
+  readonly build: string;
 }
 
 /**
@@ -189,6 +202,8 @@ function echoesCancellation(thrown: unknown, controller: AbortController): boole
 
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
+  /** The packet that says whether this is a development build. With none, it is distributed. */
+  packet?: Packet;
   views?: readonly ViewOverride[];
   translators?: readonly Translation[];
   plugins?: Plugins;
@@ -204,6 +219,8 @@ export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly
 interface ApplicationConfig {
   /** Whether the application's own `command()` or `action()` has run, which closes `globalOption()`. */
   composed: boolean;
+  /** Whether the packet reads `development`, read once at construction. */
+  development: boolean;
   /** Each installed plugin's view contributions, in installation order. */
   contributors: readonly ViewContributions[];
   facts: ApplicationFacts;
@@ -487,7 +504,22 @@ class ApplicationBuilder<
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
-    const scene = (): FailureScene => ({ application: this.#name, built: reached, path: walked });
+    // The host a failure's report reads, once it is captured; before that, the process's own.
+    let reportHost: Host | undefined = undefined;
+    const scene = (): FailureScene & { host: Host } => ({
+      application: this.#name,
+      built: reached,
+      host: (reportHost ??= captureHost(undefined, stderr)),
+      path: walked,
+    });
+    // What this run's build decides about its reports, shared by every report the run writes.
+    const build: BuildReports = {
+      development: this.#config.development,
+      generic: false,
+      reported: false,
+    };
+    // What broke the run's reporting: a destination's write error, or a throw while reporting.
+    let reportingCause: unknown = undefined;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -525,6 +557,7 @@ class ApplicationBuilder<
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
+        reportHost = host;
         const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
@@ -585,7 +618,11 @@ class ApplicationBuilder<
         const fault = output.fault;
         if (fault) {
           // The action returned, so the view failure is this invocation's own failure.
-          throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
+          throw new InternalError(brokenOutputView, {
+            cause: fault.cause,
+            correction: viewCorrection,
+            sentence: `Rendering output failed: ${reasonOf(fault.cause)}`,
+          });
         }
       } catch (error) {
         primary = error;
@@ -596,14 +633,15 @@ class ApplicationBuilder<
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
-            const sink = { output, registry: registry ?? noViews, stderr };
+            const sink = { build, output, registry: registry ?? noViews, stderr };
             if (await reportFailure(sink, failure, scene())) {
               code = 1;
             }
           }
-        } catch {
+        } catch (reportError) {
           code = 1;
           reportingFailed = true;
+          reportingCause = reportError;
         }
       }
       /**
@@ -636,12 +674,13 @@ class ApplicationBuilder<
           const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
           code = code === 0 ? own : code;
           try {
-            const sink = output && { output, registry: registry ?? noViews, stderr };
+            const sink = output && { build, output, registry: registry ?? noViews, stderr };
             if (sink && (await reportFailure(sink, fault, scene()))) {
               code = 1;
             }
-          } catch {
+          } catch (reportError) {
             reportingFailed = true;
+            reportingCause ??= reportError;
           }
         }
       }
@@ -650,11 +689,16 @@ class ApplicationBuilder<
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;
+          reportingCause ??= writes.error;
         }
         output.dispose();
       }
       if (reportingFailed) {
-        await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
+        const { application, host } = scene();
+        const text = destinationReport(build, reportingCause, { application, host });
+        if (text !== '') {
+          await reportPlainly(stderr, text);
+        }
       }
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
@@ -742,6 +786,31 @@ function checkOptions(options: unknown): ApplicationFacts {
 }
 
 /**
+ * Whether the packet an Application received reads `development`. No packet is distributed, so an
+ * application that never opted in cannot show an operator the author's detail. The build is read
+ * once, here, so a later change to the imported object changes no run.
+ */
+function readPacket(packet: unknown): boolean {
+  if (packet === undefined) {
+    return false;
+  }
+  if (!isPlainObject(packet)) {
+    throw new DeclarationError(
+      'The Application packet must be an object. Import loom.packet.json and pass it as packet.',
+    );
+  }
+  const { build } = packet;
+  if (build === 'development' || build === 'distributed') {
+    return build === 'development';
+  }
+  const found =
+    build === undefined
+      ? 'The packet has no build.'
+      : `The packet's build is ${typeof build === 'string' ? `"${escapeControlCharacters(build)}"` : 'not a string'}.`;
+  throw new DeclarationError(`${found} Set build to "development" or "distributed".`);
+}
+
+/**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
  * application's own view overrides, its translations, the rendering policy, the options slot and
  * its facts, the installed list and every rule between two plugins, the root's extension values,
@@ -763,6 +832,7 @@ function declareApplication(options: unknown): {
   const translations = readTranslations('The Application', slot?.translators);
   const rendering = renderingPolicy(slot?.rendering);
   const facts = checkOptions(options);
+  const development = readPacket(slot?.packet);
   const installed = installPlugins(slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>
@@ -799,6 +869,7 @@ function declareApplication(options: unknown): {
     config: {
       composed: false,
       contributors,
+      development,
       facts,
       owners,
       plugins,

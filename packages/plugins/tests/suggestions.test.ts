@@ -235,7 +235,7 @@ describe('the sentence', () => {
       [
         'kit: Unknown option "--fiel". Did you mean "--field"?',
         'kit: Unknown option "--fiel". Supply a declared option; prefix a hyphenated path with "./".',
-        'Internal error: Plugin "@loomcli/plugins/suggestions" failed in onFailure: The spelling cannot be read.',
+        'kit: Something went wrong.',
         '',
       ].join('\n'),
     );
@@ -353,7 +353,7 @@ describe("help's failure hint", () => {
   it('a declaration error a run reports gains no line', () => {
     const { status, stderr } = run('default-rejected', []);
     expect(status).toBe(1);
-    expect(stderr).toMatch(/^Invalid declaration: /u);
+    expect(stderr).toBe('kit: Something went wrong.\n');
     expect(stderr).not.toContain('--help');
   });
 });

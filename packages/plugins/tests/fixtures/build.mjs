@@ -37,5 +37,5 @@ try {
   if (!(error instanceof DeclarationError)) {
     throw error;
   }
-  process.stdout.write(`thrown:${error.exitCode}: ${error.message}\n`);
+  process.stdout.write(`thrown:${error.exitCode}: ${error.sentence ?? error.message}\n`);
 }

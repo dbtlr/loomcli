@@ -20,7 +20,7 @@ const middleware = async ({ next, out }) => {
     return;
   }
   await next();
-  await next().catch((error) => out.info(`misuse:${error.message}`));
+  await next().catch((error) => out.info(`misuse:${error.sentence ?? error.message}`));
 };
 
 export default middleware;

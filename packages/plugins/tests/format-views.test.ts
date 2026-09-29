@@ -4,8 +4,8 @@ import { invoke } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/format-views.mjs', import.meta.url);
 
-function run(scenario: string, color?: string) {
-  return invoke(fixture, color === undefined ? [scenario] : [scenario, color]);
+function run(scenario: string, color?: string, env: Record<string, string> = {}) {
+  return invoke(fixture, color === undefined ? [scenario] : [scenario, color], { env });
 }
 
 /** One invocation that wrote its whole result to stdout and reported no failure. */
@@ -13,9 +13,21 @@ function rendered(stdout: string) {
   return { status: 0, stderr: '', stdout: `${stdout}resolved:0\n` };
 }
 
-/** One invocation whose view threw, reported as an internal fault with exit code 1. */
-function faulted(message: string) {
-  return { status: 1, stderr: `Internal error: ${message}\n`, stdout: 'resolved:1\n' };
+/** One invocation whose view threw, a defect a distributed build reports generically, exit 1. */
+const faulted = {
+  status: 1,
+  stderr: 'format-views: Something went wrong.\n',
+  stdout: 'resolved:1\n',
+};
+
+/**
+ * The action awaits the render call and lets its rejection propagate, so a development build
+ * states the formatter's own sentence as the unhandled exception's.
+ */
+function expectStated(scenario: string, message: string) {
+  expect(run(scenario, undefined, { FIXTURE_BUILD: 'development' }).stderr).toContain(
+    `\n\n${message}\n`,
+  );
 }
 
 test('json() over an object renders one indented document', () => {
@@ -59,16 +71,18 @@ test("jsonl() honors each element's toJSON", () => {
 });
 
 test('a top-level undefined value makes json() throw, reported at exit 1', () => {
-  expect(run('json-undefined')).toEqual(
-    faulted(
-      'The value cannot be encoded as JSON, because it is undefined. Emit plain JSON data from the action.',
-    ),
+  expect(run('json-undefined')).toEqual(faulted);
+  expectStated(
+    'json-undefined',
+    'The value cannot be encoded as JSON, because it is undefined. Emit plain JSON data from the action.',
   );
 });
 
 test('a bigint makes jsonl() throw one fixed sentence with no engine reason, reported at exit 1', () => {
-  expect(run('jsonl-bigint')).toEqual(
-    faulted('The value cannot be encoded as JSON. Emit plain JSON data from the action.'),
+  expect(run('jsonl-bigint')).toEqual(faulted);
+  expectStated(
+    'jsonl-bigint',
+    'The value cannot be encoded as JSON. Emit plain JSON data from the action.',
   );
 });
 

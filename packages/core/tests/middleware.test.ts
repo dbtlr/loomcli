@@ -112,7 +112,7 @@ test('calling next() twice rejects, dispatches nothing more, and turns a 0 into 
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\nInternal error: Plugin "@fixture/misuse" called next() twice.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\napp: Something went wrong.\n',
   );
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
@@ -120,7 +120,7 @@ test('calling next() twice rejects, dispatches nothing more, and turns a 0 into 
 test('a next() fault the middleware let escape is reported once, not twice', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'escaping' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe('Internal error: Plugin "@fixture/misuse" called next() twice.\n');
+  expect(result.stderr).toBe('app: Something went wrong.\n');
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
 
@@ -128,7 +128,7 @@ test('calling next() after the middleware returned rejects with its own sentence
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'after-return' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'ℹ misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\nInternal error: Plugin "@fixture/misuse" called next() after its middleware returned.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\napp: Something went wrong.\n',
   );
 });
 
@@ -144,7 +144,7 @@ test('a next() a middleware kept and called after it returned rejects and dispat
   const result = run('stashed', ['get', 'a.b']);
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    'ℹ stashing:taken-over\nℹ caller:taken-over\nℹ caller:Plugin "@fixture/stashing" called next() after its middleware returned.\nInternal error: Plugin "@fixture/stashing" called next() after its middleware returned.\n',
+    'ℹ stashing:taken-over\nℹ caller:taken-over\nℹ caller:Plugin "@fixture/stashing" called next() after its middleware returned.\napp: Something went wrong.\n',
   );
   expect(result.stdout).toBe('resolved:1\n');
 });
@@ -153,7 +153,7 @@ test('a middleware that throws its own failure while unwinding leaves the caught
   const result = run('recatching', ['get']);
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
-    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\napp: Argument "path" requires a value. Supply a value for "path".\nInternal error: the plugin failed after catching\n',
+    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\napp: Argument "path" requires a value. Supply a value for "path".\napp: Something went wrong.\n',
   );
   expect(result.stdout).toBe('resolved:2\n');
 });
@@ -199,9 +199,7 @@ test('a failure thrown before next() resolves through the failure path with its 
 test('a throw during unwinding is reported after the primary outcome and turns a 0 into 1', () => {
   const result = run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ throwing:dispatched\nInternal error: the plugin failed while unwinding\n',
-  );
+  expect(result.stderr).toBe('ℹ throwing:dispatched\napp: Something went wrong.\n');
   expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
 });
 
@@ -226,15 +224,14 @@ test('a caught rejection changes the middleware control flow and not the exit co
 test('a loader that rejects is an internal error with code 1', () => {
   const result = run('broken', ['get', 'a.b']);
   expect(result.status).toBe(1);
-  expect(result.stderr).toMatch(/^Internal error: Loading plugin "@fixture\/broken" failed: /u);
+  expect(result.stderr).toBe('app: Something went wrong.\n');
   expect(result.stdout).toBe('resolved:1\n');
 });
 
 test('a loader that throws synchronously names its own plugin', () => {
   expect(run('sync-loader', ['get', 'a.b'])).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Loading plugin "@fixture/sync-loader" failed: the loader threw before it could import\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -242,8 +239,7 @@ test('a loader that throws synchronously names its own plugin', () => {
 test('a module without a default middleware function is an internal error with code 1', () => {
   expect(run('no-default', ['get', 'a.b'])).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Loading plugin "@fixture/no-default" failed: the module exports no default middleware function.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });

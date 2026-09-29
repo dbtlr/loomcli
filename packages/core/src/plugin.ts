@@ -13,6 +13,7 @@ import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
+import { pluginLoaderFailed } from './rules.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
 import type { Palette } from './style-state.js';
@@ -417,20 +418,29 @@ async function loadDefault<Export>(
   try {
     module = await load();
   } catch (error) {
-    throw new InternalError(`Loading plugin "${identity}" failed: ${reasonOf(error)}`, error);
+    throw new InternalError(pluginLoaderFailed, {
+      cause: error,
+      correction: loaderCorrection,
+      sentence: `Loading plugin "${identity}" failed: ${reasonOf(error)}`,
+    });
   }
   const exported: unknown =
     module !== null && typeof module === 'object' && 'default' in module
       ? module.default
       : undefined;
   if (!owed.guard(exported)) {
-    throw new InternalError(
-      `Loading plugin "${identity}" failed: the module exports no default ${owed.noun} function.`,
-      undefined,
-    );
+    throw new InternalError(pluginLoaderFailed, {
+      cause: undefined,
+      correction: loaderCorrection,
+      sentence: `Loading plugin "${identity}" failed: the module exports no default ${owed.noun} function.`,
+    });
   }
   return exported;
 }
+
+/** The fix every plugin loader fault shares. */
+const loaderCorrection =
+  "Make load() resolve to a module whose default export is the plugin's function, such as () => import('./middleware.js').";
 
 /** One plugin's declared middleware: what wakes it, and the loader that fetches its module. */
 interface BuiltMiddleware {

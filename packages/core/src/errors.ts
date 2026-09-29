@@ -1,8 +1,16 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { escapeControlCharacters } from './controls.js';
+import { diagnosticText, isDiagnosticRule } from './diagnostic-text.js';
+import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
+import {
+  foreignThrow,
+  foreignThrowCorrection,
+  resultContract,
+  unconstructedFailure,
+} from './rules.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 import type { InputIdentity } from './types.js';
 
@@ -84,15 +92,30 @@ function undeclarableMessage(className: string, declared: unknown): string {
 }
 
 /**
- * Core's own text for one failure: its message under the prefix its class carries, with the
- * trailing newline every view's text carries. The application name opens every line of a usage
- * failure's message, one line for each problem it reports, so the operator reads who is speaking
- * on each; the declaration and internal categories keep their category prefixes on the first
- * line. The four categories are disjoint branches of the hierarchy, so one ordered test reads every
- * class, and a class without a prefix of its own writes the sentence alone, even when it declares a
- * usage error's exit code. It is the default view of every failure class and the text
- * the plain fallback path writes, so it runs no application code and nothing downstream composes
- * its newline.
+ * The one message a distributed build shows an operator for a defect or a declaration fault: the
+ * application name and a fixed phrase, with no reason, class name, code, or path.
+ */
+export function genericDefectText(application: string): string {
+  return `${application}: Something went wrong.\n`;
+}
+
+/**
+ * Whether one failure is only the author's to fix: a declaration fault or a defect. A development
+ * build shows the author its Developer Diagnostic; a distributed one shows the generic message.
+ */
+export function isAuthorFault(failure: LoomError): failure is DeclarationError | InternalError {
+  return failure instanceof DeclarationError || failure instanceof InternalError;
+}
+
+/**
+ * Core's own text for one failure, with the trailing newline every view's text carries. The
+ * application name opens every line of a usage failure's message, one line for each problem it
+ * reports, so the operator reads who is speaking on each. A declaration fault and a defect read
+ * the generic defect message, because only the author can act on their detail, and a development
+ * build shows that detail ahead of every view. Every other class writes its message alone, even
+ * one that declares a usage error's exit code. It is the default view of every failure class and
+ * the text the plain fallback path writes, so it runs no application code and nothing downstream
+ * composes its newline.
  */
 export function defaultText(failure: LoomError, application: string): string {
   if (failure instanceof UsageError) {
@@ -101,11 +124,8 @@ export function defaultText(failure: LoomError, application: string): string {
       .map((line) => `${application}: ${line}\n`)
       .join('');
   }
-  if (failure instanceof DeclarationError) {
-    return `Invalid declaration: ${failure.message}\n`;
-  }
-  if (failure instanceof InternalError) {
-    return `Internal error: ${failure.message}\n`;
+  if (isAuthorFault(failure)) {
+    return genericDefectText(application);
   }
   return `${failure.message}\n`;
 }
@@ -333,11 +353,103 @@ export class ShortGroupError extends UsageError {
   }
 }
 
-/** Exit 1: the declaration is wrong, so the author reads the diagnostic. */
+/** The platform's error options one value carries, read without trusting its shape. */
+function errorOptions(value: unknown): ErrorOptions | undefined {
+  return typeof value === 'object' && value !== null && 'cause' in value
+    ? { cause: value.cause }
+    : undefined;
+}
+
+/** A correction as a caller supplied it: one sentence, a copied list of them, or none. */
+function readCorrection(value: unknown): string | readonly string[] | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return Array.isArray(value)
+    ? Object.freeze(value.filter((fix): fix is string => typeof fix === 'string'))
+    : undefined;
+}
+
+/** The findings a caller supplied, copied into a frozen list, or none for a value that holds none. */
+function readFindings(value: unknown): readonly Finding[] {
+  return Object.freeze(Array.isArray(value) ? value.filter(isFinding) : []);
+}
+
+/** Whether one value is a finding a diagnostic can print: an object naming its call and arguments. */
+function isFinding(value: unknown): value is Finding {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'call' in value &&
+    typeof value.call === 'string' &&
+    'arguments' in value &&
+    Array.isArray(value.arguments)
+  );
+}
+
+/**
+ * The parts one fault carries, read from what its constructor received. A rule is a descriptor
+ * `diagnosticRule()` built; any other first argument is the sentence of a fault with no rule. A
+ * JavaScript caller reaches the constructor with any values, so each part is read by its shape.
+ */
+interface FaultParts {
+  rule: DiagnosticRule | undefined;
+  sentence: string;
+  findings: readonly Finding[];
+  correction: string | readonly string[] | undefined;
+  options: ErrorOptions | undefined;
+}
+
+function faultParts(first: unknown, second: unknown, third: unknown): FaultParts {
+  if (!isDiagnosticRule(first)) {
+    return {
+      correction: undefined,
+      findings: Object.freeze([]),
+      options: errorOptions(second),
+      rule: undefined,
+      sentence: String(first),
+    };
+  }
+  const parts: Partial<Record<keyof DiagnosticParts, unknown>> =
+    typeof second === 'object' && second !== null ? { ...second } : {};
+  return {
+    correction: readCorrection(parts.correction),
+    findings: readFindings(parts.findings),
+    options: errorOptions(third),
+    rule: first,
+    sentence: String(parts.sentence),
+  };
+}
+
+/**
+ * Exit 1: the declaration is wrong, so the author reads its Developer Diagnostic. A rule and the
+ * fault's own parts build it, or a sentence alone does for a fault with no rule. `message` holds
+ * the whole diagnostic as plain text at 80 columns, so a fault thrown at an authoring call prints
+ * it through the runtime's own uncaught-error output, and `sentence` holds the sentence alone.
+ */
 export class DeclarationError extends LoomError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+  readonly rule: DiagnosticRule | undefined;
+  readonly sentence: string;
+  readonly findings: readonly Finding[];
+  readonly correction: string | readonly string[] | undefined;
+
+  constructor(rule: DiagnosticRule, parts: DiagnosticParts, options?: ErrorOptions);
+  constructor(sentence: string, options?: ErrorOptions);
+  constructor(
+    first: DiagnosticRule | string,
+    second?: DiagnosticParts | ErrorOptions,
+    third?: ErrorOptions,
+  ) {
+    const parts = faultParts(first, second, third);
+    super(
+      diagnosticText({ ...parts, evidence: [], fallback: 'INVALID DECLARATION' }),
+      parts.options,
+    );
     this.name = 'DeclarationError';
+    this.rule = parts.rule;
+    this.sentence = parts.sentence;
+    this.findings = parts.findings;
+    this.correction = parts.correction;
   }
 }
 
@@ -352,14 +464,35 @@ export class FatalError extends LoomError {
   }
 }
 
-/** Exit 1: an unexpected exception, a non-error throw, or a view that could not answer. */
+/**
+ * Exit 1: a defect, such as an unexpected exception, a non-error throw, or a view that could not
+ * answer. A rule and the defect's own parts build it, or a sentence and the thrown value do for a
+ * defect with no rule. `message` stays the sentence, because only `run()` reports a defect, and a
+ * development build renders its Developer Diagnostic from the parts.
+ */
 export class InternalError extends LoomError {
   readonly cause: unknown;
+  readonly rule: DiagnosticRule | undefined;
+  readonly sentence: string;
+  readonly correction: string | readonly string[] | undefined;
 
-  constructor(message: string, cause: unknown) {
-    super(message);
-    this.cause = cause;
+  constructor(
+    rule: DiagnosticRule,
+    parts: Omit<DiagnosticParts, 'findings'> & { readonly cause: unknown },
+  );
+  constructor(message: string, cause: unknown);
+  constructor(
+    first: DiagnosticRule | string,
+    // The rule form's parts or the sentence form's thrown value, read by shape below.
+    second: unknown,
+  ) {
+    const parts = faultParts(first, second, undefined);
+    super(parts.sentence);
+    this.cause = parts.rule === undefined ? second : errorOptions(second)?.cause;
     this.name = 'InternalError';
+    this.rule = parts.rule;
+    this.sentence = parts.sentence;
+    this.correction = parts.correction;
   }
 }
 
@@ -378,7 +511,7 @@ export class ResultError extends InternalError {
   declare readonly cause: undefined;
 
   constructor(kind: ResultFault, path: readonly string[]) {
-    super(resultMessage(kind, path), undefined);
+    super(resultContract, { cause: undefined, sentence: resultMessage(kind, path) });
     this.kind = kind;
     this.name = 'ResultError';
     this.path = path;
@@ -394,15 +527,27 @@ export function asSentence(text: string): string {
 }
 
 /**
- * What a diagnostic says about an unexpected value, whether or not it was an Error. Reading it never
- * throws: an Error whose message is not a string or cannot be read, and a value whose prototype
- * cannot be read, such as a proxy whose trap throws, answer one fixed sentence.
+ * What a diagnostic says about an unexpected value, whether or not it was an Error, with every
+ * control character escaped. A `DeclarationError` answers its sentence, because its message holds
+ * its whole diagnostic. Every sentence that quotes a thrown value reads it here, so a reason stays
+ * on one line and no bidirectional control reaches a terminal, whichever rule's sentence carries
+ * it, while the author's words around it keep their line breaks. Reading it never throws: an Error
+ * whose message is not a string or cannot be read, and a value whose prototype cannot be read, such
+ * as a proxy whose trap throws, answer one fixed sentence.
  */
 export function reasonOf(thrown: unknown): string {
+  return escapeControlCharacters(rawReasonOf(thrown));
+}
+
+/** The thrown value's reason as it was written, read without throwing. */
+function rawReasonOf(thrown: unknown): string {
   const unreadableReason = 'The thrown value has no readable message.';
   try {
     if (!(thrown instanceof Error)) {
       return 'An unknown error occurred.';
+    }
+    if (thrown instanceof DeclarationError) {
+      return thrown.sentence;
     }
     const { message }: { message: unknown } = thrown;
     return typeof message === 'string' ? message : unreadableReason;
@@ -423,20 +568,45 @@ export function notTextReason(value: unknown): string {
 }
 
 /**
+ * Whether a thrown value is a failure class by its prototype chain, read defensively, because a
+ * revoked proxy or a proxy whose prototype trap throws answers no chain. Such a value is foreign.
+ */
+function isLoomError(thrown: unknown): thrown is LoomError {
+  try {
+    return thrown instanceof LoomError;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Every thrown value reaches reporting as a failure class; anything else is internal. A value that
  * inherits from a failure class without having been constructed holds no code, so it is internal
  * too.
  */
 export function toFailure(thrown: unknown): LoomError {
-  if (!(thrown instanceof LoomError)) {
-    return new InternalError(reasonOf(thrown), thrown);
+  if (!isLoomError(thrown)) {
+    return foreignFailure(thrown);
   }
   return failureCodes.has(thrown)
     ? thrown
-    : new InternalError(
-        'A thrown value inherits from a failure class but was never constructed as one.',
-        thrown,
-      );
+    : new InternalError(unconstructedFailure, {
+        cause: thrown,
+        correction: 'Construct the failure with new before throwing it.',
+        sentence: 'A thrown value inherits from a failure class but was never constructed as one.',
+      });
+}
+
+/**
+ * The defect a foreign throw reports: its reason as the sentence, and the thrown value as the
+ * cause a development build's diagnostic shows.
+ */
+export function foreignFailure(thrown: unknown): InternalError {
+  return new InternalError(foreignThrow, {
+    cause: thrown,
+    correction: foreignThrowCorrection,
+    sentence: reasonOf(thrown),
+  });
 }
 
 // Core's own classes are captured now, before any application code can write their statics.

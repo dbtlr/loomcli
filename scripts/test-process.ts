@@ -22,14 +22,23 @@ export function childEnvironment(env: Record<string, string | undefined> | undef
   return { ...inherited, LOOM_CAPTURE_TEST: 'present', ...env };
 }
 
+/**
+ * Runs one file as a process under the runtime the test run names, or under the one a case names,
+ * such as Bun for an application's source, which only Bun runs directly.
+ */
 export function invoke(
   file: URL,
   args: string[] = [],
-  options: { cwd?: string; env?: Record<string, string | undefined>; input?: string } = {},
+  options: {
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+    input?: string;
+    runtime?: string;
+  } = {},
 ) {
-  const { env, ...rest } = options;
+  const { env, runtime, ...rest } = options;
   const result = spawnSync(
-    process.env.LOOM_TEST_RUNTIME ?? 'node',
+    runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node',
     [fileURLToPath(file), ...args],
     {
       ...rest,

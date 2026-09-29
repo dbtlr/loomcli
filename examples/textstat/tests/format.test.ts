@@ -6,7 +6,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-const main = new URL('../dist/src/main.js', import.meta.url);
+const main = new URL('../dist/main.js', import.meta.url);
 
 /** One file, one row, so the encoded document is small enough to assert byte for byte. */
 function withOneFile(run: (cwd: string) => void) {

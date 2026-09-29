@@ -2,8 +2,8 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function failures(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/failures.mjs', import.meta.url), [scenario, ...argv]);
+function failures(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+  return invoke(new URL('fixtures/failures.mjs', import.meta.url), [scenario, ...argv], { env });
 }
 
 /** The override serializes the failure, so a test reads the facts it received. */
@@ -334,7 +334,7 @@ test('the plain fallback path opens every problem line with the application name
   expect(failures('broken-usage', ['get', 'x', '-d', 'abc', '-m', 'fast'])).toEqual({
     status: 1,
     stderr:
-      'failures: Option "--depth": Use decimal digits.\nfailures: Option "-m": Use fast or slow.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+      'failures: Option "--depth": Use decimal digits.\nfailures: Option "-m": Use fast or slow.\nfailures: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -399,7 +399,7 @@ test('a broken view on a usage class writes the default text and returns 1', () 
   expect(failures('broken-usage', ['-f', 'x', 'nope'])).toEqual({
     status: 1,
     stderr:
-      'failures: Unknown command "nope". Use one of: get, cache.\nInternal error: Rendering the failure failed: Cannot render the failure.\n',
+      'failures: Unknown command "nope". Use one of: get, cache.\nfailures: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -411,9 +411,16 @@ test.each([
 ])('a failure view that %s falls back to the default text and a diagnostic', (scenario, reason) => {
   expect(failures(scenario)).toEqual({
     status: 1,
-    stderr: `Expected failure.\nInternal error: Rendering the failure failed: ${reason}\n`,
+    stderr: `Expected failure.\nfailures: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
+  // A development build states the broken view's reason in its Developer Diagnostic.
+  expect(failures(scenario, [], { FIXTURE_BUILD: 'development' }).stderr).toContain(
+    `Expected failure.\n\n-- BROKEN FAILURE VIEW -`,
+  );
+  expect(failures(scenario, [], { FIXTURE_BUILD: 'development' }).stderr).toContain(
+    `\n\nRendering the failure failed: ${reason}\n`,
+  );
 });
 
 test('an unusable fallback destination still resolves the failure status', () => {

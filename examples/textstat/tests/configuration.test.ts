@@ -6,7 +6,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-const main = new URL('../dist/src/main.js', import.meta.url);
+const main = new URL('../dist/main.js', import.meta.url);
 const hostFixture = new URL('fixtures/config-host.mjs', import.meta.url);
 
 /**

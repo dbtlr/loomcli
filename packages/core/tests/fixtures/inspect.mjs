@@ -226,7 +226,7 @@ if (mode === 'catch') {
     process.stdout.write(
       `${encode({
         caught: error instanceof DeclarationError,
-        message: error.message,
+        message: error.sentence ?? error.message,
         name: error.name,
       })}\n`,
     );

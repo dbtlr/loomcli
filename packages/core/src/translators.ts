@@ -1,4 +1,3 @@
-import { escapeControlCharacters } from './controls.js';
 import {
   asSentence,
   DeclarationError,
@@ -8,6 +7,7 @@ import {
   reasonOf,
 } from './errors.js';
 import { prototypeChain } from './prototypes.js';
+import { brokenTranslator, brokenTranslatorCorrection } from './rules.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 
 /** Phantom key. It brands a translation and holds no runtime value. */
@@ -218,18 +218,27 @@ function isFailure(value: unknown): value is LoomError {
   }
 }
 
+/** The defect of a broken translator under its rule, with the sentence and cause each shape gives. */
+function brokenDefect(sentence: string, cause: unknown): InternalError {
+  return new InternalError(brokenTranslator, {
+    cause,
+    correction: brokenTranslatorCorrection,
+    sentence,
+  });
+}
+
 /**
  * The defect of a translator that threw. Its cause is a new `AggregateError` that holds the
  * translator's throw and then the original throw, so neither is lost and neither is mutated. The
- * reason is raw text the translator threw, so it is escaped onto one line.
+ * reason is read through `reasonOf`, which escapes it onto one line.
  */
 function threwDefect(who: string, error: unknown, thrown: object): InternalError {
-  const reason = escapeControlCharacters(reasonOf(error));
+  const reason = reasonOf(error);
   const cause = new AggregateError(
     [error, thrown],
     'The translator threw while translating the original throw.',
   );
-  return new InternalError(`${who} threw: ${asSentence(reason)}`, cause);
+  return brokenDefect(`${who} threw: ${asSentence(reason)}`, cause);
 }
 
 /** The one translator call, whose throw or non-failure answer is the defect of that translator. */
@@ -252,10 +261,7 @@ function consult(
   if (isThenable(answer)) {
     ignoreRejection(answer);
   }
-  return new InternalError(
-    `${who} returned ${returnedKind(answer)} instead of a failure. Return a failure or undefined.`,
-    thrown,
-  );
+  return brokenDefect(`${who} returned ${returnedKind(answer)} instead of a failure.`, thrown);
 }
 
 /**

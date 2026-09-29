@@ -14,6 +14,7 @@ import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
+import packet from '../loom.packet.json' with { type: 'json' };
 import Package from '../package.json' with { type: 'json' };
 import { summarize } from './actions/summarize.js';
 import { debug } from './commands/debug.js';
@@ -42,6 +43,8 @@ const configured = new Application('jsonkit', {
     // The root action summarizes the document, so it reads one.
     manifestCommand({ failures: readFailures }),
   ],
+  // The source tree reads development; the build writes distributed into the bundle.
+  packet,
   plugins: [
     help(),
     suggestions(),

@@ -12,6 +12,10 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
+// A test that reads a declaration fault's own sentence runs the fixture as a development build.
+const packet =
+  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+
 // The manifest reads each class's static alone, so no fixture constructs one.
 
 /** A data failure, 65. */
@@ -152,7 +156,7 @@ function conflicting(second) {
   const select = new Command('select', {
     extensions: [manifestCommand({ failures: [{ ...second, name: 'invalid-json' }] })],
   }).action(dispatch);
-  return new Application('app', { plugins: [manifest()] })
+  return new Application('app', { ...packet, plugins: [manifest()] })
     .command(get)
     .command(select)
     .action(dispatch);
@@ -177,7 +181,9 @@ function conflictingOnOneCommand(second) {
   const get = new Command('get', {
     extensions: [manifestCommand({ failures: [invalidJson] })],
   }).action(dispatch);
-  return new Application('app', { plugins: [manifest(), again] }).command(get).action(dispatch);
+  return new Application('app', { ...packet, plugins: [manifest(), again] })
+    .command(get)
+    .action(dispatch);
 }
 
 const scenarios = {

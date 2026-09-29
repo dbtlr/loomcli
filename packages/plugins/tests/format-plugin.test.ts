@@ -91,8 +91,7 @@ test('a no-result Command has no --format row on its help page', () => {
 test('the hook-collision error names a local option', () => {
   expect(invoke(rejected, ['local-collision'])).toEqual({
     status: 1,
-    stderr:
-      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a local option. Rename the Command\'s option or omit the plugin.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: '',
   });
 });
@@ -100,8 +99,7 @@ test('the hook-collision error names a local option', () => {
 test('the hook-collision error names a global option', () => {
   expect(invoke(rejected, ['global-collision'])).toEqual({
     status: 1,
-    stderr:
-      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as a global option. Rename the global option or omit the plugin.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: '',
   });
 });
@@ -109,8 +107,7 @@ test('the hook-collision error names a global option', () => {
 test("the hook-collision error names another plugin's option", () => {
   expect(invoke(rejected, ['plugin-collision'])).toEqual({
     status: 1,
-    stderr:
-      'Invalid declaration: Plugin "@loomcli/plugins/format" declares option "format" on Command "count", which is already declared as an option of plugin "@fixture/claimant". Install one of them.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: '',
   });
 });

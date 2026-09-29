@@ -1,4 +1,4 @@
-import { textstat } from '../../dist/src/application.js';
+import { textstat } from '../../dist/application.js';
 
 // The built application under a host whose platform the test chooses, so Windows is proven here.
 // The files it counts live in the working directory the test supplies.

@@ -43,10 +43,11 @@ test('jsonkit preserves JSON strings that resemble recognized style markup', () 
 
 test('jsonkit quotes an unresolved path and escapes its bidirectional controls', () => {
   const override = '\u{202e}';
-  for (const [path, shown] of [
+  const cases: [string, string][] = [
     ['name.', 'name.'],
     [`a${override}b`, String.raw`a\u202eb`],
-  ]) {
+  ];
+  for (const [path, shown] of cases) {
     expect(invoke(main, ['get', path], { input: '{"name": "loom"}' })).toEqual({
       status: 65,
       stderr: `Path not found: "${shown}". Run jsonkit keys to list the keys at the root.\n`,
@@ -257,9 +258,13 @@ test.each(['', '{"name":', 'not json at all'])(
   },
 );
 
+// The fixture imports jsonkit's reader and translation from source, which only Bun runs directly.
 test('the data error keeps the SyntaxError JSON.parse threw as its cause', () => {
   expect(
-    invoke(new URL('fixtures/translated.mjs', import.meta.url), [], { input: '{"name":' }),
+    invoke(new URL('fixtures/translated.ts', import.meta.url), [], {
+      input: '{"name":',
+      runtime: 'bun',
+    }),
   ).toEqual({
     status: 65,
     stderr: invalidJson,

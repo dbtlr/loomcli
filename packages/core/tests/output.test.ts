@@ -39,7 +39,7 @@ test.each(['failed', 'caught-write', 'double-failed', 'closed'])(
       })}\n`,
     );
     expect(result.stderr).toBe(
-      scenario === 'double-failed' ? '' : 'Internal error: Could not write invocation output.\n',
+      scenario === 'double-failed' ? '' : 'output: Something went wrong.\n',
     );
   },
 );
@@ -55,7 +55,7 @@ test('a failed diagnostic write gets exactly one fallback attempt', () => {
 test('an action that throws an Error whose message cannot be read reports the fixed reason', () => {
   expect(invoke(new URL('fixtures/output.mjs', import.meta.url), ['renderer-failed'])).toEqual({
     status: 1,
-    stderr: 'Internal error: The thrown value has no readable message.\n',
+    stderr: 'output: Something went wrong.\n',
     stdout: '{"code":1,"events":[],"listeners":0}\n',
   });
 });

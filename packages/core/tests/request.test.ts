@@ -14,9 +14,12 @@ function input(sentence: string) {
   return `app: ${sentence}\n`;
 }
 
-/** The diagnostic one bad view assignment reports, under the prefix its class carries. */
-function internal(sentence: string) {
-  return `Internal error: ${sentence}\n`;
+/** What a distributed build writes for a bad view assignment, which is a defect. */
+const generic = 'app: Something went wrong.\n';
+
+/** The sentence a development build's Developer Diagnostic states, between blank lines. */
+function stated(sentence: string) {
+  return `\n\n${sentence}\n`;
 }
 
 test('a middleware reads the parsed args, the local options, and the passthrough tokens', () => {
@@ -90,9 +93,7 @@ test('a takeover under a throwing validator exits 0 with no diagnostic', () => {
 test('a validator that throws with no takeover is the held fault the boundary raises', () => {
   const result = run('throwing-bare', ['get', 'a.b']);
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'Invalid declaration: Argument "path" validator failed unexpectedly: the validator broke Fix the validator.\n',
-  );
+  expect(result.stderr).toBe('app: Something went wrong.\n');
 });
 
 test('an always-on wrapper installed ahead of a takeover still reaches the takeover', () => {
@@ -171,8 +172,14 @@ test('view reads null after an assignment on a Command that declares no result',
   const result = run('select-read', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'json' });
   expect(result.stdout).toContain('view:null\n');
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    internal(
+  expect(result.stderr).toBe(generic);
+  expect(
+    run('select-read', ['get', 'a.b'], {
+      FIXTURE_BUILD: 'development',
+      LOOM_FIXTURE_VIEW_FIRST: 'json',
+    }).stderr,
+  ).toContain(
+    stated(
       'Plugin "@fixture/first" selected view "json" on Command "get", which declares no result.',
     ),
   );
@@ -195,27 +202,43 @@ test('an assignment after the boundary changes nothing', () => {
   });
 });
 
-test('a view name the record does not hold is an internal error naming the plugin', () => {
+test('a view name the record does not hold is a defect under the view selection rule naming the plugin', () => {
   const result = run('select', ['count'], { LOOM_FIXTURE_VIEW_FIRST: 'yaml' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    internal('Plugin "@fixture/first" selected view "yaml", which Command "count" does not name.'),
+  expect(result.stderr).toBe(generic);
+  const { stderr } = run('select', ['count'], {
+    FIXTURE_BUILD: 'development',
+    LOOM_FIXTURE_VIEW_FIRST: 'yaml',
+  });
+  expect(stderr).toMatch(/^-- INVALID VIEW SELECTION -+ @loomcli\/core\/view-selection\n/u);
+  expect(stderr).toContain(
+    stated('Plugin "@fixture/first" selected view "yaml", which Command "count" does not name.'),
   );
 });
 
 test('a selection that is not a string is an internal error naming the plugin', () => {
   const result = run('select', ['count'], { LOOM_FIXTURE_VIEW_FIRST: 'not-a-string' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    internal('Plugin "@fixture/first" selected a view that is not a string on Command "count".'),
+  expect(result.stderr).toBe(generic);
+  expect(
+    run('select', ['count'], {
+      FIXTURE_BUILD: 'development',
+      LOOM_FIXTURE_VIEW_FIRST: 'not-a-string',
+    }).stderr,
+  ).toContain(
+    stated('Plugin "@fixture/first" selected a view that is not a string on Command "count".'),
   );
 });
 
 test('a selection on a Command that declares no result is an internal error naming the plugin', () => {
   const result = run('select', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'json' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    internal(
+  expect(result.stderr).toBe(generic);
+  expect(
+    run('select', ['get', 'a.b'], { FIXTURE_BUILD: 'development', LOOM_FIXTURE_VIEW_FIRST: 'json' })
+      .stderr,
+  ).toContain(
+    stated(
       'Plugin "@fixture/first" selected view "json" on Command "get", which declares no result.',
     ),
   );
@@ -224,10 +247,14 @@ test('a selection on a Command that declares no result is an internal error nami
 test('the no-result sentence wins when the selection is not a string either', () => {
   const result = run('select', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'not-a-string' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    internal(
-      'Plugin "@fixture/first" selected view "7" on Command "get", which declares no result.',
-    ),
+  expect(result.stderr).toBe(generic);
+  expect(
+    run('select', ['get', 'a.b'], {
+      FIXTURE_BUILD: 'development',
+      LOOM_FIXTURE_VIEW_FIRST: 'not-a-string',
+    }).stderr,
+  ).toContain(
+    stated('Plugin "@fixture/first" selected view "7" on Command "get", which declares no result.'),
   );
 });
 

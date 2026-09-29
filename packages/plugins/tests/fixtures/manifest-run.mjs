@@ -9,6 +9,10 @@ import { z } from 'zod';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
+// A test that reads a defect's own sentence runs the fixture as a development build.
+const packet =
+  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+
 /** The view a result names, so the formatter adds `json`, `jsonl`, and `--format` beside it. */
 const text = { render: (value) => `${value}\n` };
 
@@ -74,7 +78,7 @@ function application() {
 
 /** An application whose one option declares a default that JSON cannot carry. */
 function defaulted(value) {
-  return new Application('app', { plugins: [manifest()] })
+  return new Application('app', { ...packet, plugins: [manifest()] })
     .option('odd', { default: value, type: 'string', validate: z.any() })
     .action(dispatch);
 }
@@ -91,14 +95,14 @@ const unboundedSchema = {
 
 /** An application whose one option publishes that schema. */
 const unbounded = () =>
-  new Application('app', { plugins: [manifest()] })
+  new Application('app', { ...packet, plugins: [manifest()] })
     .option('odd', { type: 'string', validate: unboundedSchema })
     .action(dispatch);
 
 /** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
 function placed(where, value) {
   const odd = { default: value, type: 'string', validate: z.any() };
-  const app = new Application('app', { plugins: [manifest()] });
+  const app = new Application('app', { ...packet, plugins: [manifest()] });
   if (where === 'global') {
     return app.globalOption('odd', odd).action(dispatch);
   }

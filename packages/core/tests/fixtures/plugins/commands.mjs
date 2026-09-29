@@ -126,7 +126,7 @@ if (mode === 'inspect') {
     process.stdout.write(`${JSON.stringify(graph.root.children.map((child) => child.name))}\n`);
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
-    process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
+    process.stdout.write(`${kind}:${error.exitCode}: ${error.sentence ?? error.message}\n`);
   }
 } else {
   const code = await app.run({ host: { argv: process.argv.slice(4) } });

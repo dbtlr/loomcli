@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { invoke } from '../../../scripts/test-process.js';
 import { withDocuments } from './documents.js';
 
-const main = new URL('../dist/src/main.js', import.meta.url);
+const main = new URL('../dist/main.js', import.meta.url);
 
 /** A pinned document, checked by hand against the manifest contract's rules. */
 function pinned(name: string): string {

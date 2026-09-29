@@ -16,6 +16,10 @@ import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
 
+// A test that reads a defect's own diagnostic runs the fixture as a development build.
+const packet =
+  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+
 /** Every translator call and middleware observation, in order, printed ahead of the code. */
 const calls = [];
 
@@ -86,7 +90,7 @@ async function* undefinedRows() {
 
 /** A rows Command whose action hands `source` to out.results() the way `emit` does. */
 function sequencing(emit, source, translators = [answering(SyntaxError, 'application')]) {
-  return new Application('translators', { translators })
+  return new Application('translators', { ...packet, translators })
     .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
     .action(({ out }) => emit(out.results(source())));
 }
@@ -113,6 +117,7 @@ function sourcing(resolver, options = {}) {
     source: { binding: sourceKey, load: async () => ({ default: resolver }) },
   });
   return new Application('translators', {
+    ...packet,
     ...options,
     plugins: [source, ...(options.plugins ?? [])],
   })
@@ -124,7 +129,7 @@ function sourcing(resolver, options = {}) {
 const catchAll = answering(Object, 'catch-all');
 
 function ending(action, options = {}) {
-  return new Application('translators', options).action(action);
+  return new Application('translators', { ...packet, ...options }).action(action);
 }
 
 /** Each broken translator, keyed by the scenario that registers it. */
@@ -310,7 +315,7 @@ const unreached = {
       translators: [catchAll],
     }),
   validator: () =>
-    new Application('translators', { translators: [catchAll] })
+    new Application('translators', { ...packet, translators: [catchAll] })
       .option('level', {
         type: 'string',
         validate: {
@@ -325,7 +330,7 @@ const unreached = {
       })
       .action(dispatch),
   'validator-output': () =>
-    new Application('translators', { translators: [catchAll] })
+    new Application('translators', { ...packet, translators: [catchAll] })
       .option('doc', {
         type: 'string',
         validate: {
@@ -562,6 +567,7 @@ function build() {
     }
     case 'sequence': {
       return new Application('translators', {
+        ...packet,
         translators: [answering(SyntaxError, 'application')],
       })
         .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
@@ -695,7 +701,7 @@ if (scenario in faults) {
     process.stdout.write('constructed\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'DeclarationError' : 'other';
-    process.stdout.write(`thrown:${kind}: ${error.message}\n`);
+    process.stdout.write(`thrown:${kind}: ${error.sentence ?? error.message}\n`);
   }
 } else if (scenario === 'error-options') {
   // The failure classes an author constructs keep a cause only when one is passed.

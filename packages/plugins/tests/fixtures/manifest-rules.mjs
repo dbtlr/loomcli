@@ -101,7 +101,7 @@ function coreReserved() {
     new ReservedError();
     return { fault: null };
   } catch (error) {
-    return { fault: error.constructor.name, message: error.message };
+    return { fault: error.constructor.name, message: error.sentence ?? error.message };
   }
 }
 
@@ -117,7 +117,7 @@ function outcome() {
       ? get.extensions['@loomcli/plugins/manifest/command'][0].failures[0]
       : { fault: null };
   } catch (error) {
-    return { fault: error.constructor.name, message: error.message };
+    return { fault: error.constructor.name, message: error.sentence ?? error.message };
   }
 }
 

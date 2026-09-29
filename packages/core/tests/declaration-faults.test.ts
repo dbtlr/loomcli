@@ -11,6 +11,10 @@ test("a JavaScript author's faulty call throws while its module is imported, wit
     'Option "verbose" is a boolean option and declares multiple. Remove multiple or declare a string option.',
   );
   expect(result.stderr).toContain('list.mjs:4:');
+  // The runtime prints the diagnostic the error's message holds, banner included.
+  expect(result.stderr).toContain(
+    '-- INVALID DECLARATION ---------------------------------------------------------\n\nOption "verbose"',
+  );
   expect(result.stderr).not.toContain('Invalid declaration:');
 });
 

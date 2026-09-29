@@ -1,7 +1,7 @@
 import { Application, plugin } from '@loomcli/core';
 
-import { readJson } from '../../dist/src/read-json.js';
-import { invalidJson } from '../../dist/src/translators.js';
+import { readJson } from '../../src/read-json.js';
+import { invalidJson } from '../../src/translators.js';
 
 /** A hook that reads the cause of the failure jsonkit's translator returned. */
 const cause = plugin('@fixture/cause', {

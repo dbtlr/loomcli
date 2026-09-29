@@ -1,6 +1,9 @@
 import { Application } from '@loomcli/core';
 import { z } from 'zod';
 
+// A development build, so a fault only the author can fix prints its Developer Diagnostic.
+const development = { packet: { build: 'development' } };
+
 const [scenario, ...argv] = process.argv.slice(2);
 const numberSchema = {
   '~standard': {
@@ -15,7 +18,7 @@ const numberSchema = {
 const schema = (validate) => ({ '~standard': { validate, vendor: 'fixture', version: 1 } });
 const delay = () => new Promise((resolve) => setTimeout(resolve, 10));
 let calls = 0;
-let app = new Application('schema');
+let app = new Application('schema', development);
 switch (scenario) {
   case 'default':
   case 'invalid-default': {
@@ -217,6 +220,15 @@ switch (scenario) {
       app.run({ host: { argv: ['--__proto__', '20'] } }),
     ]);
     await app.run({ host: { argv: [] } });
+    break;
+  }
+  case 'throw-controls': {
+    app = app.option('size', {
+      type: 'string',
+      validate: schema(() => {
+        throw new Error('bad\u202eevil\nsecond line x');
+      }),
+    });
     break;
   }
   default: {

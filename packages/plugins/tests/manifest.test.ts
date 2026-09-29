@@ -5,8 +5,8 @@ import { invoke } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/manifest-run.mjs', import.meta.url);
 
-function run(scenario: string, argv: string[]) {
-  return invoke(fixture, [scenario, ...argv]);
+function run(scenario: string, argv: string[], env: Record<string, string> = {}) {
+  return invoke(fixture, [scenario, ...argv], { env });
 }
 
 /** A Command entry as these tests walk it: its name and children, every other field kept as it is. */
@@ -346,12 +346,24 @@ test('a --manifest token after the passthrough delimiter is not read as the opti
   });
 });
 
-/** The report one unencodable input produces, named by the field that holds the value. */
-function unencodable(field: string): { status: number; stderr: string; stdout: string } {
+/** One unencodable input's report in each build, so a test compares both at once. */
+function unencodable(scenario: string) {
   return {
-    status: 1,
-    stderr: `Internal error: The manifest cannot encode ${field} as JSON. Supply a value that is null, a Boolean, a finite number, a string, or an array or plain object of these.\n`,
-    stdout: '',
+    development: run(scenario, ['--manifest'], { FIXTURE_BUILD: 'development' }).stderr,
+    distributed: run(scenario, ['--manifest']),
+  };
+}
+
+/**
+ * An unencodable input is a defect: a distributed build writes the generic message, and a
+ * development build states the sentence that names the field that holds the value.
+ */
+function reportedAs(field: string) {
+  return {
+    development: expect.stringContaining(
+      `\n\nThe manifest cannot encode ${field} as JSON. Supply a value that is null, a Boolean, a finite number, a string, or an array or plain object of these.\n`,
+    ),
+    distributed: { status: 1, stderr: 'app: Something went wrong.\n', stdout: '' },
   };
 }
 
@@ -368,9 +380,9 @@ test('a declared default that is not plain JSON data fails the write, wherever t
     'global-nan',
     'child-nan',
   ]) {
-    expect(run(scenario, ['--manifest'])).toEqual(unencodable('the default of option "--odd"'));
+    expect(unencodable(scenario)).toEqual(reportedAs('the default of option "--odd"'));
   }
-  expect(run('argument-nan', ['--manifest'])).toEqual(unencodable('the default of argument "odd"'));
+  expect(unencodable('argument-nan')).toEqual(reportedAs('the default of argument "odd"'));
 });
 
 test('a null-prototype default prints as the plain object core copies it into, and an absent description reads null', () => {
@@ -385,5 +397,5 @@ test('a null-prototype default prints as the plain object core copies it into, a
 });
 
 test('a published schema that is not plain JSON data fails the write', () => {
-  expect(run('schema', ['--manifest'])).toEqual(unencodable('the schema of option "--odd"'));
+  expect(unencodable('schema')).toEqual(reportedAs('the schema of option "--odd"'));
 });

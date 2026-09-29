@@ -518,13 +518,23 @@ function resolveFailure(registry: ViewRegistry, failure: LoomError): StoredView 
 }
 
 /**
- * The report of one failure: the text core writes, and whether a view produced it. An unrendered
- * report carries core's own text, which the plain fallback path writes beside the diagnostic
- * naming the view that could not answer.
+ * The report of one failure: the text core writes, and whether a view produced it. A rendered
+ * report says whether core's own default text answered, which for a defect is the generic defect
+ * message. An unrendered report carries core's own text, which the plain fallback path writes
+ * beside the diagnostic naming the view that could not answer, and what the view threw.
  */
 type FailureReport =
-  | { kind: 'rendered'; text: string }
-  | { kind: 'unrendered'; text: string; reason: string };
+  | { kind: 'rendered'; text: string; core: boolean }
+  | { kind: 'unrendered'; text: string; reason: string; cause: unknown };
+
+/**
+ * Core's own default text for one failure, escaped unless it is the authored marked message of a
+ * `FatalError`, with each hint on its own line under it as marked text it does not escape.
+ */
+function coreText(failure: LoomError, text: string, hints: readonly string[]): string {
+  const sentence = failure instanceof FatalError ? text : escapeText(text);
+  return `${sentence}${hints.map((hint) => `${hint}\n`).join('')}`;
+}
 
 /**
  * The text core writes for one failure. Resolution walks the registry as `resolveFailure` defines
@@ -542,17 +552,15 @@ function describeFailure(
   const text = defaultText(failure, context.application);
   const replacement = resolveFailure(registry, failure);
   if (!replacement) {
-    const sentence = failure instanceof FatalError ? text : escapeText(text);
-    const hints = context.hints.map((hint) => `${hint}\n`).join('');
-    return { kind: 'rendered', text: `${sentence}${hints}` };
+    return { core: true, kind: 'rendered', text: coreText(failure, text, context.hints) };
   }
   try {
     const rendered = callView(replacement, failure.name)(failure, context);
     return typeof rendered === 'string'
-      ? { kind: 'rendered', text: rendered }
-      : { kind: 'unrendered', reason: notTextReason(rendered), text };
+      ? { core: false, kind: 'rendered', text: rendered }
+      : { cause: undefined, kind: 'unrendered', reason: notTextReason(rendered), text };
   } catch (error) {
-    return { kind: 'unrendered', reason: reasonOf(error), text };
+    return { cause: error, kind: 'unrendered', reason: reasonOf(error), text };
   }
 }
 

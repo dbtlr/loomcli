@@ -322,7 +322,14 @@ function routed() {
 
 /** The root answers one scenario itself; every other routes to a named child. */
 function build() {
-  const options = { plugins: plugins(), views: views() };
+  // A test that reads a defect's own sentence runs the fixture as a development build.
+  const options = {
+    ...(process.env.FIXTURE_BUILD === undefined
+      ? {}
+      : { packet: { build: process.env.FIXTURE_BUILD } }),
+    plugins: plugins(),
+    views: views(),
+  };
   return scenario === 'missing-root'
     ? new Application('results', options).result({ views: { table } }).action(act)
     : new Application('results', options).command(routed());

@@ -11,10 +11,8 @@ function rendered(stdout: string) {
   return { status: 0, stderr: '', stdout };
 }
 
-/** One invocation a declaration rule rejected, which reports on stderr and resolves 1. */
-function rejected(message: string) {
-  return { status: 1, stderr: `Invalid declaration: ${message}\n`, stdout: 'resolved:1\n' };
-}
+/** One invocation a declaration rule rejected, which a distributed build reports generically. */
+const rejected = { status: 1, stderr: 'views: Something went wrong.\n', stdout: 'resolved:1\n' };
 
 test.each([
   ['probe/both', 'View "probe/both" carries render and row. Supply one of the two.'],
@@ -128,9 +126,7 @@ test.each([
 );
 
 test("a build fault does not consult a plugin's overrides", () => {
-  expect(views('build-fault-unbranded')).toEqual(
-    rejected('The root Command has no action. Register an action.'),
-  );
+  expect(views('build-fault-unbranded')).toEqual(rejected);
 });
 
 test('an override of a lane view is observed through its semantic method with one newline', () => {
@@ -148,7 +144,7 @@ test('a lane override that returns the empty string still writes the one newline
 test('a broken lane view rejects its own call and ends the invocation', () => {
   expect(views('lane-broken')).toEqual({
     status: 1,
-    stderr: 'Internal error: Rendering output failed: Cannot render the view.\n',
+    stderr: 'views: Something went wrong.\n',
     stdout: 'caught\nresolved:1\n',
   });
 });

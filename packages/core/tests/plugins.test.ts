@@ -330,7 +330,7 @@ test.each(rejected)('inspect() and run() reject the %s declaration alike', (scen
   });
   expect(build(scenario, 'run')).toEqual({
     status: 1,
-    stderr: `Invalid declaration: ${message}\n`,
+    stderr: `app: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
