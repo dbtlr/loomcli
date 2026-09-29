@@ -4,6 +4,7 @@ import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { withDocuments } from './documents.js';
 
 const main = new URL('../dist/src/main.js', import.meta.url);
 
@@ -72,4 +73,22 @@ test('the hidden Commands that read a document declare invalid-json, and the tab
     expect(declared.parse(printed).command.failures).toEqual([invalidJson]);
   }
   expect(pinned('root')).toContain('"65": "Declared failures: invalid-json, path-not-found"');
+});
+
+test.each([
+  [[], ['--file', 'malformed.json']],
+  [['get'], ['get', 'name', '--file', 'malformed.json']],
+  [['keys'], ['keys', '--file', 'malformed.json']],
+  [['fetch'], ['fetch', 'name', '--file', 'malformed.json']],
+  [['paths'], ['paths', '--file', 'malformed.json']],
+  [['debug'], ['debug', '--file', 'malformed.json']],
+])('%j exits with the code its manifest declares for invalid-json', (route, args) => {
+  const printed = JSON.parse(invoke(main, [...route, '--manifest']).stdout);
+  const declaredCode = declared
+    .parse(printed)
+    .command.failures.find((failure) => failure.name === 'invalid-json')?.exitCode;
+  expect(declaredCode).toBe(65);
+  withDocuments({ 'malformed.json': '{"name":' }, (cwd) => {
+    expect(invoke(main, args, { cwd }).status).toBe(declaredCode);
+  });
 });
