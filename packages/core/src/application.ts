@@ -376,10 +376,14 @@ class ApplicationBuilder<
       name,
     };
     const descriptors = new Map(this.#root.descriptors);
-    const globals = declareGlobalOption(this.#globals, input, descriptors);
+    const { input: captured, state: globals } = declareGlobalOption(
+      this.#globals,
+      input,
+      descriptors,
+    );
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
-    checkDeclarations([{ input, site: globalSite(input) }]);
+    checkDeclarations([{ input: captured, site: globalSite(captured) }]);
     return new ApplicationBuilder<
       Args,
       Options,

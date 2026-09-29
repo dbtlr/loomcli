@@ -1655,7 +1655,15 @@ class AttachedCommandValue implements AttachedCommand {
   /** One input the running hook declared, which the Command's own names now hold. */
   #declare(raw: InputDeclaration): AttachedCommand {
     const { declared, identity } = this.#state;
-    checkInputConfig(raw, { call: raw.kind, path: this.#state.path });
+    const { path } = this.#state;
+    // The name is judged before the config, as Command and Application judge it.
+    if (raw.kind === 'argument') {
+      const { name } = declared;
+      checkArgumentName({ name, path, subject: commandSubject(name) }, [], raw);
+    } else {
+      checkOptionName(raw.name, inputSite(declared.name, path, raw));
+    }
+    checkInputConfig(raw, { call: raw.kind, path });
     // Each kind captures its own config, so the input keeps the pairing its kind declares.
     const input: InputDeclaration =
       raw.kind === 'argument'

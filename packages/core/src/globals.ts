@@ -215,7 +215,10 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
   state: GlobalsState<Globals>,
   declared: OptionInput<Name, Config>,
   descriptors: DescriptorRegistry,
-): GlobalsState<Globals & Record<Name, OptionValue<Config>>> {
+): {
+  readonly input: OptionInput<Name, Config>;
+  readonly state: GlobalsState<Globals & Record<Name, OptionValue<Config>>>;
+} {
   // The name is judged before the config, as every other declaration judges its own name first.
   checkOptionName(declared.name, globalSite(declared));
   checkInputConfig(declared, { call: 'globalOption', path: [] });
@@ -241,10 +244,14 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
     subject: { phrase: `on the global option ${quoted(input.name)}`, sentence },
     target: 'option',
   });
+  // The caller validates the captured input this state stores, so both read one capture.
   return {
-    bind: (values) => ({ ...state.bind(values), ...values.option(input) }),
-    inputs: [...state.inputs, input],
-    records: new Map([...state.records, [input, record]]),
+    input,
+    state: {
+      bind: (values) => ({ ...state.bind(values), ...values.option(input) }),
+      inputs: [...state.inputs, input],
+      records: new Map([...state.records, [input, record]]),
+    },
   };
 }
 

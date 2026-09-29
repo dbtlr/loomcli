@@ -67,6 +67,16 @@ const scenarios = {
     }),
   'global-option-bare': () => new Application('probe').globalOption(bare, { type: 'string' }),
   'global-option-config-bare': () => new Application('probe').globalOption(bare, null),
+  'hook-option-name': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) => (command.name === 'get' ? command.option('-bad') : command),
+        }),
+      ],
+    })
+      .command(new Command('get').action(act))
+      .inspect(),
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
   'option-config-bare': () => new Command('get').option(bare, undefined),

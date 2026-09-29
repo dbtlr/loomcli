@@ -20,6 +20,7 @@ const rules = {
   'extension-target': 'extension-target',
   'global-option-bare': 'declared-name',
   'global-option-config-bare': 'declared-name',
+  'hook-option-name': 'declared-name',
   'option-after-action': 'declared-name',
   'option-bare': 'declared-name',
   'option-config-bare': 'declared-name',

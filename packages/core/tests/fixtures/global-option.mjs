@@ -9,6 +9,20 @@ const scenarios = {
   'after-action': () => base.action(action).globalOption('late', { type: 'boolean' }),
   'after-command': () =>
     base.command(new Command('read').action(action)).globalOption('late', { type: 'boolean' }),
+  // The default reads as a string until the call has captured its config, then as a number.
+  // Validation of the raw config would then reject the declaration the stored copy satisfies.
+  'default-captured': () => {
+    let reads = 0;
+    const config = { type: 'string' };
+    Object.defineProperty(config, 'default', {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return reads <= 2 ? 'kept' : 7;
+      },
+    });
+    return new Application('example').globalOption('limit', config).action(action);
+  },
   derived: () => base.globalOption('limit', { default: '10', type: 'string' }).action(action),
   'local-first': () =>
     new Application('example')
