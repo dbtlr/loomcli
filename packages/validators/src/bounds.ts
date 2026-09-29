@@ -2,6 +2,8 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 import type { BoundCodes } from './codes.js';
 import { fault, readOptions } from './faults.js';
+import type { FactoryCall } from './faults.js';
+import { boundsOrder, boundValue } from './rules.js';
 
 /** Inclusive bounds on a numeric factory, either or both absent. */
 interface Bounds {
@@ -19,12 +21,25 @@ interface BoundRule {
 
 const zero = 0;
 
-function boundOf(rule: BoundRule, name: 'min' | 'max', value: unknown): number | undefined {
+/** One bound a numeric factory declares, checked against its rule; a fault marks the bound. */
+function boundOf(
+  bound: { rule: BoundRule; call: FactoryCall },
+  name: 'min' | 'max',
+  value: unknown,
+): number | undefined {
+  const { call, rule } = bound;
   if (value === undefined) {
     return undefined;
   }
   if (typeof value !== 'number' || !rule.accepts(value)) {
-    throw fault(`${rule.factory}() ${name} is not ${rule.requirement}. ${rule.correction}`);
+    throw fault(
+      boundValue,
+      { ...call, mark: `0.${name}` },
+      {
+        correction: rule.correction,
+        sentence: `${rule.factory}() ${name} is not ${rule.requirement}.`,
+      },
+    );
   }
   return value;
 }
@@ -32,11 +47,17 @@ function boundOf(rule: BoundRule, name: 'min' | 'max', value: unknown): number |
 /** Reads a numeric factory's `min` and `max`, and faults on a bad bound or `min` above `max`. */
 function readBounds(options: unknown, rule: BoundRule): Bounds {
   const declared = readOptions(rule.factory, options);
-  const min = boundOf(rule, 'min', declared.min);
-  const max = boundOf(rule, 'max', declared.max);
+  const call = { arguments: [options], factory: rule.factory };
+  const min = boundOf({ call, rule }, 'min', declared.min);
+  const max = boundOf({ call, rule }, 'max', declared.max);
   if (min !== undefined && max !== undefined && min > max) {
     throw fault(
-      `${rule.factory}() min ${String(min)} is above max ${String(max)}. Supply a min at or below max.`,
+      boundsOrder,
+      { ...call, mark: '0.min' },
+      {
+        correction: 'Supply a min at or below max.',
+        sentence: `${rule.factory}() min ${String(min)} is above max ${String(max)}.`,
+      },
     );
   }
   return { max, min };

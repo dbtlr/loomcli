@@ -4,9 +4,11 @@ import { pathIssue, pathReadableIssue, pathWritableIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, readOptions } from './faults.js';
+import type { FactoryCall } from './faults.js';
 import { reject } from './issues.js';
 import { readable, writable } from './probe.js';
 import type { PathKind } from './probe.js';
+import { pathCheck } from './rules.js';
 
 interface PathOptions {
   access?: 'read' | 'write';
@@ -15,21 +17,35 @@ interface PathOptions {
 
 type PathAccess = 'read' | 'write';
 
-function accessOf(value: unknown): PathAccess | undefined {
+function accessOf(call: FactoryCall, value: unknown): PathAccess | undefined {
   if (value === undefined || value === 'read' || value === 'write') {
     return value;
   }
-  throw fault('path() access is not "read" or "write". Supply "read" or "write".');
+  throw fault(
+    pathCheck,
+    { ...call, mark: '0.access' },
+    {
+      correction: 'Supply "read" or "write".',
+      sentence: 'path() access is not "read" or "write".',
+    },
+  );
 }
 
-function kindOf(value: unknown, access: PathAccess | undefined): PathKind {
+function kindOf(call: FactoryCall, value: unknown, access: PathAccess | undefined): PathKind {
+  const at = { ...call, mark: '0.kind' };
   if (value !== undefined && access === undefined) {
-    throw fault('path() kind has no access to check. Supply an access or leave out kind.');
+    throw fault(pathCheck, at, {
+      correction: 'Supply an access or leave out kind.',
+      sentence: 'path() kind has no access to check.',
+    });
   }
   if (value === undefined || value === 'file' || value === 'directory' || value === 'any') {
     return value ?? 'file';
   }
-  throw fault('path() kind is not "file", "directory", or "any". Supply one of them.');
+  throw fault(pathCheck, at, {
+    correction: 'Supply one of them.',
+    sentence: 'path() kind is not "file", "directory", or "any".',
+  });
 }
 
 /**
@@ -38,8 +54,9 @@ function kindOf(value: unknown, access: PathAccess | undefined): PathKind {
  */
 function path(options?: PathOptions): Validator<string> {
   const declared = readOptions('path', options);
-  const access = accessOf(declared.access);
-  const kind = kindOf(declared.kind, access);
+  const call = { arguments: [options], factory: 'path' };
+  const access = accessOf(call, declared.access);
+  const kind = kindOf(call, declared.kind, access);
   const issue =
     access === undefined
       ? pathIssue.issue({})

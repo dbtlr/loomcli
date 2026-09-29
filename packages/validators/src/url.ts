@@ -3,6 +3,7 @@ import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, quote, readOptions } from './faults.js';
 import { reject } from './issues.js';
+import { urlProtocols } from './rules.js';
 import { schemePattern, uriPattern } from './uri-grammar.js';
 
 interface UrlOptions {
@@ -11,23 +12,33 @@ interface UrlOptions {
 
 const empty = 0;
 
-function protocolsOf(value: unknown): readonly string[] | undefined {
+/** The `protocols` a `url()` call declares, checked, and each fault marks it or one entry. */
+function protocolsOf(options: unknown, value: unknown): readonly string[] | undefined {
   if (value === undefined) {
     return undefined;
   }
+  const at = (mark: string) => ({ arguments: [options], factory: 'url', mark });
   if (!Array.isArray(value)) {
-    throw fault('url() protocols is not an array. Supply an array of scheme names.');
+    throw fault(urlProtocols, at('0.protocols'), {
+      correction: 'Supply an array of scheme names.',
+      sentence: 'url() protocols is not an array.',
+    });
   }
   const items: readonly unknown[] = value;
   if (items.length === empty) {
-    throw fault('url() protocols is empty. List at least one scheme.');
+    throw fault(urlProtocols, at('0.protocols'), {
+      correction: 'List at least one scheme.',
+      sentence: 'url() protocols is empty.',
+    });
   }
   // `Array.from` reads a hole as `undefined`, so a sparse list faults instead of skipping it.
-  return Array.from(items, (item) => {
+  return Array.from(items, (item, index) => {
     if (typeof item !== 'string' || !schemePattern.test(item)) {
-      throw fault(
-        `url() protocols lists ${quote(item)}, which is not a scheme name. List a letter followed by letters, digits, +, -, or ., with no trailing colon.`,
-      );
+      throw fault(urlProtocols, at(`0.protocols.${String(index)}`), {
+        correction:
+          'List a letter followed by letters, digits, +, -, or ., with no trailing colon.',
+        sentence: `url() protocols lists ${quote(item)}, which is not a scheme name.`,
+      });
     }
     return item;
   });
@@ -50,7 +61,7 @@ function schemesPattern(protocols: readonly string[]): string {
 
 /** An absolute RFC 3986 URI that the WHATWG parser also reads, optionally with a listed scheme. */
 function url(options?: UrlOptions): Validator<URL> {
-  const protocols = protocolsOf(readOptions('url', options).protocols);
+  const protocols = protocolsOf(options, readOptions('url', options).protocols);
   // The WHATWG parser lowercases the scheme and ends `protocol` with a colon.
   const listed = new Set(protocols?.map((protocol) => `${protocol.toLowerCase()}:`));
   const issue = protocols === undefined ? urlIssue.issue({}) : urlSchemeIssue.issue({ protocols });

@@ -3,6 +3,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1, ValidationContext } from '
 
 import { copyRecord, isPlainObject } from './data.js';
 import { fault } from './faults.js';
+import { contextOutsideRun, inputSchema, validatorDefinition } from './rules.js';
 
 /** What `parse` returns: `{ value }` for an accepted token or `{ issues }` for a rejected one. */
 type ParseResult<Output> = StandardSchemaV1.Result<Output>;
@@ -26,10 +27,12 @@ const target = 'draft-2020-12';
 
 const dialect = 'https://json-schema.org/draft/2020-12/schema';
 
+/** A read of the context outside a run, which no declaration call stands for. */
 function unavailable(): never {
-  throw new DeclarationError(
-    'This validator reads the validation context, which only exists during a Loom run.',
-  );
+  throw new DeclarationError(contextOutsideRun, {
+    correction: 'Call the validator through an Application run, or leave the context unread.',
+    sentence: 'This validator reads the validation context, which only exists during a Loom run.',
+  });
 }
 
 /**
@@ -79,35 +82,46 @@ function converter(schema: Readonly<Record<string, unknown>>): StandardJSONSchem
  * undefined when it declares none.
  */
 function checkDefinition(definition: unknown) {
+  const at = (mark: string) => ({ arguments: [definition], factory: 'createValidator', mark });
   if (!isPlainObject(definition)) {
-    throw fault(
-      'createValidator() definition is not a plain object. Supply an object with a parse function.',
-    );
+    throw fault(validatorDefinition, at('0'), {
+      correction: 'Supply an object with a parse function.',
+      sentence: 'createValidator() definition is not a plain object.',
+    });
   }
   if (typeof definition.parse !== 'function') {
-    throw fault(
-      'createValidator() parse is not a function. Supply a function that validates one raw string.',
-    );
+    throw fault(validatorDefinition, at('parse' in definition ? '0.parse' : '0'), {
+      correction: 'Supply a function that validates one raw string.',
+      sentence: 'createValidator() parse is not a function.',
+    });
   }
-  return declaredSchema(definition.inputSchema);
+  return declaredSchema(definition.inputSchema, at);
 }
 
-/** The declared input schema, checked, copied, and frozen, or undefined when none is declared. */
-function declaredSchema(inputSchema: unknown) {
-  if (inputSchema === undefined) {
+/**
+ * The declared input schema, checked, copied, and frozen, or undefined when none is declared. `at`
+ * rebuilds the `createValidator()` call, marking the part at fault.
+ */
+function declaredSchema(
+  declared: unknown,
+  at: (mark: string) => { factory: string; arguments: readonly unknown[]; mark: string },
+) {
+  if (declared === undefined) {
     return undefined;
   }
-  if (!isPlainObject(inputSchema)) {
-    throw fault(
-      'createValidator() inputSchema is not a plain object. Supply the JSON Schema as a plain object.',
-    );
+  if (!isPlainObject(declared)) {
+    throw fault(inputSchema, at('0.inputSchema'), {
+      correction: 'Supply the JSON Schema as a plain object.',
+      sentence: 'createValidator() inputSchema is not a plain object.',
+    });
   }
-  if (Object.hasOwn(inputSchema, '$schema')) {
-    throw fault(
-      'createValidator() inputSchema declares its own $schema. Leave out $schema, which the validator publishes itself.',
-    );
+  if (Object.hasOwn(declared, '$schema')) {
+    throw fault(inputSchema, at('0.inputSchema.$schema'), {
+      correction: 'Leave out $schema, which the validator publishes itself.',
+      sentence: 'createValidator() inputSchema declares its own $schema.',
+    });
   }
-  return copyRecord(inputSchema, true);
+  return copyRecord(declared, true);
 }
 
 /**

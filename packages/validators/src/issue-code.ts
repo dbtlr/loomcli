@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 import { isPlainObject } from './data.js';
 import { fault, quote } from './faults.js';
+import { issueCodeConfig, issueCodeName, issueCodeSchema, issueParameters } from './rules.js';
 
 /**
  * One issue code a validator package declares: the code string, the schema its parameters pass,
@@ -103,27 +104,42 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
   }
 }
 
+/** The `issueCode()` call a fault marks one part of: the code, the config, or one of its keys. */
+function declarationAt(code: unknown, config: unknown, mark: string) {
+  return { arguments: [code, config], factory: 'issueCode', mark };
+}
+
+/** The mark for one key of a config object, or the config itself when the key is absent. */
+function keyMark(config: Readonly<Record<string, unknown>>, key: string): string {
+  return key in config ? `1.${key}` : '1';
+}
+
 /** Faults on a declaration that bypassed the types: a code outside the grammar, or a bad config. */
 function checkDeclaration(code: unknown, config: unknown): void {
   if (typeof code !== 'string' || !grammar.test(code)) {
-    throw fault(
-      `issueCode() code ${quote(code)} is not a package name, a slash, and a rule name. Supply a code such as "@acme/validators/port-range", with a rule of lowercase letters and digits in words joined by single hyphens.`,
-    );
+    throw fault(issueCodeName, declarationAt(code, config, '0'), {
+      correction:
+        'Supply a code such as "@acme/validators/port-range", with a rule of lowercase letters and digits in words joined by single hyphens.',
+      sentence: `issueCode() code ${quote(code)} is not a package name, a slash, and a rule name.`,
+    });
   }
   if (!isPlainObject(config)) {
-    throw fault(
-      'issueCode() config is not a plain object. Supply an object with a schema and a message function.',
-    );
+    throw fault(issueCodeConfig, declarationAt(code, config, '1'), {
+      correction: 'Supply an object with a schema and a message function.',
+      sentence: 'issueCode() config is not a plain object.',
+    });
   }
   if (!isStandardSchema(config.schema)) {
-    throw fault(
-      'issueCode() schema is not a Standard Schema. Supply a Standard Schema value that validates the parameters.',
-    );
+    throw fault(issueCodeConfig, declarationAt(code, config, keyMark(config, 'schema')), {
+      correction: 'Supply a Standard Schema value that validates the parameters.',
+      sentence: 'issueCode() schema is not a Standard Schema.',
+    });
   }
   if (typeof config.message !== 'function') {
-    throw fault(
-      'issueCode() message is not a function. Supply a function that builds the sentence from the parameters.',
-    );
+    throw fault(issueCodeConfig, declarationAt(code, config, keyMark(config, 'message')), {
+      correction: 'Supply a function that builds the sentence from the parameters.',
+      sentence: 'issueCode() message is not a function.',
+    });
   }
 }
 
@@ -135,6 +151,8 @@ function checkDeclaration(code: unknown, config: unknown): void {
 function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): IssueCode<Params> {
   checkDeclaration(code, config);
   const { message, schema } = config;
+  // A schema fault is the declaration's, so it marks the schema the code was declared with.
+  const schemaAt = declarationAt(code, config, '1.schema');
 
   /** The schema's synchronous result; a promise faults, since neither caller can wait for it. */
   function settled(
@@ -143,9 +161,10 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
     if (isThenable(answer)) {
       // The unawaited answer may still reject, and an unobserved rejection would end the process.
       void Promise.resolve(answer).catch(() => undefined);
-      throw fault(
-        `Issue code ${JSON.stringify(code)} has a schema that answers with a promise. Supply a schema that validates synchronously.`,
-      );
+      throw fault(issueCodeSchema, schemaAt, {
+        correction: 'Supply a schema that validates synchronously.',
+        sentence: `Issue code ${JSON.stringify(code)} has a schema that answers with a promise.`,
+      });
     }
     return answer;
   }
@@ -155,9 +174,10 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
     try {
       return schema['~standard'].validate(params);
     } catch {
-      throw fault(
-        `Issue code ${JSON.stringify(code)} has a schema that throws in issue(). Supply a schema that returns its issues instead of throwing.`,
-      );
+      throw fault(issueCodeSchema, schemaAt, {
+        correction: 'Supply a schema that returns its issues instead of throwing.',
+        sentence: `Issue code ${JSON.stringify(code)} has a schema that throws in issue().`,
+      });
     }
   }
 
@@ -168,9 +188,10 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
   function declaredVerdict(params: Params): Verdict<Params> {
     const verdict = verdictOrNothing(settled(declaredAnswer(params)));
     if (verdict === undefined) {
-      throw fault(
-        `Issue code ${JSON.stringify(code)} has a schema that answers with a value that is not a Standard Schema result. Supply a schema that returns its value or its issues.`,
-      );
+      throw fault(issueCodeSchema, schemaAt, {
+        correction: 'Supply a schema that returns its value or its issues.',
+        sentence: `Issue code ${JSON.stringify(code)} has a schema that answers with a value that is not a Standard Schema result.`,
+      });
     }
     return verdict;
   }
@@ -181,7 +202,12 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
       const verdict = declaredVerdict(params);
       if (verdict.kind === 'rejected') {
         throw fault(
-          `Issue code ${JSON.stringify(code)} rejects the parameters passed to issue(). Supply parameters its schema accepts.`,
+          issueParameters,
+          { arguments: [params], factory: 'issue', mark: '0' },
+          {
+            correction: 'Supply parameters its schema accepts.',
+            sentence: `Issue code ${JSON.stringify(code)} rejects the parameters passed to issue().`,
+          },
         );
       }
       return Object.freeze({ code, message: message(verdict.params), params: verdict.params });

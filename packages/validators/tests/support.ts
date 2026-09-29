@@ -42,8 +42,8 @@ export function rejectedWith(message: string) {
 }
 
 /**
- * What the call threw: whether it was a `DeclarationError`, and its sentence, which a declaration
- * fault holds apart from the whole diagnostic its message carries.
+ * What the call threw: whether it was a `DeclarationError`, and its sentence and correction, which
+ * a declaration fault holds apart from the whole diagnostic its message carries.
  */
 export function faultOf(call: () => unknown) {
   try {
@@ -71,10 +71,14 @@ export function foreignIssue(fields: { message: string } & Record<string, unknow
   return issue;
 }
 
-/** The sentence one thrown value states: a declaration fault's own, or any Error's message. */
+/**
+ * What one thrown value states, as a fault table reads it: a declaration fault's sentence followed
+ * by its correction, or any other Error's message.
+ */
 export function sentenceOf(error: unknown): string {
   if (error instanceof DeclarationError) {
-    return error.sentence;
+    const correction = error.correction === undefined ? [] : [error.correction].flat();
+    return [error.sentence, ...correction].join(' ');
   }
   return error instanceof Error ? error.message : String(error);
 }

@@ -11,7 +11,9 @@ import {
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault, readOptions } from './faults.js';
+import type { FactoryCall } from './faults.js';
 import { reject } from './issues.js';
+import { boundsOrder, boundValue, patternMessage, textPattern } from './rules.js';
 
 /**
  * The bounds on a token's length, and a pattern with the author's sentence for what it accepts.
@@ -38,76 +40,95 @@ const noLength = 0;
 const oneCharacter = 1;
 const defaultMinLength = 1;
 
-function lengthOf(name: 'minLength' | 'maxLength', value: unknown): number | undefined {
+/** The `text()` call a fault marks one key of. */
+function textAt(call: FactoryCall, key: string) {
+  return { ...call, mark: `0.${key}` };
+}
+
+function lengthOf(
+  call: FactoryCall,
+  name: 'minLength' | 'maxLength',
+  value: unknown,
+): number | undefined {
   if (value === undefined) {
     return undefined;
   }
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < noLength) {
-    throw fault(
-      `text() ${name} is not a non-negative safe integer. Supply a whole number of 0 or more.`,
-    );
+    throw fault(boundValue, textAt(call, name), {
+      correction: 'Supply a whole number of 0 or more.',
+      sentence: `text() ${name} is not a non-negative safe integer.`,
+    });
   }
   return value;
 }
 
 /** Faults on a pattern flag other than `u`, which JSON Schema has no way to state. */
-function checkFlags(pattern: RegExp): void {
+function checkFlags(call: FactoryCall, pattern: RegExp): void {
   const others = pattern.flags.replace('u', '');
   if (others !== '') {
     const noun = others.length === oneCharacter ? 'flag' : 'flags';
-    throw fault(
-      `text() pattern carries the ${noun} ${others}. Supply a pattern with no flag other than u.`,
-    );
+    throw fault(textPattern, textAt(call, 'pattern'), {
+      correction: 'Supply a pattern with no flag other than u.',
+      sentence: `text() pattern carries the ${noun} ${others}.`,
+    });
   }
 }
 
 /** The author's pattern recompiled under the `u` flag, as JSON Schema reads a `pattern`. */
-function patternOf(value: unknown): RegExp | undefined {
+function patternOf(call: FactoryCall, value: unknown): RegExp | undefined {
   if (value === undefined) {
     return undefined;
   }
   if (!(value instanceof RegExp)) {
-    throw fault('text() pattern is not a RegExp. Supply a regular expression literal.');
+    throw fault(textPattern, textAt(call, 'pattern'), {
+      correction: 'Supply a regular expression literal.',
+      sentence: 'text() pattern is not a RegExp.',
+    });
   }
-  checkFlags(value);
+  checkFlags(call, value);
   try {
     return new RegExp(value.source, 'u');
   } catch {
-    throw fault(
-      'text() pattern does not compile under the u flag. Supply a pattern that is valid with the u flag.',
-    );
+    throw fault(textPattern, textAt(call, 'pattern'), {
+      correction: 'Supply a pattern that is valid with the u flag.',
+      sentence: 'text() pattern does not compile under the u flag.',
+    });
   }
 }
 
-function messageOf(value: unknown): string | undefined {
+function messageOf(call: FactoryCall, value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
   }
   if (typeof value !== 'string' || value === '') {
-    throw fault(
-      'text() message is not a nonempty string. Supply one sentence that states the expectation.',
-    );
+    throw fault(patternMessage, textAt(call, 'message'), {
+      correction: 'Supply one sentence that states the expectation.',
+      sentence: 'text() message is not a nonempty string.',
+    });
   }
   return value;
 }
 
 /** The pattern rule, or undefined without a pattern; a pattern and a message each need the other. */
 function patternRule(
+  call: FactoryCall,
   pattern: RegExp | undefined,
   message: string | undefined,
 ): PatternRule | undefined {
   if (pattern === undefined) {
     if (message !== undefined) {
-      throw fault(
-        'text() message has no pattern to describe. Supply a pattern or leave out message.',
-      );
+      throw fault(patternMessage, textAt(call, 'message'), {
+        correction: 'Supply a pattern or leave out message.',
+        sentence: 'text() message has no pattern to describe.',
+      });
     }
     return undefined;
   }
   if (message === undefined) {
-    throw fault(
-      'text() pattern has no message to describe it. Supply a message that states what the pattern accepts.',
-    );
+    throw fault(patternMessage, textAt(call, 'pattern'), {
+      correction: 'Supply a message that states what the pattern accepts.',
+      sentence: 'text() pattern has no message to describe it.',
+    });
   }
   return { issue: textPatternIssue.issue({ message }), pattern };
 }
@@ -148,14 +169,22 @@ function codePoints(raw: string): number {
 /** A string whose code-point length is within bounds and which the pattern matches, if any. */
 function text(options?: TextOptions): Validator<string> {
   const declared = readOptions('text', options);
-  const minLength = lengthOf('minLength', declared.minLength) ?? defaultMinLength;
-  const maxLength = lengthOf('maxLength', declared.maxLength);
+  const call = { arguments: [options], factory: 'text' };
+  const minLength = lengthOf(call, 'minLength', declared.minLength) ?? defaultMinLength;
+  const maxLength = lengthOf(call, 'maxLength', declared.maxLength);
   if (maxLength !== undefined && minLength > maxLength) {
-    throw fault(
-      `text() minLength ${minLength} is above maxLength ${maxLength}. Supply a minLength at or below maxLength.`,
-    );
+    // A minLength left to its default has no key to mark, so the maxLength below it is marked.
+    const key = declared.minLength === undefined ? 'maxLength' : 'minLength';
+    throw fault(boundsOrder, textAt(call, key), {
+      correction: 'Supply a minLength at or below maxLength.',
+      sentence: `text() minLength ${minLength} is above maxLength ${maxLength}.`,
+    });
   }
-  const matching = patternRule(patternOf(declared.pattern), messageOf(declared.message));
+  const matching = patternRule(
+    call,
+    patternOf(call, declared.pattern),
+    messageOf(call, declared.message),
+  );
   const length = lengthRule(minLength, maxLength);
   return createValidator({
     inputSchema: {
