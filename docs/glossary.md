@@ -334,7 +334,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception, a broken view, a broken `onFailure` hook, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
+A failure core wraps around an unexpected exception no translator answered, a broken view, a broken `onFailure` hook, a broken translator, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Defect**:
@@ -343,15 +343,15 @@ _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
 The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints. A defect or declaration fault writes the generic defect message or a Developer Diagnostic instead, by build.
+_Avoid_: Error message (when the class is meant), log line
 
 **Developer Diagnostic**:
-The author's view of a declaration fault or a defect: a banner with the rule's headline and identity, the sentence, the findings, an explanation of why the rule exists, the correction, and an optional docs link. It is not a view, and in a development build core renders it before consulting any override. Findings rebuild the declaration from graph facts, and a defect's findings show the author's own source lines.
+The author-facing report of a declaration fault or a defect: a banner with the rule's headline and identity, the sentence, the findings, an explanation of why the rule exists, the correction, and an optional docs link. It is not a view, and in a development build core renders it before consulting any override. Findings rebuild the declaration from graph facts, and a defect's findings show the author's own source lines.
 _Avoid_: Stack trace, error page, debug output, verbose error
 
 **Diagnostic rule**:
 One reason a declaration can be wrong, or one kind of defect, declared once with `diagnosticRule` and shared by every site that raises it. Its identity is the declaring package's name, `/`, and a kebab-case name, such as `@loomcli/core/plugin-option-collision`, and it carries the headline, the explanation, and an optional docs link.
 _Avoid_: Error code (for a rule), lint rule, check
-_Avoid_: Error message (when the class is meant), log line
 
 **Operator message**:
 Any message that runs after the application is built and shipped, read by the operator who ran it and cannot change its code. Every operator message Loom ships says what went wrong and what to do instead.

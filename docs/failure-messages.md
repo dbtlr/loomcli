@@ -57,7 +57,7 @@ Everything a message repeats is escaped. Escaping for quoted diagnostic text cov
 
 An operator message Loom ships never includes text Loom did not write: a thrown cause, an engine or Node.js reason, or a stack. Such text is a leak. It can hold a path or a value the operator never supplied, it changes between runtimes and versions, and it gives the operator no step to take.
 
-The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not applications. An application owns its domain and decides for itself: jsonkit may include the `JSON.parse` reason in `Cannot parse JSON in doc.json: ...`, because the reason locates the fault in a document the operator wrote.
+The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not applications. An application owns its domain and decides for itself: jsonkit may include the `JSON.parse` reason in `Cannot parse JSON in doc.json: ...`, because the reason locates the fault in a document the operator wrote. Once jsonkit's [translator](core.md#translators) lands, it reports a malformed document through its own `InvalidJsonError` sentence instead.
 
 ## 7. A defect shows one generic message
 
@@ -70,7 +70,7 @@ jsonkit: Something went wrong.
 The wording follows the status phrase web frameworks show for a 500, such as `Internal Server Error` and Rails' `We're sorry, but something went wrong.`, and claims nothing on the author's behalf: not that the fault is a bug, not where to report it, and not the version. The run exits 1, or keeps its cancellation code when the run was cancelled, as [Signals and cancellation](core.md#signals-and-cancellation) ranks it.
 
 - **The exception to rule 2.** The generic message is the one operator message with no next step, because a defect has none Loom can name honestly. An author who has one adds it.
-- **Replacing it.** An author replaces the message with the existing `override(InternalError, view)`, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
+- **Replacing it.** An author replaces the message with the existing `override(InternalError, view)` for defects and `override(DeclarationError, view)` for declaration faults, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
 - **The author's detail.** The author sees what broke and how to fix it in a [Developer Diagnostic](core.md#developer-diagnostics), which a [development build](core.md#development-builds) renders in place of the generic message. The packet built into the application decides which build a run is. Until that contract lands, core's current `InternalError` text under [Failure classes](core.md#failure-classes) stands.
 
 ## 8. Classify an author fault that reaches a shipped application
