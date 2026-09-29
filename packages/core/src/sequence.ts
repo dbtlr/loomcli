@@ -1,5 +1,6 @@
 import { InternalError, routedSubject } from './errors.js';
 import type { IncompleteResult } from './lanes.js';
+import { resultContract } from './rules.js';
 import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
 
@@ -105,7 +106,11 @@ function stepsOf<Row>(writer: SequenceWriter<Row>): Steps<Row> {
   }
   if (!steps) {
     throw new SourceFault(
-      new InternalError(`The result of ${routedSubject(writer.path)} is not iterable.`, undefined),
+      new InternalError(resultContract, {
+        cause: undefined,
+        correction: 'Pass out.results() an iterable or an async iterable of rows.',
+        sentence: `The result of ${routedSubject(writer.path)} is not iterable.`,
+      }),
     );
   }
   return steps;

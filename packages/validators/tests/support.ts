@@ -41,14 +41,17 @@ export function rejectedWith(message: string) {
   return { messages: [message], repeatsToken: false };
 }
 
-/** What the call threw: whether it was a `DeclarationError`, and its message. */
+/**
+ * What the call threw: whether it was a `DeclarationError`, and its sentence, which a declaration
+ * fault holds apart from the whole diagnostic its message carries.
+ */
 export function faultOf(call: () => unknown) {
   try {
     call();
   } catch (error) {
     return {
       declaration: error instanceof DeclarationError,
-      message: error instanceof Error ? error.message : String(error),
+      message: sentenceOf(error),
     };
   }
   return undefined;
@@ -66,4 +69,12 @@ export function declarationFault(message: string) {
 export function foreignIssue(fields: { message: string } & Record<string, unknown>) {
   const issue: StandardSchemaV1.Issue = fields;
   return issue;
+}
+
+/** The sentence one thrown value states: a declaration fault's own, or any Error's message. */
+export function sentenceOf(error: unknown): string {
+  if (error instanceof DeclarationError) {
+    return error.sentence;
+  }
+  return error instanceof Error ? error.message : String(error);
 }

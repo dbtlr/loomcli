@@ -52,7 +52,9 @@ test('an invalid argument default is a declaration error', () => {
   const result = optional('invalid-default', ['20']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain('Invalid declaration: Argument "path" has an invalid default.');
+  // The fixture is a development build, so the fault prints its Developer Diagnostic.
+  expect(result.stderr).toContain('-- INVALID DECLARATION --');
+  expect(result.stderr).toContain('\n\nArgument "path" has an invalid default.');
   expect(result.stderr).toContain('Use decimal digits.');
 });
 
@@ -146,6 +148,7 @@ test.each([['tail-invalid-default', 'Argument "files" has an invalid default.']]
     const result = optional(scenario, ['one']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(`Invalid declaration: ${diagnostic}`);
+    expect(result.stderr).toContain(`-- INVALID DECLARATION --`);
+    expect(result.stderr).toContain(`\n\n${diagnostic}`);
   },
 );

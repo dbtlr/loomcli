@@ -83,7 +83,7 @@ test.each(cases.filter((entry) => entry.place === 'root' && finished.has(entry.s
     });
     expect(withResult(scenario, place, 'run')).toEqual({
       status: 1,
-      stderr: `Invalid declaration: ${subject} ${rule}\n`,
+      stderr: `fixture: Something went wrong.\n`,
       stdout: 'assembled\nresolved:1\n',
     });
   },

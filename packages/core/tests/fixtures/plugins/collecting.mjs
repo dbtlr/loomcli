@@ -104,7 +104,7 @@ function rejecting(catching) {
       try {
         return command.extend(notes({ wrong: true }));
       } catch (error) {
-        note({ caught: error.constructor.name, message: error.message });
+        note({ caught: error.constructor.name, message: error.sentence ?? error.message });
         return command.extend(single({ note: 'after the catch' }));
       }
     },
@@ -303,7 +303,7 @@ if (mode === 'inspect') {
     application().inspect();
     note({ fault: null });
   } catch (error) {
-    note({ fault: error.constructor.name, message: error.message });
+    note({ fault: error.constructor.name, message: error.sentence ?? error.message });
   }
 } else if (mode === 'read') {
   const graph = application().inspect();
@@ -318,7 +318,7 @@ if (mode === 'inspect') {
     readExtension(first, twin);
     note({ foreign: null });
   } catch (error) {
-    note({ foreign: error.constructor.name, message: error.message });
+    note({ foreign: error.constructor.name, message: error.sentence ?? error.message });
   }
 } else if (mode === 'keys') {
   note(Object.keys(application().inspect().root.children[0].extensions));

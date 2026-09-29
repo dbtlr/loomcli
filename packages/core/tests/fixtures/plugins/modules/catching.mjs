@@ -7,7 +7,7 @@ const middleware = async ({ next, out }) => {
     const outcome = await next();
     await out.info(`catching:${outcome}`);
   } catch (error) {
-    await out.info(`catching:caught:${error.message}`);
+    await out.info(`catching:caught:${error.sentence ?? error.message}`);
   }
 };
 

@@ -97,16 +97,15 @@ test('the line names the root Command where the root action rendered the sequenc
 test('a row view that throws mid-sequence leaves the rows before it written', () => {
   expect(rows('row-broken')).toEqual({
     status: 1,
-    stderr: `${incomplete('Command "count"', 2, 1)}Internal error: Rendering output failed: Cannot render the row.\n`,
+    stderr: `${incomplete('Command "count"', 2, 1)}rows: Something went wrong.\n`,
     stdout: `${partial}resolved:1\n`,
   });
 });
 
-test('a row view that returns a non-string stops the sequence with a stated reason', () => {
-  const reason = 'The view returned number instead of a string.';
+test('a row view that returns a non-string stops the sequence', () => {
   expect(rows('row-non-string')).toEqual({
     status: 1,
-    stderr: `${incomplete('Command "count"', 1, 0)}Internal error: Rendering output failed: ${reason}\n`,
+    stderr: `${incomplete('Command "count"', 1, 0)}rows: Something went wrong.\n`,
     stdout: 'PATHS\nresolved:1\n',
   });
 });
@@ -114,7 +113,7 @@ test('a row view that returns a non-string stops the sequence with a stated reas
 test('a failed write stops the sequence and counts the rows it had written', () => {
   expect(rows('write-fails')).toEqual({
     status: 1,
-    stderr: `${incomplete('Command "count"', 2, 1)}Internal error: Could not write invocation output.\n`,
+    stderr: `${incomplete('Command "count"', 2, 1)}rows: Something went wrong.\n`,
     stdout: `${JSON.stringify(['PATHS\n', '0: one.txt\n'])}\nresolved:1\n`,
   });
 });
@@ -130,8 +129,7 @@ test('a cancelled run whose source then returns writes the line alone', () => {
 test('a view value that carries both shapes is the fault of its own call', () => {
   expect(rows('both-shapes')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Rendering output failed: The view carries render and row. Supply one of the two.\n',
+    stderr: 'rows: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -139,8 +137,7 @@ test('a view value that carries both shapes is the fault of its own call', () =>
 test('a view value that carries neither shape is the same fault', () => {
   expect(rows('no-shape')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Rendering output failed: The view carries neither render nor row. Supply a view with render or a row view with row.\n',
+    stderr: 'rows: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -148,8 +145,7 @@ test('a view value that carries neither shape is the same fault', () => {
 test('a null view is the same fault of its call, rejected rather than thrown at the call', () => {
   expect(rows('null-view')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Rendering output failed: The view carries neither render nor row. Supply a view with render or a row view with row.\n',
+    stderr: 'rows: Something went wrong.\n',
     stdout: 'after\nresolved:1\n',
   });
 });

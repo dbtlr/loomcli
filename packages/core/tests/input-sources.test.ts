@@ -133,8 +133,7 @@ test('a bad variable and a failing source report nothing under --help', () => {
   });
   expect(run([], { FIXTURE_SOURCE: 'throw' })).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Plugin "@fixture/config" failed in its configuration source: the settings file is locked.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nresolved:1\n',
   });
@@ -266,9 +265,10 @@ test.each([
     'Plugin "@fixture/config" failed in its configuration source: the answer label threw.',
   ],
 ])('a source fault %j reports its sentence with code 1', (env, sentence) => {
-  const result = run([], env);
+  expect(run([], env)).toMatchObject({ status: 1, stderr: 'app: Something went wrong.\n' });
+  const result = run([], { ...env, FIXTURE_BUILD: 'development' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(`Internal error: ${sentence}\n`);
+  expect(result.stderr).toContain(`\n\n${sentence}\n`);
 });
 
 test.each([
@@ -280,17 +280,20 @@ test.each([
     'option "fields" with a value that is not an array of strings.',
   ],
 ])('an answer of the wrong type for %j names the type the option takes', (argv, values, clause) => {
-  const result = run(argv, settings(values));
+  expect(run(argv, settings(values))).toMatchObject({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+  });
+  const result = run(argv, { ...settings(values), FIXTURE_BUILD: 'development' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(`Internal error: Plugin "@fixture/config" answered ${clause}\n`);
+  expect(result.stderr).toContain(`\n\nPlugin "@fixture/config" answered ${clause}\n`);
 });
 
 test.each(['sparse', 'hollow'])('a %s list answer is not an array of strings', (mode) => {
   const result = run(['select'], { FIXTURE_SOURCE: mode });
   expect(result).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Plugin "@fixture/config" answered option "fields" with a value that is not an array of strings.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level","fields","title"]}\nresolved:1\n',
   });
@@ -511,8 +514,7 @@ test('an InputError from the resolver is a usage failure that replaces every oth
 });
 
 test('out.results() in a source is the results fault with the source as its subject', () => {
-  const fault =
-    'Internal error: A configuration source called out.results() on Command "count". Only the action emits a result.\n';
+  const fault = 'app: Something went wrong.\n';
   expect(run(['count', '--max', '1'], { FIXTURE_SOURCE: 'results' })).toEqual({
     status: 1,
     stderr: fault,
@@ -542,9 +544,10 @@ test.each([
     'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
   ],
 ])('%j stays a plugin fault with code 1', (env, sentence) => {
-  const result = run([], env);
+  expect(run([], env)).toMatchObject({ status: 1, stderr: 'app: Something went wrong.\n' });
+  const result = run([], { ...env, FIXTURE_BUILD: 'development' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(`Internal error: ${sentence}\n`);
+  expect(result.stderr).toContain(`\n\n${sentence}\n`);
 });
 
 test.each(['declared', 'declared-sync'])(
@@ -564,10 +567,7 @@ test.each(['declared', 'declared-sync'])(
 
 test.each([
   [{ FIXTURE_SOURCE: 'fatal' }, 'the source gave up\n'],
-  [
-    { FIXTURE_SOURCE: 'result-error' },
-    'Internal error: A middleware called out.results() on Command "bogus". Only the action emits a result.\n',
-  ],
+  [{ FIXTURE_SOURCE: 'result-error' }, 'app: Something went wrong.\n'],
 ])(
   'a core failure class the resolver raises in %j reports as itself with code 1',
   (env, stderr) => {

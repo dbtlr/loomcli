@@ -102,9 +102,14 @@ function routed(options = {}) {
     .command(cache);
 }
 
+// A test that reads a broken contract's own sentence runs the fixture as a development build.
+const packet =
+  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+
 /** A broken hook installed ahead of a working one, on a graph whose fault is a usage error. */
 function broken(answer) {
   return routed({
+    ...packet,
     plugins: [hinting('fixture/broken', answer), hinting('fixture/fine', () => 'still here')],
   }).action(dispatch);
 }

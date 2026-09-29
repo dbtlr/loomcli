@@ -35,7 +35,10 @@ const detached = view('@fixture/detached', { render: (data) => `detached: ${data
  */
 const forged = { identity: '@fixture/page', render: (data) => `forged: ${data.title}\n` };
 
-const brand = (label) => ({ render: (failure) => `${label}: ${failure.message}\n` });
+// A declaration fault holds its sentence apart from the diagnostic its message carries.
+const brand = (label) => ({
+  render: (failure) => `${label}: ${failure.sentence ?? failure.message}\n`,
+});
 const branded = (label) => ({ render: (data) => `${label}: ${data.title}\n` });
 const breaks = {
   render: () => {
@@ -236,7 +239,7 @@ if (scenario in shapes) {
     process.stdout.write('declared\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
-    process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
+    process.stdout.write(`${kind}:${error.exitCode}: ${error.sentence ?? error.message}\n`);
   }
 } else {
   const app = declare(build);

@@ -110,6 +110,6 @@ try {
     process.stdout.write(`resolved:${code}\n`);
   }
 } catch (error) {
-  process.stdout.write(`${error.name}: ${error.message}\n`);
+  process.stdout.write(`${error.name}: ${error.sentence ?? error.message}\n`);
   process.exitCode = 3;
 }

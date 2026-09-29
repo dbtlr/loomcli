@@ -31,7 +31,7 @@ function attempt(call) {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    return `thrown: ${error.message}`;
+    return `thrown: ${error.sentence ?? error.message}`;
   }
 }
 

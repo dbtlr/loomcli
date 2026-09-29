@@ -35,7 +35,7 @@ test('an override of the version line changes the line while the plugin stays in
 test('a broken help page override reports one diagnostic and returns 1', () => {
   expect(run('broken-page', ['--help'])).toEqual({
     status: 1,
-    stderr: 'Internal error: Cannot render the page.\n',
+    stderr: 'app: Something went wrong.\n',
     stdout: '',
   });
 });

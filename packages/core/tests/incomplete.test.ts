@@ -49,7 +49,7 @@ test('the line prints for zero rows too, so an empty result and a failed one dif
 test('a row view that throws mid-sequence leaves the rows before it written', () => {
   expect(incomplete('view-row')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 2, 1)}Internal error: Cannot render the row.\n`,
+    stderr: `${line('Command "count"', 2, 1)}incomplete: Something went wrong.\n`,
     stdout: `${partial}resolved:1\n`,
   });
 });
@@ -65,7 +65,7 @@ test('an awaited call that lets a thrown failure class propagate keeps that clas
 test('a whole view that throws after the source ended writes nothing of the sequence', () => {
   expect(incomplete('whole-view')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 2, 0)}Internal error: Cannot render the table.\n`,
+    stderr: `${line('Command "count"', 2, 0)}incomplete: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
@@ -73,7 +73,7 @@ test('a whole view that throws after the source ended writes nothing of the sequ
 test('a whole view that returns a non-string is the same fault with a stated reason', () => {
   expect(incomplete('whole-non-string')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 2, 0)}Internal error: The view returned number instead of a string.\n`,
+    stderr: `${line('Command "count"', 2, 0)}incomplete: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
@@ -89,7 +89,7 @@ test('a source that throws under a whole view queues nothing on the destination'
 test('a failed write stops the sequence and counts the rows it had written', () => {
   expect(incomplete('write-fails')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 2, 1)}Internal error: Could not write invocation output.\n`,
+    stderr: `${line('Command "count"', 2, 1)}incomplete: Something went wrong.\n`,
     stdout: `${JSON.stringify(['PATHS\n', '0: one.txt\n'])}\nresolved:1\n`,
   });
 });
@@ -102,7 +102,7 @@ test('a stderr that has failed already takes the line through the plain fallback
   const attempts = [
     'first\n',
     line('Command "count"', 1, 1),
-    'Internal error: Could not write invocation output.\n',
+    'incomplete: Something went wrong.\n',
   ];
   expect(incomplete('stderr-failed')).toEqual({
     status: 1,
@@ -182,7 +182,7 @@ test('an override of incompleteResult that returns the empty string silences the
 test('an override that throws is reported as a view fault where nothing else is primary', () => {
   expect(incomplete('line-broken-alone')).toEqual({
     status: 130,
-    stderr: 'Internal error: Rendering output failed: Cannot render the line.\n',
+    stderr: 'incomplete: Something went wrong.\n',
     stdout: `${partial}resolved:130\n`,
   });
 });
@@ -190,7 +190,7 @@ test('an override that throws is reported as a view fault where nothing else is 
 test('a source failure the action rethrew wrapped is reported once', () => {
   expect(incomplete('wrapped')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 1, 1)}Internal error: The action could not finish.\n`,
+    stderr: `${line('Command "count"', 1, 1)}incomplete: Something went wrong.\n`,
     stdout: `${partial}resolved:1\n`,
   });
 });
@@ -246,7 +246,7 @@ test('a cleanup that never settles does not hold the stopped run open', () => {
 test('a source that throws undefined is reported once, like any other thrown value', () => {
   expect(incomplete('undefined-throw')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 1, 1)}Internal error: An unknown error occurred.\n`,
+    stderr: `${line('Command "count"', 1, 1)}incomplete: Something went wrong.\n`,
     stdout: `${partial}resolved:1\n`,
   });
 });
@@ -254,7 +254,7 @@ test('a source that throws undefined is reported once, like any other thrown val
 test('a result that iterates neither way is a source fault naming the Command', () => {
   expect(incomplete('not-iterable')).toEqual({
     status: 1,
-    stderr: `${line('Command "count"', 0, 0)}Internal error: The result of Command "count" is not iterable.\n`,
+    stderr: `${line('Command "count"', 0, 0)}incomplete: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });

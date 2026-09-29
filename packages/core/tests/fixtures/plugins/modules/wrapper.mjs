@@ -13,7 +13,7 @@ export function wrapper(label) {
       const outcome = await next();
       await out.info(`${label}:${outcome}`);
     } catch (error) {
-      await out.info(`${label}:rejected:${error.message}`);
+      await out.info(`${label}:rejected:${error.sentence ?? error.message}`);
       throw error;
     } finally {
       await out.info(`${label}:cleanup`);

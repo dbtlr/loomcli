@@ -72,7 +72,7 @@ if (mode === 'inspect') {
     const node = scenario === 'root' ? graph.root : graph.root.children[0];
     process.stdout.write(`${JSON.stringify(node.result)}\n`);
   } catch (error) {
-    process.stdout.write(`declaration:${error.exitCode}: ${error.message}\n`);
+    process.stdout.write(`declaration:${error.exitCode}: ${error.sentence ?? error.message}\n`);
   }
 } else {
   const code = await app.run({ host: { argv: scenario === 'root' ? [] : ['paths'] } });

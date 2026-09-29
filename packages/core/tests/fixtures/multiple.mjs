@@ -1,6 +1,9 @@
 import { Application, Command, validationContext } from '@loomcli/core';
 import { z } from 'zod';
 
+// A development build, so a fault only the author can fix prints its Developer Diagnostic.
+const development = { packet: { build: 'development' } };
+
 const [scenario, ...argv] = process.argv.slice(2);
 const report = ({ options, passthrough, out }) =>
   out.print(JSON.stringify({ options, passthrough }));
@@ -24,14 +27,14 @@ const seen = [];
 let app = undefined;
 switch (scenario) {
   case 'plain': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { multiple: true, short: 'F', type: 'string' })
       .option('total', { short: 't', type: 'boolean' })
       .action(report);
     break;
   }
   case 'default': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         default: ['a', 'b'],
         multiple: true,
@@ -42,19 +45,19 @@ switch (scenario) {
     break;
   }
   case 'invalid-default': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { default: ['a', ''], multiple: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }
   case 'raw-default': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { default: ['a'], multiple: true, type: 'string' })
       .action(report);
     break;
   }
   case 'schema': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         multiple: true,
         short: 'F',
@@ -65,7 +68,7 @@ switch (scenario) {
     break;
   }
   case 'counted': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         multiple: true,
         type: 'string',
@@ -81,7 +84,7 @@ switch (scenario) {
     break;
   }
   case 'pathed': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         multiple: true,
         type: 'string',
@@ -100,14 +103,14 @@ switch (scenario) {
     break;
   }
   case 'required-schema': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { multiple: true, required: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }
   case 'abort-mid-list': {
     // The first value cancels the run, so no later value reaches the validator.
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         multiple: true,
         type: 'string',
@@ -127,7 +130,7 @@ switch (scenario) {
   }
   case 'per-value-context': {
     // Each call records what it saw, then writes to every array the context handed it.
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', {
         multiple: true,
         type: 'string',
@@ -153,14 +156,14 @@ switch (scenario) {
     break;
   }
   case 'required': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
       .action(report);
     break;
   }
   case 'global': {
     const show = new Command('show').option('local', { type: 'boolean' }).action(report);
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .globalOption('field', {
         multiple: true,
         short: 'F',
@@ -171,25 +174,25 @@ switch (scenario) {
     break;
   }
   case 'boolean-multiple': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('verbose', { multiple: true, type: 'boolean' })
       .action(report);
     break;
   }
   case 'nonboolean-multiple': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { multiple: 'yes', type: 'string' })
       .action(report);
     break;
   }
   case 'validated-string-default': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { default: 'a', multiple: true, type: 'string', validate: fieldName })
       .action(report);
     break;
   }
   case 'string-default': {
-    app = new Application('multiple')
+    app = new Application('multiple', development)
       .option('field', { default: 'a', multiple: true, type: 'string' })
       .action(report);
     break;

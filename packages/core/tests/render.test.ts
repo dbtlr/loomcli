@@ -6,7 +6,7 @@ function render(scenario: string) {
   return invoke(new URL('fixtures/render.mjs', import.meta.url), [scenario]);
 }
 
-const internal = 'Internal error: Rendering output failed: Cannot render the table.\n';
+const internal = 'render: Something went wrong.\n';
 
 test('a rendered value writes the view text to stdout', () => {
   expect(render('bytes')).toEqual({
@@ -52,7 +52,7 @@ test('a view that returns a non-string fails the call with a stated reason', () 
   const reason = 'The view returned number instead of a string.';
   expect(render('non-string')).toEqual({
     status: 1,
-    stderr: `Internal error: Rendering output failed: ${reason}\n`,
+    stderr: `render: Something went wrong.\n`,
     stdout: `caught:${reason}\nresolved:1\n`,
   });
 });
@@ -60,8 +60,7 @@ test('a view that returns a non-string fails the call with a stated reason', () 
 test('a view that returns a rejecting promise fails the call without ending the process', () => {
   expect(render('rejecting')).toEqual({
     status: 1,
-    stderr:
-      'Internal error: Rendering output failed: The view returned object instead of a string.\n',
+    stderr: 'render: Something went wrong.\n',
     stdout: 'after\nresolved:1\n',
   });
 });
@@ -85,7 +84,7 @@ test('two failing views report the first failure once', () => {
 test('an action failure stays primary over a view failure', () => {
   expect(render('action-failure')).toEqual({
     status: 1,
-    stderr: 'Internal error: The action failed.\n',
+    stderr: 'render: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });

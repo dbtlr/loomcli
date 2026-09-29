@@ -595,17 +595,13 @@ test('inspect() leaves a default that only its validator rejects to run()', () =
     'schema-default',
     'run',
   ]);
-  expect(result.stderr).toBe(
-    'Invalid declaration: Option "depth" has an invalid default. Fix the default or its validator.\nOption "depth": Use decimal digits.\n',
-  );
+  expect(result.stderr).toBe('faults: Something went wrong.\n');
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 
-test('run() still reports a build fault as a diagnostic with code 1', () => {
+test('run() still reports a build fault with code 1', () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), ['invalid', 'run']);
-  expect(result.stderr).toBe(
-    'Invalid declaration: The root Command has no action. Register an action.\n',
-  );
+  expect(result.stderr).toBe('invalid: Something went wrong.\n');
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 

@@ -35,7 +35,8 @@ test('an invalid default is a developer error even when replaced or inputs canno
     const result = schema('invalid-default', argv);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Invalid declaration:');
+    // The fixture is a development build, so the fault prints its Developer Diagnostic.
+    expect(result.stderr).toContain('-- INVALID DECLARATION --');
     expect(result.stderr).toContain('default');
     expect(result.stderr).toContain('Use decimal digits.');
   }
@@ -91,7 +92,7 @@ test.each(['throw', 'reject'])(
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(
-      'Invalid declaration: Option "size" validator failed unexpectedly: Broken validator.',
+      '-- VALIDATOR FAILED ----------------------------- @loomcli/core/validator-failed\n\nOption "size" validator failed unexpectedly: Broken validator.\n',
     );
   },
 );
@@ -171,9 +172,7 @@ test.each(['missing', 'number', 'null', 'path', 'key', 'nonarray'])(
     const result = schema('malformed-issue', [shape, '--size', 'x', '--later', 'y']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(
-      'Invalid declaration: Option "size" validator failed unexpectedly:',
-    );
-    expect(result.stderr).toContain('Fix the validator.');
+    expect(result.stderr).toContain('\n\nOption "size" validator failed unexpectedly: ');
+    expect(result.stderr).toContain('\n\nFix the validator.\n');
   },
 );

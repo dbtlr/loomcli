@@ -197,9 +197,7 @@ test.each([
 // The root is never attached, so build is the first point at which a root group is final.
 test('a root group that declares a local option is rejected at build', () => {
   expect(invokeNestedGraph('root-group-option', ['clear'])).toEqual({
-    chunks: [
-      'Invalid declaration: The root Command declares option "verbose" but registers no action to receive it. Register an action or remove the option.\n',
-    ],
+    chunks: ['nested-graph: Something went wrong.\n'],
     code: 1,
   });
 });

@@ -108,8 +108,9 @@ test('a rejected default value fails every run with its position', () => {
   const result = multiple('invalid-default', ['--field', 'fine']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
+  // The fixture is a development build, so the fault prints its Developer Diagnostic.
   expect(result.stderr).toContain(
-    'Invalid declaration: Option "field" has an invalid default. Fix the default or its validator.\nOption "field" at 1: Supply a field name.',
+    'Option "field" has an invalid default. Fix the default or its validator.\nOption "field" at 1: Supply a field name.',
   );
 });
 

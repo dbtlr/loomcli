@@ -2,16 +2,19 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function results(scenario: string) {
-  return invoke(new URL('fixtures/results.mjs', import.meta.url), [scenario]);
+function results(scenario: string, env: Record<string, string> = {}) {
+  return invoke(new URL('fixtures/results.mjs', import.meta.url), [scenario], { env });
 }
 
 /** The whole sequence the row view writes, which every complete rows scenario produces. */
 const sequence = 'PATHS\n0: one.txt\n1: two words.txt\nEND\n';
 
-/** The diagnostic one results-lane fault reports, under the prefix its class carries. */
-function internal(sentence: string) {
-  return `Internal error: ${sentence}\n`;
+/** What a distributed build writes for a results-lane fault, which is a defect. */
+const generic = 'results: Something went wrong.\n';
+
+/** A development build states the fault's own sentence in its Developer Diagnostic. */
+function expectStated(scenario: string, sentence: string) {
+  expect(results(scenario, { FIXTURE_BUILD: 'development' }).stderr).toContain(`\n\n${sentence}\n`);
 }
 
 test('a value result renders its default view and writes the text to stdout', () => {
@@ -121,57 +124,70 @@ test("a middleware's print keeps stdout on a result Command, before and after ne
 test('an action that returns without emitting fails with the missing diagnostic', () => {
   expect(results('missing')).toEqual({
     status: 1,
-    stderr: internal(
-      'Command "count" declares a result and its action returned without emitting one. Call out.results() once.',
-    ),
+    stderr: generic,
     stdout: 'resolved:1\n',
   });
+  expectStated(
+    'missing',
+    'Command "count" declares a result and its action returned without emitting one. Call out.results() once.',
+  );
 });
 
 test('the same fault at the root names the root Command', () => {
   expect(results('missing-root')).toEqual({
     status: 1,
-    stderr: internal(
-      'The root Command declares a result and its action returned without emitting one. Call out.results() once.',
-    ),
+    stderr: generic,
     stdout: 'resolved:1\n',
   });
+  expectStated(
+    'missing-root',
+    'The root Command declares a result and its action returned without emitting one. Call out.results() once.',
+  );
 });
 
 test('a second emission rejects and turns a would-be 0 into 1', () => {
   expect(results('repeated')).toEqual({
     status: 1,
-    stderr: internal('Command "count" emitted its result twice. Call out.results() once.'),
+    stderr: generic,
     stdout: 'total 1\nresolved:1\n',
   });
+  expectStated('repeated', 'Command "count" emitted its result twice. Call out.results() once.');
 });
 
 test('the same fault the action let propagate is reported once', () => {
   expect(results('repeated-awaited')).toEqual({
     status: 1,
-    stderr: internal('Command "count" emitted its result twice. Call out.results() once.'),
+    stderr: generic,
     stdout: 'total 1\nresolved:1\n',
   });
+  expectStated(
+    'repeated-awaited',
+    'Command "count" emitted its result twice. Call out.results() once.',
+  );
 });
 
 test('out.results on a Command that declares no result is the undeclared fault', () => {
   expect(results('undeclared')).toEqual({
     status: 1,
-    stderr: internal(
-      'Command "plain" declares no result. Declare one with result() or rows() before action().',
-    ),
+    stderr: generic,
     stdout: 'resolved:1\n',
   });
+  expectStated(
+    'undeclared',
+    'Command "plain" declares no result. Declare one with result() or rows() before action().',
+  );
 });
 
 test('out.results from a middleware is the middleware fault whatever the action did', () => {
   expect(results('middleware-results')).toEqual({
     status: 1,
-    stderr: internal(
-      'A middleware called out.results() on Command "count". Only the action emits a result.',
-    ),
+    stderr: generic,
     stdout: 'before\ntotal 1\nafter\nresolved:1\n',
   });
+  expectStated(
+    'middleware-results',
+    'A middleware called out.results() on Command "count". Only the action emits a result.',
+  );
 });
 
 test('a failure raised before the call is that failure and no missing-result fault', () => {

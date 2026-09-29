@@ -220,6 +220,10 @@ function application() {
     new Command('clear').action(({ out }) => out.print('cleared')),
   );
   return new Application('app', {
+    // A test that reads a defect's own sentence runs the fixture as a development build.
+    ...(process.env.FIXTURE_BUILD === undefined
+      ? {}
+      : { packet: { build: process.env.FIXTURE_BUILD } }),
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
   })

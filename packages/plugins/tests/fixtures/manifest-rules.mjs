@@ -19,6 +19,6 @@ try {
   process.stdout.write(`${JSON.stringify({ fault: null })}\n`);
 } catch (error) {
   process.stdout.write(
-    `${JSON.stringify({ fault: error.constructor.name, message: error.message })}\n`,
+    `${JSON.stringify({ fault: error.constructor.name, message: error.sentence ?? error.message })}\n`,
   );
 }

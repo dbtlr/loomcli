@@ -245,7 +245,7 @@ test('an override of helpPage changes jsonkit --help while help() stays installe
 test('a broken helpPage override reports one diagnostic on stderr and returns 1', () => {
   expect(invoke(branded, ['broken'])).toEqual({
     status: 1,
-    stderr: 'Internal error: Cannot render the page.\n',
+    stderr: 'jsonkit: Something went wrong.\n',
     stdout: '',
   });
 });

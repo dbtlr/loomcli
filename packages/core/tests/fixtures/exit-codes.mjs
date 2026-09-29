@@ -364,7 +364,9 @@ if (scenario === 'statics') {
     process.stdout.write('constructed\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'DeclarationError' : 'other';
-    process.stdout.write(`thrown:${kind}:${String(error.exitCode)}: ${error.message}\n`);
+    process.stdout.write(
+      `thrown:${kind}:${String(error.exitCode)}: ${error.sentence ?? error.message}\n`,
+    );
   }
 } else if (scenario === 'cancelled') {
   // The action throws the declared failure after the caller aborted, so the signal decides.

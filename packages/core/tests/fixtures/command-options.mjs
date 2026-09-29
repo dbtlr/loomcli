@@ -39,7 +39,7 @@ if (mode === 'inspect') {
     process.stdout.write('inspected\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
-    process.stdout.write(`${kind}:${error.exitCode}: ${error.message}\n`);
+    process.stdout.write(`${kind}:${error.exitCode}: ${error.sentence ?? error.message}\n`);
   }
 } else {
   const code = await app.run({ host: { argv: ['get'] } });

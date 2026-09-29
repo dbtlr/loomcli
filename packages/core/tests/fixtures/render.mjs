@@ -46,7 +46,7 @@ const app = new Application('render').action(async ({ out }) => {
         await out.render(rows, breaks);
         out.print('unreachable');
       } catch (error) {
-        out.print(`caught:${error.message}`);
+        out.print(`caught:${error.sentence ?? error.message}`);
       }
       out.print('after');
       break;
@@ -55,7 +55,7 @@ const app = new Application('render').action(async ({ out }) => {
       try {
         await out.render(rows, counted);
       } catch (error) {
-        out.print(`caught:${error.message}`);
+        out.print(`caught:${error.sentence ?? error.message}`);
       }
       break;
     }

@@ -2,10 +2,11 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
-import { DeclarationError, InputError } from './errors.js';
+import { asSentence, DeclarationError, InputError, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
+import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
   ArgumentValue,
@@ -398,9 +399,14 @@ async function validate(
     }
     return { issues: Array.from(issues, readIssue) };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : 'Unknown validator failure.';
+    // The reason is the author's detail: a distributed build shows the generic defect message.
     throw new DeclarationError(
-      `${declaredName(input)} validator failed unexpectedly: ${reason} Fix the validator.`,
+      validatorFailed,
+      {
+        correction: 'Fix the validator.',
+        sentence: `${declaredName(input)} validator failed unexpectedly: ${asSentence(reasonOf(error))}`,
+      },
+      { cause: error },
     );
   }
 }

@@ -31,8 +31,16 @@ import type {
   CommandState,
   ResultMethod,
 } from './command.js';
+import { escapeControlCharacters } from './controls.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
+import {
+  DeclarationError,
+  exitCodeOf,
+  genericDefectText,
+  InternalError,
+  reasonOf,
+  toFailure,
+} from './errors.js';
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
@@ -40,7 +48,7 @@ import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } fr
 import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { reportFailure } from './hints.js';
-import type { BuiltRun, FailureScene } from './hints.js';
+import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
@@ -50,6 +58,7 @@ import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
+import { brokenOutputView, viewCorrection } from './rules.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
 import type {
@@ -64,6 +73,7 @@ import type {
   PerValueConstraint,
   NameConstraint,
   ExitCode,
+  Host,
   OptionConfig,
   OptionValue,
   ResultViews,
@@ -156,8 +166,19 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
   return signal;
 }
 
+/**
+ * The build fact file, `loom.packet.json`, that the entry imports and hands to the Application.
+ * `build` is typed `string`, because a JSON module types its members that way, and the Application
+ * constructor accepts `development` or `distributed` alone. Core ignores every other member.
+ */
+export interface Packet {
+  readonly build: string;
+}
+
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
+  /** The packet that says whether this is a development build. With none, it is distributed. */
+  packet?: Packet;
   views?: readonly ViewOverride[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
@@ -172,6 +193,8 @@ export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly
 interface ApplicationConfig {
   /** Whether the application's own `command()` or `action()` has run, which closes `globalOption()`. */
   composed: boolean;
+  /** Whether the packet reads `development`, read once at construction. */
+  development: boolean;
   /** Each installed plugin's view contributions, in installation order. */
   contributors: readonly ViewContributions[];
   facts: ApplicationFacts;
@@ -451,7 +474,16 @@ class ApplicationBuilder<
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
-    const scene = (): FailureScene => ({ application: this.#name, built: reached, path: walked });
+    // The host a failure's report reads, once it is captured; before that, the process's own.
+    let reportHost: Host | undefined = undefined;
+    const scene = (): FailureScene & { host: Host } => ({
+      application: this.#name,
+      built: reached,
+      host: (reportHost ??= captureHost(undefined, stderr)),
+      path: walked,
+    });
+    // What this run's build decides about its reports, shared by every report the run writes.
+    const build: BuildReports = { development: this.#config.development, generic: false };
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -475,6 +507,7 @@ class ApplicationBuilder<
         const overrides = options?.host;
         stderr = overrides?.stderr ?? stderr;
         const host = captureHost(overrides, stderr);
+        reportHost = host;
         const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
@@ -534,7 +567,11 @@ class ApplicationBuilder<
         const fault = output.fault;
         if (fault) {
           // The action returned, so the view failure is this invocation's own failure.
-          throw new InternalError(`Rendering output failed: ${reasonOf(fault.cause)}`, fault.cause);
+          throw new InternalError(brokenOutputView, {
+            cause: fault.cause,
+            correction: viewCorrection,
+            sentence: `Rendering output failed: ${reasonOf(fault.cause)}`,
+          });
         }
       } catch (error) {
         primary = error;
@@ -545,7 +582,7 @@ class ApplicationBuilder<
           const writes = await output.settle();
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
-            const sink = { output, registry: registry ?? noViews, stderr };
+            const sink = { build, output, registry: registry ?? noViews, stderr };
             if (await reportFailure(sink, failure, scene())) {
               code = 1;
             }
@@ -572,7 +609,7 @@ class ApplicationBuilder<
         if (!silenced(fault, controller.signal, cancellation())) {
           code = code === 0 ? 1 : code;
           try {
-            const sink = output && { output, registry: registry ?? noViews, stderr };
+            const sink = output && { build, output, registry: registry ?? noViews, stderr };
             if (sink && (await reportFailure(sink, fault, scene()))) {
               code = 1;
             }
@@ -589,8 +626,13 @@ class ApplicationBuilder<
         }
         output.dispose();
       }
-      if (reportingFailed) {
-        await reportPlainly(stderr, 'Internal error: Could not write invocation output.\n');
+      if (reportingFailed && (build.development || !build.generic)) {
+        await reportPlainly(
+          stderr,
+          build.development
+            ? 'Internal error: Could not write invocation output.\n'
+            : genericDefectText(this.#name),
+        );
       }
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
@@ -678,6 +720,31 @@ function checkOptions(options: unknown): ApplicationFacts {
 }
 
 /**
+ * Whether the packet an Application received reads `development`. No packet is distributed, so an
+ * application that never opted in cannot show an operator the author's detail. The build is read
+ * once, here, so a later change to the imported object changes no run.
+ */
+function readPacket(packet: unknown): boolean {
+  if (packet === undefined) {
+    return false;
+  }
+  if (!isPlainObject(packet)) {
+    throw new DeclarationError(
+      'The Application packet must be an object. Import loom.packet.json and pass it as packet.',
+    );
+  }
+  const { build } = packet;
+  if (build === 'development' || build === 'distributed') {
+    return build === 'development';
+  }
+  const found =
+    build === undefined
+      ? 'The packet has no build.'
+      : `The packet's build is ${typeof build === 'string' ? `"${escapeControlCharacters(build)}"` : 'not a string'}.`;
+  throw new DeclarationError(`${found} Set build to "development" or "distributed".`);
+}
+
+/**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
  * application's own view overrides, the rendering policy, the options slot and its facts, the
  * installed list and every rule between two plugins, the root's extension values, and then each
@@ -697,6 +764,7 @@ function declareApplication(options: unknown): {
   );
   const rendering = renderingPolicy(slot?.rendering);
   const facts = checkOptions(options);
+  const development = readPacket(slot?.packet);
   const installed = installPlugins(slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>
@@ -730,7 +798,16 @@ function declareApplication(options: unknown): {
     });
   }
   return {
-    config: { composed: false, contributors, facts, owners, plugins, rendering, views },
+    config: {
+      composed: false,
+      contributors,
+      development,
+      facts,
+      owners,
+      plugins,
+      rendering,
+      views,
+    },
     globals: emptyGlobals(),
     root,
   };

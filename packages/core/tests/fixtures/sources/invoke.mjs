@@ -137,6 +137,10 @@ function application() {
     .option('flag', { env: 'toString', type: 'boolean' })
     .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
   return new Application('app', {
+    // A test that reads a defect's own sentence runs the fixture as a development build.
+    ...(process.env.FIXTURE_BUILD === undefined
+      ? {}
+      : { packet: { build: process.env.FIXTURE_BUILD } }),
     plugins: (installed[process.argv[2]] ?? (() => []))(),
     views: overrides[process.env.FIXTURE_VIEWS ?? 'none'],
   })

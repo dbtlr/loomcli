@@ -2,8 +2,14 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function run(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/hints.mjs', import.meta.url), [scenario, ...argv]);
+function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+  return invoke(new URL('fixtures/hints.mjs', import.meta.url), [scenario, ...argv], { env });
+}
+
+/** A development build states one broken hook's own sentence in its Developer Diagnostic. */
+function expectBrokenHook(scenario: string, reason: string) {
+  const { stderr } = run(scenario, ['cache', 'clear', '--bogus'], { FIXTURE_BUILD: 'development' });
+  expect(stderr).toContain(`\n\nPlugin "fixture/broken" failed in onFailure: ${reason}\n`);
 }
 
 const unknownBogus =
@@ -56,9 +62,7 @@ test('a build fault reads the application name, an empty path, and no hints, and
 test('a declared default its validator rejects calls the hook with an empty path at the root', () => {
   const result = run('default-rejected');
   expect(result.stdout).toBe('hook:fixture/one:DeclarationError:[]\nresolved:1\n');
-  expect(result.stderr).toBe(
-    'Invalid declaration: Option "level" has an invalid default. Fix the default or its validator.\nOption "level": No.\ncommand at []\n',
-  );
+  expect(result.stderr).toBe('store: Something went wrong.\ncommand at []\n');
 });
 
 test('a fault reported after the primary outcome receives hook calls of its own', () => {
@@ -66,7 +70,7 @@ test('a fault reported after the primary outcome receives hook calls of its own'
   expect(result).toEqual({
     status: 1,
     stderr:
-      'The action failed.\nhint for FatalError\nInternal error: Plugin "fixture/twice" called next() twice.\nhint for InternalError\n',
+      'The action failed.\nhint for FatalError\nstore: Something went wrong.\nhint for InternalError\n',
     stdout: 'hook:fixture/one:FatalError:[]\nhook:fixture/one:InternalError:[]\nresolved:1\n',
   });
 });
@@ -136,10 +140,9 @@ test.each([
   'a broken hook (%s) loses its own hints, writes its one line, and returns 1',
   (scenario, reason) => {
     const result = run(scenario, ['cache', 'clear', '--bogus']);
-    expect(result.stderr).toBe(
-      `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: ${reason}\n`,
-    );
+    expect(result.stderr).toBe(`${unknownBogus}still here\nstore: Something went wrong.\n`);
     expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
+    expectBrokenHook(scenario, reason);
   },
 );
 
@@ -159,9 +162,7 @@ test.each(['getter', 'object', 'proxy', 'symbol'])(
   'a hook that throws a value whose message cannot be read (%s) writes the fixed reason and keeps the failure',
   (kind) => {
     const result = run(`broken-unreadable-${kind}`, ['cache', 'clear', '--bogus']);
-    expect(result.stderr).toBe(
-      `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: The thrown value has no readable message.\n`,
-    );
+    expect(result.stderr).toBe(`${unknownBogus}still here\nstore: Something went wrong.\n`);
     expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
   },
 );
@@ -169,7 +170,7 @@ test.each(['getter', 'object', 'proxy', 'symbol'])(
 test('a failure view that throws a value whose message cannot be read writes the fixed reason', () => {
   expect(run('broken-view-unreadable', ['cache', 'clear', '--bogus'])).toEqual({
     status: 1,
-    stderr: `${unknownBogus}Internal error: Rendering the failure failed: The thrown value has no readable message.\n`,
+    stderr: `${unknownBogus}store: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
 });
@@ -184,28 +185,28 @@ test.each([
   'a broken hook whose reason holds a line break or a control character (%s) writes one line',
   (scenario, reason) => {
     expect(run(scenario, ['cache', 'clear', '--bogus']).stderr).toBe(
-      `${unknownBogus}still here\nInternal error: Plugin "fixture/broken" failed in onFailure: ${reason}\n`,
+      `${unknownBogus}still here\nstore: Something went wrong.\n`,
     );
+    // The development build states the reason on one line, every control escaped.
+    expectBrokenHook(scenario, reason);
   },
 );
 
-test('a broken failure view whose reason holds a line break writes one line', () => {
+test('a broken failure view whose reason holds a line break writes the generic line alone', () => {
   expect(run('broken-view-multiline', ['cache', 'clear', '--bogus']).stderr).toBe(
-    `${unknownBogus}Internal error: Rendering the failure failed: ${String.raw`line one\u000aline two`}\n`,
+    `${unknownBogus}store: Something went wrong.\n`,
   );
 });
 
 test('two broken hooks write their lines in installation order', () => {
   expect(run('two-broken', ['cache', 'clear', '--bogus']).stderr).toBe(
-    `${unknownBogus}still here\nInternal error: Plugin "fixture/first" failed in onFailure: First failed.\nInternal error: Plugin "fixture/second" failed in onFailure: The hook returned a value that is not a string or an array of strings.\n`,
+    `${unknownBogus}still here\nstore: Something went wrong.\n`,
   );
 });
 
 test('a broken hook beside a broken view writes the default text without hints, the view line, then the hook line', () => {
   const result = run('broken-view', ['cache', 'clear', '--bogus']);
-  expect(result.stderr).toBe(
-    `${unknownBogus}Internal error: Rendering the failure failed: Cannot render the failure.\nInternal error: Plugin "fixture/broken" failed in onFailure: Cannot suggest.\n`,
-  );
+  expect(result.stderr).toBe(`${unknownBogus}store: Something went wrong.\n`);
   expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
 });
 
@@ -218,8 +219,7 @@ test('plugin() rejects an onFailure that is not a function', () => {
 test('a broken hook in a cancelled run whose failure still renders returns 130 and writes its line', () => {
   expect(run('cancelled-broken')).toEqual({
     status: 130,
-    stderr:
-      'The action failed.\nstill here\nInternal error: Plugin "fixture/broken" failed in onFailure: Cannot suggest.\n',
+    stderr: 'The action failed.\nstill here\nstore: Something went wrong.\n',
     stdout: 'hook:fixture/broken:FatalError:[]\nhook:fixture/fine:FatalError:[]\nresolved:130\n',
   });
 });

@@ -2,6 +2,8 @@ export { Application } from './application.js';
 export { Command } from './command.js';
 export { escapeControlCharacters } from './controls.js';
 export { validationContext, validationContextKey } from './context.js';
+export { diagnosticRule } from './diagnostic.js';
+export type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 export {
   DeclarationError,
   FatalError,
@@ -48,7 +50,7 @@ export type { ViewContext } from './types.js';
 export { pad, style } from './style.js';
 export { issuePath } from './validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
-export type { ApplicationMethod, ApplicationOptions } from './application.js';
+export type { ApplicationMethod, ApplicationOptions, Packet } from './application.js';
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
 export type { InputProblem, ResultFault } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';

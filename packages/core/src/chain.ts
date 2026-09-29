@@ -1,6 +1,6 @@
 import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
 import { prepareDispatch, routeInvocation } from './command.js';
-import { InternalError, reasonOf, routedSubject, toFailure } from './errors.js';
+import { foreignFailure, InternalError, routedSubject, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
@@ -14,6 +14,7 @@ import type {
   PluginOptionValues,
   PluginValues,
 } from './plugin.js';
+import { nextMisuse } from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type {
   ActionChannel,
@@ -270,10 +271,11 @@ interface EntryTurn {
 
 /** A `next()` call that is no longer live: it dispatches nothing and rejects. */
 function misuse(turn: EntryTurn): Promise<ChainOutcome> {
-  const fault = new InternalError(
-    `${pluginSentence(turn.entry.identity)} called next() ${turn.state.returned ? 'after its middleware returned' : 'twice'}.`,
-    undefined,
-  );
+  const fault = new InternalError(nextMisuse, {
+    cause: undefined,
+    correction: 'Call next() once, and await it before the middleware returns.',
+    sentence: `${pluginSentence(turn.entry.identity)} called next() ${turn.state.returned ? 'after its middleware returned' : 'twice'}.`,
+  });
   turn.chain.report(fault);
   const rejected = Promise.reject<ChainOutcome>(fault);
   void rejected.catch(() => undefined);
@@ -347,7 +349,7 @@ async function settle(
      * again when the middleware let it escape. It keeps the one report it already has.
      */
     if (!chain.announced(thrown.value)) {
-      chain.report(new InternalError(reasonOf(thrown.value), thrown.value));
+      chain.report(foreignFailure(thrown.value));
     }
   }
   if (state.calls === 0) {
