@@ -4,6 +4,7 @@ import { diagnosticSections, messageWidth } from './diagnostic-text.js';
 import type { Anatomy } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 import type { InternalError } from './errors.js';
+import { sourceRoots } from './host.js';
 import type { ContextualStyle } from './style.js';
 import type { Host } from './types.js';
 
@@ -16,8 +17,13 @@ interface DeveloperScene {
   readonly host: Pick<Host, 'cwd' | 'readSource' | 'terminal'>;
 }
 
+/** What a defect's source is read through: the host's working directory, its roots, and reader. */
+function sourceAccess({ cwd, readSource }: DeveloperScene['host']): SourceAccess {
+  return { cwd, readSource, roots: sourceRoots(cwd) };
+}
+
 /** The parts one fault renders, with a defect's source and causes read here, in development alone. */
-function anatomyOf(fault: DeclarationError | InternalError, access: SourceAccess): Anatomy {
+function anatomyOf(fault: DeclarationError | InternalError, host: DeveloperScene['host']): Anatomy {
   if (fault instanceof DeclarationError) {
     return {
       correction: fault.correction,
@@ -30,7 +36,7 @@ function anatomyOf(fault: DeclarationError | InternalError, access: SourceAccess
   }
   return {
     correction: fault.correction,
-    evidence: defectEvidence(fault.cause, access),
+    evidence: defectEvidence(fault.cause, sourceAccess(host)),
     fallback: 'DEFECT',
     findings: [],
     rule: fault.rule,
@@ -43,10 +49,9 @@ function sections(
   fault: DeclarationError | InternalError,
   scene: DeveloperScene,
 ): { banner: string; body: string } {
-  const { cwd, readSource, terminal } = scene.host;
-  return diagnosticSections(anatomyOf(fault, { cwd, readSource }), {
+  return diagnosticSections(anatomyOf(fault, scene.host), {
     application: scene.application,
-    width: terminal.stderr.columns ?? messageWidth,
+    width: scene.host.terminal.stderr.columns ?? messageWidth,
   });
 }
 

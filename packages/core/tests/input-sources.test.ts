@@ -271,6 +271,11 @@ test.each([
   expect(result.stderr).toContain(`\n\n${sentence}\n`);
 });
 
+test('an answer the answers rule rejects is a defect under the source answers rule', () => {
+  const { stderr } = run([], { FIXTURE_BUILD: 'development', FIXTURE_SOURCE: 'not-record' });
+  expect(stderr).toMatch(/^-- INVALID SOURCE ANSWERS -+ @loomcli\/core\/source-answers\n/u);
+});
+
 test.each([
   [['count', '--max', '1'], { total: 'yes' }, 'option "total" with a value that is not a Boolean.'],
   [['select'], { fields: 'a' }, 'option "fields" with a value that is not an array of strings.'],

@@ -10,7 +10,12 @@ import { reportPlainly } from './output.js';
 import type { Output } from './output.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
-import { brokenFailureHook, brokenFailureView, viewCorrection } from './rules.js';
+import {
+  brokenDestination,
+  brokenFailureHook,
+  brokenFailureView,
+  viewCorrection,
+} from './rules.js';
 import type { ContextualStyle } from './style.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 import { describeFailure } from './view.js';
@@ -59,13 +64,25 @@ interface FailureScene {
 
 /**
  * What one run's build decides about its reports. A development build shows the author a
- * Developer Diagnostic for every fault only the author can fix; a distributed build shows the
- * generic defect message, and writes it for broken contracts at most once per run.
+ * Developer Diagnostic for every fault only the author can fix, each after the first report of the
+ * run opening with one blank line; a distributed build shows the generic defect message at most
+ * once per run.
  */
 interface BuildReports {
   readonly development: boolean;
   /** Whether this run has written the generic defect message already. */
   generic: boolean;
+  /** Whether this run has written a failure report already. */
+  reported: boolean;
+}
+
+/** The generic defect message the first time a run writes it, and nothing after that. */
+function genericOnce(build: BuildReports, application: string): string {
+  if (build.generic) {
+    return '';
+  }
+  build.generic = true;
+  return genericDefectText(application);
 }
 
 /** Where one failure report is written, the registry its view resolves through, and the build. */
@@ -241,14 +258,9 @@ function viewDefect(report: FailureReport & { kind: 'unrendered' }): InternalErr
  * at most once per run.
  */
 function brokenContract(defect: InternalError, build: BuildReports, scene: DeveloperScene): string {
-  if (build.development) {
-    return `\n${developerPlainText(defect, scene)}`;
-  }
-  if (build.generic) {
-    return '';
-  }
-  build.generic = true;
-  return genericDefectText(scene.application);
+  return build.development
+    ? `\n${developerPlainText(defect, scene)}`
+    : genericOnce(build, scene.application);
 }
 
 /**
@@ -266,38 +278,53 @@ function plainLines(
     return broken.map((hook) => brokenContract(hookDefect(hook), build, scene)).join('');
   }
   // `report.text` is core's default text, which already ends in `\n`; for a defect it is generic.
-  build.generic ||= isAuthorFault(failure);
+  const own = isAuthorFault(failure) ? genericOnce(build, scene.application) : report.text;
   return [viewDefect(report), ...broken.map(hookDefect)].reduce(
     (text, defect) => `${text}${brokenContract(defect, build, scene)}`,
-    report.text,
+    own,
   );
 }
 
 /**
  * Renders one failure as the run's build decides. A development build renders a fault only the
- * author can fix as its Developer Diagnostic, ahead of every override, with the hints under it.
- * Every other failure, and every failure in a distributed build, resolves through the view
- * registry; core's default text for a defect is the generic message, which the run then counts.
+ * author can fix as its Developer Diagnostic, ahead of every override, with the hints under it,
+ * and after an earlier report of the run it opens with one blank line. Every other failure, and
+ * every failure in a distributed build, resolves through the view registry. Core's default text
+ * for a defect is the generic message, which the run writes at most once, so a later defect that
+ * core's own view renders writes nothing.
  */
 async function renderFailure(
   sink: FailureSink,
   failure: LoomError,
   scene: FailureContextScene,
 ): Promise<FailureReport> {
-  if (sink.build.development && isAuthorFault(failure)) {
+  const { build } = sink;
+  if (build.development && isAuthorFault(failure)) {
     const { style } = sink.output.context('stderr');
-    await sink.output.report(
-      developerText(failure, { ...scene.developer, hints: scene.hints, style }),
-    );
+    const text = developerText(failure, { ...scene.developer, hints: scene.hints, style });
+    await sink.output.report(build.reported ? `\n${text}` : text);
     return { core: false, kind: 'rendered', text: '' };
   }
   const report = describeFailure(sink.registry, failure, failureContext(sink.output, scene));
-  if (report.kind === 'rendered') {
-    sink.build.generic ||= report.core && isAuthorFault(failure);
+  if (report.kind === 'rendered' && !repeatsGeneric(build, report, failure)) {
     // The view owns the trailing newline; output resolves its marked text.
     await sink.output.report(report.text);
   }
   return report;
+}
+
+/**
+ * Whether a rendered report is the generic defect message a run wrote already, which it writes
+ * nothing for. Core's own view writes the generic message for a fault only the author can fix, and
+ * the first such report counts it.
+ */
+function repeatsGeneric(build: BuildReports, report: FailureReport, failure: LoomError): boolean {
+  if (report.kind !== 'rendered' || !report.core || !isAuthorFault(failure)) {
+    return false;
+  }
+  const repeated = build.generic;
+  build.generic = true;
+  return repeated;
 }
 
 /** Where one failure is rendered from: the run's scene and the hints its hooks returned. */
@@ -335,8 +362,26 @@ async function reportFailure(
   if (plain !== '') {
     await reportPlainly(sink.stderr, plain);
   }
+  sink.build.reported = true;
   return report.kind !== 'rendered' || broken.length > 0;
 }
 
+/**
+ * What a run writes on the plain fallback path when a destination failed a write or reporting
+ * itself failed: the Developer Diagnostic of the broken destination in a development build, and
+ * the generic defect message, at most once per run, in a distributed one.
+ */
+function destinationReport(build: BuildReports, cause: unknown, scene: DeveloperScene): string {
+  if (!build.development) {
+    return genericOnce(build, scene.application);
+  }
+  const defect = new InternalError(brokenDestination, {
+    cause,
+    correction: 'Give run() host streams that accept every write until the run resolves.',
+    sentence: 'Could not write invocation output.',
+  });
+  return `${build.reported ? '\n' : ''}${developerPlainText(defect, scene)}`;
+}
+
 export type { BuildReports, BuiltRun, FailureHook, FailureHookContext, FailureScene };
-export { reportFailure };
+export { destinationReport, reportFailure };

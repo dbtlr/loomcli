@@ -36,7 +36,8 @@ const tableRead =
 /**
  * A table module with each data file it reads beside itself imported as a JSON module instead, so
  * the bundle carries the data. A bundle, and a compiled binary most of all, holds no file beside
- * the module that the original read could find.
+ * the module that the original read could find. A table module with no read of that shape fails
+ * the build, because a bundle built from it would fail at run time instead.
  */
 async function inlinedTables(path: string): Promise<string> {
   const source = await readFile(path, 'utf8');
@@ -47,6 +48,11 @@ async function inlinedTables(path: string): Promise<string> {
     imports.push(`import ${name} from './${file}' with { type: 'json' };`);
     return name;
   });
+  if (imports.length === 0) {
+    throw new Error(
+      `packet() found no data file read in the Unicode table module ${path}. Update @loomcli/loom to a version that supports the installed @rockorager/uucode.`,
+    );
+  }
   return [...imports, contents].join('\n');
 }
 
@@ -57,11 +63,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * The packet a build writes: the source file's own members with `build` set to `distributed`. A
- * file that holds no JSON object is left as it is, so the Application rejects it at construction
- * with its own diagnostic.
+ * byte order mark is dropped, as the runtimes drop it when they import the file. A file that
+ * holds no JSON object is left as it is, so the Application rejects it at construction with its
+ * own diagnostic.
  */
 async function distributedPacket(path: string): Promise<string> {
-  const source = await readFile(path, 'utf8');
+  const text = await readFile(path, 'utf8');
+  const source = text.replace(/^\uFEFF/u, '');
   const members: unknown = JSON.parse(source);
   return isRecord(members) ? JSON.stringify({ ...members, build: 'distributed' }) : source;
 }

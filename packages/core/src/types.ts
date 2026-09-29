@@ -146,7 +146,8 @@ export interface Host {
    * Reads one source file for a defect's Developer Diagnostic, or answers `undefined`. Core calls
    * it only in a development build, only while it reports a defect, and only for a path under the
    * working directory. Process capture supplies a reader that refuses a file outside `cwd` after
-   * resolving symbolic links.
+   * resolving symbolic links, and answers `undefined` for a path that is not a regular file or
+   * that exceeds 1 MiB.
    */
   readSource?: (path: string, cwd: string) => string | undefined;
 }

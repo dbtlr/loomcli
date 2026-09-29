@@ -6,7 +6,12 @@ import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
-import { foreignThrow, foreignThrowCorrection } from './rules.js';
+import {
+  foreignThrow,
+  foreignThrowCorrection,
+  sourceAnswers,
+  sourceAnswersCorrection,
+} from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type { Host, Out } from './types.js';
 import type { OptionInput } from './validation.js';
@@ -158,7 +163,11 @@ const ruleFaults = new WeakSet<InternalError>();
 
 /** A fault the answers rule names, recorded so that reading the answers rethrows it unframed. */
 function ruleFault(message: string): InternalError {
-  const fault = new InternalError(message, undefined);
+  const fault = new InternalError(sourceAnswers, {
+    cause: undefined,
+    correction: sourceAnswersCorrection,
+    sentence: message,
+  });
   ruleFaults.add(fault);
   return fault;
 }

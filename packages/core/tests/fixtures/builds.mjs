@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Writable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
@@ -8,6 +10,7 @@ import {
   DeclarationError,
   diagnosticRule,
   InternalError,
+  locate,
   override,
   plugin,
   UsageError,
@@ -276,6 +279,111 @@ function scenarioRun() {
           .action(() => undefined),
       };
     }
+    case 'hook-declaration': {
+      const hook = plugin('@acme/hook', {
+        onFailure: () => {
+          throw new DeclarationError('A sentence-only fault.');
+        },
+      });
+      return {
+        app: new Application('probe', { ...packet, plugins: [hook] })
+          .argument('name', { required: true })
+          .action(() => undefined),
+      };
+    }
+    case 'loader-declaration': {
+      const lazy = plugin('@acme/lazy', {
+        middleware: {
+          activate: 'always',
+          load: () => {
+            throw new DeclarationError(retryLimit, {
+              correction: 'Pass a whole number from 0 through 10.',
+              findings: [{ arguments: [50], call: 'retry', mark: '0' }],
+              sentence: 'retry() received 50 retries.',
+            });
+          },
+        },
+      });
+      return {
+        app: new Application('probe', { ...packet, plugins: [lazy] }).action(() => undefined),
+      };
+    }
+    case 'message-frame': {
+      // The message carries a line that reads as a frame, as operator input interpolated into it can.
+      const injected = `x\n    at ${join(here, 'secret.txt')}:1:1`;
+      return {
+        app: new Application('probe', packet).action(() => {
+          throw new Error(`Cannot read ${injected}`);
+        }),
+        host: { cwd: here, readSource: recorded(() => undefined) },
+      };
+    }
+    case 'spaced-frame':
+    case 'parenthesized-frame': {
+      const directory = scenario === 'spaced-frame' ? 'dir with space' : 'dir (x)';
+      return {
+        app: new Application('probe', packet).action(() => {
+          throw forged([`<anonymous> (${join(here, directory, 'src.mjs')}:3:9)`]);
+        }),
+        host: {
+          cwd: here,
+          readSource: recorded(() => 'one\ntwo\nthree fails here\nfour\nfive'),
+        },
+      };
+    }
+    case 'revoked-proxy': {
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return {
+        app: new Application('probe', packet).action(() => {
+          throw proxy;
+        }),
+      };
+    }
+    case 'two-defects': {
+      const twice = plugin('@acme/twice', {
+        middleware: {
+          activate: 'always',
+          load: () =>
+            Promise.resolve({
+              default: async ({ next }) => {
+                await next();
+                await next().catch(() => undefined);
+                throw new Error('Middleware broke.');
+              },
+            }),
+        },
+      });
+      return {
+        app: new Application('probe', { ...packet, plugins: [twice] }).action(() => undefined),
+      };
+    }
+    case 'not-a-signal': {
+      return {
+        app: new Application('probe', packet).action(() => undefined),
+        signal: 'not a signal',
+      };
+    }
+    case 'foreign-graph': {
+      return {
+        app: new Application('probe', packet).action(() => {
+          locate(Object.freeze({}), ['']);
+        }),
+      };
+    }
+    case 'broken-destination': {
+      const stdout = new Writable({
+        write(_chunk, _encoding, callback) {
+          callback(new Error('The reader went away.'));
+        },
+      });
+      return {
+        app: new Application('probe', packet).action(async ({ out }) => {
+          await out.print('hello');
+        }),
+        host: { stdout },
+      };
+    }
     default: {
       throw new Error(`Unknown scenario ${scenario}.`);
     }
@@ -291,6 +399,8 @@ if (scenario === 'captured-reader') {
   writeFileSync(join(outside, 'secret.js'), 'secret\n');
   mkdirSync(real);
   writeFileSync(join(real, 'own.js'), 'throw new Error("own");\n');
+  writeFileSync(join(real, 'large.js'), 'x'.repeat(1024 * 1024 + 1));
+  spawnSync('mkfifo', [join(real, 'pipe')]);
   symlinkSync(real, linked);
   symlinkSync(join(outside, 'secret.js'), join(real, 'escape.js'));
   const captured = { reader: undefined };
@@ -301,10 +411,26 @@ if (scenario === 'captured-reader') {
   const read = (path) => captured.reader(path, linked) ?? null;
   const answers = {
     escape: read(join(linked, 'escape.js')),
+    large: read(join(linked, 'large.js')),
     outside: read(join(outside, 'secret.js')),
     own: read(join(linked, 'own.js')),
+    pipe: read(join(linked, 'pipe')),
   };
   process.stdout.write(`${JSON.stringify(answers)}\n`);
+} else if (scenario === 'linked-cwd') {
+  // The author's module lies under a directory the host names through a symbolic link.
+  const root = mkdtempSync(join(tmpdir(), 'loom-linked-'));
+  const real = join(root, 'real');
+  const linked = join(root, 'linked');
+  mkdirSync(real);
+  writeFileSync(
+    join(real, 'fails.mjs'),
+    'export function fails() {\n  throw new Error("Linked.");\n}\n',
+  );
+  symlinkSync(real, linked);
+  const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
+  const app = new Application('probe', { packet: { build: 'development' } }).action(fails);
+  await app.run({ host: { argv: [], cwd: linked } });
 } else if (scenario === 'packet-mutation') {
   const source = { build: 'development' };
   const app = new Application('probe', { packet: source }).action(() => {

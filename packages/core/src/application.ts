@@ -33,21 +33,14 @@ import type {
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import {
-  DeclarationError,
-  exitCodeOf,
-  genericDefectText,
-  InternalError,
-  reasonOf,
-  toFailure,
-} from './errors.js';
+import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
-import { reportFailure } from './hints.js';
+import { destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import { inspectGraph } from './inspect.js';
@@ -58,7 +51,7 @@ import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
-import { brokenOutputView, viewCorrection } from './rules.js';
+import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
 import type {
@@ -158,10 +151,11 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
     return undefined;
   }
   if (!(signal instanceof AbortSignal)) {
-    throw new InternalError(
-      'run() received a signal that is not an AbortSignal. Supply the signal of an AbortController.',
-      undefined,
-    );
+    throw new InternalError(runOptions, {
+      cause: undefined,
+      correction: 'Supply the signal of an AbortController.',
+      sentence: 'run() received a signal that is not an AbortSignal.',
+    });
   }
   return signal;
 }
@@ -483,7 +477,13 @@ class ApplicationBuilder<
       path: walked,
     });
     // What this run's build decides about its reports, shared by every report the run writes.
-    const build: BuildReports = { development: this.#config.development, generic: false };
+    const build: BuildReports = {
+      development: this.#config.development,
+      generic: false,
+      reported: false,
+    };
+    // What broke the run's reporting: a destination's write error, or a throw while reporting.
+    let reportingCause: unknown = undefined;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
     /**
@@ -587,9 +587,10 @@ class ApplicationBuilder<
               code = 1;
             }
           }
-        } catch {
+        } catch (reportError) {
           code = 1;
           reportingFailed = true;
+          reportingCause = reportError;
         }
       }
       /**
@@ -613,8 +614,9 @@ class ApplicationBuilder<
             if (sink && (await reportFailure(sink, fault, scene()))) {
               code = 1;
             }
-          } catch {
+          } catch (reportError) {
             reportingFailed = true;
+            reportingCause ??= reportError;
           }
         }
       }
@@ -623,16 +625,16 @@ class ApplicationBuilder<
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;
+          reportingCause ??= writes.error;
         }
         output.dispose();
       }
-      if (reportingFailed && (build.development || !build.generic)) {
-        await reportPlainly(
-          stderr,
-          build.development
-            ? 'Internal error: Could not write invocation output.\n'
-            : genericDefectText(this.#name),
-        );
+      if (reportingFailed) {
+        const { application, host } = scene();
+        const text = destinationReport(build, reportingCause, { application, host });
+        if (text !== '') {
+          await reportPlainly(stderr, text);
+        }
       }
       /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken

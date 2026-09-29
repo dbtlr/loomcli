@@ -526,15 +526,19 @@ export function asSentence(text: string): string {
 }
 
 /**
- * What a diagnostic says about an unexpected value, whether or not it was an Error. Reading it never
- * throws: an Error whose message is not a string or cannot be read, and a value whose prototype
- * cannot be read, such as a proxy whose trap throws, answer one fixed sentence.
+ * What a diagnostic says about an unexpected value, whether or not it was an Error. A
+ * `DeclarationError` answers its sentence, because its message holds its whole diagnostic. Reading
+ * it never throws: an Error whose message is not a string or cannot be read, and a value whose
+ * prototype cannot be read, such as a proxy whose trap throws, answer one fixed sentence.
  */
 export function reasonOf(thrown: unknown): string {
   const unreadableReason = 'The thrown value has no readable message.';
   try {
     if (!(thrown instanceof Error)) {
       return 'An unknown error occurred.';
+    }
+    if (thrown instanceof DeclarationError) {
+      return thrown.sentence;
     }
     const { message }: { message: unknown } = thrown;
     return typeof message === 'string' ? message : unreadableReason;
@@ -555,12 +559,24 @@ export function notTextReason(value: unknown): string {
 }
 
 /**
+ * Whether a thrown value is a failure class by its prototype chain, read defensively, because a
+ * revoked proxy or a proxy whose prototype trap throws answers no chain. Such a value is foreign.
+ */
+function isLoomError(thrown: unknown): thrown is LoomError {
+  try {
+    return thrown instanceof LoomError;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Every thrown value reaches reporting as a failure class; anything else is internal. A value that
  * inherits from a failure class without having been constructed holds no code, so it is internal
  * too.
  */
 export function toFailure(thrown: unknown): LoomError {
-  if (!(thrown instanceof LoomError)) {
+  if (!isLoomError(thrown)) {
     return foreignFailure(thrown);
   }
   return failureCodes.has(thrown)

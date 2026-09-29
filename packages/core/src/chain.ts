@@ -14,7 +14,7 @@ import type {
   PluginOptionValues,
   PluginValues,
 } from './plugin.js';
-import { nextMisuse } from './rules.js';
+import { nextMisuse, viewSelection, viewSelectionCorrection } from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type {
   ActionChannel,
@@ -119,21 +119,18 @@ class ViewSelection {
     const plugin = pluginSentence(assigned.identity);
     const { name } = assigned;
     if (!this.#result) {
-      throw new InternalError(
+      throw selectionFault(
         `${plugin} selected view "${String(name)}" on ${routedSubject(path)}, which declares no result.`,
-        undefined,
       );
     }
     if (typeof name !== 'string') {
-      throw new InternalError(
+      throw selectionFault(
         `${plugin} selected a view that is not a string on ${routedSubject(path)}.`,
-        undefined,
       );
     }
     if (!this.#result.views.has(name)) {
-      throw new InternalError(
+      throw selectionFault(
         `${plugin} selected view "${name}", which ${routedSubject(path)} does not name.`,
-        undefined,
       );
     }
     return name;
@@ -267,6 +264,15 @@ interface EntryTurn {
   entry: ChainEntry;
   index: number;
   state: EntryState;
+}
+
+/** The defect a view selection the routed Command cannot render reports. */
+function selectionFault(sentence: string): InternalError {
+  return new InternalError(viewSelection, {
+    cause: undefined,
+    correction: viewSelectionCorrection,
+    sentence,
+  });
 }
 
 /** A `next()` call that is no longer live: it dispatches nothing and rejects. */

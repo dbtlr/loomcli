@@ -5,6 +5,7 @@ import { InternalError } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isPlainObject } from './facts.js';
 import type { compileOptions } from './options.js';
+import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { validatesOmission } from './validation.js';
@@ -406,12 +407,25 @@ const links = new WeakMap<CommandGraph, GraphLink>();
 function linkOf(graph: CommandGraph): GraphLink {
   const link = links.get(graph);
   if (!link) {
-    throw new InternalError(
-      'The graph was not produced by inspect(). Pass the graph inspect() returned.',
-      undefined,
-    );
+    throw new InternalError(foreignGraph, {
+      cause: undefined,
+      correction: 'Pass the graph inspect() returned.',
+      sentence: 'The graph was not produced by inspect().',
+    });
   }
   return link;
+}
+
+/**
+ * The defect a graph reports when its nodes disagree with the build it was rendered from, so a
+ * node core looked up is missing.
+ */
+function graphMismatch(sentence: string): InternalError {
+  return new InternalError(foreignGraph, {
+    cause: undefined,
+    correction: foreignGraphCorrection,
+    sentence,
+  });
 }
 
 /**
@@ -424,10 +438,7 @@ function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
   for (const name of path) {
     const child = node.children.find((entry) => entry.name === name);
     if (!child) {
-      throw new InternalError(
-        `The routed command "${path.join(' ')}" is not in the inspected graph.`,
-        undefined,
-      );
+      throw graphMismatch(`The routed command "${path.join(' ')}" is not in the inspected graph.`);
     }
     node = child;
   }
@@ -435,4 +446,4 @@ function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
 }
 
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
-export { inspectGraph, linkOf, nodeAt, resultNode };
+export { graphMismatch, inspectGraph, linkOf, nodeAt, resultNode };

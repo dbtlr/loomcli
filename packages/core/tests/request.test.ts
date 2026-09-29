@@ -202,14 +202,16 @@ test('an assignment after the boundary changes nothing', () => {
   });
 });
 
-test('a view name the record does not hold is an internal error naming the plugin', () => {
+test('a view name the record does not hold is a defect under the view selection rule naming the plugin', () => {
   const result = run('select', ['count'], { LOOM_FIXTURE_VIEW_FIRST: 'yaml' });
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(generic);
-  expect(
-    run('select', ['count'], { FIXTURE_BUILD: 'development', LOOM_FIXTURE_VIEW_FIRST: 'yaml' })
-      .stderr,
-  ).toContain(
+  const { stderr } = run('select', ['count'], {
+    FIXTURE_BUILD: 'development',
+    LOOM_FIXTURE_VIEW_FIRST: 'yaml',
+  });
+  expect(stderr).toMatch(/^-- INVALID VIEW SELECTION -+ @loomcli\/core\/view-selection\n/u);
+  expect(stderr).toContain(
     stated('Plugin "@fixture/first" selected view "yaml", which Command "count" does not name.'),
   );
 });

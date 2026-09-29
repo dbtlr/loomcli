@@ -1,8 +1,8 @@
 import type { BuiltCommand, BuiltGraph } from './command.js';
 import { argumentSlot, readsAsChild, route } from './command.js';
-import { InternalError, UsageError } from './errors.js';
+import { UsageError } from './errors.js';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
-import { linkOf } from './inspect.js';
+import { graphMismatch, linkOf } from './inspect.js';
 import type { AwaitingValue, GlobalScan, InputScan } from './options.js';
 import { isOptionToken, longStringOption, longToken, scanGlobals, scanInputs } from './options.js';
 
@@ -115,7 +115,7 @@ function valueOf(scope: Scope, name: string, word: { lead: string; prefix: strin
     graph.globals.find((entry) => entry.name === name) ??
     command.options.find((entry) => entry.name === name);
   if (!option) {
-    throw new InternalError(`Option "${name}" is not in the inspected graph.`, undefined);
+    throw graphMismatch(`Option "${name}" is not in the inspected graph.`);
   }
   return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix };
 }
@@ -179,7 +179,7 @@ function locate(graph: CommandGraph, words: readonly string[]): WordPosition {
   }
   const command = link.nodes.get(earlier.command);
   if (!command) {
-    throw new InternalError('The routed command is not in the inspected graph.', undefined);
+    throw graphMismatch('The routed command is not in the inspected graph.');
   }
   return lastWord({ built: link.graph, command, earlier, graph }, words.at(-1) ?? '');
 }

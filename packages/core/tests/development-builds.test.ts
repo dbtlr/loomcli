@@ -31,7 +31,7 @@ test("a defect in a development build writes its Developer Diagnostic with the a
   expect(stderr).toMatch(/^TypeError: .+$/mu);
   expect(stderr).toMatch(/^ {4}at .+builds\.mjs:6\d:\d+\)?$/mu);
   expect(stderr).toContain(
-    '- Register a translator for its class with translate(ErrorClass, translator).\n',
+    '\n\nCatch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.\n',
   );
   expect(stderr).not.toContain('Something went wrong');
 });
@@ -64,7 +64,7 @@ test('an onFailure hint prints under the generic message and under the Developer
     'probe: Something went wrong.\nReport this at https://example.com/issues.\n',
   );
   expect(run('hint', 'development').stderr).toMatch(
-    /in its place\.\n\n- Catch[^\n]+\n- Register[^\n]+\n\nReport this at https:\/\/example\.com\/issues\.\n$/u,
+    /in its place\.\n\nCatch[^\n]+\n\nReport this at https:\/\/example\.com\/issues\.\n$/u,
   );
 });
 
@@ -137,7 +137,7 @@ test("a broken onFailure hook writes the generic message once, or the hook's dia
   expect(stderr).toMatch(
     /^probe: Argument[^\n]+\nReport this at https:\/\/example\.com\/issues\.\n\n-- BROKEN FAILURE HOOK -+ @loomcli\/core\/broken-failure-hook\n\nPlugin "@acme\/broken-hook" failed in onFailure: Hook broke\.\n/u,
   );
-  expect(stderr).toMatch(/^> 44 \| {5}throw new Error\('Hook broke\.'\);$/mu);
+  expect(stderr).toMatch(/^> 4\d \| {5}throw new Error\('Hook broke\.'\);$/mu);
 });
 
 test('a broken view beside a broken hook writes one generic line when distributed and one diagnostic per contract in development', () => {
@@ -222,12 +222,93 @@ test('a distributed build never calls the reader', () => {
   }
 });
 
-test('the captured reader refuses a link under the working directory that leaves it', () => {
+test('the captured reader refuses a link that leaves the working directory, a path that is not a regular file, and a file over 1 MiB', () => {
   expect(JSON.parse(run('captured-reader', 'development').stdout)).toEqual({
     escape: null,
+    large: null,
     outside: null,
     own: 'throw new Error("own");\n',
+    pipe: null,
   });
+});
+
+test('a working directory the host names through a symbolic link still shows the author its source', () => {
+  const { stderr } = run('linked-cwd', 'none');
+  // Node and Bun place the throw's column differently, so the column is any number.
+  expect(stderr).toMatch(
+    /\n\nfails\.mjs:2:\d+\n\n {2}1 \| export function fails\(\) \{\n> 2 \| {3}throw new Error\("Linked\."\);\n/u,
+  );
+});
+
+test('a message line that reads as a frame is never read as one', () => {
+  const { stderr, stdout } = run('message-frame', 'development');
+  // The reader is asked for the real frame's file alone, never the file the message names.
+  expect(stdout).toMatch(/^resolved:1\nasked:[^,\n]+builds\.mjs\n$/u);
+  expect(stderr).not.toMatch(/^ {4}at [^\n]*secret\.txt/mu);
+  expect(stderr).toMatch(/^builds\.mjs:\d+:\d+$/mu);
+});
+
+test.each([
+  ['spaced-frame', 'dir with space'],
+  ['parenthesized-frame', 'dir (x)'],
+])('a %s names its whole file, and its source prints', (scenario, directory) => {
+  const { stderr, stdout } = run(scenario, 'development');
+  expect(stdout).toContain(`/${directory}/src.mjs\n`);
+  expect(stderr).toContain(
+    [`${directory}/src.mjs:3:9`, '', '  1 | one', '  2 | two', '> 3 | three fails here', ''].join(
+      '\n',
+    ),
+  );
+});
+
+test('a thrown revoked proxy is a foreign throw that prints as a value', () => {
+  expect(run('revoked-proxy', 'distributed').stderr).toBe('probe: Something went wrong.\n');
+  const { status, stderr } = run('revoked-proxy', 'development');
+  expect(status).toBe(1);
+  expect(stderr.startsWith(foreignThrowBanner)).toBe(true);
+  expect(stderr).toContain('\n\nThrown value: …\n\n');
+});
+
+test('two defects in one run write the generic message once, or two diagnostics a blank line apart', () => {
+  expect(run('two-defects', 'distributed')).toEqual({
+    status: 1,
+    stderr: 'probe: Something went wrong.\n',
+    stdout: 'resolved:1\n',
+  });
+  const { stderr } = run('two-defects', 'development');
+  const banners = [...stderr.matchAll(/^-- [A-Z]/gmu)].map((match) => match.index);
+  expect(banners).toHaveLength(2);
+  expect(banners[0]).toBe(0);
+  expect(stderr.slice(0, banners[1]).endsWith('.\n\n')).toBe(true);
+});
+
+test('a destination that fails a write is a defect by build', () => {
+  expect(run('broken-destination', 'distributed')).toEqual({
+    status: 1,
+    stderr: 'probe: Something went wrong.\n',
+    stdout: 'resolved:1\n',
+  });
+  const { status, stderr } = run('broken-destination', 'development');
+  expect(status).toBe(1);
+  expect(stderr).toMatch(
+    /^-- BROKEN DESTINATION -+ @loomcli\/core\/broken-destination\n\nCould not write invocation output\.\n/u,
+  );
+  expect(stderr).toContain('Error: The reader went away.\n');
+  expect(stderr).not.toContain('Internal error');
+});
+
+test('a DeclarationError thrown in an onFailure hook or a plugin loader reads as its sentence', () => {
+  const hook = run('hook-declaration', 'development').stderr;
+  expect(hook).toContain('\n\nPlugin "@acme/hook" failed in onFailure: A sentence-only fault.\n');
+  expect(hook).toContain('\nDeclarationError: A sentence-only fault.\n');
+  const loader = run('loader-declaration', 'development').stderr;
+  expect(loader).toContain(
+    '\n\nLoading plugin "@acme/lazy" failed: retry() received 50 retries.\n',
+  );
+  expect(loader).toContain('\nDeclarationError: retry() received 50 retries.\n');
+  for (const stderr of [hook, loader]) {
+    expect(stderr).not.toContain(String.raw`\u000a`);
+  }
 });
 
 test.each([
@@ -270,6 +351,18 @@ test.each([
     'FAILURE NEVER CONSTRUCTED',
     '@loomcli/core/unconstructed-failure',
     'A thrown value inherits from a failure class but was never constructed as one.',
+  ],
+  [
+    'not-a-signal',
+    'INVALID RUN OPTIONS',
+    '@loomcli/core/run-options',
+    'run() received a signal that is not an AbortSignal.',
+  ],
+  [
+    'foreign-graph',
+    'GRAPH NOT FROM INSPECT()',
+    '@loomcli/core/foreign-graph',
+    'The graph was not produced by inspect().',
   ],
   [
     'result-missing',

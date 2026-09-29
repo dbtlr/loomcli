@@ -1,4 +1,5 @@
 import { escapeControlCharacters } from './controls.js';
+import { isPlainObject } from './facts.js';
 
 /**
  * One reason a declaration can be wrong, or one kind of defect: the parts that hold at every site
@@ -81,12 +82,6 @@ function quoteString(text: string): string {
 /** Whether a value is a Standard Schema, which a finding prints as an ellipsis like a function. */
 function isValidator(value: object): boolean {
   return '~standard' in value;
-}
-
-/** Whether an object is a plain record an author wrote as a literal. */
-function isRecord(value: object): boolean {
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 /** A primitive as JavaScript source, or `undefined` for an object or a function. */
@@ -178,7 +173,7 @@ class CodePrinter {
     if (Array.isArray(value)) {
       return this.list(value, inner);
     }
-    return isValidator(value) || !isRecord(value) ? elided : this.record(value, inner);
+    return isValidator(value) || !isPlainObject(value) ? elided : this.record(value, inner);
   }
 
   /** One array literal. Its members append in place, so each records its own span. */
