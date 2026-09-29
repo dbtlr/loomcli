@@ -168,14 +168,6 @@ test('jsonkit debug prints the whole parsed document as indented JSON', () => {
   });
 });
 
-test('the unknownCommand view ends after the first clause when the candidate list is empty', () => {
-  expect(invoke(new URL('fixtures/candidates.mjs', import.meta.url))).toEqual({
-    status: 2,
-    stderr: 'jsonkit: unknown command "nope".\n',
-    stdout: '',
-  });
-});
-
 test('jsonkit lists integer-like keys first, as JavaScript orders them', () => {
   withDocuments({ 'doc.json': '{"b": 1, "2": 2, "a": 3}' }, (cwd) => {
     expect(invoke(main, ['keys', '--file', 'doc.json'], { cwd })).toEqual({
@@ -293,13 +285,85 @@ test('jsonkit ignores a passthrough tail that repeats the file global', () => {
   });
 });
 
-test.each(['summary', 'gets', 'Get', 'typo'])(
+test.each(['summary', 'typo'])(
   'jsonkit rejects the unknown command %s and lists the choices',
   (name) => {
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: unknown command "${name}"; try doctor, completion, get, keys, select.\n`,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stdout: '',
+      });
+    });
+  },
+);
+
+test.each(['gets'])(
+  'jsonkit rejects the unknown command %s and suggests the near match "get"',
+  (name) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
+        status: 2,
+        stderr: `jsonkit: Unknown command "${name}". Did you mean "get"?\nRun "jsonkit --help" to see the usage.\n`,
+        stdout: '',
+      });
+    });
+  },
+);
+
+test.each([
+  ['gte', 'jsonkit: Unknown command "gte". Did you mean "get"?\n'],
+  ['Get', 'jsonkit: Unknown command "Get". Did you mean "get"?\n'],
+])(
+  'jsonkit %s name -f doc.json suggests the near match and points at the help page',
+  (name, sentence) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, [name, 'name', '-f', 'doc.json'], { cwd })).toEqual({
+        status: 2,
+        stderr: `${sentence}Run "jsonkit --help" to see the usage.\n`,
+        stdout: '',
+      });
+    });
+  },
+);
+
+// `lss` is near only the alias `ls`, and too far from `keys`.
+// `fetc` is near only the deprecated `fetch`.
+// Neither an alias nor a deprecated name is offered as the fix, so both keep the choice list.
+test.each(['lss', 'fetc'])(
+  'jsonkit %s -f doc.json finds no offered near match and lists the choices',
+  (name) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, [name, '-f', 'doc.json'], { cwd })).toEqual({
+        status: 2,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stdout: '',
+      });
+    });
+  },
+);
+
+test.each([
+  [
+    ['select', '--fields', 'name', '-f', 'doc.json'],
+    'jsonkit: Unknown option "--fields". Did you mean "--field"?\n',
+  ],
+  [
+    ['select', '--fiel', 'name', '-f', 'doc.json'],
+    'jsonkit: Unknown option "--fiel". Did you mean one of these: --file, --field?\n',
+  ],
+  [
+    ['get', '--hlep', 'name', '-f', 'doc.json'],
+    'jsonkit: Unknown option "--hlep". Did you mean "--help"?\n',
+  ],
+] satisfies [string[], string][])(
+  'jsonkit %j suggests the near option and points at the help and explain pages',
+  (args, sentence) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      const routed = args[0];
+      expect(invoke(main, args, { cwd })).toEqual({
+        status: 2,
+        stderr: `${sentence}Run "jsonkit ${routed} --help" to see the usage.\nRun "jsonkit ${routed} --explain" to explain this command.\n`,
         stdout: '',
       });
     });
@@ -310,7 +374,8 @@ test('jsonkit names the omitted path argument by its own spelling', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['get', '-f', 'doc.json'], { cwd })).toEqual({
       status: 2,
-      stderr: 'jsonkit: path: required\n',
+      stderr:
+        'jsonkit: Argument "path" requires a value. Supply a value for "path".\nRun "jsonkit get --help" to see the usage.\n',
       stdout: '',
     });
   });
@@ -321,7 +386,7 @@ test('jsonkit keeps the default text for a failure class it registers no view fo
     expect(invoke(main, ['get', 'name', '-f', 'doc.json', '--pretty'], { cwd })).toEqual({
       status: 2,
       stderr:
-        'jsonkit: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+        'jsonkit: Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --help" to see the usage.\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });
@@ -341,7 +406,8 @@ test.each(['cwd', 'stdin'])(
 test('jsonkit asks for a file or piped JSON when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
-    stderr: 'jsonkit: --file: Supply a file or pipe JSON to stdin.\n',
+    stderr:
+      'jsonkit: Option "--file": Supply a file or pipe JSON to stdin.\nRun "jsonkit get --help" to see the usage.\n',
     stdout: '',
   });
 });

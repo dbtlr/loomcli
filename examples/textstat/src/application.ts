@@ -7,6 +7,7 @@ import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
+import { suggestions } from '@loomcli/plugins/suggestions';
 import { table } from '@loomcli/plugins/table';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
@@ -37,6 +38,7 @@ export const textstat = new Application('textstat', {
   ],
   plugins: [
     help(),
+    suggestions(),
     version(),
     format(),
     manifest(),

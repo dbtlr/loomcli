@@ -4,6 +4,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 import Package from '../../package.json' with { type: 'json' };
 import { attachHelp } from './attach.js';
 import { helpArgument, helpCommand, helpInput } from './extension.js';
+import { helpHint } from './hint.js';
 import { helpPage } from './views.js';
 
 const options = {
@@ -13,8 +14,9 @@ const options = {
 export type HelpOptions = typeof options;
 
 /**
- * A plugin that renders the help page of the routed Command and ends the invocation, and whose hook
- * supplies each Command's help prose to the manifest's collecting extension. The annotated
+ * A plugin that renders the help page of the routed Command and ends the invocation, whose attach
+ * hook supplies each Command's help prose to the manifest's collecting extension, and whose failure
+ * hook points every usage error at the page. The annotated
  * return type is the boundary that breaks the cycle between this module and the middleware module
  * `load` names.
  */
@@ -23,6 +25,7 @@ export function help(): Plugin<HelpOptions> {
     extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
+    onFailure: helpHint,
     options,
     views: [helpPage],
   });

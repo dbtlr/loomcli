@@ -50,7 +50,7 @@ test('jsonkit get --format json is the unknown-option error, get declares no res
     expect(result).toEqual({
       status: 2,
       stderr:
-        'jsonkit: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --explain" to explain this command.\n',
+        'jsonkit: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --help" to see the usage.\nRun "jsonkit get --explain" to explain this command.\n',
       stdout: '',
     });
   });

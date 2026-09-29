@@ -325,7 +325,8 @@ test('an argument entry carries its schema and default, and an absent descriptio
 test('an unknown Command still fails in routing, and an earlier takeover wins', () => {
   expect(run('app', ['nope', '--manifest'])).toEqual({
     status: 2,
-    stderr: 'app: Unknown command "nope". Use one of: get, show, cache, weird, empty, pick.\n',
+    stderr:
+      'app: Unknown command "nope". Use one of: get, show, cache, weird, empty, pick.\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
   expect(run('app', ['--help', '--manifest']).stdout).toMatch(/^app · A fixture application\./u);

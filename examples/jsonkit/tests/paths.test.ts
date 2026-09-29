@@ -74,7 +74,8 @@ test('the hidden Command stays off the help page and out of the candidate list',
     expect(invoke(main, ['--help'], { cwd }).stdout).not.toContain('paths');
     expect(invoke(main, ['typo', '-f', 'doc.json'], { cwd })).toEqual({
       status: 2,
-      stderr: 'jsonkit: unknown command "typo"; try doctor, completion, get, keys, select.\n',
+      stderr:
+        'jsonkit: Unknown command "typo". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
       stdout: '',
     });
   });

@@ -122,7 +122,8 @@ test.each([
 test('textstat asks for files or piped text when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
-    stderr: 'textstat: Argument "files": Supply file arguments or pipe text to stdin.\n',
+    stderr:
+      'textstat: Argument "files": Supply file arguments or pipe text to stdin.\nRun "textstat --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -218,10 +219,36 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
   ]);
   expect(result).toEqual({
     status: 2,
-    stderr: 'textstat: Option "--metric": Expected one of: bytes, words, lines.\n',
+    stderr:
+      'textstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
     stdout: '',
   });
 });
+
+test('textstat --totl one.txt suggests the near option and points at the help and explain pages', () => {
+  const result = invoke(new URL('../dist/src/main.js', import.meta.url), ['--totl', 'one.txt']);
+  expect(result).toEqual({
+    status: 2,
+    stderr:
+      'textstat: Unknown option "--totl". Did you mean "--total"?\nRun "textstat --help" to see the usage.\nRun "textstat --explain" to explain this command.\n',
+    stdout: '',
+  });
+});
+
+// `--minimun` is near only the deprecated `--minimum`, and too far from `--min-bytes`.
+// `--timin` is near only the hidden `--timing`.
+// Neither a deprecated nor a hidden option is offered as the fix, so both keep core's text.
+test.each(['--minimun', '--timin'])(
+  'textstat %s one.txt finds no offered near option and keeps the default text',
+  (option) => {
+    const result = invoke(new URL('../dist/src/main.js', import.meta.url), [option, 'one.txt']);
+    expect(result).toEqual({
+      status: 2,
+      stderr: `textstat: Unknown option "${option}". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --help" to see the usage.\nRun "textstat --explain" to explain this command.\n`,
+      stdout: '',
+    });
+  },
+);
 
 test.each([
   ['0', 'COUNT  SOURCE\n    0  empty.txt\n    2  small.txt\n    5  large.txt\n    7  total\n'],

@@ -59,6 +59,10 @@
       "types": "./dist/src/records.d.ts",
       "import": "./dist/src/records.js"
     },
+    "./suggestions": {
+      "types": "./dist/src/suggestions/plugin.d.ts",
+      "import": "./dist/src/suggestions/plugin.js"
+    },
     "./table": {
       "types": "./dist/src/table.d.ts",
       "import": "./dist/src/table.js"
