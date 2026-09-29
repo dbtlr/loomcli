@@ -13,9 +13,9 @@ export type ManifestOptions = typeof options;
 /**
  * A plugin that prints the routed Command's manifest, the JSON slice of the graph an agent reads
  * before it invokes, and ends the invocation. It defines the collecting extension any supplier
- * gives prose and examples through, and it declares no view and claims no slot. The annotated
- * return type is the boundary that breaks the cycle between this module and the middleware module
- * `load` names.
+ * gives prose, examples, and failures through, and it declares no view and claims no slot. The
+ * annotated return type is the boundary that breaks the cycle between this module and the
+ * middleware module `load` names.
  */
 export function manifest(): Plugin<ManifestOptions> {
   return plugin(`${Package.name}/manifest`, {
