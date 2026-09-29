@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0051 - A Developer Diagnostic teaches the author what broke and how to fix it
 description: A declaration fault or a defect shows the author a Developer Diagnostic with a headline, a rule identity, the sentence, findings, an explanation, a correction, and a docs link. Rules are declared once as diagnosticRule descriptors namespaced by package, and DeclarationError takes the structured diagnostic publicly beside its sentence-only form. Findings rebuild the declaration from graph facts, a defect shows the author's source lines through an optional Host reader, and a thrown fault carries the diagnostic in its message. In a development build the diagnostic renders ahead of every view override.
-status: proposed
+status: accepted
 created: 2026-09-29
 modified: 2026-09-29
 ---
@@ -54,7 +54,7 @@ A declaration fault thrown before the Application exists shows its diagnostic wi
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that renders the Developer Diagnostic for defects and declaration faults under the rules above, gives every declaration rule in core, the pack, and the catalog a descriptor, and passes the acceptance in [Developer Diagnostics](../core.md#developer-diagnostics).
+Accepted 2026-09-29 with the implementation. Core renders the Developer Diagnostic for defects and declaration faults under the rules above, every declaration fault in core, `@loomcli/plugins`, and `@loomcli/validators` raises through a `diagnosticRule` descriptor with its explanation and, wherever a call declared it, findings, and the acceptance in [Developer Diagnostics](../core.md#developer-diagnostics) passes.
 
 ## Changelog
 
@@ -62,3 +62,4 @@ Proposed. It moves to accepted with the implementation that renders the Develope
 - 2026-09-29: The implementation renders the anatomy, declares rules through `diagnosticRule()`, gives `DeclarationError` and `InternalError` their structured constructors, carries each of core's defects under a rule of its own, reads a defect's source through `Host.readSource`, and renders the diagnostic ahead of every override in a development build. A throwing validator reports under `@loomcli/core/validator-failed`. Two facts the implementation settles: a declaration fault's sentence keeps the line breaks its author wrote, while a defect's sentence, which can carry a thrown reason, stays on one line; and a defect whose cause is not an Error prints the thrown value. The record stays proposed until every declaration rule in core, the pack, and the catalog carries its descriptor, findings, and explanation.
 - 2026-09-29: The Command and naming family carries its rules: names, aliases, nesting, children, actions, results, views, and the core facts each declaration holds. A fault about a child as a whole marks the call that attached it, and a Command value prints in a finding as `new Command('get')`. A root with nothing to run carries no finding, because no call declared the absence.
 - 2026-09-29: The input, validator, global, and binding family carries its rules: option names, types, short aliases, flags, polarity, spellings and keys within one scope and across the global options, the plugin options, and a Command's own, validators, defaults, presence rules, environment bindings, and the converter check of [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md). A fault about one key of an input's config marks that key, a fault about the input as a whole marks its name, and a fault between two inputs carries a finding for each; a plugin option's finding rebuilds its entry in the plugin's `options` record.
+- 2026-09-29: The plugin, extension, view, translator, and hook family carries its rules, with the Application's plugins, packet, rendering, and retired options, a plugin theme, a failure class's exit code, and `diagnosticRule()`'s own checks. A fault about one slot of a plugin's definition or of the Application's options rebuilds the call with that slot alone, and a repeat inside one list, such as a plugin installed twice or a second claim on a slot, carries a finding for each entry. The pack and the catalog declare their rules through the public `diagnosticRule()` under their package names, such as `@loomcli/plugins/failure-name-conflict` and `@loomcli/validators/bounds-order`: the identity grammar takes a package name, so a rule of a plugin the pack ships as a subpath takes the pack's name and not the plugin's identity. Accepted.
