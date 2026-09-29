@@ -11,6 +11,18 @@ const manifest = z
   .object({ version: z.string() })
   .parse(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')));
 
+/** The two failures jsonkit declares, as the manifest's extension stores them. */
+const invalidJson = {
+  exitCode: 65,
+  meaning: 'The document is not valid JSON.',
+  name: 'invalid-json',
+};
+const pathNotFound = {
+  exitCode: 65,
+  meaning: 'The path names no value in the document.',
+  name: 'path-not-found',
+};
+
 const command = [
   'jsonkit get',
   'Read one value at a path.',
@@ -101,6 +113,7 @@ test('the inspected graph carries the plugin option, the extension value, and th
       examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
     },
     '@loomcli/plugins/manifest/command': [
+      { failures: [invalidJson] },
       {
         details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
         examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
@@ -122,7 +135,10 @@ test('the inspected graph carries the plugin option, the extension value, and th
     },
     // The author's agent-only value comes first, then the value help supplied at its hook.
     '@loomcli/plugins/manifest/command': [
-      { details: 'Quote a path that holds a shell metacharacter.' },
+      {
+        details: 'Quote a path that holds a shell metacharacter.',
+        failures: [pathNotFound, invalidJson],
+      },
       {
         details: 'A path is a dot-separated walk from the root of the document.',
         examples: [

@@ -21,8 +21,21 @@ function graph() {
   return inspected.parse(JSON.parse(result.stdout));
 }
 
-test("help supplies the root help values to the manifest's collecting extension", () => {
+/** The two failures jsonkit declares, as the extension stores them. */
+const invalidJson = {
+  exitCode: 65,
+  meaning: 'The document is not valid JSON.',
+  name: 'invalid-json',
+};
+const pathNotFound = {
+  exitCode: 65,
+  meaning: 'The path names no value in the document.',
+  name: 'path-not-found',
+};
+
+test("help supplies the root help values to the manifest's collecting extension, after the author's failures", () => {
   expect(graph().root.extensions[identity]).toEqual([
+    { failures: [invalidJson] },
     {
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
       examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
@@ -33,7 +46,10 @@ test("help supplies the root help values to the manifest's collecting extension"
 test('the author value on get is collected ahead of the value help supplies', () => {
   const get = graph().root.children.find((child) => child.name === 'get');
   expect(get?.extensions[identity]).toEqual([
-    { details: 'Quote a path that holds a shell metacharacter.' },
+    {
+      details: 'Quote a path that holds a shell metacharacter.',
+      failures: [pathNotFound, invalidJson],
+    },
     {
       details: 'A path is a dot-separated walk from the root of the document.',
       examples: [

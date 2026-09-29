@@ -120,6 +120,7 @@ const getDocument = {
     deprecated: null,
     hasAction: true,
     result: null,
+    failures: [],
     arguments: [
       {
         name: 'path',
