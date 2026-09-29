@@ -3,7 +3,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
 import type { Finding } from './diagnostic-text.js';
-import { asSentence, DeclarationError, InputError, reasonOf } from './errors.js';
+import { asSentence, DeclarationError, InputError, quoted, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
 import { callSite, factFault, flagFault, partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
@@ -178,7 +178,9 @@ export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
  * An argument declares and reads under one name, so the two namings differ for options alone.
  */
 export function declarationSubject(input: InputDeclaration): string {
-  return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
+  return input.kind === 'argument'
+    ? `Argument ${quoted(input.name)}`
+    : `Option ${quoted(input.name)}`;
 }
 
 /** Where the call that declared one input sits: the call's name and the Command it is on. */

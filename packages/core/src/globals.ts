@@ -195,7 +195,7 @@ function emptyGlobals(): GlobalsState<{}> {
 /** Where one global option was declared: its `globalOption()` call on the Application. */
 function globalSite(input: OptionInput): InputSite {
   // A global option belongs to the application, not to one Command, so its facts read that way.
-  return callSite(`Global option "${input.name}"`, {
+  return callSite(`Global option ${quoted(input.name)}`, {
     arguments: [input.name, input.config],
     call: 'globalOption',
     path: [],
@@ -247,7 +247,7 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
     declared: input.config.extensions,
     descriptors,
     site: { ...site, at: '1.extensions' },
-    subject: { phrase: `on the global option "${input.name}"`, sentence },
+    subject: { phrase: `on the global option ${quoted(input.name)}`, sentence },
     target: 'option',
   });
   return {
@@ -277,7 +277,7 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
   });
   const variables = claimVariables([
     ...boundOptions(inputs, (input) => ({
-      phrase: `global option "${input.name}"`,
+      phrase: `global option ${quoted(input.name)}`,
       site: globalSite(input),
     })),
     ...plugins.flatMap((installed) => {

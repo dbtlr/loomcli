@@ -40,6 +40,7 @@ const scenarios = {
   'alias-bare': () => new Command('get').alias(bare),
   'application-bare': () => new Application(bare),
   'argument-after-action': () => new Command('get').action(act).argument(forged, {}),
+  'argument-bare': () => new Command('get').argument(bare, {}),
   'command-bare': () => new Command(bare),
   'default-view': () =>
     new Command('store').command(
@@ -63,6 +64,7 @@ const scenarios = {
     new Command('get', {
       extensions: [extension(forged, { schema: accepting, target: 'option' })('x')],
     }),
+  'global-option-bare': () => new Application('probe').globalOption(bare, { type: 'string' }),
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
   'plugin-definition': () => plugin(forged, 5),
