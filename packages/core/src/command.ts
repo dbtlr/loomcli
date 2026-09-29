@@ -52,7 +52,7 @@ import {
   validateLayer,
 } from './extension.js';
 import type {
-  AnyExtension,
+  AdmittedDescriptor,
   DescriptorRegistry,
   ExtensionRecords,
   ExtensionStore,
@@ -439,7 +439,7 @@ export interface CommandState<Args, Options, Globals> {
    * Every descriptor this declaration's extension values name, by identity. The root's holds the
    * whole Application's: its plugins', its global options', and every attached subtree's.
    */
-  descriptors: ReadonlyMap<string, AnyExtension>;
+  descriptors: ReadonlyMap<string, AdmittedDescriptor>;
   /** The extension values of every layer, validated at the call that carried each one. */
   extensions: ExtensionStore;
   facts: CommandFacts;
@@ -467,7 +467,7 @@ export function layerOf(name: string | null): ExtensionSubject {
  * declaration values arrive checked, because the constructor that read them threw for any fault.
  */
 export function freshState<Globals>(declaration: {
-  descriptors: ReadonlyMap<string, AnyExtension>;
+  descriptors: ReadonlyMap<string, AdmittedDescriptor>;
   extensions: ExtensionStore;
   facts: CommandFacts;
   name: string | null;
@@ -1536,7 +1536,7 @@ interface AttachState {
    * the registry of the value the last hook returned, so a descriptor a hook added only to a value
    * it discarded, or in a call that threw, never reaches the build.
    */
-  registry: ReadonlyMap<string, AnyExtension>;
+  registry: ReadonlyMap<string, AdmittedDescriptor>;
   hasAction: boolean;
   identity: string;
   /** The token one Command's own build mints, which every value derived within it carries. */

@@ -7,7 +7,7 @@ import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
-import type { AnyExtension, DescriptorRegistry } from './extension.js';
+import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import {
   checkDeprecated,
   checkDescription,
@@ -834,7 +834,7 @@ interface BuiltPlugin {
   /** The Commands the plugin attaches to the root, in list order. */
   commands: readonly AttachedChild[];
   /** Every descriptor the plugin defines or its options' values name, by identity. */
-  descriptors: ReadonlyMap<string, AnyExtension>;
+  descriptors: ReadonlyMap<string, AdmittedDescriptor>;
   /** The extension record each of the plugin's own options carries. */
   records: InputRecords;
 }

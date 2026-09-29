@@ -183,18 +183,19 @@ function readExtension<
   node: NodeFor<Target>,
   descriptor: Extension<Target, Schema, Collect>,
 ): ExtensionRead<Schema, Collect> {
+  const { identity } = descriptor;
   const record: Readonly<Record<string, unknown>> = node.extensions;
-  const owner = owners.get(record)?.get(descriptor.identity);
+  const owner = owners.get(record)?.get(identity);
   if (owner !== undefined && owner !== descriptor) {
     // A read happens inside a plugin's own code, so no declaration call stands for it.
     throw new DeclarationError(twoPackageCopies, {
       correction: copiesCorrection,
-      sentence: `Extension ${quoted(descriptor.identity)} was read through a descriptor that did not define the stored value.`,
+      sentence: `Extension ${quoted(identity)} was read through a descriptor that did not define the stored value.`,
     });
   }
   // A collecting extension a declaration carries no value of reads as an empty list.
   const absent = descriptor.collect ? noValues : undefined;
-  const stored: unknown = owner === undefined ? absent : record[descriptor.identity];
+  const stored: unknown = owner === undefined ? absent : record[identity];
   // Last resort: no typed path exists.
   // The graph stores every output under a string identity, so the record reads back as `unknown`.
   // No key relates one entry to a descriptor's schema or to its runtime `collect` flag.
@@ -358,8 +359,14 @@ interface ExtensionSubject {
   sentence: string;
 }
 
+/**
+ * A descriptor admission accepted: its shape and a Boolean `collect` flag. Its identity is the key
+ * a registry holds it under, so nothing reads it from the descriptor again.
+ */
+type AdmittedDescriptor = DescriptorShape & { readonly collect: boolean };
+
 /** Every descriptor one build has met, so a second descriptor under one identity is visible. */
-type DescriptorRegistry = Map<string, AnyExtension>;
+type DescriptorRegistry = Map<string, AdmittedDescriptor>;
 
 /**
  * The record each declaration published during one build, keyed by the declaration itself. The
@@ -382,11 +389,8 @@ function isDescriptor(value: unknown): value is DescriptorShape {
   );
 }
 
-/**
- * Whether a descriptor carries the `collect` flag every descriptor publishes, as a Boolean. Its
- * caller has already read and checked the identity once, so the guard reads `collect` alone.
- */
-function hasCollectFlag(descriptor: DescriptorShape): descriptor is AnyExtension {
+/** Whether a descriptor carries the `collect` flag every descriptor publishes, as a Boolean. */
+function hasCollectFlag(descriptor: DescriptorShape): descriptor is AdmittedDescriptor {
   return 'collect' in descriptor && typeof descriptor.collect === 'boolean';
 }
 
@@ -419,10 +423,10 @@ interface Admission {
  * and the registry with another. It reads the registry and changes nothing.
  */
 function admitDescriptor(
-  descriptors: ReadonlyMap<string, AnyExtension>,
+  descriptors: ReadonlyMap<string, AdmittedDescriptor>,
   descriptor: DescriptorShape,
   { holder, place, ...admission }: Admission,
-): { descriptor: AnyExtension; identity: string } {
+): { descriptor: AdmittedDescriptor; identity: string } {
   const identity: unknown = admission.identity ?? descriptor.identity;
   if (!isIdentity(identity)) {
     const subject =
@@ -748,6 +752,7 @@ function storeCommandLayers(
 }
 
 export type {
+  AdmittedDescriptor,
   AnyExtension,
   DeepReadonly,
   DescriptorRegistry,
