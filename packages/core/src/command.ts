@@ -7,6 +7,7 @@ import {
   InternalError,
   NonCallableCommandError,
   ResultError,
+  toFailure,
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
@@ -2306,6 +2307,7 @@ export async function prepareDispatch(
     });
     return { ...ready, globals, kind: 'ready', result };
   } catch (error) {
-    return held(error);
+    // The fault is held as a failure, so a throw from reading a validator's output is never offered.
+    return held(toFailure(error));
   }
 }

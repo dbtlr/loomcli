@@ -32,7 +32,7 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
  * bidirectional control in a token cannot reorder or break the line. The failure's public field
  * keeps the raw value.
  */
-function quoted(text: string): string {
+export function quoted(text: string): string {
   return `"${escapeControlCharacters(text)}"`;
 }
 

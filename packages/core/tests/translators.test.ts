@@ -67,21 +67,31 @@ test.each([
 
 test.each([
   ['cancelled', [], 130],
+  ['cancelled-name', [], 130],
+  ['closing-proxy', [], 1],
+  ['cycle', [], 1],
   ['fatal', [], 1],
   ['hook', [], 1],
   ['loader', [], 1],
+  ['long-chain', [], 1],
   ['null-prototype', [], 1],
   ['render', [], 1],
   ['answers', [], 1],
   ['string', [], 1],
   ['validator', ['--level', 'high'], 1],
+  ['validator-output', ['--doc', '{nope'], 1],
   ['view', [], 1],
 ])('a throw from %s never reaches a translator', (scenario, argv, status) => {
   const result = run(scenario, argv);
   expect(result.status).toBe(status);
   expect(result.stdout).not.toContain('catch-all');
+  expect(result.stderr).not.toContain('The translator');
   expect(result.stdout).toMatch(new RegExp(`resolved:${String(status)}\\n$`, 'u'));
   expect(result.stderr).not.toContain('Unavailable');
+});
+
+test('a cancelled run whose throw has an unreadable name still reports that throw', () => {
+  expect(run('cancelled-name').stderr).not.toContain('The name getter failed.');
 });
 
 test('a middleware throw during unwinding stays the unwinding internal error', () => {
@@ -100,6 +110,15 @@ test.each([
   expect(run(scenario)).toEqual({
     status: 1,
     stderr: `Internal error: The translator the Application registered for "SyntaxError" ${clause}\n`,
+    stdout: 'resolved:1\n',
+  });
+});
+
+test('the key name and reason of a broken translator are escaped onto one line', () => {
+  expect(run('broken-escaped')).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: The translator the Application registered for "Escaped\\u202eError" threw: The translator failed\\u000d\\u000aforged\\u202eline.\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -155,7 +174,15 @@ test.each([
     'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
   ],
   [
+    'fault-application-hole',
+    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
+  ],
+  [
     'fault-plugin',
+    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
+  ],
+  [
+    'fault-plugin-hole',
     'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
   ],
   [
@@ -168,6 +195,10 @@ test.each([
     stderr: '',
     stdout: `thrown:DeclarationError: ${message}\n`,
   });
+});
+
+test('translate() accepts a class whose name cannot be read', () => {
+  expect(run('key-name')).toEqual({ status: 0, stderr: '', stdout: 'constructed\n' });
 });
 
 test('the failure classes an author constructs accept the platform ErrorOptions', () => {

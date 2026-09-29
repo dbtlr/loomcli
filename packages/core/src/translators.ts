@@ -1,4 +1,13 @@
-import { asSentence, DeclarationError, InternalError, LoomError, reasonOf } from './errors.js';
+import { escapeControlCharacters } from './controls.js';
+import {
+  asSentence,
+  DeclarationError,
+  InternalError,
+  LoomError,
+  quoted,
+  reasonOf,
+} from './errors.js';
+import { prototypeChain } from './prototypes.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 
 /** Phantom key. It brands a translation and holds no runtime value. */
@@ -58,10 +67,30 @@ function keyPrototype(key: unknown): object | undefined {
   return typeof prototype === 'object' && prototype !== null ? prototype : undefined;
 }
 
-/** How a diagnostic names one key class: its quoted name, or what it is when it has none. */
+/**
+ * How a diagnostic names one key class: its name, quoted and escaped, or what it is when it has no
+ * name that can be read.
+ */
 function keyName(key: object): string {
-  const name: unknown = 'name' in key ? key.name : undefined;
-  return typeof name === 'string' && name !== '' ? `"${name}"` : 'an anonymous class';
+  let name: unknown = undefined;
+  try {
+    name = 'name' in key ? key.name : undefined;
+  } catch {
+    name = undefined;
+  }
+  return typeof name === 'string' && name !== '' ? quoted(name) : 'an anonymous class';
+}
+
+/**
+ * Whether a key claims a thrown value as its instance. A value whose chain cannot be read is not
+ * claimed, so its translator is never called and is not blamed for the failed read.
+ */
+function claims<Thrown extends object>(thrown: object, key: ErrorClass<Thrown>): thrown is Thrown {
+  try {
+    return thrown instanceof key;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -86,7 +115,7 @@ function translate<Thrown extends object>(
   }
   return new TranslationDeclaration({
     name: keyName(key),
-    offer: (thrown) => (thrown instanceof key ? translator(thrown) : undefined),
+    offer: (thrown) => (claims(thrown, key) ? translator(thrown) : undefined),
     prototype,
   });
 }
@@ -132,7 +161,8 @@ function translationRecords(sentence: string, declared: unknown): TranslationRec
     throw new DeclarationError(fault);
   }
   const list: readonly unknown[] = declared ?? [];
-  return list.map((entry) => {
+  // Array.from visits a hole as undefined, where map would skip it and leave the hole in place.
+  return Array.from(list, (entry) => {
     const record = typeof entry === 'object' && entry !== null ? records.get(entry) : undefined;
     if (!record) {
       throw new DeclarationError(fault);
@@ -143,25 +173,13 @@ function translationRecords(sentence: string, declared: unknown): TranslationRec
 
 /**
  * Every prototype in one thrown value's chain, most derived first, or `undefined` when the value is
- * never offered: a primitive, a value whose chain holds a failure class, and a value whose chain
- * cannot be read, such as a proxy whose trap throws. A value with a `null` prototype has an empty
- * chain, which no key matches.
+ * never offered: a value whose chain holds a failure class, and a value whose chain cannot be read,
+ * such as a proxy whose trap throws, or whose chain repeats a link or never ends. A value with a
+ * `null` prototype has an empty chain, which no key matches.
  */
 function offeredChain(thrown: object): object[] | undefined {
-  const chain: object[] = [];
-  try {
-    let prototype: object | null = Reflect.getPrototypeOf(thrown);
-    while (prototype !== null) {
-      if (prototype === LoomError.prototype) {
-        return undefined;
-      }
-      chain.push(prototype);
-      prototype = Reflect.getPrototypeOf(prototype);
-    }
-  } catch {
-    return undefined;
-  }
-  return chain;
+  const chain = prototypeChain(thrown);
+  return chain?.includes(LoomError.prototype) ? undefined : chain;
 }
 
 /** How a broken translator's diagnostic names a value that is not a failure. */
@@ -185,6 +203,15 @@ function isFailure(value: unknown): value is LoomError {
   }
 }
 
+/**
+ * The defect of a translator that threw. The reason is raw text the translator threw, so it is
+ * escaped onto one line.
+ */
+function threwDefect(who: string, error: unknown): InternalError {
+  const reason = escapeControlCharacters(reasonOf(error));
+  return new InternalError(`${who} threw: ${asSentence(reason)}`, error);
+}
+
 /** The one translator call, whose throw or non-failure answer is the defect of that translator. */
 function consult(
   contributor: TranslationContributor,
@@ -196,7 +223,7 @@ function consult(
   try {
     answer = record.offer(thrown);
   } catch (error) {
-    return new InternalError(`${who} threw: ${asSentence(reasonOf(error))}`, error);
+    return threwDefect(who, error);
   }
   if (answer === undefined || isFailure(answer)) {
     return answer;
@@ -222,7 +249,10 @@ function translateThrow(registry: TranslatorRegistry, thrown: unknown): LoomErro
   if ((typeof thrown !== 'object' && typeof thrown !== 'function') || thrown === null) {
     return undefined;
   }
-  const chain = offeredChain(thrown) ?? [];
+  // With no translation registered, the chain is never read.
+  const chain = registry.some((contributor) => contributor.byPrototype.size > 0)
+    ? (offeredChain(thrown) ?? [])
+    : [];
   for (const contributor of registry) {
     for (const prototype of chain) {
       for (const record of contributor.byPrototype.get(prototype) ?? []) {

@@ -104,6 +104,60 @@ const brokenTranslators = {
   'broken-unconstructed': () => Object.create(FatalError.prototype),
 };
 
+/** A thrown proxy whose prototype trap answers itself `repeats` times, and then `Object.prototype`. */
+function selfReferencing(repeats) {
+  let reads = 0;
+  const proxy = new Proxy(
+    {},
+    { getPrototypeOf: () => (++reads > repeats ? Object.prototype : proxy) },
+  );
+  return proxy;
+}
+
+/** A chain of `links` distinct proxies that ends at `Object.prototype`. */
+function longChain(links) {
+  let link = Object.prototype;
+  for (let index = 0; index < links; index += 1) {
+    const next = link;
+    link = new Proxy({}, { getPrototypeOf: () => next });
+  }
+  return link;
+}
+
+/** A thrown `SyntaxError` whose prototype trap throws on every read after its first. */
+function closingProxy() {
+  let reads = 0;
+  return new Proxy(new SyntaxError('Unexpected token.'), {
+    getPrototypeOf(target) {
+      reads += 1;
+      if (reads > 1) {
+        throw new Error('The trap closed.');
+      }
+      return Reflect.getPrototypeOf(target);
+    },
+  });
+}
+
+/** An Error whose `name` getter throws. */
+function unnamed() {
+  const error = new Error('Unnamed.');
+  Object.defineProperty(error, 'name', {
+    get() {
+      throw new Error('The name getter failed.');
+    },
+  });
+  return error;
+}
+
+/** A `SyntaxError` subclass whose class name holds a bidirectional control. */
+class EscapedError extends SyntaxError {
+  constructor(message) {
+    super(message);
+    this.name = 'EscapedError';
+  }
+}
+Object.defineProperty(EscapedError, 'name', { value: 'Escaped‮Error' });
+
 /** The throw each reach case raises, where it is raised, with the catch-all registered. */
 const unreached = {
   answers: () =>
@@ -120,6 +174,28 @@ const unreached = {
       ({ signal }) => {
         controller.abort();
         throw signal.reason;
+      },
+      { translators: [catchAll] },
+    ),
+  'cancelled-name': () =>
+    ending(
+      () => {
+        controller.abort();
+        throw unnamed();
+      },
+      { translators: [catchAll] },
+    ),
+  'closing-proxy': () =>
+    ending(
+      () => {
+        throw closingProxy();
+      },
+      { translators: [catchAll] },
+    ),
+  cycle: () =>
+    ending(
+      () => {
+        throw selfReferencing(3);
       },
       { translators: [catchAll] },
     ),
@@ -158,6 +234,13 @@ const unreached = {
       ],
       translators: [catchAll],
     }),
+  'long-chain': () =>
+    ending(
+      () => {
+        throw longChain(2000);
+      },
+      { translators: [catchAll] },
+    ),
   'null-prototype': () =>
     ending(
       () => {
@@ -202,6 +285,26 @@ const unreached = {
             validate: () => {
               throw new Error('The validator failed.');
             },
+            vendor: 'fixture',
+            version: 1,
+          },
+        },
+      })
+      .action(dispatch),
+  'validator-output': () =>
+    new Application('translators', { translators: [catchAll] })
+      .option('doc', {
+        type: 'string',
+        validate: {
+          '~standard': {
+            // The value's getter throws when core snapshots the request, after the validator returned.
+            validate: (raw) => ({
+              value: {
+                get parsed() {
+                  return JSON.parse(raw);
+                },
+              },
+            }),
             vendor: 'fixture',
             version: 1,
           },
@@ -342,6 +445,20 @@ function build() {
         translators: [passing(SyntaxError, 'application')],
       });
     }
+    case 'broken-escaped': {
+      return ending(
+        () => {
+          throw new EscapedError('Unexpected token.');
+        },
+        {
+          translators: [
+            translate(EscapedError, () => {
+              throw new Error('The translator failed\r\nforged\u202eline');
+            }),
+          ],
+        },
+      );
+    }
     case 'broken-plugin': {
       return ending(foreign, {
         plugins: [
@@ -383,9 +500,31 @@ function build() {
   }
 }
 
+/** A `translators` list that holds `before`, then a hole, then `after`. */
+function holey(before, after) {
+  const list = [...before];
+  list.length += 1;
+  list.push(...after);
+  return list;
+}
+
+/** A class whose static `name` getter throws. */
+class NamelessKeyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'NamelessKeyError';
+  }
+}
+Object.defineProperty(NamelessKeyError, 'name', {
+  get() {
+    throw new Error('The name getter failed.');
+  },
+});
+
 /** Each declaration fault, which a case constructs outside a run. */
 const faults = {
   'fault-application': () => new Application('translators', { translators: ['text'] }),
+  'fault-application-hole': () => new Application('translators', { translators: holey([], []) }),
   'fault-application-list': () => new Application('translators', { translators: 'text' }),
   'fault-key': () =>
     translate(
@@ -393,8 +532,10 @@ const faults = {
       () => undefined,
     ),
   'fault-plugin': () => plugin('@acme/http', { translators: ['text'] }),
+  'fault-plugin-hole': () => plugin('@acme/http', { translators: holey([catchAll], [catchAll]) }),
   'fault-plugin-list': () => plugin('@acme/http', { translators: 'text' }),
   'fault-translator': () => translate(SyntaxError, 'text'),
+  'key-name': () => translate(NamelessKeyError, () => undefined),
 };
 
 if (scenario in faults) {

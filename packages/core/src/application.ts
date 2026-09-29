@@ -158,6 +158,23 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
   return signal;
 }
 
+/**
+ * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it. A
+ * value that cannot be read, such as an Error whose `name` getter throws, counts as an echo, so
+ * it keeps its cancellation code and stays the value the run reports.
+ */
+function echoesCancellation(thrown: unknown, controller: AbortController): boolean {
+  const { signal } = controller;
+  if (!signal.aborted) {
+    return false;
+  }
+  try {
+    return isCancellationEcho(thrown, signal.reason);
+  } catch {
+    return true;
+  }
+}
+
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
   views?: readonly ViewOverride[];
@@ -489,11 +506,7 @@ class ApplicationBuilder<
          * cancellation echo are never offered, because each already names what it is.
          */
         const offer = (thrown: unknown): LoomError | undefined => {
-          const { signal } = controller;
-          if (
-            invocationOutput.raisedByView(thrown) ||
-            (signal.aborted && isCancellationEcho(thrown, signal.reason))
-          ) {
+          if (invocationOutput.raisedByView(thrown) || echoesCancellation(thrown, controller)) {
             return undefined;
           }
           const failure = translateThrow(this.#config.translators, thrown);
