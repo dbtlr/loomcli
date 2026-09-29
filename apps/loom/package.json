@@ -2,6 +2,12 @@
   "name": "@loomcli/loom",
   "private": true,
   "type": "module",
+  "exports": {
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "import": "./dist/build.js"
+    }
+  },
   "dependencies": {
     "@loomcli/core": "workspace:*",
     "mdast-util-from-markdown": "^2.0.3",
