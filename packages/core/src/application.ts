@@ -52,6 +52,8 @@ import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
+import { readTranslations, translateThrow } from './translators.js';
+import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
   Action,
   ArgumentConfig,
@@ -159,6 +161,7 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
   views?: readonly ViewOverride[];
+  translators?: readonly Translation[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
@@ -179,6 +182,8 @@ interface ApplicationConfig {
   owners: ReadonlyMap<CommandNodeHandle, string | null>;
   plugins: readonly BuiltPlugin[];
   rendering: RenderingPolicy;
+  /** The application's translations, then each installed plugin's, in resolution order. */
+  translators: TranslatorRegistry;
   /** The application's own view overrides. */
   views: ViewContributions;
 }
@@ -448,6 +453,8 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
     let primary: unknown = noPrimary;
+    // The foreign throw a translator replaced, which the primary outcome then stands for.
+    let replaced: unknown = noPrimary;
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
@@ -477,6 +484,24 @@ class ApplicationBuilder<
         const host = captureHost(overrides, stderr);
         const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
+        /**
+         * Offers one throw from the application's work to the translators. A view's failure and a
+         * cancellation echo are never offered, because each already names what it is.
+         */
+        const offer = (thrown: unknown): LoomError | undefined => {
+          const { signal } = controller;
+          if (
+            invocationOutput.raisedByView(thrown) ||
+            (signal.aborted && isCancellationEcho(thrown, signal.reason))
+          ) {
+            return undefined;
+          }
+          const failure = translateThrow(this.#config.translators, thrown);
+          if (failure !== undefined) {
+            replaced = thrown;
+          }
+          return failure;
+        };
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         signals = bracketRun(controller, checkSignal(options?.signal));
@@ -516,6 +541,7 @@ class ApplicationBuilder<
             graph,
             host,
             inspected,
+            offer,
             out: output.out,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
@@ -558,10 +584,11 @@ class ApplicationBuilder<
       /**
        * A sequence that stopped on its own source reports the same way: the call the action never
        * awaited observed nothing, and a failure the action let propagate is the primary outcome
-       * already, so the one it raised is not reported twice.
+       * already, so the one it raised is not reported twice. A throw a translator replaced is
+       * carried by the failure it became, whether or not that failure keeps it as its cause.
        */
       for (const cause of output?.stopped ?? []) {
-        if (!carried(primary, cause)) {
+        if (!carried(primary, cause) && cause !== replaced) {
           faults.push(toFailure(cause));
         }
       }
@@ -679,9 +706,10 @@ function checkOptions(options: unknown): ApplicationFacts {
 
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
- * application's own view overrides, the rendering policy, the options slot and its facts, the
- * installed list and every rule between two plugins, the root's extension values, and then each
- * plugin's Commands, which attach to the root first, in installation order and list order.
+ * application's own view overrides, its translations, the rendering policy, the options slot and
+ * its facts, the installed list and every rule between two plugins, the root's extension values,
+ * and then each plugin's Commands, which attach to the root first, in installation order and list
+ * order.
  */
 function declareApplication(options: unknown): {
   config: ApplicationConfig;
@@ -695,6 +723,7 @@ function declareApplication(options: unknown): {
     slot?.views,
     identities,
   );
+  const translations = readTranslations('The Application', slot?.translators);
   const rendering = renderingPolicy(slot?.rendering);
   const facts = checkOptions(options);
   const installed = installPlugins(slot?.plugins ?? []);
@@ -730,7 +759,16 @@ function declareApplication(options: unknown): {
     });
   }
   return {
-    config: { composed: false, contributors, facts, owners, plugins, rendering, views },
+    config: {
+      composed: false,
+      contributors,
+      facts,
+      owners,
+      plugins,
+      rendering,
+      translators: [translations, ...plugins.map((entry) => entry.translators)],
+      views,
+    },
     globals: emptyGlobals(),
     root,
   };
