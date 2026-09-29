@@ -22,6 +22,7 @@ import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
 import type { Member } from './member.js';
+import { invalidJson } from './translators.js';
 import { fatalError } from './views.js';
 
 // The root action type-imports this value, so it is registered by the last call.
@@ -48,6 +49,7 @@ const configured = new Application('jsonkit', {
     doctor(),
     completion(),
   ],
+  translators: [invalidJson],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 }).globalOption('file', {
