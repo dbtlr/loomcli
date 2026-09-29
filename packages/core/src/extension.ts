@@ -1,14 +1,15 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { escapeControlCharacters } from './controls.js';
 import type { Finding } from './diagnostic-text.js';
-import { asSentence, DeclarationError, reasonOf } from './errors.js';
+import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import { partOf } from './facts.js';
 import type { FactSite } from './facts.js';
+import { flagNotBoolean } from './input-rules.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 import { isPlainObject } from './plain.js';
 import {
   asyncExtensionSchema,
-  extensionCollect,
   extensionOutput,
   extensionTarget as extensionTargetRule,
   extensionValueTwice,
@@ -180,7 +181,7 @@ function readExtension<
     // A read happens inside a plugin's own code, so no declaration call stands for it.
     throw new DeclarationError(twoPackageCopies, {
       correction: copiesCorrection,
-      sentence: `Extension "${descriptor.identity}" was read through a descriptor that did not define the stored value.`,
+      sentence: `Extension ${quoted(descriptor.identity)} was read through a descriptor that did not define the stored value.`,
     });
   }
   // A collecting extension a declaration carries no value of reads as an empty list.
@@ -405,11 +406,10 @@ function admitDescriptor(
   const known = descriptors.get(identity);
   if (known === undefined) {
     if (!hasCollectFlag(descriptor)) {
-      throw new DeclarationError(extensionCollect, {
-        correction:
-          'Supply true or false, or build the descriptor with extension(identity, config).',
-        findings: marking(place, `extension "${identity}"`),
-        sentence: `Extension "${identity}" declares collect that is not a Boolean.`,
+      throw new DeclarationError(flagNotBoolean, {
+        correction: 'Use true or false.',
+        findings: marking(place, `extension ${quoted(identity)}`),
+        sentence: `Extension ${quoted(identity)} declares collect that is not a Boolean.`,
       });
     }
     return descriptor;
@@ -417,8 +417,8 @@ function admitDescriptor(
   if (known !== descriptor) {
     throw new DeclarationError(twoPackageCopies, {
       correction: copiesCorrection,
-      findings: marking(place, `another "${identity}"`),
-      sentence: `Extension "${identity}" is defined twice.`,
+      findings: marking(place, `another ${quoted(identity)}`),
+      sentence: `Extension ${quoted(identity)} is defined twice.`,
     });
   }
   return known;
@@ -451,13 +451,13 @@ function isSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-/** The message one rejected value reports, with the placeholder a silent schema earns. */
+/** The message one rejected value reports, escaped, with the placeholder a silent schema earns. */
 function issueText(issues: unknown): string {
   const first: unknown = Array.isArray(issues) ? issues[0] : undefined;
   if (first !== null && typeof first === 'object' && 'message' in first) {
     const { message } = first;
     if (typeof message === 'string') {
-      return message;
+      return escapeControlCharacters(message);
     }
   }
   // The sentence the caller composes ends the diagnostic, so this text carries no full stop.
@@ -490,7 +490,7 @@ function schemaOf(subject: ExtensionSubject, { carried, place }: CarriedEntry): 
     throw new DeclarationError(extensionWithoutSchema, {
       correction: 'Supply a Standard Schema v1 object that answers synchronously.',
       findings: [place],
-      sentence: `${subject.sentence} holds extension "${descriptor.identity}", which declares no schema.`,
+      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which declares no schema.`,
     });
   }
   return schema;
@@ -515,7 +515,7 @@ function validated(
       {
         correction: correctValue,
         findings: [place],
-        sentence: `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${asSentence(reasonOf(error))}`,
+        sentence: `${subject.sentence} holds an invalid ${quoted(carried.descriptor.identity)} value: ${asSentence(reasonOf(error))}`,
       },
       { cause: error },
     );
@@ -531,7 +531,7 @@ function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown 
     throw new DeclarationError(asyncExtensionSchema, {
       correction: 'Supply a schema that answers synchronously.',
       findings: [place],
-      sentence: `Extension "${identity}" validates asynchronously.`,
+      sentence: `Extension ${quoted(identity)} validates asynchronously.`,
     });
   }
   const issues: unknown = 'issues' in result ? result.issues : undefined;
@@ -539,7 +539,7 @@ function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown 
     throw new DeclarationError(invalidExtensionValue, {
       correction: correctValue,
       findings: [place],
-      sentence: `${subject.sentence} holds an invalid "${identity}" value: ${asSentence(issueText(issues))}`,
+      sentence: `${subject.sentence} holds an invalid ${quoted(identity)} value: ${asSentence(issueText(issues))}`,
     });
   }
   const output = plainData('value' in result ? result.value : undefined);
@@ -547,7 +547,7 @@ function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown 
     throw new DeclarationError(extensionOutput, {
       correction: 'Return strings, numbers, booleans, null, arrays, and plain objects.',
       findings: [place],
-      sentence: `Extension "${identity}" produced a value that is not plain data ${subject.phrase}.`,
+      sentence: `Extension ${quoted(identity)} produced a value that is not plain data ${subject.phrase}.`,
     });
   }
   return output.data;
@@ -581,12 +581,12 @@ function carriedValue(slot: ExtensionSlot, entry: unknown, index: number): Carri
     });
   }
   const { descriptor } = carried;
-  const place = entryFinding(site, index, `extension "${descriptor.identity}"`);
+  const place = entryFinding(site, index, `extension ${quoted(descriptor.identity)}`);
   if (descriptor.target !== target) {
     throw new DeclarationError(extensionTargetRule, {
       correction: `Supply an extension that applies to ${applies[target]}.`,
       findings: [place],
-      sentence: `${subject.sentence} holds extension "${descriptor.identity}", which applies to ${applies[descriptor.target]}.`,
+      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which applies to ${applies[descriptor.target]}.`,
     });
   }
   return { carried, place };
@@ -631,7 +631,7 @@ function validateLayer(slot: ExtensionSlot): readonly ValidatedValue[] {
           entryFinding(site, first, 'the first value'),
           entryFinding(site, index, 'the second value'),
         ],
-        sentence: `${subject.sentence} holds extension "${descriptor.identity}" twice.`,
+        sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)} twice.`,
       });
     }
     seen.set(descriptor.identity, index);

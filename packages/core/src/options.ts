@@ -9,11 +9,10 @@ import {
   UnexpectedValueError,
   UnknownOptionError,
 } from './errors.js';
-import { factFault, siteFinding } from './facts.js';
+import { factFault, flagFault, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import {
   booleanOptionMultiple,
-  flagNotBoolean,
   optionDeclaredTwice,
   optionPolarity,
   optionType,
@@ -64,17 +63,8 @@ export function spellingMark(site: InputSite, role: SpellingRole): string {
   return `${site.at}.${role === 'short' ? 'short' : 'polarity'}`;
 }
 
-/** One yes-or-no declaration key that holds a value other than a Boolean, such as `required`. */
-export function flagFault(site: InputSite, subject: string, flag: string): DeclarationError {
-  return factFault(flagNotBoolean, site, {
-    correction: 'Use true or false.',
-    fact: flag,
-    sentence: `${subject} ${flag} must be Boolean.`,
-  });
-}
-
 /** The declared name answers the declared-name rule an argument's name answers. */
-function checkOptionName(name: unknown, site: InputSite): void {
+export function checkOptionName(name: unknown, site: InputSite): void {
   const findings = [siteFinding(site, site.named)];
   if (typeof name !== 'string') {
     throw new DeclarationError(declaredName, {
@@ -105,7 +95,7 @@ function checkShortForms(config: OptionConfig, site: InputSite, subject: string)
     });
   }
   if (config.shortOnly !== undefined && typeof config.shortOnly !== 'boolean') {
-    throw flagFault(site, subject, 'shortOnly');
+    throw flagFault(site, 'shortOnly');
   }
   if (config.shortOnly && config.short === undefined) {
     throw factFault(shortOnlyWithoutShort, site, {
@@ -164,7 +154,7 @@ function validateDeclaration({ name, config }: OptionDeclaration, site: InputSit
     });
   }
   if (config.multiple !== undefined && typeof config.multiple !== 'boolean') {
-    throw flagFault(site, subject, 'multiple');
+    throw flagFault(site, 'multiple');
   }
   checkPolarity(config, site, subject);
 }

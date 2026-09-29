@@ -65,7 +65,7 @@ const thrown = [
   ],
   [
     'plugins-not-array',
-    'The Application plugins must be an array. Supply a list of plugin values.',
+    'The Application declares plugins that are not an array. Supply a list of plugin values.',
   ],
   [
     'definition-not-object',

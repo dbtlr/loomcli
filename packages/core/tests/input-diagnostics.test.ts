@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { declaredRules } from './rule-parts.js';
 
 const fixture = new URL('fixtures/input-diagnostics.mjs', import.meta.url);
 
@@ -45,9 +46,9 @@ const explanations = {
     'list.',
   ],
   'flag-not-boolean': [
-    'shortOnly, multiple, required, variadic, and validateOmitted each answer one',
-    'yes-or-no question about a declaration, so each holds true or false. A value',
-    'such as the string "false" would read as true.',
+    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
+    "extension's collect each answer one yes-or-no question about a declaration, so",
+    'each holds true or false. A value such as the string "false" would read as true.',
   ],
   'global-option-after-command': [
     'A Command attached with command() and the root action read their types from the',
@@ -94,7 +95,8 @@ const explanations = {
   ],
   'plugin-option-collision': [
     "A plugin's options join the one table the pre-scan reads with the global",
-    'options, so every Command meets them. A name or a spelling that another option',
+    "options, so every Command meets them, and an input a plugin's onCommandAttach",
+    "hook declares joins the Command's own. A name or a spelling that another input",
     'in that scope also claims would reach only one of the two.',
   ],
   'polarity-on-string': [
@@ -324,7 +326,7 @@ const cases: Record<string, Expected> = {
     ],
     headline: 'FLAG NOT A BOOLEAN',
     rule: 'flag-not-boolean',
-    sentence: 'Option "field" multiple must be Boolean.',
+    sentence: 'Command "get" option "field" declares multiple that is not a Boolean.',
   },
   'negative-spelling': {
     correction: 'Change one declaration.',
@@ -543,7 +545,7 @@ const cases: Record<string, Expected> = {
     ],
     headline: 'FLAG NOT A BOOLEAN',
     rule: 'flag-not-boolean',
-    sentence: 'Option "limit" required must be Boolean.',
+    sentence: 'Command "get" option "limit" declares required that is not a Boolean.',
   },
   'short-alias': {
     correction: 'Supply one ASCII letter.',
@@ -578,7 +580,7 @@ const cases: Record<string, Expected> = {
     ],
     headline: 'FLAG NOT A BOOLEAN',
     rule: 'flag-not-boolean',
-    sentence: 'Option "file" shortOnly must be Boolean.',
+    sentence: 'Command "get" option "file" declares shortOnly that is not a Boolean.',
   },
   'short-only-without-short': {
     correction: 'Add short or remove shortOnly.',
@@ -610,7 +612,7 @@ const cases: Record<string, Expected> = {
     ],
     headline: 'FLAG NOT A BOOLEAN',
     rule: 'flag-not-boolean',
-    sentence: 'Option "file" validateOmitted must be Boolean.',
+    sentence: 'Command "get" option "file" declares validateOmitted that is not a Boolean.',
   },
   'variable-twice': {
     correction: 'Bind each variable to one option.',
@@ -641,7 +643,7 @@ const cases: Record<string, Expected> = {
     findings: [onCommand(['get'], "argument('paths', { variadic: 'yes' })", "variadic: 'yes'")],
     headline: 'FLAG NOT A BOOLEAN',
     rule: 'flag-not-boolean',
-    sentence: 'Argument "paths" variadic must be Boolean.',
+    sentence: 'Command "get" argument "paths" declares variadic that is not a Boolean.',
   },
 };
 
@@ -727,6 +729,73 @@ test('a distributed build reads a failing converter as no published schema', () 
   expect(thrown('converter-throws-distributed', 'inspect')).toBe('{"schema":null}\n');
 });
 
+/** The converter fault for option "limit" on `get`, whose converter failed as `failure` says. */
+function limitConverterFault(failure: string): Expected {
+  return {
+    correction:
+      'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
+    findings: [
+      onCommand(
+        ['probe', 'get'],
+        "option('limit', { type: 'string', validate: … })",
+        'validate: …',
+      ),
+    ],
+    headline: 'SCHEMA CONVERTER FAILED',
+    rule: 'schema-converter-failed',
+    sentence: `Option "limit" validator's JSON Schema converter ${failure}`,
+  };
+}
+
+test.each([
+  ['converter-getter', 'failed for target "draft-2020-12": getter boom.'],
+  ['converter-cyclic', 'failed for target "draft-2020-12": Maximum call stack size exceeded.'],
+])(
+  'a converter whose answer throws while core reads it is a declaration fault in a development build (%s)',
+  (scenario, failure) => {
+    expect(invoke(fixture, [scenario])).toEqual({
+      status: 1,
+      stderr: diagnostic(limitConverterFault(failure)),
+      stdout: '',
+    });
+  },
+);
+
+test.each(['converter-getter-distributed', 'converter-cyclic-distributed'])(
+  'a distributed build reads a converter whose answer throws while core reads it as no published schema (%s)',
+  (scenario) => {
+    expect(thrown(scenario, 'inspect')).toBe('{"schema":null}\n');
+    expect(invoke(fixture, [scenario])).toEqual({ status: 0, stderr: '', stdout: '' });
+  },
+);
+
+test("a converter fault keeps the converter's thrown value as its cause", () => {
+  expect(thrown('converter-throws', 'cause')).toBe(
+    `${JSON.stringify({ cause: 'No JSON Schema\nfor a transform.' })}\n`,
+  );
+});
+
+test('a validator that throws marks the validate key of the call that declared its input', () => {
+  const result = invoke(fixture, ['validator-throws']);
+  expect(result.status).toBe(1);
+  const finding = onCommand(
+    ['probe', 'get'],
+    "option('limit', { type: 'string', validate: … })",
+    'validate: …',
+  );
+  expect(result.stderr).toContain(`\n\n${finding.join('\n')}\n\n`);
+});
+
+test('a global option validator that throws marks the validate key of its globalOption() call', () => {
+  const result = invoke(fixture, ['global-validator-throws']);
+  expect(result.status).toBe(1);
+  const finding = marked(
+    "      .globalOption('limit', { type: 'string', validate: … })",
+    'validate: …',
+  );
+  expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
+});
+
 test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set([
     ...Object.values(cases).map((expected) => expected.rule),
@@ -736,6 +805,7 @@ test('every rule of the family has a pinned diagnostic', () => {
   expect([...pinned].toSorted()).toEqual(
     [...Object.keys(explanations), ...Object.keys(shared)].toSorted(),
   );
+  expect(declaredRules('input-rules.ts').toSorted()).toEqual(Object.keys(explanations).toSorted());
 });
 
 test('a JavaScript module whose option() declares multiple on a Boolean option prints its diagnostic as it loads', () => {

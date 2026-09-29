@@ -36,6 +36,37 @@ const throwing = converting(() => {
 
 const listing = converting(() => ['string']);
 
+/** A converter whose answer throws while core reads its keys. */
+const getterThrowing = converting(() => ({
+  get type() {
+    throw new Error('getter boom');
+  },
+}));
+
+/** A converter whose answer holds itself, which no snapshot can copy to its end. */
+const cyclic = converting(() => {
+  const schema = { type: 'string' };
+  schema.self = schema;
+  return schema;
+});
+
+/** A validator that throws on every value it receives. */
+const broken = {
+  '~standard': {
+    validate: () => {
+      throw new Error('Broken validator.');
+    },
+    vendor: 'probe',
+    version: 1,
+  },
+};
+
+/** An application in one build whose `get` Command declares one option validated by `validate`. */
+const validated = (build, validate) =>
+  new Application('probe', { packet: { build } }).command(
+    new Command('get').option('limit', { type: 'string', validate }).action(act),
+  );
+
 /** A plugin that declares the options given, and nothing else. */
 const optionsPlugin = (identity, options) => plugin(identity, { options });
 
@@ -142,6 +173,10 @@ const scenarios = {
 
 /** Applications whose fault waits for build, which run() reports in a development build. */
 const reported = {
+  'converter-cyclic': () => validated('development', cyclic),
+  'converter-cyclic-distributed': () => validated('distributed', cyclic),
+  'converter-getter': () => validated('development', getterThrowing),
+  'converter-getter-distributed': () => validated('distributed', getterThrowing),
   'converter-list': () =>
     new Application('probe', { packet: { build: 'development' } }).command(
       new Command('get').option('limit', { type: 'string', validate: listing }).action(act),
@@ -154,12 +189,26 @@ const reported = {
     new Application('probe', { packet: { build: 'distributed' } }).command(
       new Command('get').argument('path', { validate: throwing }).action(act),
     ),
+  'global-validator-throws': () =>
+    new Application('probe', { packet: { build: 'development' } })
+      .globalOption('limit', { type: 'string', validate: broken })
+      .command(leaf('get')),
   'invalid-default': () =>
     new Application('probe', { packet: { build: 'development' } }).command(
       new Command('get')
         .option('limit', { default: 'x', type: 'string', validate: digits })
         .action(act),
     ),
+  'validator-throws': () =>
+    new Application('probe', { packet: { build: 'development' } }).command(
+      new Command('get').option('limit', { type: 'string', validate: broken }).action(act),
+    ),
+};
+
+/** The tokens each reported scenario runs with, when it needs more than the Command's name. */
+const argvOf = {
+  'global-validator-throws': ['get', '--limit', '5'],
+  'validator-throws': ['get', '--limit', '5'],
 };
 
 const [scenario, mode] = process.argv.slice(2);
@@ -175,8 +224,14 @@ if (scenario in reported) {
     } catch (error) {
       process.stdout.write(`${error.message}\n`);
     }
+  } else if (mode === 'cause') {
+    try {
+      app.inspect();
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ cause: error.cause?.message ?? null })}\n`);
+    }
   } else {
-    process.exitCode = await app.run({ host: { argv: ['get'] } });
+    process.exitCode = await app.run({ host: { argv: argvOf[scenario] ?? ['get'] } });
   }
 } else {
   try {

@@ -14,7 +14,6 @@ import {
   nestingDepth,
   notACommand,
   optionalArgumentLast,
-  optionsObject,
   portableName,
   repeatedAlias,
   resultWithoutAction,
@@ -27,7 +26,6 @@ import {
   viewShape,
   viewsWithoutResult,
 } from './command-rules.js';
-import { escapeControlCharacters } from './controls.js';
 import { quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
@@ -37,6 +35,7 @@ import {
   commandSubject,
   DeclarationError,
   NonCallableCommandError,
+  quoted,
   ResultError,
   toFailure,
   UnexpectedArgumentError,
@@ -61,7 +60,6 @@ import type {
   ExtensionValue,
 } from './extension.js';
 import {
-  callSite,
   checkDeprecated,
   checkDescription,
   checkHidden,
@@ -77,9 +75,11 @@ import type {
   TableEntry,
 } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
+import { pluginOptionCollision } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
+  checkOptionName,
   compileOptions,
   copyValues,
   emptyValues,
@@ -91,7 +91,7 @@ import {
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingRole } from './options.js';
 import { isPlainObject } from './plain.js';
-import { brokenAttachHook, hookInputCollision } from './plugin-rules.js';
+import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
@@ -127,10 +127,17 @@ import type {
   ValidateOmittedConstraint,
   View,
 } from './types.js';
-import { captureConfig, checkDeclarations, validateValues } from './validation.js';
+import {
+  captureConfig,
+  checkDeclarations,
+  declaringSite,
+  inputPlace,
+  validateValues,
+} from './validation.js';
 import type {
   ArgumentInput,
   DefaultValues,
+  InputPlace,
   InputPlaces,
   InputDeclaration,
   OptionInput,
@@ -335,10 +342,10 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
 /** A named Command's options slot holds a plain options object, and never retired globals wiring. */
 function checkCommandOptions(name: string, options: unknown): void {
   if (options !== undefined && !isPlainObject(options)) {
-    throw new DeclarationError(optionsObject, {
+    throw new DeclarationError(notAnObject, {
       correction: 'Supply a Command options object.',
       findings: [constructorFinding(name, options, '1')],
-      sentence: `${commandSentence(name)} options must be an object.`,
+      sentence: `${commandSentence(name)} declares options that are not an object.`,
     });
   }
   if (isPlainObject(options) && 'globals' in options) {
@@ -369,11 +376,6 @@ export function isPortableName(name: unknown): name is string {
 export const portableNameCorrection =
   'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
 
-/** A name a sentence quotes, escaped, because a name that breaks the rule can hold any character. */
-export function quotedName(name: unknown): string {
-  return `"${escapeControlCharacters(String(name))}"`;
-}
-
 /** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
 function checkAliasNames(command: string | null, names: readonly unknown[]): void {
   for (const [index, alias] of names.entries()) {
@@ -381,7 +383,7 @@ function checkAliasNames(command: string | null, names: readonly unknown[]): voi
       throw new DeclarationError(portableName, {
         correction: portableNameCorrection,
         findings: [{ arguments: names, call: 'alias', mark: String(index), path: pathOf(command) }],
-        sentence: `${commandSentence(command)} declares an alias named ${quotedName(alias)}.`,
+        sentence: `${commandSentence(command)} declares an alias named ${quoted(alias)}.`,
       });
     }
   }
@@ -497,7 +499,7 @@ function namedState<Globals>(
     throw new DeclarationError(portableName, {
       correction: portableNameCorrection,
       findings: [constructorFinding(name, options, '0')],
-      sentence: `Command name ${quotedName(name)} is invalid.`,
+      sentence: `Command name ${quoted(name)} is invalid.`,
     });
   }
   checkCommandOptions(name, options);
@@ -557,23 +559,23 @@ function checkOpen(
 /** The remedy a late argument or option earns. */
 const inputRemedy = 'Declare arguments and options before action().';
 
-/** The finding for the `argument()` or `option()` call that declared one input, marking its name. */
-function inputFinding(path: readonly string[], input: InputDeclaration, note?: string): Finding {
-  const call = { arguments: [input.name, input.config], call: input.kind, mark: '0', path };
-  return note === undefined ? call : { ...call, note };
-}
-
 /** Where one input was declared: the call on the Command at `path` that declared it. */
 function inputSite(
   name: string | null,
   path: readonly string[],
   input: InputDeclaration,
 ): InputSite {
-  return callSite(`${commandSentence(name)} ${input.kind} "${input.name}"`, {
-    arguments: [input.name, input.config],
-    call: input.kind,
-    path,
-  });
+  return declaringSite(
+    input,
+    inputPlace(input, { global: false, path }),
+    `${commandSentence(name)} ${input.kind} ${quoted(input.name)}`,
+  );
+}
+
+/** The finding for the `argument()` or `option()` call that declared one input, marking its name. */
+function inputFinding(path: readonly string[], input: InputDeclaration, note?: string): Finding {
+  const site = declaringSite(input, inputPlace(input, { global: false, path }));
+  return siteFinding(site, site.named, note);
 }
 
 /** The scope one Command's own options compile under: its subject, and each option's call. */
@@ -670,7 +672,7 @@ function checkArgumentName(
     throw new DeclarationError(declaredName, {
       correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
       findings: [inputFinding(path, input)],
-      sentence: `${commandSentence(command.name)} declares an argument named ${quotedName(input.name)}.`,
+      sentence: `${commandSentence(command.name)} declares an argument named ${quoted(input.name)}.`,
     });
   }
   const first = declared.find((entry) => entry.name === input.name);
@@ -697,10 +699,14 @@ export function declareArgument<
   state: CommandState<Args, Options, Globals>,
   input: ArgumentInput<Name, Config>,
 ): CommandState<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
+  // The call's own input is judged before the receiver's state, as alias() judges its names.
+  // A name of another kind then reports as a declared name instead of failing to print in the order diagnostic.
+  const { name } = state;
+  checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], input);
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'argument',
-    clause: `declares argument "${input.name}"`,
+    clause: `declares argument ${quoted(input.name)}`,
     remedy: inputRemedy,
   });
   checkArgument(state, input);
@@ -736,13 +742,15 @@ export function declareOption<
   input: OptionInput<Name, Config>,
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
+  const site = inputSite(state.name, pathOf(state.name), input);
+  // The call's own input is judged before the receiver's state, as alias() judges its names.
+  checkOptionName(input.name, site);
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'option',
-    clause: `declares option "${input.name}"`,
+    clause: `declares option ${quoted(input.name)}`,
     remedy: inputRemedy,
   });
-  const site = inputSite(state.name, pathOf(state.name), input);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -1371,7 +1379,7 @@ function resultView(kind: 'value' | 'rows', site: EntrySite, entry: unknown): Re
     throw new DeclarationError(viewShape, {
       correction: 'Supply one of the two.',
       findings,
-      sentence: `${sentence} names view "${key}" with render and row.`,
+      sentence: `${sentence} names view ${quoted(key)} with render and row.`,
     });
   }
   if (row) {
@@ -1379,7 +1387,7 @@ function resultView(kind: 'value' | 'rows', site: EntrySite, entry: unknown): Re
       throw new DeclarationError(rowViewOnValue, {
         correction: 'Supply a view with render, or declare the result with rows().',
         findings,
-        sentence: `${sentence} names row view "${key}" on a value result.`,
+        sentence: `${sentence} names row view ${quoted(key)} on a value result.`,
       });
     }
     return entry;
@@ -1390,7 +1398,7 @@ function resultView(kind: 'value' | 'rows', site: EntrySite, entry: unknown): Re
   throw new DeclarationError(viewShape, {
     correction: 'Supply a view with render or a row view with row.',
     findings,
-    sentence: `${sentence} names view "${key}" with a value that is not a view.`,
+    sentence: `${sentence} names view ${quoted(key)} with a value that is not a view.`,
   });
 }
 
@@ -1452,7 +1460,7 @@ function mergeResult(
           correction:
             'Use a nonempty name without whitespace, a leading hyphen, or "=", and not a number.',
           findings: [resultFinding(path, call, { at: entryMark(call, key) })],
-          sentence: `${sentence} names view ${quotedName(key)}.`,
+          sentence: `${sentence} names view ${quoted(key)}.`,
         });
       }
       views.set(key, view);
@@ -1499,7 +1507,7 @@ function buildResult(
     throw new DeclarationError(unknownDefaultView, {
       correction: 'Name the view or select a named one.',
       findings: [resultFinding(path, selected.call, { at: '1.default' })],
-      sentence: `${sentence} selects default view "${selected.key}", which it does not name.`,
+      sentence: `${sentence} selects default view ${quoted(selected.key)}, which it does not name.`,
     });
   }
   return { default: selected?.key ?? first.value, kind: merged.kind, views };
@@ -1680,7 +1688,7 @@ function callHook(
         correction:
           'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
         findings: [hookFinding(named.identity, hook)],
-        sentence: `Plugin "${named.identity}" failed in onCommandAttach for ${named.subject}: ${asSentence(reasonOf(error))}`,
+        sentence: `Plugin ${quoted(named.identity)} failed in onCommandAttach for ${named.subject}: ${asSentence(reasonOf(error))}`,
       },
       { cause: error },
     );
@@ -1702,7 +1710,7 @@ function attachOnce(
     throw new DeclarationError(brokenAttachHook, {
       correction: 'Return the value it received or a value derived from it.',
       findings: [hookFinding(named.identity, hook)],
-      sentence: `Plugin "${named.identity}" returned a value that is not the attached Command from onCommandAttach for ${named.subject}.`,
+      sentence: `Plugin ${quoted(named.identity)} returned a value that is not the attached Command from onCommandAttach for ${named.subject}.`,
     });
   }
   return state;
@@ -1804,14 +1812,14 @@ interface Collision {
 
 /** The note a finding for one hook-declared input carries. */
 function hookNote(identity: string): string {
-  return `declared by plugin "${identity}"`;
+  return `declared by plugin ${quoted(identity)}`;
 }
 
 /** The clause and the remedy an input another plugin's hook already declared earns. */
 function hookClause(earlier: AttachedInput, path: readonly string[]): Collision {
   const { identity, input } = earlier;
   return {
-    clause: `an ${input.kind} plugin "${identity}" declared through onCommandAttach`,
+    clause: `an ${input.kind} plugin ${quoted(identity)} declared through onCommandAttach`,
     held: inputFinding(path, input, hookNote(identity)),
     remedy: 'Install one of them.',
   };
@@ -1840,7 +1848,7 @@ function attachedRemedy(target: 'argument' | 'global' | 'local' | 'plugin'): str
 function tableCollision(entry: TableEntry): Collision {
   const { owner, site } = entry;
   if (owner.kind === 'plugin') {
-    const clause = `an option of plugin "${owner.identity}"`;
+    const clause = `an option of plugin ${quoted(owner.identity)}`;
     return {
       clause,
       held: siteFinding(site, site.named, clause),
@@ -1940,13 +1948,13 @@ function checkAttachedSpelling(
   for (const [spelling, option] of table) {
     const used = claimed.get(spelling);
     if (used !== undefined) {
-      throw new DeclarationError(hookInputCollision, {
+      throw new DeclarationError(pluginOptionCollision, {
         correction: 'Change one of the two spellings or omit the plugin.',
         findings: [
           spellingPlace(site, option.role, hookNote(identity)),
           ...(used.finding === undefined ? [] : [used.finding]),
         ],
-        sentence: `Plugin "${identity}" declares option "${input.name}" with spelling "${spelling}" on ${subject}, which "${used.form}" already uses.`,
+        sentence: `Plugin ${quoted(identity)} declares option ${quoted(input.name)} with spelling ${quoted(spelling)} on ${subject}, which ${quoted(used.form)} already uses.`,
       });
     }
   }
@@ -1974,7 +1982,7 @@ function tableSpellings(globals: BuiltGlobals): SpellingPlace {
     const { owner, site } = entry;
     const note =
       owner.kind === 'plugin'
-        ? `an option of plugin "${owner.identity}"`
+        ? `an option of plugin ${quoted(owner.identity)}`
         : `the global option "${name}"`;
     return spellingPlace(site, role, note);
   };
@@ -2018,10 +2026,10 @@ function checkAttachedInputs(
     const { identity, input } = entry;
     const collision = attachedCollision(input, held);
     if (collision) {
-      throw new DeclarationError(hookInputCollision, {
+      throw new DeclarationError(pluginOptionCollision, {
         correction: collision.remedy,
         findings: [inputFinding(path, input, hookNote(identity)), collision.held],
-        sentence: `Plugin "${identity}" declares ${input.kind} "${input.name}" on ${subject}, which is already declared as ${collision.clause}.`,
+        sentence: `Plugin ${quoted(identity)} declares ${input.kind} ${quoted(input.name)} on ${subject}, which is already declared as ${collision.clause}.`,
       });
     }
     if (input.kind === 'option') {
@@ -2441,13 +2449,13 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
  * and each Command's own inputs at their calls on the Command, under its path from the root.
  */
 export function inputPlaces(graph: BuiltGraph): InputPlaces {
-  const places = new Map<InputDeclaration, Pick<Finding, 'call' | 'path'>>();
+  const places = new Map<InputDeclaration, InputPlace>();
   for (const input of graph.globals.inputs) {
-    places.set(input, { call: 'globalOption', path: [] });
+    places.set(input, inputPlace(input, { global: true, path: [] }));
   }
   const walk = (command: BuiltCommand, path: readonly string[]) => {
     for (const input of command.inputs) {
-      places.set(input, { call: input.kind, path });
+      places.set(input, inputPlace(input, { global: false, path }));
     }
     for (const [name, child] of command.children) {
       walk(child, [...path, name]);

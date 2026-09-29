@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { declaredRules } from './rule-parts.js';
 
 const fixture = new URL('fixtures/plugin-diagnostics.mjs', import.meta.url);
 
@@ -23,10 +24,6 @@ const explanations = {
     'the Command the hook returns, so a throw or any other value leaves it nothing to',
     'build.',
   ],
-  'extension-collect': [
-    "collect decides whether a declaration's values of one extension accumulate or",
-    'replace each other, so it is true or false, as extension() always publishes.',
-  ],
   'extension-output': [
     "Every projection, the manifest included, reads an extension's output as frozen",
     'plain data: strings, finite numbers, Booleans, null, arrays, and plain objects.',
@@ -46,20 +43,16 @@ const explanations = {
     'unchecked.',
   ],
   'failure-exit-code': [
-    "A failure's exit code tells the shell how the run ended. Core never clamps or",
-    'replaces the code a failure class declares, so a code no failure may exit with',
-    'is rejected where the class is first constructed.',
+    "A failure's exit code tells the shell how the run ended: 0 means success, and",
+    '126 and above belong to the shell and to signals, so a failure exits with a code',
+    'from 1 through 125. Core never clamps or replaces the code a failure class',
+    'declares, so a code no failure may exit with is rejected where the class is',
+    'first constructed.',
   ],
   'foreign-value': [
     'Core reads a plugin, an extension, an extension value, a declared view, a view',
     'override, and a translation through facts its factory recorded when it built the',
     'value. Any other value carries none, even one of the same shape.',
-  ],
-  'hook-input-collision': [
-    "An onCommandAttach hook declares its inputs on a Command beside the Command's",
-    "own, the global options, and every other plugin's. A name or a spelling one of",
-    'them already holds would reach only one of the two, and the plugin that declared',
-    'it second owns the collision.',
   ],
   'invalid-extension-value': [
     "An extension value passes its descriptor's schema at the call that carries it,",
@@ -86,9 +79,9 @@ const explanations = {
     'as a list, in order. A value of any other kind has no entries to read.',
   ],
   'not-an-object': [
-    "Core reads a plugin's definition, its options record, each of its option",
-    'declarations, its middleware, and its source by their keys. A value of any other',
-    'kind has no keys to read.',
+    "Core reads the options of a Command and of the Application, a plugin's",
+    'definition, its options record, each of its option declarations, its middleware,',
+    'and its source by their keys. A value of any other kind has no keys to read.',
   ],
   'override-key': [
     'An override replaces the view of a declared view or of a failure class, so its',
@@ -182,9 +175,20 @@ const explanations = {
 
 /** The rules of other families this family raises too. */
 const shared = {
+  'flag-not-boolean': [
+    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
+    "extension's collect each answer one yes-or-no question about a declaration, so",
+    'each holds true or false. A value such as the string "false" would read as true.',
+  ],
   'not-a-command': [
     'A Command value carries the declaration that routing, parsing, and help read.',
     'Any other value carries none.',
+  ],
+  'plugin-option-collision': [
+    "A plugin's options join the one table the pre-scan reads with the global",
+    "options, so every Command meets them, and an input a plugin's onCommandAttach",
+    "hook declares joins the Command's own. A name or a spelling that another input",
+    'in that scope also claims would reach only one of the two.',
   ],
   'view-shape': [
     'A views entry is a view with render, which receives the whole result, or a row',
@@ -192,6 +196,9 @@ const shared = {
     'holds to decide how to feed it.',
   ],
 };
+
+/** The rules core declares beside its defects that this family raises. */
+const fromCore = ['failure-exit-code', 'rule-docs', 'rule-identity', 'rule-prose'];
 
 type Rule = keyof typeof explanations | keyof typeof shared;
 
@@ -211,8 +218,11 @@ function banner(headline: string, rule: Rule): string {
   return `${left}${'-'.repeat(80 - left.length - right.length)}${right}`;
 }
 
+/** Every explanation this family pins, its own and the shared ones, by rule. */
+const explanationsByRule: Record<Rule, readonly string[]> = { ...explanations, ...shared };
+
 function explanationOf(rule: Rule): readonly string[] {
-  return rule === 'not-a-command' || rule === 'view-shape' ? shared[rule] : explanations[rule];
+  return explanationsByRule[rule];
 }
 
 function diagnostic({ correction, findings, headline, rule, sentence }: Expected): string {
@@ -353,12 +363,12 @@ const cases: Record<string, Expected> = {
     sentence: 'Extension "@acme/slow/command" validates asynchronously.',
   },
   'extension-collect': {
-    correction: 'Supply true or false, or build the descriptor with extension(identity, config).',
+    correction: 'Use true or false.',
     findings: [
       bare("plugin('@acme/notes', { extensions: […] })", '…', 'extension "@acme/notes/list"'),
     ],
-    headline: 'COLLECT NOT A BOOLEAN',
-    rule: 'extension-collect',
+    headline: 'FLAG NOT A BOOLEAN',
+    rule: 'flag-not-boolean',
     sentence: 'Extension "@acme/notes/list" declares collect that is not a Boolean.',
   },
   'extension-defined-twice': {
@@ -477,8 +487,7 @@ const cases: Record<string, Expected> = {
     sentence: 'Command "get" holds a value that is not an extension value.',
   },
   'failure-exit-code': {
-    correction:
-      'Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+    correction: 'Declare a whole number from 1 through 125.',
     findings: [],
     headline: 'UNDECLARABLE EXIT CODE',
     rule: 'failure-exit-code',
@@ -495,8 +504,8 @@ const cases: Record<string, Expected> = {
       ),
       onCommand(['count'], "option('format', { type: 'boolean' })", "'format'", 'the local option'),
     ],
-    headline: 'HOOK INPUT COLLISION',
-    rule: 'hook-input-collision',
+    headline: 'PLUGIN OPTION COLLISION',
+    rule: 'plugin-option-collision',
     sentence:
       'Plugin "@acme/format" declares option "format" on Command "count", which is already declared as a local option.',
   },
@@ -516,8 +525,8 @@ const cases: Record<string, Expected> = {
         'the local option "file"',
       ),
     ],
-    headline: 'HOOK INPUT COLLISION',
-    rule: 'hook-input-collision',
+    headline: 'PLUGIN OPTION COLLISION',
+    rule: 'plugin-option-collision',
     sentence:
       'Plugin "@acme/format" declares option "shape" with spelling "-f" on Command "count", which "--file" already uses.',
   },
@@ -677,7 +686,7 @@ const cases: Record<string, Expected> = {
     findings: [bare("new Application('probe', { plugins: 'log' })", "plugins: 'log'")],
     headline: 'NOT A LIST',
     rule: 'not-a-list',
-    sentence: 'The Application plugins must be an array.',
+    sentence: 'The Application declares plugins that are not an array.',
   },
   'rendering-field': {
     correction: 'Supply one of the three, or omit color.',
@@ -989,5 +998,9 @@ test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(cases).map((expected) => expected.rule));
   expect([...pinned].toSorted()).toEqual(
     [...Object.keys(explanations), ...Object.keys(shared)].toSorted(),
+  );
+  expect(declaredRules('rules.ts')).toEqual(expect.arrayContaining(fromCore));
+  expect([...declaredRules('plugin-rules.ts'), ...fromCore].toSorted()).toEqual(
+    Object.keys(explanations).toSorted(),
   );
 });

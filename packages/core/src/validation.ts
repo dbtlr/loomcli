@@ -5,7 +5,7 @@ import { escapeControlCharacters } from './controls.js';
 import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, InputError, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
-import { factFault } from './facts.js';
+import { callSite, factFault, flagFault, partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import {
   booleanOptionValueRule,
@@ -16,7 +16,7 @@ import {
   omissionWithoutValidator,
   requiredWithDefault,
 } from './input-rules.js';
-import { booleanValue, flagFault } from './options.js';
+import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
 import { validatorFailed } from './rules.js';
 import type {
@@ -181,6 +181,33 @@ export function declarationSubject(input: InputDeclaration): string {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
 }
 
+/** Where the call that declared one input sits: the call's name and the Command it is on. */
+export type InputPlace = Pick<Finding, 'call' | 'path'>;
+
+/**
+ * Where one input was declared: a global option at its `globalOption()` call, and every other input
+ * at its own `argument()` or `option()` call on the Command at `path`.
+ */
+export function inputPlace(
+  input: InputDeclaration,
+  scope: { readonly global: boolean; readonly path: readonly string[] },
+): InputPlace {
+  return scope.global ? { call: 'globalOption', path: [] } : { call: input.kind, path: scope.path };
+}
+
+/**
+ * The site of the call that declared one input at `place`, rebuilt as `call(name, config)`. Every
+ * finding for an input's own call starts from it, so each marks the call the same way. `subject`
+ * is the sentence's name for the input.
+ */
+export function declaringSite(
+  input: InputDeclaration,
+  place: InputPlace,
+  subject: string = declarationSubject(input),
+): InputSite {
+  return callSite(subject, { arguments: [input.name, input.config], ...place });
+}
+
 /**
  * The token an operator would type for one declaration: `--file` for an option, `-F` when the
  * option declares `shortOnly`, and the declared name for an argument. Every input diagnostic and
@@ -339,18 +366,18 @@ function checkDeclaration(input: InputDeclaration, site: InputSite, subject: str
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
-    throw flagFault(site, subject, 'required');
+    throw flagFault(site, 'required');
   }
   if (
     input.kind === 'argument' &&
     input.config.variadic !== undefined &&
     typeof input.config.variadic !== 'boolean'
   ) {
-    throw flagFault(site, subject, 'variadic');
+    throw flagFault(site, 'variadic');
   }
   // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
   if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
-    throw flagFault(site, subject, 'validateOmitted');
+    throw flagFault(site, 'validateOmitted');
   }
   if (config.required && Object.hasOwn(config, 'default')) {
     throw factFault(requiredWithDefault, site, {
@@ -404,13 +431,15 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
 
 /**
  * A broken validator is a fault in the declaration, whichever value reached it, so its diagnostic
- * names the declaration. Returned issues belong to the value, so the caller names those.
+ * names the declaration and its finding marks the validator on the call at `place`. Returned issues
+ * belong to the value, so the caller names those.
  */
 async function validate(
   input: InputDeclaration,
   raw: unknown,
-  context: ValidationContext,
+  call: { context: ValidationContext; place: InputPlace | undefined },
 ): Promise<StandardSchemaV1.Result<unknown>> {
+  const { context, place } = call;
   const validator = input.config.validate;
   if (validator === undefined) {
     return { value: raw };
@@ -430,10 +459,12 @@ async function validate(
     return { issues: Array.from(issues, readIssue) };
   } catch (error) {
     // The reason is the author's detail: a distributed build shows the generic defect message.
+    const site = place === undefined ? undefined : declaringSite(input, place);
     throw new DeclarationError(
       validatorFailed,
       {
         correction: 'Fix the validator.',
+        findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'validate'))],
         sentence: `${declarationSubject(input)} validator failed unexpectedly: ${asSentence(reasonOf(error))}`,
       },
       { cause: error },
@@ -451,11 +482,11 @@ async function validate(
 async function validateDeclared(
   input: InputDeclaration,
   raw: unknown,
-  call: { context: () => ValidationContext; signal?: AbortSignal },
+  call: { context: () => ValidationContext; place: InputPlace | undefined; signal?: AbortSignal },
 ): Promise<StandardSchemaV1.Result<unknown>> {
-  const { context, signal } = call;
+  const { context, place, signal } = call;
   if (!collects(input) || input.config.validate === undefined) {
-    return validate(input, raw, context());
+    return validate(input, raw, { context: context(), place });
   }
   if (!Array.isArray(raw)) {
     // The parser, the input sources, and the declaration rules only ever supply an array here.
@@ -470,7 +501,7 @@ async function validateDeclared(
       // A cancelled run starts no further call; the run resolves its cancellation code instead.
       break;
     }
-    const result = await validate(input, value, context());
+    const result = await validate(input, value, { context: context(), place });
     if (result.issues === undefined) {
       outputs.push(result.value);
     } else {
@@ -571,7 +602,7 @@ export function checkDeclarations(inputs: readonly SitedInput[], named?: string)
 }
 
 /** The call that declared one input and the Command it sits on, which a default's fault rebuilds. */
-export type InputPlaces = ReadonlyMap<InputDeclaration, Pick<Finding, 'call' | 'path'>>;
+export type InputPlaces = ReadonlyMap<InputDeclaration, InputPlace>;
 
 /**
  * Every declared default, validated before any token is read. The host is captured by then, so a
@@ -588,17 +619,16 @@ export async function prepareInputs(
   for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
     const { input } = entry;
     const subject = declarationSubject(input);
+    const place = places.get(input);
     const result = await validateDeclared(input, input.config.default, {
       context: () => ({ host, input: identityOf(entry), phase: 'default' }),
+      place,
     });
     if (result.issues !== undefined) {
-      const place = places.get(input);
+      const site = place === undefined ? undefined : declaringSite(input, place);
       throw new DeclarationError(invalidDefault, {
         correction: 'Fix the default or its validator.',
-        findings:
-          place === undefined
-            ? []
-            : [{ ...place, arguments: [input.name, input.config], mark: '1.default' }],
+        findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'default'))],
         sentence: [
           `${subject} has an invalid default.`,
           ...messages(subject, reported(result.issues)),
@@ -724,6 +754,7 @@ export async function validateValues(invocation: Invocation): Promise<ValidatedI
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
     const result = await validateDeclared(entry.input, raw, {
       context: () => contextOf(entry),
+      place: inputPlace(entry.input, { global: entry.global, path: invocation.command }),
       signal: invocation.signal,
     });
     if (result.issues === undefined) {

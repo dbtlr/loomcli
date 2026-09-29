@@ -3,13 +3,14 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/sp
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
+import { partOf, siteFinding } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
 import type { compileOptions } from './options.js';
 import { isPlainObject } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
-import { declarationSubject, validatesOmission } from './validation.js';
+import { declaringSite, inputPlace, validatesOmission } from './validation.js';
 
 /** A declaration that carries no extension value publishes one shared, empty frozen record. */
 const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
@@ -212,21 +213,25 @@ interface SchemaCheck {
   readonly path: readonly string[];
 }
 
-/** The converter fault a development build reports for one input, with the way it failed. */
-function converterFault(input: InputDeclaration, check: SchemaCheck, failure: string) {
-  return new DeclarationError(schemaConverterFailed, {
+/**
+ * The converter fault a development build reports for one input, with the way it failed and, when
+ * the converter threw, the thrown value as its cause.
+ */
+function converterFault(
+  input: InputDeclaration,
+  check: SchemaCheck,
+  failed: { failure: string; cause?: unknown },
+) {
+  const site = declaringSite(input, inputPlace(input, check));
+  const parts = {
     correction:
       'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
-    findings: [
-      {
-        arguments: [input.name, input.config],
-        call: check.global ? 'globalOption' : input.kind,
-        mark: '1.validate',
-        path: check.path,
-      },
-    ],
-    sentence: `${declarationSubject(input)} validator's JSON Schema converter ${failure}`,
-  });
+    findings: [siteFinding(site, partOf(site, 'validate'))],
+    sentence: `${site.subject} validator's JSON Schema converter ${failed.failure}`,
+  };
+  return 'cause' in failed
+    ? new DeclarationError(schemaConverterFailed, parts, { cause: failed.cause })
+    : new DeclarationError(schemaConverterFailed, parts);
 }
 
 /**
@@ -241,33 +246,31 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   if (schema === undefined) {
     return null;
   }
-  let published: unknown = undefined;
-  // The converter is the library's code from the first property read.
-  // A throw on reaching it and a throw on calling it are one failure.
+  let copied: Readonly<Record<string, unknown>> | undefined = undefined;
+  // The converter is the library's code from the first property read to the last key of its answer.
+  // A throw on reaching it, on calling it, or on reading what it answered is one failure.
   try {
     if (!publishesSchema(schema)) {
       return null;
     }
-    published = schema['~standard'].jsonSchema.input(schemaTarget);
+    const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
+    copied = isPlainObject(published) ? snapshotRecord(published) : undefined;
   } catch (error) {
     if (check.development) {
-      throw converterFault(
-        input,
-        check,
-        `failed for target "${schemaTarget.target}": ${asSentence(reasonOf(error))}`,
-      );
+      throw converterFault(input, check, {
+        cause: error,
+        failure: `failed for target "${schemaTarget.target}": ${asSentence(reasonOf(error))}`,
+      });
     }
     return null;
   }
-  if (isPlainObject(published)) {
-    return snapshotRecord(published);
+  if (copied !== undefined) {
+    return copied;
   }
   if (check.development) {
-    throw converterFault(
-      input,
-      check,
-      `answered target "${schemaTarget.target}" with a value that is not a plain object.`,
-    );
+    throw converterFault(input, check, {
+      failure: `answered target "${schemaTarget.target}" with a value that is not a plain object.`,
+    });
   }
   return null;
 }

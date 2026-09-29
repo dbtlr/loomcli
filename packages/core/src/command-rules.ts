@@ -20,13 +20,6 @@ const declaredName = registerRule('@loomcli/core/declared-name', {
   headline: 'Invalid declared name',
 });
 
-/** A constructor's options slot that holds a value other than an options object. */
-const optionsObject = registerRule('@loomcli/core/options-object', {
-  explanation:
-    'A constructor reads its declaration from one options object, so a value of any other kind leaves it no facts to read.',
-  headline: 'Options not an object',
-});
-
 /** Globals declared on a named Command's options. */
 const commandGlobals = registerRule('@loomcli/core/command-globals', {
   explanation:
@@ -202,13 +195,6 @@ const invalidDeprecated = registerRule('@loomcli/core/invalid-deprecated', {
   headline: 'Deprecated message not one line',
 });
 
-/** A `hidden` value that is not a Boolean. */
-const invalidHidden = registerRule('@loomcli/core/invalid-hidden', {
-  explanation:
-    'hidden answers one question, whether a listing omits the member, so it holds true or false.',
-  headline: 'Hidden not a Boolean',
-});
-
 /** An Application version that is not one line of prose. */
 const invalidVersion = registerRule('@loomcli/core/invalid-version', {
   explanation:
@@ -235,7 +221,6 @@ export {
   groupOption,
   invalidDeprecated,
   invalidDescription,
-  invalidHidden,
   invalidVersion,
   misplacedListingFact,
   multipleActions,
@@ -243,7 +228,6 @@ export {
   nestingDepth,
   notACommand,
   optionalArgumentLast,
-  optionsObject,
   portableName,
   repeatedAlias,
   resultWithoutAction,

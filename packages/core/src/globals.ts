@@ -82,7 +82,7 @@ function ordered<Side extends OptionSite>(first: Side, second: Side): [Side, Sid
 /** How one owner reads in a key collision. A repeated preposition is dropped after the first. */
 function declaredBy(owner: OptionOwner, leading: boolean): string {
   if (owner.kind === 'plugin') {
-    return `${leading ? 'by ' : ''}plugin "${owner.identity}"`;
+    return `${leading ? 'by ' : ''}plugin ${quoted(owner.identity)}`;
   }
   return owner.kind === 'application'
     ? 'as a global option'
@@ -92,7 +92,7 @@ function declaredBy(owner: OptionOwner, leading: boolean): string {
 /** How one owner reads in a spelling collision, where each side names its own option. */
 function usedBy({ name, owner }: OptionSite): string {
   if (owner.kind === 'plugin') {
-    return `plugin "${owner.identity}" option ${quoted(name)}`;
+    return `plugin ${quoted(owner.identity)} option ${quoted(name)}`;
   }
   return owner.kind === 'application'
     ? `the global option ${quoted(name)}`
@@ -215,7 +215,7 @@ function pluginSites(
     pluginOptionSite(
       { identity, options },
       input.name,
-      `Plugin "${identity}" option "${input.name}"`,
+      `Plugin ${quoted(identity)} option "${input.name}"`,
     );
 }
 
@@ -283,7 +283,7 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
     ...plugins.flatMap((installed) => {
       const siteOf = pluginSites(installed.identity, installed.inputs);
       return boundOptions(installed.inputs, (input) => ({
-        phrase: `plugin "${installed.identity}" option "${input.name}"`,
+        phrase: `plugin ${quoted(installed.identity)} option "${input.name}"`,
         site: siteOf(input),
       }));
     }),
@@ -373,7 +373,7 @@ function join(
   }
   for (const [spelling, option] of compileOptions(inputs, {
     siteOf,
-    subject: `plugin "${owner.identity}"`,
+    subject: `plugin ${quoted(owner.identity)}`,
   })) {
     const existing = options.get(spelling);
     const claimed = existing && names.get(existing.name);

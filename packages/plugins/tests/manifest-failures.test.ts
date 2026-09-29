@@ -252,7 +252,7 @@ test('a declared failure is rejected at the call unless it holds a failure class
 test('a failure class whose static exit code is 200 is rejected at the call', () => {
   expect(rule('failure-code-200')).toEqual(
     invalid(
-      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
     ),
   );
 });
@@ -260,23 +260,21 @@ test('a failure class whose static exit code is 200 is rejected at the call', ()
 test('a failure class whose static exit code getter throws is rejected at the call as declaring no finite code', () => {
   expect(rule('failure-code-getter-throws')).toEqual(
     invalid(
-      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125.',
     ),
   );
 });
 
 test('a failure class whose static name getter throws is rejected at the call under the empty name an anonymous class has', () => {
   expect(rule('failure-name-getter-throws')).toEqual(
-    invalid(
-      'Failure class "" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
-    ),
+    invalid('Failure class "" declares exit code 200. Declare a whole number from 1 through 125.'),
   );
 });
 
 test('a failure class whose static name is not a string is rejected under that name read as text, as core names it', () => {
   expect(rule('failure-name-number')).toEqual(
     invalid(
-      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125.',
     ),
   );
 });

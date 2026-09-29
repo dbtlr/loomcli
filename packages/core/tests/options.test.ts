@@ -97,7 +97,7 @@ test.each([
 test.each([
   ['nonstring-name', 'Option name', 'not a string'],
   ['symbol-short', 'flag', 'one ASCII letter'],
-  ['nonboolean-short-only', 'flag', 'shortOnly must be Boolean'],
+  ['nonboolean-short-only', 'flag', 'shortOnly that is not a Boolean'],
   ['duplicate-key', 'total', 'declared more than once'],
   ['duplicate-short', '-t', 'used by both'],
   ['negative-collision', '--no-total', 'used by both'],

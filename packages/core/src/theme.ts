@@ -11,7 +11,7 @@ import type { Operation } from './style.js';
  * the theme, or the one entry at fault, in `plugin(identity, { theme })`.
  */
 function buildTheme(value: unknown, identity: string): Palette {
-  const subject = `Plugin "${identity}"`;
+  const subject = `Plugin ${quoted(identity)}`;
   const site = slotSite({ call: 'plugin', named: identity, subject }, 'theme', value);
   if (!isPlainObject(value)) {
     throw new DeclarationError(themeMapping, {

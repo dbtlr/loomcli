@@ -1,12 +1,12 @@
 import {
   invalidDeprecated,
   invalidDescription,
-  invalidHidden,
   invalidVersion,
   misplacedListingFact,
 } from './command-rules.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
+import { flagNotBoolean } from './input-rules.js';
 
 /**
  * One character outside Unicode `White_Space`, so a fact holds prose and not only spacing.
@@ -91,6 +91,18 @@ export function factFault(
 }
 
 /**
+ * One yes-or-no declaration key that holds a value other than a Boolean, such as `required` or
+ * `hidden`. Every such key reports under one rule, in one sentence and with one correction.
+ */
+export function flagFault(site: FactSite, flag: string): DeclarationError {
+  return factFault(flagNotBoolean, site, {
+    correction: 'Use true or false.',
+    fact: flag,
+    sentence: `${site.subject} declares ${flag} that is not a Boolean.`,
+  });
+}
+
+/**
  * Where one input was declared: the site of its config object, and the dotted path to its declared
  * name, which a fault about the name or about the whole input marks.
  */
@@ -158,11 +170,7 @@ export function checkHidden(site: FactSite, value: unknown): boolean {
     return false;
   }
   if (typeof value !== 'boolean') {
-    throw factFault(invalidHidden, site, {
-      correction: 'Supply true or false, or omit it.',
-      fact: 'hidden',
-      sentence: `${site.subject} hidden must be a Boolean.`,
-    });
+    throw flagFault(site, 'hidden');
   }
   return value;
 }

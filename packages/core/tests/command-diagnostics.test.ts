@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { declaredRules } from './rule-parts.js';
 
 /** The diagnostic one scenario's faulty declaration throws, as its message holds it. */
 function thrown(scenario: string): string {
@@ -62,10 +63,6 @@ const explanations = {
     'Help, the manifest, and every other listing print a description on one line',
     'beside the name it describes, so it holds prose and no line break.',
   ],
-  'invalid-hidden': [
-    'hidden answers one question, whether a listing omits the member, so it holds',
-    'true or false.',
-  ],
   'invalid-version': [
     '--version and the manifest print the version on one line, as the package',
     'manifest spells it, so it is a string that holds prose and no line break.',
@@ -97,10 +94,6 @@ const explanations = {
     'Positional tokens fill the arguments in order, and an operator leaves out an',
     'optional argument from the end of the line. An argument after an optional one',
     'would take the token the optional one was meant to receive.',
-  ],
-  'options-object': [
-    'A constructor reads its declaration from one options object, so a value of any',
-    'other kind leaves it no facts to read.',
   ],
   'portable-name': [
     'An operator types the application name, each Command name, and each alias as a',
@@ -152,7 +145,28 @@ const explanations = {
   ],
 };
 
-type Rule = keyof typeof explanations;
+/** The rules of other families this family raises too. */
+const shared = {
+  'flag-not-boolean': [
+    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
+    "extension's collect each answer one yes-or-no question about a declaration, so",
+    'each holds true or false. A value such as the string "false" would read as true.',
+  ],
+  'not-an-object': [
+    "Core reads the options of a Command and of the Application, a plugin's",
+    'definition, its options record, each of its option declarations, its middleware,',
+    'and its source by their keys. A value of any other kind has no keys to read.',
+  ],
+};
+
+type Rule = keyof typeof explanations | keyof typeof shared;
+
+/** Every explanation this family pins, its own and the shared ones, by rule. */
+const explanationsByRule: Record<Rule, readonly string[]> = { ...explanations, ...shared };
+
+function explanationOf(rule: Rule): readonly string[] {
+  return explanationsByRule[rule];
+}
 
 /** One rule's diagnostic: its banner, the sentence, each finding, the explanation, and the fix. */
 interface Expected {
@@ -175,7 +189,7 @@ function diagnostic({ correction, findings, headline, rule, sentence }: Expected
     banner(headline, rule),
     sentence,
     ...findings.map((lines) => lines.join('\n')),
-    explanations[rule].join('\n'),
+    explanationOf(rule).join('\n'),
     correction,
   ];
   return `${sections.join('\n\n')}\n`;
@@ -269,9 +283,9 @@ const cases: Record<string, Expected> = {
   'application-options': {
     correction: 'Supply an Application options object.',
     findings: [["    new Application('probe', 'fast')", '                             ^^^^^^']],
-    headline: 'OPTIONS NOT AN OBJECT',
-    rule: 'options-object',
-    sentence: 'The Application options must be an object.',
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'The Application declares options that are not an object.',
   },
   'application-version': {
     correction: 'Supply a string such as "1.2.0".',
@@ -473,13 +487,13 @@ const cases: Record<string, Expected> = {
     sentence: 'Command "get" declares globals.',
   },
   'command-hidden': {
-    correction: 'Supply true or false, or omit it.',
+    correction: 'Use true or false.',
     findings: [
       ["    new Command('fetch', { hidden: 'yes' })", '                           ^^^^^^^^^^^^^'],
     ],
-    headline: 'HIDDEN NOT A BOOLEAN',
-    rule: 'invalid-hidden',
-    sentence: 'Command "fetch" hidden must be a Boolean.',
+    headline: 'FLAG NOT A BOOLEAN',
+    rule: 'flag-not-boolean',
+    sentence: 'Command "fetch" declares hidden that is not a Boolean.',
   },
   'command-name': {
     correction: portable,
@@ -491,9 +505,9 @@ const cases: Record<string, Expected> = {
   'command-options': {
     correction: 'Supply a Command options object.',
     findings: [["    new Command('get', 'fast')", '                       ^^^^^^']],
-    headline: 'OPTIONS NOT AN OBJECT',
-    rule: 'options-object',
-    sentence: 'Command "get" options must be an object.',
+    headline: 'NOT AN OBJECT',
+    rule: 'not-an-object',
+    sentence: 'Command "get" declares options that are not an object.',
   },
   'group-option': {
     correction: 'Register an action or remove the option.',
@@ -881,7 +895,12 @@ test.each(Object.entries(cases))(
 
 test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(cases).map((expected) => expected.rule));
-  expect([...pinned].toSorted()).toEqual(Object.keys(explanations).toSorted());
+  expect([...pinned].toSorted()).toEqual(
+    [...Object.keys(explanations), ...Object.keys(shared)].toSorted(),
+  );
+  expect(declaredRules('command-rules.ts').toSorted()).toEqual(
+    Object.keys(explanations).toSorted(),
+  );
 });
 
 /** What run() writes for one root fault in a development build. */

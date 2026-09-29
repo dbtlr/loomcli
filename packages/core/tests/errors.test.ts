@@ -84,7 +84,7 @@ test.each(['application-value', 'empty-application'])(
       status: 0,
       stderr: '',
       stdout:
-        'thrown:1: The Application options must be an object. Supply an Application options object.\n',
+        'thrown:1: The Application declares options that are not an object. Supply an Application options object.\n',
     });
   },
 );
@@ -96,7 +96,7 @@ test.each(['string-options', 'array-options'])(
       status: 0,
       stderr: '',
       stdout:
-        'thrown:1: The Application options must be an object. Supply an Application options object.\n',
+        'thrown:1: The Application declares options that are not an object. Supply an Application options object.\n',
     });
   },
 );
@@ -126,7 +126,7 @@ test.each(['application-value', 'empty-application'])(
       status: 0,
       stderr: '',
       stdout:
-        'thrown:1: Command "get" options must be an object. Supply a Command options object.\n',
+        'thrown:1: Command "get" declares options that are not an object. Supply a Command options object.\n',
     });
   },
 );
@@ -138,7 +138,7 @@ test.each(['string-options', 'array-options'])(
       status: 0,
       stderr: '',
       stdout:
-        'thrown:1: Command "get" options must be an object. Supply a Command options object.\n',
+        'thrown:1: Command "get" declares options that are not an object. Supply a Command options object.\n',
     });
   },
 );

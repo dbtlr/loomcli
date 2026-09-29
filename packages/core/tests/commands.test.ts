@@ -327,7 +327,7 @@ test.each([
   ],
   [
     'nonstring-application-name',
-    'Application name "7" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+    'Application name 7 is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
     'empty-argument-name',
@@ -339,7 +339,7 @@ test.each([
   ],
   [
     'nonstring-argument-name',
-    'Command "get" declares an argument named "1". Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    'Command "get" declares an argument named 1. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'foreign-child',

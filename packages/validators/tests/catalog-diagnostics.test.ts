@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -266,5 +268,11 @@ test.each(Object.entries(cases))(
 
 test('every rule of the catalog has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(cases).map((expected) => expected.rule));
+  const source = readFileSync(new URL('../src/rules.ts', import.meta.url), 'utf8');
+  const declared = Array.from(
+    source.matchAll(/catalogRule\('(?<name>[a-z0-9-]+)'/gu),
+    (match) => match.groups?.name ?? '',
+  );
   expect([...pinned].toSorted()).toEqual(Object.keys(explanations).toSorted());
+  expect(declared.toSorted()).toEqual(Object.keys(explanations).toSorted());
 });

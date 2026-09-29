@@ -181,7 +181,7 @@ const deprecatedRule =
   'deprecated message must hold a character other than whitespace and no line terminator. Supply a one-line migration path, such as "Use get instead.".';
 
 /** The rule `hidden` answers: a listing asks one question of it, so it holds a Boolean. */
-const hiddenRule = 'hidden must be a Boolean. Supply true or false, or omit it.';
+const hiddenRule = 'declares hidden that is not a Boolean. Use true or false.';
 
 test.each(members)(
   'a blank deprecated message on %s is thrown by the call that declares it',

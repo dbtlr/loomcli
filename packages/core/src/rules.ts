@@ -138,7 +138,7 @@ const brokenDestination = registerRule('@loomcli/core/broken-destination', {
 /** A failure class whose exit code is outside 1 through 125. */
 const failureExitCode = registerRule('@loomcli/core/failure-exit-code', {
   explanation:
-    "A failure's exit code tells the shell how the run ended. Core never clamps or replaces the code a failure class declares, so a code no failure may exit with is rejected where the class is first constructed.",
+    "A failure's exit code tells the shell how the run ended: 0 means success, and 126 and above belong to the shell and to signals, so a failure exits with a code from 1 through 125. Core never clamps or replaces the code a failure class declares, so a code no failure may exit with is rejected where the class is first constructed.",
   headline: 'Undeclarable exit code',
 });
 

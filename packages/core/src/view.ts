@@ -1,7 +1,14 @@
 import { viewShape } from './command-rules.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
-import { DeclarationError, defaultText, FatalError, notTextReason, reasonOf } from './errors.js';
+import {
+  DeclarationError,
+  defaultText,
+  FatalError,
+  notTextReason,
+  quoted,
+  reasonOf,
+} from './errors.js';
 import type { LoomError } from './errors.js';
 import { partFinding, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
@@ -184,14 +191,14 @@ function view(identity: string, definition: View<never> | RowView<never>): AnyDe
     throw new DeclarationError(viewShape, {
       correction: 'Supply one of the two.',
       findings,
-      sentence: `View "${identity}" carries render and row.`,
+      sentence: `View ${quoted(identity)} carries render and row.`,
     });
   }
   if (shape === 'neither') {
     throw new DeclarationError(viewShape, {
       correction: 'Supply a view with render or a row view with row.',
       findings,
-      sentence: `View "${identity}" carries neither render nor row.`,
+      sentence: `View ${quoted(identity)} carries neither render nor row.`,
     });
   }
   return typeof definition.row === 'function'
@@ -330,8 +337,9 @@ function registerIdentity(
   if (known !== declared) {
     throw new DeclarationError(twoPackageCopies, {
       correction: 'Install one copy of the package that declares it.',
-      findings: place === undefined ? [] : [{ ...place, note: `another "${declared.identity}"` }],
-      sentence: `View "${declared.identity}" is declared by two distinct objects.`,
+      findings:
+        place === undefined ? [] : [{ ...place, note: `another ${quoted(declared.identity)}` }],
+      sentence: `View ${quoted(declared.identity)} is declared by two distinct objects.`,
     });
   }
 }
@@ -422,7 +430,9 @@ function claimKey(build: ViewBuild, key: ValidKey, index: number): void {
     return;
   }
   const clause =
-    key.kind === 'failure' ? `the view for "${key.name}"` : `view "${key.view.identity}"`;
+    key.kind === 'failure'
+      ? `the view for ${quoted(key.name)}`
+      : `view ${quoted(key.view.identity)}`;
   throw new DeclarationError(overrideTwice, {
     correction: 'Remove one override.',
     findings: [

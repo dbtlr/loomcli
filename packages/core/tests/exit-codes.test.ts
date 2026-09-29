@@ -7,8 +7,7 @@ function exits(scenario: string, env: Record<string, string> = {}) {
 }
 
 /** The correction every reserved-code diagnostic ends with. */
-const correction =
-  'Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.';
+const correction = 'Declare a whole number from 1 through 125.';
 
 test('a declared code decides the exit status, and the view reads it on the instance', () => {
   expect(exits('declared')).toEqual({

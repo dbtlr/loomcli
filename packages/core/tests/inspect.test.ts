@@ -552,12 +552,30 @@ test('reports an optional variadic argument with its declared default', () => {
 });
 
 test.each([
-  ['nonboolean-variadic', 'Argument "files" variadic must be Boolean. Use true or false.'],
-  ['nonboolean-required', 'Option "size" required must be Boolean. Use true or false.'],
-  ['nonboolean-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
-  ['numeric-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
-  ['null-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
-  ['undefined-omitted', 'Option "file" validateOmitted must be Boolean. Use true or false.'],
+  [
+    'nonboolean-variadic',
+    'The root Command argument "files" declares variadic that is not a Boolean. Use true or false.',
+  ],
+  [
+    'nonboolean-required',
+    'The root Command option "size" declares required that is not a Boolean. Use true or false.',
+  ],
+  [
+    'nonboolean-omitted',
+    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
+  ],
+  [
+    'numeric-omitted',
+    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
+  ],
+  [
+    'null-omitted',
+    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
+  ],
+  [
+    'undefined-omitted',
+    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
+  ],
   [
     'required-default',
     'Option "depth" is required and declares a default. Remove the default or make the input optional.',

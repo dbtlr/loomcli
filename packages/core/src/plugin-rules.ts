@@ -13,10 +13,13 @@ const notAList = registerRule('@loomcli/core/not-a-list', {
   headline: 'Not a list',
 });
 
-/** A declaration core reads by its keys, such as a plugin's middleware, that is not an object. */
+/**
+ * A declaration core reads by its keys, such as a plugin's middleware or a constructor's options,
+ * that is not an object.
+ */
 const notAnObject = registerRule('@loomcli/core/not-an-object', {
   explanation:
-    "Core reads a plugin's definition, its options record, each of its option declarations, its middleware, and its source by their keys. A value of any other kind has no keys to read.",
+    "Core reads the options of a Command and of the Application, a plugin's definition, its options record, each of its option declarations, its middleware, and its source by their keys. A value of any other kind has no keys to read.",
   headline: 'Not an object',
 });
 
@@ -104,13 +107,6 @@ const twoPackageCopies = registerRule('@loomcli/core/two-package-copies', {
   headline: 'Two copies of one package',
 });
 
-/** A descriptor whose `collect` is not a Boolean. */
-const extensionCollect = registerRule('@loomcli/core/extension-collect', {
-  explanation:
-    "collect decides whether a declaration's values of one extension accumulate or replace each other, so it is true or false, as extension() always publishes.",
-  headline: 'Collect not a Boolean',
-});
-
 /** A descriptor with no Standard Schema. */
 const extensionWithoutSchema = registerRule('@loomcli/core/extension-without-schema', {
   explanation:
@@ -181,13 +177,6 @@ const brokenAttachHook = registerRule('@loomcli/core/broken-attach-hook', {
   headline: 'Broken attach hook',
 });
 
-/** An input a hook declared whose name or spelling the Command or another scope already holds. */
-const hookInputCollision = registerRule('@loomcli/core/hook-input-collision', {
-  explanation:
-    "An onCommandAttach hook declares its inputs on a Command beside the Command's own, the global options, and every other plugin's. A name or a spelling one of them already holds would reach only one of the two, and the plugin that declared it second owns the collision.",
-  headline: 'Hook input collision',
-});
-
 /** The retired `globals` or `failures` Application option. */
 const retiredApplicationOption = registerRule('@loomcli/core/retired-application-option', {
   explanation:
@@ -226,13 +215,11 @@ const themeNameTaken = registerRule('@loomcli/core/theme-name-taken', {
 export {
   asyncExtensionSchema,
   brokenAttachHook,
-  extensionCollect,
   extensionOutput,
   extensionTarget,
   extensionValueTwice,
   extensionWithoutSchema,
   foreignValue,
-  hookInputCollision,
   invalidExtensionValue,
   invalidPacket,
   middlewareActivation,

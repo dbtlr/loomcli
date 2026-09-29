@@ -146,7 +146,7 @@ test.each([
   ],
   [
     'nonstring-alias-name',
-    'Command "keys" declares an alias named "7". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+    'Command "keys" declares an alias named 7. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
     'colon-alias-name',
@@ -154,7 +154,7 @@ test.each([
   ],
   [
     'symbol-alias-name',
-    'Command "keys" declares an alias named "Symbol(ls)". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+    'Command "keys" declares an alias named Symbol(ls). Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
   [

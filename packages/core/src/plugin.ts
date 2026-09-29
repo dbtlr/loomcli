@@ -226,7 +226,7 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
 
 /** How every plugin diagnostic names one plugin at the start of a sentence. */
 function pluginSentence(identity: string): string {
-  return `Plugin "${identity}"`;
+  return `Plugin ${quoted(identity)}`;
 }
 
 /** Where one slot of a plugin's definition sits, rebuilt as `plugin(identity, { slot })`. */
@@ -307,17 +307,18 @@ const slotWords: Readonly<
   Record<Slot, { clause: (owner: string) => string; held: string; correction: string }>
 > = {
   signals: {
-    clause: (owner) => `claims the signals slot, which plugin "${owner}" already holds.`,
+    clause: (owner) => `claims the signals slot, which plugin ${quoted(owner)} already holds.`,
     correction: 'Install one owner.',
     held: 'holds the signals slot',
   },
   source: {
-    clause: (owner) => `declares a configuration source, which plugin "${owner}" already declares.`,
+    clause: (owner) =>
+      `declares a configuration source, which plugin ${quoted(owner)} already declares.`,
     correction: 'Install one source.',
     held: 'declares the configuration source',
   },
   theme: {
-    clause: (owner) => `claims the theme slot, which plugin "${owner}" already holds.`,
+    clause: (owner) => `claims the theme slot, which plugin ${quoted(owner)} already holds.`,
     correction: 'Install one owner.',
     held: 'holds the theme slot',
   },
@@ -359,7 +360,7 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
     throw new DeclarationError(notAList, {
       correction: 'Supply a list of plugin values.',
       findings: [partFinding(site, [])],
-      sentence: 'The Application plugins must be an array.',
+      sentence: 'The Application declares plugins that are not an array.',
     });
   }
   const list: readonly unknown[] = plugins;
@@ -395,7 +396,7 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
           partFinding(site, [first], 'the first installation'),
           partFinding(site, [index], 'the second installation'),
         ],
-        sentence: `The Application installs plugin "${identity}" twice.`,
+        sentence: `The Application installs plugin ${quoted(identity)} twice.`,
       });
     }
     positions.set(identity, index);
@@ -461,7 +462,7 @@ function readOptions(
   }
   const inputs: OptionInput[] = [];
   for (const [name, config] of Object.entries(declared ?? {})) {
-    const sentence = `${pluginSentence(identity)} option "${name}"`;
+    const sentence = `${pluginSentence(identity)} option ${quoted(name)}`;
     const site = pluginOptionSite({ identity, options: declared }, name, sentence);
     checkPluginOption(site, config);
     checkEnvBinding(site, config);
@@ -485,10 +486,10 @@ function readOptions(
   }
   // Two options of one plugin meet in the one table the pre-scan reads, so they share its rules.
   const siteOf = pluginSites(identity, inputs);
-  compileOptions(inputs, { siteOf, subject: `plugin "${identity}"` });
+  compileOptions(inputs, { siteOf, subject: `plugin ${quoted(identity)}` });
   claimVariables(
     boundOptions(inputs, (input) => ({
-      phrase: `plugin "${identity}" option "${input.name}"`,
+      phrase: `plugin ${quoted(identity)} option "${input.name}"`,
       site: siteOf(input),
     })),
   );
@@ -529,7 +530,7 @@ function readActivation(
       throw new DeclarationError(middlewareActivation, {
         correction: "Name one of the plugin's own options.",
         findings: [partFinding(site, ['activate', index])],
-        sentence: `${site.subject} activates middleware on option ${quoted(String(name))}, which it does not declare.`,
+        sentence: `${site.subject} activates middleware on option ${quoted(name)}, which it does not declare.`,
       });
     }
     return name;
@@ -561,7 +562,7 @@ async function loadDefault<Export>(
     throw new InternalError(pluginLoaderFailed, {
       cause: error,
       correction: loaderCorrection,
-      sentence: `Loading plugin "${identity}" failed: ${reasonOf(error)}`,
+      sentence: `Loading plugin ${quoted(identity)} failed: ${reasonOf(error)}`,
     });
   }
   const exported: unknown =
@@ -572,7 +573,7 @@ async function loadDefault<Export>(
     throw new InternalError(pluginLoaderFailed, {
       cause: undefined,
       correction: loaderCorrection,
-      sentence: `Loading plugin "${identity}" failed: the module exports no default ${owed.noun} function.`,
+      sentence: `Loading plugin ${quoted(identity)} failed: the module exports no default ${owed.noun} function.`,
     });
   }
   return exported;
@@ -693,7 +694,7 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
       throw new DeclarationError(unknownSignal, {
         correction: 'Claim SIGINT or SIGTERM.',
         findings: [partFinding(site, [index])],
-        sentence: `${pluginSentence(identity)} claims signal ${quoted(String(value))}.`,
+        sentence: `${pluginSentence(identity)} claims signal ${quoted(value)}.`,
       });
     }
     const first = claimed.get(value);
@@ -704,7 +705,7 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
           partFinding(site, [first], 'the first claim'),
           partFinding(site, [index], 'the second claim'),
         ],
-        sentence: `${pluginSentence(identity)} claims signal "${value}" twice.`,
+        sentence: `${pluginSentence(identity)} claims signal ${quoted(value)} twice.`,
       });
     }
     claimed.set(value, index);
@@ -803,7 +804,7 @@ function readSource(
     throw new DeclarationError(sourceBinding, {
       correction: 'Supply an extension that applies to options.',
       findings: [keyFinding('binding')],
-      sentence: `${sentence} declares source binding "${binding.identity}", which applies to ${appliesTo(binding.target)}.`,
+      sentence: `${sentence} declares source binding ${quoted(binding.identity)}, which applies to ${appliesTo(binding.target)}.`,
     });
   }
   if (!isLoader(load)) {
@@ -820,7 +821,7 @@ function readSource(
     const option = pluginOptionSite(
       { identity, options: declaration.options },
       carrier.name,
-      `${sentence} option "${carrier.name}"`,
+      `${sentence} option ${quoted(carrier.name)}`,
     );
     throw new DeclarationError(sourceBoundOwnOption, {
       correction: "Remove the value; the source's own options resolve before it loads.",

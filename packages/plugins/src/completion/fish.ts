@@ -8,7 +8,7 @@ import { fishQuoted, identifier, scriptName } from './name.js';
  * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
  *   encoded into function identifiers by `identifier()`, and only a portable name, which
- *   `scriptName()` checks at the call with a `DeclarationError`.
+ *   `scriptName()` checks at the call with a `TypeError`.
  * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script

@@ -170,7 +170,7 @@ test.each([
     {
       correction: 'Use true or false.',
       rule: 'flag-not-boolean',
-      sentence: 'Option "field" multiple must be Boolean.',
+      sentence: 'The root Command option "field" declares multiple that is not a Boolean.',
     },
   ],
   [

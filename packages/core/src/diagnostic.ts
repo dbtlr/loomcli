@@ -1,7 +1,6 @@
-import { escapeControlCharacters } from './controls.js';
 import { registerRule } from './diagnostic-text.js';
 import type { DiagnosticRule } from './diagnostic-text.js';
-import { DeclarationError } from './errors.js';
+import { DeclarationError, quoted } from './errors.js';
 import { ruleDocs, ruleIdentity, ruleProse } from './rules.js';
 
 /**
@@ -24,11 +23,6 @@ function isWebAddress(value: string): boolean {
   }
   const { protocol } = new URL(value);
   return protocol === 'https:' || protocol === 'http:';
-}
-
-/** A value a sentence quotes, escaped so it cannot break or reorder the line. */
-function quoted(value: unknown): string {
-  return `"${escapeControlCharacters(String(value))}"`;
 }
 
 /** The definition's own fields, read by shape, because a JavaScript caller reaches the call. */

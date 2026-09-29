@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { escapeControlCharacters } from './controls.js';
-import { diagnosticText, isDiagnosticRule } from './diagnostic-text.js';
+import { diagnosticText, isDiagnosticRule, valueCode } from './diagnostic-text.js';
 import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
@@ -37,12 +37,14 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
 }
 
 /**
- * Raw text an operator typed, quoted inside a sentence. It is escaped, so a control character or a
- * bidirectional control in a token cannot reorder or break the line. The failure's public field
+ * A value a sentence quotes: raw text an operator typed, or a name or identity an author declared.
+ * Text is escaped, so a control character or a bidirectional control in it cannot reorder or break
+ * the line. A value of any other kind prints as the code a finding prints for it, because a rule
+ * that rejects a value that is not a string quotes that value too. The failure's public field
  * keeps the raw value.
  */
-export function quoted(text: string): string {
-  return `"${escapeControlCharacters(text)}"`;
+export function quoted(value: unknown): string {
+  return typeof value === 'string' ? `"${escapeControlCharacters(value)}"` : valueCode(value);
 }
 
 /**
@@ -176,8 +178,7 @@ function classCode(target: object, constructed: { readonly name: string }): Fail
   if (!isFailureExitCode(declared)) {
     // A class declaration is no call, so no finding stands for it.
     throw new DeclarationError(failureExitCode, {
-      correction:
-        'Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      correction: 'Declare a whole number from 1 through 125.',
       sentence: undeclarableSentence(constructed.name, declared),
     });
   }

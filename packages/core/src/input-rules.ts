@@ -20,10 +20,13 @@ const shortAlias = registerRule('@loomcli/core/short-alias', {
   headline: 'Invalid short alias',
 });
 
-/** A yes-or-no declaration key, such as `required`, that holds a value other than a Boolean. */
+/**
+ * A yes-or-no declaration key, such as `required`, `hidden`, or an extension descriptor's
+ * `collect`, that holds a value other than a Boolean.
+ */
 const flagNotBoolean = registerRule('@loomcli/core/flag-not-boolean', {
   explanation:
-    'shortOnly, multiple, required, variadic, and validateOmitted each answer one yes-or-no question about a declaration, so each holds true or false. A value such as the string "false" would read as true.',
+    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an extension\'s collect each answer one yes-or-no question about a declaration, so each holds true or false. A value such as the string "false" would read as true.',
   headline: 'Flag not a Boolean',
 });
 
@@ -76,10 +79,13 @@ const optionDeclaredTwice = registerRule('@loomcli/core/option-declared-twice', 
   headline: 'Option declared twice',
 });
 
-/** A plugin option whose name or spelling another option in the globals table also claims. */
+/**
+ * A plugin option whose name or spelling another option in the globals table also claims, or an
+ * input a plugin's hook declared whose name or spelling the Command or another scope already holds.
+ */
 const pluginOptionCollision = registerRule('@loomcli/core/plugin-option-collision', {
   explanation:
-    "A plugin's options join the one table the pre-scan reads with the global options, so every Command meets them. A name or a spelling that another option in that scope also claims would reach only one of the two.",
+    "A plugin's options join the one table the pre-scan reads with the global options, so every Command meets them, and an input a plugin's onCommandAttach hook declares joins the Command's own. A name or a spelling that another input in that scope also claims would reach only one of the two.",
   headline: 'Plugin option collision',
 });
 

@@ -15,13 +15,6 @@ const configFiles = diagnosticRule(`${Package.name}/config-files`, {
   headline: 'Invalid configuration files',
 });
 
-/** An application name a completion script cannot carry into shell source. */
-const scriptName = diagnosticRule(`${Package.name}/script-name`, {
-  explanation:
-    "A completion script carries the application name into shell source, as a function name and as a quoted string, so it takes a name inside core's portable name rule alone, which no shell reads as code.",
-  headline: 'Name not portable in a script',
-});
-
 /** One failure name declared with two exit codes or two meanings. */
 const failureNameConflict = diagnosticRule(`${Package.name}/failure-name-conflict`, {
   explanation:
@@ -29,4 +22,4 @@ const failureNameConflict = diagnosticRule(`${Package.name}/failure-name-conflic
   headline: 'Failure name conflict',
 });
 
-export { configFiles, failureNameConflict, scriptName };
+export { configFiles, failureNameConflict };

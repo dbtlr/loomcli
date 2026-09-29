@@ -1,7 +1,7 @@
 import type { Writable } from 'node:stream';
 
 import { runInvocation } from './chain.js';
-import { optionsObject, portableName } from './command-rules.js';
+import { portableName } from './command-rules.js';
 import {
   attachToRoot,
   callArguments,
@@ -21,7 +21,6 @@ import {
   isPortableName,
   layerOf,
   portableNameCorrection,
-  quotedName,
 } from './command.js';
 import type {
   AfterAction,
@@ -39,7 +38,14 @@ import type {
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
+import {
+  DeclarationError,
+  exitCodeOf,
+  InternalError,
+  quoted,
+  reasonOf,
+  toFailure,
+} from './errors.js';
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
@@ -63,7 +69,7 @@ import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { isPlainObject } from './plain.js';
-import { invalidPacket, retiredApplicationOption } from './plugin-rules.js';
+import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
@@ -361,7 +367,7 @@ class ApplicationBuilder<
         findings: [
           { arguments: callArguments(name, config), call: 'globalOption', mark: '0', path: [] },
         ],
-        sentence: `The Application declares global option ${quotedName(name)} after command() or action().`,
+        sentence: `The Application declares global option ${quoted(name)} after command() or action().`,
       });
     }
     const input: OptionInput<Name, Config> = {
@@ -822,10 +828,10 @@ function checkOptions(name: string, options: unknown): ApplicationFacts {
     return { description: undefined, version: checkVersion(site, undefined) };
   }
   if (!isPlainObject(options)) {
-    throw new DeclarationError(optionsObject, {
+    throw new DeclarationError(notAnObject, {
       correction: 'Supply an Application options object.',
       findings: [{ ...site.declaration, mark: '1' }],
-      sentence: 'The Application options must be an object.',
+      sentence: 'The Application declares options that are not an object.',
     });
   }
   for (const [key, correction] of retired) {
@@ -967,7 +973,7 @@ function checkApplicationName(name: unknown): string {
     throw new DeclarationError(portableName, {
       correction: portableNameCorrection,
       findings: [{ arguments: [name], call: 'new Application', mark: '0' }],
-      sentence: `Application name ${quotedName(name)} is invalid.`,
+      sentence: `Application name ${quoted(name)} is invalid.`,
     });
   }
   return name;
