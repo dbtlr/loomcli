@@ -200,6 +200,18 @@ _Avoid_: Routing (for the handoff), execution
 The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, and terminal facts. Core copies the facts, retains the streams, and lets a caller override fields.
 _Avoid_: Environment (for the whole object), process, platform, context
 
+**Packet**:
+The build-time fact file `loom.packet.json` at an application's package root, which the entry hands to the Application as data. Its `build` member says whether the application is a development build or a distributed build: the source tree's packet reads `development`, and the build writes `distributed` into the artifact through `packet()` from `@loomcli/loom/build`. An Application given no packet is distributed.
+_Avoid_: Environment, mode, profile, `NODE_ENV`
+
+**Development build**:
+An application whose packet reads `development`, such as the source run while the author works. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
+_Avoid_: Debug mode, dev mode, source mode
+
+**Distributed build**:
+An application whose packet reads `distributed`, or that has no packet: what an operator installs. A defect or declaration fault that `run()` reports shows the generic defect message. Operator failures print the same bytes in both builds.
+_Avoid_: Production, release mode, shipped mode
+
 **Exit code**:
 The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which signal ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, and 130 and 143 are signals.
 
@@ -314,7 +326,7 @@ The usage error that carries the whole validation phase: every omitted required 
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
-A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory. One that `run()` meets reports with exit 1; one thrown at a call or an attach is an uncaught exception.
+A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory, and carries its Developer Diagnostic. One that `run()` meets reports with exit 1, as a defect in a distributed build; one thrown at a call or an attach is an uncaught exception whose message holds the diagnostic.
 _Avoid_: Config error, definition error, developer error (in the class name)
 
 **Fatal error**:
@@ -326,11 +338,19 @@ A failure core wraps around an unexpected exception, a broken view, a broken `on
 _Avoid_: Unhandled error, bug (in output)
 
 **Defect**:
-A failure only the author can fix, met on a shipped application: an unexpected exception, a broken view, hook, or result contract, or an author fault that reached the operator. It is the application's equivalent of an HTTP 500, so the operator sees one generic message with no reason, class name, or code detail.
+A failure only the author can fix: an unexpected exception no translator answered, a broken view, hook, translator, or result contract, or an author fault that reached a run. It is the application's equivalent of an HTTP 500. In a distributed build the operator sees one generic message, `<application>: Something went wrong.`, with no reason, class name, or code detail; in a development build the author sees its Developer Diagnostic.
 _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
-The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure, a category such as `Internal error: ` for a declaration or internal failure, and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints.
+The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints. A defect or declaration fault writes the generic defect message or a Developer Diagnostic instead, by build.
+
+**Developer Diagnostic**:
+The author's view of a declaration fault or a defect: a banner with the rule's headline and identity, the sentence, the findings, an explanation of why the rule exists, the correction, and an optional docs link. It is not a view, and in a development build core renders it before consulting any override. Findings rebuild the declaration from graph facts, and a defect's findings show the author's own source lines.
+_Avoid_: Stack trace, error page, debug output, verbose error
+
+**Diagnostic rule**:
+One reason a declaration can be wrong, or one kind of defect, declared once with `diagnosticRule` and shared by every site that raises it. Its identity is the declaring package's name, `/`, and a kebab-case name, such as `@loomcli/core/plugin-option-collision`, and it carries the headline, the explanation, and an optional docs link.
+_Avoid_: Error code (for a rule), lint rule, check
 _Avoid_: Error message (when the class is meant), log line
 
 **Operator message**:
@@ -338,7 +358,7 @@ Any message that runs after the application is built and shipped, read by the op
 _Avoid_: User message, runtime error, end-user error
 
 **Author message**:
-A message that runs while the author develops the application, such as a declaration fault, addressed to the author who can change the code. It never prints on a shipped application.
+A message that runs while the author develops the application, such as a declaration fault's Developer Diagnostic, addressed to the author who can change the code. A distributed build shows the generic defect message in its place.
 _Avoid_: Developer error (for the message), debug message
 
 **Failure view**:
@@ -352,6 +372,10 @@ _Avoid_: Suggestion (a hint is a line under the sentence, not the near match ins
 **Suggestion**:
 The near match a plugin's failure view offers as the fix inside the sentence for a mistyped Command or option, such as `Did you mean "get"?`. It is never an alias, a hidden member, or a deprecated member, and core's own sentence never offers one.
 _Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
+
+**Translator**:
+A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a middleware, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
+_Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:
 One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so an issue code and its parameters reach a failure view.

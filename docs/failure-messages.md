@@ -61,10 +61,17 @@ The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not appl
 
 ## 7. A defect shows one generic message
 
-A defect is a failure only the author can fix: an unexpected exception, a broken view or `onFailure` hook, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. The operator sees one generic, friendly message with no reason, no class name, and no code detail. The run exits 1, or keeps its cancellation code when the run was cancelled, as [Signals and cancellation](core.md#signals-and-cancellation) ranks it.
+A defect is a failure only the author can fix: an unexpected exception no [translator](core.md#translators) answered, a broken view, `onFailure` hook, or translator, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. In a distributed build the operator sees one generic message with no reason, no class name, and no code detail:
 
+```text
+jsonkit: Something went wrong.
+```
+
+The wording follows the status phrase web frameworks show for a 500, such as `Internal Server Error` and Rails' `We're sorry, but something went wrong.`, and claims nothing on the author's behalf: not that the fault is a bug, not where to report it, and not the version. The run exits 1, or keeps its cancellation code when the run was cancelled, as [Signals and cancellation](core.md#signals-and-cancellation) ranks it.
+
+- **The exception to rule 2.** The generic message is the one operator message with no next step, because a defect has none Loom can name honestly. An author who has one adds it.
 - **Replacing it.** An author replaces the message with the existing `override(InternalError, view)`, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
-- **The author's detail.** The author sees the detail while developing, in a separate author development view. That view, how a run knows it is in development, and the generic wording are a later record's contract. Until it lands, core's current `InternalError` text under [Failure classes](core.md#failure-classes) stands, and it changes when that contract lands.
+- **The author's detail.** The author sees what broke and how to fix it in a [Developer Diagnostic](core.md#developer-diagnostics), which a [development build](core.md#development-builds) renders in place of the generic message. The packet built into the application decides which build a run is. Until that contract lands, core's current `InternalError` text under [Failure classes](core.md#failure-classes) stands.
 
 ## 8. Classify an author fault that reaches a shipped application
 
@@ -78,7 +85,7 @@ Moving a check earlier, so the fault cannot reach a shipped application, is sepa
 
 ## 9. Audit
 
-The audit listed every operator message Loom ships and checked it against rules 2 through 6. Author messages were swept mechanically for rule 2. The table records the Loom-owned operator messages the audit changed, with the text each had before and has now. Core's defect lines, the `InternalError` default, the broken `onFailure` hook line, and `Rendering the failure failed`, follow rule 7 and change with the author development view, not in this audit.
+The audit listed every operator message Loom ships and checked it against rules 2 through 6. Author messages were swept mechanically for rule 2. The table records the Loom-owned operator messages the audit changed, with the text each had before and has now. Core's defect lines, the `InternalError` default, the broken `onFailure` hook line, and `Rendering the failure failed`, follow rule 7 and change with [development builds](core.md#development-builds), not in this audit.
 
 | Source                                                      | Before                                                                               | After                                                                                                            | Rule |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ---- |
@@ -101,6 +108,6 @@ The audit listed every operator message Loom ships and checked it against rules 
 | Every rule in the validator catalog                         | The issue carries no code.                                                           | The issue carries its code and parameters under [Issue codes](validators.md#issue-codes).                        | -    |
 | Quoted diagnostic text: core's routing token and option spellings, and the configuration plugin's paths | Core's tokens are not escaped (the renderer drops C0 controls, and bidirectional controls pass); `escapeControlCharacters` covers control characters and line separators. | Also the format characters under rule 5.                                                                         | 5    |
 
-The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator sees the generic message once the author development view lands.
+The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator sees the generic message once [development builds](core.md#development-builds) land.
 
 The example applications were audited against rules 2 and 3 too: every `fatal`, `warn`, and `FatalError` sentence in jsonkit and textstat ends with its fix, such as `Field not found: "name". Run jsonkit keys to list the fields.`, each quoting the path or field it repeats so a trailing dot stays inside the quotes, and jsonkit's `Cannot parse JSON` and `Cannot read` and textstat's `Cannot read` keep their runtime reasons under rule 6, each closed by one period before the fix. jsonkit's branded `InputError` and `UnknownCommandError` views keep their text until they give way to core's default text, as [Example coverage](core.md#example-coverage) describes.
