@@ -52,7 +52,7 @@ function undeclarableMessage(className: string, declared: unknown): string {
  * that throws answers `undefined`: a throw inside a zod transform makes zod retry the parse
  * asynchronously, which core rejects with the wrong fault and whose rejected retry nothing handles.
  */
-function readStatic(failureClass: object, key: 'exitCode' | 'name'): unknown {
+function readStatic(failureClass: object, key: 'exitCode'): unknown {
   try {
     return Reflect.get(failureClass, key);
   } catch {
@@ -61,12 +61,16 @@ function readStatic(failureClass: object, key: 'exitCode' | 'name'): unknown {
 }
 
 /**
- * The name core gives a failure class in its sentence, its constructor's `name`.
- * A static `name` that throws or is not a string reads as the empty name an anonymous class has.
+ * The name core gives a failure class in its sentence, its constructor's `name` read as text.
+ * A static `name` that throws, or that cannot be read as text, reads as the empty name an anonymous
+ * class has.
  */
 function classNameOf(failureClass: object): string {
-  const name = readStatic(failureClass, 'name');
-  return typeof name === 'string' ? name : '';
+  try {
+    return String(Reflect.get(failureClass, 'name'));
+  } catch {
+    return '';
+  }
 }
 
 /**

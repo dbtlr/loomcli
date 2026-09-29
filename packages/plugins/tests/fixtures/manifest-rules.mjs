@@ -33,6 +33,18 @@ class ThrowingGetterError extends FatalError {
   }
 }
 
+/** A failure class that declares 200 and whose static `name` is a number, which core reads as text. */
+class NumberNameError extends FatalError {
+  static exitCode = 200;
+
+  static name = 42;
+
+  constructor() {
+    super('Unreachable.');
+    this.name = 'NumberNameError';
+  }
+}
+
 /** A failure class that declares 200 and whose static `name` getter throws, so reading its name fails. */
 class ThrowingNameError extends FatalError {
   static exitCode = 200;
@@ -73,6 +85,7 @@ const cases = {
   'failure-meaning-on-two-lines': failure({ meaning: 'The data\nis bad.' }),
   'failure-missing': { failures: [{ meaning: 'The data is bad.', name: 'bad-data' }] },
   'failure-name-getter-throws': failure({ failure: ThrowingNameError }),
+  'failure-name-number': failure({ failure: NumberNameError }),
   'failure-name-uppercase': failure({ name: 'Bad-data' }),
   'failure-prototype-throws': failure({ failure: throwingPrototype }),
   'failure-valid': failure({}),

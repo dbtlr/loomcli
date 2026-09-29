@@ -213,6 +213,14 @@ test('a failure class whose static name getter throws is rejected at the call un
   );
 });
 
+test('a failure class whose static name is not a string is rejected under that name read as text, as core names it', () => {
+  expect(rule('failure-name-number')).toEqual(
+    invalid(
+      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+    ),
+  );
+});
+
 test('a value whose prototype read throws is rejected at the call as not a failure class', () => {
   expect(rule('failure-prototype-throws')).toEqual(
     invalid('Supply a failure class, a class that extends LoomError.'),
