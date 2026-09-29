@@ -68,9 +68,10 @@ const explanations = {
   'name-shared-across-kinds': [
     'An onCommandAttach hook adds inputs to a Command whose other inputs the plugin',
     'did not declare, so each name a hook declares stays apart from every argument',
-    "and option in the Command's scope, whichever kind holds it. Help, the manifest,",
-    'and a middleware that reads the request would otherwise meet one name for two',
-    'inputs.',
+    "and option in the Command's scope, whichever kind holds it. An author who gives",
+    'an argument and an option one name does so knowingly, but a hook cannot see the',
+    "Command's inputs, so a shared name there is an accident the author did not",
+    'choose.',
   ],
   'not-a-validator': [
     'Core validates every value through the Standard Schema v1 interface: the',

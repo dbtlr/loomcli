@@ -336,9 +336,10 @@ test.each(rejected)('inspect() and run() reject the %s declaration alike', (scen
 });
 
 /**
- * The reason rule each hook collision breaks, which is the rule the application's own collision of
- * that pair breaks: a key two options share, a name two arguments share, a spelling two options
- * share, or a name an argument and an option share.
+ * The reason rule each hook collision breaks.
+ * A key two options share, a name two arguments share, or a spelling two options share breaks the
+ * rule the application's own collision of that pair breaks.
+ * A name an argument and an option share breaks name-shared-across-kinds, which only a hook reaches.
  */
 const hookCollisionRules = [
   ['hook-local-collision', 'option-declared-twice'],

@@ -1812,8 +1812,9 @@ interface Collision {
 }
 
 /**
- * The reason rule one name collision breaks, the rule the application's own collision of the pair
- * breaks: two options, two arguments, or an argument and an option under one name.
+ * The reason rule one name collision breaks.
+ * Two options or two arguments break the rule the application's own collision of the pair breaks.
+ * An argument and an option under one name break name-shared-across-kinds, which only a hook reaches.
  */
 function nameCollisionRule(
   declared: InputDeclaration['kind'],
