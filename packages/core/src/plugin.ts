@@ -6,9 +6,9 @@ import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, InternalError, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry } from './extension.js';
-import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
+import { checkDeprecated, checkDescription, checkHidden, pluginOptionSite } from './facts.js';
 import type { FactSite } from './facts.js';
-import { boundOptions } from './globals.js';
+import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
@@ -342,18 +342,12 @@ function readOptions(
   const inputs: OptionInput[] = [];
   for (const [name, config] of Object.entries(declared ?? {})) {
     const sentence = `${pluginSentence(identity)} option "${name}"`;
-    checkPluginOption(
-      {
-        at: `1.options.${name}`,
-        declaration: { arguments: [identity, { options: declared }], call: 'plugin' },
-        subject: sentence,
-      },
-      config,
-    );
-    checkEnvBinding(sentence, config);
+    const site = pluginOptionSite({ identity, options: declared }, name, sentence);
+    checkPluginOption(site, config);
+    checkEnvBinding(site, config);
     const input: OptionInput = { config: captureConfig(config), kind: 'option', name };
     // The shared rules name the plugin and the option, so a fault reads with its contributor.
-    checkDeclarations([input], sentence);
+    checkDeclarations([{ input, site }], sentence);
     build.records.set(
       input,
       buildExtensions({
@@ -369,8 +363,14 @@ function readOptions(
     inputs.push(input);
   }
   // Two options of one plugin meet in the one table the pre-scan reads, so they share its rules.
-  compileOptions(inputs, `plugin "${identity}"`);
-  claimVariables(boundOptions(inputs, (name) => `plugin "${identity}" option "${name}"`));
+  const siteOf = pluginSites(identity, inputs);
+  compileOptions(inputs, { siteOf, subject: `plugin "${identity}"` });
+  claimVariables(
+    boundOptions(inputs, (input) => ({
+      phrase: `plugin "${identity}" option "${input.name}"`,
+      site: siteOf(input),
+    })),
+  );
   return inputs;
 }
 

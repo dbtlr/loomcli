@@ -8,20 +8,6 @@ import {
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 
-/** One fact's fault, which marks the fact inside the call that declared it. */
-function factFault(
-  rule: DiagnosticRule,
-  site: FactSite,
-  parts: { fact: string; sentence: string; correction: string },
-): DeclarationError {
-  const { correction, fact, sentence } = parts;
-  return new DeclarationError(rule, {
-    correction,
-    findings: [{ ...site.declaration, mark: `${site.at}.${fact}` }],
-    sentence,
-  });
-}
-
 /**
  * One character outside Unicode `White_Space`, so a fact holds prose and not only spacing.
  * The class covers the tab, the space, the line terminators, the no-break space, and every other
@@ -43,6 +29,60 @@ export interface FactSite {
   readonly subject: string;
   readonly declaration: Omit<Finding, 'mark' | 'note'>;
   readonly at: string;
+}
+
+/** The finding for the call one site holds, marking one part of it, with a note when given. */
+export function siteFinding(site: FactSite, mark: string, note?: string): Finding {
+  const finding = { ...site.declaration, mark };
+  return note === undefined ? finding : { ...finding, note };
+}
+
+/**
+ * One fact's fault, which marks the fact inside the call that declared it. Every rule about one key
+ * of a declaration's config object reports through it, so each marks the key the same way.
+ */
+export function factFault(
+  rule: DiagnosticRule,
+  site: FactSite,
+  parts: { fact: string; sentence: string; correction: string },
+): DeclarationError {
+  const { correction, fact, sentence } = parts;
+  return new DeclarationError(rule, {
+    correction,
+    findings: [siteFinding(site, `${site.at}.${fact}`)],
+    sentence,
+  });
+}
+
+/**
+ * Where one input was declared: the site of its config object, and the dotted path to its declared
+ * name, which a fault about the name or about the whole input marks.
+ */
+export interface InputSite extends FactSite {
+  readonly named: string;
+}
+
+/** The site of an input a call declared as `call(name, config)`, such as `option()`. */
+export function callSite(subject: string, declaration: Omit<Finding, 'mark' | 'note'>): InputSite {
+  return { at: '1', declaration, named: '0', subject };
+}
+
+/**
+ * The site of one option a plugin declared, rebuilt as `plugin(identity, { options })` from the
+ * options the plugin holds. The option's entry in the record stands for its name.
+ */
+export function pluginOptionSite(
+  plugin: { identity: string; options: unknown },
+  name: string,
+  subject: string,
+): InputSite {
+  const at = `1.options.${name}`;
+  return {
+    at,
+    declaration: { arguments: [plugin.identity, { options: plugin.options }], call: 'plugin' },
+    named: at,
+    subject,
+  };
 }
 
 /**

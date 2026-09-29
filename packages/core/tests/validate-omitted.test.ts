@@ -1,6 +1,8 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { expectRuleParts } from './rule-parts.js';
+import type { RuleParts } from './rule-parts.js';
 
 /** The fixture encodes an absent value as this marker, which JSON alone cannot carry. */
 const none = '#undefined';
@@ -83,38 +85,66 @@ test('an issue from an omitted argument names the argument', () => {
   });
 });
 
+/** The fix for an input that takes several values, whose omission reads an empty array. */
+const collectedFix =
+  'Remove validateOmitted; with no values the action receives an empty array and no validator runs.';
+
 test.each([
   [
     'required',
-    'Option "file" is required and declares validateOmitted. Remove validateOmitted or make the input optional.',
+    {
+      correction: 'Remove validateOmitted or make the input optional.',
+      rule: 'omission-already-decided',
+      sentence: 'Option "file" is required and declares validateOmitted.',
+    },
   ],
   [
     'default',
-    'Option "file" declares a default and validateOmitted. Remove one; the default already fills an omitted value.',
+    {
+      correction: 'Remove one; the default already fills an omitted value.',
+      rule: 'omission-already-decided',
+      sentence: 'Option "file" declares a default and validateOmitted.',
+    },
   ],
   [
     'multiple',
-    'Option "file" takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
+    {
+      correction: collectedFix,
+      rule: 'omission-already-decided',
+      sentence: 'Option "file" takes several values and declares validateOmitted.',
+    },
   ],
   [
     'variadic',
-    'Argument "files" takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
+    {
+      correction: collectedFix,
+      rule: 'omission-already-decided',
+      sentence: 'Argument "files" takes several values and declares validateOmitted.',
+    },
   ],
   [
     'boolean',
-    'Option "force" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
+    {
+      correction: 'Remove validateOmitted; use polarity to control its absent value.',
+      rule: 'boolean-option-value-rule',
+      sentence: 'Option "force" is Boolean and declares validateOmitted.',
+    },
   ],
   [
     'unvalidated',
-    'Option "file" declares validateOmitted without a validator. Add validate or remove validateOmitted.',
+    {
+      correction: 'Add validate or remove validateOmitted.',
+      rule: 'omission-without-validator',
+      sentence: 'Option "file" declares validateOmitted without a validator.',
+    },
   ],
-] satisfies [string, string][])(
+] satisfies [string, RuleParts][])(
   'the %s declaration throws from the declaring call while the module evaluates',
-  (scenario, diagnostic) => {
+  (scenario, parts) => {
     const result = omitted(scenario, ['--unknown']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).not.toContain('Invalid declaration:');
-    expect(result.stderr).toContain(diagnostic);
+    expectRuleParts(result.stderr, parts);
   },
 );

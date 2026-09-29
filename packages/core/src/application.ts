@@ -10,6 +10,7 @@ import {
   checkDeclaredOptions,
   collectInputs,
   commandPlacement,
+  inputPlaces,
   declareAction,
   declareExtensions,
   declareArgument,
@@ -44,11 +45,12 @@ import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
 import { checkDescription, checkNoListingFacts, checkVersion } from './facts.js';
 import type { FactSite } from './facts.js';
-import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
+import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
+import { globalOptionAfterCommand } from './input-rules.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
@@ -347,9 +349,13 @@ class ApplicationBuilder<
   > {
     // The plugins' Commands attach at construction, so only the application's own calls close it.
     if (this.#config.composed) {
-      throw new DeclarationError(
-        `The Application declares global option "${name}" after command() or action(). Declare global options before attaching Commands or registering an action.`,
-      );
+      throw new DeclarationError(globalOptionAfterCommand, {
+        correction: 'Declare global options before attaching Commands or registering an action.',
+        findings: [
+          { arguments: callArguments(name, config), call: 'globalOption', mark: '0', path: [] },
+        ],
+        sentence: `The Application declares global option ${quotedName(name)} after command() or action().`,
+      });
     }
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
@@ -360,7 +366,7 @@ class ApplicationBuilder<
     const globals = declareGlobalOption(this.#globals, input, descriptors);
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
-    checkDeclarations([input]);
+    checkDeclarations([{ input, site: globalSite(input) }]);
     return new ApplicationBuilder<
       Args,
       Options,
@@ -497,7 +503,10 @@ class ApplicationBuilder<
       rendering: () => undefined,
       views: () => undefined,
     });
-    return inspectGraph(this.#name, built.graph, built.facts);
+    return inspectGraph(this.#name, built.graph, {
+      ...built.facts,
+      development: this.#config.development,
+    });
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -594,10 +603,16 @@ class ApplicationBuilder<
         const { graph } = built;
         // The graph `inspect()` returns, built at most once for the run, whoever reads it first.
         let inspectedGraph: CommandGraph | undefined = undefined;
-        const inspected = () => (inspectedGraph ??= inspectGraph(this.#name, graph, built.facts));
+        const { development } = this.#config;
+        const inspected = () =>
+          (inspectedGraph ??= inspectGraph(this.#name, graph, { ...built.facts, development }));
         reached = { inspected, plugins: built.plugins };
+        if (development) {
+          // A development build asks every converter at build, so its check runs on every run.
+          inspected();
+        }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
-        const defaults = await prepareInputs(inputs, host);
+        const defaults = await prepareInputs(inputs, host, inputPlaces(graph));
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**

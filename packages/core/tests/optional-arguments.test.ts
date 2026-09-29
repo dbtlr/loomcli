@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { expectRuleParts } from './rule-parts.js';
 
 function optional(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/optional-arguments.mjs', import.meta.url), [scenario, ...argv]);
@@ -53,8 +54,8 @@ test('an invalid argument default is a declaration error', () => {
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   // The fixture is a development build, so the fault prints its Developer Diagnostic.
-  expect(result.stderr).toContain('-- INVALID DECLARATION --');
-  expect(result.stderr).toContain('\n\nArgument "path" has an invalid default.');
+  expect(result.stderr).toContain(' @loomcli/core/invalid-default\n');
+  expect(result.stderr).toContain('\n\nArgument "path" has an invalid default.\n');
   expect(result.stderr).toContain('Use decimal digits.');
 });
 
@@ -147,9 +148,11 @@ test('a raw default of the wrong shape throws from the declaring call', () => {
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).not.toContain('Invalid declaration:');
-  expect(result.stderr).toContain(
-    'Argument "files" default must be an array of strings without a validator. Supply a string array default.',
-  );
+  expectRuleParts(result.stderr, {
+    correction: 'Supply a string array default.',
+    rule: 'default-shape',
+    sentence: 'Argument "files" default must be an array of strings without a validator.',
+  });
 });
 
 // A schema may answer asynchronously, so a default it rejects waits for run().
@@ -159,7 +162,7 @@ test.each([['tail-invalid-default', 'Argument "files" has an invalid default.']]
     const result = optional(scenario, ['one']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(`-- INVALID DECLARATION --`);
+    expect(result.stderr).toContain(' @loomcli/core/invalid-default\n');
     expect(result.stderr).toContain(`\n\n${diagnostic}`);
   },
 );

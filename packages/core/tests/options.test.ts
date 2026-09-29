@@ -95,13 +95,13 @@ test.each([
 );
 
 test.each([
-  ['nonstring-name', 'Option names', 'strings'],
+  ['nonstring-name', 'Option name', 'not a string'],
   ['symbol-short', 'flag', 'one ASCII letter'],
   ['nonboolean-short-only', 'flag', 'shortOnly must be Boolean'],
   ['duplicate-key', 'total', 'declared more than once'],
   ['duplicate-short', '-t', 'used by both'],
   ['negative-collision', '--no-total', 'used by both'],
-  ['missing-short', 'metric', 'requires a short alias'],
+  ['missing-short', 'metric', 'no short alias'],
   ['both-short-only', 'total', 'both polarities'],
   ['string-polarity', 'metric', 'Boolean'],
   ['invalid-short', 'metric', 'one ASCII letter'],

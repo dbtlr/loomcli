@@ -137,7 +137,7 @@ const thrown = [
   ],
   [
     'option-boolean-default',
-    'Plugin "@loomcli/log" option "level" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
+    'Plugin "@loomcli/log" option "level" is Boolean and declares default. Remove default; use polarity to control its absent value.',
   ],
   [
     'option-raw-default',

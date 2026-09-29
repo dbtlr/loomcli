@@ -564,11 +564,11 @@ test.each([
   ],
   [
     'boolean-validate',
-    'Option "total" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
+    'Option "total" is Boolean and declares validate. Remove validate; use polarity to control its absent value.',
   ],
   [
     'boolean-default',
-    'Option "total" is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.',
+    'Option "total" is Boolean and declares default. Remove default; use polarity to control its absent value.',
   ],
   [
     'foreign-schema',

@@ -2,9 +2,21 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
+import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, InputError, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
-import { booleanValue } from './options.js';
+import { factFault } from './facts.js';
+import type { InputSite } from './facts.js';
+import {
+  booleanOptionValueRule,
+  defaultShape,
+  invalidDefault,
+  notAValidator,
+  omissionAlreadyDecided,
+  omissionWithoutValidator,
+  requiredWithDefault,
+} from './input-rules.js';
+import { booleanValue, flagFault } from './options.js';
 import type { OptionValues } from './options.js';
 import { validatorFailed } from './rules.js';
 import type {
@@ -165,7 +177,7 @@ export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
  * A declaration error names the declaration, because the author reads the declaration to fix it.
  * An argument declares and reads under one name, so the two namings differ for options alone.
  */
-function declaredName(input: InputDeclaration) {
+export function declarationSubject(input: InputDeclaration): string {
   return input.kind === 'argument' ? `Argument "${input.name}"` : `Option "${input.name}"`;
 }
 
@@ -264,80 +276,98 @@ function holdsRawDefault(input: InputDeclaration) {
  * rule that already decides absence rejects it, and the flag needs a validator to receive the
  * omission.
  */
-function checkOmissionValidation(input: InputDeclaration, subject: string) {
+function checkOmissionValidation(input: InputDeclaration, site: InputSite, subject: string) {
   const { config } = input;
+  const decided = (sentence: string, correction: string) =>
+    factFault(omissionAlreadyDecided, site, { correction, fact: 'validateOmitted', sentence });
   if (config.required) {
-    throw new DeclarationError(
-      `${subject} is required and declares validateOmitted. Remove validateOmitted or make the input optional.`,
+    throw decided(
+      `${subject} is required and declares validateOmitted.`,
+      'Remove validateOmitted or make the input optional.',
     );
   }
   if (hasDefault(input)) {
-    throw new DeclarationError(
-      `${subject} declares a default and validateOmitted. Remove one; the default already fills an omitted value.`,
+    throw decided(
+      `${subject} declares a default and validateOmitted.`,
+      'Remove one; the default already fills an omitted value.',
     );
   }
   if (collects(input)) {
-    throw new DeclarationError(
-      `${subject} takes several values and declares validateOmitted. Remove validateOmitted; with no values the action receives an empty array and no validator runs.`,
+    throw decided(
+      `${subject} takes several values and declares validateOmitted.`,
+      'Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
     );
   }
   if (config.validate === undefined) {
-    throw new DeclarationError(
-      `${subject} declares validateOmitted without a validator. Add validate or remove validateOmitted.`,
-    );
+    throw factFault(omissionWithoutValidator, site, {
+      correction: 'Add validate or remove validateOmitted.',
+      fact: 'validateOmitted',
+      sentence: `${subject} declares validateOmitted without a validator.`,
+    });
   }
 }
 
-function checkDeclaration(input: InputDeclaration, subject: string) {
+/** The value rules a Boolean option may not declare, in the order its diagnostic names them. */
+const valueRules = ['validate', 'default', 'required', 'validateOmitted'] as const;
+
+/** Whether a `validate` value is a Standard Schema v1 object that core can call. */
+function isStandardSchema(validator: unknown): boolean {
+  if (validator === null || (typeof validator !== 'object' && typeof validator !== 'function')) {
+    return false;
+  }
+  const props: unknown = Reflect.get(validator, '~standard');
+  return (
+    typeof props === 'object' &&
+    props !== null &&
+    Reflect.get(props, 'version') === 1 &&
+    typeof Reflect.get(props, 'vendor') === 'string' &&
+    typeof Reflect.get(props, 'validate') === 'function'
+  );
+}
+
+function checkDeclaration(input: InputDeclaration, site: InputSite, subject: string) {
   const { config } = input;
   if (input.kind === 'option' && input.config.type === 'boolean') {
-    if (
-      'validate' in config ||
-      'default' in config ||
-      'required' in config ||
-      'validateOmitted' in config
-    ) {
-      throw new DeclarationError(
-        `${subject} is Boolean. Remove validate, default, required, and validateOmitted; use polarity to control its absent value.`,
-      );
+    const declared = valueRules.find((key) => key in config);
+    if (declared !== undefined) {
+      throw factFault(booleanOptionValueRule, site, {
+        correction: `Remove ${declared}; use polarity to control its absent value.`,
+        fact: declared,
+        sentence: `${subject} is Boolean and declares ${declared}.`,
+      });
     }
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
-    throw new DeclarationError(`${subject} required must be Boolean. Use true or false.`);
+    throw flagFault(site, subject, 'required');
   }
   if (
     input.kind === 'argument' &&
     input.config.variadic !== undefined &&
     typeof input.config.variadic !== 'boolean'
   ) {
-    throw new DeclarationError(`${subject} variadic must be Boolean. Use true or false.`);
+    throw flagFault(site, subject, 'variadic');
   }
   // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
   if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
-    throw new DeclarationError(`${subject} validateOmitted must be Boolean. Use true or false.`);
+    throw flagFault(site, subject, 'validateOmitted');
   }
   if (config.required && Object.hasOwn(config, 'default')) {
-    throw new DeclarationError(
-      `${subject} is required and declares a default. Remove the default or make the input optional.`,
-    );
+    throw factFault(requiredWithDefault, site, {
+      correction: 'Remove the default or make the input optional.',
+      fact: 'default',
+      sentence: `${subject} is required and declares a default.`,
+    });
   }
   if (validatesOmission(input)) {
-    checkOmissionValidation(input, subject);
+    checkOmissionValidation(input, site, subject);
   }
-  const validator = config.validate;
-  if (
-    validator !== undefined &&
-    (validator === null ||
-      (typeof validator !== 'object' && typeof validator !== 'function') ||
-      !validator['~standard'] ||
-      validator['~standard'].version !== 1 ||
-      typeof validator['~standard'].vendor !== 'string' ||
-      typeof validator['~standard'].validate !== 'function')
-  ) {
-    throw new DeclarationError(
-      `${subject} validate must be a Standard Schema v1 object. Supply a compatible validator.`,
-    );
+  if (config.validate !== undefined && !isStandardSchema(config.validate)) {
+    throw factFault(notAValidator, site, {
+      correction: 'Supply a compatible validator.',
+      fact: 'validate',
+      sentence: `${subject} validate must be a Standard Schema v1 object.`,
+    });
   }
 }
 
@@ -404,7 +434,7 @@ async function validate(
       validatorFailed,
       {
         correction: 'Fix the validator.',
-        sentence: `${declaredName(input)} validator failed unexpectedly: ${asSentence(reasonOf(error))}`,
+        sentence: `${declarationSubject(input)} validator failed unexpectedly: ${asSentence(reasonOf(error))}`,
       },
       { cause: error },
     );
@@ -429,7 +459,9 @@ async function validateDeclared(
   }
   if (!Array.isArray(raw)) {
     // The parser, the input sources, and the declaration rules only ever supply an array here.
-    throw new TypeError(`${declaredName(input)} reached validation without an array of values.`);
+    throw new TypeError(
+      `${declarationSubject(input)} reached validation without an array of values.`,
+    );
   }
   const outputs: unknown[] = [];
   const issues: StandardSchemaV1.Issue[] = [];
@@ -492,18 +524,32 @@ function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
 }
 
 /** The fault a default of the wrong raw shape reports, by the shape its declaration expects. */
-function defaultShapeFault(input: InputDeclaration, subject: string) {
+function defaultShapeFault(input: InputDeclaration, site: InputSite, subject: string) {
+  const fault = (sentence: string, correction: string) =>
+    factFault(defaultShape, site, { correction, fact: 'default', sentence });
   if (!collects(input)) {
-    return `${subject} default must be a string without a validator. Supply a string default.`;
+    return fault(
+      `${subject} default must be a string without a validator.`,
+      'Supply a string default.',
+    );
   }
   return input.config.validate === undefined
-    ? `${subject} default must be an array of strings without a validator. Supply a string array default.`
-    : `${subject} default must be an array. Supply an array of values.`;
+    ? fault(
+        `${subject} default must be an array of strings without a validator.`,
+        'Supply a string array default.',
+      )
+    : fault(`${subject} default must be an array.`, 'Supply an array of values.');
 }
 
 /** A declared `default: undefined` is a default, so presence is the key, never the value. */
 function hasDefault(input: InputDeclaration) {
   return Object.hasOwn(input.config, 'default');
+}
+
+/** One declaration and where it was declared, which its faults' findings rebuild. */
+export interface SitedInput {
+  readonly input: InputDeclaration;
+  readonly site: InputSite;
 }
 
 /**
@@ -513,35 +559,51 @@ function hasDefault(input: InputDeclaration) {
  * contributor that declares under its own name, such as a plugin, supplies the subject its
  * diagnostics read with; every other caller is named by the declaration itself.
  */
-export function checkDeclarations(inputs: readonly InputDeclaration[], named?: string): void {
-  for (const input of inputs) {
-    checkDeclaration(input, named ?? declaredName(input));
+export function checkDeclarations(inputs: readonly SitedInput[], named?: string): void {
+  for (const { input, site } of inputs) {
+    checkDeclaration(input, site, named ?? declarationSubject(input));
   }
-  for (const input of inputs.filter((entry) => hasDefault(entry))) {
+  for (const { input, site } of inputs.filter((entry) => hasDefault(entry.input))) {
     if (!holdsRawDefault(input)) {
-      const subject = named ?? declaredName(input);
-      throw new DeclarationError(defaultShapeFault(input, subject));
+      throw defaultShapeFault(input, site, named ?? declarationSubject(input));
     }
   }
 }
 
+/** The call that declared one input and the Command it sits on, which a default's fault rebuilds. */
+export type InputPlaces = ReadonlyMap<InputDeclaration, Pick<Finding, 'call' | 'path'>>;
+
 /**
  * Every declared default, validated before any token is read. The host is captured by then, so a
- * default's validator reads the same Host its action will, under the `default` phase.
+ * default's validator reads the same Host its action will, under the `default` phase. `places`
+ * says where each declaration sits, which a rejected default's finding rebuilds.
  */
-export async function prepareInputs(inputs: ScopedInputs, host: Host): Promise<DefaultValues> {
+export async function prepareInputs(
+  inputs: ScopedInputs,
+  host: Host,
+  places: InputPlaces,
+): Promise<DefaultValues> {
   const declarations = scoped(inputs);
   const defaults = new Map<InputDeclaration, unknown>();
   for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
     const { input } = entry;
-    const subject = declaredName(input);
+    const subject = declarationSubject(input);
     const result = await validateDeclared(input, input.config.default, {
       context: () => ({ host, input: identityOf(entry), phase: 'default' }),
     });
     if (result.issues !== undefined) {
-      throw new DeclarationError(
-        `${subject} has an invalid default. Fix the default or its validator.\n${messages(subject, reported(result.issues)).join('\n')}`,
-      );
+      const place = places.get(input);
+      throw new DeclarationError(invalidDefault, {
+        correction: 'Fix the default or its validator.',
+        findings:
+          place === undefined
+            ? []
+            : [{ ...place, arguments: [input.name, input.config], mark: '1.default' }],
+        sentence: [
+          `${subject} has an invalid default.`,
+          ...messages(subject, reported(result.issues)),
+        ].join('\n'),
+      });
     }
     defaults.set(input, result.value);
   }

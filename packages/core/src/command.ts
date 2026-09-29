@@ -58,8 +58,14 @@ import type {
   ExtensionSubject,
   ExtensionValue,
 } from './extension.js';
-import { checkDeprecated, checkDescription, checkHidden, checkNoListingFacts } from './facts.js';
-import type { FactSite } from './facts.js';
+import {
+  callSite,
+  checkDeprecated,
+  checkDescription,
+  checkHidden,
+  checkNoListingFacts,
+} from './facts.js';
+import type { FactSite, InputSite } from './facts.js';
 import type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
 import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
@@ -73,7 +79,7 @@ import {
   mergeValues,
   parseInputs,
 } from './options.js';
-import type { OptionValues } from './options.js';
+import type { CompileScope, OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -114,6 +120,7 @@ import { captureConfig, checkDeclarations, validateValues } from './validation.j
 import type {
   ArgumentInput,
   DefaultValues,
+  InputPlaces,
   InputDeclaration,
   OptionInput,
   ValidatedInputs,
@@ -544,17 +551,22 @@ function inputFinding(path: readonly string[], input: InputDeclaration, note?: s
   return note === undefined ? call : { ...call, note };
 }
 
-/** Where one input's facts were declared: the call on the Command at `path` that declared it. */
+/** Where one input was declared: the call on the Command at `path` that declared it. */
 function inputSite(
   name: string | null,
   path: readonly string[],
   input: InputDeclaration,
-): FactSite {
-  return {
-    at: '1',
-    declaration: { arguments: [input.name, input.config], call: input.kind, path },
-    subject: `${commandSentence(name)} ${input.kind} "${input.name}"`,
-  };
+): InputSite {
+  return callSite(`${commandSentence(name)} ${input.kind} "${input.name}"`, {
+    arguments: [input.name, input.config],
+    call: input.kind,
+    path,
+  });
+}
+
+/** The scope one Command's own options compile under: its subject, and each option's call. */
+function localScope(name: string | null, path: readonly string[]): CompileScope<OptionInput> {
+  return { siteOf: (input) => inputSite(name, path, input), subject: commandSubject(name) };
 }
 
 /** One Command declares arguments or attaches children, whichever call came second. */
@@ -630,8 +642,8 @@ function checkArgument(state: Declared, input: ArgumentInput): void {
   const site = inputSite(name, path, input);
   checkDescription(site, input.config.description);
   checkNoListingFacts(site, input.config);
-  checkNoArgumentBinding(site.subject, input.config);
-  checkDeclarations([input]);
+  checkNoArgumentBinding(site, input.config);
+  checkDeclarations([{ input, site }]);
 }
 
 /** One argument's name answers the declared-name rule and names no argument declared before it. */
@@ -721,10 +733,14 @@ export function declareOption<
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
-  checkEnvBinding(site.subject, input.config);
+  checkEnvBinding(site, input.config);
   const recorded = recordInput(state, input);
-  checkLocalOptions([...optionsOf(state.inputs), input], table, commandSubject(state.name));
-  checkDeclarations([input]);
+  checkLocalOptions(
+    [...optionsOf(state.inputs), input],
+    table,
+    localScope(state.name, pathOf(state.name)),
+  );
+  checkDeclarations([{ input, site }]);
   const previous = state.bind;
   return {
     ...state,
@@ -1175,8 +1191,8 @@ function joinSubtree(
   for (const descriptor of node.declared.descriptors.values()) {
     registerDescriptor(scope.descriptors, descriptor);
   }
-  checkLocalOptions(optionsOf(node.declared.inputs), scope.table, commandSubject(name));
   const path = childPath(parent, name);
+  checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));
   for (const entry of node.declared.children) {
     // A nested child's own placement knew its parent alone, so the walk places it under the root.
     const rooted = { ...entry, placement: commandPlacement(path, entry.name) };
@@ -1200,10 +1216,15 @@ export function attachToRoot<Args, Options, Globals>(
 }
 
 /** Every attached Command's local options against a globals table that has just grown. */
-function checkAttachedOptions(table: GlobalTable, children: readonly AttachedChild[]): void {
+function checkAttachedOptions(
+  table: GlobalTable,
+  parent: CommandPlace,
+  children: readonly AttachedChild[],
+): void {
   for (const { name, node } of children) {
-    checkLocalOptions(optionsOf(node.declared.inputs), table, commandSubject(name));
-    checkAttachedOptions(table, node.declared.children);
+    const path = childPath(parent, name);
+    checkLocalOptions(optionsOf(node.declared.inputs), table, localScope(name, path));
+    checkAttachedOptions(table, { name, path }, node.declared.children);
   }
 }
 
@@ -1212,8 +1233,9 @@ function checkAttachedOptions(table: GlobalTable, children: readonly AttachedChi
  * grown. The table's new option reads as the other side of any collision.
  */
 export function checkDeclaredOptions(state: Declared, table: GlobalTable): void {
-  checkLocalOptions(optionsOf(state.inputs), table, commandSubject(state.name));
-  checkAttachedOptions(table, state.children);
+  const place: CommandPlace = { name: state.name, path: pathOf(state.name) };
+  checkLocalOptions(optionsOf(state.inputs), table, localScope(place.name, place.path));
+  checkAttachedOptions(table, place, state.children);
 }
 
 /** A variadic or optional slot ends the positional list, so nothing may follow either one. */
@@ -1792,7 +1814,7 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
   if (held.locals.has(name)) {
     return { clause: 'a local option', remedy: attachedRemedy('local') };
   }
-  const claimed = held.globals.names.get(name);
+  const claimed = held.globals.names.get(name)?.owner;
   if (claimed) {
     const target = claimed.kind === 'plugin' ? 'plugin' : 'global';
     const clause =
@@ -1825,10 +1847,11 @@ function readSpellings(table: ReturnType<typeof compileOptions>, claimed: Map<st
 /** One hook-declared option's spellings, against every spelling the table already claims. */
 function checkAttachedSpelling(
   declared: { identity: string; input: OptionInput },
-  named: { claimed: Map<string, string>; subject: string },
+  named: { claimed: Map<string, string>; scope: CompileScope<OptionInput> },
 ): void {
-  const { claimed, subject } = named;
-  const table = compileOptions([declared.input], subject);
+  const { claimed, scope } = named;
+  const { subject } = scope;
+  const table = compileOptions([declared.input], scope);
   for (const [spelling] of table) {
     const used = claimed.get(spelling);
     if (used !== undefined) {
@@ -1848,9 +1871,11 @@ function checkAttachedSpelling(
 function checkAttachedInputs(
   declared: Declared,
   attached: readonly AttachedInput[],
-  globals: BuiltGlobals,
+  place: { globals: BuiltGlobals; path: readonly string[] },
 ): void {
-  const subject = commandSubject(declared.name);
+  const { globals, path } = place;
+  const scope = localScope(declared.name, path);
+  const { subject } = scope;
   const hooked = new Set(attached.map((entry) => entry.input));
   const authored = declared.inputs.filter((input) => !hooked.has(input));
   const options = authored.filter((input) => input.kind === 'option');
@@ -1865,7 +1890,7 @@ function checkAttachedInputs(
   };
   const claimed = new Map<string, string>();
   readSpellings(globals.options, claimed);
-  readSpellings(compileOptions(options, subject), claimed);
+  readSpellings(compileOptions(options, scope), claimed);
   for (const { identity, input } of attached) {
     const collision = attachedCollision(input, held);
     if (collision) {
@@ -1874,7 +1899,7 @@ function checkAttachedInputs(
       );
     }
     if (input.kind === 'option') {
-      checkAttachedSpelling({ identity, input }, { claimed, subject });
+      checkAttachedSpelling({ identity, input }, { claimed, scope });
       held.hooks.set(input.name, identity);
     } else {
       held.hookArguments.set(input.name, identity);
@@ -1931,11 +1956,11 @@ function checkInputFacts(
     checkDescription(site, input.config.description);
     if (input.kind === 'argument') {
       checkNoListingFacts(site, input.config);
-      checkNoArgumentBinding(sentence, input.config);
+      checkNoArgumentBinding(site, input.config);
     } else {
       checkHidden(site, input.config.hidden);
       checkDeprecated(site, input.config.deprecated);
-      checkEnvBinding(sentence, input.config);
+      checkEnvBinding(site, input.config);
     }
     context.extensions.set(
       input,
@@ -2005,15 +2030,21 @@ export function buildCommand<Args, Options, Globals>(
   );
   // The hook-declared names are checked first, so a collision reports in the plugin's voice.
   // A rule the author's own declaration voices never speaks for a name a hook declared.
-  checkAttachedInputs(hooked, hookInputs, globals);
+  checkAttachedInputs(hooked, hookInputs, { globals, path: context.path });
   // Every value was validated once, the author's at each call and each hook's at its `extend()`.
   const extensions = publishStore(progress.extensions);
   const slots = hookInputs.length > 0 ? collectArguments(hooked, place) : declaredSlots;
   checkArgumentPlacement(place, slots[0], state.children[0]);
   const result = checkFinished(hooked, hasAction, { path: context.path });
-  const options = checkLocalOptions(optionsOf(hooked.inputs), globals, subject);
+  const options = checkLocalOptions(
+    optionsOf(hooked.inputs),
+    globals,
+    localScope(name, context.path),
+  );
   // A hook's erased calls answer the declaration rules an authored call answers at the call.
-  checkDeclarations(hookInputs.map((call) => call.input));
+  checkDeclarations(
+    hookInputs.map(({ input }) => ({ input, site: inputSite(name, context.path, input) })),
+  );
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
   for (const child of state.children) {
@@ -2276,6 +2307,27 @@ export function collectInputs(command: BuiltCommand): InputDeclaration[] {
     ...command.inputs,
     ...[...command.children.values()].flatMap((child) => collectInputs(child)),
   ];
+}
+
+/**
+ * Where every input of one graph was declared: each global option at its `globalOption()` call,
+ * and each Command's own inputs at their calls on the Command, under its path from the root.
+ */
+export function inputPlaces(graph: BuiltGraph): InputPlaces {
+  const places = new Map<InputDeclaration, Pick<Finding, 'call' | 'path'>>();
+  for (const input of graph.globals.inputs) {
+    places.set(input, { call: 'globalOption', path: [] });
+  }
+  const walk = (command: BuiltCommand, path: readonly string[]) => {
+    for (const input of command.inputs) {
+      places.set(input, { call: input.kind, path });
+    }
+    for (const [name, child] of command.children) {
+      walk(child, [...path, name]);
+    }
+  };
+  walk(graph.root, []);
+  return places;
 }
 
 /**

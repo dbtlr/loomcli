@@ -1,14 +1,15 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
-import { InternalError } from './errors.js';
+import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
+import { schemaConverterFailed } from './input-rules.js';
 import type { compileOptions } from './options.js';
 import { isPlainObject } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
-import { validatesOmission } from './validation.js';
+import { declarationSubject, validatesOmission } from './validation.js';
 
 /** A declaration that carries no extension value publishes one shared, empty frozen record. */
 const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
@@ -200,29 +201,75 @@ function publishesSchema(
 }
 
 /**
+ * How one build treats a converter that fails, and where the inputs it reads sit. A development
+ * build reports the failure as a declaration fault at the input's call; a distributed one reads the
+ * input's schema as `null`.
+ */
+interface SchemaCheck {
+  readonly development: boolean;
+  /** Whether the inputs are the Application's global options, which `globalOption()` declares. */
+  readonly global: boolean;
+  readonly path: readonly string[];
+}
+
+/** The converter fault a development build reports for one input, with the way it failed. */
+function converterFault(input: InputDeclaration, check: SchemaCheck, failure: string) {
+  return new DeclarationError(schemaConverterFailed, {
+    correction:
+      'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
+    findings: [
+      {
+        arguments: [input.name, input.config],
+        call: check.global ? 'globalOption' : input.kind,
+        mark: '1.validate',
+        path: check.path,
+      },
+    ],
+    sentence: `${declarationSubject(input)} validator's JSON Schema converter ${failure}`,
+  });
+}
+
+/**
  * The input-side schema a declaration's validator publishes, snapshotted the way a declared
  * default is, or `null` where the graph holds no published shape: no validator, a validator with
- * no converter, or a converter that throws or returns anything but a plain object. The contract of
- * 2026-09-19 made that last case a declaration error `inspect()` alone reports; that diagnostic is
- * held while the question of how a run tells development from a distributed application is
- * decided, so it reads `null` on both paths.
+ * no converter, or, in a distributed build, a converter that throws or returns anything but a plain
+ * object. A development build reports that last case as a declaration fault instead.
  */
-function inputSchema(config: ArgumentConfig | OptionConfig): InputSchema {
+function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
+  const { config } = input;
   const schema = 'validate' in config ? config.validate : undefined;
   if (schema === undefined) {
     return null;
   }
+  let published: unknown = undefined;
   // The converter is the library's code from the first property read.
   // A throw on reaching it and a throw on calling it are one failure.
   try {
     if (!publishesSchema(schema)) {
       return null;
     }
-    const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
-    return isPlainObject(published) ? snapshotRecord(published) : null;
-  } catch {
+    published = schema['~standard'].jsonSchema.input(schemaTarget);
+  } catch (error) {
+    if (check.development) {
+      throw converterFault(
+        input,
+        check,
+        `failed for target "${schemaTarget.target}": ${asSentence(reasonOf(error))}`,
+      );
+    }
     return null;
   }
+  if (isPlainObject(published)) {
+    return snapshotRecord(published);
+  }
+  if (check.development) {
+    throw converterFault(
+      input,
+      check,
+      `answered target "${schemaTarget.target}" with a value that is not a plain object.`,
+    );
+  }
+  return null;
 }
 
 /** One declaration's extension record, which is the shared empty one when it carries no value. */
@@ -232,12 +279,14 @@ function extensionsOf(records: ExtensionRecords, declaration: object) {
 
 /** The scope one list of options is read under, with the registers its nodes read from. */
 interface OptionScope {
+  check: SchemaCheck;
   records: ExtensionRecords;
   scope: 'application' | 'plugin';
   table: ReturnType<typeof compileOptions>;
 }
 
-function optionNode(input: OptionInput, { records, scope, table }: OptionScope): OptionNode {
+function optionNode(input: OptionInput, read: OptionScope): OptionNode {
+  const { check, records, scope, table } = read;
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
   const extensions = extensionsOf(records, input);
@@ -270,7 +319,7 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
           multiple: config.multiple === true,
           name,
           required: config.required === true,
-          schema: inputSchema(config),
+          schema: inputSchema(input, check),
           scope,
           short,
           type: 'string',
@@ -281,7 +330,11 @@ function optionNode(input: OptionInput, { records, scope, table }: OptionScope):
 }
 
 /** The built slots already answer presence and arity, so the node repeats no config reading. */
-function argumentNode(slot: ArgumentSlot, records: ExtensionRecords): ArgumentNode {
+function argumentNode(
+  slot: ArgumentSlot,
+  read: { check: SchemaCheck; records: ExtensionRecords },
+): ArgumentNode {
+  const { check, records } = read;
   const { config, name } = slot.input;
   const node: ArgumentNode = {
     default: declaredDefault(config),
@@ -289,7 +342,7 @@ function argumentNode(slot: ArgumentSlot, records: ExtensionRecords): ArgumentNo
     extensions: extensionsOf(records, slot.input),
     name,
     required: slot.required,
-    schema: inputSchema(config),
+    schema: inputSchema(slot.input, check),
     validateOmitted: validatesOmission(slot.input),
     validated: config.validate !== undefined,
     variadic: slot.variadic,
@@ -309,18 +362,22 @@ function commandNode(
   command: BuiltCommand,
   place: {
     description?: string | undefined;
+    development: boolean;
     nodes: WeakMap<BuiltCommand, CommandNode>;
     path: readonly string[];
     records: ExtensionRecords;
   },
 ): CommandNode {
-  const { nodes, path, records } = place;
+  const { development, nodes, path, records } = place;
+  const check: SchemaCheck = { development, global: false, path };
   const node: CommandNode = {
     aliases: Object.freeze([...command.aliases]),
-    arguments: Object.freeze(command.arguments.map((slot) => argumentNode(slot, records))),
+    arguments: Object.freeze(
+      command.arguments.map((slot) => argumentNode(slot, { check, records })),
+    ),
     children: Object.freeze(
       [...command.children].map(([name, child]) =>
-        commandNode(child, { nodes, path: Object.freeze([...path, name]), records }),
+        commandNode(child, { development, nodes, path: Object.freeze([...path, name]), records }),
       ),
     ),
     deprecated: command.deprecated,
@@ -330,7 +387,12 @@ function commandNode(
     hidden: command.hidden,
     name: command.name,
     options: Object.freeze(
-      optionNodes(command.inputs, { records, scope: 'application', table: command.options }),
+      optionNodes(command.inputs, {
+        check,
+        records,
+        scope: 'application',
+        table: command.options,
+      }),
     ),
     path,
     result: resultNode(command.result),
@@ -353,29 +415,33 @@ function resultNode(result: DeclaredResult | undefined): ResultNode | null {
 }
 
 /**
- * Renders one built graph as frozen plain data. Nothing here reads a host fact or a schema. The
- * globals list holds the application's own options, then each installed plugin's in installation
- * order, which is the order the globals table holds them in.
+ * Renders one built graph as frozen plain data. Nothing here reads a host fact; each validated
+ * input's converter is asked for its input schema, and in a development build a converter that
+ * fails is a declaration fault. The globals list holds the application's own options, then each
+ * installed plugin's in installation order, which is the order the globals table holds them in.
  */
 function inspectGraph(
   name: string,
   graph: BuiltGraph,
-  facts: { description: string | undefined; version: string },
+  facts: { description: string | undefined; development: boolean; version: string },
 ): CommandGraph {
+  const { development } = facts;
   const records = graph.extensions;
   const table = graph.globals.options;
   const nodes = new WeakMap<BuiltCommand, CommandNode>();
+  const check: SchemaCheck = { development, global: true, path: [] };
   const inspected: CommandGraph = {
     description: facts.description,
     globals: Object.freeze([
-      ...optionNodes(graph.globals.inputs, { records, scope: 'application', table }),
+      ...optionNodes(graph.globals.inputs, { check, records, scope: 'application', table }),
       ...graph.globals.plugins.flatMap((installed) =>
-        optionNodes(installed.inputs, { records, scope: 'plugin', table }),
+        optionNodes(installed.inputs, { check, records, scope: 'plugin', table }),
       ),
     ]),
     name,
     root: commandNode(graph.root, {
       description: facts.description,
+      development,
       nodes,
       path: Object.freeze([]),
       records,

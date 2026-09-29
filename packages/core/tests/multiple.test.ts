@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { expectRuleParts } from './rule-parts.js';
 
 function multiple(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/multiple.mjs', import.meta.url), [scenario, ...argv]);
@@ -109,9 +110,11 @@ test('a rejected default value fails every run with its position', () => {
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   // The fixture is a development build, so the fault prints its Developer Diagnostic.
-  expect(result.stderr).toContain(
-    'Option "field" has an invalid default. Fix the default or its validator.\nOption "field" at 1: Supply a field name.',
-  );
+  expectRuleParts(result.stderr, {
+    correction: 'Fix the default or its validator.',
+    rule: 'invalid-default',
+    sentence: 'Option "field" has an invalid default.\nOption "field" at 1: Supply a field name.',
+  });
 });
 
 test('a multiple default without a validator stays a raw string array', () => {
@@ -156,21 +159,40 @@ test('a multiple global is consumed by the pre-scan at every placement', () => {
 test.each([
   [
     'boolean-multiple',
-    'Option "verbose" is a boolean option and declares multiple. Remove multiple or declare a string option.',
+    {
+      correction: 'Remove multiple or declare a string option.',
+      rule: 'boolean-option-multiple',
+      sentence: 'Option "verbose" is a boolean option and declares multiple.',
+    },
   ],
-  ['nonboolean-multiple', 'Option "field" multiple must be Boolean. Use true or false.'],
+  [
+    'nonboolean-multiple',
+    {
+      correction: 'Use true or false.',
+      rule: 'flag-not-boolean',
+      sentence: 'Option "field" multiple must be Boolean.',
+    },
+  ],
   [
     'validated-string-default',
-    'Option "field" default must be an array. Supply an array of values.',
+    {
+      correction: 'Supply an array of values.',
+      rule: 'default-shape',
+      sentence: 'Option "field" default must be an array.',
+    },
   ],
   [
     'string-default',
-    'Option "field" default must be an array of strings without a validator. Supply a string array default.',
+    {
+      correction: 'Supply a string array default.',
+      rule: 'default-shape',
+      sentence: 'Option "field" default must be an array of strings without a validator.',
+    },
   ],
-])('%s throws from the declaring call while the module evaluates', (scenario, diagnostic) => {
+])('%s throws from the declaring call while the module evaluates', (scenario, parts) => {
   const result = multiple(scenario, ['--unknown']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).not.toContain('Invalid declaration:');
-  expect(result.stderr).toContain(diagnostic);
+  expectRuleParts(result.stderr, parts);
 });

@@ -46,6 +46,6 @@ test.each([
   expect(invoke(fixture, [scenario])).toEqual({
     status: 0,
     stderr: '',
-    stdout: `thrown:1: Global option "file" declares ${key}. Remove it; an omitted global option is absent, and a Command that needs its value checks for it.\n`,
+    stdout: `thrown:1: Global option "file" declares ${key}. Remove ${key}, and check for the value in each Command that needs it.\n`,
   });
 });
