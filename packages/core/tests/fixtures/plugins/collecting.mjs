@@ -1,5 +1,7 @@
 import { Application, Command, extension, plugin, readExtension } from '@loomcli/core';
 
+import { ruleText } from '../rule-text.mjs';
+
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
@@ -104,7 +106,7 @@ function rejecting(catching) {
       try {
         return command.extend(notes({ wrong: true }));
       } catch (error) {
-        note({ caught: error.constructor.name, message: error.sentence ?? error.message });
+        note({ caught: error.constructor.name, message: ruleText(error) });
         return command.extend(single({ note: 'after the catch' }));
       }
     },
@@ -303,7 +305,7 @@ if (mode === 'inspect') {
     application().inspect();
     note({ fault: null });
   } catch (error) {
-    note({ fault: error.constructor.name, message: error.sentence ?? error.message });
+    note({ fault: error.constructor.name, message: ruleText(error) });
   }
 } else if (mode === 'read') {
   const graph = application().inspect();
@@ -318,7 +320,7 @@ if (mode === 'inspect') {
     readExtension(first, twin);
     note({ foreign: null });
   } catch (error) {
-    note({ foreign: error.constructor.name, message: error.sentence ?? error.message });
+    note({ foreign: error.constructor.name, message: ruleText(error) });
   }
 } else if (mode === 'keys') {
   note(Object.keys(application().inspect().root.children[0].extensions));

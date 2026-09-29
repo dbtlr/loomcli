@@ -4,6 +4,8 @@ import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
 import { z } from 'zod';
 
+import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
+
 const digits = z.string().regex(/^[0-9]+$/u, 'Supply a whole number.');
 
 /** The settings each scenario installs the configuration plugin with. */
@@ -110,6 +112,6 @@ try {
     process.stdout.write(`resolved:${code}\n`);
   }
 } catch (error) {
-  process.stdout.write(`${error.name}: ${error.sentence ?? error.message}\n`);
+  process.stdout.write(`${error.name}: ${ruleText(error)}\n`);
   process.exitCode = 3;
 }

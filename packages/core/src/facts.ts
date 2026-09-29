@@ -38,6 +38,42 @@ export function siteFinding(site: FactSite, mark: string, note?: string): Findin
 }
 
 /**
+ * Where one key of a declaration's options object sits, rebuilt with that key alone, as
+ * `plugin(identity, { middleware })` or `new Application(name, { plugins })`, at `1.<key>`. A fault
+ * about one slot shows the slot, not every other one the author declared beside it.
+ */
+export function slotSite(
+  declaration: { call: string; named: unknown; subject: string },
+  key: string,
+  value: unknown,
+): FactSite {
+  const { call, named, subject } = declaration;
+  // `Object.fromEntries` defines the key as an own property whatever its name.
+  return {
+    at: `1.${key}`,
+    declaration: { arguments: [named, Object.fromEntries([[key, value]])], call },
+    subject,
+  };
+}
+
+/**
+ * The dotted path to one part inside the value a site holds, such as `1.middleware.activate` for
+ * `activate` under a site at `1.middleware`. A site at the call's own arguments has an empty path.
+ */
+export function partOf(site: Pick<FactSite, 'at'>, ...keys: readonly (number | string)[]): string {
+  return [site.at, ...keys.map(String)].filter((key) => key !== '').join('.');
+}
+
+/** The finding that marks one part inside the value a site holds, with a note when given. */
+export function partFinding(
+  site: FactSite,
+  keys: readonly (number | string)[],
+  note?: string,
+): Finding {
+  return siteFinding(site, partOf(site, ...keys), note);
+}
+
+/**
  * One fact's fault, which marks the fact inside the call that declared it. Every rule about one key
  * of a declaration's config object reports through it, so each marks the key the same way.
  */

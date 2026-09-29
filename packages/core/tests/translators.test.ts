@@ -277,15 +277,15 @@ test.each([
   ],
   [
     'fault-key-failure',
-    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
   ],
   [
     'fault-key-fatal',
-    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
   ],
   [
     'fault-key-subclass',
-    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
   ],
   [
     'fault-translator',
@@ -297,7 +297,7 @@ test.each([
   ],
   [
     'fault-application-list',
-    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
+    'The Application declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
   ],
   [
     'fault-application-hole',
@@ -313,7 +313,7 @@ test.each([
   ],
   [
     'fault-plugin-list',
-    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
+    'Plugin "@acme/http" declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
   ],
 ])('%s throws its DeclarationError', (scenario, message) => {
   expect(run(scenario)).toEqual({

@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { expectRuleParts } from './rule-parts.js';
 
 function diagnostics(scenario: string) {
   const result = invoke(new URL('fixtures/diagnostics.mjs', import.meta.url), [scenario]);
@@ -115,31 +116,47 @@ test('diagnosticRule() returns a frozen descriptor', () => {
   });
 });
 
+const identityFix = 'Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".';
+
 test.each([
   [
     'bad-identity',
-    'Diagnostic rule "Retry Limit" has no package part or a rule name that is not kebab-case. Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
+    'rule-identity',
+    'Diagnostic rule "Retry Limit" has no package part or a rule name that is not kebab-case.',
+    identityFix,
   ],
   [
     'uppercase-rule',
-    'Diagnostic rule "@acme/retry/Retry-Limit" has no package part or a rule name that is not kebab-case. Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
+    'rule-identity',
+    'Diagnostic rule "@acme/retry/Retry-Limit" has no package part or a rule name that is not kebab-case.',
+    identityFix,
   ],
   [
     'no-package',
-    'Diagnostic rule "retry-limit" has no package part or a rule name that is not kebab-case. Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
+    'rule-identity',
+    'Diagnostic rule "retry-limit" has no package part or a rule name that is not kebab-case.',
+    identityFix,
   ],
   [
     'empty-headline',
-    'Diagnostic rule "@acme/retry/retry-limit" declares an empty headline. Supply a short noun phrase.',
+    'rule-prose',
+    'Diagnostic rule "@acme/retry/retry-limit" declares an empty headline.',
+    'Supply a short noun phrase.',
   ],
   [
     'empty-explanation',
-    'Diagnostic rule "@acme/retry/retry-limit" declares an empty explanation. Supply prose that says why the rule exists.',
+    'rule-prose',
+    'Diagnostic rule "@acme/retry/retry-limit" declares an empty explanation.',
+    'Supply prose that says why the rule exists.',
   ],
   [
     'bad-docs',
-    'Diagnostic rule "@acme/retry/retry-limit" declares docs that are not a URL. Supply an absolute https URL, or omit docs.',
+    'rule-docs',
+    'Diagnostic rule "@acme/retry/retry-limit" declares docs that are not a URL.',
+    'Supply an absolute https URL, or omit docs.',
   ],
-])('diagnosticRule() rejects %s', (scenario, sentence) => {
-  expect(diagnostics(scenario)).toContain(`\n${sentence}\n`);
+])('diagnosticRule() rejects %s', (scenario, rule, sentence, correction) => {
+  const text = diagnostics(scenario);
+  expect(text).toContain(' @loomcli/core/rule-');
+  expectRuleParts(text, { correction, rule, sentence });
 });

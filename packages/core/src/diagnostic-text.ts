@@ -384,6 +384,7 @@ export type { Anatomy, DiagnosticParts, DiagnosticRule, Finding, Layout };
 export {
   diagnosticSections,
   diagnosticText,
+  elided,
   isDiagnosticRule,
   messageWidth,
   quoteString,

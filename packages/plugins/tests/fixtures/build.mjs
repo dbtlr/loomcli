@@ -2,6 +2,8 @@ import { Application, Command, DeclarationError } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
+import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
+
 const dispatch = ({ out }) => out.print('dispatched');
 
 /** One application whose only fault is the help extension value the scenario names. */
@@ -37,5 +39,5 @@ try {
   if (!(error instanceof DeclarationError)) {
     throw error;
   }
-  process.stdout.write(`thrown:${error.exitCode}: ${error.sentence ?? error.message}\n`);
+  process.stdout.write(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
 }

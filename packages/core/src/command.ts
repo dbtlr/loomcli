@@ -32,6 +32,7 @@ import { quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
 import {
+  asSentence,
   commandSentence,
   commandSubject,
   DeclarationError,
@@ -40,6 +41,7 @@ import {
   toFailure,
   UnexpectedArgumentError,
   UnknownCommandError,
+  reasonOf,
 } from './errors.js';
 import type { LoomError } from './errors.js';
 import {
@@ -64,9 +66,16 @@ import {
   checkDescription,
   checkHidden,
   checkNoListingFacts,
+  siteFinding,
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
-import type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords } from './globals.js';
+import type {
+  BuiltGlobals,
+  GlobalsState,
+  GlobalTable,
+  InputRecords,
+  TableEntry,
+} from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
 import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
@@ -78,9 +87,11 @@ import {
   isOptionToken,
   mergeValues,
   parseInputs,
+  spellingMark,
 } from './options.js';
-import type { CompileScope, OptionValues } from './options.js';
+import type { CompileScope, OptionValues, SpellingRole } from './options.js';
 import { isPlainObject } from './plain.js';
+import { brokenAttachHook, hookInputCollision } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
@@ -504,6 +515,7 @@ function namedState<Globals>(
   const extensions = storeCommandLayers({
     descriptors,
     layers: [slot?.extensions],
+    site: { ...site, at: '1.extensions' },
     subject: layerOf(name),
   });
   return {
@@ -612,6 +624,7 @@ function recordInput(
   const record = buildExtensions({
     declared: input.config.extensions,
     descriptors,
+    site: { ...inputSite(name, pathOf(name), input), at: '1.extensions' },
     subject: {
       phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
       sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
@@ -814,6 +827,7 @@ export function declareExtensions<Args, Options, Globals>(
   const layer = validateLayer({
     declared: values,
     descriptors,
+    site: { at: '', declaration: { arguments: values, call: 'extend', path: pathOf(state.name) } },
     subject: layerOf(state.name),
     target: 'command',
   });
@@ -1612,6 +1626,7 @@ class AttachedCommandValue implements AttachedCommand {
     const layer = validateLayer({
       declared: values,
       descriptors: registry,
+      site: { at: '', declaration: { arguments: values, call: 'extend', path: state.path } },
       subject: state.subject,
       target: 'command',
     });
@@ -1637,9 +1652,13 @@ class AttachedCommandValue implements AttachedCommand {
   }
 }
 
-/** The reason one failed hook reports, which is the thrown value's own message. */
-function attachReason(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** The finding for the hook one plugin declared, as `plugin(identity, { onCommandAttach })`. */
+function hookFinding(identity: string, hook: CommandAttachHook): Finding {
+  return {
+    arguments: [identity, { onCommandAttach: hook }],
+    call: 'plugin',
+    mark: '1.onCommandAttach',
+  };
 }
 
 /** One hook's own call, whose failure is the plugin's, and whose own report is its own. */
@@ -1656,7 +1675,14 @@ function callHook(
       throw error;
     }
     throw new DeclarationError(
-      `Plugin "${named.identity}" failed in onCommandAttach for ${named.subject}: ${attachReason(error)}.`,
+      brokenAttachHook,
+      {
+        correction:
+          'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
+        findings: [hookFinding(named.identity, hook)],
+        sentence: `Plugin "${named.identity}" failed in onCommandAttach for ${named.subject}: ${asSentence(reasonOf(error))}`,
+      },
+      { cause: error },
     );
   }
 }
@@ -1673,9 +1699,11 @@ function attachOnce(
 ): AttachState {
   const state = attachments.get(callHook(value, hook, named));
   if (!state || state.lineage !== named.lineage) {
-    throw new DeclarationError(
-      `Plugin "${named.identity}" returned a value that is not the attached Command from onCommandAttach for ${named.subject}. Return the value it received or a value derived from it.`,
-    );
+    throw new DeclarationError(brokenAttachHook, {
+      correction: 'Return the value it received or a value derived from it.',
+      findings: [hookFinding(named.identity, hook)],
+      sentence: `Plugin "${named.identity}" returned a value that is not the attached Command from onCommandAttach for ${named.subject}.`,
+    });
   }
   return state;
 }
@@ -1755,23 +1783,36 @@ interface AttachedInput {
 
 /** The names one Command already holds, by the scope that holds each of them. */
 interface HeldNames {
-  arguments: ReadonlySet<string>;
+  arguments: ReadonlyMap<string, InputDeclaration>;
   globals: BuiltGlobals;
-  hookArguments: Map<string, string>;
-  hooks: Map<string, string>;
-  locals: ReadonlySet<string>;
+  hookArguments: Map<string, AttachedInput>;
+  hooks: Map<string, AttachedInput>;
+  locals: ReadonlyMap<string, InputDeclaration>;
+  /** The Command the names sit on, which a finding for one of its own inputs opens with. */
+  path: readonly string[];
 }
 
-/** What one collision reports: the scope that holds the name, and the remedy that pair earns. */
+/**
+ * What one collision reports: the scope that holds the name, the remedy that pair earns, and the
+ * finding for the declaration that already holds the name.
+ */
 interface Collision {
   clause: string;
   remedy: string;
+  held: Finding;
+}
+
+/** The note a finding for one hook-declared input carries. */
+function hookNote(identity: string): string {
+  return `declared by plugin "${identity}"`;
 }
 
 /** The clause and the remedy an input another plugin's hook already declared earns. */
-function hookClause(kind: 'argument' | 'option', identity: string): Collision {
+function hookClause(earlier: AttachedInput, path: readonly string[]): Collision {
+  const { identity, input } = earlier;
   return {
-    clause: `an ${kind} plugin "${identity}" declared through onCommandAttach`,
+    clause: `an ${input.kind} plugin "${identity}" declared through onCommandAttach`,
+    held: inputFinding(path, input, hookNote(identity)),
     remedy: 'Install one of them.',
   };
 }
@@ -1795,6 +1836,24 @@ function attachedRemedy(target: 'argument' | 'global' | 'local' | 'plugin'): str
   return 'Install one of them.';
 }
 
+/** The collision with one option the globals table holds, a global or a plugin's own option. */
+function tableCollision(entry: TableEntry): Collision {
+  const { owner, site } = entry;
+  if (owner.kind === 'plugin') {
+    const clause = `an option of plugin "${owner.identity}"`;
+    return {
+      clause,
+      held: siteFinding(site, site.named, clause),
+      remedy: attachedRemedy('plugin'),
+    };
+  }
+  return {
+    clause: 'a global option',
+    held: siteFinding(site, site.named, 'the global option'),
+    remedy: attachedRemedy('global'),
+  };
+}
+
 /**
  * What one name a hook-declared input of either kind collides with, in the order the scopes are
  * reported: an earlier hook's option, an earlier hook's argument, a local option, a global or
@@ -1803,34 +1862,52 @@ function attachedRemedy(target: 'argument' | 'global' | 'local' | 'plugin'): str
  */
 function attachedCollision(input: InputDeclaration, held: HeldNames): Collision | undefined {
   const { name } = input;
-  const hook = held.hooks.get(name);
+  const { path } = held;
+  const hook = held.hooks.get(name) ?? held.hookArguments.get(name);
   if (hook !== undefined) {
-    return hookClause('option', hook);
+    return hookClause(hook, path);
   }
-  const hooked = held.hookArguments.get(name);
-  if (hooked !== undefined) {
-    return hookClause('argument', hooked);
+  const local = held.locals.get(name);
+  if (local !== undefined) {
+    return {
+      clause: 'a local option',
+      held: inputFinding(path, local, 'the local option'),
+      remedy: attachedRemedy('local'),
+    };
   }
-  if (held.locals.has(name)) {
-    return { clause: 'a local option', remedy: attachedRemedy('local') };
+  const entry = held.globals.names.get(name);
+  if (entry) {
+    return tableCollision(entry);
   }
-  const claimed = held.globals.names.get(name)?.owner;
-  if (claimed) {
-    const target = claimed.kind === 'plugin' ? 'plugin' : 'global';
-    const clause =
-      claimed.kind === 'plugin' ? `an option of plugin "${claimed.identity}"` : 'a global option';
-    return { clause, remedy: attachedRemedy(target) };
-  }
-  return held.arguments.has(name)
-    ? { clause: 'an argument', remedy: attachedRemedy('argument') }
-    : undefined;
+  const argument = held.arguments.get(name);
+  return argument === undefined
+    ? undefined
+    : {
+        clause: 'an argument',
+        held: inputFinding(path, argument, 'the argument'),
+        remedy: attachedRemedy('argument'),
+      };
 }
 
 /**
- * The spellings one compiled table holds, each under the form its own option is named by, which is
- * its long form where it declares one and the colliding spelling itself where it declares none.
+ * One spelling a table already claims: the form its option is named by, which is its long form
+ * where it declares one and the colliding spelling itself where it declares none, and the finding
+ * for the declaration that claims it.
  */
-function readSpellings(table: ReturnType<typeof compileOptions>, claimed: Map<string, string>) {
+interface ClaimedSpelling {
+  form: string;
+  finding: Finding | undefined;
+}
+
+/** Where the option one table names declared one of its spellings, by its name and the role. */
+type SpellingPlace = (name: string, role: SpellingRole) => Finding | undefined;
+
+/** The spellings one compiled table holds, each with its form and the place that declared it. */
+function readSpellings(
+  table: ReturnType<typeof compileOptions>,
+  claimed: Map<string, ClaimedSpelling>,
+  placeOf: SpellingPlace,
+) {
   const longs = new Map<string, string>();
   for (const [spelling, option] of table) {
     if (option.role === 'long') {
@@ -1839,34 +1916,75 @@ function readSpellings(table: ReturnType<typeof compileOptions>, claimed: Map<st
   }
   for (const [spelling, option] of table) {
     if (!claimed.has(spelling)) {
-      claimed.set(spelling, longs.get(option.name) ?? spelling);
+      const form = longs.get(option.name) ?? spelling;
+      claimed.set(spelling, { finding: placeOf(option.name, option.role), form });
     }
   }
 }
 
+/** The place one input's spelling sits: the key of its call that yields the spelling. */
+function spellingPlace(site: InputSite, role: SpellingRole, note: string): Finding {
+  return siteFinding(site, spellingMark(site, role), note);
+}
+
 /** One hook-declared option's spellings, against every spelling the table already claims. */
 function checkAttachedSpelling(
-  declared: { identity: string; input: OptionInput },
-  named: { claimed: Map<string, string>; scope: CompileScope<OptionInput> },
+  declared: AttachedInput & { input: OptionInput },
+  named: { claimed: Map<string, ClaimedSpelling>; scope: CompileScope<OptionInput> },
 ): void {
   const { claimed, scope } = named;
+  const { identity, input } = declared;
   const { subject } = scope;
-  const table = compileOptions([declared.input], scope);
-  for (const [spelling] of table) {
+  const site = scope.siteOf(input);
+  const table = compileOptions([input], scope);
+  for (const [spelling, option] of table) {
     const used = claimed.get(spelling);
     if (used !== undefined) {
-      throw new DeclarationError(
-        `Plugin "${declared.identity}" declares option "${declared.input.name}" with spelling "${spelling}" on ${subject}, which "${used}" already uses.`,
-      );
+      throw new DeclarationError(hookInputCollision, {
+        correction: 'Change one of the two spellings or omit the plugin.',
+        findings: [
+          spellingPlace(site, option.role, hookNote(identity)),
+          ...(used.finding === undefined ? [] : [used.finding]),
+        ],
+        sentence: `Plugin "${identity}" declares option "${input.name}" with spelling "${spelling}" on ${subject}, which "${used.form}" already uses.`,
+      });
     }
   }
-  readSpellings(table, claimed);
+  readSpellings(table, claimed, (_name, role) => spellingPlace(site, role, hookNote(identity)));
+}
+
+/** The declarations of one kind, keyed by name, the first of each name winning. */
+function byName(inputs: readonly InputDeclaration[]): Map<string, InputDeclaration> {
+  const named = new Map<string, InputDeclaration>();
+  for (const input of inputs) {
+    if (!named.has(input.name)) {
+      named.set(input.name, input);
+    }
+  }
+  return named;
+}
+
+/** Where the globals table's options declared their spellings, a global or a plugin's option. */
+function tableSpellings(globals: BuiltGlobals): SpellingPlace {
+  return (name, role) => {
+    const entry = globals.names.get(name);
+    if (!entry) {
+      return undefined;
+    }
+    const { owner, site } = entry;
+    const note =
+      owner.kind === 'plugin'
+        ? `an option of plugin "${owner.identity}"`
+        : `the global option "${name}"`;
+    return spellingPlace(site, role, note);
+  };
 }
 
 /**
  * Every input a hook declared, against the names and spellings the Command, the globals table, and
  * an earlier hook already hold. It runs before the Command's own inputs compile, so a hook-declared
- * input reports as the plugin's fault and never as the author's.
+ * input reports as the plugin's fault and never as the author's. A collision carries a finding for
+ * the hook's input and one for the declaration that already holds the name or spelling.
  */
 function checkAttachedInputs(
   declared: Declared,
@@ -1879,30 +1997,38 @@ function checkAttachedInputs(
   const hooked = new Set(attached.map((entry) => entry.input));
   const authored = declared.inputs.filter((input) => !hooked.has(input));
   const options = authored.filter((input) => input.kind === 'option');
+  const locals = byName(options);
   const held: HeldNames = {
-    arguments: new Set(
-      authored.filter((input) => input.kind === 'argument').map((input) => input.name),
-    ),
+    arguments: byName(authored.filter((input) => input.kind === 'argument')),
     globals,
     hookArguments: new Map(),
     hooks: new Map(),
-    locals: new Set(options.map((input) => input.name)),
+    locals,
+    path,
   };
-  const claimed = new Map<string, string>();
-  readSpellings(globals.options, claimed);
-  readSpellings(compileOptions(options, scope), claimed);
-  for (const { identity, input } of attached) {
+  const claimed = new Map<string, ClaimedSpelling>();
+  readSpellings(globals.options, claimed, tableSpellings(globals));
+  readSpellings(compileOptions(options, scope), claimed, (name, role) => {
+    const local = locals.get(name);
+    return local === undefined || local.kind !== 'option'
+      ? undefined
+      : spellingPlace(scope.siteOf(local), role, `the local option "${name}"`);
+  });
+  for (const entry of attached) {
+    const { identity, input } = entry;
     const collision = attachedCollision(input, held);
     if (collision) {
-      throw new DeclarationError(
-        `Plugin "${identity}" declares ${input.kind} "${input.name}" on ${subject}, which is already declared as ${collision.clause}. ${collision.remedy}`,
-      );
+      throw new DeclarationError(hookInputCollision, {
+        correction: collision.remedy,
+        findings: [inputFinding(path, input, hookNote(identity)), collision.held],
+        sentence: `Plugin "${identity}" declares ${input.kind} "${input.name}" on ${subject}, which is already declared as ${collision.clause}.`,
+      });
     }
     if (input.kind === 'option') {
       checkAttachedSpelling({ identity, input }, { claimed, scope });
-      held.hooks.set(input.name, identity);
+      held.hooks.set(input.name, entry);
     } else {
-      held.hookArguments.set(input.name, identity);
+      held.hookArguments.set(input.name, entry);
     }
   }
 }
@@ -1967,6 +2093,7 @@ function checkInputFacts(
       buildExtensions({
         declared: input.config.extensions,
         descriptors: context.descriptors,
+        site: { ...site, at: '1.extensions' },
         subject: { phrase: `on ${subject} ${input.kind} "${input.name}"`, sentence },
         target: input.kind,
       }),

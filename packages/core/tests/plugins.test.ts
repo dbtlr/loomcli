@@ -257,7 +257,7 @@ const rejected = [
   ],
   [
     'hook-throws',
-    'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke.',
+    'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke. Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
   ],
   [
     'hook-throws-declaration',
@@ -309,7 +309,7 @@ const rejected = [
   ],
   [
     'hook-spelling-collision',
-    'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses.',
+    'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses. Change one of the two spellings or omit the plugin.',
   ],
   [
     'hook-row-view',

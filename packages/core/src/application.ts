@@ -43,7 +43,13 @@ import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
-import { checkDescription, checkNoListingFacts, checkVersion } from './facts.js';
+import {
+  checkDescription,
+  checkNoListingFacts,
+  checkVersion,
+  partFinding,
+  slotSite,
+} from './facts.js';
 import type { FactSite } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
@@ -57,7 +63,8 @@ import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { isPlainObject } from './plain.js';
-import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
+import { invalidPacket, retiredApplicationOption } from './plugin-rules.js';
+import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -592,7 +599,8 @@ class ApplicationBuilder<
             );
           },
           rendering: (declared) => {
-            policy = { ...declared, ...renderingPolicy(options?.rendering) };
+            const rendering = options?.rendering;
+            policy = { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
             invocationOutput.configure(policy, new Map());
           },
           views: (value) => {
@@ -783,6 +791,26 @@ interface ApplicationFacts {
   version: string;
 }
 
+/** The retired Application options, in the order they are rejected, each with its fix. */
+const retired = [
+  ['globals', 'Declare them with globalOption(name, config).'],
+  ['failures', 'Declare view overrides under views with override(key, view).'],
+] as const;
+
+/** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
+function optionSite(name: string, key: string, value: unknown): FactSite {
+  return slotSite({ call: 'new Application', named: name, subject: 'The Application' }, key, value);
+}
+
+/** Where `run()`'s own rendering policy sits: the options object of the call on the Application. */
+function runRendering(rendering: unknown): FactSite {
+  return {
+    at: '0.rendering',
+    declaration: { arguments: [{ rendering }], call: 'run', path: [] },
+    subject: 'The run',
+  };
+}
+
 /** Reject obsolete wiring before silently losing options that invocations depend on. */
 function checkOptions(name: string, options: unknown): ApplicationFacts {
   const site: FactSite = {
@@ -800,15 +828,15 @@ function checkOptions(name: string, options: unknown): ApplicationFacts {
       sentence: 'The Application options must be an object.',
     });
   }
-  if ('globals' in options) {
-    throw new DeclarationError(
-      'The Application options contain globals. Declare them with globalOption(name, config).',
-    );
-  }
-  if ('failures' in options) {
-    throw new DeclarationError(
-      'The Application options contain failures. Declare view overrides under views with override(key, view).',
-    );
+  for (const [key, correction] of retired) {
+    if (key in options) {
+      const retiredSite = optionSite(name, key, Reflect.get(options, key));
+      throw new DeclarationError(retiredApplicationOption, {
+        correction,
+        findings: [partFinding(retiredSite, [])],
+        sentence: `The Application options contain ${key}.`,
+      });
+    }
   }
   // The root is every page's entry point, so it carries neither listing fact.
   // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
@@ -824,14 +852,17 @@ function checkOptions(name: string, options: unknown): ApplicationFacts {
  * application that never opted in cannot show an operator the author's detail. The build is read
  * once, here, so a later change to the imported object changes no run.
  */
-function readPacket(packet: unknown): boolean {
+function readPacket(name: string, packet: unknown): boolean {
   if (packet === undefined) {
     return false;
   }
+  const site = optionSite(name, 'packet', packet);
   if (!isPlainObject(packet)) {
-    throw new DeclarationError(
-      'The Application packet must be an object. Import loom.packet.json and pass it as packet.',
-    );
+    throw new DeclarationError(invalidPacket, {
+      correction: 'Import loom.packet.json and pass it as packet.',
+      findings: [partFinding(site, [])],
+      sentence: 'The Application packet must be an object.',
+    });
   }
   const { build } = packet;
   if (build === 'development' || build === 'distributed') {
@@ -841,7 +872,11 @@ function readPacket(packet: unknown): boolean {
     build === undefined
       ? 'The packet has no build.'
       : `The packet's build is ${typeof build === 'string' ? `"${escapeControlCharacters(build)}"` : 'not a string'}.`;
-  throw new DeclarationError(`${found} Set build to "development" or "distributed".`);
+  throw new DeclarationError(invalidPacket, {
+    correction: 'Set build to "development" or "distributed".',
+    findings: [partFinding(site, 'build' in packet ? ['build'] : [])],
+    sentence: found,
+  });
 }
 
 /**
@@ -862,28 +897,35 @@ function declareApplication(
   const slot = isPlainObject(options) ? options : undefined;
   const identities = viewIdentities(coreViews);
   const views = buildViews(
-    { declares: false, sentence: 'The Application' },
+    {
+      declares: false,
+      owner: { call: 'new Application', named: name },
+      sentence: 'The Application',
+    },
     slot?.views,
     identities,
   );
-  const translations = readTranslations('The Application', slot?.translators);
-  const rendering = renderingPolicy(slot?.rendering);
+  const translations = readTranslations(
+    optionSite(name, 'translators', slot?.translators),
+    slot?.translators,
+  );
+  const rendering = renderingPolicy(
+    slot?.rendering,
+    optionSite(name, 'rendering', slot?.rendering),
+  );
   const facts = checkOptions(name, options);
-  const development = readPacket(slot?.packet);
-  const installed = installPlugins(slot?.plugins ?? []);
+  const development = readPacket(name, slot?.packet);
+  const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>
-    buildViews(
-      { declares: true, sentence: pluginSentence(entry.identity) },
-      entry.views,
-      identities,
-    ),
+    buildViews(pluginViews(entry.identity), entry.views, identities),
   );
   const table = globalTable([], plugins);
   const descriptors = installed.descriptors;
   const extensions = storeCommandLayers({
     descriptors,
     layers: [slot?.extensions],
+    site: optionSite(name, 'extensions', slot?.extensions),
     subject: layerOf(null),
   });
   // The Application checks its own facts, so the root carries none.

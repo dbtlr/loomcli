@@ -1,8 +1,10 @@
 import { registerRule } from './diagnostic-text.js';
 
 /*
- * Core's own rules for the defects it raises and the run-time declaration faults it finds. Each is
- * declared once here and shared by every site that raises it, as a plugin's rules are.
+ * Core's own rules for the defects it raises, the run-time declaration faults it finds, and the
+ * faults of the two things an author declares to describe a failure: a failure class's exit code
+ * and a diagnostic rule. Each is declared once here and shared by every site that raises it, as a
+ * plugin's rules are.
  */
 
 /** A value thrown from an action, a middleware, or a source that no translator answered. */
@@ -133,6 +135,34 @@ const brokenDestination = registerRule('@loomcli/core/broken-destination', {
   headline: 'Broken destination',
 });
 
+/** A failure class whose exit code is outside 1 through 125. */
+const failureExitCode = registerRule('@loomcli/core/failure-exit-code', {
+  explanation:
+    "A failure's exit code tells the shell how the run ended. Core never clamps or replaces the code a failure class declares, so a code no failure may exit with is rejected where the class is first constructed.",
+  headline: 'Undeclarable exit code',
+});
+
+/** A diagnostic rule identity outside the `<package>/<kebab-case-rule>` grammar. */
+const ruleIdentity = registerRule('@loomcli/core/rule-identity', {
+  explanation:
+    "A rule's identity names the package that declares it and the rule inside it, so tooling keys on it and two packages never share one. It follows the grammar of a validator package's issue codes: a package name, /, and a kebab-case rule name.",
+  headline: 'Invalid rule identity',
+});
+
+/** A diagnostic rule whose headline or explanation holds no prose. */
+const ruleProse = registerRule('@loomcli/core/rule-prose', {
+  explanation:
+    "A rule's banner prints its headline, and its explanation teaches why the rule exists, so each holds prose.",
+  headline: 'Empty rule text',
+});
+
+/** A diagnostic rule whose docs value is not a web address. */
+const ruleDocs = registerRule('@loomcli/core/rule-docs', {
+  explanation:
+    "A diagnostic prints a rule's docs as a link the author follows, so it is an absolute http or https URL.",
+  headline: 'Invalid rule docs',
+});
+
 export {
   brokenDestination,
   brokenFailureHook,
@@ -140,6 +170,7 @@ export {
   brokenOutputView,
   brokenTranslator,
   brokenTranslatorCorrection,
+  failureExitCode,
   foreignGraph,
   foreignGraphCorrection,
   foreignThrow,
@@ -147,6 +178,9 @@ export {
   nextMisuse,
   pluginLoaderFailed,
   resultContract,
+  ruleDocs,
+  ruleIdentity,
+  ruleProse,
   runOptions,
   sourceAnswers,
   sourceAnswersCorrection,

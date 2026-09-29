@@ -246,6 +246,7 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
   const record = buildExtensions({
     declared: input.config.extensions,
     descriptors,
+    site: { ...site, at: '1.extensions' },
     subject: { phrase: `on the global option "${input.name}"`, sentence },
     target: 'option',
   });

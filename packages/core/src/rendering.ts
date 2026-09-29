@@ -1,5 +1,8 @@
 import { DeclarationError } from './errors.js';
+import { partFinding } from './facts.js';
+import type { FactSite } from './facts.js';
 import { isPlainObject } from './plain.js';
+import { renderingPolicyRule } from './plugin-rules.js';
 import type { Host } from './types.js';
 
 type SwitchPolicy = 'auto' | 'always' | 'never';
@@ -18,18 +21,30 @@ interface Capabilities {
   mainGlyphs: boolean;
 }
 
-function renderingPolicy(value: unknown): RenderingPolicy {
+/**
+ * One declared rendering policy, checked against its closed sets. `site` is where it was declared,
+ * the Application's `rendering` option or `run()`'s, which a fault marks.
+ */
+function renderingPolicy(value: unknown, site: FactSite): RenderingPolicy {
   if (value === undefined) {
     return {};
   }
   if (!isPlainObject(value)) {
-    throw new DeclarationError('The rendering policy must be an object.');
+    throw new DeclarationError(renderingPolicyRule, {
+      correction: 'Supply an object, or omit rendering.',
+      findings: [partFinding(site, [])],
+      sentence: 'The rendering policy is not an object.',
+    });
   }
   const result: RenderingPolicy = {};
   for (const field of ['color', 'modifiers', 'hyperlinks'] as const) {
     const policy = value[field];
     if (policy !== undefined && policy !== 'auto' && policy !== 'always' && policy !== 'never') {
-      throw new DeclarationError(`Rendering ${field} must be auto, always, or never.`);
+      throw new DeclarationError(renderingPolicyRule, {
+        correction: `Supply one of the three, or omit ${field}.`,
+        findings: [partFinding(site, [field])],
+        sentence: `Rendering ${field} is not auto, always, or never.`,
+      });
     }
     if (policy !== undefined) {
       result[field] = policy;
@@ -37,7 +52,11 @@ function renderingPolicy(value: unknown): RenderingPolicy {
   }
   const controls = value.terminalControls;
   if (controls !== undefined && controls !== 'strip' && controls !== 'preserve') {
-    throw new DeclarationError('Rendering terminalControls must be strip or preserve.');
+    throw new DeclarationError(renderingPolicyRule, {
+      correction: 'Supply strip or preserve, or omit terminalControls.',
+      findings: [partFinding(site, ['terminalControls'])],
+      sentence: 'Rendering terminalControls is not strip or preserve.',
+    });
   }
   if (controls !== undefined) {
     result.terminalControls = controls;

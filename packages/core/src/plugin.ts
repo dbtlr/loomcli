@@ -1,12 +1,22 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
+import { notACommand } from './command-rules.js';
 import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
+import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
-import { DeclarationError, InternalError, reasonOf } from './errors.js';
+import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry } from './extension.js';
-import { checkDeprecated, checkDescription, checkHidden, pluginOptionSite } from './facts.js';
+import {
+  checkDeprecated,
+  checkDescription,
+  checkHidden,
+  factFault,
+  partFinding,
+  pluginOptionSite,
+  slotSite,
+} from './facts.js';
 import type { FactSite } from './facts.js';
 import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
@@ -16,6 +26,21 @@ import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
+import {
+  foreignValue,
+  middlewareActivation,
+  notAFunction,
+  notAList,
+  notAnObject,
+  pluginIdentity,
+  pluginInstalledTwice,
+  pluginOptionRule,
+  signalClaimedTwice,
+  slotTaken,
+  sourceBinding,
+  sourceBoundOwnOption,
+  unknownSignal,
+} from './plugin-rules.js';
 import { pluginLoaderFailed } from './rules.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
@@ -28,7 +53,7 @@ import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } fr
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
-import type { ViewContribution } from './view.js';
+import type { ViewContribution, ViewSubject } from './view.js';
 
 /**
  * The declaration record a plugin contributes its options under: the parsing part of an option
@@ -204,28 +229,54 @@ function pluginSentence(identity: string): string {
   return `Plugin "${identity}"`;
 }
 
-/** Reads the declarations behind an installed value; anything else is a declaration error. */
-function nodeOf(value: unknown): BuiltPlugin {
-  const node = typeof value === 'object' && value !== null ? nodes.get(value) : undefined;
-  if (!node) {
-    throw new DeclarationError(
-      'The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).',
-    );
-  }
-  return node;
+/** Where one slot of a plugin's definition sits, rebuilt as `plugin(identity, { slot })`. */
+function pluginSlot(identity: string, slot: string, value: unknown): FactSite {
+  return slotSite(
+    { call: 'plugin', named: identity, subject: pluginSentence(identity) },
+    slot,
+    value,
+  );
 }
+
+/** The subject a plugin's `views` list reports under, and the call that declared it. */
+function pluginViews(identity: string): ViewSubject {
+  return {
+    declares: true,
+    owner: { call: 'plugin', named: identity },
+    sentence: pluginSentence(identity),
+  };
+}
+
+/** The declarations behind one installed value, or `undefined` for a value `plugin()` did not make. */
+function nodeOf(value: unknown): BuiltPlugin | undefined {
+  return typeof value === 'object' && value !== null ? nodes.get(value) : undefined;
+}
+
+/** One `plugins` entry as a finding prints it: a plugin as its `plugin()` call, elided. */
+function entryCode(value: unknown): unknown {
+  const node = nodeOf(value);
+  return node ? spelled(`plugin(${quoteString(node.identity)}, ${elided})`) : value;
+}
+
+/** The fix every plugin identity fault shares. */
+const identityCorrection = 'Supply a nonempty string, such as the package name.';
 
 /** The identity one plugin declares, which is a nonempty string. */
 function readIdentity(identity: unknown): string {
+  const findings = [{ arguments: [identity, spelled(elided)], call: 'plugin', mark: '0' }];
   if (typeof identity !== 'string') {
-    throw new DeclarationError(
-      'A plugin declares an identity that is not a string. Supply a nonempty string, such as the package name.',
-    );
+    throw new DeclarationError(pluginIdentity, {
+      correction: identityCorrection,
+      findings,
+      sentence: 'A plugin declares an identity that is not a string.',
+    });
   }
   if (identity === '') {
-    throw new DeclarationError(
-      'A plugin declares an empty identity. Supply a nonempty string, such as the package name.',
-    );
+    throw new DeclarationError(pluginIdentity, {
+      correction: identityCorrection,
+      findings,
+      sentence: 'A plugin declares an empty identity.',
+    });
   }
   return identity;
 }
@@ -233,9 +284,11 @@ function readIdentity(identity: unknown): string {
 /** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
 function definitionOf(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
   if (!isPlainObject(definition)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares a definition that is not an object. Supply { options, middleware, extensions, views }.`,
-    );
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply { options, middleware, extensions, views }.',
+      findings: [{ arguments: [identity, definition], call: 'plugin', mark: '1' }],
+      sentence: `${pluginSentence(identity)} declares a definition that is not an object.`,
+    });
   }
   return definition;
 }
@@ -246,6 +299,48 @@ interface InstalledPlugins {
   plugins: readonly BuiltPlugin[];
 }
 
+/** The slots one plugin at most may claim. */
+type Slot = 'signals' | 'source' | 'theme';
+
+/** How a second claim on one slot reads: its clause, the note on the owner's entry, and the fix. */
+const slotWords: Readonly<
+  Record<Slot, { clause: (owner: string) => string; held: string; correction: string }>
+> = {
+  signals: {
+    clause: (owner) => `claims the signals slot, which plugin "${owner}" already holds.`,
+    correction: 'Install one owner.',
+    held: 'holds the signals slot',
+  },
+  source: {
+    clause: (owner) => `declares a configuration source, which plugin "${owner}" already declares.`,
+    correction: 'Install one source.',
+    held: 'declares the configuration source',
+  },
+  theme: {
+    clause: (owner) => `claims the theme slot, which plugin "${owner}" already holds.`,
+    correction: 'Install one owner.',
+    held: 'holds the theme slot',
+  },
+};
+
+/** A second claim on one slot, which marks the owner's entry and the claimant's in `plugins`. */
+function slotFault(
+  site: FactSite,
+  slot: Slot,
+  claim: { installed: readonly BuiltPlugin[]; owner: number; claimant: number },
+): DeclarationError {
+  const { claimant, installed, owner } = claim;
+  const words = slotWords[slot];
+  return new DeclarationError(slotTaken, {
+    correction: words.correction,
+    findings: [
+      partFinding(site, [owner], words.held),
+      partFinding(site, [claimant], 'claims it again'),
+    ],
+    sentence: `${pluginSentence(installed[claimant]?.identity ?? '')} ${words.clause(installed[owner]?.identity ?? '')}`,
+  });
+}
+
 /**
  * The installed list in composition order, with every rule that reads two plugins together: an
  * identity installed twice, a second claim on the theme slot, the signals slot, or the
@@ -253,53 +348,69 @@ interface InstalledPlugins {
  * defensively, because a JavaScript author reaches it with any value. Each plugin's own rules
  * already ran at its `plugin()` call.
  */
-function installPlugins(plugins: unknown): InstalledPlugins {
+function installPlugins(application: string, plugins: unknown): InstalledPlugins {
+  const printed = Array.isArray(plugins) ? Array.from(plugins, entryCode) : plugins;
+  const site = slotSite(
+    { call: 'new Application', named: application, subject: 'The Application' },
+    'plugins',
+    printed,
+  );
   if (!Array.isArray(plugins)) {
-    throw new DeclarationError(
-      'The Application plugins must be an array. Supply a list of plugin values.',
-    );
+    throw new DeclarationError(notAList, {
+      correction: 'Supply a list of plugin values.',
+      findings: [partFinding(site, [])],
+      sentence: 'The Application plugins must be an array.',
+    });
   }
   const list: readonly unknown[] = plugins;
-  const installed = list.map((value) => nodeOf(value));
-  const identities = new Set<string>();
+  const installed = list.map((value, index) => {
+    const node = nodeOf(value);
+    if (!node) {
+      throw new DeclarationError(foreignValue, {
+        correction: 'Supply the value returned by plugin(identity, definition).',
+        findings: [partFinding(site, [index])],
+        sentence: 'The Application holds a value that is not a plugin.',
+      });
+    }
+    return node;
+  });
+  const positions = new Map<string, number>();
   const descriptors: DescriptorRegistry = new Map();
   // Each slot has one owner, so the first plugin to claim it names the second claimant's diagnostic.
-  const owners: { signals?: string; source?: string; theme?: string } = {};
-  for (const entry of installed) {
-    const { identity } = entry;
-    if (identities.has(identity)) {
-      throw new DeclarationError(
-        `The Application installs plugin "${identity}" twice. Install each plugin once.`,
-      );
+  const owners = new Map<Slot, number>();
+  const claim = (slot: Slot, index: number) => {
+    const owner = owners.get(slot);
+    if (owner !== undefined) {
+      throw slotFault(site, slot, { claimant: index, installed, owner });
     }
-    identities.add(identity);
+    owners.set(slot, index);
+  };
+  for (const [index, entry] of installed.entries()) {
+    const { identity } = entry;
+    const first = positions.get(identity);
+    if (first !== undefined) {
+      throw new DeclarationError(pluginInstalledTwice, {
+        correction: 'Install each plugin once.',
+        findings: [
+          partFinding(site, [first], 'the first installation'),
+          partFinding(site, [index], 'the second installation'),
+        ],
+        sentence: `The Application installs plugin "${identity}" twice.`,
+      });
+    }
+    positions.set(identity, index);
     if (entry.theme !== undefined) {
-      if (owners.theme !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} claims the theme slot, which plugin "${owners.theme}" already holds. Install one owner.`,
-        );
-      }
-      owners.theme = identity;
+      claim('theme', index);
     }
     for (const descriptor of entry.descriptors.values()) {
-      registerDescriptor(descriptors, descriptor);
+      registerDescriptor(descriptors, descriptor, partFinding(site, [index]));
     }
     // An empty claim leaves the signals slot free.
     if (entry.signals.length > 0) {
-      if (owners.signals !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} claims the signals slot, which plugin "${owners.signals}" already holds. Install one owner.`,
-        );
-      }
-      owners.signals = identity;
+      claim('signals', index);
     }
     if (entry.source) {
-      if (owners.source !== undefined) {
-        throw new DeclarationError(
-          `${pluginSentence(identity)} declares a configuration source, which plugin "${owners.source}" already declares. Install one source.`,
-        );
-      }
-      owners.source = identity;
+      claim('source', index);
     }
   }
   return { descriptors, plugins: installed };
@@ -312,13 +423,20 @@ const forbidden = ['validate', 'validateOmitted', 'required'] as const;
 function checkPluginOption(site: FactSite, config: PluginOptionConfig): void {
   const sentence = site.subject;
   if (!isPlainObject(config)) {
-    throw new DeclarationError(`${sentence} is not an option declaration. Supply { type, ... }.`);
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply { type, ... }.',
+      findings: [partFinding(site, [])],
+      sentence: `${sentence} is not an option declaration.`,
+    });
   }
   const rejected = forbidden.find((key) => key in config);
   if (rejected !== undefined) {
-    throw new DeclarationError(
-      `${sentence} declares ${rejected}. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.`,
-    );
+    throw factFault(pluginOptionRule, site, {
+      correction:
+        'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+      fact: rejected,
+      sentence: `${sentence} declares ${rejected}.`,
+    });
   }
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
@@ -335,9 +453,11 @@ function readOptions(
   build: PluginRegisters,
 ): readonly OptionInput[] {
   if (declared !== undefined && !isPlainObject(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares options that are not an object. Supply a record of option declarations.`,
-    );
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply a record of option declarations.',
+      findings: [partFinding(pluginSlot(identity, 'options', declared), [])],
+      sentence: `${pluginSentence(identity)} declares options that are not an object.`,
+    });
   }
   const inputs: OptionInput[] = [];
   for (const [name, config] of Object.entries(declared ?? {})) {
@@ -353,6 +473,7 @@ function readOptions(
       buildExtensions({
         declared: config.extensions,
         descriptors: build.descriptors,
+        site: { ...site, at: `${site.at}.extensions` },
         subject: {
           phrase: `on ${sentence.slice(0, 1).toLowerCase()}${sentence.slice(1)}`,
           sentence,
@@ -374,37 +495,45 @@ function readOptions(
   return inputs;
 }
 
-/** One activation name, which must be one of the plugin's own declared options. */
-function readActivationName(identity: string, name: unknown, names: ReadonlySet<string>): string {
-  if (typeof name !== 'string' || !names.has(name)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} activates middleware on option "${String(name)}", which it does not declare. Name one of the plugin's own options.`,
-    );
-  }
-  return name;
-}
-
-/** The activation a middleware declares, checked against the options its own plugin declares. */
+/**
+ * The activation a middleware declares, checked against the options its own plugin declares. `site`
+ * holds the middleware object, and a fault marks its `activate` key, or the object itself when the
+ * key is absent.
+ */
 function readActivation(
-  identity: string,
-  declared: unknown,
+  site: FactSite,
+  declared: { activate?: unknown },
   names: ReadonlySet<string>,
 ): 'always' | readonly string[] {
-  if (declared === 'always') {
+  const { activate } = declared;
+  if (activate === 'always') {
     return 'always';
   }
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`,
-    );
+  if (!Array.isArray(activate)) {
+    throw new DeclarationError(middlewareActivation, {
+      correction: "Supply activate: 'always' or a list of the plugin's own option names.",
+      findings: [partFinding(site, 'activate' in declared ? ['activate'] : [])],
+      sentence: `${site.subject} declares middleware with no activation.`,
+    });
   }
-  const list: readonly unknown[] = declared;
+  const list: readonly unknown[] = activate;
   if (list.length === 0) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`,
-    );
+    throw new DeclarationError(middlewareActivation, {
+      correction: "Name at least one of the plugin's options or use 'always'.",
+      findings: [partFinding(site, ['activate'])],
+      sentence: `${site.subject} declares middleware with an empty activation list.`,
+    });
   }
-  return list.map((name) => readActivationName(identity, name, names));
+  return list.map((name, index) => {
+    if (typeof name !== 'string' || !names.has(name)) {
+      throw new DeclarationError(middlewareActivation, {
+        correction: "Name one of the plugin's own options.",
+        findings: [partFinding(site, ['activate', index])],
+        sentence: `${site.subject} activates middleware on option ${quoted(String(name))}, which it does not declare.`,
+      });
+    }
+    return name;
+  });
 }
 
 /**
@@ -468,17 +597,22 @@ function readMiddleware(
   if (declared === undefined) {
     return undefined;
   }
+  const site = pluginSlot(identity, 'middleware', declared);
   if (!isPlainObject(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares middleware that is not an object. Supply { activate, load }.`,
-    );
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply { activate, load }.',
+      findings: [partFinding(site, [])],
+      sentence: `${pluginSentence(identity)} declares middleware that is not an object.`,
+    });
   }
-  const activate = readActivation(identity, declared.activate, names);
+  const activate = readActivation(site, declared, names);
   const { load } = declared;
   if (!isLoader(load)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares middleware with no load function. Supply load: () => import('./middleware.js').`,
-    );
+    throw new DeclarationError(notAFunction, {
+      correction: "Supply load: () => import('./middleware.js').",
+      findings: [partFinding(site, 'load' in declared ? ['load'] : [])],
+      sentence: `${pluginSentence(identity)} declares middleware with no load function.`,
+    });
   }
   return { activate, load };
 }
@@ -493,9 +627,11 @@ function readCommands(identity: string, declared: unknown): readonly AttachedChi
     return [];
   }
   if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares commands that are not an array. Supply a list of Command values.`,
-    );
+    throw new DeclarationError(notAList, {
+      correction: 'Supply a list of Command values.',
+      findings: [partFinding(pluginSlot(identity, 'commands', declared), [])],
+      sentence: `${pluginSentence(identity)} declares commands that are not an array.`,
+    });
   }
   const list: readonly unknown[] = declared;
   const commands: AttachedChild[] = [];
@@ -507,16 +643,18 @@ function readCommands(identity: string, declared: unknown): readonly AttachedChi
   // A for...of walk reads a hole as undefined, which the entry rule rejects, where map would skip it.
   for (const [index, value] of list.entries()) {
     const node = commandNode(value);
-    if (!node) {
-      throw new DeclarationError(
-        `${pluginSentence(identity)} holds a value that is not a Command. Supply the value returned by new Command(name).`,
-      );
-    }
     const placement: Finding = {
       arguments: [identity, { commands: entries }],
       call: 'plugin',
       mark: `1.commands.${String(index)}`,
     };
+    if (!node) {
+      throw new DeclarationError(notACommand, {
+        correction: 'Supply the value returned by new Command(name).',
+        findings: [placement],
+        sentence: `${pluginSentence(identity)} holds a value that is not a Command.`,
+      });
+    }
     const parent = {
       argument: undefined,
       children: commands,
@@ -539,27 +677,39 @@ function readSignals(identity: string, declared: unknown): readonly ProcessSigna
   if (declared === undefined) {
     return [];
   }
+  const site = pluginSlot(identity, 'signals', declared);
   if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares signals that are not an array. Supply a list of signal names.`,
-    );
+    throw new DeclarationError(notAList, {
+      correction: 'Supply a list of signal names.',
+      findings: [partFinding(site, [])],
+      sentence: `${pluginSentence(identity)} declares signals that are not an array.`,
+    });
   }
   const list: readonly unknown[] = declared;
-  const claimed = new Set<ProcessSignal>();
-  for (const value of list) {
+  // Each claimed signal's position, so a repeat marks both claims.
+  const claimed = new Map<ProcessSignal, number>();
+  for (const [index, value] of list.entries()) {
     if (!isProcessSignal(value)) {
-      throw new DeclarationError(
-        `${pluginSentence(identity)} claims signal "${String(value)}". Claim SIGINT or SIGTERM.`,
-      );
+      throw new DeclarationError(unknownSignal, {
+        correction: 'Claim SIGINT or SIGTERM.',
+        findings: [partFinding(site, [index])],
+        sentence: `${pluginSentence(identity)} claims signal ${quoted(String(value))}.`,
+      });
     }
-    if (claimed.has(value)) {
-      throw new DeclarationError(
-        `${pluginSentence(identity)} claims signal "${value}" twice. Claim each signal once.`,
-      );
+    const first = claimed.get(value);
+    if (first !== undefined) {
+      throw new DeclarationError(signalClaimedTwice, {
+        correction: 'Claim each signal once.',
+        findings: [
+          partFinding(site, [first], 'the first claim'),
+          partFinding(site, [index], 'the second claim'),
+        ],
+        sentence: `${pluginSentence(identity)} claims signal "${value}" twice.`,
+      });
     }
-    claimed.add(value);
+    claimed.set(value, index);
   }
-  return [...claimed];
+  return [...claimed.keys()];
 }
 
 /**
@@ -576,9 +726,11 @@ function readHook(identity: string, declared: unknown): CommandAttachHook | unde
     return undefined;
   }
   if (!isHook(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares onCommandAttach that is not a function. Supply a function of the Command.`,
-    );
+    throw new DeclarationError(notAFunction, {
+      correction: 'Supply a function of the Command.',
+      findings: [partFinding(pluginSlot(identity, 'onCommandAttach', declared), [])],
+      sentence: `${pluginSentence(identity)} declares onCommandAttach that is not a function.`,
+    });
   }
   return declared;
 }
@@ -594,9 +746,11 @@ function readFailureHook(identity: string, declared: unknown): FailureHook | und
     return undefined;
   }
   if (!isFailureHook(declared)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares onFailure that is not a function. Supply a function of the failure and its context.`,
-    );
+    throw new DeclarationError(notAFunction, {
+      correction: 'Supply a function of the failure and its context.',
+      findings: [partFinding(pluginSlot(identity, 'onFailure', declared), [])],
+      sentence: `${pluginSentence(identity)} declares onFailure that is not a function.`,
+    });
   }
   return declared;
 }
@@ -626,35 +780,53 @@ function readSource(
     return undefined;
   }
   const sentence = pluginSentence(identity);
+  const site = pluginSlot(identity, 'source', declared);
   if (!isPlainObject(declared)) {
-    throw new DeclarationError(
-      `${sentence} declares a source that is not an object. Supply { binding, load }.`,
-    );
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply { binding, load }.',
+      findings: [partFinding(site, [])],
+      sentence: `${sentence} declares a source that is not an object.`,
+    });
   }
   const { binding, load } = declared;
+  // A fault about one key marks the key, or the source itself when the key is absent.
+  const keyFinding = (key: string) => partFinding(site, key in declared ? [key] : []);
   const listed = (declaration.extensions ?? []).some((descriptor) => descriptor === binding);
   if (!listed || !isDescriptor(binding)) {
-    throw new DeclarationError(
-      `${sentence} declares a source binding that is not one of its extensions. Supply a descriptor the plugin lists under extensions.`,
-    );
+    throw new DeclarationError(sourceBinding, {
+      correction: 'Supply a descriptor the plugin lists under extensions.',
+      findings: [keyFinding('binding')],
+      sentence: `${sentence} declares a source binding that is not one of its extensions.`,
+    });
   }
   if (binding.target !== 'option') {
-    throw new DeclarationError(
-      `${sentence} declares source binding "${binding.identity}", which applies to ${appliesTo(binding.target)}. Supply an extension that applies to options.`,
-    );
+    throw new DeclarationError(sourceBinding, {
+      correction: 'Supply an extension that applies to options.',
+      findings: [keyFinding('binding')],
+      sentence: `${sentence} declares source binding "${binding.identity}", which applies to ${appliesTo(binding.target)}.`,
+    });
   }
   if (!isLoader(load)) {
-    throw new DeclarationError(
-      `${sentence} declares a source with no load function. Supply load: () => import('./source.js').`,
-    );
+    throw new DeclarationError(notAFunction, {
+      correction: "Supply load: () => import('./source.js').",
+      findings: [keyFinding('load')],
+      sentence: `${sentence} declares a source with no load function.`,
+    });
   }
   const carrier = own.inputs.find((input) =>
     Object.hasOwn(own.build.records.get(input) ?? {}, binding.identity),
   );
   if (carrier) {
-    throw new DeclarationError(
-      `${sentence} option "${carrier.name}" carries its own source binding. Remove the value; the source's own options resolve before it loads.`,
+    const option = pluginOptionSite(
+      { identity, options: declaration.options },
+      carrier.name,
+      `${sentence} option "${carrier.name}"`,
     );
+    throw new DeclarationError(sourceBoundOwnOption, {
+      correction: "Remove the value; the source's own options resolve before it loads.",
+      findings: [partFinding(option, ['extensions'])],
+      sentence: `${option.subject} carries its own source binding.`,
+    });
   }
   return { binding: binding.identity, load };
 }
@@ -696,18 +868,23 @@ function defineExtensions(
   build: PluginRegisters,
 ): void {
   const { extensions } = declaration;
+  const site = pluginSlot(identity, 'extensions', extensions);
   if (extensions !== undefined && !Array.isArray(extensions)) {
-    throw new DeclarationError(
-      `${pluginSentence(identity)} declares extensions that are not an array. Supply a list of extension descriptors.`,
-    );
+    throw new DeclarationError(notAList, {
+      correction: 'Supply a list of extension descriptors.',
+      findings: [partFinding(site, [])],
+      sentence: `${pluginSentence(identity)} declares extensions that are not an array.`,
+    });
   }
-  for (const descriptor of extensions ?? []) {
+  for (const [index, descriptor] of (extensions ?? []).entries()) {
     if (!isDescriptor(descriptor)) {
-      throw new DeclarationError(
-        `${pluginSentence(identity)} holds a value that is not an extension. Supply the value returned by extension(identity, config).`,
-      );
+      throw new DeclarationError(foreignValue, {
+        correction: 'Supply the value returned by extension(identity, config).',
+        findings: [partFinding(site, [index])],
+        sentence: `${pluginSentence(identity)} holds a value that is not an extension.`,
+      });
     }
-    registerDescriptor(build.descriptors, descriptor);
+    registerDescriptor(build.descriptors, descriptor, partFinding(site, [index]));
   }
 }
 
@@ -731,12 +908,11 @@ function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin 
   const middleware = readMiddleware(named, declaration.middleware, names);
   const onCommandAttach = readHook(named, declaration.onCommandAttach);
   const onFailure = readFailureHook(named, declaration.onFailure);
-  buildViews(
-    { declares: true, sentence: pluginSentence(named) },
-    declaration.views,
-    viewIdentities(coreViews),
+  buildViews(pluginViews(named), declaration.views, viewIdentities(coreViews));
+  const translators = readTranslations(
+    pluginSlot(named, 'translators', declaration.translators),
+    declaration.translators,
   );
-  const translators = readTranslations(pluginSentence(named), declaration.translators);
   return {
     commands,
     descriptors: build.descriptors,
@@ -799,11 +975,11 @@ function pluginSpellings(
   values: OptionValues,
 ): Readonly<Record<string, string>> {
   // Entries become own keys even for a name such as `__proto__`, which assignment would not.
-  const spelled = inputs.flatMap(({ name }): [string, string][] => {
+  const supplied = inputs.flatMap(({ name }): [string, string][] => {
     const spelling = values.spellings.get(name);
     return spelling === undefined ? [] : [[name, spelling]];
   });
-  return Object.freeze(Object.fromEntries(spelled));
+  return Object.freeze(Object.fromEntries(supplied));
 }
 
 type ThemeOf<Contributor> = [Contributor] extends [never]
@@ -835,5 +1011,6 @@ export {
   plugin,
   pluginSentence,
   pluginSpellings,
+  pluginViews,
   pluginValues,
 };
