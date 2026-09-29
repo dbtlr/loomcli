@@ -77,9 +77,9 @@ function json(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** The failure the named file prints for one clause and its fix. */
+/** The failure the named file prints for one clause and its fix, then the help hint. */
 function namedFailure(path: string, clause: string): string {
-  return `textstat: Option "--config": File "${path}" ${clause}\n`;
+  return `textstat: Option "--config": File "${path}" ${clause}\nRun "textstat --help" to see the usage.\n`;
 }
 
 /** The warning a discovered file prints for one clause and its fix. */
@@ -249,14 +249,15 @@ test(
     space.write(space.project, '.textstat.json', json({ total: 'yes' }));
     expect(space.textstat(files)).toEqual({
       status: 2,
-      stderr: 'textstat: Option "--total" (from total in .textstat.json): Use true or false.\n',
+      stderr:
+        'textstat: Option "--total" (from total in .textstat.json): Use true or false.\nRun "textstat --help" to see the usage.\n',
       stdout: '',
     });
     space.write(space.project, '.textstat.json', json({ minBytes: { max: 5 } }));
     expect(space.textstat(files)).toEqual({
       status: 2,
       stderr:
-        'textstat: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\n',
+        'textstat: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.\nRun "textstat --help" to see the usage.\n',
       stdout: '',
     });
   }),

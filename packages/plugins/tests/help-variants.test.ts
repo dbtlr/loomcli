@@ -104,7 +104,8 @@ test('a letter in a short group is spelled -h, so -Vh prints the compact page', 
 test('-h --help is the repeated-option usage error and prints no page', () => {
   expect(run('variants', ['-h', '--help'])).toEqual({
     status: 2,
-    stderr: 'app: Option "--help" can be supplied only once. Remove the repeated option.\n',
+    stderr:
+      'app: Option "--help" can be supplied only once. Remove the repeated option.\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
 });

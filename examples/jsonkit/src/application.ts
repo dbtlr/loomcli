@@ -1,7 +1,7 @@
 import { doctor } from '@loom/doctor';
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
-import { Application, FatalError, InputError, override, UnknownCommandError } from '@loomcli/core';
+import { Application, FatalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
@@ -9,6 +9,7 @@ import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { records } from '@loomcli/plugins/records';
+import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
@@ -21,7 +22,7 @@ import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
 import type { Member } from './member.js';
-import { fatalError, inputProblems, unknownCommand } from './views.js';
+import { fatalError } from './views.js';
 
 // The root action type-imports this value, so it is registered by the last call.
 const configured = new Application('jsonkit', {
@@ -38,6 +39,7 @@ const configured = new Application('jsonkit', {
   ],
   plugins: [
     help(),
+    suggestions(),
     version(),
     format(),
     manifest(),
@@ -47,11 +49,7 @@ const configured = new Application('jsonkit', {
     completion(),
   ],
   version: Package.version,
-  views: [
-    override(FatalError, fatalError),
-    override(InputError, inputProblems),
-    override(UnknownCommandError, unknownCommand),
-  ],
+  views: [override(FatalError, fatalError)],
 }).globalOption('file', {
   description: 'The document to read. Omit it to read piped text.',
   extensions: [helpInput({ placeholder: 'path' })],

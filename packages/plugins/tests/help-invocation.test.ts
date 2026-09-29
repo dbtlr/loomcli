@@ -104,7 +104,8 @@ test('-h renders while a required argument is missing and a local option is unkn
 test('an unknown command still fails in routing, before any middleware runs', () => {
   expect(run('usage', ['nope', '--help'])).toEqual({
     status: 2,
-    stderr: 'app: Unknown command "nope". Use one of: run, pack.\n',
+    stderr:
+      'app: Unknown command "nope". Use one of: run, pack.\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -113,7 +114,7 @@ test('a mixed-scope short group is the pre-scan error rather than help', () => {
   expect(run('cells', ['-ht'])).toEqual({
     status: 2,
     stderr:
-      'app: A short group mixes the global option "-h" with "-t", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
+      'app: A short group mixes the global option "-h" with "-t", which is not a global option. Supply global options as separate tokens, and local options after their command name.\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
 });

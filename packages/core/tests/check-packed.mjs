@@ -290,6 +290,17 @@ try {
       );
     }
   }
+  // The packed suggestions plugin offers the near match as the fix inside the sentence.
+  const suggesting = join(temporary, 'dist/suggestions.js');
+  for (const name of selected) {
+    const suggested = run(runtimes.get(name), [suggesting, 'gte'], temporary);
+    assert.equal(suggested.status, 2, suggested.output);
+    assert.equal(
+      suggested.output,
+      'packed-suggestions: Unknown command "gte". Did you mean "get"?\n',
+      `${name}: packed suggestion`,
+    );
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -303,7 +314,7 @@ try {
     }
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, and the three completion scripts.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, and a suggestion.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

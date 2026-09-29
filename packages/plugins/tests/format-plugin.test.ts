@@ -74,7 +74,7 @@ test('--format on a Command with no result is the unknown-option error', () => {
   expect(run('no-result', ['count', '--format', 'json'])).toEqual({
     status: 2,
     stderr:
-      'app: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".\n',
+      'app: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".\nRun "app count --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -172,7 +172,8 @@ test('the unadvertised ndjson alias still maps to jsonl, and a stray name lists 
   });
   expect(run('later-default', ['count', '--format', 'xml'])).toEqual({
     status: 2,
-    stderr: 'app: Option "--format": Supply one of table, json, jsonl.\n',
+    stderr:
+      'app: Option "--format": Supply one of table, json, jsonl.\nRun "app count --help" to see the usage.\n',
     stdout: '',
   });
 });

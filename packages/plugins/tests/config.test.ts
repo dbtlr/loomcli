@@ -85,8 +85,11 @@ const defaults = { fields: [], limit: '10', quiet: true, total: false };
 
 /** The failure the named file prints for one clause and its fix. */
 function namedFailure(path: string, clause: string): string {
-  return `app: Option "--config": File "${path}" ${clause}\n`;
+  return `app: Option "--config": File "${path}" ${clause}\n${helpHint}`;
 }
+
+/** The line help adds under every usage failure, since the fixture installs it. */
+const helpHint = 'Run "app --help" to see the usage.\n';
 
 /** The warning a discovered file prints for one clause and its fix. */
 function skipped(file: string, clause: string): string {
@@ -95,7 +98,7 @@ function skipped(file: string, clause: string): string {
 
 /** The failure a wrong value prints. */
 function wrong(clause: string): string {
-  return `app: ${clause}\n`;
+  return `app: ${clause}\n${helpHint}`;
 }
 
 test(
@@ -127,7 +130,7 @@ test(
     // A relative HOME resolves against the host's working directory, and the label shows the full path.
     const relative = space.write('home/.config/app/config.json', json({ limits: { bytes: 'x' } }));
     expect(space.run('none', [], { HOME: 'home', XDG_CONFIG_HOME: '' }).stderr).toBe(
-      `app: Option "--limit" (from limits.bytes in ${relative}): Supply a whole number.\n`,
+      `app: Option "--limit" (from limits.bytes in ${relative}): Supply a whole number.\n${helpHint}`,
     );
   }),
 );
@@ -159,12 +162,12 @@ test(
     space.write('.app.json', json({ limits: { bytes: 'many' } }));
     expect(space.run('project', [])).toEqual({
       status: 2,
-      stderr: 'app: Option "--limit" (from limits.bytes in .app.json): Supply a whole number.\n',
+      stderr: `app: Option "--limit" (from limits.bytes in .app.json): Supply a whole number.\n${helpHint}`,
       stdout: 'resolved:2\n',
     });
     const user = space.write('app/config.json', json({ limits: { bytes: 'lots' } }), space.xdg);
     expect(space.run('none', []).stderr).toBe(
-      `app: Option "--limit" (from limits.bytes in ${user}): Supply a whole number.\n`,
+      `app: Option "--limit" (from limits.bytes in ${user}): Supply a whole number.\n${helpHint}`,
     );
   }),
 );
@@ -361,6 +364,7 @@ test(
       [
         'app: Option "--limit" (from limits.bytes in .app.json): Use a string or a number.',
         'app: Option "--title" (from title in .app.json): Use a string or a number.',
+        'Run "app --help" to see the usage.',
         '',
       ].join('\n'),
     );
@@ -485,7 +489,7 @@ test(
     );
     space.write(`esc${escape}ape`, json({ limits: { bytes: 'x' } }));
     expect(space.run('project', ['--config', `esc${escape}ape`]).stderr).toBe(
-      `app: Option "--limit" (from limits.bytes in ${escaped}): Supply a whole number.\n`,
+      `app: Option "--limit" (from limits.bytes in ${escaped}): Supply a whole number.\n${helpHint}`,
     );
     const xdg = join(space.root, `x${escape}dg`);
     space.write('app/config.json', '[]', xdg);

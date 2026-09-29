@@ -90,7 +90,7 @@ test.each([
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['select', ...option, '-f', 'doc.json'], { cwd })).toEqual({
       status: 2,
-      stderr: `jsonkit: --field at ${position}: Expected a nonempty value.\n`,
+      stderr: `jsonkit: Option "--field" at ${position}: Expected a nonempty value.\nRun "jsonkit select --help" to see the usage.\n`,
       stdout: '',
     });
   });
@@ -100,7 +100,8 @@ test('jsonkit requires at least one field for select', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(invoke(main, ['--file', 'doc.json', 'select'], { cwd })).toEqual({
       status: 2,
-      stderr: 'jsonkit: --field: required\n',
+      stderr:
+        'jsonkit: Option "--field" is required. Supply at least one value.\nRun "jsonkit select --help" to see the usage.\n',
       stdout: '',
     });
   });
