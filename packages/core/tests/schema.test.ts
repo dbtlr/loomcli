@@ -97,6 +97,14 @@ test.each(['throw', 'reject'])(
   },
 );
 
+test('a thrown reason keeps the validator-failed sentence on one line with its controls escaped', () => {
+  const result = schema('throw-controls', ['--size', '12']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    '\n\nOption "size" validator failed unexpectedly: bad\\u202eevil\\u000asecond line x.\n\n',
+  );
+});
+
 test('an empty issues array still rejects input', () => {
   const result = schema('empty-issues', ['--size', '12']);
   expect(result.status).toBe(2);

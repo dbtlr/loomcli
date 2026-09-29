@@ -222,6 +222,15 @@ switch (scenario) {
     await app.run({ host: { argv: [] } });
     break;
   }
+  case 'throw-controls': {
+    app = app.option('size', {
+      type: 'string',
+      validate: schema(() => {
+        throw new Error('bad\u202eevil\nsecond line x');
+      }),
+    });
+    break;
+  }
   default: {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
