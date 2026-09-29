@@ -192,6 +192,22 @@ test.each([
     'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
   ],
   [
+    'fault-key-chain',
+    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
+  ],
+  [
+    'fault-key-failure',
+    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+  ],
+  [
+    'fault-key-fatal',
+    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+  ],
+  [
+    'fault-key-subclass',
+    'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
+  ],
+  [
     'fault-translator',
     'translate() received a translator that is not a function. Supply a function that returns a failure or undefined.',
   ],

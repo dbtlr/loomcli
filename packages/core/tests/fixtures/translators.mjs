@@ -575,6 +575,14 @@ function unreadablePrototypeKey(trap) {
   });
 }
 
+/** A constructor whose prototype's chain cannot be read, because the proxy's getPrototypeOf trap throws. */
+function ChainKeyError() {}
+ChainKeyError.prototype = new Proxy(Object.create(Error.prototype), {
+  getPrototypeOf() {
+    throw new Error('The chain trap failed.');
+  },
+});
+
 /** Each declaration fault, which a case constructs outside a run. */
 const faults = {
   'fault-application': () => new Application('translators', { translators: ['text'] }),
@@ -585,8 +593,12 @@ const faults = {
       () => undefined,
       () => undefined,
     ),
+  'fault-key-chain': () => translate(ChainKeyError, () => undefined),
+  'fault-key-failure': () => translate(LoomError, () => undefined),
+  'fault-key-fatal': () => translate(FatalError, () => undefined),
   'fault-key-get': () => translate(unreadablePrototypeKey('get'), () => undefined),
   'fault-key-has': () => translate(unreadablePrototypeKey('has'), () => undefined),
+  'fault-key-subclass': () => translate(UnavailableError, () => undefined),
   'fault-plugin': () => plugin('@acme/http', { translators: ['text'] }),
   'fault-plugin-hole': () => plugin('@acme/http', { translators: holey([catchAll], [catchAll]) }),
   'fault-plugin-list': () => plugin('@acme/http', { translators: 'text' }),

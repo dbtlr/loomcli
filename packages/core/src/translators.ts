@@ -109,9 +109,18 @@ function translate<Thrown extends object>(
   translator: Translator<Thrown>,
 ): Translation {
   const prototype = keyPrototype(key);
-  if (prototype === undefined) {
+  // A key whose prototype's chain cannot be read, such as through a proxy whose trap throws, is no
+  // Key either, so it is reported as a non-class before any failure-class check.
+  const chain = prototype === undefined ? undefined : prototypeChain(prototype);
+  if (prototype === undefined || chain === undefined) {
     throw new DeclarationError(
       'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
+    );
+  }
+  // Core never offers a failure to translators, so a translation keyed on a failure class never runs.
+  if (prototype === LoomError.prototype || chain.includes(LoomError.prototype)) {
+    throw new DeclarationError(
+      'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
     );
   }
   if (typeof translator !== 'function') {
