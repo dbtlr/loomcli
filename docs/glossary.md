@@ -374,7 +374,7 @@ The near match a plugin's failure view offers as the fix inside the sentence for
 _Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
 
 **Translator**:
-A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a middleware, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
+A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a middleware before its `next()` has settled, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
 _Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:
