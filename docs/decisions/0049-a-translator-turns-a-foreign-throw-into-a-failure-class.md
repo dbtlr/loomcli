@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0049 - A translator turns a foreign throw into a failure class
 description: The Application and plugins register translators keyed by a foreign error class, resolved in the order view overrides resolve. A throw from an action, a middleware, or an input source that is not a LoomError is offered to them before core wraps it as a defect, and the first failure returned wins. A broken translator is a defect, and a failure keeps its cause only when the author passes one.
-status: proposed
+status: accepted
 created: 2026-09-29
 modified: 2026-09-29
 ---
@@ -47,8 +47,9 @@ A plugin that ships translators for its client's errors can declare the failures
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that offers throws to translators under the rules above and the acceptance in [Translators](../core.md#translators).
+Proposed 2026-09-29. Accepted 2026-09-29 with the implementation: `@loomcli/core` exports `translate`, `Translation`, `Translator`, and `ErrorClass`, the Application and plugins register translations, a foreign throw from an action, a middleware before its `next()` has settled, and a configuration source reaches them, and jsonkit's reader holds no `JSON.parse` catch, so a malformed document exits 65, under Node.js and Bun.
 
 ## Changelog
 
 - 2026-09-29: Proposed with the translator contract.
+- 2026-09-29: Accepted with the implementation. Until [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md) lands, a broken translator's defect is its sentence alone, which names who registered it and the class it was keyed on, as [Translators](../core.md#translators) shows. A view's failure that an action or a source lets propagate is never offered, because it is a defect in the view.
