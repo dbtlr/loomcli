@@ -2,6 +2,7 @@ import { DeclarationError, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
+import { configFiles } from '../rules.js';
 import { configInput } from './extension.js';
 
 const options = {
@@ -13,20 +14,37 @@ const identity = `${Package.name}/config`;
 /** A file entry: a nonempty path that holds no control character. */
 const pathEntry = /^\P{Cc}+$/u;
 
+/**
+ * The fault of one `config(settings)` call, marking the part of the settings at fault: the
+ * settings themselves, `files`, or one entry of it.
+ */
+function filesFault(
+  settings: unknown,
+  fault: { mark: string; sentence: string; correction: string },
+): DeclarationError {
+  const { correction, mark, sentence } = fault;
+  return new DeclarationError(configFiles, {
+    correction,
+    findings: [{ arguments: [settings], call: 'config', mark }],
+    sentence,
+  });
+}
+
 /** The `files` a settings value lists, or the fault when the settings or the list has the wrong shape. */
 function listedFiles(settings: unknown): unknown[] {
-  const notList = new DeclarationError(
-    `Plugin "${identity}" files is not a list. Supply an array of paths.`,
-  );
+  const notList = {
+    correction: 'Supply an array of paths.',
+    sentence: `Plugin "${identity}" files is not a list.`,
+  };
   if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
-    throw notList;
+    throw filesFault(settings, { ...notList, mark: '0' });
   }
   const files: unknown = 'files' in settings ? settings.files : undefined;
   if (files === undefined) {
     return [];
   }
   if (!Array.isArray(files)) {
-    throw notList;
+    throw filesFault(settings, { ...notList, mark: '0.files' });
   }
   return files;
 }
@@ -43,9 +61,11 @@ function checkFiles(settings: unknown): readonly string[] {
   const files = listedFiles(settings);
   return files.map((entry: unknown, index) => {
     if (typeof entry !== 'string' || !pathEntry.test(entry)) {
-      throw new DeclarationError(
-        `Plugin "${identity}" file ${index} is not a path. Supply a nonempty path with no control character.`,
-      );
+      throw filesFault(settings, {
+        correction: 'Supply a nonempty path with no control character.',
+        mark: `0.files.${String(index)}`,
+        sentence: `Plugin "${identity}" file ${String(index)} is not a path.`,
+      });
     }
     return entry;
   });
