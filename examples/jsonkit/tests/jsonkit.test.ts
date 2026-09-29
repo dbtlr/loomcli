@@ -3,8 +3,9 @@ import { expect, test } from 'vite-plus/test';
 import { invoke } from '../../../scripts/test-process.js';
 import { document, main, withDocuments } from './documents.js';
 
-/** The fix a parse failure ends with, as a pattern, after the parser's own reason. */
-const parseFix = String.raw`Correct its syntax, or supply another document\.`;
+/** The sentence jsonkit's translator reports for a document `JSON.parse` rejects. */
+const invalidJson =
+  'The document is not valid JSON. Correct its syntax, or supply another document.\n';
 
 const summary = [
   'key   name',
@@ -220,14 +221,14 @@ test.each([
   ['malformed.json', '{"name":'],
   ['empty.json', ''],
   ['text.json', 'not json at all'],
-])('jsonkit reports a parse failure for %s', (file, contents) => {
+])('jsonkit reports a parse failure for %s as its data error', (file, contents) => {
   withDocuments({ [file]: contents }, (cwd) => {
-    const result = invoke(main, ['--file', file], { cwd });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(
-      new RegExp(`^Cannot parse JSON in ${file}: .+[^.]\\. ${parseFix}\\n$`, 'u'),
-    );
+    for (const args of [
+      ['--file', file],
+      ['get', 'name', '-f', file],
+    ]) {
+      expect(invoke(main, args, { cwd })).toEqual({ status: 65, stderr: invalidJson, stdout: '' });
+    }
   });
 });
 
@@ -244,16 +245,27 @@ test.each([
 );
 
 test.each(['', '{"name":', 'not json at all'])(
-  'jsonkit reports a parse failure for the piped text %j',
+  'jsonkit reports a parse failure for the piped text %j as its data error',
   (input) => {
-    const result = invoke(main, [], { input });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(
-      new RegExp(`^Cannot parse JSON in stdin: .+[^.]\\. ${parseFix}\\n$`, 'u'),
-    );
+    for (const args of [[], ['get', 'name']]) {
+      expect(invoke(main, args, { input })).toEqual({
+        status: 65,
+        stderr: invalidJson,
+        stdout: '',
+      });
+    }
   },
 );
+
+test('the data error keeps the SyntaxError JSON.parse threw as its cause', () => {
+  expect(
+    invoke(new URL('fixtures/translated.mjs', import.meta.url), [], { input: '{"name":' }),
+  ).toEqual({
+    status: 65,
+    stderr: invalidJson,
+    stdout: 'cause:SyntaxError\n',
+  });
+});
 
 test.each([
   [['--file', 'doc.json', 'get', 'name']],

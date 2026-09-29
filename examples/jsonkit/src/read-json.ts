@@ -8,12 +8,10 @@ import type { Host } from '@loomcli/core';
 
 import { checkFileOrStdin } from './file-or-stdin.js';
 
-/** One document source: the subject each failure names, and the connection it reads. */
+/** One document source: the subject a read failure names, and the connection it reads. */
 interface Source {
   /** A read failure names where the text came from, so a file failure keeps its path. */
   failure: string;
-  /** A parse failure names the document itself. */
-  name: string;
   stream: Readable;
 }
 
@@ -33,16 +31,19 @@ function explain(error: unknown, fallback: string): string {
  */
 function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {
-    return { failure: 'stdin', name: 'stdin', stream: host.stdin };
+    return { failure: 'stdin', stream: host.stdin };
   }
   return {
     failure: `file: ${file}`,
-    name: file,
     stream: createReadStream(resolve(host.cwd, file)),
   };
 }
 
-/** Every action reads its document here, so read and parse failures read the same everywhere. */
+/**
+ * Every action reads its document here, so a read failure reads the same everywhere. A malformed
+ * document throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns
+ * into its `InvalidJsonError`.
+ */
 export async function readJson(file: string | undefined, host: Host): Promise<unknown> {
   checkFileOrStdin(file, host);
   const source = select(file, host);
@@ -51,12 +52,6 @@ export async function readJson(file: string | undefined, host: Host): Promise<un
       `Cannot read ${source.failure}: ${explain(error, 'The source could not be read.')} Supply a readable file, or pipe JSON to stdin.`,
     );
   });
-  try {
-    const document: unknown = JSON.parse(contents);
-    return document;
-  } catch (error: unknown) {
-    throw new FatalError(
-      `Cannot parse JSON in ${source.name}: ${explain(error, 'The text is not valid JSON.')} Correct its syntax, or supply another document.`,
-    );
-  }
+  const document: unknown = JSON.parse(contents);
+  return document;
 }

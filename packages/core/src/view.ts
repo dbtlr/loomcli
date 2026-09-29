@@ -1,5 +1,6 @@
 import { DeclarationError, defaultText, FatalError, notTextReason, reasonOf } from './errors.js';
 import type { LoomError } from './errors.js';
+import { prototypeChain } from './prototypes.js';
 import { escapeText } from './style.js';
 import type { RowView, View, ViewContext } from './types.js';
 
@@ -451,17 +452,6 @@ function callView(
   return readStored(stored).render ?? missing('render', key);
 }
 
-/** Every prototype in a failure's chain, most derived first, so one walk reads one contributor. */
-function chainOf(failure: LoomError): unknown[] {
-  const chain: unknown[] = [];
-  let prototype: unknown = Object.getPrototypeOf(failure);
-  while (prototype !== null) {
-    chain.push(prototype);
-    prototype = Object.getPrototypeOf(prototype);
-  }
-  return chain;
-}
-
 /**
  * The view function one declared view resolves to: the first contributor that overrides it, then
  * its own default. A bare view is never overridden, so it resolves to its own function.
@@ -514,7 +504,8 @@ function resolveRowView<Row>(registry: ViewRegistry, value: RowView<Row>): Resol
  * for a base class beats a plugin's override for a subclass.
  */
 function resolveFailure(registry: ViewRegistry, failure: LoomError): StoredView | undefined {
-  const chain = chainOf(failure);
+  // A failure core reports has a readable chain, so the empty fallback only keeps the walk total.
+  const chain = prototypeChain(failure) ?? [];
   for (const contributor of registry) {
     for (const prototype of chain) {
       const replacement = contributor.failures.get(prototype);

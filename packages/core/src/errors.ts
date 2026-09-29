@@ -32,7 +32,7 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
  * bidirectional control in a token cannot reorder or break the line. The failure's public field
  * keeps the raw value.
  */
-function quoted(text: string): string {
+export function quoted(text: string): string {
   return `"${escapeControlCharacters(text)}"`;
 }
 
@@ -182,11 +182,12 @@ export abstract class LoomError extends Error {
   /**
    * Reads the constructed class's code, captured at its first construction. A code outside 1
    * through 125 throws a `DeclarationError` in place of the failure and captures nothing, because
-   * core never clamps or replaces a code.
+   * core never clamps or replaces a code. `options` is the platform's own, so a failure that
+   * replaces another error keeps it as `cause` only when its author passes one.
    */
-  constructor(message: string) {
+  constructor(message: string, options?: ErrorOptions) {
     const code = classCode(new.target, new.target);
-    super(message);
+    super(message, options);
     failureCodes.set(this, code);
     this.name = 'LoomError';
   }
@@ -205,8 +206,8 @@ export abstract class LoomError extends Error {
 export abstract class UsageError extends LoomError {
   static override readonly exitCode: FailureExitCode = 2;
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'UsageError';
   }
 }
@@ -225,8 +226,8 @@ export type InputProblem =
 export class InputError extends UsageError {
   readonly problems: readonly InputProblem[];
 
-  constructor(message: string, problems: readonly InputProblem[]) {
-    super(message);
+  constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions) {
+    super(message, options);
     this.name = 'InputError';
     this.problems = problems;
   }
@@ -334,8 +335,8 @@ export class ShortGroupError extends UsageError {
 
 /** Exit 1: the declaration is wrong, so the author reads the diagnostic. */
 export class DeclarationError extends LoomError {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'DeclarationError';
   }
 }
@@ -345,8 +346,8 @@ export class DeclarationError extends LoomError {
  * subclass may declare its own exit code.
  */
 export class FatalError extends LoomError {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'FatalError';
   }
 }

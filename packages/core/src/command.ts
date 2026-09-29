@@ -7,9 +7,11 @@ import {
   InternalError,
   NonCallableCommandError,
   ResultError,
+  toFailure,
   UnexpectedArgumentError,
   UnknownCommandError,
 } from './errors.js';
+import type { LoomError } from './errors.js';
 import {
   buildExtensions,
   extendStore,
@@ -2061,6 +2063,8 @@ export interface DispatchInvocation {
   host: Host;
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
+  /** Offers a configuration source's foreign throw to the translators where its call settles. */
+  offer: (thrown: unknown) => LoomError | undefined;
   signal: AbortSignal;
   /** The channel a configuration source writes through, whose results call names the source. */
   sourceOut: Out<OpenResult>;
@@ -2194,6 +2198,7 @@ async function fillScope(
       local.kind === 'parsed'
         ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
         : undefined,
+    offer: invocation.offer,
     out: invocation.sourceOut,
     plugins: graph.globals.plugins,
     request: (input, global) =>
@@ -2302,6 +2307,7 @@ export async function prepareDispatch(
     });
     return { ...ready, globals, kind: 'ready', result };
   } catch (error) {
-    return held(error);
+    // The fault is held as a failure, so a throw from reading a validator's output is never offered.
+    return held(toFailure(error));
   }
 }

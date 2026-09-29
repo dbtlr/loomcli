@@ -1,6 +1,6 @@
 import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
 import { prepareDispatch, routeInvocation } from './command.js';
-import { InternalError, reasonOf, routedSubject, toFailure } from './errors.js';
+import { InternalError, reasonOf, routedSubject } from './errors.js';
 import type { LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
@@ -222,6 +222,12 @@ interface Invocation {
    */
   inspected: () => CommandGraph;
   /**
+   * Offers one throw from the application's work to the translators, and answers with the failure
+   * that replaces it, or `undefined` when none does. The chain offers a throw where it leaves the
+   * chain, and a configuration source's throw is offered where the resolver's call settles.
+   */
+  offer: (thrown: unknown) => LoomError | undefined;
+  /**
    * The invocation's own channel. A middleware reads it as the neutral `Out`, and the action
    * receives the channel the results lane builds for the Command that was routed.
    */
@@ -384,14 +390,20 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
   return settle(turn, thrown);
 }
 
-/** The whole chain, answering with the failure it raised when a middleware caught that failure. */
+/**
+ * The whole chain, answering with the value it raised when a middleware caught that value. The
+ * value is kept as it was thrown, so it is offered to the translators once, where it leaves.
+ */
 async function runChain(
   invocation: Invocation,
   routed: RoutedInvocation,
   prepared: Prepared,
-): Promise<LoomError | undefined> {
+): Promise<{ value: unknown } | undefined> {
   const entries = activatedEntries(invocation.plugins, prepared.globals);
-  const run = { invoked: false, raised: undefined as LoomError | undefined };
+  const run: { invoked: boolean; raised: { value: unknown } | undefined } = {
+    invoked: false,
+    raised: undefined,
+  };
   const selection = new ViewSelection(prepared.result);
   /**
    * The dispatch boundary: the point the chain reaches when its last middleware continues. Core
@@ -442,7 +454,7 @@ async function runChain(
     }),
     invoked: () => run.invoked,
     record: (error) => {
-      run.raised ??= toFailure(error);
+      run.raised ??= { value: error };
     },
     report: (fault) => {
       announced.add(fault);
@@ -474,12 +486,18 @@ async function runChain(
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = routeInvocation(invocation.graph, invocation.host.argv, invocation.route);
   const prepared = await prepareDispatch(invocation.graph, routed, invocation);
-  const raised = await runChain(invocation, routed, prepared);
+  let raised: { value: unknown } | undefined = undefined;
+  try {
+    raised = await runChain(invocation, routed, prepared);
+  } catch (error) {
+    // A throw leaves the chain here, so a middleware that awaited next() saw it raw.
+    throw invocation.offer(error) ?? error;
+  }
   if (raised) {
     // The chain resolved because a middleware caught the rejection.
     // The failure it caught still decides the exit code.
     // That is the rule an action's caught output rejection already follows.
-    throw raised;
+    throw invocation.offer(raised.value) ?? raised.value;
   }
 }
 
