@@ -1,3 +1,5 @@
+import { Writable } from 'node:stream';
+
 import {
   Application,
   DeclarationError,
@@ -69,6 +71,31 @@ async function* brokenRows() {
   yield { name: 'one' };
   throw new SyntaxError('Unexpected token.');
 }
+
+/** A row source that yields one row and then throws a failure, which no translator is offered. */
+async function* failingRows() {
+  yield { name: 'one' };
+  throw new UnavailableError('source');
+}
+
+/** A rows Command whose action hands `source` to out.results() the way `emit` does. */
+function sequencing(emit, source, translators = [answering(SyntaxError, 'application')]) {
+  return new Application('translators', { translators })
+    .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
+    .action(({ out }) => emit(out.results(source())));
+}
+
+/** What a write to a closed pipe fails with, as `write EPIPE` does. */
+class PipeError extends Error {
+  constructor() {
+    super('write EPIPE');
+    this.name = 'PipeError';
+    this.code = 'EPIPE';
+  }
+}
+
+/** The stdout a scenario replaces, or `undefined` for the process's own. */
+let stdout = undefined;
 
 /** The binding a configuration source answers through. */
 const sourceKey = extension('@fixture/translators/key', { schema: z.string(), target: 'option' });
@@ -536,6 +563,51 @@ function build() {
           await out.results(brokenRows());
         });
     }
+    case 'sequence-unawaited': {
+      return sequencing((pending) => {
+        void pending;
+      }, brokenRows);
+    }
+    case 'sequence-caught': {
+      return sequencing(async (pending) => {
+        try {
+          await pending;
+        } catch {
+          calls.push('caught');
+        }
+      }, brokenRows);
+    }
+    case 'sequence-broken': {
+      return sequencing(
+        (pending) => {
+          void pending;
+        },
+        brokenRows,
+        [translate(SyntaxError, brokenTranslators['broken-throws'])],
+      );
+    }
+    case 'sequence-failure': {
+      return sequencing(
+        (pending) => {
+          void pending;
+        },
+        failingRows,
+        [catchAll],
+      );
+    }
+    case 'destination': {
+      stdout = new Writable({
+        write(chunk, encoding, callback) {
+          callback(new PipeError());
+        },
+      });
+      return ending(
+        async ({ out }) => {
+          await out.print('lost');
+        },
+        { translators: [answering(PipeError, 'application')] },
+      );
+    }
     default: {
       throw new Error(`Unknown scenario: ${scenario}`);
     }
@@ -635,7 +707,9 @@ if (scenario in faults) {
   seen.uncaused = 'cause' in new FatalError('Stopped.');
   process.stdout.write(`${JSON.stringify(seen)}\n`);
 } else {
-  const code = await build().run({ host: { argv }, signal: controller.signal });
+  const application = build();
+  const host = stdout === undefined ? { argv } : { argv, stdout };
+  const code = await application.run({ host, signal: controller.signal });
   for (const call of calls) {
     process.stdout.write(`${call}\n`);
   }

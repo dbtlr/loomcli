@@ -178,6 +178,43 @@ test('a sequence source the action let propagate reports once, as the translated
   expect(result.stderr).not.toContain('Internal error');
 });
 
+const incompleteLine = 'Output is incomplete: the root Command stopped after 1 rows, 1 written.\n';
+
+test.each([
+  ['sequence', []],
+  ['sequence-unawaited', []],
+  ['sequence-caught', ['caught']],
+])(
+  '%s: a row source that throws is translated whether the action awaited, never awaited, or caught the call',
+  (scenario, observed) => {
+    expect(run(scenario)).toEqual({
+      status: 69,
+      stderr: `${incompleteLine}Unavailable from application.\n`,
+      stdout: ['one', ...observed, 'application:SyntaxError', 'resolved:69', ''].join('\n'),
+    });
+  },
+);
+
+test("a deferred row source's broken translator reports its defect, keeping both throws", () => {
+  const result = run('sequence-broken');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    `${incompleteLine}Internal error: The translator the Application registered for "SyntaxError" threw: The translator failed.\n`,
+  );
+});
+
+test('a failure a deferred row source throws is never offered and returns 1', () => {
+  expect(run('sequence-failure')).toEqual({
+    status: 1,
+    stderr: `${incompleteLine}Unavailable from source.\n`,
+    stdout: 'one\nresolved:1\n',
+  });
+});
+
+test('a destination write failure the action lets propagate is answered by its translator', () => {
+  expect(run('destination')).toEqual(translated('application', ['application:PipeError']));
+});
+
 test.each([
   [
     'fault-key',

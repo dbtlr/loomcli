@@ -33,7 +33,7 @@ function stringValue(value: unknown): string {
   return value;
 }
 
-type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
+export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;

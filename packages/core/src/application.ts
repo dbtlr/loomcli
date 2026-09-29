@@ -46,6 +46,7 @@ import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
+import type { WriteState } from './output.js';
 import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
@@ -121,6 +122,17 @@ function silenced(
  * `undefined` is itself throwable, so the absence is spelled here rather than borrowed from it.
  */
 const noPrimary = Symbol('no primary');
+
+/**
+ * The write state a run reports by. A destination whose write failure the action let propagate,
+ * and a translator answered, is reported as that translated failure, so its failure is no longer
+ * the destination fault that forces 1.
+ */
+function answeredWrite(writes: WriteState, answered: unknown): WriteState {
+  return writes.kind === 'failed' && answered !== undefined && writes.error === answered
+    ? { kind: 'ok' }
+    : writes;
+}
 
 /**
  * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
@@ -470,8 +482,8 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
     let primary: unknown = noPrimary;
-    // The foreign throw a translator replaced, which the primary outcome then stands for.
-    let replaced: unknown = noPrimary;
+    // Each failure a translator answered, keyed to the foreign throw it replaced.
+    const translatedFrom = new Map<unknown, unknown>();
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
@@ -491,6 +503,20 @@ class ApplicationBuilder<
       return reason ? cancellationCode(reason) : undefined;
     };
     /**
+     * Offers one throw from the application's work to the translators. A view's failure and a
+     * cancellation echo are never offered, because each already names what it is.
+     */
+    const offer = (thrown: unknown): LoomError | undefined => {
+      if (output?.raisedByView(thrown) === true || echoesCancellation(thrown, controller)) {
+        return undefined;
+      }
+      const failure = translateThrow(this.#config.translators, thrown);
+      if (failure !== undefined) {
+        translatedFrom.set(failure, thrown);
+      }
+      return failure;
+    };
+    /**
      * Every exit path of the run leaves through the removal below, the one place it is written,
      * so no listener this run installed outlives it however the run ends.
      */
@@ -501,20 +527,6 @@ class ApplicationBuilder<
         const host = captureHost(overrides, stderr);
         const invocationOutput = new Output(host, controller.signal);
         output = invocationOutput;
-        /**
-         * Offers one throw from the application's work to the translators. A view's failure and a
-         * cancellation echo are never offered, because each already names what it is.
-         */
-        const offer = (thrown: unknown): LoomError | undefined => {
-          if (invocationOutput.raisedByView(thrown) || echoesCancellation(thrown, controller)) {
-            return undefined;
-          }
-          const failure = translateThrow(this.#config.translators, thrown);
-          if (failure !== undefined) {
-            replaced = thrown;
-          }
-          return failure;
-        };
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         signals = bracketRun(controller, checkSignal(options?.signal));
@@ -581,7 +593,7 @@ class ApplicationBuilder<
           const failure = toFailure(error);
           code = exitCodeOf(failure);
           output ??= new Output(captureHost(undefined, stderr), controller.signal);
-          const writes = await output.settle();
+          const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
             const sink = { output, registry: registry ?? noViews, stderr };
@@ -598,19 +610,30 @@ class ApplicationBuilder<
        * A sequence that stopped on its own source reports the same way: the call the action never
        * awaited observed nothing, and a failure the action let propagate is the primary outcome
        * already, so the one it raised is not reported twice. A throw a translator replaced is
-       * carried by the failure it became, whether or not that failure keeps it as its cause.
+       * carried by the failure it became, whether or not that failure keeps it as its cause. A
+       * foreign throw that is not carried is a deferred fault, offered to the translators here,
+       * where core would otherwise wrap it as an internal error.
        */
+      const replaced = translatedFrom.get(primary);
+      const deferred = new Set<LoomError>();
       for (const cause of output?.stopped ?? []) {
         if (!carried(primary, cause) && cause !== replaced) {
-          faults.push(toFailure(cause));
+          // A failure is never offered, so only a foreign throw can be translated here.
+          const translated = offer(cause);
+          if (translated !== undefined) {
+            deferred.add(translated);
+          }
+          faults.push(translated ?? toFailure(cause));
         }
       }
       // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
+      // A deferred fault a translator answered turns it into that failure's own code instead.
       // The primary outcome keeps its code, the way a view failure leaves it alone.
       // It is reported the way the primary failure is, so an override answers its class.
       for (const fault of faults) {
         if (!silenced(fault, controller.signal, cancellation())) {
-          code = code === 0 ? 1 : code;
+          const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
+          code = code === 0 ? own : code;
           try {
             const sink = output && { output, registry: registry ?? noViews, stderr };
             if (sink && (await reportFailure(sink, fault, scene()))) {
@@ -622,7 +645,7 @@ class ApplicationBuilder<
         }
       }
       if (output) {
-        const writes = await output.settle();
+        const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;

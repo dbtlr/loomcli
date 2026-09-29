@@ -334,7 +334,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception no translator answered, a broken view, a broken `onFailure` hook, a broken translator, or a broken destination, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
+A failure core wraps around an unexpected exception no translator answered, a broken view, a broken `onFailure` hook, a broken translator, or a broken destination whose write failure no translator answered, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Defect**:
@@ -374,7 +374,7 @@ The near match a plugin's failure view offers as the fix inside the sentence for
 _Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
 
 **Translator**:
-A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a middleware before its `next()` has settled, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
+A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a row source or destination write the action set going, a middleware before its `next()` has settled, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
 _Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:
