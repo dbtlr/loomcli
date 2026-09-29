@@ -448,7 +448,14 @@ function withPlugin(installed) {
 const app = declare(scenarios[process.argv[2]]);
 const mode = process.argv[3];
 
-if (mode === 'inspect') {
+if (mode === 'rule') {
+  try {
+    app.inspect();
+    process.stdout.write('inspected\n');
+  } catch (error) {
+    process.stdout.write(`${error.rule?.identity ?? 'none'}\n`);
+  }
+} else if (mode === 'inspect') {
   try {
     app.inspect();
     process.stdout.write('inspected\n');

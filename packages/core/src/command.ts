@@ -27,7 +27,7 @@ import {
   viewsWithoutResult,
 } from './command-rules.js';
 import { quoteString, spelled } from './diagnostic-text.js';
-import type { Finding } from './diagnostic-text.js';
+import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
 import {
   asSentence,
@@ -75,7 +75,7 @@ import type {
   TableEntry,
 } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
-import { pluginOptionCollision } from './input-rules.js';
+import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
@@ -1801,13 +1801,28 @@ interface HeldNames {
 }
 
 /**
- * What one collision reports: the scope that holds the name, the remedy that pair earns, and the
- * finding for the declaration that already holds the name.
+ * What one collision reports: the scope that holds the name, the kind of input that holds it, the
+ * remedy that pair earns, and the finding for the declaration that already holds the name.
  */
 interface Collision {
   clause: string;
+  kind: InputDeclaration['kind'];
   remedy: string;
   held: Finding;
+}
+
+/**
+ * The reason rule one name collision breaks, the rule the application's own collision of the pair
+ * breaks: two options, two arguments, or an argument and an option under one name.
+ */
+function nameCollisionRule(
+  declared: InputDeclaration['kind'],
+  held: InputDeclaration['kind'],
+): DiagnosticRule {
+  if (declared !== held) {
+    return nameSharedAcrossKinds;
+  }
+  return declared === 'option' ? optionDeclaredTwice : argumentDeclaredTwice;
 }
 
 /** The note a finding for one hook-declared input carries. */
@@ -1821,6 +1836,7 @@ function hookClause(earlier: AttachedInput, path: readonly string[]): Collision 
   return {
     clause: `an ${input.kind} plugin ${quoted(identity)} declared through onCommandAttach`,
     held: inputFinding(path, input, hookNote(identity)),
+    kind: input.kind,
     remedy: 'Install one of them.',
   };
 }
@@ -1852,12 +1868,14 @@ function tableCollision(entry: TableEntry): Collision {
     return {
       clause,
       held: siteFinding(site, site.named, clause),
+      kind: 'option',
       remedy: attachedRemedy('plugin'),
     };
   }
   return {
     clause: 'a global option',
     held: siteFinding(site, site.named, 'the global option'),
+    kind: 'option',
     remedy: attachedRemedy('global'),
   };
 }
@@ -1880,6 +1898,7 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
     return {
       clause: 'a local option',
       held: inputFinding(path, local, 'the local option'),
+      kind: 'option',
       remedy: attachedRemedy('local'),
     };
   }
@@ -1893,6 +1912,7 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
     : {
         clause: 'an argument',
         held: inputFinding(path, argument, 'the argument'),
+        kind: 'argument',
         remedy: attachedRemedy('argument'),
       };
 }
@@ -1948,7 +1968,7 @@ function checkAttachedSpelling(
   for (const [spelling, option] of table) {
     const used = claimed.get(spelling);
     if (used !== undefined) {
-      throw new DeclarationError(pluginOptionCollision, {
+      throw new DeclarationError(spellingTaken, {
         correction: 'Change one of the two spellings or omit the plugin.',
         findings: [
           spellingPlace(site, option.role, hookNote(identity)),
@@ -2026,7 +2046,7 @@ function checkAttachedInputs(
     const { identity, input } = entry;
     const collision = attachedCollision(input, held);
     if (collision) {
-      throw new DeclarationError(pluginOptionCollision, {
+      throw new DeclarationError(nameCollisionRule(input.kind, collision.kind), {
         correction: collision.remedy,
         findings: [inputFinding(path, input, hookNote(identity)), collision.held],
         sentence: `Plugin ${quoted(identity)} declares ${input.kind} ${quoted(input.name)} on ${subject}, which is already declared as ${collision.clause}.`,

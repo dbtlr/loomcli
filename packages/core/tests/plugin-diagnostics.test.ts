@@ -184,11 +184,17 @@ const shared = {
     'A Command value carries the declaration that routing, parsing, and help read.',
     'Any other value carries none.',
   ],
-  'plugin-option-collision': [
-    "A plugin's options join the one table the pre-scan reads with the global",
-    "options, so every Command meets them, and an input a plugin's onCommandAttach",
-    "hook declares joins the Command's own. A name or a spelling that another input",
-    'in that scope also claims would reach only one of the two.',
+  'option-declared-twice': [
+    "An action reads the global options and its Command's own options from one",
+    'options object, each under its declared name, and the pre-scan reads the global',
+    "options and every installed plugin's options from one table. Two options with",
+    'one name in either leave one of them unreadable.',
+  ],
+  'spelling-taken': [
+    "The parser reads each spelling as one option, and a Command's own options share",
+    "one invocation with the global options and every installed plugin's options. A",
+    'spelling two options claim, a short alias or a generated negative form included,',
+    'would reach only one of them.',
   ],
   'view-shape': [
     'A views entry is a view with render, which receives the whole result, or a row',
@@ -504,8 +510,8 @@ const cases: Record<string, Expected> = {
       ),
       onCommand(['count'], "option('format', { type: 'boolean' })", "'format'", 'the local option'),
     ],
-    headline: 'PLUGIN OPTION COLLISION',
-    rule: 'plugin-option-collision',
+    headline: 'OPTION DECLARED TWICE',
+    rule: 'option-declared-twice',
     sentence:
       'Plugin "@acme/format" declares option "format" on Command "count", which is already declared as a local option.',
   },
@@ -525,8 +531,8 @@ const cases: Record<string, Expected> = {
         'the local option "file"',
       ),
     ],
-    headline: 'PLUGIN OPTION COLLISION',
-    rule: 'plugin-option-collision',
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
     sentence:
       'Plugin "@acme/format" declares option "shape" with spelling "-f" on Command "count", which "--file" already uses.',
   },

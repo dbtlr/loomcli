@@ -65,6 +65,13 @@ const explanations = {
     'token, because a default reaches the action as a validated value. A default the',
     'validator rejects would reach no action, whatever the operator supplies.',
   ],
+  'name-shared-across-kinds': [
+    'An onCommandAttach hook adds inputs to a Command whose other inputs the plugin',
+    'did not declare, so each name a hook declares stays apart from every argument',
+    "and option in the Command's scope, whichever kind holds it. Help, the manifest,",
+    'and a middleware that reads the request would otherwise meet one name for two',
+    'inputs.',
+  ],
   'not-a-validator': [
     'Core validates every value through the Standard Schema v1 interface: the',
     "object's ~standard property, with version 1, a vendor, and a validate function.",
@@ -82,8 +89,9 @@ const explanations = {
   ],
   'option-declared-twice': [
     "An action reads the global options and its Command's own options from one",
-    'options object, each under its declared name, so two options with one name leave',
-    'one of them unreadable.',
+    'options object, each under its declared name, and the pre-scan reads the global',
+    "options and every installed plugin's options from one table. Two options with",
+    'one name in either leave one of them unreadable.',
   ],
   'option-polarity': [
     "Polarity chooses a Boolean option's long forms and its absent value from three",
@@ -92,12 +100,6 @@ const explanations = {
   'option-type': [
     'The type decides how the parser reads an option: a string option consumes a',
     'value, and a Boolean option consumes none. Core reads no other kind.',
-  ],
-  'plugin-option-collision': [
-    "A plugin's options join the one table the pre-scan reads with the global",
-    "options, so every Command meets them, and an input a plugin's onCommandAttach",
-    "hook declares joins the Command's own. A name or a spelling that another input",
-    'in that scope also claims would reach only one of the two.',
   ],
   'polarity-on-string': [
     'Polarity chooses which long forms a Boolean option accepts and what its absence',
@@ -129,8 +131,9 @@ const explanations = {
   ],
   'spelling-taken': [
     "The parser reads each spelling as one option, and a Command's own options share",
-    'one invocation with the global options. A spelling two options claim, a short',
-    'alias or a generated negative form included, would reach only one of them.',
+    "one invocation with the global options and every installed plugin's options. A",
+    'spelling two options claim, a short alias or a generated negative form included,',
+    'would reach only one of them.',
   ],
   'variable-bound-twice': [
     "Within one invocation's scope a variable fills one option, so two options that",
@@ -319,6 +322,17 @@ const cases: Record<string, Expected> = {
     rule: 'global-presence-rule',
     sentence: 'Global option "file" declares required.',
   },
+  'hook-argument-option': {
+    correction: "Rename the Command's option or omit the plugin.",
+    findings: [
+      onCommand(['count'], "argument('tag', {})", "'tag'", 'declared by plugin "@acme/tag"'),
+      onCommand(['count'], "option('tag', { type: 'string' })", "'tag'", 'the local option'),
+    ],
+    headline: 'ARGUMENT AND OPTION SHARE A NAME',
+    rule: 'name-shared-across-kinds',
+    sentence:
+      'Plugin "@acme/tag" declares argument "tag" on Command "count", which is already declared as a local option.',
+  },
   'multiple-flag': {
     correction: 'Use true or false.',
     findings: [
@@ -470,8 +484,8 @@ const cases: Record<string, Expected> = {
         'the global option',
       ),
     ],
-    headline: 'PLUGIN OPTION COLLISION',
-    rule: 'plugin-option-collision',
+    headline: 'OPTION DECLARED TWICE',
+    rule: 'option-declared-twice',
     sentence: 'Option "verbose" is declared by plugin "@acme/trace" and as a global option.',
   },
   'plugin-local-spelling': {
@@ -489,8 +503,8 @@ const cases: Record<string, Expected> = {
         'the local option',
       ),
     ],
-    headline: 'PLUGIN OPTION COLLISION',
-    rule: 'plugin-option-collision',
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
     sentence:
       'Option spelling "-t" is used by plugin "@acme/trace" option "trace" and the local option "tail" on Command "get".',
   },
@@ -508,8 +522,8 @@ const cases: Record<string, Expected> = {
         'the plugin option',
       ),
     ],
-    headline: 'PLUGIN OPTION COLLISION',
-    rule: 'plugin-option-collision',
+    headline: 'OPTION DECLARED TWICE',
+    rule: 'option-declared-twice',
     sentence: 'Option "verbose" is declared by plugin "@acme/log" and plugin "@acme/trace".',
   },
   'polarity-on-string': {

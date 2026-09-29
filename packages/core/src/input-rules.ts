@@ -65,28 +65,35 @@ const shortOnlyBothPolarities = registerRule('@loomcli/core/short-only-both-pola
   headline: 'Both polarities with short only',
 });
 
-/** One spelling that two options in one scope claim. */
+/**
+ * One spelling that two options in one scope claim, the application's, a plugin's, or one a
+ * plugin's hook declared.
+ */
 const spellingTaken = registerRule('@loomcli/core/spelling-taken', {
   explanation:
-    "The parser reads each spelling as one option, and a Command's own options share one invocation with the global options. A spelling two options claim, a short alias or a generated negative form included, would reach only one of them.",
+    "The parser reads each spelling as one option, and a Command's own options share one invocation with the global options and every installed plugin's options. A spelling two options claim, a short alias or a generated negative form included, would reach only one of them.",
   headline: 'Spelling used twice',
 });
 
-/** Two options with one declared name in one scope. */
+/**
+ * Two options with one declared name in one scope, the application's, a plugin's, or one a
+ * plugin's hook declared.
+ */
 const optionDeclaredTwice = registerRule('@loomcli/core/option-declared-twice', {
   explanation:
-    "An action reads the global options and its Command's own options from one options object, each under its declared name, so two options with one name leave one of them unreadable.",
+    "An action reads the global options and its Command's own options from one options object, each under its declared name, and the pre-scan reads the global options and every installed plugin's options from one table. Two options with one name in either leave one of them unreadable.",
   headline: 'Option declared twice',
 });
 
 /**
- * A plugin option whose name or spelling another option in the globals table also claims, or an
- * input a plugin's hook declared whose name or spelling the Command or another scope already holds.
+ * An input a plugin's `onCommandAttach` hook declares under a name that an input of the other kind
+ * already holds in the Command's scope: an argument under an option's name, or an option under an
+ * argument's name.
  */
-const pluginOptionCollision = registerRule('@loomcli/core/plugin-option-collision', {
+const nameSharedAcrossKinds = registerRule('@loomcli/core/name-shared-across-kinds', {
   explanation:
-    "A plugin's options join the one table the pre-scan reads with the global options, so every Command meets them, and an input a plugin's onCommandAttach hook declares joins the Command's own. A name or a spelling that another input in that scope also claims would reach only one of the two.",
-  headline: 'Plugin option collision',
+    "An onCommandAttach hook adds inputs to a Command whose other inputs the plugin did not declare, so each name a hook declares stays apart from every argument and option in the Command's scope, whichever kind holds it. Help, the manifest, and a middleware that reads the request would otherwise meet one name for two inputs.",
+  headline: 'Argument and option share a name',
 });
 
 /** `required` or `validateOmitted` on a global option. */
@@ -200,11 +207,11 @@ export {
   invalidDefault,
   notAValidator,
   omissionAlreadyDecided,
+  nameSharedAcrossKinds,
   omissionWithoutValidator,
   optionDeclaredTwice,
   optionPolarity,
   optionType,
-  pluginOptionCollision,
   polarityOnString,
   requiredWithDefault,
   schemaConverterFailed,

@@ -97,6 +97,17 @@ const scenarios = {
       .command(new Command('get').option('force', { short: 'f', type: 'boolean' }).action(act)),
   'global-presence': () =>
     new Application('probe').globalOption('file', { required: false, type: 'string' }),
+  'hook-argument-option': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/tag', {
+          onCommandAttach: (command) =>
+            command.name === 'count' ? command.argument('tag', {}) : command,
+        }),
+      ],
+    })
+      .command(new Command('count').option('tag', { type: 'string' }).action(act))
+      .inspect(),
   'multiple-flag': () => new Command('get').option('field', { multiple: 'yes', type: 'string' }),
   'negative-spelling': () =>
     new Command('get')

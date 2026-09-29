@@ -1,6 +1,5 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import type { BoundOption } from './bindings.js';
-import type { DiagnosticRule } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry } from './extension.js';
@@ -14,12 +13,7 @@ import {
   siteFinding,
 } from './facts.js';
 import type { InputSite } from './facts.js';
-import {
-  globalPresenceRule,
-  optionDeclaredTwice,
-  pluginOptionCollision,
-  spellingTaken,
-} from './input-rules.js';
+import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { compileOptions, spellingMark } from './options.js';
 import type { CompileScope, SpellingRole } from './options.js';
 import type { BuiltPlugin } from './plugin.js';
@@ -116,19 +110,11 @@ const sideNotes: Readonly<Record<OptionOwner['kind'], string>> = {
   plugin: 'the plugin option',
 };
 
-/**
- * The rule a collision between two scopes breaks: a plugin option's own when either side is one,
- * because the author cannot rename it, and otherwise the rule a collision within one scope breaks.
- */
-function collisionRule(pair: readonly OptionSite[], within: DiagnosticRule): DiagnosticRule {
-  return pair.some((side) => side.owner.kind === 'plugin') ? pluginOptionCollision : within;
-}
-
 /** One key claimed twice, whichever two scopes claimed it. */
 function keyCollision(first: OptionSite, second: OptionSite): DeclarationError {
   const pair = ordered(first, second);
   const [leading, trailing] = pair;
-  return new DeclarationError(collisionRule(pair, optionDeclaredTwice), {
+  return new DeclarationError(optionDeclaredTwice, {
     correction: correction(leading.owner, trailing.owner),
     findings: pair.map(({ owner, site }) => siteFinding(site, site.named, sideNotes[owner.kind])),
     sentence: `Option ${quoted(leading.name)} is declared ${declaredBy(leading.owner, true)} and ${declaredBy(trailing.owner, false)}.`,
@@ -143,7 +129,7 @@ function spellingCollision(
 ): DeclarationError {
   const pair = ordered(first, second);
   const [leading, trailing] = pair;
-  return new DeclarationError(collisionRule(pair, spellingTaken), {
+  return new DeclarationError(spellingTaken, {
     correction: 'Change one declaration.',
     findings: pair.map(({ owner, role, site }) =>
       siteFinding(site, spellingMark(site, role), sideNotes[owner.kind]),

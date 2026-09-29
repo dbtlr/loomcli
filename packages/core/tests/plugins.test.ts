@@ -6,7 +6,7 @@ import { invoke } from '../../../scripts/test-process.js';
  * One plugin declaration scenario. A fault a call can judge throws from that call, and a build fault
  * answers in `inspect()` and in `run()` alike, where `run()` returns 1.
  */
-function build(scenario: string, mode: 'inspect' | 'run') {
+function build(scenario: string, mode: 'inspect' | 'rule' | 'run') {
   return invoke(new URL('fixtures/plugins/build.mjs', import.meta.url), [scenario, mode]);
 }
 
@@ -332,6 +332,34 @@ test.each(rejected)('inspect() and run() reject the %s declaration alike', (scen
     status: 1,
     stderr: `app: Something went wrong.\n`,
     stdout: 'resolved:1\n',
+  });
+});
+
+/**
+ * The reason rule each hook collision breaks, which is the rule the application's own collision of
+ * that pair breaks: a key two options share, a name two arguments share, a spelling two options
+ * share, or a name an argument and an option share.
+ */
+const hookCollisionRules = [
+  ['hook-local-collision', 'option-declared-twice'],
+  ['hook-global-collision', 'option-declared-twice'],
+  ['hook-plugin-collision', 'option-declared-twice'],
+  ['hook-hook-collision', 'option-declared-twice'],
+  ['hook-argument-author-collision', 'argument-declared-twice'],
+  ['hook-argument-hook-collision', 'argument-declared-twice'],
+  ['hook-argument-collision', 'name-shared-across-kinds'],
+  ['hook-argument-local-collision', 'name-shared-across-kinds'],
+  ['hook-argument-global-collision', 'name-shared-across-kinds'],
+  ['hook-argument-plugin-collision', 'name-shared-across-kinds'],
+  ['hook-argument-hook-option-collision', 'name-shared-across-kinds'],
+  ['hook-spelling-collision', 'spelling-taken'],
+] satisfies [string, string][];
+
+test.each(hookCollisionRules)('the %s fault reports under %s', (scenario, rule) => {
+  expect(build(scenario, 'rule')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `@loomcli/core/${rule}\n`,
   });
 });
 
