@@ -30,6 +30,10 @@ const brokenTranslator = registerRule('@loomcli/core/broken-translator', {
   headline: 'Broken translator',
 });
 
+/** The fix every broken translator shares. */
+const brokenTranslatorCorrection =
+  'Return a failure, or undefined to pass, and throw nothing from the translator.';
+
 /** A failure view that threw or returned a value that is not a string. */
 const brokenFailureView = registerRule('@loomcli/core/broken-failure-view', {
   explanation:
@@ -135,6 +139,7 @@ export {
   brokenFailureView,
   brokenOutputView,
   brokenTranslator,
+  brokenTranslatorCorrection,
   foreignGraph,
   foreignGraphCorrection,
   foreignThrow,

@@ -47,6 +47,7 @@ import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
+import type { WriteState } from './output.js';
 import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
@@ -54,6 +55,8 @@ import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, SignalBracket } from './signals.js';
+import { readTranslations, translateThrow } from './translators.js';
+import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
   Action,
   ArgumentConfig,
@@ -124,6 +127,17 @@ function silenced(
 const noPrimary = Symbol('no primary');
 
 /**
+ * The write state a run reports by. A destination whose write failure the action let propagate,
+ * and a translator answered, is reported as that translated failure, so its failure is no longer
+ * the destination fault that forces 1.
+ */
+function answeredWrite(writes: WriteState, answered: unknown): WriteState {
+  return writes.kind === 'failed' && answered !== undefined && writes.error === answered
+    ? { kind: 'ok' }
+    : writes;
+}
+
+/**
  * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
  * that wraps it at any depth, which an action that caught a source failure and rethrew its own
  * produces. Such a cause is reported once, through the primary outcome that carries it.
@@ -169,11 +183,29 @@ export interface Packet {
   readonly build: string;
 }
 
+/**
+ * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it. A
+ * value that cannot be read, such as an Error whose `name` getter throws, counts as an echo, so
+ * it keeps its cancellation code and no translator replaces it.
+ */
+function echoesCancellation(thrown: unknown, controller: AbortController): boolean {
+  const { signal } = controller;
+  if (!signal.aborted) {
+    return false;
+  }
+  try {
+    return isCancellationEcho(thrown, signal.reason);
+  } catch {
+    return true;
+  }
+}
+
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
   /** The packet that says whether this is a development build. With none, it is distributed. */
   packet?: Packet;
   views?: readonly ViewOverride[];
+  translators?: readonly Translation[];
   plugins?: Plugins;
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
@@ -196,6 +228,8 @@ interface ApplicationConfig {
   owners: ReadonlyMap<CommandNodeHandle, string | null>;
   plugins: readonly BuiltPlugin[];
   rendering: RenderingPolicy;
+  /** The application's translations, then each installed plugin's, in resolution order. */
+  translators: TranslatorRegistry;
   /** The application's own view overrides. */
   views: ViewContributions;
 }
@@ -465,6 +499,8 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
     let primary: unknown = noPrimary;
+    // Each failure a translator answered, keyed to the foreign throw it replaced.
+    const translatedFrom = new Map<unknown, unknown>();
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
@@ -497,6 +533,20 @@ class ApplicationBuilder<
     const cancellation = (): CancellationCode | undefined => {
       const reason = graphBuilt ? signals?.reason() : undefined;
       return reason ? cancellationCode(reason) : undefined;
+    };
+    /**
+     * Offers one throw from the application's work to the translators. A view's failure and a
+     * cancellation echo are never offered, because each already names what it is.
+     */
+    const offer = (thrown: unknown): LoomError | undefined => {
+      if (output?.raisedByView(thrown) === true || echoesCancellation(thrown, controller)) {
+        return undefined;
+      }
+      const failure = translateThrow(this.#config.translators, thrown);
+      if (failure !== undefined) {
+        translatedFrom.set(failure, thrown);
+      }
+      return failure;
     };
     /**
      * Every exit path of the run leaves through the removal below, the one place it is written,
@@ -549,6 +599,7 @@ class ApplicationBuilder<
             graph,
             host,
             inspected,
+            offer,
             out: output.out,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
@@ -579,7 +630,7 @@ class ApplicationBuilder<
           const failure = toFailure(error);
           code = exitCodeOf(failure);
           output ??= new Output(captureHost(undefined, stderr), controller.signal);
-          const writes = await output.settle();
+          const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
             const sink = { build, output, registry: registry ?? noViews, stderr };
@@ -596,19 +647,32 @@ class ApplicationBuilder<
       /**
        * A sequence that stopped on its own source reports the same way: the call the action never
        * awaited observed nothing, and a failure the action let propagate is the primary outcome
-       * already, so the one it raised is not reported twice.
+       * already, so the one it raised is not reported twice. A throw a translator replaced is
+       * carried by the failure it became, whether or not that failure keeps it as its cause. A
+       * foreign throw that is not carried is a deferred fault, offered to the translators here,
+       * where core would otherwise wrap it as an internal error.
        */
+      // A primary no translator answered replaced nothing, so even a thrown `undefined` is reported.
+      const replaced = translatedFrom.get(primary) ?? noPrimary;
+      const deferred = new Set<LoomError>();
       for (const cause of output?.stopped ?? []) {
-        if (!carried(primary, cause)) {
-          faults.push(toFailure(cause));
+        if (!carried(primary, cause) && cause !== replaced) {
+          // A failure is never offered, so only a foreign throw can be translated here.
+          const translated = offer(cause);
+          if (translated !== undefined) {
+            deferred.add(translated);
+          }
+          faults.push(translated ?? toFailure(cause));
         }
       }
       // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
+      // A deferred fault a translator answered turns it into that failure's own code instead.
       // The primary outcome keeps its code, the way a view failure leaves it alone.
       // It is reported the way the primary failure is, so an override answers its class.
       for (const fault of faults) {
         if (!silenced(fault, controller.signal, cancellation())) {
-          code = code === 0 ? 1 : code;
+          const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
+          code = code === 0 ? own : code;
           try {
             const sink = output && { build, output, registry: registry ?? noViews, stderr };
             if (sink && (await reportFailure(sink, fault, scene()))) {
@@ -621,7 +685,7 @@ class ApplicationBuilder<
         }
       }
       if (output) {
-        const writes = await output.settle();
+        const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;
@@ -748,9 +812,10 @@ function readPacket(packet: unknown): boolean {
 
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
- * application's own view overrides, the rendering policy, the options slot and its facts, the
- * installed list and every rule between two plugins, the root's extension values, and then each
- * plugin's Commands, which attach to the root first, in installation order and list order.
+ * application's own view overrides, its translations, the rendering policy, the options slot and
+ * its facts, the installed list and every rule between two plugins, the root's extension values,
+ * and then each plugin's Commands, which attach to the root first, in installation order and list
+ * order.
  */
 function declareApplication(options: unknown): {
   config: ApplicationConfig;
@@ -764,6 +829,7 @@ function declareApplication(options: unknown): {
     slot?.views,
     identities,
   );
+  const translations = readTranslations('The Application', slot?.translators);
   const rendering = renderingPolicy(slot?.rendering);
   const facts = checkOptions(options);
   const development = readPacket(slot?.packet);
@@ -808,6 +874,7 @@ function declareApplication(options: unknown): {
       owners,
       plugins,
       rendering,
+      translators: [translations, ...plugins.map((entry) => entry.translators)],
       views,
     },
     globals: emptyGlobals(),

@@ -36,6 +36,8 @@ interface SourceStage {
   inspected: () => CommandGraph;
   /** The routed Command's own options, or `undefined` while local parsing holds a fault. */
   locals: StageScope | undefined;
+  /** Offers the resolver's foreign throw to the translators, ahead of the plugin-fault wrap. */
+  offer: (thrown: unknown) => LoomError | undefined;
   /** The channel a source writes through, whose results call names the source. */
   out: Out;
   plugins: readonly BuiltPlugin[];
@@ -279,11 +281,12 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   } catch (error) {
     // The resolver's own failure reports with its class's code, as an action's does.
     // That covers an InputError, the FatalError out.fatal() throws, and its out.results() fault.
-    // Every other throw is the plugin's fault.
+    // A foreign throw is offered to the translators.
+    // One that no translator answers is the plugin's fault.
     if (error instanceof LoomError) {
       throw error;
     }
-    throw sourceFailure(sentence, error);
+    throw stage.offer(error) ?? sourceFailure(sentence, error);
   }
   try {
     return readAnswers(sentence, answers, requested);

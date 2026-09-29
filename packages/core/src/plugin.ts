@@ -19,6 +19,8 @@ import type { ProcessSignal } from './signals.js';
 import type { Palette } from './style-state.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
+import { readTranslations } from './translators.js';
+import type { Translation, TranslationContributor } from './translators.js';
 import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } from './types.js';
 import { captureConfig, checkDeclarations } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
@@ -63,6 +65,7 @@ interface DeclaredPlugin {
   onFailure?: unknown;
   extensions?: readonly AnyExtension[];
   views?: unknown;
+  translators?: unknown;
   signals?: unknown;
   source?: unknown;
   commands?: unknown;
@@ -144,8 +147,9 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
 /**
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
  * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
- * `onFailure` runs when `run()` renders a failure, the middleware runs inside an invocation, and the
- * configuration source runs in the input-source stage when an unfilled option carries its binding.
+ * `onFailure` runs when `run()` renders a failure, the middleware runs inside an invocation, the
+ * configuration source runs in the input-source stage when an unfilled option carries its binding,
+ * and a translator runs when a foreign throw its key matches leaves the application's work.
  */
 interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
@@ -161,6 +165,7 @@ interface PluginDefinition<
   onFailure?: FailureHook;
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
+  translators?: readonly Translation[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
@@ -637,6 +642,8 @@ interface BuiltPlugin {
   onFailure: FailureHook | undefined;
   /** The plugin's own `views` slot, read once the validated theme is in place. */
   views: unknown;
+  /** The translations the plugin registers, which resolve after the application's. */
+  translators: TranslationContributor;
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
@@ -703,6 +710,7 @@ function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin 
     declaration.views,
     viewIdentities(coreViews),
   );
+  const translators = readTranslations(pluginSentence(named), declaration.translators);
   return {
     commands,
     descriptors: build.descriptors,
@@ -715,6 +723,7 @@ function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin 
     signals,
     source,
     theme,
+    translators,
     views: declaration.views,
   };
 }

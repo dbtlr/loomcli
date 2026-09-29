@@ -8,6 +8,7 @@ import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
+import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { records } from '@loomcli/plugins/records';
 import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
@@ -22,7 +23,9 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
+import { readFailures } from './failures.js';
 import type { Member } from './member.js';
+import { invalidJson } from './translators.js';
 import { fatalError } from './views.js';
 
 // The root action type-imports this value, so it is registered by the last call.
@@ -37,6 +40,8 @@ const configured = new Application('jsonkit', {
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
+    // The root action summarizes the document, so it reads one.
+    manifestCommand({ failures: readFailures }),
   ],
   // The source tree reads development; the build writes distributed into the bundle.
   packet,
@@ -51,6 +56,7 @@ const configured = new Application('jsonkit', {
     doctor(),
     completion(),
   ],
+  translators: [invalidJson],
   version: Package.version,
   views: [override(FatalError, fatalError)],
 }).globalOption('file', {

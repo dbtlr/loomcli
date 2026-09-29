@@ -7,6 +7,7 @@
     "0": "Successful execution and core output",
     "1": "Expected action failure, internal failure, or invalid declarations",
     "2": "Invalid invocation inputs",
+    "65": "Declared failures: invalid-json, path-not-found",
     "130": "Cancelled by SIGINT or by a caller-supplied abort",
     "143": "Cancelled by SIGTERM"
   },
@@ -100,6 +101,18 @@
     "deprecated": null,
     "hasAction": true,
     "result": null,
+    "failures": [
+      {
+        "name": "path-not-found",
+        "exitCode": 65,
+        "meaning": "The path names no value in the document."
+      },
+      {
+        "name": "invalid-json",
+        "exitCode": 65,
+        "meaning": "The document is not valid JSON."
+      }
+    ],
     "arguments": [
       {
         "name": "path",

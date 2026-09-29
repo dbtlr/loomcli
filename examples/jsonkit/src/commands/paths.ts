@@ -1,14 +1,17 @@
 import { Command } from '@loomcli/core';
+import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
 import { listPaths } from '../actions/list-paths.js';
 import type { Entry } from '../entries.js';
+import { readFailures } from '../failures.js';
 
 // `paths` is a hidden Command, so no listing shows it and no candidate names it.
 // It declares a sequence of rows, so stdout carries the walk and nothing else the action writes.
 export const paths = new Command('paths', {
   description: 'List every path in the document.',
+  extensions: [manifestCommand({ failures: readFailures })],
   hidden: true,
 })
   .rows<Entry>({

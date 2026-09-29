@@ -44,6 +44,7 @@ export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
+export { translate } from './translators.js';
 export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';
 export type { ViewContext } from './types.js';
@@ -57,6 +58,7 @@ export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { FailureHook, FailureHookContext } from './hints.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
+export type { ErrorClass, Translation, Translator } from './translators.js';
 export type { IncompleteResult } from './lanes.js';
 export type { WordPosition } from './locate.js';
 export type {

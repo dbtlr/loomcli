@@ -1,4 +1,4 @@
-import { readExtension } from '@loomcli/core';
+import { DeclarationError, escapeControlCharacters, readExtension } from '@loomcli/core';
 import type {
   ArgumentNode,
   CommandGraph,
@@ -20,7 +20,7 @@ interface ManifestDocument {
   readonly version: string;
   readonly description: string | null;
   readonly tokens: string;
-  readonly exitCodes: Readonly<Record<'0' | '1' | '2' | '130' | '143', string>>;
+  readonly exitCodes: Readonly<Record<string, string>>;
   readonly encodings: { readonly json: string; readonly jsonl: string };
   readonly globals: readonly ManifestOption[];
   readonly command: ManifestCommand;
@@ -35,9 +35,16 @@ interface ManifestCommand {
   readonly deprecated: string | null;
   readonly hasAction: boolean;
   readonly result: ResultNode | null;
+  readonly failures: readonly ManifestFailure[];
   readonly arguments: readonly ManifestArgument[];
   readonly options: readonly ManifestOption[];
   readonly children: readonly ManifestCommand[];
+}
+
+interface ManifestFailure {
+  readonly name: string;
+  readonly exitCode: number;
+  readonly meaning: string;
 }
 
 interface ManifestArgument {
@@ -81,13 +88,13 @@ const tokens =
   "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 /** The Meaning column of core's Invocation table, with its code formatting removed. */
-const exitCodes = {
+const coreExitCodes: Readonly<Record<string, string>> = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
   '2': 'Invalid invocation inputs',
   '130': 'Cancelled by SIGINT or by a caller-supplied abort',
   '143': 'Cancelled by SIGTERM',
-} as const satisfies ManifestDocument['exitCodes'];
+};
 
 /** What the view names `json` and `jsonl` promise under Declaring a result. */
 const encodings = {
@@ -152,9 +159,108 @@ function visible<Member extends { readonly hidden: boolean }>(members: readonly 
   return members.filter((member) => !member.hidden);
 }
 
+/** Whether two declared failures are the same entry: one name, one code, and one meaning. */
+function sameFailure(first: ManifestFailure, second: ManifestFailure): boolean {
+  return (
+    first.name === second.name &&
+    first.exitCode === second.exitCode &&
+    first.meaning === second.meaning
+  );
+}
+
 /**
- * One Command's entry, with its visible descendants nested under `children`. `details` and
- * `examples` are the Command's collected `manifestCommand` values, in collection order.
+ * The failures one Command's `manifestCommand` values declare, concatenated in collection order.
+ * An entry identical to an earlier one on the same Command is listed once, at the first.
+ */
+function failuresOf(node: CommandNode): ManifestFailure[] {
+  const entries: ManifestFailure[] = [];
+  for (const value of readExtension(node, manifestCommand)) {
+    for (const declared of value.failures ?? []) {
+      const entry = { name: declared.name, exitCode: declared.exitCode, meaning: declared.meaning };
+      if (!entries.some((listed) => sameFailure(listed, entry))) {
+        entries.push(entry);
+      }
+    }
+  }
+  return entries;
+}
+
+/** One declared failure and the Command that declares it, as a conflict names them. */
+interface Declaration {
+  readonly command: CommandNode;
+  readonly failure: ManifestFailure;
+}
+
+/** Every Command in the application, hidden ones included: the root, then each child's subtree. */
+function everyCommand(node: CommandNode): CommandNode[] {
+  return [node, ...node.children.flatMap(everyCommand)];
+}
+
+/** How a conflict names one Command: by name, or as the unnamed root. */
+function commandSubject(node: CommandNode): string {
+  return node.name === null ? 'the root Command' : `Command "${node.name}"`;
+}
+
+/**
+ * The fault for one failure name declared with two codes, or with one code and two meanings. It
+ * names the name and both Commands, the first declaration first.
+ */
+function conflictError(first: Declaration, second: Declaration): DeclarationError {
+  const sameCode = first.failure.exitCode === second.failure.exitCode;
+  const clause = ({ failure }: Declaration) =>
+    sameCode
+      ? `meaning "${escapeControlCharacters(failure.meaning)}"`
+      : `exit code ${String(failure.exitCode)}`;
+  return new DeclarationError(
+    `Failure "${first.failure.name}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}. Declare one code and one meaning for each failure name.`,
+  );
+}
+
+/**
+ * Each failure the application declares, once per name, in the order a depth-first walk from the
+ * root first meets it. A name means one failure across the application, so one declared with a
+ * second code or meaning throws its `DeclarationError` here.
+ */
+function applicationFailures(root: CommandNode): ManifestFailure[] {
+  const first = new Map<string, Declaration>();
+  for (const command of everyCommand(root)) {
+    for (const failure of failuresOf(command)) {
+      const known = first.get(failure.name);
+      if (known === undefined) {
+        first.set(failure.name, { command, failure });
+      } else if (!sameFailure(known.failure, failure)) {
+        throw conflictError(known, { command, failure });
+      }
+    }
+  }
+  return [...first.values()].map((declaration) => declaration.failure);
+}
+
+/**
+ * The exit-code table: core's five rows, and a row for each other code a failure declared anywhere
+ * in the application carries, naming its failures in the order the walk first meets them. A code
+ * core's own row explains, 1 or 2, adds no row. JavaScript enumerates integer keys in ascending
+ * order, so the rows print that way.
+ */
+function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
+  const names = new Map<string, string[]>();
+  for (const failure of applicationFailures(root)) {
+    const code = String(failure.exitCode);
+    if (!Object.hasOwn(coreExitCodes, code)) {
+      names.set(code, [...(names.get(code) ?? []), failure.name]);
+    }
+  }
+  const rows = [...names].map(([code, carried]) => [
+    code,
+    `Declared failures: ${carried.join(', ')}`,
+  ]);
+  return { ...coreExitCodes, ...Object.fromEntries(rows) };
+}
+
+/**
+ * One Command's entry, with its visible descendants nested under `children`. `details`,
+ * `examples`, and `failures` are the Command's collected `manifestCommand` values, in collection
+ * order.
  */
 function commandEntry(node: CommandNode): ManifestCommand {
   const values = readExtension(node, manifestCommand);
@@ -175,6 +281,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
       node.result === null
         ? null
         : { kind: node.result.kind, views: node.result.views, default: node.result.default },
+    failures: failuresOf(node),
     arguments: node.arguments.map(argumentEntry),
     options: visible(node.options).map(optionEntry),
     children: visible(node.children).map(commandEntry),
@@ -184,7 +291,8 @@ function commandEntry(node: CommandNode): ManifestCommand {
 /**
  * The routed Command's slice: its entry, plus the Application facts and the fixed statements an
  * agent needs to read it with no second document. A hidden Command routed to directly is the
- * slice's own entry, as its help page is.
+ * slice's own entry, as its help page is. The exit-code table reads the whole application, so every
+ * slice carries the same table and a conflicting failure name fails every slice.
  */
 function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDocument {
   return {
@@ -192,7 +300,7 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
     version: graph.version,
     description: graph.description ?? null,
     tokens,
-    exitCodes,
+    exitCodes: exitCodeTable(graph.root),
     encodings,
     globals: visible(graph.globals).map(optionEntry),
     command: commandEntry(command),

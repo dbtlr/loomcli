@@ -200,15 +200,40 @@ function excerpt(text: string, frame: Frame): string | undefined {
 }
 
 /**
- * The author's source for a defect: the first frame of the outermost cause's stack that lies under
- * the working directory and outside `node_modules`, with its lines around it. A read that answers
- * nothing, and a stack with no qualifying frame, leave a frame's location alone.
+ * The errors an `AggregateError` holds, in order, read defensively, or none for any other Error. A
+ * broken translator's defect holds the translator's throw and then the original throw this way.
+ */
+function heldErrors(cause: Error): readonly unknown[] {
+  try {
+    if (!(cause instanceof AggregateError)) {
+      return [];
+    }
+  } catch {
+    return [];
+  }
+  const errors = readField(cause, 'errors');
+  return Array.isArray(errors) ? errors : [];
+}
+
+/** Every frame one cause's stack names, in order, skipping a line that names no location. */
+function framesOf(cause: Error): Frame[] {
+  return frameLines(cause).flatMap((line) => parseFrame(line) ?? []);
+}
+
+/**
+ * The author's source for a defect: the first frame that lies under the working directory and
+ * outside `node_modules`, read from the outermost cause's stack, or, for an `AggregateError`, from
+ * the stacks of the errors it holds in order and then its own, because what broke is what it
+ * holds. A read that answers nothing, and stacks with no qualifying frame, leave the outermost
+ * cause's first frame's location alone.
  */
 function sourceSection(cause: Error, access: SourceAccess): string | undefined {
-  const frames = frameLines(cause).flatMap((line) => parseFrame(line) ?? []);
-  const frame = frames.find((candidate) => qualified(candidate.file, access.roots) !== undefined);
+  const stacks = [...heldErrors(cause).filter(isError), cause];
+  const frame = stacks
+    .flatMap((stack) => framesOf(stack))
+    .find((candidate) => qualified(candidate.file, access.roots) !== undefined);
   if (frame === undefined) {
-    const [located] = frames;
+    const [located] = framesOf(cause);
     return located === undefined ? undefined : locationText(located, access.roots);
   }
   const text = readFile(access, frame.file);
@@ -228,21 +253,52 @@ function causeLines(cause: Error): string[] {
   ];
 }
 
+/** The lines a cause chain has printed and the causes it has met, shared by every branch. */
+interface ChainWalk {
+  readonly lines: string[];
+  readonly seen: Set<unknown>;
+}
+
 /**
- * The cause chain: each cause's name and escaped message and its stack, following `cause` links
- * until one is absent, repeats, or passes the limit. A link that is not an Error prints as a value.
+ * One link of a cause chain under `prefix`, then each error it holds as an `AggregateError`, each
+ * with its own chain under `Holds`. It answers the link's own cause, or `undefined` for a link that
+ * is not an Error, which prints as a value.
+ */
+function appendLink(cause: unknown, prefix: string, walk: ChainWalk): unknown {
+  walk.seen.add(cause);
+  if (!isError(cause)) {
+    walk.lines.push(`${prefix}${valueCode(cause)}`);
+    return undefined;
+  }
+  const [heading = '', ...frames] = causeLines(cause);
+  walk.lines.push(`${prefix}${heading}`, ...frames);
+  for (const held of heldErrors(cause)) {
+    appendChain(held, 'Holds ', walk);
+  }
+  return readField(cause, 'cause');
+}
+
+/**
+ * One chain from `first`, the first link under `opening` and each later one under `Caused by`,
+ * following `cause` links until one is absent, repeats, or passes the limit.
+ */
+function appendChain(first: unknown, opening: string, walk: ChainWalk): void {
+  let cause = first;
+  let prefix = opening;
+  while (cause !== undefined && !walk.seen.has(cause) && walk.seen.size < causeLimit) {
+    cause = appendLink(cause, prefix, walk);
+    prefix = 'Caused by ';
+  }
+}
+
+/**
+ * The cause chain: each cause's name and escaped message and its stack, and each error an
+ * `AggregateError` holds, until the chain ends, repeats, or passes the limit.
  */
 function causeChain(outermost: Error): string {
-  const lines: string[] = [];
-  const seen = new Set<unknown>();
-  let cause: unknown = outermost;
-  while (cause !== undefined && !seen.has(cause) && seen.size < causeLimit) {
-    seen.add(cause);
-    const [heading = '', ...frames] = isError(cause) ? causeLines(cause) : [valueCode(cause)];
-    lines.push(`${seen.size === 1 ? '' : 'Caused by '}${heading}`, ...frames);
-    cause = isError(cause) ? readField(cause, 'cause') : undefined;
-  }
-  return lines.join('\n');
+  const walk: ChainWalk = { lines: [], seen: new Set() };
+  appendChain(outermost, '', walk);
+  return walk.lines.join('\n');
 }
 
 /**

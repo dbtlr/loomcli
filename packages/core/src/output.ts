@@ -33,7 +33,7 @@ function stringValue(value: unknown): string {
   return value;
 }
 
-type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
+export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;
@@ -208,6 +208,9 @@ interface Target {
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
   private renderFault: { cause: unknown } | undefined = undefined;
+  // Every value a view failed with.
+  // A caller that lets one propagate never offers it to a translator.
+  private readonly viewFaults = new WeakSet();
   // Every fault the output path raised beside its calls, reported after the primary outcome.
   // A source a sequence stopped on and a results-lane fault are both such faults.
   private readonly stops: unknown[] = [];
@@ -499,9 +502,25 @@ export class Output {
    */
   private renderFailed(cause: unknown): Promise<void> {
     this.renderFault ??= { cause };
+    if ((typeof cause === 'object' || typeof cause === 'function') && cause !== null) {
+      this.viewFaults.add(cause);
+    }
     const rejection = Promise.reject(cause);
     void rejection.catch(() => undefined);
     return rejection;
+  }
+
+  /**
+   * Whether one value is what a view or a message check failed with during this invocation. A
+   * broken view is a defect in the code that broke the view contract, so an action or a source that
+   * lets its rejection propagate reports it as that defect.
+   */
+  raisedByView(value: unknown): boolean {
+    return (
+      (typeof value === 'object' || typeof value === 'function') &&
+      value !== null &&
+      this.viewFaults.has(value)
+    );
   }
 
   /** What a view failed with during this invocation, if one did. */
