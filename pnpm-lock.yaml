@@ -178,6 +178,10 @@ importers:
       '@loomcli/validators':
         specifier: workspace:*
         version: link:../../packages/validators
+    devDependencies:
+      '@loomcli/loom':
+        specifier: workspace:*
+        version: link:../../apps/loom
 
   examples/textstat:
     dependencies:
@@ -193,6 +197,10 @@ importers:
       '@loomcli/validators':
         specifier: workspace:*
         version: link:../../packages/validators
+    devDependencies:
+      '@loomcli/loom':
+        specifier: workspace:*
+        version: link:../../apps/loom
 
   packages/core:
     dependencies:

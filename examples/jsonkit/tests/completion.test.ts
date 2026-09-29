@@ -14,7 +14,7 @@ const options = ['--explain', '--file', '--help', '--manifest', '--version'];
 const views = ['json', 'jsonl', 'list', 'table'];
 
 /** Programs that answer nothing a script may offer, each with the case title it proves. */
-const failures: { callback: SessionOptions['callback']; title: string }[] = [
+const failures: { callback: NonNullable<SessionOptions['callback']>; title: string }[] = [
   { callback: 'exits nonzero', title: 'a callback that exits nonzero' },
   { callback: 'prints a bare colon', title: 'an answer whose directive line is a bare colon' },
 ];

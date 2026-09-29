@@ -5,13 +5,10 @@
     "lib": ["ES2022"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": false,
+    "noEmit": true,
     "allowImportingTsExtensions": false,
-    "declaration": true,
-    "skipLibCheck": false,
-    "rootDir": ".",
-    "outDir": "dist"
+    "skipLibCheck": false
   },
-  "include": ["src/**/*.ts", "package.json"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "package.json", "loom.packet.json"],
   "exclude": ["dist"]
 }

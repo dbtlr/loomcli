@@ -45,6 +45,7 @@ export default defineConfig({
         files: [
           'packages/*/src/**',
           'examples/*/src/**',
+          'examples/*/scripts/**',
           'apps/*/src/**',
           'packages/*/tests/**',
           'examples/*/tests/**',

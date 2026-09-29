@@ -13,6 +13,7 @@ import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
+import packet from '../loom.packet.json' with { type: 'json' };
 import Package from '../package.json' with { type: 'json' };
 import { summarize } from './actions/summarize.js';
 import { debug } from './commands/debug.js';
@@ -37,6 +38,8 @@ const configured = new Application('jsonkit', {
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     }),
   ],
+  // The source tree reads development; the build writes distributed into the bundle.
+  packet,
   plugins: [
     help(),
     suggestions(),

@@ -2,7 +2,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-const main = new URL('../dist/src/main.js', import.meta.url);
+const main = new URL('../dist/main.js', import.meta.url);
 
 /** One textstat run over piped text, with the variables one test sets. */
 function count(argv: string[], env: Record<string, string>, input = 'abc') {

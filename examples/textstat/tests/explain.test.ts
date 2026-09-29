@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-const main = new URL('../dist/src/main.js', import.meta.url);
+const main = new URL('../dist/main.js', import.meta.url);
 
 /** The application's own manifest, which is where its declared version comes from. */
 const manifest = z

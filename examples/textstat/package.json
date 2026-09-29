@@ -8,5 +8,8 @@
     "@loomcli/core": "workspace:*",
     "@loomcli/plugins": "workspace:*",
     "@loomcli/validators": "workspace:*"
+  },
+  "devDependencies": {
+    "@loomcli/loom": "workspace:*"
   }
 }
