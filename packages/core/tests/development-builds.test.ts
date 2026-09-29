@@ -24,9 +24,15 @@ test("a defect in a development build writes its Developer Diagnostic with the a
   const { status, stderr } = run('type-error', 'development');
   expect(status).toBe(1);
   expect(stderr.startsWith(foreignThrowBanner)).toBe(true);
-  // The excerpt marks the failing line and puts a caret under the frame's column.
-  expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6\d:\d+$/mu);
-  expect(stderr).toMatch(/^> 6\d \| {11}(?:const value = undefined;|return value\.length;)$/mu);
+  // The excerpt marks the frame's line and puts a caret under its column.
+  // Node reports the failing read itself.
+  // Bun folds `value` into `(void 0).length` and reports a line of the action at or above the read.
+  // So the marked line is one of the action's, and the failing line shows in the excerpt.
+  expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6[4-6]:\d+$/mu);
+  expect(stderr).toMatch(
+    /^> 6[4-6] \| .*(?:\.action\(\(\) => \{|const value = undefined;|return value\.length;)$/mu,
+  );
+  expect(stderr).toMatch(/^(?:> | {2})66 \| {11}return value\.length;$/mu);
   expect(stderr).toMatch(/^ {5}\| +\^$/mu);
   expect(stderr).toMatch(/^TypeError: .+$/mu);
   expect(stderr).toMatch(/^ {4}at .+builds\.mjs:6\d:\d+\)?$/mu);
