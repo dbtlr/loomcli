@@ -341,6 +341,40 @@ const causeReader = plugin('@fixture/cause', {
   },
 });
 
+/** The original throw and the translator's throw of the defect-cause scenarios, kept by identity. */
+const defectThrows = {
+  original: new SyntaxError('Unexpected token.'),
+  translator: new Error('The translator failed.'),
+};
+
+/** A hook that reports how the broken-translator defect's cause holds the two throws. */
+const defectCauseReader = plugin('@fixture/defect-cause', {
+  onFailure: (failure) => {
+    const { cause } = failure;
+    if (cause === defectThrows.original) {
+      calls.push('cause:original');
+    } else if (cause instanceof AggregateError) {
+      const [first, second, ...rest] = cause.errors;
+      const exact =
+        first === defectThrows.translator && second === defectThrows.original && rest.length === 0;
+      calls.push(`cause:AggregateError:${exact ? 'translator,original' : 'other'}`);
+    } else {
+      calls.push('cause:other');
+    }
+    return undefined;
+  },
+});
+
+/** An application whose action throws the kept original throw at the translator `broken`. */
+function defectCause(broken) {
+  return ending(
+    () => {
+      throw defectThrows.original;
+    },
+    { plugins: [defectCauseReader], translators: [translate(SyntaxError, broken)] },
+  );
+}
+
 /** Each scenario's application. */
 function build() {
   if (scenario in unreached) {
@@ -484,6 +518,14 @@ function build() {
         plugins: [causeReader],
         translators: [answering(SyntaxError, 'application')],
       });
+    }
+    case 'defect-cause-throws': {
+      return defectCause(() => {
+        throw defectThrows.translator;
+      });
+    }
+    case 'defect-cause-returned': {
+      return defectCause(() => 'text');
     }
     case 'sequence': {
       return new Application('translators', {

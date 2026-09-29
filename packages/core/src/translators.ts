@@ -210,12 +210,17 @@ function isFailure(value: unknown): value is LoomError {
 }
 
 /**
- * The defect of a translator that threw. The reason is raw text the translator threw, so it is
- * escaped onto one line.
+ * The defect of a translator that threw. Its cause is a new `AggregateError` that holds the
+ * translator's throw and then the original throw, so neither is lost and neither is mutated. The
+ * reason is raw text the translator threw, so it is escaped onto one line.
  */
-function threwDefect(who: string, error: unknown): InternalError {
+function threwDefect(who: string, error: unknown, thrown: object): InternalError {
   const reason = escapeControlCharacters(reasonOf(error));
-  return new InternalError(`${who} threw: ${asSentence(reason)}`, error);
+  const cause = new AggregateError(
+    [error, thrown],
+    'The translator threw while translating the original throw.',
+  );
+  return new InternalError(`${who} threw: ${asSentence(reason)}`, cause);
 }
 
 /** The one translator call, whose throw or non-failure answer is the defect of that translator. */
@@ -229,7 +234,7 @@ function consult(
   try {
     answer = record.offer(thrown);
   } catch (error) {
-    return threwDefect(who, error);
+    return threwDefect(who, error, thrown);
   }
   if (answer === undefined || isFailure(answer)) {
     return answer;

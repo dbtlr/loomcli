@@ -136,6 +136,24 @@ test('a broken translator a plugin registered is named by its identity', () => {
   });
 });
 
+test("a throwing translator's defect keeps both throws, the translator's first", () => {
+  expect(run('defect-cause-throws')).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: The translator the Application registered for "SyntaxError" threw: The translator failed.\n',
+    stdout: 'cause:AggregateError:translator,original\nresolved:1\n',
+  });
+});
+
+test("a translator that returns a non-failure keeps the original throw as the defect's cause", () => {
+  expect(run('defect-cause-returned')).toEqual({
+    status: 1,
+    stderr:
+      'Internal error: The translator the Application registered for "SyntaxError" returned a string instead of a failure. Return a failure or undefined.\n',
+    stdout: 'cause:original\nresolved:1\n',
+  });
+});
+
 test('a translator that returns an unconstructed failure meets the unconstructed-failure rule', () => {
   expect(run('broken-unconstructed')).toEqual({
     status: 1,
