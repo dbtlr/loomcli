@@ -44,7 +44,7 @@ function undeclarableMessage(className: string, declared: unknown): string {
     typeof declared === 'number' && Number.isFinite(declared)
       ? `declares exit code ${String(declared)}.`
       : 'declares an exit code that is not a finite number.';
-  return `Failure class "${className}" ${clause} Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.`;
+  return `Failure class "${className}" ${clause} Declare a whole number from 1 through 125.`;
 }
 
 /**

@@ -187,7 +187,7 @@ test('build rejects a descriptor whose collect is neither true nor false', () =>
   const rejected = {
     fault: 'DeclarationError',
     message:
-      'Extension "@fixture/hand/command" declares collect that is not a Boolean. Supply true or false, or build the descriptor with extension(identity, config).',
+      'Extension "@fixture/hand/command" declares collect that is not a Boolean. Use true or false.',
   };
   expect(facts('hand-yes', 'fault')[0]).toEqual(rejected);
   expect(facts('hand-absent', 'fault')[0]).toEqual(rejected);

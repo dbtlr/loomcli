@@ -1,8 +1,24 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { asSentence, DeclarationError, reasonOf } from './errors.js';
-import { isPlainObject } from './facts.js';
+import { escapeControlCharacters } from './controls.js';
+import type { Finding } from './diagnostic-text.js';
+import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
+import { partOf } from './facts.js';
+import type { FactSite } from './facts.js';
+import { flagNotBoolean } from './input-rules.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
+import { isPlainObject } from './plain.js';
+import {
+  asyncExtensionSchema,
+  extensionOutput,
+  extensionTarget as extensionTargetRule,
+  extensionValueTwice,
+  extensionWithoutSchema,
+  foreignValue,
+  invalidExtensionValue,
+  notAList,
+  twoPackageCopies,
+} from './plugin-rules.js';
 import { isThenable } from './thenable.js';
 import type { AttachedCommand } from './types.js';
 
@@ -30,6 +46,9 @@ interface CarriedValue {
   descriptor: AnyExtension;
   input: unknown;
 }
+
+/** The fix every fault from two copies of one package shares. */
+const copiesCorrection = 'Install one copy of the package that defines it.';
 
 /** Authored values register here, so the public brand publishes no state to reach or replace. */
 const values = new WeakMap<object, CarriedValue>();
@@ -159,9 +178,11 @@ function readExtension<
   const record: Readonly<Record<string, unknown>> = node.extensions;
   const owner = owners.get(record)?.get(descriptor.identity);
   if (owner !== undefined && owner !== descriptor) {
-    throw new DeclarationError(
-      `Extension "${descriptor.identity}" was read through a descriptor that did not define the stored value. Install one copy of the package that defines it.`,
-    );
+    // A read happens inside a plugin's own code, so no declaration call stands for it.
+    throw new DeclarationError(twoPackageCopies, {
+      correction: copiesCorrection,
+      sentence: `Extension ${quoted(descriptor.identity)} was read through a descriptor that did not define the stored value.`,
+    });
   }
   // A collecting extension a declaration carries no value of reads as an empty list.
   const absent = descriptor.collect ? noValues : undefined;
@@ -364,36 +385,55 @@ function collects(descriptor: AnyExtension): boolean {
   return descriptor.collect;
 }
 
+/** The findings for the declaration one fault marks, when a declaration stands for it. */
+function marking(place: Finding | undefined, note: string): Finding[] {
+  return place === undefined ? [] : [{ ...place, note }];
+}
+
 /**
  * The descriptor a registry holds for one identity once this one is admitted. One identity means
  * one descriptor, wherever on the graph that descriptor appears, and a descriptor is checked when
  * a build first meets it: its `collect` flag is `true` or `false`, which the factory always
  * publishes and a hand-built descriptor may not. It reads the registry and changes nothing.
+ * `place` marks the declaration that carries the descriptor, when one does.
  */
 function admitDescriptor(
   descriptors: ReadonlyMap<string, AnyExtension>,
   descriptor: DescriptorShape,
+  place: Finding | undefined,
 ): AnyExtension {
-  const known = descriptors.get(descriptor.identity);
+  const { identity } = descriptor;
+  const known = descriptors.get(identity);
   if (known === undefined) {
     if (!hasCollectFlag(descriptor)) {
-      throw new DeclarationError(
-        `Extension "${descriptor.identity}" declares collect that is not a Boolean. Supply true or false, or build the descriptor with extension(identity, config).`,
-      );
+      throw new DeclarationError(flagNotBoolean, {
+        correction: 'Use true or false.',
+        findings: marking(place, `extension ${quoted(identity)}`),
+        sentence: `Extension ${quoted(identity)} declares collect that is not a Boolean.`,
+      });
     }
     return descriptor;
   }
   if (known !== descriptor) {
-    throw new DeclarationError(
-      `Extension "${descriptor.identity}" is defined twice. Install one copy of the package that defines it.`,
-    );
+    throw new DeclarationError(twoPackageCopies, {
+      correction: copiesCorrection,
+      findings: marking(place, `another ${quoted(identity)}`),
+      sentence: `Extension ${quoted(identity)} is defined twice.`,
+    });
   }
   return known;
 }
 
-/** Admits one descriptor and records it, so a later descriptor of its identity is compared to it. */
-function registerDescriptor(descriptors: DescriptorRegistry, descriptor: DescriptorShape): void {
-  const admitted = admitDescriptor(descriptors, descriptor);
+/**
+ * Admits one descriptor and records it, so a later descriptor of its identity is compared to it.
+ * `place` marks the declaration that carries the descriptor, when one does.
+ */
+function registerDescriptor(
+  descriptors: DescriptorRegistry,
+  descriptor: DescriptorShape,
+  place?: Finding,
+): void {
+  const admitted = admitDescriptor(descriptors, descriptor, place);
   descriptors.set(admitted.identity, admitted);
 }
 
@@ -411,107 +451,152 @@ function isSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-/** The message one rejected value reports, with the placeholder a silent schema earns. */
+/** The message one rejected value reports, escaped, with the placeholder a silent schema earns. */
 function issueText(issues: unknown): string {
   const first: unknown = Array.isArray(issues) ? issues[0] : undefined;
   if (first !== null && typeof first === 'object' && 'message' in first) {
     const { message } = first;
     if (typeof message === 'string') {
-      return message;
+      return escapeControlCharacters(message);
     }
   }
   // The sentence the caller composes ends the diagnostic, so this text carries no full stop.
   return 'The schema rejected this value without an explanation';
 }
 
+/**
+ * Where one `extensions` list sits: the call that declared it, and the dotted path among that
+ * call's arguments to the list, which is empty for `extend()`, whose arguments are the list.
+ */
+type ExtensionSite = Pick<FactSite, 'at' | 'declaration'>;
+
+/** One entry of a list a fault marks: the site's call, with the mark on the entry. */
+function entryFinding(site: ExtensionSite, index: number, note?: string): Finding {
+  const finding = { ...site.declaration, mark: partOf(site, index) };
+  return note === undefined ? finding : { ...finding, note };
+}
+
+/** The value one entry carries, and the finding that marks it, which names its extension. */
+interface CarriedEntry {
+  carried: CarriedValue;
+  place: Finding;
+}
+
 /** The schema one descriptor answers with, which a JavaScript author can leave out. */
-function schemaOf(subject: ExtensionSubject, descriptor: AnyExtension): StandardSchemaV1 {
+function schemaOf(subject: ExtensionSubject, { carried, place }: CarriedEntry): StandardSchemaV1 {
+  const { descriptor } = carried;
   const schema: unknown = 'schema' in descriptor ? descriptor.schema : undefined;
   if (!isSchema(schema)) {
-    throw new DeclarationError(
-      `${subject.sentence} holds extension "${descriptor.identity}", which declares no schema. Supply a Standard Schema v1 object that answers synchronously.`,
-    );
+    throw new DeclarationError(extensionWithoutSchema, {
+      correction: 'Supply a Standard Schema v1 object that answers synchronously.',
+      findings: [place],
+      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which declares no schema.`,
+    });
   }
   return schema;
 }
 
+/** The fix every rejected extension value shares. */
+const correctValue = 'Correct the value.';
+
 /** The result one schema answered with, or the rejection its own throw is. */
 function validated(
   subject: ExtensionSubject,
-  carried: CarriedValue,
+  entry: CarriedEntry,
   schema: StandardSchemaV1,
 ): unknown {
+  const { carried, place } = entry;
   try {
     return schema['~standard'].validate(carried.input);
   } catch (error) {
     // A schema that throws rejected the value the only way it could, so it reads as a rejection.
     throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${carried.descriptor.identity}" value: ${asSentence(reasonOf(error))} Correct the value.`,
+      invalidExtensionValue,
+      {
+        correction: correctValue,
+        findings: [place],
+        sentence: `${subject.sentence} holds an invalid ${quoted(carried.descriptor.identity)} value: ${asSentence(reasonOf(error))}`,
+      },
+      { cause: error },
     );
   }
 }
 
 /** Validates one carried value and answers the plain-data output the node stores under it. */
-function validateValue(subject: ExtensionSubject, carried: CarriedValue): unknown {
+function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown {
+  const { carried, place } = entry;
   const { identity } = carried.descriptor;
-  const result: unknown = validated(subject, carried, schemaOf(subject, carried.descriptor));
+  const result: unknown = validated(subject, entry, schemaOf(subject, entry));
   if (result === null || typeof result !== 'object' || isThenable(result)) {
-    throw new DeclarationError(
-      `Extension "${identity}" validates asynchronously. Supply a schema that answers synchronously.`,
-    );
+    throw new DeclarationError(asyncExtensionSchema, {
+      correction: 'Supply a schema that answers synchronously.',
+      findings: [place],
+      sentence: `Extension ${quoted(identity)} validates asynchronously.`,
+    });
   }
   const issues: unknown = 'issues' in result ? result.issues : undefined;
   if (issues !== undefined) {
-    throw new DeclarationError(
-      `${subject.sentence} holds an invalid "${identity}" value: ${asSentence(issueText(issues))} Correct the value.`,
-    );
+    throw new DeclarationError(invalidExtensionValue, {
+      correction: correctValue,
+      findings: [place],
+      sentence: `${subject.sentence} holds an invalid ${quoted(identity)} value: ${asSentence(issueText(issues))}`,
+    });
   }
   const output = plainData('value' in result ? result.value : undefined);
   if (!output) {
-    throw new DeclarationError(
-      `Extension "${identity}" produced a value that is not plain data ${subject.phrase}. Return strings, numbers, booleans, null, arrays, and plain objects.`,
-    );
+    throw new DeclarationError(extensionOutput, {
+      correction: 'Return strings, numbers, booleans, null, arrays, and plain objects.',
+      findings: [place],
+      sentence: `Extension ${quoted(identity)} produced a value that is not plain data ${subject.phrase}.`,
+    });
   }
   return output.data;
 }
 
 /** An `extensions` slot holds a list of values, so anything else is the same declaration fault. */
-function readList(subject: ExtensionSubject, declared: unknown): readonly unknown[] {
+function readList(slot: ExtensionSlot): readonly unknown[] {
+  const { declared, site, subject } = slot;
   if (declared === undefined) {
     return [];
   }
   if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      `${subject.sentence} holds a value that is not an extension value. Supply the value returned by calling an extension.`,
-    );
+    throw new DeclarationError(notAList, {
+      correction: 'Supply a list of values returned by calling an extension.',
+      findings: [{ ...site.declaration, mark: site.at }],
+      sentence: `${subject.sentence} declares extensions that are not an array.`,
+    });
   }
   return declared;
 }
 
 /** The value one entry carries, under the rules its own slot's target sets. */
-function carriedValue(
-  subject: ExtensionSubject,
-  target: ExtensionTarget,
-  entry: unknown,
-): CarriedValue {
+function carriedValue(slot: ExtensionSlot, entry: unknown, index: number): CarriedEntry {
+  const { site, subject, target } = slot;
   const carried = typeof entry === 'object' && entry !== null ? values.get(entry) : undefined;
   if (!carried) {
-    throw new DeclarationError(
-      `${subject.sentence} holds a value that is not an extension value. Supply the value returned by calling an extension.`,
-    );
+    throw new DeclarationError(foreignValue, {
+      correction: 'Supply the value returned by calling an extension.',
+      findings: [entryFinding(site, index)],
+      sentence: `${subject.sentence} holds a value that is not an extension value.`,
+    });
   }
-  if (carried.descriptor.target !== target) {
-    throw new DeclarationError(
-      `${subject.sentence} holds extension "${carried.descriptor.identity}", which applies to ${applies[carried.descriptor.target]}. Supply an extension that applies to ${applies[target]}.`,
-    );
+  const { descriptor } = carried;
+  const place = entryFinding(site, index, `extension ${quoted(descriptor.identity)}`);
+  if (descriptor.target !== target) {
+    throw new DeclarationError(extensionTargetRule, {
+      correction: `Supply an extension that applies to ${applies[target]}.`,
+      findings: [place],
+      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which applies to ${applies[descriptor.target]}.`,
+    });
   }
-  return carried;
+  return { carried, place };
 }
 
-/** Everything one `extensions` slot needs to answer: whose it is, and what it may carry. */
+/** Everything one `extensions` slot needs to answer: whose it is, where, and what it may carry. */
 interface ExtensionSlot {
   declared: unknown;
   descriptors: DescriptorRegistry;
+  site: ExtensionSite;
   subject: ExtensionSubject;
   target: ExtensionTarget;
 }
@@ -527,23 +612,30 @@ interface ValidatedValue {
  * most one value of an extension, collecting or not, so a second one is a declaration fault.
  */
 function validateLayer(slot: ExtensionSlot): readonly ValidatedValue[] {
-  const { subject } = slot;
+  const { site, subject } = slot;
   const layer: ValidatedValue[] = [];
-  const seen = new Set<string>();
+  // Each identity's position in the list, so a repeat marks both values.
+  const seen = new Map<string, number>();
   // The layer's descriptors register together once every value is valid.
   // A rejected layer, such as a hook's `extend()` call the hook catches, leaves the registry as it was.
   const staged = new Map(slot.descriptors);
-  for (const entry of readList(subject, slot.declared)) {
-    const carried = carriedValue(subject, slot.target, entry);
-    const { descriptor } = carried;
-    registerDescriptor(staged, descriptor);
-    if (seen.has(descriptor.identity)) {
-      throw new DeclarationError(
-        `${subject.sentence} holds extension "${descriptor.identity}" twice. Supply one value.`,
-      );
+  for (const [index, value] of readList(slot).entries()) {
+    const entry = carriedValue(slot, value, index);
+    const { descriptor } = entry.carried;
+    registerDescriptor(staged, descriptor, entryFinding(site, index));
+    const first = seen.get(descriptor.identity);
+    if (first !== undefined) {
+      throw new DeclarationError(extensionValueTwice, {
+        correction: 'Supply one value.',
+        findings: [
+          entryFinding(site, first, 'the first value'),
+          entryFinding(site, index, 'the second value'),
+        ],
+        sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)} twice.`,
+      });
     }
-    seen.add(descriptor.identity);
-    layer.push({ descriptor, output: validateValue(subject, carried) });
+    seen.set(descriptor.identity, index);
+    layer.push({ descriptor, output: validateValue(subject, entry) });
   }
   for (const [identity, descriptor] of staged) {
     slot.descriptors.set(identity, descriptor);
@@ -633,6 +725,7 @@ export type {
   DescriptorRegistry,
   Extension,
   ExtensionRecords,
+  ExtensionSite,
   ExtensionStore,
   ExtensionSubject,
   ExtensionTarget,

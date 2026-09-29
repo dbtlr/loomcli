@@ -1,12 +1,16 @@
 import type { Writable } from 'node:stream';
 
 import { runInvocation } from './chain.js';
+import { portableName } from './command-rules.js';
 import {
   attachToRoot,
+  callArguments,
   childNode,
   buildGraph,
   checkDeclaredOptions,
   collectInputs,
+  commandPlacement,
+  inputPlaces,
   declareAction,
   declareExtensions,
   declareArgument,
@@ -25,6 +29,7 @@ import type {
   AfterCommand,
   AfterResult,
   BuiltGraph,
+  ChildOwner,
   Command,
   CommandMethod,
   CommandNodeHandle,
@@ -33,22 +38,39 @@ import type {
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from './errors.js';
+import {
+  DeclarationError,
+  exitCodeOf,
+  InternalError,
+  quoted,
+  reasonOf,
+  toFailure,
+} from './errors.js';
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
-import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
-import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
+import {
+  checkDescription,
+  checkNoListingFacts,
+  checkVersion,
+  partFinding,
+  slotSite,
+} from './facts.js';
+import type { FactSite } from './facts.js';
+import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
+import { globalOptionAfterCommand } from './input-rules.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
-import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
+import { isPlainObject } from './plain.js';
+import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
+import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -225,7 +247,7 @@ interface ApplicationConfig {
   contributors: readonly ViewContributions[];
   facts: ApplicationFacts;
   /** The parent that claimed each node the graph holds, so one value attaches at one point. */
-  owners: ReadonlyMap<CommandNodeHandle, string | null>;
+  owners: ReadonlyMap<CommandNodeHandle, ChildOwner>;
   plugins: readonly BuiltPlugin[];
   rendering: RenderingPolicy;
   /** The application's translations, then each installed plugin's, in resolution order. */
@@ -340,9 +362,13 @@ class ApplicationBuilder<
   > {
     // The plugins' Commands attach at construction, so only the application's own calls close it.
     if (this.#config.composed) {
-      throw new DeclarationError(
-        `The Application declares global option "${name}" after command() or action(). Declare global options before attaching Commands or registering an action.`,
-      );
+      throw new DeclarationError(globalOptionAfterCommand, {
+        correction: 'Declare global options before attaching Commands or registering an action.',
+        findings: [
+          { arguments: callArguments(name, config), call: 'globalOption', mark: '0', path: [] },
+        ],
+        sentence: `The Application declares global option ${quoted(name)} after command() or action().`,
+      });
     }
     const input: OptionInput<Name, Config> = {
       config: captureConfig(config),
@@ -353,7 +379,7 @@ class ApplicationBuilder<
     const globals = declareGlobalOption(this.#globals, input, descriptors);
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
-    checkDeclarations([input]);
+    checkDeclarations([{ input, site: globalSite(input) }]);
     return new ApplicationBuilder<
       Args,
       Options,
@@ -387,7 +413,12 @@ class ApplicationBuilder<
       owners: new Map(this.#config.owners),
       table: this.table(),
     };
-    const root = attachToRoot(this.#root, childNode(null, child), scope);
+    const node = childNode(null, child);
+    const root = attachToRoot(
+      this.#root,
+      { node, placement: commandPlacement([], node.name) },
+      scope,
+    );
     return this.derive(root, { composed: true, owners: scope.owners });
   }
 
@@ -485,7 +516,10 @@ class ApplicationBuilder<
       rendering: () => undefined,
       views: () => undefined,
     });
-    return inspectGraph(this.#name, built.graph, built.facts);
+    return inspectGraph(this.#name, built.graph, {
+      ...built.facts,
+      development: this.#config.development,
+    });
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -571,7 +605,8 @@ class ApplicationBuilder<
             );
           },
           rendering: (declared) => {
-            policy = { ...declared, ...renderingPolicy(options?.rendering) };
+            const rendering = options?.rendering;
+            policy = { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
             invocationOutput.configure(policy, new Map());
           },
           views: (value) => {
@@ -582,10 +617,16 @@ class ApplicationBuilder<
         const { graph } = built;
         // The graph `inspect()` returns, built at most once for the run, whoever reads it first.
         let inspectedGraph: CommandGraph | undefined = undefined;
-        const inspected = () => (inspectedGraph ??= inspectGraph(this.#name, graph, built.facts));
+        const { development } = this.#config;
+        const inspected = () =>
+          (inspectedGraph ??= inspectGraph(this.#name, graph, { ...built.facts, development }));
         reached = { inspected, plugins: built.plugins };
+        if (development) {
+          // A development build asks every converter at build, so its check runs on every run.
+          inspected();
+        }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
-        const defaults = await prepareInputs(inputs, host);
+        const defaults = await prepareInputs(inputs, host, inputPlaces(graph));
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
@@ -756,32 +797,59 @@ interface ApplicationFacts {
   version: string;
 }
 
+/** The retired Application options, in the order they are rejected, each with its fix. */
+const retired = [
+  ['globals', 'Declare them with globalOption(name, config).'],
+  ['failures', 'Declare view overrides under views with override(key, view).'],
+] as const;
+
+/** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
+function optionSite(name: string, key: string, value: unknown): FactSite {
+  return slotSite({ call: 'new Application', named: name, subject: 'The Application' }, key, value);
+}
+
+/** Where `run()`'s own rendering policy sits: the options object of the call on the Application. */
+function runRendering(rendering: unknown): FactSite {
+  return {
+    at: '0.rendering',
+    declaration: { arguments: [{ rendering }], call: 'run', path: [] },
+    subject: 'The run',
+  };
+}
+
 /** Reject obsolete wiring before silently losing options that invocations depend on. */
-function checkOptions(options: unknown): ApplicationFacts {
+function checkOptions(name: string, options: unknown): ApplicationFacts {
+  const site: FactSite = {
+    at: '1',
+    declaration: { arguments: callArguments(name, options), call: 'new Application' },
+    subject: 'The Application',
+  };
   if (options === undefined) {
-    return { description: undefined, version: checkVersion(undefined) };
+    return { description: undefined, version: checkVersion(site, undefined) };
   }
   if (!isPlainObject(options)) {
-    throw new DeclarationError(
-      'The Application options must be an object. Supply an Application options object.',
-    );
+    throw new DeclarationError(notAnObject, {
+      correction: 'Supply an Application options object.',
+      findings: [{ ...site.declaration, mark: '1' }],
+      sentence: 'The Application declares options that are not an object.',
+    });
   }
-  if ('globals' in options) {
-    throw new DeclarationError(
-      'The Application options contain globals. Declare them with globalOption(name, config).',
-    );
-  }
-  if ('failures' in options) {
-    throw new DeclarationError(
-      'The Application options contain failures. Declare view overrides under views with override(key, view).',
-    );
+  for (const [key, correction] of retired) {
+    if (key in options) {
+      const retiredSite = optionSite(name, key, Reflect.get(options, key));
+      throw new DeclarationError(retiredApplicationOption, {
+        correction,
+        findings: [partFinding(retiredSite, [])],
+        sentence: `The Application options contain ${key}.`,
+      });
+    }
   }
   // The root is every page's entry point, so it carries neither listing fact.
   // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
-  checkNoListingFacts('The Application', options);
+  checkNoListingFacts(site, options);
   return {
-    description: checkDescription('The Application', options.description),
-    version: checkVersion(options.version),
+    description: checkDescription(site, options.description),
+    version: checkVersion(site, options.version),
   };
 }
 
@@ -790,14 +858,17 @@ function checkOptions(options: unknown): ApplicationFacts {
  * application that never opted in cannot show an operator the author's detail. The build is read
  * once, here, so a later change to the imported object changes no run.
  */
-function readPacket(packet: unknown): boolean {
+function readPacket(name: string, packet: unknown): boolean {
   if (packet === undefined) {
     return false;
   }
+  const site = optionSite(name, 'packet', packet);
   if (!isPlainObject(packet)) {
-    throw new DeclarationError(
-      'The Application packet must be an object. Import loom.packet.json and pass it as packet.',
-    );
+    throw new DeclarationError(invalidPacket, {
+      correction: 'Import loom.packet.json and pass it as packet.',
+      findings: [partFinding(site, [])],
+      sentence: 'The Application packet must be an object.',
+    });
   }
   const { build } = packet;
   if (build === 'development' || build === 'distributed') {
@@ -807,7 +878,11 @@ function readPacket(packet: unknown): boolean {
     build === undefined
       ? 'The packet has no build.'
       : `The packet's build is ${typeof build === 'string' ? `"${escapeControlCharacters(build)}"` : 'not a string'}.`;
-  throw new DeclarationError(`${found} Set build to "development" or "distributed".`);
+  throw new DeclarationError(invalidPacket, {
+    correction: 'Set build to "development" or "distributed".',
+    findings: [partFinding(site, 'build' in packet ? ['build'] : [])],
+    sentence: found,
+  });
 }
 
 /**
@@ -817,7 +892,10 @@ function readPacket(packet: unknown): boolean {
  * and then each plugin's Commands, which attach to the root first, in installation order and list
  * order.
  */
-function declareApplication(options: unknown): {
+function declareApplication(
+  name: string,
+  options: unknown,
+): {
   config: ApplicationConfig;
   globals: GlobalsState<{}>;
   root: CommandState<{}, {}, {}>;
@@ -825,28 +903,35 @@ function declareApplication(options: unknown): {
   const slot = isPlainObject(options) ? options : undefined;
   const identities = viewIdentities(coreViews);
   const views = buildViews(
-    { declares: false, sentence: 'The Application' },
+    {
+      declares: false,
+      owner: { call: 'new Application', named: name },
+      sentence: 'The Application',
+    },
     slot?.views,
     identities,
   );
-  const translations = readTranslations('The Application', slot?.translators);
-  const rendering = renderingPolicy(slot?.rendering);
-  const facts = checkOptions(options);
-  const development = readPacket(slot?.packet);
-  const installed = installPlugins(slot?.plugins ?? []);
+  const translations = readTranslations(
+    optionSite(name, 'translators', slot?.translators),
+    slot?.translators,
+  );
+  const rendering = renderingPolicy(
+    slot?.rendering,
+    optionSite(name, 'rendering', slot?.rendering),
+  );
+  const facts = checkOptions(name, options);
+  const development = readPacket(name, slot?.packet);
+  const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>
-    buildViews(
-      { declares: true, sentence: pluginSentence(entry.identity) },
-      entry.views,
-      identities,
-    ),
+    buildViews(pluginViews(entry.identity), entry.views, identities),
   );
   const table = globalTable([], plugins);
   const descriptors = installed.descriptors;
   const extensions = storeCommandLayers({
     descriptors,
     layers: [slot?.extensions],
+    site: optionSite(name, 'extensions', slot?.extensions),
     subject: layerOf(null),
   });
   // The Application checks its own facts, so the root carries none.
@@ -857,9 +942,9 @@ function declareApplication(options: unknown): {
     facts: { deprecated: undefined, description: undefined, hidden: false },
     name: null,
   });
-  const owners = new Map<CommandNodeHandle, string | null>();
+  const owners = new Map<CommandNodeHandle, ChildOwner>();
   for (const command of plugins.flatMap((entry) => entry.commands)) {
-    root = attachToRoot(root, command.node, {
+    root = attachToRoot(root, command, {
       descriptors: new Map(root.descriptors),
       owners,
       table,
@@ -885,9 +970,11 @@ function declareApplication(options: unknown): {
 /** The application name is typed as a command at the prompt, so it answers to the portable rule. */
 function checkApplicationName(name: unknown): string {
   if (!isPortableName(name)) {
-    throw new DeclarationError(
-      `Application name "${String(name)}" is invalid. ${portableNameCorrection}`,
-    );
+    throw new DeclarationError(portableName, {
+      correction: portableNameCorrection,
+      findings: [{ arguments: [name], call: 'new Application', mark: '0' }],
+      sentence: `Application name ${quoted(name)} is invalid.`,
+    });
   }
   return name;
 }
@@ -898,7 +985,8 @@ class ApplicationDeclaration<
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
-    super(checkApplicationName(name), declareApplication(options));
+    const checked = checkApplicationName(name);
+    super(checked, declareApplication(checked, options));
   }
 }
 

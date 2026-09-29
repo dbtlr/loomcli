@@ -1,5 +1,7 @@
 import { DeclarationError } from '@loomcli/core';
 
+import { ruleText } from './rule-text.mjs';
+
 /**
  * Evaluates one declaration and reports the declaration fault it throws, so a test reads the fault
  * from the call that raised it rather than from a build. A declaration that throws ends the fixture
@@ -12,7 +14,7 @@ export function declare(build) {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    process.stdout.write(`thrown:${error.exitCode}: ${error.sentence ?? error.message}\n`);
+    process.stdout.write(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
     process.exit(0);
   }
 }

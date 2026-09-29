@@ -9,6 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { encodeText } from '../encode.js';
+import { failureNameConflict } from '../rules.js';
 import { manifestCommand } from './extension.js';
 
 /**
@@ -202,8 +203,22 @@ function commandSubject(node: CommandNode): string {
 }
 
 /**
+ * The finding for one declaration of a conflicting failure: the `manifestCommand()` value that
+ * declared it, rebuilt with the entry the graph holds, marking the key the two declarations
+ * disagree on, and noting the Command that holds it.
+ */
+function declarationFinding({ command, failure }: Declaration, key: 'exitCode' | 'meaning') {
+  return {
+    arguments: [{ failures: [failure] }],
+    call: 'manifestCommand',
+    mark: `0.failures.0.${key}`,
+    note: `on ${commandSubject(command)}`,
+  };
+}
+
+/**
  * The fault for one failure name declared with two codes, or with one code and two meanings. It
- * names the name and both Commands, the first declaration first.
+ * names the name and both Commands, the first declaration first, with a finding for each.
  */
 function conflictError(first: Declaration, second: Declaration): DeclarationError {
   const sameCode = first.failure.exitCode === second.failure.exitCode;
@@ -211,9 +226,12 @@ function conflictError(first: Declaration, second: Declaration): DeclarationErro
     sameCode
       ? `meaning "${escapeControlCharacters(failure.meaning)}"`
       : `exit code ${String(failure.exitCode)}`;
-  return new DeclarationError(
-    `Failure "${first.failure.name}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}. Declare one code and one meaning for each failure name.`,
-  );
+  const key = sameCode ? 'meaning' : 'exitCode';
+  return new DeclarationError(failureNameConflict, {
+    correction: 'Declare one code and one meaning for each failure name.',
+    findings: [declarationFinding(first, key), declarationFinding(second, key)],
+    sentence: `Failure "${first.failure.name}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}.`,
+  });
 }
 
 /**

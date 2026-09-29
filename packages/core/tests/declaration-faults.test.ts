@@ -7,14 +7,12 @@ test("a JavaScript author's faulty call throws while its module is imported, wit
   const result = invoke(new URL('fixtures/import-fault.mjs', import.meta.url));
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(
-    'Option "verbose" is a boolean option and declares multiple. Remove multiple or declare a string option.',
-  );
   expect(result.stderr).toContain('list.mjs:4:');
   // The runtime prints the diagnostic the error's message holds, banner included.
   expect(result.stderr).toContain(
-    '-- INVALID DECLARATION ---------------------------------------------------------\n\nOption "verbose"',
+    '-- BOOLEAN OPTION TAKES ONE VALUE -------- @loomcli/core/boolean-option-multiple\n\nOption "verbose" is a boolean option and declares multiple.\n',
   );
+  expect(result.stderr).toContain('\nRemove multiple or declare a string option.\n');
   expect(result.stderr).not.toContain('Invalid declaration:');
 });
 

@@ -1,11 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { escapeControlCharacters } from './controls.js';
-import { diagnosticText, isDiagnosticRule } from './diagnostic-text.js';
+import { diagnosticText, isDiagnosticRule, valueCode } from './diagnostic-text.js';
 import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
 import {
+  failureExitCode,
   foreignThrow,
   foreignThrowCorrection,
   resultContract,
@@ -36,12 +37,14 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
 }
 
 /**
- * Raw text an operator typed, quoted inside a sentence. It is escaped, so a control character or a
- * bidirectional control in a token cannot reorder or break the line. The failure's public field
+ * A value a sentence quotes: raw text an operator typed, or a name or identity an author declared.
+ * Text is escaped, so a control character or a bidirectional control in it cannot reorder or break
+ * the line. A value of any other kind prints as the code a finding prints for it, because a rule
+ * that rejects a value that is not a string quotes that value too. The failure's public field
  * keeps the raw value.
  */
-export function quoted(text: string): string {
-  return `"${escapeControlCharacters(text)}"`;
+export function quoted(value: unknown): string {
+  return typeof value === 'string' ? `"${escapeControlCharacters(value)}"` : valueCode(value);
 }
 
 /**
@@ -83,12 +86,12 @@ function shortGroupMessage(fault: ShortGroupFault): string {
  * The sentence for a class whose declared code no failure may exit with. The class is named by its
  * constructor, because the subclass has not yet set the instance's `name`.
  */
-function undeclarableMessage(className: string, declared: unknown): string {
+function undeclarableSentence(className: string, declared: unknown): string {
   const clause =
     typeof declared === 'number' && Number.isFinite(declared)
       ? `declares exit code ${String(declared)}.`
       : 'declares an exit code that is not a finite number.';
-  return `Failure class "${className}" ${clause} Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.`;
+  return `Failure class ${quoted(className)} ${clause}`;
 }
 
 /**
@@ -173,7 +176,11 @@ function classCode(target: object, constructed: { readonly name: string }): Fail
       ? Reflect.get(target, 'exitCode')
       : classCode(parent, constructed);
   if (!isFailureExitCode(declared)) {
-    throw new DeclarationError(undeclarableMessage(constructed.name, declared));
+    // A class declaration is no call, so no finding stands for it.
+    throw new DeclarationError(failureExitCode, {
+      correction: 'Declare a whole number from 1 through 125.',
+      sentence: undeclarableSentence(constructed.name, declared),
+    });
   }
   classCodes.set(target, declared);
   return declared;

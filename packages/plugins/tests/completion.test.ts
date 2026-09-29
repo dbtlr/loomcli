@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Application, Command, DeclarationError, locate } from '@loomcli/core';
+import { Application, Command, locate } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
@@ -324,7 +324,7 @@ describe('the scripts', () => {
 
   it.each(scripts)('the $shell script refuses a name outside the portable set', ({ script }) => {
     for (const name of hostileNames) {
-      expect(() => script(name)).toThrow(DeclarationError);
+      expect(() => script(name)).toThrow(TypeError);
     }
   });
 

@@ -1,6 +1,7 @@
 import { Application, DeclarationError } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
 
 const scenario = process.argv[2];
 const mode = process.argv[3];
@@ -28,7 +29,7 @@ if (mode === 'inspect') {
     process.stdout.write('inspected\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'declaration' : 'other';
-    process.stdout.write(`${kind}:${error.exitCode}: ${error.sentence ?? error.message}\n`);
+    process.stdout.write(`${kind}:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
   const code = await app.run({ host: { argv: [] } });

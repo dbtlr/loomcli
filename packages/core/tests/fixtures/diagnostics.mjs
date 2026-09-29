@@ -153,6 +153,26 @@ switch (scenario) {
     report(() => diagnosticRule('Retry Limit', { explanation: 'E.', headline: 'H' }));
     break;
   }
+  case 'subpath-identity': {
+    process.stdout.write(
+      `${diagnosticRule('@acme/retry/backoff/retry-limit', { explanation: 'E.', headline: 'H' }).identity}\n`,
+    );
+    break;
+  }
+  case 'empty-segment': {
+    report(() => diagnosticRule('@acme/retry//retry-limit', { explanation: 'E.', headline: 'H' }));
+    break;
+  }
+  case 'uppercase-segment': {
+    report(() =>
+      diagnosticRule('@acme/retry/Backoff/retry-limit', { explanation: 'E.', headline: 'H' }),
+    );
+    break;
+  }
+  case 'trailing-slash': {
+    report(() => diagnosticRule('@acme/retry/backoff/', { explanation: 'E.', headline: 'H' }));
+    break;
+  }
   case 'uppercase-rule': {
     report(() => diagnosticRule('@acme/retry/Retry-Limit', { explanation: 'E.', headline: 'H' }));
     break;

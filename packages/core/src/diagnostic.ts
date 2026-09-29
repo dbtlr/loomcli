@@ -1,15 +1,17 @@
-import { escapeControlCharacters } from './controls.js';
 import { registerRule } from './diagnostic-text.js';
 import type { DiagnosticRule } from './diagnostic-text.js';
-import { DeclarationError } from './errors.js';
+import { DeclarationError, quoted } from './errors.js';
+import { ruleDocs, ruleIdentity, ruleProse } from './rules.js';
 
 /**
- * A package name as npm spells one, scoped or not, then `/` and a rule name of lowercase letters
- * and digits in words joined by single hyphens: `@loomcli/core/plugin-option-collision`. It is the
- * grammar of a validator package's issue codes.
+ * A package name as npm spells one, scoped or not, then zero or more subpath segments and a rule
+ * name, each after a `/` and each of lowercase letters and digits in words joined by single
+ * hyphens: `@loomcli/core/spelling-taken` or `@loomcli/plugins/manifest/failure-name-conflict`. The
+ * subpath names the part of the package that owns the rule. It is the grammar of a validator
+ * package's issue codes.
  */
 const identityGrammar =
-  /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*\/[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+  /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/u;
 
 /** Whether a text holds a character other than whitespace. */
 function isFilled(value: unknown): value is string {
@@ -25,16 +27,49 @@ function isWebAddress(value: string): boolean {
   return protocol === 'https:' || protocol === 'http:';
 }
 
-/** A value a sentence quotes, escaped so it cannot break or reorder the line. */
-function quoted(value: unknown): string {
-  return `"${escapeControlCharacters(String(value))}"`;
-}
-
 /** The definition's own fields, read by shape, because a JavaScript caller reaches the call. */
 function definitionOf(
   definition: unknown,
 ): Partial<Record<'docs' | 'explanation' | 'headline', unknown>> {
   return typeof definition === 'object' && definition !== null ? { ...definition } : {};
+}
+
+/** The finding for one `diagnosticRule()` call, marking the argument or key at fault. */
+function callFinding(identity: unknown, definition: unknown, mark: string) {
+  return { arguments: [identity, definition], call: 'diagnosticRule', mark };
+}
+
+/**
+ * The definition's headline, explanation, and docs, checked. A fault marks the key at fault, or the
+ * definition itself when the author left the key out.
+ */
+function checkDefinition(identity: string, definition: unknown) {
+  const fields = definitionOf(definition);
+  const { docs, explanation, headline } = fields;
+  const part = (key: keyof typeof fields) =>
+    callFinding(identity, definition, key in fields ? `1.${key}` : '1');
+  if (!isFilled(headline)) {
+    throw new DeclarationError(ruleProse, {
+      correction: 'Supply a short noun phrase.',
+      findings: [part('headline')],
+      sentence: `Diagnostic rule ${quoted(identity)} declares an empty headline.`,
+    });
+  }
+  if (!isFilled(explanation)) {
+    throw new DeclarationError(ruleProse, {
+      correction: 'Supply prose that says why the rule exists.',
+      findings: [part('explanation')],
+      sentence: `Diagnostic rule ${quoted(identity)} declares an empty explanation.`,
+    });
+  }
+  if (docs !== undefined && (typeof docs !== 'string' || !isWebAddress(docs))) {
+    throw new DeclarationError(ruleDocs, {
+      correction: 'Supply an absolute https URL, or omit docs.',
+      findings: [part('docs')],
+      sentence: `Diagnostic rule ${quoted(identity)} declares docs that are not a URL.`,
+    });
+  }
+  return docs === undefined ? { explanation, headline } : { docs, explanation, headline };
 }
 
 /**
@@ -47,28 +82,12 @@ export function diagnosticRule(
   definition: { readonly headline: string; readonly explanation: string; readonly docs?: string },
 ): DiagnosticRule {
   if (typeof identity !== 'string' || !identityGrammar.test(identity)) {
-    throw new DeclarationError(
-      `Diagnostic rule ${quoted(identity)} has no package part or a rule name that is not kebab-case. Name it <package>/<kebab-case-rule>, such as "@acme/retry/retry-limit".`,
-    );
+    throw new DeclarationError(ruleIdentity, {
+      correction:
+        'Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".',
+      findings: [callFinding(identity, definition, '0')],
+      sentence: `Diagnostic rule ${quoted(identity)} has no package part, or a subpath or rule name that is not kebab-case.`,
+    });
   }
-  const { docs, explanation, headline } = definitionOf(definition);
-  if (!isFilled(headline)) {
-    throw new DeclarationError(
-      `Diagnostic rule ${quoted(identity)} declares an empty headline. Supply a short noun phrase.`,
-    );
-  }
-  if (!isFilled(explanation)) {
-    throw new DeclarationError(
-      `Diagnostic rule ${quoted(identity)} declares an empty explanation. Supply prose that says why the rule exists.`,
-    );
-  }
-  if (docs !== undefined && (typeof docs !== 'string' || !isWebAddress(docs))) {
-    throw new DeclarationError(
-      `Diagnostic rule ${quoted(identity)} declares docs that are not a URL. Supply an absolute https URL, or omit docs.`,
-    );
-  }
-  return registerRule(
-    identity,
-    docs === undefined ? { explanation, headline } : { docs, explanation, headline },
-  );
+  return registerRule(identity, checkDefinition(identity, definition));
 }

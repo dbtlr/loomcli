@@ -36,7 +36,7 @@ test('an invalid default is a developer error even when replaced or inputs canno
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     // The fixture is a development build, so the fault prints its Developer Diagnostic.
-    expect(result.stderr).toContain('-- INVALID DECLARATION --');
+    expect(result.stderr).toContain(' @loomcli/core/invalid-default\n');
     expect(result.stderr).toContain('default');
     expect(result.stderr).toContain('Use decimal digits.');
   }

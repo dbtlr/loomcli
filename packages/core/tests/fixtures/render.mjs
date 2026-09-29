@@ -1,5 +1,7 @@
 import { Application } from '@loomcli/core';
 
+import { ruleText } from './rule-text.mjs';
+
 const scenario = process.argv[2];
 
 const rows = [
@@ -46,7 +48,7 @@ const app = new Application('render').action(async ({ out }) => {
         await out.render(rows, breaks);
         out.print('unreachable');
       } catch (error) {
-        out.print(`caught:${error.sentence ?? error.message}`);
+        out.print(`caught:${ruleText(error)}`);
       }
       out.print('after');
       break;
@@ -55,7 +57,7 @@ const app = new Application('render').action(async ({ out }) => {
       try {
         await out.render(rows, counted);
       } catch (error) {
-        out.print(`caught:${error.sentence ?? error.message}`);
+        out.print(`caught:${ruleText(error)}`);
       }
       break;
     }

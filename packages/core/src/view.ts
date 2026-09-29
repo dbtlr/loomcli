@@ -1,5 +1,24 @@
-import { DeclarationError, defaultText, FatalError, notTextReason, reasonOf } from './errors.js';
+import { viewShape } from './command-rules.js';
+import { elided, quoteString, spelled } from './diagnostic-text.js';
+import type { Finding } from './diagnostic-text.js';
+import {
+  DeclarationError,
+  defaultText,
+  FatalError,
+  notTextReason,
+  quoted,
+  reasonOf,
+} from './errors.js';
 import type { LoomError } from './errors.js';
+import { partFinding, slotSite } from './facts.js';
+import type { FactSite } from './facts.js';
+import {
+  foreignValue,
+  notAList,
+  overrideKey,
+  overrideTwice,
+  twoPackageCopies,
+} from './plugin-rules.js';
 import { prototypeChain } from './prototypes.js';
 import { escapeText } from './style.js';
 import type { RowView, View, ViewContext } from './types.js';
@@ -167,13 +186,20 @@ function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
   const shape = shapeOf(definition);
+  const findings = [{ arguments: [identity, definition], call: 'view', mark: '1' }];
   if (shape === 'both') {
-    throw new DeclarationError(`View "${identity}" carries render and row. Supply one of the two.`);
+    throw new DeclarationError(viewShape, {
+      correction: 'Supply one of the two.',
+      findings,
+      sentence: `View ${quoted(identity)} carries render and row.`,
+    });
   }
   if (shape === 'neither') {
-    throw new DeclarationError(
-      `View "${identity}" carries neither render nor row. Supply a view with render or a row view with row.`,
-    );
+    throw new DeclarationError(viewShape, {
+      correction: 'Supply a view with render or a row view with row.',
+      findings,
+      sentence: `View ${quoted(identity)} carries neither render nor row.`,
+    });
   }
   return typeof definition.row === 'function'
     ? new RowViewDeclaration<never>(identity, definition)
@@ -274,14 +300,18 @@ type ViewRegistry = readonly ViewContributions[];
 /** The identities one build has met, so a second object under one identity is visible. */
 type ViewIdentities = Map<string, AnyDeclaredView>;
 
-/** How one contributor's diagnostics name it, and whether its list may declare a view. */
+/**
+ * How one contributor's diagnostics name it, whether its list may declare a view, and the call
+ * that declared the list, `plugin(identity, …)` or `new Application(name, …)`, which a fault marks.
+ */
 interface ViewSubject {
   /** A plugin declares views beside its overrides; an application overrides alone. */
   declares: boolean;
   sentence: string;
+  owner: { call: string; named: unknown };
 }
 
-/** The identity register one build starts from, holding the views core itself declares. */
+/** The identity one build starts from, holding the views core itself declares. */
 function viewIdentities(declared: readonly AnyDeclaredView[]): ViewIdentities {
   const identities: ViewIdentities = new Map();
   for (const value of declared) {
@@ -290,25 +320,74 @@ function viewIdentities(declared: readonly AnyDeclaredView[]): ViewIdentities {
   return identities;
 }
 
-/** One identity means one declared view, wherever on the graph that view appears. */
-function registerIdentity(identities: ViewIdentities, declared: AnyDeclaredView): void {
+/**
+ * One identity means one declared view, wherever on the graph that view appears. `place` marks the
+ * list entry that names the view, when one does.
+ */
+function registerIdentity(
+  identities: ViewIdentities,
+  declared: AnyDeclaredView,
+  place?: Finding,
+): void {
   const known = identities.get(declared.identity);
   if (known === undefined) {
     identities.set(declared.identity, declared);
     return;
   }
   if (known !== declared) {
-    throw new DeclarationError(
-      `View "${declared.identity}" is declared by two distinct objects. Install one copy of the package that declares it.`,
-    );
+    throw new DeclarationError(twoPackageCopies, {
+      correction: 'Install one copy of the package that declares it.',
+      findings:
+        place === undefined ? [] : [{ ...place, note: `another ${quoted(declared.identity)}` }],
+      sentence: `View ${quoted(declared.identity)} is declared by two distinct objects.`,
+    });
   }
 }
 
-/** The sentence one contributor's list reports for a value it cannot read. */
-function entryFault(subject: ViewSubject): string {
+/** A name JavaScript source can spell as an identifier, which a finding prints a class key as. */
+const identifier = /^[A-Za-z_$][\w$]*$/u;
+
+/** How a finding prints an override's key: a failure class by its name, anything else elided. */
+function keyCode(key: OverrideKey): string {
+  return key.kind === 'failure' && identifier.test(key.name) ? key.name : elided;
+}
+
+/**
+ * One list entry as a finding prints it: a declared view as the `view()` call that made it, an
+ * override as its `override()` call, and any other value as it is.
+ */
+function entryCode(entry: unknown): unknown {
+  if (typeof entry !== 'object' || entry === null) {
+    return entry;
+  }
+  const listed = declarations.get(entry);
+  if (listed) {
+    return spelled(`view(${quoteString(listed.identity)}, ${elided})`);
+  }
+  const record = overrides.get(entry);
+  return record ? spelled(`override(${keyCode(record.key)}, ${elided})`) : entry;
+}
+
+/** Where one contributor's `views` list sits, with each entry printed as the call that made it. */
+function listSite(subject: ViewSubject, declared: unknown): FactSite {
+  const views = Array.isArray(declared) ? Array.from(declared, entryCode) : declared;
+  return slotSite({ ...subject.owner, subject: subject.sentence }, 'views', views);
+}
+
+/** The fault of one list entry that is not a value this contributor's list may hold. */
+function entryFault(subject: ViewSubject, place: Finding): DeclarationError {
   return subject.declares
-    ? `${subject.sentence} holds a value that is not a view. Supply the value returned by view(identity, definition) or override(key, view).`
-    : `${subject.sentence} holds a value that is not a view override. Supply the value returned by override(key, view).`;
+    ? new DeclarationError(foreignValue, {
+        correction:
+          'Supply the value returned by view(identity, definition) or override(key, view).',
+        findings: [place],
+        sentence: `${subject.sentence} holds a value that is not a view.`,
+      })
+    : new DeclarationError(foreignValue, {
+        correction: 'Supply the value returned by override(key, view).',
+        findings: [place],
+        sentence: `${subject.sentence} holds a value that is not a view override.`,
+      });
 }
 
 /** A `views` slot holds a list, so anything else is the same declaration fault. */
@@ -317,22 +396,15 @@ function readContributions(subject: ViewSubject, declared: unknown): readonly un
     return [];
   }
   if (!Array.isArray(declared)) {
-    throw new DeclarationError(
-      subject.declares
-        ? `${subject.sentence} declares views that are not an array. Supply a list of declared views and override values.`
-        : entryFault(subject),
-    );
+    throw new DeclarationError(notAList, {
+      correction: subject.declares
+        ? 'Supply a list of declared views and override values.'
+        : 'Supply a list of override values.',
+      findings: [partFinding(listSite(subject, declared), [])],
+      sentence: `${subject.sentence} declares views that are not an array.`,
+    });
   }
   return declared;
-}
-
-/** The override one entry carries; anything else is a declaration fault of the slot. */
-function overrideOf(subject: ViewSubject, entry: unknown): OverrideRecord {
-  const record = typeof entry === 'object' && entry !== null ? overrides.get(entry) : undefined;
-  if (!record) {
-    throw new DeclarationError(entryFault(subject));
-  }
-  return record;
 }
 
 /** One contributor's build in progress: what it is filling, and how its diagnostics name it. */
@@ -340,52 +412,85 @@ interface ViewBuild {
   contributions: ViewContributions;
   identities: ViewIdentities;
   subject: ViewSubject;
+  /** The list the contributor declared, printed, which each fault marks an entry of. */
+  site: FactSite;
+  /** The entry that first overrode each key, so a second override marks both. */
+  positions: Map<unknown, number>;
 }
 
 /**
- * One override recorded under the key it answers. One key answers to one override inside one
- * contributor, so a second override for it is a declaration fault; the same key overridden by two
- * contributors resolves first-in-wins. A key that is neither a declared view nor a failure class
- * is the entry fault of the list that holds it, reported here rather than at the `override()` call.
+ * The entry a key's first override sits at, recording this one's when it is the first. One key
+ * answers to one override inside one contributor, so a second override marks both entries.
  */
-function recordOverride(build: ViewBuild, { key, replacement }: OverrideRecord): void {
-  if (key.kind === 'invalid') {
-    throw new DeclarationError(entryFault(build.subject));
-  }
-  if (key.kind === 'failure') {
-    recordFailureOverride(build, key, replacement);
+function claimKey(build: ViewBuild, key: ValidKey, index: number): void {
+  const slot = key.kind === 'failure' ? key.prototype : key.view;
+  const first = build.positions.get(slot);
+  if (first === undefined) {
+    build.positions.set(slot, index);
     return;
   }
-  recordViewOverride(build, key.view, replacement);
+  const clause =
+    key.kind === 'failure'
+      ? `the view for ${quoted(key.name)}`
+      : `view ${quoted(key.view.identity)}`;
+  throw new DeclarationError(overrideTwice, {
+    correction: 'Remove one override.',
+    findings: [
+      partFinding(build.site, [first], 'the first override'),
+      partFinding(build.site, [index], 'the second override'),
+    ],
+    sentence: `${build.subject.sentence} overrides ${clause} twice.`,
+  });
 }
 
-/** One failure class answers to one override inside one contributor, keyed by its prototype. */
-function recordFailureOverride(
-  { contributions, subject }: ViewBuild,
-  key: { name: string; prototype: object },
-  replacement: StoredView,
+/** The keys an override answers to: a declared view or a failure class. */
+type ValidKey = Exclude<OverrideKey, { kind: 'invalid' }>;
+
+/**
+ * One override recorded under the key it answers. The same key overridden by two contributors
+ * resolves first-in-wins. A key that is neither a declared view nor a failure class is a fault of
+ * the list that holds it, reported here rather than at the `override()` call.
+ */
+function recordOverride(
+  build: ViewBuild,
+  { key, replacement }: OverrideRecord,
+  index: number,
 ): void {
-  if (contributions.failures.has(key.prototype)) {
-    throw new DeclarationError(
-      `${subject.sentence} overrides the view for "${key.name}" twice. Remove one override.`,
-    );
+  if (key.kind === 'invalid') {
+    throw new DeclarationError(overrideKey, {
+      correction:
+        'Key the override on a value view(identity, definition) returned, or on a failure class.',
+      findings: [partFinding(build.site, [index])],
+      sentence: `${build.subject.sentence} overrides a key that is neither a declared view nor a failure class.`,
+    });
   }
-  contributions.failures.set(key.prototype, replacement);
+  claimKey(build, key, index);
+  if (key.kind === 'failure') {
+    build.contributions.failures.set(key.prototype, replacement);
+    return;
+  }
+  // Naming a declared view as a key registers its identity, as listing the declaration does.
+  registerIdentity(build.identities, key.view, partFinding(build.site, [index]));
+  build.contributions.views.set(key.view, replacement);
 }
 
-/** Naming a declared view as a key registers its identity, as listing the declaration does. */
-function recordViewOverride(
-  { contributions, identities, subject }: ViewBuild,
-  key: AnyDeclaredView,
-  replacement: StoredView,
-): void {
-  registerIdentity(identities, key);
-  if (contributions.views.has(key)) {
-    throw new DeclarationError(
-      `${subject.sentence} overrides view "${key.identity}" twice. Remove one override.`,
-    );
+/**
+ * One entry of a contributor's list: a declared view, which only a plugin may list, or an
+ * override. Any other value is the list's entry fault.
+ */
+function recordEntry(build: ViewBuild, entry: unknown, index: number): void {
+  const { identities, site, subject } = build;
+  const place = partFinding(site, [index]);
+  const object = typeof entry === 'object' && entry !== null ? entry : undefined;
+  const listed = object === undefined ? undefined : declarations.get(object);
+  const record = object === undefined ? undefined : overrides.get(object);
+  if (listed && subject.declares) {
+    registerIdentity(identities, listed, place);
+  } else if (record) {
+    recordOverride(build, record, index);
+  } else {
+    throw entryFault(subject, place);
   }
-  contributions.views.set(key, replacement);
 }
 
 /**
@@ -399,17 +504,10 @@ function buildViews(
   identities: ViewIdentities,
 ): ViewContributions {
   const contributions: ViewContributions = { failures: new Map(), views: new Map() };
-  for (const entry of readContributions(subject, declared)) {
-    const listed =
-      typeof entry === 'object' && entry !== null ? declarations.get(entry) : undefined;
-    if (listed && !subject.declares) {
-      throw new DeclarationError(entryFault(subject));
-    }
-    if (listed) {
-      registerIdentity(identities, listed);
-    } else {
-      recordOverride({ contributions, identities, subject }, overrideOf(subject, entry));
-    }
+  const site = listSite(subject, declared);
+  const build: ViewBuild = { contributions, identities, positions: new Map(), site, subject };
+  for (const [index, entry] of readContributions(subject, declared).entries()) {
+    recordEntry(build, entry, index);
   }
   return contributions;
 }
@@ -576,6 +674,7 @@ export type {
   ResolvedRowView,
   ViewContribution,
   ViewContributions,
+  ViewSubject,
   ViewIdentities,
   ViewOverride,
   ViewRegistry,

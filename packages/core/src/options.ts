@@ -1,11 +1,27 @@
+import { declaredName } from './command-rules.js';
+import { valueCode } from './diagnostic-text.js';
 import {
   DeclarationError,
   MissingValueError,
+  quoted,
   RepeatedOptionError,
   ShortGroupError,
   UnexpectedValueError,
   UnknownOptionError,
 } from './errors.js';
+import { factFault, flagFault, siteFinding } from './facts.js';
+import type { InputSite } from './facts.js';
+import {
+  booleanOptionMultiple,
+  optionDeclaredTwice,
+  optionPolarity,
+  optionType,
+  polarityOnString,
+  shortAlias,
+  shortOnlyBothPolarities,
+  shortOnlyWithoutShort,
+  spellingTaken,
+} from './input-rules.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -27,7 +43,7 @@ export function emptyValues(): OptionValues {
 }
 
 /** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
-type SpellingRole = 'long' | 'negative' | 'short';
+export type SpellingRole = 'long' | 'negative' | 'short';
 
 type OptionForm =
   | { type: 'string'; name: string; multiple: boolean }
@@ -35,69 +51,141 @@ type OptionForm =
 
 type OptionSpelling = OptionForm & { role: SpellingRole };
 
-function validateDeclaration({ name, config }: OptionDeclaration) {
+/**
+ * The part of one declaration that yields a spelling of the given role, which a spelling fault
+ * marks: the declared name for the long form, `short` for the short alias, and the `polarity` that
+ * generates a negative form.
+ */
+export function spellingMark(site: InputSite, role: SpellingRole): string {
+  if (role === 'long') {
+    return site.named;
+  }
+  return `${site.at}.${role === 'short' ? 'short' : 'polarity'}`;
+}
+
+/** The declared name answers the declared-name rule an argument's name answers. */
+export function checkOptionName(name: unknown, site: InputSite): void {
+  const findings = [siteFinding(site, site.named)];
   if (typeof name !== 'string') {
-    throw new DeclarationError('Option names must be strings. Supply a string name.');
+    throw new DeclarationError(declaredName, {
+      correction: 'Supply a string name.',
+      findings,
+      sentence: `Option name ${valueCode(name)} is not a string.`,
+    });
   }
   if (!name || name.startsWith('-') || /[\s=]/u.test(name)) {
-    throw new DeclarationError(
-      `Option name "${name}" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".`,
-    );
+    throw new DeclarationError(declaredName, {
+      correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
+      findings,
+      sentence: `Option name ${quoted(name)} is invalid.`,
+    });
   }
-  if (!['string', 'boolean'].includes(config.type)) {
-    throw new DeclarationError(`Option "${name}" has an invalid type. Use "string" or "boolean".`);
-  }
+}
+
+/** The short alias, and `shortOnly`, which leaves the option that alias alone. */
+function checkShortForms(config: OptionConfig, site: InputSite, subject: string): void {
   if (
     config.short !== undefined &&
     (typeof config.short !== 'string' || !/^[A-Za-z]$/u.test(config.short))
   ) {
-    throw new DeclarationError(`Option "${name}" requires a short alias of one ASCII letter.`);
+    throw factFault(shortAlias, site, {
+      correction: 'Supply one ASCII letter.',
+      fact: 'short',
+      sentence: `${subject} declares a short alias that is not one ASCII letter.`,
+    });
   }
   if (config.shortOnly !== undefined && typeof config.shortOnly !== 'boolean') {
-    throw new DeclarationError(`Option "${name}" shortOnly must be Boolean. Use true or false.`);
+    throw flagFault(site, 'shortOnly');
   }
   if (config.shortOnly && config.short === undefined) {
-    throw new DeclarationError(`Option "${name}" with shortOnly requires a short alias.`);
-  }
-  if (config.type === 'boolean' && config.multiple !== undefined) {
-    throw new DeclarationError(
-      `Option "${name}" is a boolean option and declares multiple. Remove multiple or declare a string option.`,
-    );
-  }
-  if (config.multiple !== undefined && typeof config.multiple !== 'boolean') {
-    throw new DeclarationError(`Option "${name}" multiple must be Boolean. Use true or false.`);
-  }
-  if (config.polarity !== undefined) {
-    if (config.type !== 'boolean') {
-      throw new DeclarationError(
-        `Option "${name}" declares polarity but is not Boolean. Remove polarity or use type "boolean".`,
-      );
-    }
-    if (!['positive', 'both', 'negative'].includes(config.polarity)) {
-      throw new DeclarationError(
-        `Option "${name}" has an invalid polarity. Use "positive", "both", or "negative".`,
-      );
-    }
-    if (config.polarity === 'both' && config.shortOnly) {
-      throw new DeclarationError(
-        `Option "${name}" cannot express both polarities with shortOnly. Enable long forms or select one polarity.`,
-      );
-    }
+    throw factFault(shortOnlyWithoutShort, site, {
+      correction: 'Add short or remove shortOnly.',
+      fact: 'shortOnly',
+      sentence: `${subject} declares shortOnly and no short alias.`,
+    });
   }
 }
 
-function addSpelling(
-  spellings: Map<string, OptionSpelling>,
-  spelling: string,
-  option: OptionSpelling,
-) {
-  const existing = spellings.get(spelling);
-  if (existing) {
-    throw new DeclarationError(
-      `Option spelling "${spelling}" is used by both "${existing.name}" and "${option.name}". Change one declaration.`,
-    );
+/** A Boolean option's polarity, which a string option does not declare. */
+function checkPolarity(config: OptionConfig, site: InputSite, subject: string): void {
+  if (config.polarity === undefined) {
+    return;
   }
-  spellings.set(spelling, option);
+  if (config.type !== 'boolean') {
+    throw factFault(polarityOnString, site, {
+      correction: 'Remove polarity or use type "boolean".',
+      fact: 'polarity',
+      sentence: `${subject} declares polarity but is not Boolean.`,
+    });
+  }
+  if (!['positive', 'both', 'negative'].includes(config.polarity)) {
+    throw factFault(optionPolarity, site, {
+      correction: 'Use "positive", "both", or "negative".',
+      fact: 'polarity',
+      sentence: `${subject} has an invalid polarity.`,
+    });
+  }
+  if (config.polarity === 'both' && config.shortOnly) {
+    throw factFault(shortOnlyBothPolarities, site, {
+      correction: 'Enable long forms or select one polarity.',
+      fact: 'shortOnly',
+      sentence: `${subject} cannot express both polarities with shortOnly.`,
+    });
+  }
+}
+
+/** Every rule one option declaration answers alone, before the table meets it. */
+function validateDeclaration({ name, config }: OptionDeclaration, site: InputSite) {
+  checkOptionName(name, site);
+  const subject = `Option ${quoted(name)}`;
+  if (!['string', 'boolean'].includes(config.type)) {
+    throw factFault(optionType, site, {
+      correction: 'Use "string" or "boolean".',
+      fact: 'type',
+      sentence: `${subject} has an invalid type.`,
+    });
+  }
+  checkShortForms(config, site, subject);
+  if (config.type === 'boolean' && config.multiple !== undefined) {
+    throw factFault(booleanOptionMultiple, site, {
+      correction: 'Remove multiple or declare a string option.',
+      fact: 'multiple',
+      sentence: `${subject} is a boolean option and declares multiple.`,
+    });
+  }
+  if (config.multiple !== undefined && typeof config.multiple !== 'boolean') {
+    throw flagFault(site, 'multiple');
+  }
+  checkPolarity(config, site, subject);
+}
+
+/**
+ * The scope one table compiles: the phrase a repeated name names it by, and where each of its
+ * options was declared, which every fault's findings rebuild.
+ */
+export interface CompileScope<Declaration extends OptionDeclaration> {
+  readonly subject: string;
+  readonly siteOf: (declaration: Declaration) => InputSite;
+}
+
+/** One spelling of a table being compiled, with the site of the option that claims it. */
+interface Claim {
+  option: OptionSpelling;
+  site: InputSite;
+}
+
+function addSpelling(claims: Map<string, Claim>, spelling: string, claim: Claim) {
+  const existing = claims.get(spelling);
+  if (existing) {
+    throw new DeclarationError(spellingTaken, {
+      correction: 'Change one declaration.',
+      findings: [existing, claim].map(({ option, site }) =>
+        siteFinding(site, spellingMark(site, option.role)),
+      ),
+      sentence: `Option spelling ${quoted(spelling)} is used by both ${quoted(existing.option.name)} and ${quoted(claim.option.name)}.`,
+    });
+  }
+  claims.set(spelling, claim);
 }
 
 /**
@@ -110,42 +198,56 @@ export function booleanValue(values: OptionValues, name: string, config: OptionC
   return values.booleans.get(name) ?? config.polarity === 'negative';
 }
 
-export function compileOptions(declarations: readonly OptionDeclaration[], subject: string) {
-  const spellings = new Map<string, OptionSpelling>();
-  const names = new Set<string>();
-  for (const { name, config } of declarations) {
-    validateDeclaration({ config, name });
-    if (names.has(name)) {
-      throw new DeclarationError(
-        `Option "${name}" is declared more than once on ${subject}. Remove or rename the duplicate.`,
-      );
+/**
+ * One scope's options compiled into the spelling table the parser reads, with every rule one
+ * declaration answers alone and every rule two of them answer together.
+ */
+export function compileOptions<Declaration extends OptionDeclaration>(
+  declarations: readonly Declaration[],
+  scope: CompileScope<Declaration>,
+): Map<string, OptionSpelling> {
+  const claims = new Map<string, Claim>();
+  const names = new Map<string, Declaration>();
+  for (const declaration of declarations) {
+    const { name, config } = declaration;
+    const site = scope.siteOf(declaration);
+    validateDeclaration({ config, name }, site);
+    const first = names.get(name);
+    if (first) {
+      const earlier = scope.siteOf(first);
+      throw new DeclarationError(optionDeclaredTwice, {
+        correction: 'Remove or rename the duplicate.',
+        findings: [
+          siteFinding(earlier, earlier.named, 'the first declaration'),
+          siteFinding(site, site.named, 'the second declaration'),
+        ],
+        sentence: `Option ${quoted(name)} is declared more than once on ${scope.subject}.`,
+      });
     }
-    names.add(name);
+    names.set(name, declaration);
     const positive: OptionForm =
       config.type === 'string'
         ? { multiple: config.multiple === true, name, type: 'string' }
         : { name, type: 'boolean', value: config.polarity !== 'negative' };
     if (!config.shortOnly) {
       if (config.type === 'string' || config.polarity !== 'negative') {
-        addSpelling(spellings, `--${name}`, { ...positive, role: 'long' });
+        addSpelling(claims, `--${name}`, { option: { ...positive, role: 'long' }, site });
       }
       if (
         config.type === 'boolean' &&
         (config.polarity === 'both' || config.polarity === 'negative')
       ) {
-        addSpelling(spellings, `--no-${name}`, {
-          name,
-          role: 'negative',
-          type: 'boolean',
-          value: false,
+        addSpelling(claims, `--no-${name}`, {
+          option: { name, role: 'negative', type: 'boolean', value: false },
+          site,
         });
       }
     }
     if (config.short !== undefined) {
-      addSpelling(spellings, `-${config.short}`, { ...positive, role: 'short' });
+      addSpelling(claims, `-${config.short}`, { option: { ...positive, role: 'short' }, site });
     }
   }
-  return spellings;
+  return new Map([...claims].map(([spelling, { option }]) => [spelling, option]));
 }
 
 /**

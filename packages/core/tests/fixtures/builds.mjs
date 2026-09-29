@@ -451,7 +451,9 @@ if (scenario === 'captured-reader') {
     });
     await app.run({ host: { argv: [] } });
   } catch (error) {
-    process.stdout.write(`thrown: ${error.sentence}\n`);
+    // Imported here, so the lines of the defect scenarios above keep the numbers their tests pin.
+    const { ruleText } = await import('./rule-text.mjs');
+    process.stdout.write(`thrown: ${ruleText(error)}\n`);
   }
 } else if (scenario === 'inspect') {
   try {

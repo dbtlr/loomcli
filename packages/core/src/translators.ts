@@ -1,3 +1,4 @@
+import { spelled } from './diagnostic-text.js';
 import {
   asSentence,
   DeclarationError,
@@ -6,6 +7,9 @@ import {
   quoted,
   reasonOf,
 } from './errors.js';
+import { partFinding } from './facts.js';
+import type { FactSite } from './facts.js';
+import { foreignValue, notAFunction, notAList, translationKey } from './plugin-rules.js';
 import { prototypeChain } from './prototypes.js';
 import { brokenTranslator, brokenTranslatorCorrection } from './rules.js';
 import { ignoreRejection, isThenable } from './thenable.js';
@@ -73,18 +77,37 @@ function keyPrototype(key: unknown): object | undefined {
   return typeof prototype === 'object' && prototype !== null ? prototype : undefined;
 }
 
-/**
- * How a diagnostic names one key class: its name, quoted and escaped, or what it is when it has no
- * name that can be read.
- */
-function keyName(key: object): string {
+/** A key's own name, or `undefined` when it has none that can be read. */
+function nameOf(key: object): string | undefined {
   let name: unknown = undefined;
   try {
     name = 'name' in key ? key.name : undefined;
   } catch {
     name = undefined;
   }
-  return typeof name === 'string' && name !== '' ? quoted(name) : 'an anonymous class';
+  return typeof name === 'string' && name !== '' ? name : undefined;
+}
+
+/**
+ * How a diagnostic names one key class: its name, quoted and escaped, or what it is when it has no
+ * name that can be read.
+ */
+function keyName(key: object): string {
+  const name = nameOf(key);
+  return name === undefined ? 'an anonymous class' : quoted(name);
+}
+
+/** A name JavaScript source can spell as an identifier, which a finding prints a class key as. */
+const identifier = /^[A-Za-z_$][\w$]*$/u;
+
+/**
+ * The finding for one `translate()` call, marking the argument at `mark`. A class key prints as
+ * its name, as its author wrote it, where any other function prints as an ellipsis.
+ */
+function translateFinding(key: unknown, translator: unknown, mark: string) {
+  const name = typeof key === 'function' ? nameOf(key) : undefined;
+  const code = name !== undefined && identifier.test(name) ? spelled(name) : key;
+  return { arguments: [code, translator], call: 'translate', mark };
 }
 
 /**
@@ -113,20 +136,26 @@ function translate<Thrown extends object>(
   // Key either, so it is reported as a non-class before any failure-class check.
   const chain = prototype === undefined ? undefined : prototypeChain(prototype);
   if (prototype === undefined || chain === undefined) {
-    throw new DeclarationError(
-      'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-    );
+    throw new DeclarationError(translationKey, {
+      correction: 'Supply an error class, such as SyntaxError.',
+      findings: [translateFinding(key, translator, '0')],
+      sentence: 'translate() received a key that is not a class.',
+    });
   }
   // Core never offers a failure to translators, so a translation keyed on a failure class never runs.
   if (prototype === LoomError.prototype || chain.includes(LoomError.prototype)) {
-    throw new DeclarationError(
-      'translate() received a failure class as its key. A failure is never translated; key the translation on the foreign class it replaces.',
-    );
+    throw new DeclarationError(translationKey, {
+      correction: 'Key the translation on the foreign class it replaces.',
+      findings: [translateFinding(key, translator, '0')],
+      sentence: 'translate() received a failure class as its key.',
+    });
   }
   if (typeof translator !== 'function') {
-    throw new DeclarationError(
-      'translate() received a translator that is not a function. Supply a function that returns a failure or undefined.',
-    );
+    throw new DeclarationError(notAFunction, {
+      correction: 'Supply a function that returns a failure or undefined.',
+      findings: [translateFinding(key, translator, '1')],
+      sentence: 'translate() received a translator that is not a function.',
+    });
   }
   return new TranslationDeclaration({
     name: keyName(key),
@@ -152,13 +181,14 @@ interface TranslationContributor {
 type TranslatorRegistry = readonly TranslationContributor[];
 
 /**
- * One contributor's `translators` list. `sentence` names the contributor at the start of a
- * sentence, `The Application` or `Plugin "@acme/http"`, and the slot is read defensively, because a
- * JavaScript author reaches it with any value.
+ * One contributor's `translators` list. `site` names the contributor at the start of a sentence,
+ * `The Application` or `Plugin "@acme/http"`, and holds the call that declared the list, which a
+ * fault marks. The slot is read defensively, because a JavaScript author reaches it with any value.
  */
-function readTranslations(sentence: string, declared: unknown): TranslationContributor {
+function readTranslations(site: FactSite, declared: unknown): TranslationContributor {
+  const sentence = site.subject;
   const byPrototype = new Map<object, TranslationRecord[]>();
-  for (const record of translationRecords(sentence, declared)) {
+  for (const record of translationRecords(site, declared)) {
     const listed = byPrototype.get(record.prototype) ?? [];
     listed.push(record);
     byPrototype.set(record.prototype, listed);
@@ -169,18 +199,28 @@ function readTranslations(sentence: string, declared: unknown): TranslationContr
   };
 }
 
+/** The fix a `translators` slot's list fault and entry fault share. */
+const translationSupply = 'translate(ErrorClass, translator)';
+
 /** The record behind each entry of one `translators` slot, whose every other value is its fault. */
-function translationRecords(sentence: string, declared: unknown): TranslationRecord[] {
-  const fault = `${sentence} holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).`;
+function translationRecords(site: FactSite, declared: unknown): TranslationRecord[] {
   if (declared !== undefined && !Array.isArray(declared)) {
-    throw new DeclarationError(fault);
+    throw new DeclarationError(notAList, {
+      correction: `Supply a list of values returned by ${translationSupply}.`,
+      findings: [partFinding(site, [])],
+      sentence: `${site.subject} declares translators that are not an array.`,
+    });
   }
   const list: readonly unknown[] = declared ?? [];
   // Array.from visits a hole as undefined, where map would skip it and leave the hole in place.
-  return Array.from(list, (entry) => {
+  return Array.from(list, (entry, index) => {
     const record = typeof entry === 'object' && entry !== null ? records.get(entry) : undefined;
     if (!record) {
-      throw new DeclarationError(fault);
+      throw new DeclarationError(foreignValue, {
+        correction: `Supply the value returned by ${translationSupply}.`,
+        findings: [partFinding(site, [index])],
+        sentence: `${site.subject} holds a translator entry that is not a translation.`,
+      });
     }
     return record;
   });

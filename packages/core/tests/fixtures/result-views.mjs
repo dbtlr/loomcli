@@ -1,6 +1,7 @@
 import { Application, Command } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
 
 const scenario = process.argv[2];
 const mode = process.argv[3];
@@ -72,7 +73,7 @@ if (mode === 'inspect') {
     const node = scenario === 'root' ? graph.root : graph.root.children[0];
     process.stdout.write(`${JSON.stringify(node.result)}\n`);
   } catch (error) {
-    process.stdout.write(`declaration:${error.exitCode}: ${error.sentence ?? error.message}\n`);
+    process.stdout.write(`declaration:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
   const code = await app.run({ host: { argv: scenario === 'root' ? [] : ['paths'] } });

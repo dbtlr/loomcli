@@ -111,28 +111,62 @@ function reports(argv: string[]) {
   };
 }
 
-/** The banner a declaration fault with no rule of its own opens under, 80 columns wide. */
-const banner = `-- INVALID DECLARATION ${'-'.repeat(57)}`;
+/** The banner of the failure-name conflict, 80 columns wide. */
+const banner = `-- FAILURE NAME CONFLICT ${'-'.repeat(7)} @loomcli/plugins/manifest/failure-name-conflict`;
+
+/** The rule's explanation as an 80-column diagnostic wraps it. */
+const explanation = [
+  'The manifest lists each failure name once for the whole application, with one',
+  'exit code and one meaning, so a consumer reads one contract for each name. Two',
+  'declarations of one name that disagree leave it no single entry to list.',
+].join('\n');
+
+/** One declared failure as the graph holds it: its name, its exit code, and its meaning. */
+interface Declared {
+  readonly exitCode: number;
+  readonly meaning: string;
+  readonly on: string;
+}
+
+/**
+ * The finding for one declaration of `invalid-json`, rebuilt as the `manifestCommand()` value that
+ * declared it with the entry the graph holds, and the carets under the key the two disagree on.
+ */
+function finding({ exitCode, meaning, on }: Declared, key: 'exitCode' | 'meaning'): string {
+  const value = key === 'exitCode' ? `exitCode: ${String(exitCode)}` : `meaning: '${meaning}'`;
+  const line = `    manifestCommand({ failures: [{ name: 'invalid-json', exitCode: ${String(exitCode)}, meaning: '${meaning}' }] })`;
+  const start = line.indexOf(value);
+  return `${line}\n${' '.repeat(start)}${'^'.repeat(value.length)} on ${on}`;
+}
 
 /**
  * The report one failure-name conflict produces in each build, whichever Command was routed: a
- * development build states the sentence under the declaration banner, and a distributed build
- * writes the generic message.
+ * development build writes the rule's Developer Diagnostic, with a finding for each declaration,
+ * and a distributed build writes the generic message.
  */
-function conflict(sentence: string) {
+function conflict(sentence: string, first: Declared, second: Declared) {
+  const key = first.exitCode === second.exitCode ? 'meaning' : 'exitCode';
+  const sections = [
+    banner,
+    sentence,
+    finding(first, key),
+    finding(second, key),
+    explanation,
+    'Declare one code and one meaning for each failure name.',
+  ];
   return {
-    development: {
-      status: 1,
-      stderr: `${banner}\n\n${sentence} Declare one code and one meaning for each failure name.\n`,
-      stdout: '',
-    },
+    development: { status: 1, stderr: `${sections.join('\n\n')}\n`, stdout: '' },
     distributed: { status: 1, stderr: 'app: Something went wrong.\n', stdout: '' },
   };
 }
 
+const notJson = 'The document is not valid JSON.';
+
 test('one name with two codes is a declaration error naming the name and both Commands', () => {
   const report = conflict(
     'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select".',
+    { exitCode: 65, meaning: notJson, on: 'Command "get"' },
+    { exitCode: 1, meaning: notJson, on: 'Command "select"' },
   );
   expect(reports(['code-conflict', '--manifest'])).toEqual(report);
   expect(reports(['code-conflict', 'get', '--manifest'])).toEqual(report);
@@ -142,6 +176,8 @@ test('one name with two meanings is a declaration error naming the name and both
   expect(reports(['meaning-conflict', 'select', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "select".',
+      { exitCode: 65, meaning: notJson, on: 'Command "get"' },
+      { exitCode: 65, meaning: 'The document cannot be parsed.', on: 'Command "select"' },
     ),
   );
 });
@@ -150,6 +186,8 @@ test('a conflicting meaning is quoted with its control characters escaped', () =
   expect(reports(['meaning-conflict-controls', '--manifest'])).toEqual(
     conflict(
       String.raw`Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "Bad \u202eevil\u009b" on "x" on Command "select".`,
+      { exitCode: 65, meaning: notJson, on: 'Command "get"' },
+      { exitCode: 65, meaning: String.raw`Bad \u202eevil\u009b" on "x`, on: 'Command "select"' },
     ),
   );
 });
@@ -158,6 +196,8 @@ test('one name with two codes on one Command is a declaration error naming that 
   expect(reports(['same-command-code-conflict', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "get".',
+      { exitCode: 65, meaning: notJson, on: 'Command "get"' },
+      { exitCode: 1, meaning: notJson, on: 'Command "get"' },
     ),
   );
 });
@@ -166,6 +206,8 @@ test('one name with two meanings on one Command is a declaration error naming th
   expect(reports(['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "get".',
+      { exitCode: 65, meaning: notJson, on: 'Command "get"' },
+      { exitCode: 65, meaning: 'The document cannot be parsed.', on: 'Command "get"' },
     ),
   );
 });
@@ -210,7 +252,7 @@ test('a declared failure is rejected at the call unless it holds a failure class
 test('a failure class whose static exit code is 200 is rejected at the call', () => {
   expect(rule('failure-code-200')).toEqual(
     invalid(
-      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
     ),
   );
 });
@@ -218,23 +260,21 @@ test('a failure class whose static exit code is 200 is rejected at the call', ()
 test('a failure class whose static exit code getter throws is rejected at the call as declaring no finite code', () => {
   expect(rule('failure-code-getter-throws')).toEqual(
     invalid(
-      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125.',
     ),
   );
 });
 
 test('a failure class whose static name getter throws is rejected at the call under the empty name an anonymous class has', () => {
   expect(rule('failure-name-getter-throws')).toEqual(
-    invalid(
-      'Failure class "" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
-    ),
+    invalid('Failure class "" declares exit code 200. Declare a whole number from 1 through 125.'),
   );
 });
 
 test('a failure class whose static name is not a string is rejected under that name read as text, as core names it', () => {
   expect(rule('failure-name-number')).toEqual(
     invalid(
-      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125; 0 means success, and 126 and above belong to the shell and to signals.',
+      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125.',
     ),
   );
 });

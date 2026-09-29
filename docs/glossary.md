@@ -350,7 +350,7 @@ The author-facing report of a declaration fault or a defect: a banner with the r
 _Avoid_: Stack trace, error page, debug output, verbose error
 
 **Diagnostic rule**:
-One reason a declaration can be wrong, or one kind of defect, declared once with `diagnosticRule` and shared by every site that raises it. Its identity is the declaring package's name, `/`, and a kebab-case name, such as `@loomcli/core/plugin-option-collision`, and it carries the headline, the explanation, and an optional docs link.
+One reason a declaration can be wrong, or one kind of defect, declared once with `diagnosticRule` and shared by every site that raises it. Its identity is the declaring package's name, any kebab-case subpath segments that name the part of the package that owns it, and a kebab-case name, joined by `/`, such as `@loomcli/core/spelling-taken` or `@loomcli/plugins/manifest/failure-name-conflict`, and it carries the headline, the explanation, and an optional docs link.
 _Avoid_: Error code (for a rule), lint rule, check
 
 **Operator message**:

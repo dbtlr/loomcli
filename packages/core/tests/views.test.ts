@@ -103,9 +103,12 @@ test.each([
   ],
   [
     'plugins-not-array',
-    'The Application plugins must be an array. Supply a list of plugin values.',
+    'The Application declares plugins that are not an array. Supply a list of plugin values.',
   ],
-  ['rendering-not-object', 'The rendering policy must be an object.'],
+  [
+    'rendering-not-object',
+    'The rendering policy is not an object. Supply an object, or omit rendering.',
+  ],
   [
     'retired-globals',
     'The Application options contain globals. Declare them with globalOption(name, config).',
@@ -192,11 +195,11 @@ test.each([
   ],
   [
     'app-junk-key',
-    'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
+    'The Application overrides a key that is neither a declared view nor a failure class. Key the override on a value view(identity, definition) returned, or on a failure class.',
   ],
   [
     'app-junk-keys',
-    'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
+    'The Application overrides a key that is neither a declared view nor a failure class. Key the override on a value view(identity, definition) returned, or on a failure class.',
   ],
 ] satisfies [string, string][])(
   'the call that declares the %s views throws',

@@ -4,8 +4,6 @@
  * script takes only a portable name, which it checks at the call.
  */
 
-import { DeclarationError } from '@loomcli/core';
-
 /**
  * Core's portable name rule for an application name: the POSIX portable filename set, starting
  * with neither `-` nor `.`. `new Application()` enforces the same pattern.
@@ -14,13 +12,13 @@ const portableName = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u;
 
 /**
  * The name a script is printed for, checked against the portable name rule, so a newline, a
- * quote, or a leading `-` never reaches the Zsh `#compdef` line or a registration call.
+ * quote, or a leading `-` never reaches the Zsh `#compdef` line or a registration call. The name
+ * is the Application's, which `new Application()` already holds to the same rule, so a name
+ * outside it is a defect in the pack and not a fault an author can make.
  */
 function scriptName(name: string): string {
   if (!portableName.test(name)) {
-    throw new DeclarationError(
-      `A completion script needs a portable application name, and "${name}" is not one. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".`,
-    );
+    throw new TypeError('A completion script needs the portable name the Application holds.');
   }
   return name;
 }

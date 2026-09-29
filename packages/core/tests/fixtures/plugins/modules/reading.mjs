@@ -1,6 +1,7 @@
 import { extension, readExtension } from '@loomcli/core';
 import { z } from 'zod';
 
+import { ruleText } from '../../rule-text.mjs';
 import { argumentFact, commandFact, optionFact } from '../extensions.mjs';
 
 /**
@@ -32,7 +33,7 @@ const middleware = async ({ command, graph, next, out }) => {
   try {
     readExtension(command, twin);
   } catch (error) {
-    await out.print(`mismatch:${error.name}:${error.sentence ?? error.message}`);
+    await out.print(`mismatch:${error.name}:${ruleText(error)}`);
   }
   // The stored output is frozen to any depth, so a projection cannot write through the graph.
   const frozen = [];

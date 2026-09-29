@@ -18,7 +18,7 @@ import {
 const dialect = 'https://json-schema.org/draft/2020-12/schema';
 
 const outsideRun =
-  'This validator reads the validation context, which only exists during a Loom run.';
+  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run, or leave the context unread.';
 
 const fixture = new URL('fixtures/path-run.mjs', import.meta.url);
 

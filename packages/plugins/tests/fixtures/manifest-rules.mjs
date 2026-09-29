@@ -1,6 +1,8 @@
 import { Application, Command, EX_DATAERR, FatalError } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
+import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
+
 /** A failure class that declares 65. */
 class BadDataError extends FatalError {
   static exitCode = EX_DATAERR;
@@ -101,7 +103,7 @@ function coreReserved() {
     new ReservedError();
     return { fault: null };
   } catch (error) {
-    return { fault: error.constructor.name, message: error.sentence ?? error.message };
+    return { fault: error.constructor.name, message: ruleText(error) };
   }
 }
 
@@ -117,7 +119,7 @@ function outcome() {
       ? get.extensions['@loomcli/plugins/manifest/command'][0].failures[0]
       : { fault: null };
   } catch (error) {
-    return { fault: error.constructor.name, message: error.sentence ?? error.message };
+    return { fault: error.constructor.name, message: ruleText(error) };
   }
 }
 
