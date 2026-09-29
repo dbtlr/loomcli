@@ -521,6 +521,18 @@ Object.defineProperty(NamelessKeyError, 'name', {
   },
 });
 
+/** An error class whose `prototype` cannot be read, through the trap the case names. */
+function unreadablePrototypeKey(trap) {
+  return new Proxy(class extends Error {}, {
+    [trap](target, key, ...rest) {
+      if (key === 'prototype') {
+        throw new Error('The prototype trap failed.');
+      }
+      return Reflect[trap](target, key, ...rest);
+    },
+  });
+}
+
 /** Each declaration fault, which a case constructs outside a run. */
 const faults = {
   'fault-application': () => new Application('translators', { translators: ['text'] }),
@@ -531,6 +543,8 @@ const faults = {
       () => undefined,
       () => undefined,
     ),
+  'fault-key-get': () => translate(unreadablePrototypeKey('get'), () => undefined),
+  'fault-key-has': () => translate(unreadablePrototypeKey('has'), () => undefined),
   'fault-plugin': () => plugin('@acme/http', { translators: ['text'] }),
   'fault-plugin-hole': () => plugin('@acme/http', { translators: holey([catchAll], [catchAll]) }),
   'fault-plugin-list': () => plugin('@acme/http', { translators: 'text' }),

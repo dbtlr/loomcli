@@ -90,8 +90,12 @@ test.each([
   expect(result.stderr).not.toContain('Unavailable');
 });
 
-test('a cancelled run whose throw has an unreadable name still reports that throw', () => {
-  expect(run('cancelled-name').stderr).not.toContain('The name getter failed.');
+test("a cancelled run whose throw has an unreadable name keeps its cancellation code and never reports the name getter's error", () => {
+  expect(run('cancelled-name')).toEqual({
+    status: 130,
+    stderr: 'Internal error: Could not write invocation output.\n',
+    stdout: 'resolved:130\n',
+  });
 });
 
 test('a middleware throw during unwinding stays the unwinding internal error', () => {
@@ -159,6 +163,14 @@ test('a sequence source the action let propagate reports once, as the translated
 test.each([
   [
     'fault-key',
+    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
+  ],
+  [
+    'fault-key-get',
+    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
+  ],
+  [
+    'fault-key-has',
     'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
   ],
   [

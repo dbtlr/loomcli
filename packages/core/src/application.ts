@@ -161,7 +161,7 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
 /**
  * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it. A
  * value that cannot be read, such as an Error whose `name` getter throws, counts as an echo, so
- * it keeps its cancellation code and stays the value the run reports.
+ * it keeps its cancellation code and no translator replaces it.
  */
 function echoesCancellation(thrown: unknown, controller: AbortController): boolean {
   const { signal } = controller;

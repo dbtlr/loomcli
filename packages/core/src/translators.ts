@@ -57,13 +57,19 @@ type Translation = Pick<TranslationDeclaration, typeof translation>;
 /**
  * The prototype a class key carries, or `undefined` for a value that is not a class. A class is a
  * function whose `prototype` is the object its instances' chains hold, so an arrow function, a
- * bound function, and every non-function are no key at all.
+ * bound function, and every non-function are no key at all. A key whose `prototype` cannot be
+ * read, such as a proxy whose trap throws, is no key either.
  */
 function keyPrototype(key: unknown): object | undefined {
-  if (typeof key !== 'function' || !('prototype' in key)) {
+  let prototype: unknown = undefined;
+  try {
+    if (typeof key !== 'function' || !('prototype' in key)) {
+      return undefined;
+    }
+    prototype = key.prototype;
+  } catch {
     return undefined;
   }
-  const prototype: unknown = key.prototype;
   return typeof prototype === 'object' && prototype !== null ? prototype : undefined;
 }
 
