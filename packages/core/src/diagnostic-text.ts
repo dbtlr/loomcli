@@ -1,5 +1,5 @@
 import { escapeControlCharacters } from './controls.js';
-import { isPlainObject } from './facts.js';
+import { isPlainObject } from './plain.js';
 
 /**
  * One reason a declaration can be wrong, or one kind of defect: the parts that hold at every site
@@ -77,6 +77,24 @@ interface Span {
 /** A string as a single-quoted JavaScript literal, with every control escaped. */
 function quoteString(text: string): string {
   return `'${escapeControlCharacters(text.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`))}'`;
+}
+
+/**
+ * Stand-ins a finding prints as the code they name, such as `new Command('get')` for the Command
+ * value an attach received, which a finding would otherwise print as an ellipsis.
+ */
+const spellings = new WeakMap<object, string>();
+
+/** A finding argument that prints as the code given, which the caller has already escaped. */
+function spelled(code: string): object {
+  const value = Object.freeze({});
+  spellings.set(value, code);
+  return value;
+}
+
+/** The code a stand-in prints as, or `undefined` for any other value. */
+function spellingOf(value: unknown): string | undefined {
+  return typeof value === 'object' && value !== null ? spellings.get(value) : undefined;
 }
 
 /** Whether a value is a Standard Schema, which a finding prints as an ellipsis like a function. */
@@ -162,9 +180,9 @@ class CodePrinter {
    * print an ellipsis.
    */
   private composite(value: unknown, { path, seen }: Place): string {
-    const primitive = primitiveCode(value);
-    if (primitive !== undefined) {
-      return primitive;
+    const known = primitiveCode(value) ?? spellingOf(value);
+    if (known !== undefined) {
+      return known;
     }
     if (typeof value !== 'object' || value === null || seen.has(value) || seen.size >= depthLimit) {
       return elided;
@@ -370,6 +388,7 @@ export {
   messageWidth,
   quoteString,
   registerRule,
+  spelled,
   valueCode,
   wrap,
 };

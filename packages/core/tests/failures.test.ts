@@ -254,7 +254,7 @@ test('an override for a fatal subclass answers it without answering the base', (
 
 test.each([
   ['internal', 'internal: Unexpected failure.\n'],
-  ['declaration', 'declaration: The root Command has no action. Register an action.\n'],
+  ['declaration', 'declaration: The root Command has no action.\n'],
 ])('an author-facing %s failure reaches its override', (scenario, stderr) => {
   expect(failures(scenario)).toEqual({ status: 1, stderr, stdout: 'resolved:1\n' });
 });

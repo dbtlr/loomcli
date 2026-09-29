@@ -1,5 +1,5 @@
 import type { ApplicationEnvironment, RegisteredEnvironment } from './environment.js';
-import { isPlainObject } from './facts.js';
+import { isPlainObject } from './plain.js';
 import type { Plugin, ThemeOf } from './plugin.js';
 import type { Alignment } from './style-wire.js';
 /** Concrete terminal foregrounds; backgrounds use the same palette indices. */

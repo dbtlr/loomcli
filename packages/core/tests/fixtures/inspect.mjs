@@ -1,6 +1,7 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
 
 const digits = {
   '~standard': {
@@ -226,7 +227,7 @@ if (mode === 'catch') {
     process.stdout.write(
       `${encode({
         caught: error instanceof DeclarationError,
-        message: error.sentence ?? error.message,
+        message: ruleText(error),
         name: error.name,
       })}\n`,
     );

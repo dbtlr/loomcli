@@ -3,8 +3,8 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/sp
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import { InternalError } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
-import { isPlainObject } from './facts.js';
 import type { compileOptions } from './options.js';
+import { isPlainObject } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';

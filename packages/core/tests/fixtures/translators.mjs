@@ -14,6 +14,8 @@ import {
 } from '@loomcli/core';
 import { z } from 'zod';
 
+import { ruleText } from './rule-text.mjs';
+
 const [scenario, ...argv] = process.argv.slice(2);
 
 // A test that reads a defect's own diagnostic runs the fixture as a development build.
@@ -701,7 +703,7 @@ if (scenario in faults) {
     process.stdout.write('constructed\n');
   } catch (error) {
     const kind = error instanceof DeclarationError ? 'DeclarationError' : 'other';
-    process.stdout.write(`thrown:${kind}: ${error.sentence ?? error.message}\n`);
+    process.stdout.write(`thrown:${kind}: ${ruleText(error)}\n`);
   }
 } else if (scenario === 'error-options') {
   // The failure classes an author constructs keep a cause only when one is passed.

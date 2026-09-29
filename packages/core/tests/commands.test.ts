@@ -306,7 +306,8 @@ test.each([
   ],
   [
     'newline-application-name',
-    'Application name "a\nb" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+    // The name is escaped, so a line break in it cannot break the sentence.
+    String.raw`Application name "a\u000ab" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".`,
   ],
   [
     'empty-application-name',

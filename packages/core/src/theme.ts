@@ -1,5 +1,5 @@
 import { DeclarationError } from './errors.js';
-import { isPlainObject } from './facts.js';
+import { isPlainObject } from './plain.js';
 import type { Palette } from './style-state.js';
 import { chains, reservedStyleNames } from './style.js';
 import type { Operation } from './style.js';

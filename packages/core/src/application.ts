@@ -1,12 +1,15 @@
 import type { Writable } from 'node:stream';
 
 import { runInvocation } from './chain.js';
+import { optionsObject, portableName } from './command-rules.js';
 import {
   attachToRoot,
+  callArguments,
   childNode,
   buildGraph,
   checkDeclaredOptions,
   collectInputs,
+  commandPlacement,
   declareAction,
   declareExtensions,
   declareArgument,
@@ -17,6 +20,7 @@ import {
   isPortableName,
   layerOf,
   portableNameCorrection,
+  quotedName,
 } from './command.js';
 import type {
   AfterAction,
@@ -25,6 +29,7 @@ import type {
   AfterCommand,
   AfterResult,
   BuiltGraph,
+  ChildOwner,
   Command,
   CommandMethod,
   CommandNodeHandle,
@@ -37,7 +42,8 @@ import { DeclarationError, exitCodeOf, InternalError, reasonOf, toFailure } from
 import type { LoomError } from './errors.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
-import { checkDescription, checkNoListingFacts, checkVersion, isPlainObject } from './facts.js';
+import { checkDescription, checkNoListingFacts, checkVersion } from './facts.js';
+import type { FactSite } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { destinationReport, reportFailure } from './hints.js';
@@ -48,6 +54,7 @@ import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
+import { isPlainObject } from './plain.js';
 import { installPlugins, ownedSignals, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
@@ -225,7 +232,7 @@ interface ApplicationConfig {
   contributors: readonly ViewContributions[];
   facts: ApplicationFacts;
   /** The parent that claimed each node the graph holds, so one value attaches at one point. */
-  owners: ReadonlyMap<CommandNodeHandle, string | null>;
+  owners: ReadonlyMap<CommandNodeHandle, ChildOwner>;
   plugins: readonly BuiltPlugin[];
   rendering: RenderingPolicy;
   /** The application's translations, then each installed plugin's, in resolution order. */
@@ -387,7 +394,12 @@ class ApplicationBuilder<
       owners: new Map(this.#config.owners),
       table: this.table(),
     };
-    const root = attachToRoot(this.#root, childNode(null, child), scope);
+    const node = childNode(null, child);
+    const root = attachToRoot(
+      this.#root,
+      { node, placement: commandPlacement([], node.name) },
+      scope,
+    );
     return this.derive(root, { composed: true, owners: scope.owners });
   }
 
@@ -757,14 +769,21 @@ interface ApplicationFacts {
 }
 
 /** Reject obsolete wiring before silently losing options that invocations depend on. */
-function checkOptions(options: unknown): ApplicationFacts {
+function checkOptions(name: string, options: unknown): ApplicationFacts {
+  const site: FactSite = {
+    at: '1',
+    declaration: { arguments: callArguments(name, options), call: 'new Application' },
+    subject: 'The Application',
+  };
   if (options === undefined) {
-    return { description: undefined, version: checkVersion(undefined) };
+    return { description: undefined, version: checkVersion(site, undefined) };
   }
   if (!isPlainObject(options)) {
-    throw new DeclarationError(
-      'The Application options must be an object. Supply an Application options object.',
-    );
+    throw new DeclarationError(optionsObject, {
+      correction: 'Supply an Application options object.',
+      findings: [{ ...site.declaration, mark: '1' }],
+      sentence: 'The Application options must be an object.',
+    });
   }
   if ('globals' in options) {
     throw new DeclarationError(
@@ -778,10 +797,10 @@ function checkOptions(options: unknown): ApplicationFacts {
   }
   // The root is every page's entry point, so it carries neither listing fact.
   // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
-  checkNoListingFacts('The Application', options);
+  checkNoListingFacts(site, options);
   return {
-    description: checkDescription('The Application', options.description),
-    version: checkVersion(options.version),
+    description: checkDescription(site, options.description),
+    version: checkVersion(site, options.version),
   };
 }
 
@@ -817,7 +836,10 @@ function readPacket(packet: unknown): boolean {
  * and then each plugin's Commands, which attach to the root first, in installation order and list
  * order.
  */
-function declareApplication(options: unknown): {
+function declareApplication(
+  name: string,
+  options: unknown,
+): {
   config: ApplicationConfig;
   globals: GlobalsState<{}>;
   root: CommandState<{}, {}, {}>;
@@ -831,7 +853,7 @@ function declareApplication(options: unknown): {
   );
   const translations = readTranslations('The Application', slot?.translators);
   const rendering = renderingPolicy(slot?.rendering);
-  const facts = checkOptions(options);
+  const facts = checkOptions(name, options);
   const development = readPacket(slot?.packet);
   const installed = installPlugins(slot?.plugins ?? []);
   const { plugins } = installed;
@@ -857,9 +879,9 @@ function declareApplication(options: unknown): {
     facts: { deprecated: undefined, description: undefined, hidden: false },
     name: null,
   });
-  const owners = new Map<CommandNodeHandle, string | null>();
+  const owners = new Map<CommandNodeHandle, ChildOwner>();
   for (const command of plugins.flatMap((entry) => entry.commands)) {
-    root = attachToRoot(root, command.node, {
+    root = attachToRoot(root, command, {
       descriptors: new Map(root.descriptors),
       owners,
       table,
@@ -885,9 +907,11 @@ function declareApplication(options: unknown): {
 /** The application name is typed as a command at the prompt, so it answers to the portable rule. */
 function checkApplicationName(name: unknown): string {
   if (!isPortableName(name)) {
-    throw new DeclarationError(
-      `Application name "${String(name)}" is invalid. ${portableNameCorrection}`,
-    );
+    throw new DeclarationError(portableName, {
+      correction: portableNameCorrection,
+      findings: [{ arguments: [name], call: 'new Application', mark: '0' }],
+      sentence: `Application name ${quotedName(name)} is invalid.`,
+    });
   }
   return name;
 }
@@ -898,7 +922,8 @@ class ApplicationDeclaration<
 > extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
-    super(checkApplicationName(name), declareApplication(options));
+    const checked = checkApplicationName(name);
+    super(checked, declareApplication(checked, options));
   }
 }
 

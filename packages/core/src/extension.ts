@@ -1,8 +1,8 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { asSentence, DeclarationError, reasonOf } from './errors.js';
-import { isPlainObject } from './facts.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
+import { isPlainObject } from './plain.js';
 import { isThenable } from './thenable.js';
 import type { AttachedCommand } from './types.js';
 

@@ -1,11 +1,13 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
-import { attach, commandNode } from './command.js';
+import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
+import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, InternalError, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AnyExtension, DescriptorRegistry } from './extension.js';
-import { checkDeprecated, checkDescription, checkHidden, isPlainObject } from './facts.js';
+import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
+import type { FactSite } from './facts.js';
 import { boundOptions } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
@@ -13,6 +15,7 @@ import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
+import { isPlainObject } from './plain.js';
 import { pluginLoaderFailed } from './rules.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
@@ -306,7 +309,8 @@ function installPlugins(plugins: unknown): InstalledPlugins {
 const forbidden = ['validate', 'validateOmitted', 'required'] as const;
 
 /** The rules a plugin option answers before every rule an ordinary declaration carries. */
-function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
+function checkPluginOption(site: FactSite, config: PluginOptionConfig): void {
+  const sentence = site.subject;
   if (!isPlainObject(config)) {
     throw new DeclarationError(`${sentence} is not an option declaration. Supply { type, ... }.`);
   }
@@ -316,9 +320,9 @@ function checkPluginOption(sentence: string, config: PluginOptionConfig): void {
       `${sentence} declares ${rejected}. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.`,
     );
   }
-  checkDescription(sentence, config.description);
-  checkHidden(sentence, config.hidden);
-  checkDeprecated(sentence, config.deprecated);
+  checkDescription(site, config.description);
+  checkHidden(site, config.hidden);
+  checkDeprecated(site, config.deprecated);
 }
 
 /**
@@ -338,7 +342,14 @@ function readOptions(
   const inputs: OptionInput[] = [];
   for (const [name, config] of Object.entries(declared ?? {})) {
     const sentence = `${pluginSentence(identity)} option "${name}"`;
-    checkPluginOption(sentence, config);
+    checkPluginOption(
+      {
+        at: `1.options.${name}`,
+        declaration: { arguments: [identity, { options: declared }], call: 'plugin' },
+        subject: sentence,
+      },
+      config,
+    );
     checkEnvBinding(sentence, config);
     const input: OptionInput = { config: captureConfig(config), kind: 'option', name };
     // The shared rules name the plugin and the option, so a fault reads with its contributor.
@@ -488,17 +499,32 @@ function readCommands(identity: string, declared: unknown): readonly AttachedChi
   }
   const list: readonly unknown[] = declared;
   const commands: AttachedChild[] = [];
+  // Each entry prints as the Command it is, so a finding rebuilds the list the plugin declared.
+  const entries = Array.from(list, (value) => {
+    const node = commandNode(value);
+    return node ? commandCode(node.name) : value;
+  });
   // A for...of walk reads a hole as undefined, which the entry rule rejects, where map would skip it.
-  for (const value of list) {
+  for (const [index, value] of list.entries()) {
     const node = commandNode(value);
     if (!node) {
       throw new DeclarationError(
         `${pluginSentence(identity)} holds a value that is not a Command. Supply the value returned by new Command(name).`,
       );
     }
-    commands.push(
-      attach({ argument: undefined, children: commands, hasAction: false, name: null }, node),
-    );
+    const placement: Finding = {
+      arguments: [identity, { commands: entries }],
+      call: 'plugin',
+      mark: `1.commands.${String(index)}`,
+    };
+    const parent = {
+      argument: undefined,
+      children: commands,
+      hasAction: false,
+      name: null,
+      path: [],
+    };
+    commands.push(attach(parent, node, placement));
   }
   return commands;
 }

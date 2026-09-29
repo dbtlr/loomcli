@@ -1,6 +1,8 @@
 import { Application, Command, DeclarationError, extension } from '@loomcli/core';
 import { z } from 'zod';
 
+import { ruleText } from './rule-text.mjs';
+
 const act = ({ out }) => out.print('ran');
 
 const leaf = (name) => new Command(name).action(act);
@@ -31,7 +33,7 @@ function attempt(call) {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    return `thrown: ${error.sentence ?? error.message}`;
+    return `thrown: ${ruleText(error)}`;
   }
 }
 

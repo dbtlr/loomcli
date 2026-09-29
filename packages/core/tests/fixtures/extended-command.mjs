@@ -1,6 +1,8 @@
 import { Application, Command, extension, readExtension } from '@loomcli/core';
 import { z } from 'zod';
 
+import { ruleText } from './rule-text.mjs';
+
 const examples = z.array(z.string()).optional();
 const help = extension('test/help', {
   schema: z.object({ details: z.string(), examples }),
@@ -56,6 +58,6 @@ if (mode === 'invoke') {
     new Application('invalid').command(scenarios[mode]()).inspect();
     process.stdout.write('unexpected success\n');
   } catch (error) {
-    process.stdout.write(`${error.sentence ?? error.message}\n`);
+    process.stdout.write(`${ruleText(error)}\n`);
   }
 }

@@ -1,9 +1,10 @@
 import { asSentence, foreignFailure, InternalError, LoomError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
-import { isPlainObject, isProseLine } from './facts.js';
+import { isProseLine } from './facts.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
+import { isPlainObject } from './plain.js';
 import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
 import {

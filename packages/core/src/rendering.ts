@@ -1,5 +1,5 @@
 import { DeclarationError } from './errors.js';
-import { isPlainObject } from './facts.js';
+import { isPlainObject } from './plain.js';
 import type { Host } from './types.js';
 
 type SwitchPolicy = 'auto' | 'always' | 'never';

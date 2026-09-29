@@ -1,5 +1,5 @@
-import { isPlainObject } from './facts.js';
 import { glyphForms } from './glyphs.generated.js';
+import { isPlainObject } from './plain.js';
 import { applyOperations, emptyAttributes } from './style-state.js';
 import type { Attributes, Palette } from './style-state.js';
 import {

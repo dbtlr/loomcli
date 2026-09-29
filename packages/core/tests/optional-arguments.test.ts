@@ -80,19 +80,30 @@ test('a required argument binds before an optional one', () => {
 test.each([
   [
     'optional-first',
-    'Argument "path" is optional and precedes required argument "name" on Command "keys". Declare optional arguments after required ones.',
+    'Argument "path" is optional and precedes required argument "name" on Command "keys".',
+    'Declare optional arguments after required ones.',
   ],
   [
     'after-optional',
-    'Argument "extra" follows optional argument "path" on the root Command. Declare an optional argument last.',
+    'Argument "extra" follows optional argument "path" on the root Command.',
+    'Declare an optional argument last.',
   ],
-])('%s throws from the declaring call while the module evaluates', (scenario, diagnostic) => {
-  const result = optional(scenario, ['one', 'two']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).not.toContain('Invalid declaration:');
-  expect(result.stderr).toContain(diagnostic);
-});
+])(
+  '%s throws from the declaring call while the module evaluates',
+  (scenario, sentence, correction) => {
+    const result = optional(scenario, ['one', 'two']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).not.toContain('Invalid declaration:');
+    expect(result.stderr).toContain('@loomcli/core/optional-argument-last');
+    expect(result.stderr).toContain(`
+${sentence}
+`);
+    expect(result.stderr).toContain(`
+${correction}
+`);
+  },
+);
 
 test('an omitted optional variadic argument calls no validator and gives the action an empty array', () => {
   expect(optional('tail')).toEqual({

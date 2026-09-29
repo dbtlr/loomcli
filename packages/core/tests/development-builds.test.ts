@@ -83,16 +83,22 @@ test('a build fault writes the generic message when distributed and its diagnost
   expect(run('build-fault', 'development')).toEqual({
     status: 1,
     stderr: [
-      '-- INVALID DECLARATION ---------------------------------------------------------',
+      '-- NOTHING TO RUN ------------------------- @loomcli/core/command-without-action',
       '',
-      'The root Command has no action. Register an action.',
+      'The root Command has no action.',
+      '',
+      "Routing ends at a Command that runs its action, or passes on to one of a group's",
+      'children. A Command with neither leaves an invocation that reaches it nothing to',
+      'run.',
+      '',
+      'Register an action.',
       '',
     ].join('\n'),
     stdout: 'resolved:1\n',
   });
   for (const build of ['development', 'distributed'] as const) {
     expect(run('inspect', build).stdout).toBe(
-      'thrown: DeclarationError: The root Command has no action. Register an action.\n',
+      'thrown: DeclarationError: The root Command has no action.\n',
     );
   }
 });

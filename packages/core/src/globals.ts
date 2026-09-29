@@ -4,6 +4,7 @@ import { DeclarationError } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry } from './extension.js';
 import { checkDeprecated, checkDescription, checkHidden } from './facts.js';
+import type { FactSite } from './facts.js';
 import { compileOptions } from './options.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig, OptionValue } from './types.js';
@@ -160,9 +161,14 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
       `${sentence} declares ${rejected}. Remove it; an omitted global option is absent, and a Command that needs its value checks for it.`,
     );
   }
-  checkDescription(sentence, input.config.description);
-  checkHidden(sentence, input.config.hidden);
-  checkDeprecated(sentence, input.config.deprecated);
+  const site: FactSite = {
+    at: '1',
+    declaration: { arguments: [input.name, input.config], call: 'globalOption', path: [] },
+    subject: sentence,
+  };
+  checkDescription(site, input.config.description);
+  checkHidden(site, input.config.hidden);
+  checkDeprecated(site, input.config.deprecated);
   checkEnvBinding(sentence, input.config);
   const record = buildExtensions({
     declared: input.config.extensions,
