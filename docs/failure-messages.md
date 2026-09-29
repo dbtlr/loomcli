@@ -71,7 +71,7 @@ The wording follows the status phrase web frameworks show for a 500, such as `In
 
 - **The exception to rule 2.** The generic message is the one operator message with no next step, because a defect has none Loom can name honestly. An author who has one adds it.
 - **Replacing it.** An author replaces the message with the existing `override(InternalError, view)` for defects and `override(DeclarationError, view)` for declaration faults, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
-- **The author's detail.** The author sees what broke and how to fix it in a [Developer Diagnostic](core.md#developer-diagnostics), which a [development build](core.md#development-builds) renders in place of the generic message. The packet built into the application decides which build a run is. Until that contract lands, core's current `InternalError` text under [Failure classes](core.md#failure-classes) stands.
+- **The author's detail.** The author sees what broke and how to fix it in a [Developer Diagnostic](core.md#developer-diagnostics), which a [development build](core.md#development-builds) renders in place of the generic message. The packet built into the application decides which build a run is.
 
 ## 8. Classify an author fault that reaches a shipped application
 
@@ -108,6 +108,6 @@ The audit listed every operator message Loom ships and checked it against rules 
 | Every rule in the validator catalog                         | The issue carries no code.                                                           | The issue carries its code and parameters under [Issue codes](validators.md#issue-codes).                        | -    |
 | Quoted diagnostic text: core's routing token and option spellings, and the configuration plugin's paths | Core's tokens are not escaped (the renderer drops C0 controls, and bidirectional controls pass); `escapeControlCharacters` covers control characters and line separators. | Also the format characters under rule 5.                                                                         | 5    |
 
-The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator sees the generic message once [development builds](core.md#development-builds) land.
+The formatter's and the manifest's encode faults are defects under rule 7; their rewritten sentences are the author's detail, and the operator of a [distributed build](core.md#development-builds) sees the generic message.
 
 The example applications were audited against rules 2 and 3 too: every `fatal`, `warn`, and `FatalError` sentence in jsonkit and textstat ends with its fix, such as `Field not found: "name". Run jsonkit keys to list the fields.`, each quoting the path or field it repeats so a trailing dot stays inside the quotes, and jsonkit's `Cannot parse JSON` and `Cannot read` and textstat's `Cannot read` keep their runtime reasons under rule 6, each closed by one period before the fix. jsonkit's branded `InputError` and `UnknownCommandError` views keep their text until they give way to core's default text, as [Example coverage](core.md#example-coverage) describes.

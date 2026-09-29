@@ -59,3 +59,4 @@ Proposed. It moves to accepted with the implementation that renders the Develope
 ## Changelog
 
 - 2026-09-29: Proposed with the development build contract.
+- 2026-09-29: The implementation renders the anatomy, declares rules through `diagnosticRule()`, gives `DeclarationError` and `InternalError` their structured constructors, carries each of core's defects under a rule of its own, reads a defect's source through `Host.readSource`, and renders the diagnostic ahead of every override in a development build. A throwing validator reports under `@loomcli/core/validator-failed`. Two facts the implementation settles: a declaration fault's sentence keeps the line breaks its author wrote, while a defect's sentence, which can carry a thrown reason, stays on one line; and a defect whose cause is not an Error prints the thrown value. The record stays proposed until every declaration rule in core, the pack, and the catalog carries its descriptor, findings, and explanation.
