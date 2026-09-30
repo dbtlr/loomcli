@@ -150,6 +150,16 @@ try {
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', join(temporary, 'validators.tgz')], join(root, 'packages/validators'));
   pnpm(['pack', '--out', join(temporary, 'loom.tgz')], join(root, 'packages/loom'));
+  // The packed manifest must pin core at the synchronized version itself.
+  // The override below would hide an unrewritten workspace spec that no registry consumer resolves.
+  const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
+  assert.equal(loomManifest.status, 0, loomManifest.output);
+  const loomCore = JSON.parse(loomManifest.stdout).dependencies?.['@loomcli/core'];
+  assert.equal(
+    loomCore,
+    version,
+    `The packed @loomcli/loom must depend on @loomcli/core ${version}, not "${loomCore}".`,
+  );
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),

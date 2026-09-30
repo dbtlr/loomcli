@@ -501,7 +501,7 @@ _Avoid_: Framework (for the package), runtime, engine
 ## Releases
 
 **Participating library**:
-A publishable first-party library included in the synchronized release version and package set.
+A publishable first-party package under `packages/`, a library or the `@loomcli/loom` toolchain, included in the synchronized release version and package set.
 _Avoid_: Release target, public workspace
 
 **Change fragment**:

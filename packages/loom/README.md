@@ -1,7 +1,3 @@
----
-description: Install @loomcli/loom and bundle a Loom CLI application with the packet() Bun.build plugin from @loomcli/loom/build.
----
-
 # @loomcli/loom
 
 The Loom CLI toolchain. Its public surface is `@loomcli/loom/build`, which exports `packet()`.
