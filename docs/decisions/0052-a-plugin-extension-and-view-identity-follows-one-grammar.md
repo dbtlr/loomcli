@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0052 - A plugin, extension, and view identity follows one grammar, checked at the declaring call
 description: A plugin, extension, or view identity is an npm package name, scoped or unscoped, followed by zero or more kebab-case subpath segments. plugin(), extension(), and view() check it at the call and raise one shared rule, @loomcli/core/invalid-identity, for a value outside it. A diagnostic rule's identity is this grammar plus a kebab-case rule name, built from the same source in core. The check rejects identities accepted since 0.2.0, so it is a breaking change.
-status: proposed
+status: accepted
 created: 2026-09-30
 modified: 2026-09-30
 ---
@@ -35,10 +35,11 @@ The contract is in [Identity and installation](../core.md#identity-and-installat
 
 ## Status
 
-Proposed. It moves to accepted when the implementation lands and the release that carries it publishes.
+Accepted.
 
 ## Changelog
 
 - 2026-09-30: Proposed with the identity grammar. The implementation lands in this change: `plugin()`, `extension()`, and `view()` raise `@loomcli/core/invalid-identity` at the call, core builds both grammars in one module and exports `isRuleIdentity`, and `@loomcli/validators` checks its issue codes with it.
 - 2026-09-30: Review adds the hand-built descriptor clause above: `plugin()` checks the identity of a hand-built descriptor in its `extensions` list, and so of its source binding, when it admits the list, reading the identity once.
 - 2026-09-30: Review holds the package name to npm's rules for a new name: no `~`, and at most 214 characters with its scope, the subpath segments not counted. The grammar is unreleased, so this narrows the proposal and adds no break.
+- 2026-09-30: The implementation shipped in 0.6.0, published from `4c0f9a6`. Accepted.
