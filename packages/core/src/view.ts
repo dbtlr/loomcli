@@ -12,6 +12,7 @@ import {
 import type { LoomError } from './errors.js';
 import { partFinding, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
+import { checkIdentity } from './identity.js';
 import {
   foreignValue,
   notAList,
@@ -185,6 +186,7 @@ function shapeOf(value: { render?: unknown; row?: unknown } | null | undefined):
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
+  checkIdentity('view', identity);
   const shape = shapeOf(definition);
   const findings = [{ arguments: [identity, definition], call: 'view', mark: '1' }];
   if (shape === 'both') {

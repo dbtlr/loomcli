@@ -7,7 +7,7 @@ import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
-import type { AnyExtension, DescriptorRegistry } from './extension.js';
+import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import {
   checkDeprecated,
   checkDescription,
@@ -21,6 +21,7 @@ import type { FactSite } from './facts.js';
 import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
+import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
@@ -32,7 +33,6 @@ import {
   notAFunction,
   notAList,
   notAnObject,
-  pluginIdentity,
   pluginInstalledTwice,
   pluginOptionRule,
   signalClaimedTwice,
@@ -258,29 +258,6 @@ function entryCode(value: unknown): unknown {
   return node ? spelled(`plugin(${quoteString(node.identity)}, ${elided})`) : value;
 }
 
-/** The fix every plugin identity fault shares. */
-const identityCorrection = 'Supply a nonempty string, such as the package name.';
-
-/** The identity one plugin declares, which is a nonempty string. */
-function readIdentity(identity: unknown): string {
-  const findings = [{ arguments: [identity, spelled(elided)], call: 'plugin', mark: '0' }];
-  if (typeof identity !== 'string') {
-    throw new DeclarationError(pluginIdentity, {
-      correction: identityCorrection,
-      findings,
-      sentence: 'A plugin declares an identity that is not a string.',
-    });
-  }
-  if (identity === '') {
-    throw new DeclarationError(pluginIdentity, {
-      correction: identityCorrection,
-      findings,
-      sentence: 'A plugin declares an empty identity.',
-    });
-  }
-  return identity;
-}
-
 /** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
 function definitionOf(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
   if (!isPlainObject(definition)) {
@@ -403,8 +380,11 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
     if (entry.theme !== undefined) {
       claim('theme', index);
     }
-    for (const descriptor of entry.descriptors.values()) {
-      registerDescriptor(descriptors, descriptor, partFinding(site, [index]));
+    for (const [key, descriptor] of entry.descriptors) {
+      registerDescriptor(descriptors, descriptor, {
+        identity: key,
+        place: partFinding(site, [index]),
+      });
     }
     // An empty claim leaves the signals slot free.
     if (entry.signals.length > 0) {
@@ -792,19 +772,22 @@ function readSource(
   const { binding, load } = declared;
   // A fault about one key marks the key, or the source itself when the key is absent.
   const keyFinding = (key: string) => partFinding(site, key in declared ? [key] : []);
-  const listed = (declaration.extensions ?? []).some((descriptor) => descriptor === binding);
-  if (!listed || !isDescriptor(binding)) {
+  // The plugin's own extensions were admitted first, so a listed binding is in the registry.
+  // Its identity is read from there, where admission read it once, and never from the binding again.
+  const bound = [...own.build.descriptors].find(([, descriptor]) => descriptor === binding);
+  if (bound === undefined) {
     throw new DeclarationError(sourceBinding, {
       correction: 'Supply a descriptor the plugin lists under extensions.',
       findings: [keyFinding('binding')],
       sentence: `${sentence} declares a source binding that is not one of its extensions.`,
     });
   }
-  if (binding.target !== 'option') {
+  const [bindingIdentity, { target }] = bound;
+  if (target !== 'option') {
     throw new DeclarationError(sourceBinding, {
       correction: 'Supply an extension that applies to options.',
       findings: [keyFinding('binding')],
-      sentence: `${sentence} declares source binding ${quoted(binding.identity)}, which applies to ${appliesTo(binding.target)}.`,
+      sentence: `${sentence} declares source binding ${quoted(bindingIdentity)}, which applies to ${appliesTo(target)}.`,
     });
   }
   if (!isLoader(load)) {
@@ -815,7 +798,7 @@ function readSource(
     });
   }
   const carrier = own.inputs.find((input) =>
-    Object.hasOwn(own.build.records.get(input) ?? {}, binding.identity),
+    Object.hasOwn(own.build.records.get(input) ?? {}, bindingIdentity),
   );
   if (carrier) {
     const option = pluginOptionSite(
@@ -829,7 +812,7 @@ function readSource(
       sentence: `${option.subject} carries its own source binding.`,
     });
   }
-  return { binding: binding.identity, load };
+  return { binding: bindingIdentity, load };
 }
 
 /** One plugin's declarations, read once at its `plugin()` call. */
@@ -851,7 +834,7 @@ interface BuiltPlugin {
   /** The Commands the plugin attaches to the root, in list order. */
   commands: readonly AttachedChild[];
   /** Every descriptor the plugin defines or its options' values name, by identity. */
-  descriptors: ReadonlyMap<string, AnyExtension>;
+  descriptors: ReadonlyMap<string, AdmittedDescriptor>;
   /** The extension record each of the plugin's own options carries. */
   records: InputRecords;
 }
@@ -885,7 +868,10 @@ function defineExtensions(
         sentence: `${pluginSentence(identity)} holds a value that is not an extension.`,
       });
     }
-    registerDescriptor(build.descriptors, descriptor, partFinding(site, [index]));
+    registerDescriptor(build.descriptors, descriptor, {
+      holder: pluginSentence(identity),
+      place: partFinding(site, [index]),
+    });
   }
 }
 
@@ -895,8 +881,8 @@ function defineExtensions(
  * copy is reported from the list that defines it. The views list is read against core's view
  * identities, and the Application reads it again against every other contributor's.
  */
-function readPlugin(identity: unknown, definition: DeclaredPlugin): BuiltPlugin {
-  const named = readIdentity(identity);
+function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
+  checkIdentity('plugin', named);
   const declaration = definitionOf(named, definition);
   const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
   const build: PluginRegisters = { descriptors: new Map(), records: new Map() };

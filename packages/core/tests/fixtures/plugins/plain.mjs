@@ -66,13 +66,12 @@ const scenarios = {
     return { input, stored };
   },
   'proto-identity': () => {
-    const { graph, stored } = inspected(output({ note: 'read' }), { identity: '__proto__' });
-    const record = graph.root.extensions;
-    return {
-      keys: Object.keys(record),
-      prototype: Object.getPrototypeOf(record) === Object.prototype,
-      stored,
-    };
+    try {
+      extension('__proto__', { schema: schemaOf(output({ note: 'read' })), target: 'command' });
+      return 'returned';
+    } catch (error) {
+      return error.rule?.identity;
+    }
   },
   'proto-key': () => {
     const { graph, stored } = inspected(

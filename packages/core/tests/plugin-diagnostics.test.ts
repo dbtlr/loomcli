@@ -58,6 +58,13 @@ const explanations = {
     "An extension value passes its descriptor's schema at the call that carries it,",
     'so every plugin that reads it reads a value the schema accepted.',
   ],
+  'invalid-identity': [
+    'An identity keys what a plugin, an extension, or a view contributes, names it in',
+    'every diagnostic, and prefixes the identities of the rules its package declares,',
+    'so it is a package name as npm spells one, scoped or not, then any subpath',
+    'segments, each after a / and each of lowercase letters and digits in words',
+    'joined by single hyphens.',
+  ],
   'invalid-packet': [
     'The packet says whether the application was built for development, which decides',
     'whether a defect shows the author its Developer Diagnostic or the operator one',
@@ -93,10 +100,6 @@ const explanations = {
     'which the author meant. The same key overridden by two contributors resolves to',
     'the first installed.',
   ],
-  'plugin-identity': [
-    "A plugin's identity keys its contributions and names it in every diagnostic, so",
-    'it is a nonempty string, by convention the package name.',
-  ],
   'plugin-installed-twice': [
     'Core keys each plugin by its identity, and a plugin contributes its options,',
     'middleware, hooks, and views once, so a second installation would contribute',
@@ -122,10 +125,9 @@ const explanations = {
   ],
   'rule-identity': [
     "A rule's identity names the package that declares it and the rule inside it, so",
-    'tooling keys on it and two packages never share one. It follows the grammar of a',
-    "validator package's issue codes: a package name, any kebab-case subpath segments",
-    'that name the part of the package that owns the rule, and a kebab-case rule',
-    'name, joined by /.',
+    'tooling keys on it and two packages never share one. It is an identity, a',
+    'package name and any kebab-case subpath segments that name the part of the',
+    'package that owns the rule, then a kebab-case rule name, joined by /.',
   ],
   'rule-prose': [
     "A rule's banner prints its headline, and its explanation teaches why the rule",
@@ -278,6 +280,20 @@ function bare(call: string, target: string, note?: string, nth = 0) {
 const twoPlugins = (first: string, second: string) =>
   `new Application('probe', { plugins: [plugin('${first}', …), plugin('${second}', …)] })`;
 
+/**
+ * The diagnostic an identity outside the grammar throws from its declaring call, which names the
+ * declarer, quotes the identity, and marks it.
+ */
+function identityCase(declarer: string, call: string, target: string, shown: string): Expected {
+  return {
+    correction: 'Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
+    findings: [bare(call, target)],
+    headline: 'INVALID IDENTITY',
+    rule: 'invalid-identity',
+    sentence: `${declarer} declares the identity ${shown}, which is not a package name with optional kebab-case subpath segments.`,
+  };
+}
+
 const cases: Record<string, Expected> = {
   'activation-empty': {
     correction: "Name at least one of the plugin's options or use 'always'.",
@@ -414,6 +430,18 @@ const cases: Record<string, Expected> = {
     sentence:
       'Extension "@acme/notes/command" was read through a descriptor that did not define the stored value.',
   },
+  'extension-hand-built-identity': {
+    ...identityCase('', "plugin('@acme/notes', { extensions: […] })", '…', ''),
+    sentence:
+      'Plugin "@acme/notes" holds the extension identity "Not A Valid/ID_", which is not a package name with optional kebab-case subpath segments.',
+  },
+  'extension-identity': identityCase(
+    'An extension',
+    "extension('@acme/notes/Command', …)",
+    "'@acme/notes/Command'",
+    '"@acme/notes/Command"',
+  ),
+  'extension-identity-kind': identityCase('An extension', 'extension(7, …)', '7', '7'),
   'extension-invalid': {
     correction: 'Correct the value.',
     findings: [onCommand(['get'], 'extend(…)', '…', 'extension "@acme/limit/command"')],
@@ -645,13 +673,7 @@ const cases: Record<string, Expected> = {
     rule: 'not-an-object',
     sentence: 'Plugin "@acme/log" declares a definition that is not an object.',
   },
-  'plugin-empty-identity': {
-    correction: 'Supply a nonempty string, such as the package name.',
-    findings: [bare("plugin('', …)", "''")],
-    headline: 'INVALID PLUGIN IDENTITY',
-    rule: 'plugin-identity',
-    sentence: 'A plugin declares an empty identity.',
-  },
+  'plugin-empty-identity': identityCase('A plugin', "plugin('', …)", "''", '""'),
   'plugin-entry': {
     correction: 'Supply the value returned by plugin(identity, definition).',
     findings: [
@@ -664,13 +686,8 @@ const cases: Record<string, Expected> = {
     rule: 'foreign-value',
     sentence: 'The Application holds a value that is not a plugin.',
   },
-  'plugin-identity': {
-    correction: 'Supply a nonempty string, such as the package name.',
-    findings: [bare('plugin(7, …)', '7')],
-    headline: 'INVALID PLUGIN IDENTITY',
-    rule: 'plugin-identity',
-    sentence: 'A plugin declares an identity that is not a string.',
-  },
+  'plugin-identity': identityCase('A plugin', "plugin('Help', …)", "'Help'", '"Help"'),
+  'plugin-identity-kind': identityCase('A plugin', 'plugin(7, …)', '7', '7'),
   'plugin-twice': {
     correction: 'Install each plugin once.',
     findings: [
@@ -954,6 +971,8 @@ const cases: Record<string, Expected> = {
     rule: 'two-package-copies',
     sentence: 'View "@acme/page" is declared by two distinct objects.',
   },
+  'view-identity': identityCase('A view', "view('@acme', …)", "'@acme'", '"@acme"'),
+  'view-identity-kind': identityCase('A view', 'view(null, …)', 'null', 'null'),
   'view-neither': {
     correction: 'Supply a view with render or a row view with row.',
     findings: [bare("view('@acme/page', {})", '{}')],
@@ -983,6 +1002,17 @@ test.each(Object.entries(cases))(
     expect(thrown(scenario)).toBe(diagnostic(expected));
   },
 );
+
+test.each([
+  'extension-unscoped',
+  'extension-deep',
+  'plugin-unscoped',
+  'plugin-deep',
+  'view-unscoped',
+  'view-deep',
+])('the %s identity passes the identity grammar', (scenario) => {
+  expect(thrown(scenario)).toBe('returned\n');
+});
 
 test('a rendering policy run() receives reports from run() under the Application it runs', () => {
   expect(invoke(fixture, ['run-rendering'])).toEqual({

@@ -9,7 +9,6 @@ import {
 } from '@loomcli/core';
 
 const act = () => undefined;
-const load = () => Promise.resolve({ default: act });
 const render = () => '';
 const row = () => '';
 
@@ -33,6 +32,37 @@ const rejecting = {
 };
 
 /**
+ * A descriptor built by hand rather than by `extension()`, which core recognizes by its shape.
+ * `fields` replaces any of its parts.
+ */
+function handBuilt(fields) {
+  return Object.assign(() => ({}), {
+    collect: false,
+    identity: '@acme/notes/command',
+    schema: accepting,
+    target: 'command',
+    ...fields,
+  });
+}
+
+/**
+ * A hand-built descriptor whose identity getter answers `@acme/a` and `@acme/b` in turn, so a
+ * build that reads the identity twice sees two identities.
+ */
+function alternating() {
+  let reads = 0;
+  const descriptor = handBuilt({});
+  Object.defineProperty(descriptor, 'identity', {
+    enumerable: true,
+    get: () => {
+      reads += 1;
+      return reads % 2 === 1 ? '@acme/a' : '@acme/b';
+    },
+  });
+  return descriptor;
+}
+
+/**
  * One declaration per scenario whose author-supplied value is `forged` or `bare`. Each throws a
  * declaration fault, and the fixture reports its rule and sentence, or the class of any other throw.
  */
@@ -50,21 +80,18 @@ const scenarios = {
         .views({}, { default: forged })
         .action(act),
     ),
-  'extension-copies': () =>
-    plugin('@acme/notes', {
-      extensions: [
-        extension(forged, { schema: accepting, target: 'command' }),
-        extension(forged, { schema: accepting, target: 'command' }),
-      ],
-    }),
+  'extension-alternating': () =>
+    plugin('@acme/notes', { extensions: [alternating(), alternating()] }),
+  'extension-bare': () => extension(bare, { schema: accepting, target: 'command' }),
+  'extension-collect': () => plugin('@acme/notes', { extensions: [handBuilt({ collect: 'no' })] }),
+  'extension-copies': () => plugin('@acme/notes', { extensions: [handBuilt({}), handBuilt({})] }),
+  'extension-forged': () => extension(forged, { schema: accepting, target: 'command' }),
+  'extension-hand-built': () =>
+    plugin('@acme/notes', { extensions: [handBuilt({ identity: forged })] }),
   'extension-issue': () =>
     new Command('get').extend(
       extension('@acme/limit/command', { schema: rejecting, target: 'command' })('x'),
     ),
-  'extension-target': () =>
-    new Command('get', {
-      extensions: [extension(forged, { schema: accepting, target: 'option' })('x')],
-    }),
   'global-option-bare': () => new Application('probe').globalOption(bare, { type: 'string' }),
   'global-option-config-bare': () => new Application('probe').globalOption(bare, null),
   'hook-option-name': () =>
@@ -81,21 +108,20 @@ const scenarios = {
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
   'option-config-bare': () => new Command('get').option(bare, undefined),
   'option-config-forged': () => new Command('get').option('format', forged),
-  'plugin-definition': () => plugin(forged, 5),
-  'plugin-list': () => plugin(forged, { commands: 'check' }),
-  'plugin-twice': () => {
-    const log = plugin(forged, {});
-    return new Application('probe', { plugins: [log, log] });
-  },
+  'plugin-bare': () => plugin(bare, {}),
+  'plugin-forged': () => plugin(forged, {}),
   'result-view': () => new Command('get').result({ views: { [forged]: { render, row } } }),
   'rule-bare': () => diagnosticRule(bare, { explanation: 'e', headline: 'h' }),
   'signal-bare': () => plugin('@acme/signals', { signals: [bare] }),
-  'source-binding': () =>
-    plugin('@acme/config', {
-      source: { binding: extension(forged, { schema: accepting, target: 'option' }), load },
-    }),
-  'view-bare': () => view(bare, {}),
-  'view-shape': () => view(forged, {}),
+  'source-binding': () => {
+    const binding = handBuilt({});
+    return plugin('@acme/config', {
+      extensions: [binding],
+      source: { binding, load: () => Promise.resolve({ default: act }) },
+    });
+  },
+  'view-bare': () => view(bare, { render }),
+  'view-forged': () => view(forged, { render }),
 };
 
 const report = {};

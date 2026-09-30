@@ -88,12 +88,8 @@ test('a "__proto__" output key is stored as an own key with the prototype untouc
   });
 });
 
-test('an extension whose identity is "__proto__" is an own key of the extensions record', () => {
-  expect(plain('proto-identity')).toEqual({
-    keys: ['__proto__'],
-    prototype: true,
-    stored: { note: 'read' },
-  });
+test('an extension whose identity is "__proto__" throws at its call, so it never keys the extensions record', () => {
+  expect(plain('proto-identity')).toBe('@loomcli/core/invalid-identity');
 });
 
 test('an output nested ten thousand deep is stored, because the walk holds no call stack', () => {
