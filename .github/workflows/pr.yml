@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the private Loom CLI
+      - name: Build the Loom CLI
         run: pnpm build
 
       - name: Check PR fragments and versions

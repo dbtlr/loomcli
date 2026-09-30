@@ -4,7 +4,7 @@ title: ADR-0047 - An operator message says what went wrong and what to do instea
 description: Every operator message Loom ships names what went wrong and says what to do instead, leaves plugin-dependent pointers to hint lines, repeats no value it cannot vouch for, escapes what it repeats, bidirectional controls included, and quotes no text Loom did not write. A defect shows the operator one generic message, and an author fault that reaches a shipped application is classified as an operator message or a defect.
 status: accepted
 created: 2026-09-28
-modified: 2026-09-29
+modified: 2026-09-30
 ---
 
 # ADR-0047 - An operator message says what went wrong and what to do instead
@@ -61,3 +61,4 @@ Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: the audited me
 - 2026-09-28: Accepted; the audited messages ship with the rewritten text under Node.js and Bun, so the Pointers clause and the prefix row above bind. The text changes ship in the same change fragment as the breaking `text()` change, because a pull request carries one fragment; they stay non-breaking as the Consequences state. [ADR-0038](0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md), [ADR-0045](0045-a-failure-class-declares-its-exit-code.md), and [ADR-0048](0048-a-validator-package-declares-one-issue-code-per-sentence.md) also carry dated entries.
 - 2026-09-29: The prefix row reaches every problem line. Core's default text opens each line of a `UsageError`'s message with the application name and a colon, so an `InputError` that reports two problems prints two prefixed lines; the hint lines an `onFailure` hook adds under them carry no prefix. The failure's `message` is unchanged, so an override reads the problems without the name.
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) and [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, write the later record the Defects clause names. The generic wording is `<application>: Something went wrong.`, the status-phrase form web frameworks use for a 500, with no claim on the author's behalf. It is the one operator message with no next step, because a defect has none Loom can name. A packet built into the application decides whether a run is in development, where the author sees a Developer Diagnostic in place of the generic message. A `DeclarationError` that `run()` reports is a defect too, so the `Invalid declaration: ` prefix the 2026-09-28 entry kept goes. Both bind when accepted.
+- 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds with ADR-0051.

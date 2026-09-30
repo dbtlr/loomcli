@@ -4,7 +4,7 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 # Changelog compiler
 
-The changelog compiler is the first command group in the private Loom CLI, `@loomcli/loom`, in `apps/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. It is not published or included in library version bumps.
+The changelog compiler is the first command group in the Loom CLI, `@loomcli/loom`, in `packages/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. `@loomcli/loom` is published with the libraries for its `@loomcli/loom/build` surface, and its version moves with theirs. Its release commands are hidden, so no listing advertises them.
 
 `pnpm build` compiles the library, examples, and local Loom CLI. Running its changelog command group prepares release files.
 

@@ -4,7 +4,7 @@ title: ADR-0010 - One immutable graph serves runtime execution and every project
 description: Graph build applies every declaration rule before any token is read, and inspect() returns the same graph as frozen plain data. Help, manifests, and other projections read that snapshot rather than a parallel model, and they describe the accepted product rather than its provenance.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-29
+modified: 2026-09-30
 ---
 
 # ADR-0010 - One immutable graph serves runtime execution and every projection
@@ -47,3 +47,4 @@ Help, manifests, completions, and agent tool listings are projections of `inspec
 - 2026-09-26: [ADR-0041](0041-every-action-reads-the-frozen-graph-and-its-routed-command.md) and [ADR-0042](0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md), proposed, give every action the frozen graph and its routed node, and export `locate`, which reads an unfinished invocation against the graph through the parser's own grammar. Shell completion under [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md) is a projection in this record's sense: it offers only what the graph holds. It binds when those records are accepted.
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md), proposed, settles the converter-failure rule the 2026-09-19 entries held. A development build reports a converter that throws or returns a non-object as a `DeclarationError` at build, from `run()` and `inspect()`, and a distributed build reads the input schema as `null`. The packet built into the application, not a run-time switch, decides the build. It binds when accepted.
 - 2026-09-29: [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md) is accepted with the converter check the entry above describes. In a development build `inspect()` and `run()` apply it alike, so the two paths differ only in the rule `run()` alone applies, validating a declared default through its schema.
+- 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above that it wrote binds.

@@ -34,6 +34,23 @@ function releaseInsertion(changelog: string, version: string) {
   return { after, before: before + blankLine(before) };
 }
 
+/**
+ * The installed pnpm manifest's path. pnpm is an optional peer dependency, because only lockfile
+ * preparation runs it, so a missing one fails with a sentence instead of a resolve error.
+ */
+function pnpmManifestPath(
+  resolve: (specifier: string) => string = (specifier) => import.meta.resolve(specifier),
+) {
+  try {
+    return fileURLToPath(resolve('pnpm/package.json'));
+  } catch (error) {
+    throw new Error(
+      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.3.2 beside @loomcli/loom and run the command again.',
+      { cause: error },
+    );
+  }
+}
+
 function updateLockfile(root: string) {
   const lock = join(root, 'pnpm-lock.yaml');
   if (existsSync(lock)) {
@@ -44,7 +61,7 @@ function updateLockfile(root: string) {
       z.object({ lockfileVersion: z.union([z.string(), z.number()]) }).parse(document.toJS());
     }
   }
-  const manifestPath = fileURLToPath(import.meta.resolve('pnpm/package.json'));
+  const manifestPath = pnpmManifestPath();
   const manifestSource = readRegularFile(dirname(manifestPath), 'package.json');
   const manifest = z
     .object({ bin: z.object({ pnpm: z.string() }) })
@@ -105,4 +122,4 @@ export function prepareLockfile(
   }
 }
 
-export { releaseInsertion, versionedManifest };
+export { pnpmManifestPath, releaseInsertion, versionedManifest };

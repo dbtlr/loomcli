@@ -32,7 +32,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ['apps/loom/src/**'],
+        files: ['packages/loom/src/**'],
         // Preserve compiler operation boundaries and Markdown/version constants.
         rules: {
           'eslint/max-params': 'off',
@@ -46,10 +46,8 @@ export default defineConfig({
           'packages/*/src/**',
           'examples/*/src/**',
           'examples/*/scripts/**',
-          'apps/*/src/**',
           'packages/*/tests/**',
           'examples/*/tests/**',
-          'apps/*/tests/**',
           'scripts/**',
         ],
         rules: {
@@ -133,7 +131,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/*/tests/**', 'examples/*/tests/**', 'apps/*/tests/**', 'scripts/**'],
+        files: ['packages/*/tests/**', 'examples/*/tests/**', 'scripts/**'],
         rules: {
           // Fixtures use literal expectations, stream sentinels, and callback failures.
           'eslint/max-params': 'off',
@@ -248,11 +246,7 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
-    include: [
-      'packages/*/tests/**/*.test.ts',
-      'examples/*/tests/**/*.test.ts',
-      'apps/*/tests/**/*.test.ts',
-    ],
+    include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
     // Process tests can run several children, each with its own ten-second deadline.
     testTimeout: 30_000,
   },

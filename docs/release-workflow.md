@@ -6,7 +6,7 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 `.github/workflows/release.yml` reconciles three records with the version in the participating manifests: the npm registry, the annotated tag `v<version>`, and the GitHub Release. Merging the guarded release PR is the only authorization. The workflow holds no registry secret, and every step reads before it writes, so a repeated run changes nothing. [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md) records the design and the rejected alternatives.
 
-The private Loom CLI carries the logic. `apps/loom/src/commands/release/` holds the two commands, and `apps/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
+The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds the two commands, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
 
 ## Trigger
 
@@ -123,7 +123,7 @@ The workflow depends on settings that live outside this repository's files.
 
 ## Accepted risks
 
-The `record` job installs from the frozen lockfile and builds the private Loom CLI in the same job that holds `contents: write`, before the step that uses the token. Dependency scripts are disabled and every package is integrity-pinned by the lockfile, so this is the same code that already runs on every pull request. Running a published `@loomcli/loom` instead would remove the build from that job, and the CLI is private.
+The `record` job installs from the frozen lockfile and builds the Loom CLI from the checkout in the same job that holds `contents: write`, before the step that uses the token. Dependency scripts are disabled and every package is integrity-pinned by the lockfile, so this is the same code that already runs on every pull request. `@loomcli/loom` is published, but the workflow runs the CLI it builds, `node packages/loom/dist/main.js`, not the published one. Running the published `@loomcli/loom` would remove the build from that job, and it remains the path to closing this risk.
 
 ## A run with nothing to do
 

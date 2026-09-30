@@ -1,0 +1,34 @@
+import { expect, test } from 'vite-plus/test';
+
+import { loom } from '../src/application.js';
+import { pnpmManifestPath } from '../src/helpers/release-files.js';
+
+test('the release commands are hidden, so no listing advertises them', () => {
+  const children = loom.inspect().root.children.map(({ hidden, name }) => ({ hidden, name }));
+  expect(children).toEqual([
+    { hidden: true, name: 'changelog' },
+    { hidden: true, name: 'pr' },
+    { hidden: true, name: 'release' },
+  ]);
+});
+
+test('a missing pnpm fails lockfile preparation with a sentence that says how to install it', () => {
+  const missing = Object.assign(new Error("Cannot find package 'pnpm'"), {
+    code: 'ERR_MODULE_NOT_FOUND',
+  });
+  expect(() =>
+    pnpmManifestPath(() => {
+      throw missing;
+    }),
+  ).toThrow(
+    new Error(
+      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.3.2 beside @loomcli/loom and run the command again.',
+    ),
+  );
+});
+
+test('an installed pnpm resolves to its manifest path', () => {
+  expect(pnpmManifestPath(() => 'file:///workspace/node_modules/pnpm/package.json')).toBe(
+    '/workspace/node_modules/pnpm/package.json',
+  );
+});

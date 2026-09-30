@@ -2,8 +2,8 @@ import { rm } from 'node:fs/promises';
 
 await Promise.all(
   [
-    'apps/loom/dist',
     'packages/core/dist',
+    'packages/loom/dist',
     'packages/plugins/dist',
     'packages/validators/dist',
     'examples/doctor/dist',

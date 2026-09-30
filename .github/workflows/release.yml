@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the private Loom CLI
+      - name: Build the Loom CLI
         run: pnpm build
 
       - name: Plan the reconciliation
@@ -70,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          node apps/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          node packages/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
           jq -r '"version=\(.version)", "publish=\(.publish)", "record=\(.record)"' "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT"
           echo "libraries=$(jq -c '[.libraries[].directory]' "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
 
@@ -214,7 +214,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the private Loom CLI
+      - name: Build the Loom CLI
         run: pnpm build
 
       # The plan is re-derived here rather than carried between jobs, so the record reads one source of truth.
@@ -224,5 +224,5 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
-          node apps/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
-          node apps/loom/dist/main.js release record --repository "$REPOSITORY" --plan "$RUNNER_TEMP/plan.json"
+          node packages/loom/dist/main.js release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          node packages/loom/dist/main.js release record --repository "$REPOSITORY" --plan "$RUNNER_TEMP/plan.json"
