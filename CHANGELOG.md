@@ -6,6 +6,235 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.6.0 - 2026-09-30
+
+0.6.0 is the failure handling release. A failure class declares its own exit code, a translator turns a foreign throw into one of the application's failure classes, plugins add hint lines under a failure, every message Loom ships says what went wrong and what to do instead, and the manifest lists the failures each Command can raise. `@loomcli/loom` joins the release set as the Loom toolchain. Install it as a development dependency for its `packet()` build plugin.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.6.0`.
+
+An application now has a build. The `loom.packet.json` in the source tree reads `development`, so a defect or a declaration fault prints its Developer Diagnostic for the author. The `packet()` plugin writes `distributed` into the bundle, so an operator sees `<application>: Something went wrong.` An Application given no packet is distributed, so an application that does not adopt the packet shows the generic message for a defect.
+
+The three migrations below share one idea: a fact is declared once, where its owner states it. A failure class declares its exit code on the class, a `text()` pattern carries the author's own sentence, and a plugin, extension, or view takes its identity from its package name.
+
+### Breaking Changes
+
+- Change `LoomError`'s constructor to `constructor(message: string, options?: ErrorOptions)`, which takes no exit code. A failure class declares its exit code once, as `static override readonly exitCode`, and core reads it from the nearest ancestor that declares one; `failure.exitCode` reports the same value. `LoomError` declares 1 and `UsageError` declares 2, so every core class keeps its code. See [Declared exit codes](docs/core.md#declared-exit-codes) and [ADR-0045](docs/decisions/0045-a-failure-class-declares-its-exit-code.md).
+- Change `ExitCode` to widen from `0 | 1 | 2 | 130 | 143` to `0 | FailureExitCode | 130 | 143`, where the exported `FailureExitCode` is every whole number from 1 through 125. Change the instance field `LoomError#exitCode` from `1 | 2` to a read-only accessor typed `FailureExitCode`, which reports the code core captured for the class at its first construction. A subclass can no longer override the instance `exitCode` as a property; it declares the static instead.
+
+### Migration
+
+**Affected surface.** A class that extends `LoomError` directly and passes a code to `super(message, code)`. A failure subclass that overrides the instance `exitCode` as a property. Every consumer that switches exhaustively on the published `ExitCode` type, including a `switch` with no `default` case or a type-level exhaustiveness check. Code that reads `failure.exitCode` into a `1 | 2` annotation or switches on it exhaustively.
+
+**Why.** A code passed to the constructor exists only on an instance and lets one class exit with two codes. A static declaration states the code once, so a script branches on the code the way a view branches on the class, and a projection reads the code without constructing a failure. An application's own failure class may now exit with a code from 3 through 125, so `run()` can resolve any of them.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { LoomError } from '@loomcli/core';
+import type { ExitCode } from '@loomcli/core';
+
+class QuotaError extends LoomError {
+  constructor(message: string) {
+    super(message, 1);
+    this.name = 'QuotaError';
+  }
+}
+
+function category(failure: LoomError): 1 | 2 {
+  return failure.exitCode;
+}
+
+function describe(code: ExitCode): string {
+  switch (code) {
+    case 0:
+      return 'succeeded';
+    case 1:
+      return 'failed';
+    case 2:
+      return 'invalid input';
+    case 130:
+      return 'cancelled by SIGINT or a caller abort';
+    case 143:
+      return 'cancelled by SIGTERM';
+  }
+}
+```
+
+After:
+
+```ts
+import { LoomError } from '@loomcli/core';
+import type { ExitCode, FailureExitCode } from '@loomcli/core';
+
+class QuotaError extends LoomError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'QuotaError';
+  }
+}
+
+function category(failure: LoomError): FailureExitCode {
+  return failure.exitCode;
+}
+
+function describe(code: ExitCode): string {
+  switch (code) {
+    case 0:
+      return 'succeeded';
+    case 1:
+      return 'failed';
+    case 2:
+      return 'invalid input';
+    case 130:
+      return 'cancelled by SIGINT or a caller abort';
+    case 143:
+      return 'cancelled by SIGTERM';
+    default:
+      return `failed with declared code ${String(code)}`;
+  }
+}
+```
+
+**Steps.**
+
+1. Remove the second argument from each `super(message, code)` call in a class that extends `LoomError`.
+2. Where that argument was not 1, declare the code on the class: `static override readonly exitCode = 2;`, or a constant such as `EX_DATAERR` from `@loomcli/core`.
+3. Add a case or a `default` branch for codes 3 through 125 to every exhaustive `switch` or lookup over `ExitCode`.
+4. Widen each `1 | 2` annotation that holds `failure.exitCode` to `FailureExitCode`, and add a `default` branch to each exhaustive `switch` over `failure.exitCode`.
+5. Replace an instance `exitCode` property on a failure subclass with `static override readonly exitCode`.
+
+**Validation.** Run the application's type check. A remaining numeric second argument to `super` reports TS2559, because a code has no properties in common with `ErrorOptions`, an unhandled `ExitCode` member reports in the exhaustiveness check, a `1 | 2` annotation that holds `failure.exitCode` reports TS2322, and an instance `exitCode` property on a subclass reports TS2610. Run a Command that raises each migrated class and confirm the process exits with the code it exited with before.
+
+- Change core's default text for every `UsageError` to open with the application name and a colon in place of `Invalid input: `, so `jsonkit nope` prints `jsonkit: Unknown command "nope". Use one of: doctor, completion, get, keys, select.` An `InputError` that reports several problems opens each problem line with the name, and hint lines from `onFailure` hooks carry no prefix. See [Failure messages](docs/failure-messages.md).
+- Change `candidates` on `UnknownCommandError` and `NonCallableCommandError` to leave out deprecated children, as completion does. A deprecated Command typed in full still routes. With no candidates, the sentence ends with its fix: `Supply the name of a declared command.` or `Supply the name of a declared subcommand.` See [Failure classes](docs/core.md#failure-classes).
+- Change the root's failure with no subcommand to `A command is required.`, followed by its candidates or its fix, and the issue for a validator that rejects with no issues to `The validator rejected this value without an explanation. Supply a different value.`
+- Change core's failure sentences to escape every typed token, option spelling, and issue path they quote through `escapeControlCharacters`, so a quoted token cannot reorder the line. The failure's public fields keep the raw values.
+- Change the mixed-scope `ShortGroupError` sentence to name only the two letters that disagree, `A short group mixes the global option "-q" with "-m", which is not a global option. Supply global options as separate tokens, and local options after their command name.`, because the rest of the group may hold an inline value such as a secret. `ShortGroupError.token` still holds the whole group. A global value option that is not last in its group, as in `-fhunter2`, is now the `'value-position'` fault that names that option alone, as a local value option is, and no longer a mixed-scope fault that names a letter of its value.
+- Change the configuration plugin's `--config` failures to end with their fix: `File "<path>" does not exist. Supply the path of an existing file.`, `could not be read. Supply a file this process can read.`, `is not valid JSON. Correct its syntax, or supply another file.`, and `does not hold a JSON object. Write its settings as one JSON object.` Each warning about a discovered file ends with its fix too: `Make it readable, or remove it.`, `Correct its syntax, or remove it.`, or `Write its settings as one JSON object, or remove it.` See [Configuration](docs/core.md#configuration).
+- Change the formatter's `json()` and `jsonl()` encode failure to `The value cannot be encoded as JSON. Emit plain JSON data from the action.`, and for an `undefined` value to `The value cannot be encoded as JSON, because it is undefined. Emit plain JSON data from the action.` The message no longer includes the engine's reason, which differs between Node.js and Bun; the thrown error keeps the engine's error as its `cause`.
+- Add `issueCode(code, { schema, message })` to `@loomcli/validators`. It declares one namespaced issue code, `<package>[/<subpath>...]/<rule-name>` as a diagnostic rule's identity reads, with its parameter schema and its sentence, and returns a frozen descriptor whose `issue(params)` builds a coded issue and whose `read(issue)` returns the typed parameters, or `undefined` for any other issue. See [Issue codes](docs/validators.md#issue-codes).
+- Add the catalog's 23 code descriptors, such as `integerRangeIssue` for `@loomcli/validators/integer-range`. Every catalog rejection now carries `code` and `params` beside its message, so an `InputError` view override can reword one catalog sentence with `integerRangeIssue.read(issue)`.
+- Change `path()` with no `access` to reject with `Expected a nonempty path with no NUL character.` in place of `Expected a path.`
+- Change `text()` to require `message` whenever `pattern` is given, and remove the default sentence `Expected a value that matches the required pattern.` See [text](docs/validators.md#text).
+
+### Migration
+
+**Affected surface.** Every `text()` call from `@loomcli/validators` that passes `pattern` without `message`.
+
+**Why.** The default sentence told the operator that a pattern exists without saying what it accepts. Only the author can say that, so the sentence for a pattern failure is now the author's `message`. See [ADR-0048](docs/decisions/0048-a-validator-package-declares-one-issue-code-per-sentence.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+import { text } from '@loomcli/validators';
+
+app.option('slug', { type: 'string', validate: text({ pattern: /^[a-z0-9-]+$/ }) });
+```
+
+After:
+
+```ts
+import { text } from '@loomcli/validators';
+
+app.option('slug', {
+  type: 'string',
+  validate: text({
+    pattern: /^[a-z0-9-]+$/,
+    message: 'Expected lowercase letters, digits, and hyphens.',
+  }),
+});
+```
+
+**Steps.**
+
+1. Find each `text()` call that passes `pattern`.
+2. Add `message`: one sentence, beginning `Expected`, that states what the pattern accepts. Do not repeat the operator's value in it.
+
+**Validation.** Run the application's type check. A remaining call without `message` reports TS2345, `Property 'message' is missing`, and throws a `DeclarationError` at the call when it runs: `text() pattern has no message to describe it. Supply a message that states what the pattern accepts.` Run a Command with a value the pattern rejects and confirm that stderr prints the new `message` after the input's name.
+
+- Change `plugin()`, `extension()`, and `view()` to check their identity at the call against one grammar: an npm package name, scoped or unscoped, of lowercase letters, digits, `-`, `.`, and `_` and at most 214 characters with its scope, then zero or more subpath segments, each after a `/` and each of lowercase letters and digits in words joined by single hyphens. `help`, `@acme/config`, and `@loomcli/plugins/help/page` pass; `Help`, `@acme`, `x//y`, and `x/under_score` throw a `DeclarationError` under `@loomcli/core/invalid-identity`, such as `A plugin declares the identity "Help", which is not a package name with optional kebab-case subpath segments.` with the fix `Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".` An empty identity and one that is not a string report under the same rule. A hand-built descriptor in a plugin's `extensions` list, and so a source binding, is checked when `plugin()` admits the list, with the sentence `Plugin "@acme/notes" holds the extension identity "Not A Valid/ID_", which is not a package name with optional kebab-case subpath segments.` See [Identity and installation](docs/core.md#identity-and-installation).
+- Add `isRuleIdentity(value)` to `@loomcli/core`. It answers whether a value is a string in the grammar of a diagnostic rule's identity, an identity followed by a kebab-case rule name, and `issueCode()` in `@loomcli/validators` checks its code with it. See [Developer Diagnostics](docs/core.md#developer-diagnostics).
+
+### Migration
+
+**Affected surface.** Every `plugin()`, `extension()`, and `view()` call whose identity is not a package name followed by kebab-case subpath segments, such as one with an uppercase letter, an underscore, a space, an empty segment, or a scope with no package name. Also every hand-built extension descriptor, a callable object with an `identity` and a `target`, that a plugin lists under `extensions` or binds as its `source`, whose identity is outside the grammar. Since 0.2.0 `plugin()` accepted any nonempty string, and `extension()`, `view()`, and a hand-built descriptor accepted any identity.
+
+**Why.** An identity keys what a plugin contributes and prefixes the identities of the diagnostic rules its package declares, so it follows the package-name convention as a rule rather than by habit. See [ADR-0052](docs/decisions/0052-a-plugin-extension-and-view-identity-follows-one-grammar.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+import { extension, plugin, view } from '@loomcli/core';
+
+const audit = plugin('Audit', { views: [view('Audit/Report', { render })] });
+const owner = extension('audit/owner_name', { schema, target: 'command' });
+```
+
+After:
+
+```ts
+import { extension, plugin, view } from '@loomcli/core';
+
+import Package from '../package.json' with { type: 'json' };
+
+const audit = plugin(Package.name, { views: [view(`${Package.name}/report`, { render })] });
+const owner = extension(`${Package.name}/owner-name`, { schema, target: 'command' });
+```
+
+**Steps.**
+
+1. Find every `plugin()`, `extension()`, and `view()` call in the application and in the plugins it ships.
+2. Name each plugin by its package name, or by the package name and a kebab-case subpath when the package ships several plugins, read from the package manifest.
+3. Name each extension and view by its plugin's identity and a kebab-case suffix, including the `identity` of every hand-built descriptor a plugin lists under `extensions`.
+4. Lowercase every segment and replace each underscore or space with a hyphen.
+
+**Validation.** Import each module that declares a plugin, an extension, or a view, or run the application's test command. A remaining identity outside the grammar throws `@loomcli/core/invalid-identity` when its module evaluates, with a finding that marks the identity.
+
+### Changes
+
+- Allow a failure class to declare its own exit code from 1 through 125 as `static override readonly exitCode`, so a `FatalError` subclass such as a registry failure exits 69 wherever it is raised: from an action, a middleware, or a configuration source. A subclass that declares nothing exits with its parent's code. A class that declares 0, a code from 126 up, or a value that is not a whole number throws a `DeclarationError` under `@loomcli/core/failure-exit-code` when it is constructed, whose sentence is `Failure class "RegistryUnavailableError" declares exit code 130.` and whose correction is `Declare a whole number from 1 through 125.` See [Declared exit codes](docs/core.md#declared-exit-codes).
+- Add the `sysexits.h` names to `@loomcli/core` as flat constants with literal types, `EX_USAGE` 64 through `EX_CONFIG` 78. `EX_OK` is not exported.
+- Change a configuration source's thrown or rejected `LoomError` to report with its class's code, as an action's failure does. A source that calls `out.fatal()` now prints the message alone and exits 1, where it printed a plugin fault. A plain `Error` that no translator answers, and any failure thrown while core reads the answers, stays the plugin fault with code 1.
+- Fix a thrown value that inherits from a failure class without being constructed by one, such as `Object.create(FatalError.prototype)`, to report a defect with code 1, whose sentence is `A thrown value inherits from a failure class but was never constructed as one.`, where it exited 0 with nothing on stderr. `run()` now resolves only 0, a code from 1 through 125, 130, or 143.
+
+- Add `application`, `path`, and `hints` to every failure view's context, typed by the exported `FailureViewContext`. `path` holds the canonical Command names routing walked: `[]` before routing, the partial path for an unknown Command, and the routed path otherwise. `override(FailureClass, view)` now types its replacement as the exported `FailureView`, and an override written against `ViewContext` compiles unchanged. See [Failure view context](docs/core.md#failure-view-context).
+- Add the optional `onFailure` plugin hook, typed by the exported `FailureHook` and `FailureHookContext`. Core calls each installed plugin's hook, in installation order, for every failure `run()` renders after graph build, and the failure's view receives the hints they return. Core's default text prints each hint on its own line under its sentence, and a failure with no hints adds no lines. A hook that throws, returns something other than a string or an array of strings, or returns a promise loses its hints, is reported after the diagnostic as a defect, the generic defect message in a distributed build and a Developer Diagnostic naming the plugin and the reason in a development build, and makes the run return 1 unless it was cancelled. `plugin()` rejects an `onFailure` that is not a function. See [Failure hints](docs/core.md#failure-hints).
+- Change validation to keep every own field of an issue a validator returns, rewriting only `path`, so a field such as a schema library's issue `code` reaches an `InputError` view. See [Issues and validator failures](docs/core.md#issues-and-validator-failures).
+- Add `escapeControlCharacters`, which replaces every control character and line separator in raw text, and every bidirectional control and mark, U+202A through U+202E, U+2066 through U+2069, U+200E, U+200F, and U+061C, with its lowercase `\uXXXX` escape, so escaped text stays on one line and cannot reorder the rest of it. Other format characters, such as a zero-width joiner or a soft hyphen, pass through. See [Strings and composition](docs/core.md#strings-and-composition).
+- Fix a thrown value whose message cannot be read, such as an Error whose `message` getter throws, suppressing the failure it caused. Wherever core reports a thrown value, from an action, a failure view, a hook, a plugin loader, or a configuration source, it now reports `The thrown value has no readable message.` as its reason. See [Failure contract](docs/core.md#failure-contract).
+
+- Add the suggestions plugin, `suggestions()` from `@loomcli/plugins/suggestions`. When an unknown Command or option is near a declared name, the failure's sentence offers that name as its fix, as in `jsonkit: Unknown command "gte". Did you mean "get"?` or `Did you mean one of these: --file, --field?`, in place of core's fix clause. It never offers an alias, a hidden member, a deprecated member, or a short spelling, and with no near name it prints core's text unchanged. An application's own override of either failure class, or of a class above them, still owns the sentence. See [Suggestions](docs/core.md#suggestions).
+- Change `help()` to add one hint under every usage error that names the help page of the Command routing reached, as in `Run "jsonkit get --help" to see the usage.` A fatal error, an internal error, and a declaration error gain no line. See [Help's failure hint](docs/core.md#helps-failure-hint).
+
+- Add translators, so a foreign throw such as the `SyntaxError` from `JSON.parse` reports as one of the application's own failure classes, with that class's exit code and view, instead of an internal error with exit 1. `translate(ErrorClass, translator)` pairs an error class with a function that receives the thrown instance, typed from the class, and returns a failure or `undefined` to pass. The Application and each plugin list their translations under `translators`, and they resolve in the order view overrides do: the application's first, then each plugin's in installation order, the thrown value's prototype chain walked in full at each. A throw from an action, from a middleware before its `next()` has settled, and from a configuration source is offered, and so is a destination write failure such as `EPIPE` that the action awaits and lets propagate, and a row source's throw under `out.results()`, whether the action awaited the call, never awaited it, or caught its rejection; for the last two the translated failure replaces the deferred internal error, prints after the incomplete-result line, and sets the exit code a clean run would have left at 0; a `LoomError`, a thrown primitive, a cancellation echo, and a throw from a view, an `onFailure` hook, a validator, or a plugin loader are never offered. A throw no translator answers still reports as an internal error with exit 1. See [Translators](docs/core.md#translators).
+- Add the exported `translate`, `Translation`, `Translator`, and `ErrorClass`. A `translators` entry that is not a translation throws a `DeclarationError` from `plugin()` or the Application constructor, and so does `translate()` with a key that is not a class, a key that is a failure class such as `LoomError` or a subclass of `FatalError`, since a failure is never offered to a translator, or a translator that is not a function.
+- Change a translator that throws, or returns a value that is not a failure, a promise included, to report a defect under the rule `@loomcli/core/broken-translator` with exit 1. No later translator is consulted. A development build prints its Developer Diagnostic, whose sentence names who registered the translator and the class it was keyed on, such as `The translator the Application registered for "SyntaxError" threw: <reason>`, and which shows the translator's throw and the original throw under it. A distributed build prints the generic defect message. The defect's `cause` is an `AggregateError` that holds the translator's throw and then the original throw, or the original throw alone for a returned value.
+- Allow `LoomError`, `FatalError`, `InputError`, and `DeclarationError` to take the platform's `ErrorOptions` as their last constructor parameter, so a failure keeps the error it replaces as `cause`, as in `new InvalidJsonError({ cause: error })`. Core sets no `cause` on a failure it did not construct.
+
+- Add `failures` to `manifestCommand` from `@loomcli/plugins/manifest/extension`, so an author or a plugin's `onCommandAttach` hook declares the failures a Command can raise, each as `{ failure, meaning, name }`: a class that extends `LoomError`, one line of meaning, and a kebab-case name. The value reads the class's declared exit code when it is made. A value that is not a failure class, a class whose static `exitCode` is outside 1 through 125 or whose `exitCode` getter throws, a value whose `prototype` read throws, a name that is not kebab-case, and a meaning that is not one line are rejected at the call. See [Manifest failures](docs/core.md#manifest-failures).
+- Change `--manifest` to list each Command's declared failures under `failures` as `{ name, exitCode, meaning }`, in collection order with an identical entry printed once, and `[]` where a Command declares none. `exitCodes` gains a row for each declared code other than 1 and 2 anywhere in the application, hidden Commands included, such as `"65": "Declared failures: invalid-json, path-not-found"`. One failure name declared with two codes or two meanings makes `--manifest` report a declaration fault with code 1 under the rule `@loomcli/plugins/manifest/failure-name-conflict`, whose sentence is `Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select".` and whose correction is `Declare one code and one meaning for each failure name.`, with a finding for each declaration that marks the code or the meaning the two disagree on, by build as [Development builds](docs/core.md#development-builds) states.
+
+- Add the `packet` Application option and the exported `Packet` type. An application imports its `loom.packet.json` as a JSON module and passes it as `packet`; its `build` reads `development` or `distributed`, and an Application given no packet is distributed. `new Application()` rejects a packet that is not a plain object or whose `build` is neither value, and ignores every other member. See [Development builds](docs/core.md#development-builds).
+- Change how `run()` reports a defect, an `InternalError` or a `ResultError`, and a declaration fault it meets, a `DeclarationError`. A distributed build writes `<application>: Something went wrong.` through the failure's view, at most once per run, so `override(InternalError, view)` and `override(DeclarationError, view)` replace it, and an `onFailure` hint prints under it. A development build writes the fault's Developer Diagnostic ahead of every view override, with the hints under it. A usage error, a `FatalError`, and an application's own failure class print the same bytes in both builds. The `Invalid declaration: ` and `Internal error: ` prefixes are gone.
+- Change a broken failure view and a broken `onFailure` hook to report, after the failure's own text, the generic defect message at most once per run in a distributed build, and one Developer Diagnostic per broken contract in a development build, in place of their `Internal error: ` lines.
+- Add `diagnosticRule(identity, { headline, explanation, docs })`, which declares one Developer Diagnostic rule and returns a frozen descriptor, and the exported `DiagnosticRule`, `Finding`, and `DiagnosticParts` types. A rule's identity is `<package>[/<subpath>...]/<rule-name>`, the package name, any kebab-case subpath segments that name the part of the package that owns the rule, and a kebab-case rule name, such as `@acme/retry/retry-limit` or `@loomcli/plugins/manifest/failure-name-conflict`. `new DeclarationError(rule, { sentence, findings, correction }, options)` and `new InternalError(rule, { sentence, correction, cause })` take a rule beside their earlier constructors, and each class carries `rule`, `sentence`, and `correction`, with `findings` on `DeclarationError`. See [Developer Diagnostics](docs/core.md#developer-diagnostics).
+- Change `DeclarationError.message` to hold the fault's whole Developer Diagnostic as plain text at 80 columns, a banner, the sentence, and the rule's other parts, so a fault thrown at an authoring call prints its diagnostic through the runtime's own uncaught-error output. `sentence` holds the sentence alone.
+- Add the optional `Host.readSource(path, cwd)`. A development build reads a defect's source through it, for a frame under the working directory and outside `node_modules` alone, and prints the lines around the failing frame with a caret under its column, above the cause chain. The chain prints each error an `AggregateError` holds under `Holds `, and the source comes from the first of them with a frame under the working directory. Process capture supplies a reader that refuses a file outside `cwd` after resolving symbolic links, a path that is not a regular file, and a file larger than 1 MiB.
+- Change a validator that throws, rejects, or returns a malformed result to report under the rule `@loomcli/core/validator-failed`, with a full stop after the thrown reason, a finding that marks `validate` on the call that declared the input, and the thrown value as its `cause`. A distributed build shows the generic defect message in its place.
+- Publish `@loomcli/loom`, the Loom toolchain, whose public surface is `@loomcli/loom/build`. Install it as a development dependency. It exports `packet()`, a `Bun.build` plugin that writes `distributed` into the packet a bundle or a compiled binary carries and leaves the source packet reading `development`. It also carries into the bundle the data files core's Unicode tables read at run time, without which a bundled Loom application cannot start, and fails the build when a table module reads them in a shape it does not recognize. Build a compiled binary with `Bun.build` and its `compile` option, because the `bun build` command line takes no plugin.
+- Change core's invocation-time defects to report under rules of their own: a middleware's bad `view` assignment under `@loomcli/core/view-selection`, a configuration source's rejected answers under `@loomcli/core/source-answers`, a `run()` signal that is not an `AbortSignal` under `@loomcli/core/run-options`, whose sentence and correction are now separate, a graph `inspect()` did not return under `@loomcli/core/foreign-graph`, and a failed destination write under `@loomcli/core/broken-destination`, which writes the generic defect message in a distributed build and its Developer Diagnostic in a development build.
+- Change the declaration faults core raises for Commands, names, aliases, nesting, children, actions, results, views, and the description, version, `hidden`, and `deprecated` facts to carry a rule of their own, such as `@loomcli/core/portable-name` and `@loomcli/core/sibling-name-taken`, with findings that rebuild the faulty call under the Command path it sits on, the rule's explanation, and the fix. Each fault's `sentence` holds what is wrong and its `correction` the fix, which its `message` prints after the explanation. A `hidden` value that is not a Boolean reads `Command "fetch" declares hidden that is not a Boolean.` with the fix `Use true or false.` under `@loomcli/core/flag-not-boolean`, and options that are not an object read `Command "get" declares options that are not an object.` or `The Application declares options that are not an object.` under `@loomcli/core/not-an-object`. Every name, identity, and key a declaration sentence quotes prints each control character escaped, and a value that is not a string prints as code, such as `Command name 7 is invalid.` See the Rule columns of [Command declaration errors](docs/core.md#command-declaration-errors) and [Result declaration errors](docs/core.md#result-declaration-errors).
+- Change the declaration faults core raises for options, arguments, validators, defaults, global options, and environment bindings to carry a rule of their own, such as `@loomcli/core/boolean-option-multiple`, `@loomcli/core/spelling-taken`, and `@loomcli/core/invalid-default`, with findings that mark the key of the faulty call at fault, a finding for each side of a collision, and the rule's explanation. Several sentences now state the key at fault: a Boolean option reads `Option "verbose" is Boolean and declares default.` with the fix `Remove default; use polarity to control its absent value.`, a short alias reads `Option "file" declares a short alias that is not one ASCII letter.`, `shortOnly` with no short alias reads `Option "file" declares shortOnly and no short alias.`, and a global option with a presence rule is fixed by `Remove required, and check for the value in each Command that needs it.` A `multiple`, `shortOnly`, `required`, `variadic`, or `validateOmitted` value that is not a Boolean reads `Command "get" option "file" declares required that is not a Boolean.` with the fix `Use true or false.` A collision with a plugin option, or with an input a plugin's `onCommandAttach` hook declares, reports under the rule the same collision between the application's own inputs breaks, such as `@loomcli/core/option-declared-twice` or `@loomcli/core/spelling-taken`, and its sentence names the plugin. A hook-declared argument or option whose name an input of the other kind holds reports under `@loomcli/core/name-shared-across-kinds`. An `argument()`, `option()`, or `globalOption()` call whose config is missing or is not an object reports under the same rule as `Option "format" declares a config that is not an object.` with the fix `Supply an option config object, such as { type: 'string' }.`, or `Argument "path" declares ...` with `Supply an argument config object, such as {}.`, and no longer throws a TypeError. See [Input declaration errors](docs/core.md#input-declaration-errors).
+- Change a validator whose JSON Schema converter throws, returns anything but a plain object, or answers with an object core cannot copy, such as one whose getter throws, to be a `DeclarationError` under `@loomcli/core/schema-converter-failed` in a development build, from `run()` and from `inspect()`, naming the input, the target, and the thrown reason, with the thrown value as its `cause`. A development build asks every validated input's converter at build on every run. A distributed build still reads the input's schema as `null`. See [Input schema](docs/core.md#input-schema).
+- Change the declaration faults core raises for plugins, extensions, extension values, declared views and overrides, translations, `onCommandAttach` hooks, a plugin theme, the Application's `plugins`, `packet`, `rendering`, and retired `globals` and `failures` options, a failure class's exit code, and `diagnosticRule()` itself to carry a rule of their own, such as `@loomcli/core/slot-taken`, `@loomcli/core/foreign-value`, and `@loomcli/core/invalid-extension-value`, with findings that rebuild the key, the list entry, or the key inside it at fault, and a finding for each entry of a repeat. Several sentences changed: a `plugins` value that is not an array reads `The Application declares plugins that are not an array.`, and a `translators`, `views`, or `extensions` value `... declares translators that are not an array.`, with `views` and `extensions` in its place; an extension descriptor's `collect` that is not a Boolean reports under `@loomcli/core/flag-not-boolean` with the fix `Use true or false.`; a failure class's exit code is fixed by `Declare a whole number from 1 through 125.`; an override keyed on neither a declared view nor a failure class reads `The Application overrides a key that is neither a declared view nor a failure class.`; `translate()` with a failure class as its key is fixed by `Key the translation on the foreign class it replaces.`; a rendering policy reads `The rendering policy is not an object.` and `Rendering color is not auto, always, or never.`; a plugin theme reads `Plugin "@acme/theme" declares a theme that is not a mapping.` and `... theme mapping "highlight" is not an unapplied concrete style chain without semantic tokens.`; and a throwing `onCommandAttach` hook now escapes its reason, keeps the thrown value as `cause`, and gains a fix, as does a hook's spelling collision. See the Rule column of [Plugin declaration errors](docs/core.md#plugin-declaration-errors).
+- Change the declaration faults `@loomcli/plugins` and `@loomcli/validators` raise to carry rules they declare through the public `diagnosticRule()` under their package names and, for a plugin the pack ships as a subpath, that plugin's subpath: `@loomcli/plugins/config/files` for a configuration `files` setting that is not a list of paths, and fifteen catalog rules such as `@loomcli/validators/bounds-order` and `@loomcli/validators/issue-code-config`, each with a finding that rebuilds the factory call and marks the argument or key at fault. A validator that reads the validation context outside a run gains the fix `Call the validator through an Application run, or leave the context unread.` See [Faults at the call](docs/validators.md#shared-rules).
+
 ## v0.5.0 - 2026-09-27
 
 0.5.0 is the operator ergonomics release. An option now takes its value from argv, an environment variable, a configuration file, or its default, in that order, through one core input-source stage; the configuration plugin reads layered JSON files; a plugin can attach ordinary Commands to the root; `-h` prints compact help and `--help` the extended page; and the completion plugin prints Bash, Zsh, and Fish scripts that complete Command names, option spellings, and closed-set values without ever evaluating typed text. `@loomcli/validators` joins the release set as a catalog of Standard Schema validators.
