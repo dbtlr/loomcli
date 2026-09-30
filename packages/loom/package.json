@@ -1,6 +1,6 @@
 {
   "name": "@loomcli/loom",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The Loom CLI toolchain. Provides the packet() Bun.build plugin that marks a bundled Loom CLI application as a distributed build.",
   "license": "MIT",
   "repository": {
