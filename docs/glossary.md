@@ -435,7 +435,7 @@ A frozen, explicitly installed value with a fixed identity that contributes opti
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Identity**:
-The string that names a plugin, an extension, or a declared view, fixed at the `plugin()`, `extension()`, or `view()` call that declares it and checked there against one grammar: an npm package name, scoped or unscoped, then zero or more kebab-case subpath segments joined by `/`, such as `help`, `@acme/config`, or `@loomcli/plugins/help/page`. It keys contributions and prefixes the declaring package's diagnostic rule identities, which add a rule name.
+The string that names a plugin, an extension, or a declared view, fixed at the `plugin()`, `extension()`, or `view()` call that declares it and checked there against one grammar: an npm package name, scoped or unscoped and at most 214 characters, then zero or more kebab-case subpath segments joined by `/`, such as `help`, `@acme/config`, or `@loomcli/plugins/help/page`. It keys contributions and prefixes the declaring package's diagnostic rule identities, which add a rule name.
 _Avoid_: Name (when the key is meant), id (in prose)
 
 **Plugin identity**:

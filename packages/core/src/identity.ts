@@ -8,8 +8,14 @@ import { invalidIdentity } from './plugin-rules.js';
  * built here from one source, so every rule identity's prefix is a valid plugin identity.
  */
 
-/** A package name as npm spells one, scoped or not: `help` or `@acme/config`. */
-const packageName = String.raw`(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*`;
+/**
+ * A package name as npm spells one, scoped or not: `help` or `@acme/config`. The group captures it,
+ * scope included, so its length is checked against npm's limit.
+ */
+const packageName = String.raw`(?<package>(?:@[a-z0-9-][a-z0-9._-]*\/)?[a-z0-9-][a-z0-9._-]*)`;
+
+/** The longest package name npm accepts, scope included. */
+const packageNameLimit = 214;
 
 /** One segment after a `/`, of lowercase letters and digits in words joined by single hyphens. */
 const kebabSegment = String.raw`\/[a-z0-9]+(?:-[a-z0-9]+)*`;
@@ -37,14 +43,23 @@ const declarers: Record<IdentityCall, string> = {
   view: 'A view',
 };
 
+/** Whether a value is a string one grammar matches, with a package name within npm's limit. */
+function matches(grammar: RegExp, value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const name = grammar.exec(value)?.groups?.package;
+  return name !== undefined && name.length <= packageNameLimit;
+}
+
 /** Whether a value is a plugin, extension, or view identity. */
 function isIdentity(value: unknown): value is string {
-  return typeof value === 'string' && identityGrammar.test(value);
+  return matches(identityGrammar, value);
 }
 
 /** Whether a value is a diagnostic rule identity: an identity and a kebab-case rule name. */
 function isRuleIdentity(value: unknown): value is string {
-  return typeof value === 'string' && ruleGrammar.test(value);
+  return matches(ruleGrammar, value);
 }
 
 /**
