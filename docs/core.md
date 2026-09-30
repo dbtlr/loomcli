@@ -248,6 +248,7 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 | --- | --- | --- |
 | An option name that is not a string | `Option name 7 is not a string. Supply a string name.` The value prints as a finding prints it. | `@loomcli/core/declared-name` |
 | An invalid option name | `Option name "bad=name" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".` | `@loomcli/core/declared-name` |
+| An `argument()`, `option()`, or `globalOption()` call whose config is missing or is not an object | `Option "format" declares a config that is not an object. Supply an option config object, such as { type: 'string' }.` | `@loomcli/core/not-an-object` |
 | A type other than `string` or `boolean` | `Option "limit" has an invalid type. Use "string" or "boolean".` | `@loomcli/core/option-type` |
 | A `short` value that is not one ASCII letter | `Option "file" declares a short alias that is not one ASCII letter. Supply one ASCII letter.` | `@loomcli/core/short-alias` |
 | A `shortOnly`, `required`, `variadic`, or `validateOmitted` value that is not Boolean | `Command "get" option "file" declares shortOnly that is not a Boolean. Use true or false.` The sentence names the key, as `Command "get" argument "paths" declares variadic that is not a Boolean.` does. | `@loomcli/core/flag-not-boolean` |

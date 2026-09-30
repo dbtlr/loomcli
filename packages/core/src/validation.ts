@@ -18,6 +18,8 @@ import {
 } from './input-rules.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
+import { isPlainObject } from './plain.js';
+import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -160,6 +162,35 @@ class ValidatedInputs {
   }
 }
 export type { ValidatedInputs };
+
+/**
+ * The one check every `argument()`, `option()`, and `globalOption()` call makes before it reads its
+ * config, so a call in JavaScript that supplies none, or a value of another kind, reports a
+ * declaration fault and not a TypeError. `place` is where the call sits.
+ */
+export function checkInputConfig(
+  declared: {
+    readonly config: unknown;
+    readonly kind: InputDeclaration['kind'];
+    readonly name: string;
+  },
+  place: InputPlace,
+): void {
+  const { config, kind, name } = declared;
+  if (isPlainObject(config)) {
+    return;
+  }
+  const subject = kind === 'argument' ? 'Argument' : 'Option';
+  const site = callSite(`${subject} ${quoted(name)}`, {
+    arguments: [name, config],
+    ...place,
+  });
+  throw new DeclarationError(notAnObject, {
+    correction: `Supply ${kind === 'argument' ? 'an argument' : 'an option'} config object, such as ${kind === 'argument' ? '{}' : "{ type: 'string' }"}.`,
+    findings: [siteFinding(site, '1')],
+    sentence: `${site.subject} declares a config that is not an object.`,
+  });
+}
 
 /**
  * Authoring's snapshot of one config. An array default is the one declared value core hands to an

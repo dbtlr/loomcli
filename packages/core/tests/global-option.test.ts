@@ -29,6 +29,14 @@ test.each(['after-action', 'after-command'])(
   },
 );
 
+test('globalOption() validates the config copy it stores, not the config it received', () => {
+  expect(invoke(fixture, ['default-captured'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"limit":"kept"}\n',
+  });
+});
+
 test('a global declared after a colliding root-local option throws from globalOption()', () => {
   expect(invoke(fixture, ['local-first'])).toEqual({
     status: 0,
