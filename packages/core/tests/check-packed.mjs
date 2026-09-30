@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -149,6 +149,17 @@ try {
   pnpm(['pack', '--out', join(temporary, 'core.tgz')], join(root, 'packages/core'));
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', join(temporary, 'validators.tgz')], join(root, 'packages/validators'));
+  pnpm(['pack', '--out', join(temporary, 'loom.tgz')], join(root, 'packages/loom'));
+  // The packed manifest must pin core at the synchronized version itself.
+  // The override below would hide an unrewritten workspace spec that no registry consumer resolves.
+  const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
+  assert.equal(loomManifest.status, 0, loomManifest.output);
+  const loomCore = JSON.parse(loomManifest.stdout).dependencies?.['@loomcli/core'];
+  assert.equal(
+    loomCore,
+    version,
+    `The packed @loomcli/loom must depend on @loomcli/core ${version}, not "${loomCore}".`,
+  );
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -158,9 +169,16 @@ try {
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
       },
+      devDependencies: { '@loomcli/loom': 'file:./loom.tgz' },
       private: true,
       type: 'module',
     }),
+  );
+  // The packed toolchain depends on core at the synchronized version.
+  // The override resolves it to the packed core, so the check never reads core from the registry.
+  await writeFile(
+    join(temporary, 'pnpm-workspace.yaml'),
+    "overrides:\n  '@loomcli/core': 'file:./core.tgz'\n",
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
 
@@ -313,8 +331,30 @@ try {
       );
     }
   }
+  // The packed writer bundles the fixture under Bun, the only bundler it serves.
+  // The bundle reads distributed under each runtime, and the source still reads development.
+  const packetSource = join(temporary, 'packet-app/loom.packet.json');
+  const bundled = run('bun', [join(temporary, 'bundle-packet.mjs')], temporary);
+  assert.equal(bundled.status, 0, bundled.output);
+  const packetBundle = join(temporary, 'packet-dist/main.js');
+  for (const name of selected) {
+    const built = run(runtimes.get(name), [packetBundle, 'build'], temporary);
+    assert.equal(built.status, 0, built.output);
+    assert.equal(built.stdout, 'distributed\n', `${name}: the packed bundle's packet`);
+    const failed = run(runtimes.get(name), [packetBundle, 'fail'], temporary);
+    assert.equal(failed.status, 1, failed.output);
+    assert.equal(
+      failed.output,
+      'packet-probe: Something went wrong.\n',
+      `${name}: the packed bundle's defect`,
+    );
+  }
+  assert.deepEqual(JSON.parse(await readFile(packetSource, 'utf8')), { build: 'development' });
+  const sourced = run('bun', [join(temporary, 'packet-app/src/main.ts'), 'build'], temporary);
+  assert.equal(sourced.status, 0, sourced.output);
+  assert.equal(sourced.stdout, 'development\n', 'bun: the source packet');
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, and @loomcli/validators ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, and a suggestion.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, a suggestion, and a fixture bundled with the packed packet() that reads distributed while its source reads development.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

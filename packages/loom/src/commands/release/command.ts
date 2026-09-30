@@ -29,7 +29,7 @@ async function report(out: Out, passthrough: string[], work: () => Promise<strin
   }
 }
 
-export const release = new Command('release')
+export const release = new Command('release', { hidden: true })
   .command(
     new Command('plan')
       .option('repository', { required: true, type: 'string' })

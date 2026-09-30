@@ -43,7 +43,7 @@ async function output(out: Out, passthrough: string[], produce: () => string) {
   }
 }
 
-export const changelog = new Command('changelog')
+export const changelog = new Command('changelog', { hidden: true })
   .command(
     new Command('check').action(async ({ host, out, passthrough }) => {
       await output(out, passthrough, () => {

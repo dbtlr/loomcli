@@ -19,13 +19,7 @@
     "exactOptionalPropertyTypes": true,
     "types": ["node"]
   },
-  "include": [
-    "vite.config.ts",
-    "packages/**/*.ts",
-    "examples/**/*.ts",
-    "scripts/**/*.ts",
-    "apps/**/*.ts"
-  ],
+  "include": ["vite.config.ts", "packages/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
   "exclude": [
     "**/dist/**",
     "node_modules",

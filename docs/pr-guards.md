@@ -4,9 +4,9 @@ description: Local and CI checks for PR fragments, library versions, and normal 
 
 # PR guards
 
-The private Loom CLI validates committed PR content with the changelog compiler's parser, version calculation, renderer, and build-path policy.
+The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog compiler's parser, version calculation, renderer, and build-path policy.
 
-Command-specific code lives in `apps/loom/src/commands/changelog/` and `apps/loom/src/commands/pr/`. Both commands use `apps/loom/src/helpers/` for shared release logic. Helpers do not import command code.
+Command-specific code lives in `packages/loom/src/commands/changelog/` and `packages/loom/src/commands/pr/`. Both commands are hidden, so no listing advertises them. Both use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
 ```sh
 pnpm build

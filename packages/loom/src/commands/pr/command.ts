@@ -2,7 +2,7 @@ import { Command } from '@loomcli/core';
 
 import { checkPullRequest } from '../../helpers/pr-check.js';
 
-export const pr = new Command('pr').command(
+export const pr = new Command('pr', { hidden: true }).command(
   new Command('check')
     .option('base', { required: true, type: 'string' })
     .option('head', { default: 'HEAD', type: 'string' })

@@ -109,6 +109,9 @@ importers:
 
   .:
     devDependencies:
+      '@loomcli/loom':
+        specifier: workspace:*
+        version: link:packages/loom
       '@loomcli/plugins':
         specifier: workspace:*
         version: link:packages/plugins
@@ -124,24 +127,6 @@ importers:
       vite-plus:
         specifier: 0.3.0
         version: 0.3.0(@types/node@22.20.1)(typescript@7.0.2)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.0))(yaml@2.9.0)
-      zod:
-        specifier: ^4.5.4
-        version: 4.5.4
-
-  apps/loom:
-    dependencies:
-      '@loomcli/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      mdast-util-from-markdown:
-        specifier: ^2.0.3
-        version: 2.0.3
-      pnpm:
-        specifier: 12.3.2
-        version: 12.3.2
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -181,7 +166,7 @@ importers:
     devDependencies:
       '@loomcli/loom':
         specifier: workspace:*
-        version: link:../../apps/loom
+        version: link:../../packages/loom
 
   examples/textstat:
     dependencies:
@@ -200,7 +185,7 @@ importers:
     devDependencies:
       '@loomcli/loom':
         specifier: workspace:*
-        version: link:../../apps/loom
+        version: link:../../packages/loom
 
   packages/core:
     dependencies:
@@ -213,6 +198,25 @@ importers:
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
+
+  packages/loom:
+    dependencies:
+      '@loomcli/core':
+        specifier: workspace:*
+        version: link:../core
+      mdast-util-from-markdown:
+        specifier: ^2.0.3
+        version: 2.0.3
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      pnpm:
+        specifier: 12.3.2
+        version: 12.3.2
 
   packages/plugins:
     dependencies:

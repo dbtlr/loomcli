@@ -4,7 +4,7 @@ title: ADR-0007 - Failures are public classes with typed facts, rendered by clas
 description: Every failure run() reports is an instance of a public class carrying the facts its sentence interpolates and its exit code. Renderers are registered per class on the constructor, resolved along the prototype chain. A working renderer cannot change the exit code, and a broken one is an internal failure that never escapes.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-29
+modified: 2026-09-30
 ---
 
 # ADR-0007 - Failures are public classes with typed facts, rendered by class-keyed renderers registered on the Application
@@ -43,3 +43,4 @@ An application registers renderers through the constructor's `failures` option a
 - 2026-09-28: ADR-0047 is accepted. The entry above binds as written.
 - 2026-09-28: Under accepted [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), the category prefix core's default text puts before a `UsageError`'s `message` is the application name and a colon, such as `jsonkit: `, in place of `Invalid input: `. `DeclarationError` and `InternalError` keep their categories, a `FatalError` has no prefix, and `message` stays the sentence without its prefix.
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) and [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, remove the two category prefixes the entry above kept. A `DeclarationError` or an `InternalError` that `run()` reports shows the generic defect message, `<application>: Something went wrong.`, in a distributed build and its Developer Diagnostic in a development build, so neither `Invalid declaration: ` nor `Internal error: ` prints. Both classes gain a structured constructor beside their current one, with `rule`, `sentence`, and `correction` facts, and `DeclarationError` also `findings`. Both bind when those records are accepted.
+- 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds with ADR-0051.

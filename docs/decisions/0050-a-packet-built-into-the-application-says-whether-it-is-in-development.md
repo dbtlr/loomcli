@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0050 - A packet built into the application says whether it is in development
 description: Whether an application is in development is a build fact, never a run-time switch. A Packet file, loom.packet.json, reads development in the source tree, the build writes distributed into the artifact through the packet() Bun.build plugin from @loomcli/loom/build, and the entry hands it to the Application as data. An Application given no packet is distributed. Defects and declaration faults core reports read the build; operator failures print the same text in both builds.
-status: proposed
+status: accepted
 created: 2026-09-29
-modified: 2026-09-29
+modified: 2026-09-30
 ---
 
 # ADR-0050 - A packet built into the application says whether it is in development
@@ -53,7 +53,7 @@ An application bundled with plain `bun build` and no `packet()` ships the source
 
 ## Status
 
-Proposed. It moves to accepted with the implementation that reads the packet, renders by build under ADR-0051, ships `packet()` in `@loomcli/loom/build`, and builds the example applications with it, and with the acceptance in [Development builds](../core.md#development-builds).
+Accepted. It moved to accepted with the implementation that reads the packet, renders by build under ADR-0051, ships `packet()` in `@loomcli/loom/build`, and builds the example applications with it, and with the acceptance in [Development builds](../core.md#development-builds).
 
 ## Changelog
 
@@ -61,3 +61,4 @@ Proposed. It moves to accepted with the implementation that reads the packet, re
 - 2026-09-29: The implementation reads the packet, renders defects and declaration faults by build under ADR-0051, ships `packet()` in `@loomcli/loom/build`, and builds both example applications with it. Three facts the implementation settles. `packet()` is typed by its own `PacketPlugin`, a Bun plugin by shape that `Bun.build` accepts, and `@loomcli/loom` takes no `@types/bun` dependency, because `@types/bun` 1.4 requires newer Node declarations than the Node 22 ones core ships, so a consumer that checks library declarations would meet the conflict. `packet()` also inlines the data files core's Unicode tables read beside their own modules at run time, because no bundle and no compiled binary can start without them. The examples bundle through a `build:examples` script, with the application module as a second entry the tests import and with splitting, so each plugin's middleware stays a chunk that loads only when the chain reaches it. The record stays proposed until the development-only converter check and the packed `@loomcli/loom` consumer land.
 - 2026-09-29: Two corrections from review. The `bun build` command line takes no plugin, so a bundle and a compiled binary are built through `Bun.build`, the binary with its `compile` option and `packet()`. An application bundled without `packet()` does not ship the source packet's `development`, as Consequences states: it cannot start, because core's Unicode tables read their data files beside their own modules and only `packet()` carries them into the bundle. `packet()` fails the build, naming the module, when it cannot find that read in a table module.
 - 2026-09-29: The development-only converter check lands under `@loomcli/core/schema-converter-failed`, as [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md) records. The record stays proposed until the packed `@loomcli/loom` consumer lands.
+- 2026-09-30: The packed `@loomcli/loom` consumer lands. `@loomcli/loom` moves to `packages/loom` and joins the published release set at the synchronized version, with `@loomcli/loom/build` as its only export and its `changelog`, `pr`, and `release` commands hidden. `pnpm check:packed` installs its tarball beside the libraries, compiles against its declarations with `skipLibCheck` off, bundles a fixture with `packet()` under Bun, and reads `distributed` from the bundle under Node and Bun while the source reads `development`. Accepted. The maintainer published the `0.0.0` placeholder of `@loomcli/loom` and bound its trusted publisher. Release runs on `main` fail their plan until the 0.6.0 cut, because 0.5.0 of `@loomcli/loom` is absent from the registry, and the cut's run publishes it.

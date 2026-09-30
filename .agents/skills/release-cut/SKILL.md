@@ -40,7 +40,7 @@ Choose a short release description from the actual changes. Add an optional narr
 
 ## Prepare in isolation
 
-Create a dedicated worktree or checkout at the recorded base, with a release branch. Preserve existing worktrees and user changes. Install dependencies using the pinned package manager and frozen lockfile, then build the private Loom application using the repository scripts.
+Create a dedicated worktree or checkout at the recorded base, with a release branch. Preserve existing worktrees and user changes. Install dependencies using the pinned package manager and frozen lockfile, then build the Loom CLI using the repository scripts.
 
 Run these commands from the isolated repository root:
 
