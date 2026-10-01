@@ -13,7 +13,7 @@
 Before, the declaration was accepted, and the first `inspect()` threw `boom`:
 
 ```ts
-app.option('format', { default: { get style() { throw new Error('boom'); } }, type: 'string', validate });
+app.option('format', { default: { get style(): string { throw new Error('boom'); } }, type: 'string', validate });
 ```
 
 After, declare the default as plain data:
@@ -28,7 +28,10 @@ Before, a hand-written validator's `'~standard'.validate` method could normalize
 const validate: StandardSchemaV1<{ style?: string }> = {
   '~standard': {
     validate: (value) => {
-      value.style ??= 'plain';
+      if (typeof value !== 'object' || value === null) {
+        return { issues: [{ message: 'Expected an object.' }] };
+      }
+      Object.assign(value, { style: 'plain', ...value });
       return { value };
     },
     vendor: 'acme',
@@ -42,7 +45,10 @@ After, the method returns a new value:
 ```ts
 const validate: StandardSchemaV1<{ style?: string }> = {
   '~standard': {
-    validate: (value) => ({ value: { style: 'plain', ...value } }),
+    validate: (value) =>
+      typeof value === 'object' && value !== null
+        ? { value: { style: 'plain', ...value } }
+        : { issues: [{ message: 'Expected an object.' }] },
     vendor: 'acme',
     version: 1,
   },
