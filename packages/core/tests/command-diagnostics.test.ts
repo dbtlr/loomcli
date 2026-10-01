@@ -204,19 +204,17 @@ const readable =
 
 /**
  * The unreadable-config fault of one call, whose finding marks the config. `receiver` holds the
- * lines above the call. A finding prints an object whose read throws as an ellipsis, so the config
- * prints as one unless only a value inside it throws, as `config` then gives.
+ * lines above the call. A config whose read threw is never read again, so it prints as an ellipsis.
  */
 function unreadable(
   receiver: readonly string[],
-  parts: { call: string; config?: string; subject: string },
+  parts: { call: string; subject: string },
 ): Expected {
-  const { call, config = '…', subject } = parts;
-  const line = `      .${call}, ${config})`;
-  const start = line.length - config.length - 1;
+  const { call, subject } = parts;
+  const line = `      .${call}, …)`;
   return {
     correction: readable,
-    findings: [[...receiver, line, `${' '.repeat(start)}${'^'.repeat(config.length)}`]],
+    findings: [[...receiver, line, `${' '.repeat(line.length - 2)}^`]],
     headline: 'DECLARATION COULD NOT BE READ',
     rule: 'unreadable-declaration',
     sentence: `${subject} config could not be read: boom.`,
@@ -421,6 +419,10 @@ const cases: Record<string, Expected> = {
     rule: 'declared-name',
     sentence: 'Command "get" declares an argument named "-path".',
   },
+  'argument-read-once': unreadable(onGet, {
+    call: "argument('path'",
+    subject: 'Argument "path"',
+  }),
   'argument-twice': {
     correction: 'Remove or rename the duplicate.',
     findings: [
@@ -581,6 +583,10 @@ const cases: Record<string, Expected> = {
     rule: 'not-an-object',
     sentence: 'Option "quiet" declares a config that is not an object.',
   },
+  'global-option-read-once': unreadable(['    new Application(…)'], {
+    call: "globalOption('quiet'",
+    subject: 'Option "quiet"',
+  }),
   'global-option-unreadable': unreadable(['    new Application(…)'], {
     call: "globalOption('quiet'",
     subject: 'Option "quiet"',
@@ -723,7 +729,6 @@ const cases: Record<string, Expected> = {
   },
   'option-default-unreadable': unreadable(onGet, {
     call: "option('format'",
-    config: "{ default: …, type: 'string', validate: … }",
     subject: 'Option "format"',
   }),
   'option-description': {
@@ -745,6 +750,7 @@ const cases: Record<string, Expected> = {
     call: "option('format'",
     subject: 'Option "format"',
   }),
+  'option-read-once': unreadable(onGet, { call: "option('format'", subject: 'Option "format"' }),
   'option-unreadable': unreadable(onGet, { call: "option('format'", subject: 'Option "format"' }),
   'optional-before-required': {
     correction: 'Declare optional arguments after required ones.',
@@ -1049,6 +1055,17 @@ test.each([
   ]);
   expect(result).toEqual({ status: 0, stderr: '', stdout: '{"cause":true}\n' });
 });
+
+test.each(['argument-read-once', 'global-option-read-once', 'option-read-once'])(
+  'the %s config whose read threw is never read again, so its diagnostic reads it once',
+  (scenario) => {
+    const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+      scenario,
+      'reads',
+    ]);
+    expect(result).toEqual({ status: 0, stderr: '', stdout: '{"reads":1}\n' });
+  },
+);
 
 /** What run() writes for one root fault in a development build. */
 function reported(scenario: string) {

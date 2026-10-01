@@ -8,6 +8,26 @@ const row = () => '';
 /** The value every unreadable config throws, so a test reads that the fault keeps it as its cause. */
 const boom = new Error('boom');
 
+/** How many times a flaky config's default was read. */
+let reads = 0;
+
+/**
+ * A config whose default throws on its first read and answers on every later one, so a second read
+ * would print a value the failed read never produced.
+ */
+function flaky(declared) {
+  return {
+    get default() {
+      reads += 1;
+      if (reads === 1) {
+        throw boom;
+      }
+      return 'second';
+    },
+    ...declared,
+  };
+}
+
 /** A validator that accepts any value, which is what lets a default hold an object. */
 const anyValue = {
   '~standard': { validate: (value) => ({ value }), vendor: 'fixture', version: 1 },
@@ -34,6 +54,7 @@ const scenarios = {
   'argument-config': () => new Command('get').argument('path', 'text'),
   'argument-hidden': () => new Command('get').argument('path', { hidden: true }),
   'argument-name': () => new Command('get').argument('-path', {}),
+  'argument-read-once': () => new Command('get').argument('path', flaky({})),
   'argument-twice': () =>
     new Command('get').argument('path', { required: true }).argument('path', {}),
   'argument-unreadable': () =>
@@ -58,6 +79,8 @@ const scenarios = {
   'command-name': () => new Command('bad name'),
   'command-options': () => new Command('get', 'fast'),
   'global-option-config': () => new Application('probe').globalOption('quiet', null),
+  'global-option-read-once': () =>
+    new Application('probe').globalOption('quiet', flaky({ type: 'string' })),
   'global-option-unreadable': () =>
     new Application('probe').globalOption('quiet', {
       get default() {
@@ -140,6 +163,7 @@ const scenarios = {
         },
       ),
     ),
+  'option-read-once': () => new Command('get').option('format', flaky({ type: 'string' })),
   'option-unreadable': () =>
     new Command('get').option('format', {
       get default() {
@@ -203,10 +227,11 @@ if (scenario === 'root-group-option' || scenario === 'root-without-action') {
       throw error;
     }
     // The cause mode reads whether the fault kept the thrown value itself.
-    process.stdout.write(
-      process.argv[3] === 'cause'
-        ? `${JSON.stringify({ cause: error.cause === boom })}\n`
-        : `${error.message}\n`,
-    );
+    // The reads mode reads how often a flaky config's default was read.
+    const modes = {
+      cause: () => JSON.stringify({ cause: error.cause === boom }),
+      reads: () => JSON.stringify({ reads }),
+    };
+    process.stdout.write(`${modes[process.argv[3]]?.() ?? error.message}\n`);
   }
 }

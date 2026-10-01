@@ -47,3 +47,8 @@ test('a cyclic default is a frozen copy holding the same cycle, and its validato
 test('a getter on a default runs once, at the declaring call, across a run and an inspection', () => {
   expect(cycles('once')).toEqual({ default: 1, nested: 1 });
 });
+
+test('a sparse array default keeps its holes in the graph and in the copy the action receives', () => {
+  const holes = [true, false, true];
+  expect(cycles('sparse')).toEqual({ action: holes, graph: holes });
+});

@@ -17,6 +17,9 @@ const recording = {
   },
 };
 
+/** Which of the first three positions of a list hold an entry, so a test reads its holes. */
+const present = (list) => [0, 1, 2].map((index) => Object.hasOwn(list, index));
+
 if (mode === 'cycle') {
   const shape = { name: 'loop' };
   shape.self = shape;
@@ -46,6 +49,19 @@ if (mode === 'cycle') {
       },
     })}\n`,
   );
+} else if (mode === 'sparse') {
+  // Writing past the end leaves a hole in the middle, which is the value under test.
+  const tags = ['a'];
+  tags[2] = 'c';
+  let action = [];
+  const app = new Application('sparse')
+    .option('tags', { default: tags, multiple: true, type: 'string' })
+    .action(({ options }) => {
+      action = present(options.tags);
+    });
+  await app.run({ host: { argv: [] } });
+  const graph = present(app.inspect().root.options[0].default.value);
+  process.stdout.write(`${JSON.stringify({ action, graph })}\n`);
 } else {
   // Each getter counts its reads, across the declaring call, a run, and an inspection.
   const reads = { default: 0, nested: 0 };

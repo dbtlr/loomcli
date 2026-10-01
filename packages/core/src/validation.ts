@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
+import { elided, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, InputError, quoted, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
@@ -241,20 +242,21 @@ export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>
   place: InputPlace,
 ): Config {
   const { config, kind, name } = declared;
-  const subject = kind === 'argument' ? 'Argument' : 'Option';
-  const site = callSite(`${subject} ${quoted(name)}`, {
-    arguments: [name, config],
-    ...place,
-  });
-  const findings = [siteFinding(site, '1')];
+  const subject = `${kind === 'argument' ? 'Argument' : 'Option'} ${quoted(name)}`;
+  // The finding marks the config, which `shown` stands for when the call prints.
+  const findings = (shown: unknown) => [
+    siteFinding(callSite(subject, { arguments: [name, shown], ...place }), '1'),
+  ];
   return captureConfig(config, {
     notAnObject: () =>
       new DeclarationError(notAnObject, {
         correction: `Supply ${kind === 'argument' ? 'an argument' : 'an option'} config object, such as ${kind === 'argument' ? '{}' : "{ type: 'string' }"}.`,
-        findings,
-        sentence: `${site.subject} declares a config that is not an object.`,
+        findings: findings(config),
+        sentence: `${subject} declares a config that is not an object.`,
       }),
-    unreadable: (thrown) => unreadableConfig({ findings, subject: site.subject }, thrown),
+    // A config whose read threw is never read again, so the finding prints it elided.
+    unreadable: (thrown) =>
+      unreadableConfig({ findings: findings(spelled(elided)), subject }, thrown),
   });
 }
 
@@ -731,10 +733,13 @@ export async function prepareInputs(
  * An array default reaches the action as its own mutable copy, so an action that mutates its array
  * rewrites neither the declaration nor the next invocation. One prepared default serves every
  * invocation of a run, and an unvalidated default is the frozen snapshot the declaring call took,
- * so each read copies it. Every other output passes through unchanged.
+ * so each read copies it. The copy keeps a hole where the default has one, as the graph's does.
+ * Every other output passes through unchanged.
  */
 function freshDefault(value: unknown) {
-  return Array.isArray(value) ? [...value] : value;
+  // A spread reads a hole as `undefined`, and `slice` keeps it.
+  // oxlint-disable-next-line unicorn/prefer-spread
+  return Array.isArray(value) ? value.slice() : value;
 }
 
 /**

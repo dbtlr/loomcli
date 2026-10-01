@@ -1,10 +1,10 @@
-- Add the rule `@loomcli/core/unreadable-declaration`. `argument()`, `option()`, `globalOption()`, an input a lifecycle hook declares, and a plugin's option declaration now read their config once, at the call, and a read that throws, such as a getter or a proxy trap that throws at any depth of the default, throws a `DeclarationError` from that call, such as `Option "format" config could not be read: boom.`, with the thrown value as its `cause`. Before, the throw escaped as the raw error, or, inside a default, broke `inspect()` and every plugin that reads the graph.
-- Change a declared default to one frozen snapshot that the declaring call takes. The graph publishes it, and a run passes the same frozen copy to the default's validator, so a validator, or an action that receives the validator's output unchanged, can no longer write to an object default. An array default still reaches the action as its own mutable copy.
+- Add the rule `@loomcli/core/unreadable-declaration`. `argument()`, `option()`, `globalOption()`, an input a lifecycle hook declares, and `plugin()` for the config object of each option it declares now read that config once, at the call, and a read that throws, such as a getter or a proxy trap that throws at any depth of the default, throws a `DeclarationError` from that call, such as `Option "format" config could not be read: boom.`, with the thrown value as its `cause`. Before, the throw escaped as the raw error, or, inside a default, broke `inspect()` and every plugin that reads the graph. A getter on a plugin's `options` record itself is not covered and still escapes as the raw error.
+- Change a declared default to one frozen snapshot that the declaring call takes. The graph publishes it, and a run passes the same frozen copy to the default's validator, so a validator, or an action that receives the validator's output unchanged, can no longer write to an object default. An array default still reaches the action as its own mutable copy, holes included.
 - Fix a default, or a converter's JSON Schema, that holds itself. Core copies it with the same cycle instead of overflowing the stack, so `inspect()`, help, and the suggestions plugin work, a development build no longer reports a cyclic converter answer as `@loomcli/core/schema-converter-failed`, and the manifest reports that it cannot encode the value as JSON. See the [core reference](docs/core.md).
 
 ### Migration
 
-**Affected surface.** A config passed to `argument()`, `option()`, `globalOption()`, or a lifecycle hook's `argument()` or `option()`, and an entry of a plugin's `options`, whose own properties or default throw when read. A default's validator or an action that writes to an object default it receives.
+**Affected surface.** A config passed to `argument()`, `option()`, `globalOption()`, or a lifecycle hook's `argument()` or `option()`, and the config object of one option in a plugin's `options`, whose own properties or default throw when read. A default's validator or an action that writes to an object default it receives.
 
 **Why.** Core reads a declaration once, at the call that declares it, so every check, the graph, and every run read one copy. A read that throws now reports at that call, and the copy every reader shares is frozen so that no reader can change it for another.
 
@@ -22,16 +22,31 @@ After, declare the default as plain data:
 app.option('format', { default: { style: 'plain' }, type: 'string', validate });
 ```
 
-Before, a validator could normalize a default in place:
+Before, a hand-written validator's `'~standard'.validate` method could normalize a default in place:
 
 ```ts
-validate: (value) => { value.style ??= 'plain'; return { value }; }
+const validate: StandardSchemaV1<{ style?: string }> = {
+  '~standard': {
+    validate: (value) => {
+      value.style ??= 'plain';
+      return { value };
+    },
+    vendor: 'acme',
+    version: 1,
+  },
+};
 ```
 
-After, it returns a new value:
+After, the method returns a new value:
 
 ```ts
-validate: (value) => ({ value: { style: 'plain', ...value } })
+const validate: StandardSchemaV1<{ style?: string }> = {
+  '~standard': {
+    validate: (value) => ({ value: { style: 'plain', ...value } }),
+    vendor: 'acme',
+    version: 1,
+  },
+};
 ```
 
 **Steps.**
@@ -39,4 +54,4 @@ validate: (value) => ({ value: { style: 'plain', ...value } })
 1. Replace each getter or proxy in a declaration config, and in its default, with the plain value it returns.
 2. Change each validator or action that writes to an object default it receives so that it builds a new value instead.
 
-**Validation.** Run `inspect()` on the Application in a test, and run each Command with no tokens so that every default passes through its validator and reaches its action. Neither throws a `DeclarationError` or a `TypeError`.
+**Validation.** Run `inspect()` on the Application in a test, and run each Command with no tokens so that every default passes through its validator and reaches its action. `inspect()` throws no `DeclarationError`, and no run reports `@loomcli/core/unreadable-declaration` or `@loomcli/core/validator-failed`.
