@@ -50,7 +50,7 @@ import { buildTheme } from './theme.js';
 import { readTranslations } from './translators.js';
 import type { Translation, TranslationContributor } from './translators.js';
 import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } from './types.js';
-import { captureConfig, checkDeclarations } from './validation.js';
+import { captureConfig, checkDeclarations, unreadableConfig } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
@@ -400,16 +400,22 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
 /** The keys a plugin option may not declare, in the order its diagnostic names them. */
 const forbidden = ['validate', 'validateOmitted', 'required'] as const;
 
-/** The rules a plugin option answers before every rule an ordinary declaration carries. */
-function checkPluginOption(site: FactSite, config: PluginOptionConfig): void {
+/**
+ * The rules a plugin option answers before every rule an ordinary declaration carries, read from
+ * the one copy of its config that `captureConfig` takes, which it answers with for every later read.
+ */
+function checkPluginOption(site: FactSite, declared: PluginOptionConfig): PluginOptionConfig {
   const sentence = site.subject;
-  if (!isPlainObject(config)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { type, ... }.',
-      findings: [partFinding(site, [])],
-      sentence: `${sentence} is not an option declaration.`,
-    });
-  }
+  const findings = [partFinding(site, [])];
+  const config = captureConfig(declared, {
+    notAnObject: () =>
+      new DeclarationError(notAnObject, {
+        correction: 'Supply { type, ... }.',
+        findings,
+        sentence: `${sentence} is not an option declaration.`,
+      }),
+    unreadable: (thrown) => unreadableConfig({ findings, subject: sentence }, thrown),
+  });
   const rejected = forbidden.find((key) => key in config);
   if (rejected !== undefined) {
     throw factFault(pluginOptionRule, site, {
@@ -422,6 +428,7 @@ function checkPluginOption(site: FactSite, config: PluginOptionConfig): void {
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);
+  return config;
 }
 
 /**
@@ -441,12 +448,12 @@ function readOptions(
     });
   }
   const inputs: OptionInput[] = [];
-  for (const [name, config] of Object.entries(declared ?? {})) {
+  for (const [name, entry] of Object.entries(declared ?? {})) {
     const sentence = `${pluginSentence(identity)} option ${quoted(name)}`;
     const site = pluginOptionSite({ identity, options: declared }, name, sentence);
-    checkPluginOption(site, config);
+    const config = checkPluginOption(site, entry);
     checkEnvBinding(site, config);
-    const input: OptionInput = { config: captureConfig(config), kind: 'option', name };
+    const input: OptionInput = { config, kind: 'option', name };
     // The shared rules name the plugin and the option, so a fault reads with its contributor.
     checkDeclarations([{ input, site }], sentence);
     build.records.set(

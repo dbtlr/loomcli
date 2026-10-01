@@ -18,7 +18,7 @@ import { checkOptionName, compileOptions, spellingMark } from './options.js';
 import type { CompileScope, SpellingRole } from './options.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig, OptionValue } from './types.js';
-import { captureConfig, checkInputConfig } from './validation.js';
+import { captureInputConfig } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
@@ -221,8 +221,10 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
 } {
   // The name is judged before the config, as every other declaration judges its own name first.
   checkOptionName(declared.name, globalSite(declared));
-  checkInputConfig(declared, { call: 'globalOption', path: [] });
-  const input = { ...declared, config: captureConfig(declared.config) };
+  const input = {
+    ...declared,
+    config: captureInputConfig(declared, { call: 'globalOption', path: [] }),
+  };
   const site = globalSite(input);
   const sentence = site.subject;
   const rejected = omissionRules.find((key) => key in input.config);

@@ -98,7 +98,7 @@ A string option that collects every occurrence into one array instead of rejecti
 _Avoid_: Repeatable flag, array option, list option
 
 **Default**:
-The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value.
+The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value. Core snapshots it once, at the call that declares it: arrays and plain objects are copied and frozen to any depth with any cycle kept, and other values are kept as they are. That copy is the value the graph publishes and the validator receives.
 
 **Input-source stage**:
 The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.

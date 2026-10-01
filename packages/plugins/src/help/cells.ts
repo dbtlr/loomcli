@@ -119,14 +119,28 @@ function isText(value: unknown): boolean {
 
 /**
  * How JSON renders one composite value, and how `String` renders it when JSON cannot: a member that
- * is itself unrepresentable throws, and a value JSON drops altogether answers `undefined`.
+ * is itself unrepresentable throws, a value that holds itself throws, and a value JSON drops
+ * altogether answers `undefined`.
  */
 function jsonOrText(value: unknown): string {
+  let json: string | undefined = undefined;
   try {
-    const json: string | undefined = JSON.stringify(value);
-    return json ?? String(value);
+    json = JSON.stringify(value);
   } catch {
+    json = undefined;
+  }
+  return json ?? textOf(value);
+}
+
+/**
+ * How `String` renders one value, or Object's own spelling, such as `[object Array]`, where `String`
+ * throws. Bun 1.4.0 overflows the stack on an array that holds itself, where Node elides the cycle.
+ */
+function textOf(value: unknown): string {
+  try {
     return String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
   }
 }
 

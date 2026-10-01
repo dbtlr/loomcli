@@ -379,6 +379,7 @@ test('a declared default that is not plain JSON data fails the write, wherever t
     'deep-bigint',
     'global-nan',
     'child-nan',
+    'cycle',
   ]) {
     expect(unencodable(scenario)).toEqual(reportedAs('the default of option "--odd"'));
   }
@@ -398,4 +399,5 @@ test('a null-prototype default prints as the plain object core copies it into, a
 
 test('a published schema that is not plain JSON data fails the write', () => {
   expect(unencodable('schema')).toEqual(reportedAs('the schema of option "--odd"'));
+  expect(unencodable('schema-cycle')).toEqual(reportedAs('the schema of option "--odd"'));
 });

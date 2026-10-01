@@ -20,6 +20,9 @@ const load = () => Promise.resolve({ default: act });
 const render = () => '';
 const row = () => '';
 
+/** The value an unreadable config throws, so a test reads that the fault keeps it as its cause. */
+const boom = new Error('boom');
+
 /** A Standard Schema that answers each value with the verdict `answer` gives. */
 function schema(answer) {
   return { '~standard': { validate: answer, vendor: 'fixture', version: 1 } };
@@ -198,6 +201,17 @@ const scenarios = {
   'option-config': () => plugin('@acme/log', { options: { level: 'debug' } }),
   'option-rule': () =>
     plugin('@acme/log', { options: { level: { required: true, type: 'string' } } }),
+  'option-unreadable': () =>
+    plugin('@acme/log', {
+      options: {
+        level: {
+          get default() {
+            throw boom;
+          },
+          type: 'string',
+        },
+      },
+    }),
   'options-record': () => plugin('@acme/log', { options: [] }),
   'override-key': () => new Application('probe', { views: [override('InputError', render)] }),
   'override-twice': () =>
@@ -295,6 +309,11 @@ if (scenario === 'run-rendering') {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    process.stdout.write(`${error.message}\n`);
+    // The cause mode reads whether the fault kept the thrown value itself.
+    process.stdout.write(
+      process.argv[3] === 'cause'
+        ? `${JSON.stringify({ cause: error.cause === boom })}\n`
+        : `${error.message}\n`,
+    );
   }
 }

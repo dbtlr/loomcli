@@ -23,6 +23,17 @@ const notAnObject = registerRule('@loomcli/core/not-an-object', {
   headline: 'Not an object',
 });
 
+/**
+ * A declaration whose read throws while core takes its one copy, such as a config with a getter
+ * that throws or a proxy whose trap throws. Only the config of an argument or option and a plugin's
+ * option declaration raise it so far.
+ */
+const unreadableDeclaration = registerRule('@loomcli/core/unreadable-declaration', {
+  explanation:
+    'Core reads a declaration by its keys once, at the call that declares it, and checks and records the copy it takes. A read that throws, such as a throwing getter or proxy trap, leaves core nothing to check or record.',
+  headline: 'Declaration could not be read',
+});
+
 /** A list entry that its factory did not build, such as a hand-made plugin or translation. */
 const foreignValue = registerRule('@loomcli/core/foreign-value', {
   explanation:
@@ -242,4 +253,5 @@ export {
   translationKey,
   twoPackageCopies,
   unknownSignal,
+  unreadableDeclaration,
 };
