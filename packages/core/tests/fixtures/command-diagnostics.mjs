@@ -5,6 +5,14 @@ const leaf = (name) => new Command(name).action(act);
 const render = () => '';
 const row = () => '';
 
+/** The value every unreadable config throws, so a test reads that the fault keeps it as its cause. */
+const boom = new Error('boom');
+
+/** A validator that accepts any value, which is what lets a default hold an object. */
+const anyValue = {
+  '~standard': { validate: (value) => ({ value }), vendor: 'fixture', version: 1 },
+};
+
 /**
  * One faulty declaration per scenario. Each throws a declaration fault whose rule the Command and
  * naming family declares, and the fixture prints the diagnostic its message holds.
@@ -28,6 +36,12 @@ const scenarios = {
   'argument-name': () => new Command('get').argument('-path', {}),
   'argument-twice': () =>
     new Command('get').argument('path', { required: true }).argument('path', {}),
+  'argument-unreadable': () =>
+    new Command('get').argument('path', {
+      get default() {
+        throw boom;
+      },
+    }),
   'attached-twice': () => {
     const clear = leaf('clear');
     return new Application('probe')
@@ -44,6 +58,13 @@ const scenarios = {
   'command-name': () => new Command('bad name'),
   'command-options': () => new Command('get', 'fast'),
   'global-option-config': () => new Application('probe').globalOption('quiet', null),
+  'global-option-unreadable': () =>
+    new Application('probe').globalOption('quiet', {
+      get default() {
+        throw boom;
+      },
+      type: 'string',
+    }),
   'group-option': () =>
     new Command('store').command(
       new Command('cache').option('verbose', { type: 'boolean' }).command(leaf('clear')),
@@ -70,6 +91,24 @@ const scenarios = {
     })
       .command(leaf('count'))
       .inspect(),
+  'hook-option-unreadable': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) =>
+            command.name === 'count'
+              ? command.option('format', {
+                  get default() {
+                    throw boom;
+                  },
+                  type: 'string',
+                })
+              : command,
+        }),
+      ],
+    })
+      .command(leaf('count'))
+      .inspect(),
   'multiple-actions': () => new Command('get').action(act).action(act),
   'multiple-results': () =>
     new Command('get').result({ views: { plain: { render } } }).rows({ views: { lines: { row } } }),
@@ -77,8 +116,37 @@ const scenarios = {
   'not-a-command': () => new Command('store').command({ name: 'get' }),
   'option-after-action': () => new Command('get').action(act).option('raw', { type: 'boolean' }),
   'option-config': () => new Command('get').option('format'),
+  'option-default-unreadable': () =>
+    new Command('get').option('format', {
+      default: {
+        get key() {
+          throw boom;
+        },
+      },
+      type: 'string',
+      validate: anyValue,
+    }),
   'option-description': () =>
     new Command('get').option('raw', { description: '', type: 'boolean' }),
+  'option-prototype-unreadable': () =>
+    new Command('get').option(
+      'format',
+      new Proxy(
+        { type: 'string' },
+        {
+          getPrototypeOf() {
+            throw boom;
+          },
+        },
+      ),
+    ),
+  'option-unreadable': () =>
+    new Command('get').option('format', {
+      get default() {
+        throw boom;
+      },
+      type: 'string',
+    }),
   'optional-before-required': () =>
     new Command('keys').argument('path', {}).argument('name', { required: true }),
   'plugin-sibling': () =>
@@ -134,6 +202,11 @@ if (scenario === 'root-group-option' || scenario === 'root-without-action') {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    process.stdout.write(`${error.message}\n`);
+    // The cause mode reads whether the fault kept the thrown value itself.
+    process.stdout.write(
+      process.argv[3] === 'cause'
+        ? `${JSON.stringify({ cause: error.cause === boom })}\n`
+        : `${error.message}\n`,
+    );
   }
 }

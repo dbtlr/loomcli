@@ -762,10 +762,7 @@ function limitConverterFault(failure: string): Expected {
   };
 }
 
-test.each([
-  ['converter-getter', 'failed for target "draft-2020-12": getter boom.'],
-  ['converter-cyclic', 'failed for target "draft-2020-12": Maximum call stack size exceeded.'],
-])(
+test.each([['converter-getter', 'failed for target "draft-2020-12": getter boom.']])(
   'a converter whose answer throws while core reads it is a declaration fault in a development build (%s)',
   (scenario, failure) => {
     expect(invoke(fixture, [scenario])).toEqual({
@@ -776,10 +773,18 @@ test.each([
   },
 );
 
-test.each(['converter-getter-distributed', 'converter-cyclic-distributed'])(
+test.each(['converter-getter-distributed'])(
   'a distributed build reads a converter whose answer throws while core reads it as no published schema (%s)',
   (scenario) => {
     expect(thrown(scenario, 'inspect')).toBe('{"schema":null}\n');
+    expect(invoke(fixture, [scenario])).toEqual({ status: 0, stderr: '', stdout: '' });
+  },
+);
+
+test.each(['converter-cyclic', 'converter-cyclic-distributed'])(
+  'a converter answer that holds itself publishes a frozen copy holding the same cycle (%s)',
+  (scenario) => {
+    expect(thrown(scenario, 'cycle')).toBe('{"cycle":true,"frozen":true,"type":"string"}\n');
     expect(invoke(fixture, [scenario])).toEqual({ status: 0, stderr: '', stdout: '' });
   },
 );

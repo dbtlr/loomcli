@@ -176,6 +176,11 @@ const explanations = {
     'Core installs listeners for SIGINT and SIGTERM alone, the two signals that ask a',
     'command-line program to stop, so a plugin claims one of those.',
   ],
+  'unreadable-declaration': [
+    'Core reads a declaration by its keys once, at the call that declares it, and',
+    'checks and records the copy it takes. A read that throws, such as a throwing',
+    'getter or proxy trap, leaves core nothing to check or record.',
+  ],
 };
 
 /** The rules of other families this family raises too. */
@@ -613,6 +618,14 @@ const cases: Record<string, Expected> = {
     rule: 'plugin-option-rule',
     sentence: 'Plugin "@acme/log" option "level" declares required.',
   },
+  'option-unreadable': {
+    correction:
+      'Declare the config as a plain object literal whose properties read without throwing.',
+    findings: [bare("plugin('@acme/log', { options: { level: … } })", 'level: …')],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Plugin "@acme/log" option "level" config could not be read: boom.',
+  },
   'options-record': {
     correction: 'Supply a record of option declarations.',
     findings: [bare("plugin('@acme/log', { options: [] })", 'options: []')],
@@ -1002,6 +1015,14 @@ test.each(Object.entries(cases))(
     expect(thrown(scenario)).toBe(diagnostic(expected));
   },
 );
+
+test('an unreadable plugin option config keeps the value the read threw as its cause', () => {
+  expect(invoke(fixture, ['option-unreadable', 'cause'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"cause":true}\n',
+  });
+});
 
 test.each([
   'extension-unscoped',

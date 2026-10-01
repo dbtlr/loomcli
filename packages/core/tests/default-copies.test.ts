@@ -30,3 +30,20 @@ test('an inspected default is a frozen snapshot that no consumer can write throu
     ],
   });
 });
+
+/** What the cycles fixture reports for one mode. */
+function cycles(mode: string): unknown {
+  const result = invoke(new URL('fixtures/default-cycles.mjs', import.meta.url), [mode]);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  return JSON.parse(result.stdout);
+}
+
+test('a cyclic default is a frozen copy holding the same cycle, and its validator receives that copy', () => {
+  const copied = { authors: false, cycle: true, frozen: true, validated: true };
+  expect(cycles('cycle')).toEqual({ list: copied, shape: copied });
+});
+
+test('a getter on a default runs once, at the declaring call, across a run and an inspection', () => {
+  expect(cycles('once')).toEqual({ default: 1, nested: 1 });
+});

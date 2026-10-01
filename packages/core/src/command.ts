@@ -76,7 +76,7 @@ import type {
 } from './globals.js';
 import { buildGlobals, checkLocalOptions } from './globals.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
-import { graphMismatch, nodeAt, resultNode, snapshot } from './inspect.js';
+import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import {
   checkOptionName,
@@ -90,7 +90,7 @@ import {
   spellingMark,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingRole } from './options.js';
-import { isPlainObject } from './plain.js';
+import { isPlainObject, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -128,8 +128,7 @@ import type {
   View,
 } from './types.js';
 import {
-  captureConfig,
-  checkInputConfig,
+  captureInputConfig,
   checkDeclarations,
   declaringSite,
   inputPlace,
@@ -702,11 +701,13 @@ export function declareArgument<
 ): CommandState<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
   // A name of another kind then reports as a declared name instead of failing to print in the order diagnostic.
-  // The config is judged right after its name, and only then captured.
+  // The config is read once right after its name is judged, and every later check reads that copy.
   const { name } = state;
   checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], declared);
-  checkInputConfig(declared, { call: 'argument', path: pathOf(name) });
-  const input = { ...declared, config: captureConfig(declared.config) };
+  const input = {
+    ...declared,
+    config: captureInputConfig(declared, { call: 'argument', path: pathOf(name) }),
+  };
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'argument',
@@ -747,10 +748,12 @@ export function declareOption<
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
-  // The config is judged right after its name, and only then captured.
+  // The config is read once right after its name is judged, and every later check reads that copy.
   checkOptionName(declared.name, inputSite(state.name, pathOf(state.name), declared));
-  checkInputConfig(declared, { call: 'option', path: pathOf(state.name) });
-  const input = { ...declared, config: captureConfig(declared.config) };
+  const input = {
+    ...declared,
+    config: captureInputConfig(declared, { call: 'option', path: pathOf(state.name) }),
+  };
   const site = inputSite(state.name, pathOf(state.name), input);
   checkOpen(state, {
     arguments: [input.name, input.config],
@@ -1663,12 +1666,12 @@ class AttachedCommandValue implements AttachedCommand {
     } else {
       checkOptionName(raw.name, inputSite(declared.name, path, raw));
     }
-    checkInputConfig(raw, { call: raw.kind, path });
     // Each kind captures its own config, so the input keeps the pairing its kind declares.
+    const place = { call: raw.kind, path };
     const input: InputDeclaration =
       raw.kind === 'argument'
-        ? { ...raw, config: captureConfig(raw.config) }
-        : { ...raw, config: captureConfig(raw.config) };
+        ? { ...raw, config: captureInputConfig(raw, place) }
+        : { ...raw, config: captureInputConfig(raw, place) };
     return this.#derive(
       { identity, input, kind: 'input' },
       { ...declared, inputs: [...declared.inputs, input] },

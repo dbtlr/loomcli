@@ -335,6 +335,23 @@ function folded() {
     .action(dispatch);
 }
 
+/** A default that holds itself, which JSON cannot render, beside a list that holds itself. */
+function cyclic() {
+  const shape = { name: 'loop' };
+  shape.self = shape;
+  const list = ['a'];
+  list.push(list);
+  return new Application('app', { plugins, version: '1.2.0' })
+    .option('shape', {
+      default: shape,
+      description: 'The shape.',
+      type: 'string',
+      validate: z.any(),
+    })
+    .option('list', { default: list, description: 'The list.', type: 'string', validate: z.any() })
+    .action(dispatch);
+}
+
 const scenarios = {
   'branded-line': () =>
     branded([override(versionLine, { render: (graph) => `<${graph.name}@${graph.version}>\n` })]),
@@ -347,6 +364,7 @@ const scenarios = {
   'broken-page': () => branded([override(helpPage, breaks)]),
   cells,
   children,
+  cyclic,
   facts,
   folded,
   marked: () =>

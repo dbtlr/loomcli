@@ -6,7 +6,7 @@ import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
 import type { compileOptions } from './options.js';
-import { isPlainObject } from './plain.js';
+import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
@@ -151,32 +151,12 @@ function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Sp
 }
 
 /**
- * A snapshot of one value. Arrays and plain objects are copied and frozen to any depth, so a
- * consumer cannot reach the source through the copy, and a later call reports the value again.
- * Primitives and library objects, such as a class instance or a `Date` a schema produced, are
- * reported as they are, because core cannot copy them meaningfully. The graph reads it for a
- * declared value and the chain reads it for the request one middleware holds.
+ * A declared default is wrapped, so `default: undefined` reads apart from no default at all. The
+ * value is the frozen snapshot the declaring call took, the one a run validates, so inspection
+ * copies nothing and every reader sees one value.
  */
-export function snapshot(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return Object.freeze(value.map((entry: unknown) => snapshot(entry)));
-  }
-  if (isPlainObject(value)) {
-    return snapshotRecord(value);
-  }
-  return value;
-}
-
-/** The snapshot of one plain object, under the record type the caller already established. */
-function snapshotRecord(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
-  return Object.freeze(
-    Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, snapshot(entry)])),
-  );
-}
-
-/** A declared default is wrapped, so `default: undefined` reads apart from no default at all. */
 function declaredDefault(config: ArgumentConfig | OptionConfig) {
-  return 'default' in config ? Object.freeze({ value: snapshot(config.default) }) : undefined;
+  return 'default' in config ? Object.freeze({ value: config.default }) : undefined;
 }
 
 /**

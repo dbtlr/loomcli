@@ -18,8 +18,8 @@ import {
 } from './input-rules.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
-import { isPlainObject } from './plain.js';
-import { notAnObject } from './plugin-rules.js';
+import { isPlainObject, snapshot } from './plain.js';
+import { notAnObject, unreadableDeclaration } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -163,45 +163,99 @@ class ValidatedInputs {
 }
 export type { ValidatedInputs };
 
+/** The two faults one declaring call raises when it cannot capture its config. */
+export interface ConfigFaults {
+  /** The config is not a plain object, so it has no keys for core to read. */
+  readonly notAnObject: () => DeclarationError;
+  /** A read of the config threw the value it receives. */
+  readonly unreadable: (thrown: unknown) => DeclarationError;
+}
+
 /**
- * The one check every `argument()`, `option()`, and `globalOption()` call makes before it reads its
- * config, so a call in JavaScript that supplies none, or a value of another kind, reports a
- * declaration fault and not a TypeError. `place` is where the call sits.
+ * Authoring's one read of a config: the prototype check, the copy of its keys, and the snapshot of
+ * its default, inside one try. Every later check, the registry entry, and every sentence read the
+ * copy and never the author's object again, so a getter runs once and the caller's later changes
+ * reach nothing. The default is copied and frozen to any depth, cycles included, and that copy is
+ * the value the graph publishes and a run validates; every other property is captured as declared,
+ * because core clones no library object. A read that throws, from a getter or a proxy trap, is the
+ * unreadable fault, and a value that is not a plain object is the not-an-object fault.
  */
-export function checkInputConfig(
+export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
+  config: Config,
+  faults: ConfigFaults,
+): Config {
+  let captured: Config | undefined = undefined;
+  try {
+    captured = isPlainObject(config) ? copyConfig(config) : undefined;
+  } catch (error) {
+    throw faults.unreadable(error);
+  }
+  if (captured === undefined) {
+    throw faults.notAnObject();
+  }
+  return captured;
+}
+
+/** One plain config's copy, with its default, when it declares one, snapshotted. */
+function copyConfig<Config extends ArgumentConfig | OptionConfig>(config: Config): Config {
+  const copy = { ...config };
+  // Presence is the key, so a declared `default: undefined` stays a default.
+  return Object.hasOwn(copy, 'default') ? { ...copy, default: snapshot(copy.default) } : copy;
+}
+
+/** The correction every unreadable config carries, whichever call declared it. */
+const readableCorrection =
+  'Declare the config as a plain object literal whose properties read without throwing.';
+
+/**
+ * The fault for a config whose read threw, named by `subject` and marked by `findings`. The thrown
+ * value's reason ends the sentence and the value itself is the fault's cause.
+ */
+export function unreadableConfig(
+  report: { readonly findings: readonly Finding[]; readonly subject: string },
+  thrown: unknown,
+): DeclarationError {
+  return new DeclarationError(
+    unreadableDeclaration,
+    {
+      correction: readableCorrection,
+      findings: report.findings,
+      sentence: `${report.subject} config could not be read: ${asSentence(reasonOf(thrown))}`,
+    },
+    { cause: thrown },
+  );
+}
+
+/**
+ * The config every `argument()`, `option()`, and `globalOption()` call, and every input a lifecycle
+ * hook declares, reads through `captureConfig`. A call in JavaScript that supplies none, or a value
+ * of another kind, reports a declaration fault and not a TypeError, and so does a config whose read
+ * throws. Each fault marks the config on the call at `place`.
+ */
+export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>(
   declared: {
-    readonly config: unknown;
+    readonly config: Config;
     readonly kind: InputDeclaration['kind'];
     readonly name: string;
   },
   place: InputPlace,
-): void {
+): Config {
   const { config, kind, name } = declared;
-  if (isPlainObject(config)) {
-    return;
-  }
   const subject = kind === 'argument' ? 'Argument' : 'Option';
   const site = callSite(`${subject} ${quoted(name)}`, {
     arguments: [name, config],
     ...place,
   });
-  throw new DeclarationError(notAnObject, {
-    correction: `Supply ${kind === 'argument' ? 'an argument' : 'an option'} config object, such as ${kind === 'argument' ? '{}' : "{ type: 'string' }"}.`,
-    findings: [siteFinding(site, '1')],
-    sentence: `${site.subject} declares a config that is not an object.`,
+  const findings = [siteFinding(site, '1')];
+  return captureConfig(config, {
+    notAnObject: () =>
+      new DeclarationError(notAnObject, {
+        correction: `Supply ${kind === 'argument' ? 'an argument' : 'an option'} config object, such as ${kind === 'argument' ? '{}' : "{ type: 'string' }"}.`,
+        findings,
+        sentence: `${site.subject} declares a config that is not an object.`,
+      }),
+    unreadable: (thrown) => unreadableConfig({ findings, subject: site.subject }, thrown),
   });
-}
-
-/**
- * Authoring's snapshot of one config. An array default is the one declared value core hands to an
- * action as its own value, so the declaration keeps a copy and the caller keeps its array. Every
- * other property is captured as declared, because core clones no library object.
- */
-export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
-  config: Config,
-): Config {
-  const value = config.default;
-  return Array.isArray(value) ? { ...config, default: [...value] } : { ...config };
 }
 
 /**
@@ -674,10 +728,10 @@ export async function prepareInputs(
 }
 
 /**
- * An array default reaches the action as its own copy, so an action that mutates its array
+ * An array default reaches the action as its own mutable copy, so an action that mutates its array
  * rewrites neither the declaration nor the next invocation. One prepared default serves every
- * invocation of a run, and an unvalidated default is the declared array itself, so each read
- * copies it. Every other output passes through unchanged.
+ * invocation of a run, and an unvalidated default is the frozen snapshot the declaring call took,
+ * so each read copies it. Every other output passes through unchanged.
  */
 function freshDefault(value: unknown) {
   return Array.isArray(value) ? [...value] : value;

@@ -131,6 +131,13 @@ test('a right cell carries the description, then the facts that apply, in one pa
   );
 });
 
+test('a default that holds itself prints as String renders it, because JSON cannot render it', () => {
+  const result = run('cyclic', ['--help']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(result.stdout).toContain('  --shape <shape>  The shape.  (default: [object Object])\n');
+  expect(result.stdout).toContain('  --list <list>    The list.  (default: a,)\n');
+});
+
 test('a root with children prints GLOBAL OPTIONS and the action form', () => {
   expect(run('usage', ['--help'])).toEqual(
     page(

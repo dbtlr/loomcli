@@ -43,7 +43,7 @@ const getterThrowing = converting(() => ({
   },
 }));
 
-/** A converter whose answer holds itself, which no snapshot can copy to its end. */
+/** A converter whose answer holds itself, which the graph copies with the same cycle. */
 const cyclic = converting(() => {
   const schema = { type: 'string' };
   schema.self = schema;
@@ -235,6 +235,13 @@ if (scenario in reported) {
     } catch (error) {
       process.stdout.write(`${error.message}\n`);
     }
+  } else if (mode === 'cycle') {
+    const [child] = app.inspect().root.children;
+    const { schema } = child.options[0];
+    const cycle = schema.self === schema;
+    process.stdout.write(
+      `${JSON.stringify({ cycle, frozen: Object.isFrozen(schema), type: schema.type })}\n`,
+    );
   } else if (mode === 'cause') {
     try {
       app.inspect();

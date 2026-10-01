@@ -83,21 +83,30 @@ function defaulted(value) {
     .action(dispatch);
 }
 
-/** A hand-written schema whose converter publishes a bound JSON cannot carry. */
-const unboundedSchema = {
-  '~standard': {
-    jsonSchema: { input: () => ({ minimum: Number.NaN, type: 'number' }), output: () => ({}) },
-    validate: (value) => ({ value }),
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+/** A hand-written validator whose converter publishes what `input` returns. */
+function publishing(input) {
+  return {
+    '~standard': {
+      jsonSchema: { input, output: () => ({}) },
+      validate: (value) => ({ value }),
+      vendor: 'fixture',
+      version: 1,
+    },
+  };
+}
 
-/** An application whose one option publishes that schema. */
-const unbounded = () =>
+/** An application whose one option publishes the schema `input` returns. */
+const published = (input) => () =>
   new Application('app', { ...packet, plugins: [manifest()] })
-    .option('odd', { type: 'string', validate: unboundedSchema })
+    .option('odd', { type: 'string', validate: publishing(input) })
     .action(dispatch);
+
+/** A value that holds itself, which no JSON text can carry. */
+function looped() {
+  const value = { type: 'string' };
+  value.self = value;
+  return value;
+}
 
 /** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
 function placed(where, value) {
@@ -118,6 +127,7 @@ const scenarios = {
   'array-date': () => defaulted([new Date(0)]),
   bigint: () => defaulted(10n),
   'child-nan': () => placed('child', Number.NaN),
+  cycle: () => defaulted(looped()),
   date: () => defaulted(new Date(0)),
   'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
   function: () => defaulted(() => 'ten'),
@@ -127,7 +137,8 @@ const scenarios = {
   nan: () => defaulted(Number.NaN),
   'null-prototype': () =>
     defaulted(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
-  schema: unbounded,
+  schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
+  'schema-cycle': published(looped),
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
