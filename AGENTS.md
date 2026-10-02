@@ -46,8 +46,8 @@ A finding is a defect only when it passes both tests:
    output, a declared default, or an action's result, belongs to the author, and its failure is a
    defect in their application that core already reports as one. A failure is a failure: when the
    author's code is wrong, such as a middleware that throws or an action that omits its declared
-   result, the run fails and core reports it, and Loom owes no rule for how the rest of that run
-   winds down. Loom does not protect authors from their own code. Loom deliberately ships no JSON
+   result, the run fails through the ordinary failure path, and Loom adds no special rule for
+   that author's mistake. Loom does not protect authors from their own code. Loom deliberately ships no JSON
    validator, because a command-line application has no reason to parse JSON from arguments or
    options.
 2. **It plausibly happens.** The input fits how a command-line application is used. Command-line
