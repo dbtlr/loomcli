@@ -44,7 +44,10 @@ A finding is a defect only when it passes both tests:
    `@loomcli/validators`, the configuration plugin's files) or from operator input that reaches core
    through one of them. A value the author's own code creates, such as a hand-written validator's
    output, a declared default, or an action's result, belongs to the author, and its failure is a
-   defect in their application that core already reports as one. Loom deliberately ships no JSON
+   defect in their application that core already reports as one. A failure is a failure: when the
+   author's code is wrong, such as a middleware that throws or an action that omits its declared
+   result, the run fails and core reports it, and Loom owes no rule for how the rest of that run
+   winds down. Loom does not protect authors from their own code. Loom deliberately ships no JSON
    validator, because a command-line application has no reason to parse JSON from arguments or
    options.
 2. **It plausibly happens.** The input fits how a command-line application is used. Command-line
@@ -53,7 +56,10 @@ A finding is a defect only when it passes both tests:
    paths, is a probe result.
 
 A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
-with that reason in the review record. A finding where either test is uncertain is held: once the
-task has settled, bring it to the user with what it is and the reason it is uncertain, and decide
-together whether to fix it, file it, or dismiss it. Brief every review seat with both tests, and
-triage each finding against them before acting on it.
+with that reason in the review record, and the review record is where it ends. A seed records an
+ask someone made or a defect someone hit; a question an agent imagines, such as whether a
+middleware should ever emit a result, is a finding and passes both tests before it becomes a seed.
+A finding where either test is uncertain is held: once the task has settled, bring it to the user
+with what it is and the reason it is uncertain, and decide together whether to fix it, file it, or
+dismiss it. Brief every review seat with both tests, and triage each finding against them before
+acting on it.
