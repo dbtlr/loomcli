@@ -27,7 +27,14 @@ import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
-import { copyOwnKeys, decidePlain, isPlainObject, shallowList, shallowRecord } from './plain.js';
+import {
+  copyOwnKeys,
+  decidePlain,
+  declaring,
+  isPlainObject,
+  shallowList,
+  shallowRecord,
+} from './plain.js';
 import {
   foreignValue,
   middlewareActivation,
@@ -218,7 +225,7 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
   identity: string,
   definition: PluginDefinition<Options, Theme>,
 ): Plugin<NoInfer<Options>, NoInfer<Theme>> {
-  return new PluginDeclaration<Options, Theme>(readPlugin(identity, definition));
+  return new PluginDeclaration<Options, Theme>(declaring(() => readPlugin(identity, definition)));
 }
 
 /**

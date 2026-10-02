@@ -295,6 +295,20 @@ const modes = {
     });
     return { ended, fact };
   },
+  // A verdict one declaring call reached answers no later call: each part changes its prototype after.
+  later: () => {
+    const foreign = { kind: 'foreign' };
+    const packet = Object.create(foreign);
+    packet.build = 'distributed';
+    const before = outcome(() => new Application('probe', { packet }));
+    Object.setPrototypeOf(packet, Object.prototype);
+    const after = outcome(() => new Application('probe', { packet }));
+    const definition = { views: [] };
+    plugin('@acme/probe', definition);
+    Object.setPrototypeOf(definition, foreign);
+    const reused = outcome(() => plugin('@acme/probe', definition));
+    return { after, before, reused };
+  },
   // The plugins list reports a length of 1 and then 3, and the views list overrides forEach.
   lists: () => {
     let lengthReads = 0;

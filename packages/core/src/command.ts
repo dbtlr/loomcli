@@ -91,7 +91,7 @@ import {
   spellingMark,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingRole } from './options.js';
-import { isPlainObject, shallowList, snapshot } from './plain.js';
+import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -2516,7 +2516,7 @@ type CommandConstructor = new (
  */
 class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
   constructor(name: string, options?: CommandOptions) {
-    const declared = namedState<RegisteredGlobals>(name, options);
+    const declared = declaring(() => namedState<RegisteredGlobals>(name, options));
     super(declared.name, declared.state);
   }
 }

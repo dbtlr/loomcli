@@ -1,8 +1,25 @@
 /**
- * The verdict a declaring call reached on each part of a declaration it captured, so every later
- * rule reads that one verdict and never asks the part's prototype again.
+ * The verdict the declaring call under way reached on each part of a declaration it captured, so
+ * every later rule of that call reads that one verdict and never asks the part's prototype again.
+ * No call is under way outside `declaring`, so a run and every later call judge afresh.
  */
-const verdicts = new WeakMap<object, boolean>();
+let verdicts: WeakMap<object, boolean> | undefined = undefined;
+
+/**
+ * Runs one declaring call with verdicts of its own, dropped when it returns or throws. A call made
+ * inside another, such as a `plugin()` a getter makes, is part of the outer read and shares them.
+ */
+function declaring<Result>(call: () => Result): Result {
+  if (verdicts !== undefined) {
+    return call();
+  }
+  verdicts = new WeakMap();
+  try {
+    return call();
+  } finally {
+    verdicts = undefined;
+  }
+}
 
 /**
  * A structural value core reads as plain data: an object literal, and never a declaration that
@@ -14,7 +31,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') {
     return false;
   }
-  return verdicts.get(value) ?? hasPlainPrototype(value);
+  return verdicts?.get(value) ?? hasPlainPrototype(value);
 }
 
 /** Whether one object's prototype, read once, is `Object.prototype` or `null`. */
@@ -31,12 +48,12 @@ function decidePlain(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') {
     return false;
   }
-  const known = verdicts.get(value);
+  const known = verdicts?.get(value);
   if (known !== undefined) {
     return known;
   }
   const verdict = hasPlainPrototype(value);
-  verdicts.set(value, verdict);
+  verdicts?.set(value, verdict);
   return verdict;
 }
 
@@ -186,6 +203,7 @@ export {
   copyList,
   copyOwnKeys,
   decidePlain,
+  declaring,
   isPlainObject,
   shallowList,
   shallowRecord,

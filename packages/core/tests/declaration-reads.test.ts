@@ -273,6 +273,14 @@ test.each(
   },
 );
 
+test('a plain verdict one declaring call reached answers no later declaring call', () => {
+  expect(report('later', 'application', [])).toEqual({
+    after: 'returned',
+    before: expect.objectContaining({ rule: '@loomcli/core/invalid-packet' }),
+    reused: expect.objectContaining({ rule: '@loomcli/core/not-an-object' }),
+  });
+});
+
 test('a list is read by its length once and index by index, never through its own methods', () => {
   expect(report('lists', 'plugin', [])).toEqual({
     ended: 'returned',

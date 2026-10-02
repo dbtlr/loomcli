@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** A config passed to `argument()`, `option()`, `globalOption()`, or a lifecycle hook's `argument()` or `option()`, whose own properties, `extensions` list, or default throw when read. A `plugin()` definition, an options object passed to `new Application()` or `new Command()`, or a plain object or list nested in one of them, such as a plugin's `options` record and each option's config, `middleware`, or `views`, or the Application's `packet`, `rendering`, or `plugins`, that throws when read. A default's validator or an action that writes to an object default it receives.
+**Affected surface.** A config passed to `argument()`, `option()`, `globalOption()`, or a lifecycle hook's `argument()` or `option()`, whose own properties, `extensions` list, or default throw when read. A `plugin()` definition, an options object passed to `new Application()` or `new Command()`, or a plain object or list nested in one of them, such as a plugin's `options` record and each option's config, `middleware`, or `views`, or the Application's `packet`, `rendering`, or `plugins`, that throws when read. A `plugin()` definition, or a plain object or list nested in it, that holds a key that is not enumerable, which core now reads where it ignored it before. A default's validator or an action that writes to an object default it receives.
 
 **Why.** Core reads a declaration once, at the call that declares it, so every check, the graph, and every run read one copy. A read that throws now reports at that call, and the copy of a default that every reader shares is frozen so that no reader can change it for another.
 
@@ -59,5 +59,6 @@ const validate: StandardSchemaV1<{ style?: string }> = {
 
 1. Replace each getter or proxy in a declaration config and its default, a plugin definition, or a constructor's options, with the plain value it returns.
 2. Change each validator or action that writes to an object default it receives so that it builds a new value instead.
+3. Remove each key that is not enumerable from a `plugin()` definition and the values nested in it, unless core should read it.
 
 **Validation.** Run `inspect()` on the Application in a test, and run each Command with no tokens so that every default passes through its validator and reaches its action. `inspect()` throws no `DeclarationError`, and no run reports `@loomcli/core/unreadable-declaration` or `@loomcli/core/validator-failed`.

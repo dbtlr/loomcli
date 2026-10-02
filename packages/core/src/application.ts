@@ -70,7 +70,7 @@ import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
-import { isPlainObject, shallowList, shallowRecord } from './plain.js';
+import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js';
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
@@ -1035,7 +1035,10 @@ class ApplicationDeclaration<
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);
-    super(checked, declareApplication(checked, options));
+    super(
+      checked,
+      declaring(() => declareApplication(checked, options)),
+    );
   }
 }
 
