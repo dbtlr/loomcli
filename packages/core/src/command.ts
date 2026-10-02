@@ -1,4 +1,5 @@
 import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
+import { captureDeclaration, unreadableArgument } from './capture.js';
 import {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -90,7 +91,7 @@ import {
   spellingMark,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingRole } from './options.js';
-import { isPlainObject, snapshot } from './plain.js';
+import { isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -339,6 +340,30 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
   return { arguments: callArguments(name, options), call: 'new Command', mark };
 }
 
+/**
+ * The one copy of the options that `new Command(name, options)` reads, taken once the name is
+ * judged: the options object and its `extensions` list, whose entries are what their factory built
+ * and are not copied. A read that throws is the unreadable fault of the options, and a value that
+ * is not a plain object answers `undefined`.
+ */
+function captureCommandOptions(
+  name: string,
+  options: unknown,
+): Record<string, unknown> | undefined {
+  return captureDeclaration(
+    options,
+    (plain, read) => {
+      const copy = read.record(plain);
+      read.nested(copy, 'extensions', shallowList);
+      return copy;
+    },
+    unreadableArgument(
+      { call: 'new Command', named: name, subject: commandSentence(name) },
+      'options',
+    ),
+  );
+}
+
 /** A named Command's options slot holds a plain options object, and never retired globals wiring. */
 function checkCommandOptions(name: string, options: unknown): void {
   if (options !== undefined && !isPlainObject(options)) {
@@ -487,9 +512,9 @@ export function freshState<Globals>(declaration: {
 }
 
 /**
- * A named Command's own declaration, checked before the value exists: the name, the options slot,
- * the core facts, and the extension values the slot carries. A later change to the options object
- * the author passed changes nothing the declaration holds.
+ * A named Command's own declaration, checked before the value exists: the name, then the one copy
+ * of the options slot, its core facts, and the extension values it carries. A later change to the
+ * options object the author passed changes nothing the declaration holds.
  */
 function namedState<Globals>(
   name: unknown,
@@ -502,11 +527,13 @@ function namedState<Globals>(
       sentence: `Command name ${quoted(name)} is invalid.`,
     });
   }
-  checkCommandOptions(name, options);
-  const slot = isPlainObject(options) ? options : undefined;
+  const slot = captureCommandOptions(name, options);
+  // A value that is not an options object stays as declared, so its own rule reports it.
+  const declared = slot ?? options;
+  checkCommandOptions(name, declared);
   const site: FactSite = {
     at: '1',
-    declaration: { arguments: [name, options], call: 'new Command' },
+    declaration: { arguments: [name, declared], call: 'new Command' },
     subject: commandSentence(name),
   };
   // The facts are read in the order their diagnostics have always ranked.

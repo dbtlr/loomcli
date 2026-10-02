@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { captureDeclaration, unreadableFault } from './capture.js';
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
@@ -19,8 +20,8 @@ import {
 } from './input-rules.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
-import { isPlainObject, snapshot } from './plain.js';
-import { notAnObject, unreadableDeclaration } from './plugin-rules.js';
+import { snapshot } from './plain.js';
+import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -173,58 +174,34 @@ export interface ConfigFaults {
 }
 
 /**
- * Authoring's one read of a config: the prototype check, the copy of its keys, and the snapshot of
- * its default, inside one try. Every later check, the registry entry, and every sentence read the
- * copy and never the author's object again, so a getter runs once and the caller's later changes
- * reach nothing. The default is copied and frozen to any depth, cycles included, and that copy is
- * the value the graph publishes and a run validates; every other property is captured as declared,
- * because core clones no library object. A read that throws, from a getter or a proxy trap, is the
- * unreadable fault, and a value that is not a plain object is the not-an-object fault.
+ * Authoring's one read of a config, through `captureDeclaration`: the prototype check, the copy of
+ * its keys, and the snapshot of its default, inside one try. Every later check, the registry entry,
+ * and every sentence read the copy and never the author's object again, so a getter runs once and
+ * the caller's later changes reach nothing. The default is copied and frozen to any depth, cycles
+ * included, and that copy is the value the graph publishes and a run validates; every other
+ * property is captured as declared, because core clones no library object. A read that throws,
+ * from a getter or a proxy trap, is the unreadable fault, and a value that is not a plain object is
+ * the not-an-object fault.
  */
 export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
   config: Config,
   faults: ConfigFaults,
 ): Config {
-  let captured: Config | undefined = undefined;
-  try {
-    captured = isPlainObject(config) ? copyConfig(config) : undefined;
-  } catch (error) {
-    throw faults.unreadable(error);
-  }
+  const captured = captureDeclaration(
+    config,
+    (plain, read) => copyConfig(read.record(plain)),
+    (thrown) => faults.unreadable(thrown),
+  );
   if (captured === undefined) {
     throw faults.notAnObject();
   }
   return captured;
 }
 
-/** One plain config's copy, with its default, when it declares one, snapshotted. */
-function copyConfig<Config extends ArgumentConfig | OptionConfig>(config: Config): Config {
-  const copy = { ...config };
+/** One config's copy with its default, when it declares one, snapshotted. */
+function copyConfig<Config extends ArgumentConfig | OptionConfig>(copy: Config): Config {
   // Presence is the key, so a declared `default: undefined` stays a default.
   return Object.hasOwn(copy, 'default') ? { ...copy, default: snapshot(copy.default) } : copy;
-}
-
-/** The correction every unreadable config carries, whichever call declared it. */
-const readableCorrection =
-  'Declare the config as a plain object literal whose properties read without throwing.';
-
-/**
- * The fault for a config whose read threw, named by `subject` and marked by `findings`. The thrown
- * value's reason ends the sentence and the value itself is the fault's cause.
- */
-export function unreadableConfig(
-  report: { readonly findings: readonly Finding[]; readonly subject: string },
-  thrown: unknown,
-): DeclarationError {
-  return new DeclarationError(
-    unreadableDeclaration,
-    {
-      correction: readableCorrection,
-      findings: report.findings,
-      sentence: `${report.subject} config could not be read: ${asSentence(reasonOf(thrown))}`,
-    },
-    { cause: thrown },
-  );
 }
 
 /**
@@ -256,7 +233,7 @@ export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>
       }),
     // A config whose read threw is never read again, so the finding prints it elided.
     unreadable: (thrown) =>
-      unreadableConfig({ findings: findings(spelled(elided)), subject }, thrown),
+      unreadableFault({ declared: 'config', findings: findings(spelled(elided)), subject }, thrown),
   });
 }
 

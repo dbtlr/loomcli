@@ -24,13 +24,13 @@ const notAnObject = registerRule('@loomcli/core/not-an-object', {
 });
 
 /**
- * A declaration whose read throws while core takes its one copy, such as a config with a getter
- * that throws or a proxy whose trap throws. Only the config of an argument or option and a plugin's
- * option declaration raise it so far.
+ * A declaration whose read throws while core takes its one copy, such as a getter that throws or a
+ * proxy whose trap throws: the config of an argument or option, a plugin's definition and each of
+ * its option declarations, and the options of a Command or of the Application.
  */
 const unreadableDeclaration = registerRule('@loomcli/core/unreadable-declaration', {
   explanation:
-    'Core reads a declaration by its keys once, at the call that declares it, and checks and records the copy it takes. A read that throws, such as a throwing getter or proxy trap, leaves core nothing to check or record.',
+    'Core reads a declaration by its keys, and each list in it by index, once, at the call that declares it, and checks and records the copy it takes. A read that throws, such as a throwing getter or proxy trap, leaves core nothing to check or record.',
   headline: 'Declaration could not be read',
 });
 

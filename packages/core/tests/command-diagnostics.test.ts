@@ -153,9 +153,10 @@ const shared = {
     'any other kind has no keys to read.',
   ],
   'unreadable-declaration': [
-    'Core reads a declaration by its keys once, at the call that declares it, and',
-    'checks and records the copy it takes. A read that throws, such as a throwing',
-    'getter or proxy trap, leaves core nothing to check or record.',
+    'Core reads a declaration by its keys, and each list in it by index, once, at the',
+    'call that declares it, and checks and records the copy it takes. A read that',
+    'throws, such as a throwing getter or proxy trap, leaves core nothing to check or',
+    'record.',
   ],
 };
 
@@ -220,6 +221,10 @@ function unreadable(
     sentence: `${subject} config could not be read: boom.`,
   };
 }
+
+/** The correction every unreadable options object carries. */
+const readableOptions =
+  'Declare the options as a plain object literal whose properties read without throwing.';
 
 /** The receiver lines of a call on the Command `get`. */
 const onGet = ['    // get', "    new Command('get')"];
@@ -300,6 +305,19 @@ const cases: Record<string, Expected> = {
     sentence:
       'The Application description must hold a character other than whitespace and no line terminator.',
   },
+  'application-description-read-once': {
+    correction: 'Supply a one-line summary.',
+    findings: [
+      [
+        "    new Application('probe', { description: '' })",
+        '                               ^^^^^^^^^^^^^^^',
+      ],
+    ],
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
+    sentence:
+      'The Application description must hold a character other than whitespace and no line terminator.',
+  },
   'application-hidden': {
     correction: 'Remove it.',
     findings: [
@@ -325,6 +343,22 @@ const cases: Record<string, Expected> = {
     headline: 'NOT AN OBJECT',
     rule: 'not-an-object',
     sentence: 'The Application declares options that are not an object.',
+  },
+  'application-options-prototype-unreadable': {
+    correction: readableOptions,
+    findings: [["    new Application('probe', …)", '                             ^']],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'The Application options could not be read: boom.',
+  },
+  'application-options-unreadable': {
+    correction: readableOptions,
+    findings: [
+      ["    new Application('probe', { plugins: … })", '                               ^^^^^^^^^^'],
+    ],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'The Application options could not be read: boom.',
   },
   'application-version': {
     correction: 'Supply a string such as "1.2.0".',
@@ -540,6 +574,16 @@ const cases: Record<string, Expected> = {
     sentence:
       'Command "get" description must hold a character other than whitespace and no line terminator.',
   },
+  'command-description-read-once': {
+    correction: 'Supply a one-line summary.',
+    findings: [
+      ["    new Command('get', { description: '' })", '                         ^^^^^^^^^^^^^^^'],
+    ],
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
+    sentence:
+      'Command "get" description must hold a character other than whitespace and no line terminator.',
+  },
   'command-globals': {
     correction: 'Declare globals on the Application and register its environment.',
     findings: [["    new Command('get', { globals: {} })", '                         ^^^^^^^^^^^']],
@@ -569,6 +613,15 @@ const cases: Record<string, Expected> = {
     headline: 'NOT AN OBJECT',
     rule: 'not-an-object',
     sentence: 'Command "get" declares options that are not an object.',
+  },
+  'command-options-unreadable': {
+    correction: readableOptions,
+    findings: [
+      ["    new Command('get', { extensions: … })", '                         ^^^^^^^^^^^^^'],
+    ],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Command "get" options could not be read: boom.',
   },
   'global-option-config': {
     correction: "Supply an option config object, such as { type: 'string' }.",
@@ -772,6 +825,19 @@ const cases: Record<string, Expected> = {
     rule: 'optional-argument-last',
     sentence:
       'Argument "path" is optional and precedes required argument "name" on Command "keys".',
+  },
+  'plugin-option-description-read-once': {
+    correction: 'Supply a one-line summary.',
+    findings: [
+      [
+        "    plugin('@acme/log', { options: { level: { description: '', type: 'string' } } })",
+        '                                              ^^^^^^^^^^^^^^^',
+      ],
+    ],
+    headline: 'TEXT NOT ONE LINE',
+    rule: 'not-one-line',
+    sentence:
+      'Plugin "@acme/log" option "level" description must hold a character other than whitespace and no line terminator.',
   },
   'plugin-sibling': {
     correction: 'Rename or remove one.',
@@ -1042,7 +1108,10 @@ test('every rule of the family has a pinned diagnostic', () => {
 });
 
 test.each([
+  'application-options-prototype-unreadable',
+  'application-options-unreadable',
   'argument-unreadable',
+  'command-options-unreadable',
   'global-option-unreadable',
   'hook-option-unreadable',
   'option-default-unreadable',

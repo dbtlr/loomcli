@@ -84,4 +84,31 @@ function copiedRecord(
   return Object.freeze(copy);
 }
 
-export { isPlainObject, snapshot, snapshotRecord };
+/**
+ * A shallow copy of one plain object's own enumerable keys, which a declaring call reads in place of
+ * a part the author nested in its declaration. Any other value is answered as it is, so the rule
+ * for its slot reports it.
+ */
+function shallowRecord<Value>(value: Value): Value {
+  return isPlainObject(value) ? { ...value } : value;
+}
+
+/**
+ * A shallow copy of one array's entries, holes kept, which a declaring call reads in place of a list
+ * the author declared. Its entries are what their factories built, so they are not copied. Any
+ * other value is answered as it is, so the rule for its slot reports it.
+ */
+function shallowList(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const copy: unknown[] = [];
+  // `forEach` skips a hole, and the length set after it keeps a trailing one.
+  value.forEach((entry: unknown, index) => {
+    copy[index] = entry;
+  });
+  copy.length = value.length;
+  return copy;
+}
+
+export { isPlainObject, shallowList, shallowRecord, snapshot, snapshotRecord };

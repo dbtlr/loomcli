@@ -177,9 +177,10 @@ const explanations = {
     'command-line program to stop, so a plugin claims one of those.',
   ],
   'unreadable-declaration': [
-    'Core reads a declaration by its keys once, at the call that declares it, and',
-    'checks and records the copy it takes. A read that throws, such as a throwing',
-    'getter or proxy trap, leaves core nothing to check or record.',
+    'Core reads a declaration by its keys, and each list in it by index, once, at the',
+    'call that declares it, and checks and records the copy it takes. A read that',
+    'throws, such as a throwing getter or proxy trap, leaves core nothing to check or',
+    'record.',
   ],
 };
 
@@ -282,6 +283,10 @@ function bare(call: string, target: string, note?: string, nth = 0) {
   return marked(`    ${call}`, target, note, nth);
 }
 
+/** The correction every unreadable plugin definition carries. */
+const readableDefinition =
+  'Declare the definition as a plain object literal whose properties read without throwing.';
+
 const twoPlugins = (first: string, second: string) =>
   `new Application('probe', { plugins: [plugin('${first}', …), plugin('${second}', …)] })`;
 
@@ -382,6 +387,20 @@ const cases: Record<string, Expected> = {
     headline: 'NOT A LIST',
     rule: 'not-a-list',
     sentence: 'Plugin "@acme/doctor" declares commands that are not an array.',
+  },
+  'definition-prototype-unreadable': {
+    correction: readableDefinition,
+    findings: [bare("plugin('@acme/log', …)", '…')],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
+  },
+  'definition-unreadable': {
+    correction: readableDefinition,
+    findings: [bare("plugin('@acme/log', { views: … })", 'views: …')],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
   },
   'extension-async': {
     correction: 'Supply a schema that answers synchronously.',
@@ -1016,13 +1035,16 @@ test.each(Object.entries(cases))(
   },
 );
 
-test('an unreadable plugin option config keeps the value the read threw as its cause', () => {
-  expect(invoke(fixture, ['option-unreadable', 'cause'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: '{"cause":true}\n',
-  });
-});
+test.each(['definition-prototype-unreadable', 'definition-unreadable', 'option-unreadable'])(
+  'the %s fault keeps the value the read threw as its cause',
+  (scenario) => {
+    expect(invoke(fixture, [scenario, 'cause'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '{"cause":true}\n',
+    });
+  },
+);
 
 test.each([
   'extension-unscoped',

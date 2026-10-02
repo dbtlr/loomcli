@@ -1,5 +1,6 @@
 import type { Writable } from 'node:stream';
 
+import { captureDeclaration, unreadableArgument } from './capture.js';
 import { runInvocation } from './chain.js';
 import { portableName } from './command-rules.js';
 import {
@@ -68,7 +69,7 @@ import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
-import { isPlainObject } from './plain.js';
+import { isPlainObject, shallowList, shallowRecord } from './plain.js';
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
@@ -889,22 +890,52 @@ function readPacket(name: string, packet: unknown): boolean {
   });
 }
 
+/** The parts of the Application options that are lists, each copied with its entries as built. */
+const optionLists = ['plugins', 'views', 'translators', 'extensions'] as const;
+
+/**
+ * The one copy of the options that `new Application(name, options)` reads: the options object, its
+ * packet and rendering policy, and each list it holds. An entry of a list is what its factory built
+ * and is not copied. A read that throws is the unreadable fault of the options, and a value that is
+ * not a plain object answers `undefined`.
+ */
+function captureOptions(name: string, options: unknown): Record<string, unknown> | undefined {
+  return captureDeclaration(
+    options,
+    (plain, read) => {
+      const copy = read.record(plain);
+      read.nested(copy, 'packet', shallowRecord);
+      read.nested(copy, 'rendering', shallowRecord);
+      for (const list of optionLists) {
+        read.nested(copy, list, shallowList);
+      }
+      return copy;
+    },
+    unreadableArgument(
+      { call: 'new Application', named: name, subject: 'The Application' },
+      'options',
+    ),
+  );
+}
+
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
  * application's own view overrides, its translations, the rendering policy, the options slot and
  * its facts, the installed list and every rule between two plugins, the root's extension values,
  * and then each plugin's Commands, which attach to the root first, in installation order and list
- * order.
+ * order. Each reads the one copy of the options `captureOptions` takes.
  */
 function declareApplication(
   name: string,
-  options: unknown,
+  declared: unknown,
 ): {
   config: ApplicationConfig;
   globals: GlobalsState<{}>;
   root: CommandState<{}, {}, {}>;
 } {
-  const slot = isPlainObject(options) ? options : undefined;
+  const slot = captureOptions(name, declared);
+  // A value that is not an options object stays as declared, so its own rule reports it.
+  const options = slot ?? declared;
   const identities = viewIdentities(coreViews);
   const views = buildViews(
     {

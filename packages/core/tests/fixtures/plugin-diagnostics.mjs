@@ -76,6 +76,24 @@ const scenarios = {
       .inspect(),
   'commands-entry': () => plugin('@acme/doctor', { commands: [leaf('check'), 'probe'] }),
   'commands-not-list': () => plugin('@acme/doctor', { commands: 'check' }),
+  'definition-prototype-unreadable': () =>
+    plugin(
+      '@acme/log',
+      new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw boom;
+          },
+        },
+      ),
+    ),
+  'definition-unreadable': () =>
+    plugin('@acme/log', {
+      get views() {
+        throw boom;
+      },
+    }),
   'extension-async': () =>
     new Command('get', {
       extensions: [
