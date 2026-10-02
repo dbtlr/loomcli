@@ -278,7 +278,7 @@ const cases: Record<string, Expected> = {
   },
   'global-after-command': {
     correction: 'Declare global options before attaching Commands or registering an action.',
-    findings: [onApplication("globalOption('file', { type: 'string' })", "'file'")],
+    findings: [onApplication("globalOption('file', …)", "'file'")],
     headline: 'GLOBAL OPTION AFTER A COMMAND',
     rule: 'global-option-after-command',
     sentence: 'The Application declares global option "file" after command() or action().',
@@ -421,14 +421,14 @@ const cases: Record<string, Expected> = {
   },
   'option-name': {
     correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
-    findings: [onCommand(['get'], "option('-raw', { type: 'boolean' })", "'-raw'")],
+    findings: [onCommand(['get'], "option('-raw', …)", "'-raw'")],
     headline: 'INVALID DECLARED NAME',
     rule: 'declared-name',
     sentence: 'Option name "-raw" is invalid.',
   },
   'option-name-kind': {
     correction: 'Supply a string name.',
-    findings: [onCommand(['get'], "option(7, { type: 'boolean' })", '7')],
+    findings: [onCommand(['get'], 'option(7, …)', '7')],
     headline: 'INVALID DECLARED NAME',
     rule: 'declared-name',
     sentence: 'Option name 7 is not a string.',

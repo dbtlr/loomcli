@@ -10,8 +10,10 @@ const source = new URL('../src/', import.meta.url);
  * after the descriptor that produced it has been compared by reference. `view.ts` reads one stored
  * view function back under the key `override()` typed it against. `output.ts` hands one result to
  * the view its own declaration named, out of the record that erased the data type on the way in.
+ * `capture.ts` hands a declaring call the copy it took of a declaration under the declared type.
  */
 const allowed = {
+  'capture.ts': 1,
   'command.ts': 1,
   'extension.ts': 1,
   'output.ts': 1,

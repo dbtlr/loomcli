@@ -1,14 +1,43 @@
 /**
+ * The verdict a declaring call reached on each part of a declaration it captured, so every later
+ * rule reads that one verdict and never asks the part's prototype again.
+ */
+const verdicts = new WeakMap<object, boolean>();
+
+/**
  * A structural value core reads as plain data: an object literal, and never a declaration that
  * carries state of its own. The options slots read it to reject a value that is not an options
- * object, and `snapshot` reads it to copy a declared value faithfully.
+ * object, and `snapshot` reads it to copy a declared value faithfully. A value a declaring call
+ * already judged answers with that verdict.
  */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object') {
     return false;
   }
+  return verdicts.get(value) ?? hasPlainPrototype(value);
+}
+
+/** Whether one object's prototype, read once, is `Object.prototype` or `null`. */
+function hasPlainPrototype(value: object): boolean {
   const prototype: unknown = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Whether a declaring call reads one part of a declaration as plain data, decided once: the first
+ * verdict is recorded, and `isPlainObject` answers with it for the same value from then on.
+ */
+function decidePlain(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const known = verdicts.get(value);
+  if (known !== undefined) {
+    return known;
+  }
+  const verdict = hasPlainPrototype(value);
+  verdicts.set(value, verdict);
+  return verdict;
 }
 
 /**
@@ -51,11 +80,7 @@ function copiedList(list: readonly unknown[], copies: Map<object, unknown>): unk
   }
   const copy: unknown[] = [];
   copies.set(list, copy);
-  // `forEach` skips a hole, and the length set after it keeps a trailing one.
-  list.forEach((entry: unknown, index) => {
-    copy[index] = copied(entry, copies);
-  });
-  copy.length = list.length;
+  fillList(copy, list, (entry) => copied(entry, copies));
   return Object.freeze(copy);
 }
 
@@ -84,31 +109,86 @@ function copiedRecord(
   return Object.freeze(copy);
 }
 
-/**
- * A shallow copy of one plain object's own enumerable keys, which a declaring call reads in place of
- * a part the author nested in its declaration. Any other value is answered as it is, so the rule
- * for its slot reports it.
- */
-function shallowRecord<Value>(value: Value): Value {
-  return isPlainObject(value) ? { ...value } : value;
+/** Defines one key as an own data property, so a key of `__proto__` is stored under that name. */
+function defineEntry(target: object, key: number | string, value: unknown): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 /**
- * A shallow copy of one array's entries, holes kept, which a declaring call reads in place of a list
- * the author declared. Its entries are what their factories built, so they are not copied. Any
- * other value is answered as it is, so the rule for its slot reports it.
+ * A copy of every own string key of one object, enumerable or not, each described once and read
+ * once, in the order the object lists its keys. `entering` hears each key before it is read, so a
+ * read that throws can name it. A symbol key is not copied, because no declaration declares one.
  */
+function copyOwnKeys(
+  declared: object,
+  entering: (key: string) => void = () => undefined,
+): Record<string, unknown> {
+  const copy: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(declared)) {
+    if (typeof key === 'string') {
+      entering(key);
+      if (Reflect.getOwnPropertyDescriptor(declared, key) !== undefined) {
+        defineEntry(copy, key, Reflect.get(declared, key));
+      }
+    }
+  }
+  return copy;
+}
+
+/**
+ * The copy of one part of a declaration that `decidePlain` judges plain, by `copyOwnKeys`. Any other
+ * value is answered as it is, so the rule for its slot reports it.
+ */
+function shallowRecord(value: unknown): unknown {
+  return decidePlain(value) ? copyOwnKeys(value) : value;
+}
+
+/**
+ * Fills `copy` with what `convert` makes of each entry of `list`, read by its length once and then
+ * index by index, so none of the list's own methods runs. A hole stays a hole.
+ */
+function fillList<Entry, Copied>(
+  copy: Copied[],
+  list: readonly Entry[],
+  convert: (entry: Entry | undefined) => Copied,
+): void {
+  const { length } = list;
+  for (let index = 0; index < length; index += 1) {
+    if (Object.hasOwn(list, index)) {
+      defineEntry(copy, index, convert(list[index]));
+    }
+  }
+  copy.length = length;
+}
+
+/** A copy of one list's entries by `fillList`. Each entry is what its factory built, so it is kept. */
+function copyList<Entry>(list: readonly Entry[]): Entry[] {
+  const copy: Entry[] = [];
+  fillList(copy, list, (entry) => entry);
+  return copy;
+}
+
+/** The copy of a value that is a list, by `copyList`. Any other value is answered as it is. */
 function shallowList(value: unknown): unknown {
   if (!Array.isArray(value)) {
     return value;
   }
-  const copy: unknown[] = [];
-  // `forEach` skips a hole, and the length set after it keeps a trailing one.
-  value.forEach((entry: unknown, index) => {
-    copy[index] = entry;
-  });
-  copy.length = value.length;
-  return copy;
+  const list: readonly unknown[] = value;
+  return copyList(list);
 }
 
-export { isPlainObject, shallowList, shallowRecord, snapshot, snapshotRecord };
+export {
+  copyList,
+  copyOwnKeys,
+  decidePlain,
+  isPlainObject,
+  shallowList,
+  shallowRecord,
+  snapshot,
+  snapshotRecord,
+};

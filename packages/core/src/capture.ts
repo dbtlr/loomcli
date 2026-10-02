@@ -1,8 +1,7 @@
 import { elided, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, reasonOf } from './errors.js';
-import { partFinding, slotSite } from './facts.js';
-import { isPlainObject } from './plain.js';
+import { copyOwnKeys, decidePlain } from './plain.js';
 import { unreadableDeclaration } from './plugin-rules.js';
 
 /**
@@ -14,26 +13,11 @@ class DeclarationRead {
   /** The top-level key being read, or `undefined` while the object itself is read. */
   slot: string | undefined = undefined;
 
-  /**
-   * A shallow copy of one plain object's own enumerable keys, as a spread takes it. Each key's read
-   * is under that key's slot, so a getter or a trap that throws for one key names it.
-   */
-  record<Declared extends object>(declared: Declared): Declared {
-    const enter = (key: string | symbol) => {
-      this.slot = typeof key === 'string' ? key : undefined;
-    };
-    // The getter runs on the author's object, as a read of it would, and never on this proxy.
-    const tracked = new Proxy(declared, {
-      get: (target, key) => {
-        enter(key);
-        return Reflect.get(target, key);
-      },
-      getOwnPropertyDescriptor: (target, key) => {
-        enter(key);
-        return Reflect.getOwnPropertyDescriptor(target, key);
-      },
+  /** The copy of every own string key of one object, each read under its own slot. */
+  record(declared: object): Record<string, unknown> {
+    const copy = copyOwnKeys(declared, (key) => {
+      this.slot = key;
     });
-    const copy = { ...tracked };
     this.slot = undefined;
     return copy;
   }
@@ -42,11 +26,7 @@ class DeclarationRead {
    * Replaces the value one key of a copy holds with `copy` of it, read under that key's slot. An
    * absent key stays absent, so a finding prints the copy with the keys the author wrote.
    */
-  nested<Captured extends object, Key extends keyof Captured & string>(
-    captured: Captured,
-    key: Key,
-    copy: (value: Captured[Key]) => Captured[Key],
-  ): void {
+  nested(captured: Record<string, unknown>, key: string, copy: (value: unknown) => unknown): void {
     if (Object.hasOwn(captured, key)) {
       this.slot = key;
       captured[key] = copy(captured[key]);
@@ -55,25 +35,58 @@ class DeclarationRead {
   }
 }
 
+/** The two faults one declaring call raises when it cannot capture what it was given. */
+interface CaptureFaults {
+  /** The value is not a plain object, so it has no keys for core to read. */
+  readonly notAnObject: () => DeclarationError;
+  /** A read threw the value it receives, in the top-level slot it names, or in the object itself. */
+  readonly unreadable: (thrown: unknown, slot: string | undefined) => DeclarationError;
+}
+
 /**
- * Authoring's one read of an object a declaring call receives, inside one try: the prototype check
- * and the copy `capture` takes. Every later check, stored value, and finding reads that copy and
- * never the author's object again, so a getter runs once and a read that threw is never repeated.
- * A value that is not a plain object answers `undefined`, which the caller reports under its own
- * rule with the value as declared. A read that throws, from a getter or a proxy trap, is the fault
- * `unreadable` builds from the thrown value and the slot it threw in.
+ * Authoring's one read of an object a declaring call receives, inside one try: the verdict on its
+ * prototype, the copy of every own string key, and the copies `nested` takes of the parts it holds,
+ * each judged plain once by `decidePlain`. Every later check, stored value, and finding reads that
+ * copy and never the author's object again, so a getter runs once and a read that threw is never
+ * repeated. A value that is not a plain object is the not-an-object fault, and a read that throws,
+ * from a getter or a proxy trap, is the unreadable fault, named by the slot it threw in.
  */
-function captureDeclaration<Declared, Captured>(
+function captureDeclaration<Declared>(
   declared: Declared,
-  capture: (plain: Declared & Record<string, unknown>, read: DeclarationRead) => Captured,
-  unreadable: (thrown: unknown, slot: string | undefined) => DeclarationError,
-): Captured | undefined {
+  nested: (copy: Record<string, unknown>, read: DeclarationRead) => void,
+  faults: CaptureFaults,
+): Declared & Record<string, unknown> {
   const read = new DeclarationRead();
+  let copy: Record<string, unknown> | undefined = undefined;
   try {
-    return isPlainObject(declared) ? capture(declared, read) : undefined;
+    if (decidePlain(declared)) {
+      copy = read.record(declared);
+      nested(copy, read);
+    }
   } catch (error) {
-    throw unreadable(error, read.slot);
+    throw faults.unreadable(error, read.slot);
   }
+  if (copy === undefined) {
+    throw faults.notAnObject();
+  }
+  // Last resort: no typed path exists.
+  // The copy is built key by key, so the compiler types it as a record of unknown values.
+  // A spread would keep the declared type, but it reads enumerable keys alone and names no slot.
+  // It holds because the copy holds every own string key of the declared plain object.
+  // Each holds the value read from it once, or that value's copy of the same kind.
+  // No declaration type declares a symbol key, and none reads its prototype.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return copy as Declared & Record<string, unknown>;
+}
+
+/**
+ * What a finding prints for a declaration whose read threw: the slot it threw in, elided, under the
+ * keys that lead to it, or the whole declaration elided. A read that threw is never repeated.
+ */
+function elidedRead(slot: string | undefined): { keys: readonly string[]; shown: unknown } {
+  return slot === undefined
+    ? { keys: [], shown: spelled(elided) }
+    : { keys: [slot], shown: Object.fromEntries([[slot, spelled(elided)]]) };
 }
 
 /** What one unreadable declaration is: an input's config, a plugin's definition, or an options object. */
@@ -105,22 +118,20 @@ function unreadableFault(
 
 /**
  * The unreadable fault of the object a `plugin()` call or a constructor receives as its second
- * argument. Its finding marks the slot whose read threw, or the whole argument when the object
- * itself threw, and prints that part elided, because a read that threw is never repeated.
+ * argument. Its finding marks the top-level slot whose read threw, or the whole argument when the
+ * object itself threw, and prints that part elided.
  */
 function unreadableArgument(
   declaration: { readonly call: string; readonly named: unknown; readonly subject: string },
   declared: 'definition' | 'options',
 ): (thrown: unknown, slot: string | undefined) => DeclarationError {
   const { call, named, subject } = declaration;
-  const shown = spelled(elided);
   return (thrown, slot) => {
-    const finding =
-      slot === undefined
-        ? { arguments: [named, shown], call, mark: '1' }
-        : partFinding(slotSite(declaration, slot, shown), []);
+    const { keys, shown } = elidedRead(slot);
+    const finding = { arguments: [named, shown], call, mark: ['1', ...keys].join('.') };
     return unreadableFault({ declared, findings: [finding], subject }, thrown);
   };
 }
 
-export { captureDeclaration, unreadableArgument, unreadableFault };
+export type { CaptureFaults };
+export { captureDeclaration, elidedRead, unreadableArgument, unreadableFault };

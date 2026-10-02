@@ -1,5 +1,5 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
-import { captureDeclaration, unreadableArgument, unreadableFault } from './capture.js';
+import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
 import type { MiddlewareContext } from './chain.js';
 import { notACommand } from './command-rules.js';
 import { attach, commandCode, commandNode } from './command.js';
@@ -27,7 +27,7 @@ import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { booleanValue, compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
-import { isPlainObject, shallowList, shallowRecord } from './plain.js';
+import { copyOwnKeys, decidePlain, isPlainObject, shallowList, shallowRecord } from './plain.js';
 import {
   foreignValue,
   middlewareActivation,
@@ -226,16 +226,12 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
  * record, middleware with its activation list, and source, and each list it holds. An entry of a
  * list is what its factory built and is not copied, and each option's config is captured where its
  * own rules read it, so a fault about it names the option. A read that throws is the unreadable
- * fault of the definition, and a definition that is not a plain object answers `undefined`.
+ * fault of the definition, and a definition that is not a plain object is the not-an-object fault.
  */
-function captureDefinition(
-  identity: string,
-  definition: DeclaredPlugin,
-): DeclaredPlugin | undefined {
+function captureDefinition(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
   return captureDeclaration(
     definition,
-    (plain, read) => {
-      const copy = read.record(plain);
+    (copy, read) => {
       read.nested(copy, 'theme', shallowRecord);
       read.nested(copy, 'options', shallowRecord);
       read.nested(copy, 'middleware', copyMiddleware);
@@ -243,21 +239,28 @@ function captureDefinition(
       for (const list of definitionLists) {
         read.nested(copy, list, shallowList);
       }
-      return copy;
     },
-    unreadableArgument(
-      { call: 'plugin', named: identity, subject: pluginSentence(identity) },
-      'definition',
-    ),
+    {
+      notAnObject: () =>
+        new DeclarationError(notAnObject, {
+          correction: 'Supply { options, middleware, extensions, views }.',
+          findings: [{ arguments: [identity, definition], call: 'plugin', mark: '1' }],
+          sentence: `${pluginSentence(identity)} declares a definition that is not an object.`,
+        }),
+      unreadable: unreadableArgument(
+        { call: 'plugin', named: identity, subject: pluginSentence(identity) },
+        'definition',
+      ),
+    },
   );
 }
 
 /** A middleware object's copy, its activation list copied too, or any other value as declared. */
 function copyMiddleware(middleware: unknown): unknown {
-  if (!isPlainObject(middleware)) {
+  if (!decidePlain(middleware)) {
     return middleware;
   }
-  const copy = { ...middleware };
+  const copy = copyOwnKeys(middleware);
   if (Object.hasOwn(copy, 'activate')) {
     copy.activate = shallowList(copy.activate);
   }
@@ -296,18 +299,6 @@ function nodeOf(value: unknown): BuiltPlugin | undefined {
 function entryCode(value: unknown): unknown {
   const node = nodeOf(value);
   return node ? spelled(`plugin(${quoteString(node.identity)}, ${elided})`) : value;
-}
-
-/** The declarations one plugin value carries, which a JavaScript author reaches as any value. */
-function definitionOf(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
-  if (!isPlainObject(definition)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { options, middleware, extensions, views }.',
-      findings: [{ arguments: [identity, definition], call: 'plugin', mark: '1' }],
-      sentence: `${pluginSentence(identity)} declares a definition that is not an object.`,
-    });
-  }
-  return definition;
 }
 
 /** What the installed list resolves to: the plugins in order, and every descriptor they define. */
@@ -451,8 +442,6 @@ function checkPluginOption(
   declared: PluginOptionConfig,
 ): PluginOptionConfig {
   const sentence = siteOf(declared).subject;
-  // A config whose read threw is never read again, so the finding prints it elided.
-  const elidedSite = siteOf(spelled(elided));
   const config = captureConfig(declared, {
     notAnObject: () =>
       new DeclarationError(notAnObject, {
@@ -460,15 +449,14 @@ function checkPluginOption(
         findings: [partFinding(siteOf(declared), [])],
         sentence: `${sentence} is not an option declaration.`,
       }),
-    unreadable: (thrown) =>
-      unreadableFault(
-        {
-          declared: 'config',
-          findings: [partFinding(elidedSite, [])],
-          subject: sentence,
-        },
+    // A part whose read threw is never read again, so the finding prints it elided.
+    unreadable: (thrown, slot) => {
+      const { keys, shown } = elidedRead(slot);
+      return unreadableFault(
+        { declared: 'config', findings: [partFinding(siteOf(shown), keys)], subject: sentence },
         thrown,
-      ),
+      );
+    },
   });
   const site = siteOf(config);
   const rejected = forbidden.find((key) => key in config);
@@ -503,8 +491,10 @@ function readOptions(
     });
   }
   const inputs: OptionInput[] = [];
-  // A finding prints the record with each option's captured config once it is taken.
-  const shown: Record<string, unknown> = { ...declared };
+  // A finding prints each option's captured config once it is taken, and each later one elided.
+  const shown: Record<string, unknown> = Object.fromEntries(
+    Object.keys(declared ?? {}).map((name) => [name, spelled(elided)]),
+  );
   for (const [name, entry] of Object.entries(declared ?? {})) {
     const sentence = `${pluginSentence(identity)} option ${quoted(name)}`;
     // A computed key defines its own property even for `__proto__`, where assignment would not.
@@ -543,7 +533,7 @@ function readOptions(
   compileOptions(inputs, { siteOf, subject: `plugin ${quoted(identity)}` });
   claimVariables(
     boundOptions(inputs, (input) => ({
-      phrase: `plugin ${quoted(identity)} option "${input.name}"`,
+      phrase: `plugin ${quoted(identity)} option ${quoted(input.name)}`,
       site: siteOf(input),
     })),
   );
@@ -956,7 +946,7 @@ function defineExtensions(
  */
 function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
   checkIdentity('plugin', named);
-  const declaration = definitionOf(named, captureDefinition(named, definition) ?? definition);
+  const declaration = captureDefinition(named, definition);
   const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
   const build: PluginRegisters = { descriptors: new Map(), records: new Map() };
   defineExtensions(named, declaration, build);

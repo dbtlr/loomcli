@@ -38,6 +38,7 @@ import type {
   ResultMethod,
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
+import { elided, spelled } from './diagnostic-text.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import {
   DeclarationError,
@@ -362,11 +363,17 @@ class ApplicationBuilder<
     Result
   > {
     // The plugins' Commands attach at construction, so only the application's own calls close it.
+    // The config is judged after the order, so the finding prints it elided and reads none of it.
     if (this.#config.composed) {
       throw new DeclarationError(globalOptionAfterCommand, {
         correction: 'Declare global options before attaching Commands or registering an action.',
         findings: [
-          { arguments: callArguments(name, config), call: 'globalOption', mark: '0', path: [] },
+          {
+            arguments: callArguments(name, config === undefined ? undefined : spelled(elided)),
+            call: 'globalOption',
+            mark: '0',
+            path: [],
+          },
         ],
         sentence: `The Application declares global option ${quoted(name)} after command() or action().`,
       });
@@ -822,8 +829,14 @@ function runRendering(rendering: unknown): FactSite {
   };
 }
 
-/** Reject obsolete wiring before silently losing options that invocations depend on. */
-function checkOptions(name: string, options: unknown): ApplicationFacts {
+/**
+ * Reject obsolete wiring before silently losing options that invocations depend on. `options` is the
+ * copy `captureOptions` took, or `undefined` for an Application declared without options.
+ */
+function checkOptions(
+  name: string,
+  options: Readonly<Record<string, unknown>> | undefined,
+): ApplicationFacts {
   const site: FactSite = {
     at: '1',
     declaration: { arguments: callArguments(name, options), call: 'new Application' },
@@ -831,13 +844,6 @@ function checkOptions(name: string, options: unknown): ApplicationFacts {
   };
   if (options === undefined) {
     return { description: undefined, version: checkVersion(site, undefined) };
-  }
-  if (!isPlainObject(options)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply an Application options object.',
-      findings: [{ ...site.declaration, mark: '1' }],
-      sentence: 'The Application declares options that are not an object.',
-    });
   }
   for (const [key, correction] of retired) {
     if (key in options) {
@@ -897,24 +903,34 @@ const optionLists = ['plugins', 'views', 'translators', 'extensions'] as const;
  * The one copy of the options that `new Application(name, options)` reads: the options object, its
  * packet and rendering policy, and each list it holds. An entry of a list is what its factory built
  * and is not copied. A read that throws is the unreadable fault of the options, and a value that is
- * not a plain object answers `undefined`.
+ * not a plain object is the not-an-object fault. An Application declared without options has none
+ * to copy.
  */
 function captureOptions(name: string, options: unknown): Record<string, unknown> | undefined {
+  if (options === undefined) {
+    return undefined;
+  }
   return captureDeclaration(
     options,
-    (plain, read) => {
-      const copy = read.record(plain);
+    (copy, read) => {
       read.nested(copy, 'packet', shallowRecord);
       read.nested(copy, 'rendering', shallowRecord);
       for (const list of optionLists) {
         read.nested(copy, list, shallowList);
       }
-      return copy;
     },
-    unreadableArgument(
-      { call: 'new Application', named: name, subject: 'The Application' },
-      'options',
-    ),
+    {
+      notAnObject: () =>
+        new DeclarationError(notAnObject, {
+          correction: 'Supply an Application options object.',
+          findings: [{ arguments: [name, options], call: 'new Application', mark: '1' }],
+          sentence: 'The Application declares options that are not an object.',
+        }),
+      unreadable: unreadableArgument(
+        { call: 'new Application', named: name, subject: 'The Application' },
+        'options',
+      ),
+    },
   );
 }
 
@@ -934,8 +950,6 @@ function declareApplication(
   root: CommandState<{}, {}, {}>;
 } {
   const slot = captureOptions(name, declared);
-  // A value that is not an options object stays as declared, so its own rule reports it.
-  const options = slot ?? declared;
   const identities = viewIdentities(coreViews);
   const views = buildViews(
     {
@@ -954,7 +968,7 @@ function declareApplication(
     slot?.rendering,
     optionSite(name, 'rendering', slot?.rendering),
   );
-  const facts = checkOptions(name, options);
+  const facts = checkOptions(name, slot);
   const development = readPacket(name, slot?.packet);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;

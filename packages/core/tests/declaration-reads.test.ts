@@ -4,7 +4,7 @@ import { invoke } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/declaration-reads.mjs', import.meta.url);
 
-type Call = 'application' | 'command' | 'plugin';
+type Call = 'application' | 'command' | 'option' | 'plugin';
 
 /** What one fixture mode reports for one declaring call, parsed from its one line of output. */
 function report(mode: string, call: Call, rest: readonly string[]): unknown {
@@ -41,9 +41,12 @@ function nestedObject(path: string, key: string): string[] {
   ];
 }
 
-/** A list is read by index, so a getter on its first entry and a proxy's has or get trap throw. */
+/**
+ * A list is read by its length and then index by index, so a getter on its first entry and a
+ * proxy's getOwnPropertyDescriptor or get trap throw.
+ */
 function nestedList(path: string): string[] {
-  return [`getter ${path}.0`, `has ${path}`, `get ${path}`];
+  return [`getter ${path}.0`, `getOwnPropertyDescriptor ${path}`, `get ${path}`];
 }
 
 const unreadableReads: Record<Call, { subject: string; reads: Record<string, string> }> = {
@@ -68,6 +71,15 @@ const unreadableReads: Record<Call, { subject: string; reads: Record<string, str
       hidden: [],
     }),
     subject: 'Command "get" options',
+  },
+  option: {
+    reads: readsBySlot({
+      default: [],
+      description: [],
+      extensions: nestedList('extensions'),
+      type: [],
+    }),
+    subject: 'Option "format" config',
   },
   plugin: {
     reads: readsBySlot({
@@ -105,7 +117,7 @@ function outcomeOf(call: Call, spec: string): unknown {
 }
 
 test.each(
-  (['application', 'command', 'plugin'] as const).flatMap((call) =>
+  (['application', 'command', 'option', 'plugin'] as const).flatMap((call) =>
     Object.entries(unreadableReads[call].reads).map(([spec, mark]) => ({ call, mark, spec })),
   ),
 )(
@@ -120,8 +132,22 @@ test.each(
   },
 );
 
+test('a plugin option config whose extensions list throws is unreadable, marking the list', () => {
+  expect(report('unreadable', 'plugin', ['getter options.level.extensions.0'])).toEqual({
+    'getter options.level.extensions.0': {
+      cause: true,
+      mark: ['1.options.level.extensions'],
+      rule: '@loomcli/core/unreadable-declaration',
+      sentence: 'Plugin "@acme/probe" option "level" config could not be read: boom.',
+    },
+  });
+});
+
 /** Each call's top-level slots, and the nested parts of them the once mode counts. */
-const countedReads: Record<Call, { slots: readonly string[]; nested: readonly string[] }> = {
+const countedReads: Record<
+  Exclude<Call, 'option'>,
+  { slots: readonly string[]; nested: readonly string[] }
+> = {
   application: {
     nested: [
       'extensions.0',
@@ -188,13 +214,70 @@ test.each(['plugin', 'application', 'command'] as const)(
   },
 );
 
+test.each(['plugin', 'application', 'command', 'option'] as const)(
+  'a %s declaration runs each proxy trap at most once per key across the call and the graph build',
+  (call) => {
+    expect(report('traps', call, [])).toEqual({ ended: 'returned', twice: [], unread: [] });
+  },
+);
+
 test.each([
   { call: 'plugin', rule: '@loomcli/core/invalid-identity' },
   { call: 'application', rule: '@loomcli/core/portable-name' },
   { call: 'command', rule: '@loomcli/core/portable-name' },
+  { call: 'option', rule: '@loomcli/core/declared-name' },
+  { call: 'argument', rule: '@loomcli/core/declared-name' },
+  { call: 'global', rule: '@loomcli/core/declared-name' },
 ] as const)(
-  'a $call with an invalid name and an unreadable declaration reports the name',
+  'a $call with an invalid name reports the name and reads none of its declaration',
   ({ call, rule }) => {
-    expect(report('name', call, [])).toBe(rule);
+    expect(invoke(fixture, ['name', call])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `${JSON.stringify({ reads: 0, rule })}\n`,
+    });
   },
 );
+
+/** The fact each call's graph reads back from its declaration. */
+const facts: Record<Call, unknown> = {
+  application: 'Probe the reads.',
+  command: 'Get one.',
+  option: { value: 'plain' },
+  plugin: ['level'],
+};
+
+test.each(['plugin', 'application', 'command', 'option'] as const)(
+  'a %s declaration reads an own key that is not enumerable',
+  (call) => {
+    expect(report('hidden', call, [])).toEqual({ ended: 'returned', fact: facts[call] });
+  },
+);
+
+test.each(
+  (
+    [
+      { call: 'plugin', path: '' },
+      { call: 'application', path: '' },
+      { call: 'command', path: '' },
+      { call: 'application', path: 'packet' },
+      { call: 'plugin', path: 'middleware' },
+    ] as const
+  ).flatMap(({ call, path }) =>
+    (['throws', 'array'] as const).map((second) => ({ call, path, second })),
+  ),
+)(
+  'a $call declaration whose part "$path" reads plain once and then $second is judged once',
+  ({ call, path, second }) => {
+    expect(report('flip', call, [path, second])).toEqual({ ended: 'returned', fact: facts[call] });
+  },
+);
+
+test('a list is read by its length once and index by index, never through its own methods', () => {
+  expect(report('lists', 'plugin', [])).toEqual({
+    ended: 'returned',
+    forEachCalls: 0,
+    installed: 'returned',
+    lengthReads: 1,
+  });
+});

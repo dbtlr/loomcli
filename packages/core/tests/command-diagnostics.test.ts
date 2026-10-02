@@ -204,18 +204,21 @@ const readable =
   'Declare the config as a plain object literal whose properties read without throwing.';
 
 /**
- * The unreadable-config fault of one call, whose finding marks the config. `receiver` holds the
- * lines above the call. A config whose read threw is never read again, so it prints as an ellipsis.
+ * The unreadable-config fault of one call, whose finding marks the key whose read threw, or the
+ * whole config when no `slot` is given. `receiver` holds the lines above the call. A part whose
+ * read threw is never read again, so it prints as an ellipsis.
  */
 function unreadable(
   receiver: readonly string[],
-  parts: { call: string; subject: string },
+  parts: { call: string; subject: string; slot?: string },
 ): Expected {
-  const { call, subject } = parts;
-  const line = `      .${call}, …)`;
+  const { call, slot, subject } = parts;
+  const target = slot === undefined ? '…' : `${slot}: …`;
+  const line = slot === undefined ? `      .${call}, …)` : `      .${call}, { ${target} })`;
+  const start = line.lastIndexOf(target);
   return {
     correction: readable,
-    findings: [[...receiver, line, `${' '.repeat(line.length - 2)}^`]],
+    findings: [[...receiver, line, `${' '.repeat(start)}${'^'.repeat(target.length)}`]],
     headline: 'DECLARATION COULD NOT BE READ',
     rule: 'unreadable-declaration',
     sentence: `${subject} config could not be read: boom.`,
@@ -445,7 +448,7 @@ const cases: Record<string, Expected> = {
       [
         '    // get',
         "    new Command('get')",
-        "      .argument('-path', {})",
+        "      .argument('-path', …)",
         '                ^^^^^^^',
       ],
     ],
@@ -455,6 +458,7 @@ const cases: Record<string, Expected> = {
   },
   'argument-read-once': unreadable(onGet, {
     call: "argument('path'",
+    slot: 'default',
     subject: 'Argument "path"',
   }),
   'argument-twice': {
@@ -479,6 +483,7 @@ const cases: Record<string, Expected> = {
   },
   'argument-unreadable': unreadable(onGet, {
     call: "argument('path'",
+    slot: 'default',
     subject: 'Argument "path"',
   }),
   'attached-twice': {
@@ -607,6 +612,13 @@ const cases: Record<string, Expected> = {
     rule: 'portable-name',
     sentence: 'Command name "bad name" is invalid.',
   },
+  'command-name-with-options': {
+    correction: portable,
+    findings: [["    new Command('bad name', …)", '                ^^^^^^^^^^']],
+    headline: 'NAME NOT PORTABLE',
+    rule: 'portable-name',
+    sentence: 'Command name "bad name" is invalid.',
+  },
   'command-options': {
     correction: 'Supply a Command options object.',
     findings: [["    new Command('get', 'fast')", '                       ^^^^^^']],
@@ -638,10 +650,12 @@ const cases: Record<string, Expected> = {
   },
   'global-option-read-once': unreadable(['    new Application(…)'], {
     call: "globalOption('quiet'",
+    slot: 'default',
     subject: 'Option "quiet"',
   }),
   'global-option-unreadable': unreadable(['    new Application(…)'], {
     call: "globalOption('quiet'",
+    slot: 'default',
     subject: 'Option "quiet"',
   }),
   'group-option': {
@@ -688,6 +702,7 @@ const cases: Record<string, Expected> = {
   },
   'hook-option-unreadable': unreadable(['    // count', "    new Command('count')"], {
     call: "option('format'",
+    slot: 'default',
     subject: 'Option "format"',
   }),
   'multiple-actions': {
@@ -782,6 +797,7 @@ const cases: Record<string, Expected> = {
   },
   'option-default-unreadable': unreadable(onGet, {
     call: "option('format'",
+    slot: 'default',
     subject: 'Option "format"',
   }),
   'option-description': {
@@ -803,8 +819,16 @@ const cases: Record<string, Expected> = {
     call: "option('format'",
     subject: 'Option "format"',
   }),
-  'option-read-once': unreadable(onGet, { call: "option('format'", subject: 'Option "format"' }),
-  'option-unreadable': unreadable(onGet, { call: "option('format'", subject: 'Option "format"' }),
+  'option-read-once': unreadable(onGet, {
+    call: "option('format'",
+    slot: 'default',
+    subject: 'Option "format"',
+  }),
+  'option-unreadable': unreadable(onGet, {
+    call: "option('format'",
+    slot: 'default',
+    subject: 'Option "format"',
+  }),
   'optional-before-required': {
     correction: 'Declare optional arguments after required ones.',
     findings: [
@@ -1123,6 +1147,18 @@ test.each([
     'cause',
   ]);
   expect(result).toEqual({ status: 0, stderr: '', stdout: '{"cause":true}\n' });
+});
+
+test('an option name in a group-option sentence is escaped as every quoted name is', () => {
+  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+    'group-option-escaped',
+    'sentence',
+  ]);
+  expect(result).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${String.raw`Command "cache" declares option "\u001b[31m" but registers no action to receive it.`}\n`,
+  });
 });
 
 test.each(['argument-read-once', 'global-option-read-once', 'option-read-once'])(

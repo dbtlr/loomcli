@@ -637,10 +637,23 @@ const cases: Record<string, Expected> = {
     rule: 'plugin-option-rule',
     sentence: 'Plugin "@acme/log" option "level" declares required.',
   },
+  'option-rule-sibling': {
+    correction:
+      'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+    findings: [
+      bare(
+        "plugin('@acme/log', { options: { level: { required: true, type: 'string' }, trace: … } })",
+        'required: true',
+      ),
+    ],
+    headline: 'RULE ON A PLUGIN OPTION',
+    rule: 'plugin-option-rule',
+    sentence: 'Plugin "@acme/log" option "level" declares required.',
+  },
   'option-unreadable': {
     correction:
       'Declare the config as a plain object literal whose properties read without throwing.',
-    findings: [bare("plugin('@acme/log', { options: { level: … } })", 'level: …')],
+    findings: [bare("plugin('@acme/log', { options: { level: { default: … } } })", 'default: …')],
     headline: 'DECLARATION COULD NOT BE READ',
     rule: 'unreadable-declaration',
     sentence: 'Plugin "@acme/log" option "level" config could not be read: boom.',
@@ -1034,6 +1047,14 @@ test.each(Object.entries(cases))(
     expect(thrown(scenario)).toBe(diagnostic(expected));
   },
 );
+
+test('a plugin option name in a source-binding sentence is escaped as every quoted name is', () => {
+  expect(invoke(fixture, ['source-own-option-escaped', 'sentence'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${String.raw`Plugin "@acme/config" option "\u001b[31m" carries its own source binding.`}\n`,
+  });
+});
 
 test.each(['definition-prototype-unreadable', 'definition-unreadable', 'option-unreadable'])(
   'the %s fault keeps the value the read threw as its cause',

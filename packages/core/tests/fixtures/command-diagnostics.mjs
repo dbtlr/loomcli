@@ -112,6 +112,7 @@ const scenarios = {
   'command-globals': () => new Command('get', { globals: {} }),
   'command-hidden': () => new Command('fetch', { hidden: 'yes' }),
   'command-name': () => new Command('bad name'),
+  'command-name-with-options': () => new Command('bad name', { description: 'Read.' }),
   'command-options': () => new Command('get', 'fast'),
   'command-options-unreadable': () =>
     new Command('get', {
@@ -132,6 +133,10 @@ const scenarios = {
   'group-option': () =>
     new Command('store').command(
       new Command('cache').option('verbose', { type: 'boolean' }).command(leaf('clear')),
+    ),
+  'group-option-escaped': () =>
+    new Command('store').command(
+      new Command('cache').option('\u001b[31m', { type: 'boolean' }).command(leaf('clear')),
     ),
   'hook-argument-config': () =>
     new Application('probe', {
@@ -271,9 +276,11 @@ if (scenario === 'root-group-option' || scenario === 'root-without-action') {
     }
     // The cause mode reads whether the fault kept the thrown value itself.
     // The reads mode reads how often a flaky config's default was read.
+    // The sentence mode reads the sentence the fault holds, before any rendering escapes it.
     const modes = {
       cause: () => JSON.stringify({ cause: error.cause === boom }),
       reads: () => JSON.stringify({ reads }),
+      sentence: () => error.sentence,
     };
     process.stdout.write(`${modes[process.argv[3]]?.() ?? error.message}\n`);
   }

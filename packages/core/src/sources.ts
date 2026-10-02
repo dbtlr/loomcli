@@ -1,4 +1,11 @@
-import { asSentence, foreignFailure, InternalError, LoomError, reasonOf } from './errors.js';
+import {
+  asSentence,
+  foreignFailure,
+  InternalError,
+  LoomError,
+  quoted,
+  reasonOf,
+} from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isProseLine } from './facts.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
@@ -185,14 +192,14 @@ function readAnswer(
   const label = shape?.label;
   if (!shape || !isProseLine(label)) {
     throw ruleFault(
-      `${sentence} answered option "${input.name}" with an answer that is not { value, label }.`,
+      `${sentence} answered option ${quoted(input.name)} with an answer that is not { value, label }.`,
     );
   }
   const kind = rawKind(input);
   const value = rawValue(kind, shape.value);
   if (value === undefined) {
     throw ruleFault(
-      `${sentence} answered option "${input.name}" with a value that is not ${owed[kind]}.`,
+      `${sentence} answered option ${quoted(input.name)} with a value that is not ${owed[kind]}.`,
     );
   }
   return { label, value };
@@ -221,7 +228,7 @@ function readAnswers(
   return Object.entries(answers).map(([name, answer]) => {
     const target = byName.get(name);
     if (!target) {
-      throw ruleFault(`${sentence} answered option "${name}", which core did not request.`);
+      throw ruleFault(`${sentence} answered option ${quoted(name)}, which core did not request.`);
     }
     const { label, value } = readAnswer(sentence, target.input, answer);
     return { label, target, value };
