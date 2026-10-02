@@ -34,3 +34,26 @@ assertion without a lint directive, not a typed path.
 
 `packages/core/tests/assertions.test.ts` pins the surviving sites per file, rejects blanket disables
 and compiler escapes, and checks each comment.
+
+## Judging review findings
+
+A review seat, a bot, or a probe reports what it can break, which is wider than what is a defect.
+A finding is a defect only when it passes both tests:
+
+1. **Loom produces it.** The bad value comes from something Loom ships (core, `@loomcli/plugins`,
+   `@loomcli/validators`, the configuration plugin's files) or from operator input that reaches core
+   through one of them. A value the author's own code creates, such as a hand-written validator's
+   output, a declared default, or an action's result, belongs to the author, and its failure is a
+   defect in their application that core already reports as one. Loom deliberately ships no JSON
+   validator, because a command-line application has no reason to parse JSON from arguments or
+   options.
+2. **It plausibly happens.** The input fits how a command-line application is used. Command-line
+   length bounds what an operator types, and an author declares ordinary values for a command-line
+   interface. A construction built only to break the code, such as a default of a million shared
+   paths, is a probe result.
+
+A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
+with that reason in the review record. A finding where either test is uncertain is held: once the
+task has settled, bring it to the user with what it is and the reason it is uncertain, and decide
+together whether to fix it, file it, or dismiss it. Brief every review seat with both tests, and
+triage each finding against them before acting on it.
