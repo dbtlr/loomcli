@@ -53,5 +53,7 @@ A finding is a defect only when it passes both tests:
    paths, is a probe result.
 
 A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
-with that reason in the review record. Brief every review seat with both tests, and triage each
-finding against them before acting on it.
+with that reason in the review record. A finding where either test is uncertain is held: once the
+task has settled, bring it to the user with what it is and the reason it is uncertain, and decide
+together whether to fix it, file it, or dismiss it. Brief every review seat with both tests, and
+triage each finding against them before acting on it.
