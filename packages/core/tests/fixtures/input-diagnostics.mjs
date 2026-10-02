@@ -81,6 +81,12 @@ const scenarios = {
     new Command('get').option('verbose', { default: false, type: 'boolean' }),
   'boolean-multiple': () =>
     new Command('list').option('verbose', { multiple: true, type: 'boolean' }),
+  'default-depth': () =>
+    new Command('get').option('limit', {
+      default: [[[[[[[[[[['7']]]]]]]]]]],
+      type: 'string',
+      validate: text,
+    }),
   'default-shape': () => new Command('get').option('limit', { default: 7, type: 'string' }),
   'env-multiple': () =>
     new Command('get').option('field', { env: 'FIELD', multiple: true, type: 'string' }),

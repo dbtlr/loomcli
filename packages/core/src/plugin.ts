@@ -58,7 +58,7 @@ import { buildTheme } from './theme.js';
 import { readTranslations } from './translators.js';
 import type { Translation, TranslationContributor } from './translators.js';
 import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } from './types.js';
-import { captureConfig, checkDeclarations } from './validation.js';
+import { captureConfig, checkDeclarations, defaultDepthFault } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
@@ -456,6 +456,11 @@ function checkPluginOption(
         findings: [partFinding(siteOf(declared), [])],
         sentence: `${sentence} is not an option declaration.`,
       }),
+    // The default's walk stopped at the limit, so the finding prints it elided.
+    tooDeep: () => {
+      const { keys, shown } = elidedRead('default');
+      return defaultDepthFault(sentence, [partFinding(siteOf(shown), keys)]);
+    },
     // A part whose read threw is never read again, so the finding prints it elided.
     unreadable: (thrown, slot) => {
       const { keys, shown } = elidedRead(slot);

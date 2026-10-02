@@ -12,6 +12,8 @@ import { callSite, factFault, flagFault, partOf, siteFinding } from './facts.js'
 import type { InputSite } from './facts.js';
 import {
   booleanOptionValueRule,
+  defaultDepth,
+  defaultLevels,
   defaultShape,
   invalidDefault,
   notAValidator,
@@ -21,7 +23,7 @@ import {
 } from './input-rules.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
-import { shallowList, snapshot } from './plain.js';
+import { boundedSnapshot, NestedTooDeepError, shallowList } from './plain.js';
 import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
@@ -166,29 +168,50 @@ class ValidatedInputs {
 }
 export type { ValidatedInputs };
 
+/** The faults a config's capture raises: those of every capture, and a default nested too deep. */
+export interface ConfigFaults extends CaptureFaults {
+  /** The default holds a path deeper than `defaultLevels`; the finding prints it elided. */
+  readonly tooDeep: () => DeclarationError;
+}
+
 /**
  * Authoring's one read of a config, through `captureDeclaration`: the prototype verdict, the copy of
  * every own string key, the copy of its `extensions` list, and the snapshot of its default, inside
  * one try. Every later check, the registry entry, and every sentence read the copy and never the
  * author's object again, so a getter runs once and the caller's later changes reach nothing. The
- * default is copied and frozen to any depth, cycles included, and that copy is the value the graph
- * publishes and a run validates; every other property is captured as declared, because core clones
- * no library object. A read that throws, from a getter or a proxy trap, is the unreadable fault,
- * named by the key it threw in, and a value that is not a plain object is the not-an-object fault.
+ * default is copied and frozen to `defaultLevels` levels, cycles included, and that copy is the
+ * value the graph publishes and a run validates; every other property is captured as declared,
+ * because core clones no library object. A read that throws, from a getter or a proxy trap, is the
+ * unreadable fault, named by the key it threw in, a default nested deeper is the too-deep fault,
+ * and a value that is not a plain object is the not-an-object fault.
  */
 export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
   config: Config,
-  faults: CaptureFaults,
+  faults: ConfigFaults,
 ): Config {
+  const { notAnObject: notAnObjectFault, tooDeep, unreadable } = faults;
   return captureDeclaration(
     config,
     (copy, read) => {
       // Presence is the key, so a declared `default: undefined` stays a default.
-      read.nested(copy, 'default', snapshot);
+      read.nested(copy, 'default', (value) => boundedSnapshot(value, defaultLevels));
       read.nested(copy, 'extensions', shallowList);
     },
-    faults,
+    {
+      notAnObject: notAnObjectFault,
+      unreadable: (thrown, slot) =>
+        thrown instanceof NestedTooDeepError ? tooDeep() : unreadable(thrown, slot),
+    },
   );
+}
+
+/** The fault of a default nested deeper than `defaultLevels`, declared by `subject`. */
+export function defaultDepthFault(subject: string, findings: readonly Finding[]): DeclarationError {
+  return new DeclarationError(defaultDepth, {
+    correction: `Nest a default at most ${String(defaultLevels)} levels deep.`,
+    findings,
+    sentence: `${subject} default nests deeper than ${String(defaultLevels)} levels.`,
+  });
 }
 
 /**
@@ -221,6 +244,11 @@ export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>
         findings: findings(config),
         sentence: `${subject} declares a config that is not an object.`,
       }),
+    // The default's walk stopped at the limit, so the finding prints it elided.
+    tooDeep: () => {
+      const { keys, shown } = elidedRead('default');
+      return defaultDepthFault(subject, findings(shown, keys));
+    },
     // A part whose read threw is never read again, so the finding prints it elided.
     unreadable: (thrown, slot) => {
       const { keys, shown } = elidedRead(slot);
