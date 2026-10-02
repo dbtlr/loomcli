@@ -356,15 +356,4 @@ describe("help's failure hint", () => {
     expect(stderr).toBe('kit: Something went wrong.\n');
     expect(stderr).not.toContain('--help');
   });
-
-  it('an unknown token beside a default that holds itself is an invocation error with its suggestion', () => {
-    expect(outcome('cyclic', ['--shap'])).toEqual({
-      status: 2,
-      stderr: [
-        'kit: Unknown option "--shap". Did you mean "--shape"?',
-        'Run "kit --help" to see the usage.',
-        '',
-      ].join('\n'),
-    });
-  });
 });

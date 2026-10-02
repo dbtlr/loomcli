@@ -39,11 +39,6 @@ const refuses = {
   },
 };
 
-/** A validator that accepts every value, which is what lets a default hold an object. */
-const accepts = {
-  '~standard': { validate: (value) => ({ value }), vendor: 'fixture', version: 1 },
-};
-
 /** Groups of callable children, so each matcher case reads its own candidates. */
 function group(name, children) {
   return children.reduce((parent, child) => parent.command(child), new Command(name));
@@ -114,14 +109,6 @@ const scenarios = {
     kit({ plugins: [suggestions()], views: [override(UnknownCommandError, owned('app'))] }),
   'app-usage': () => kit({ plugins: [suggestions()], views: [override(UsageError, owned('app'))] }),
   core: () => kit({}),
-  // A default that holds itself, which every reader of the graph must survive.
-  cyclic: () => {
-    const shape = { name: 'loop' };
-    shape.self = shape;
-    return new Application('kit', { plugins: [help(), suggestions()] })
-      .option('shape', { default: shape, type: 'string', validate: accepts })
-      .action(dispatch);
-  },
   'default-rejected': () =>
     new Application('kit', { plugins: [help(), suggestions()] })
       .option('level', { default: 'loud', type: 'string', validate: refuses })

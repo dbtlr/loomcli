@@ -20,34 +20,24 @@ const recording = {
 /** Which of the first three positions of a list hold an entry, so a test reads its holes. */
 const present = (list) => [0, 1, 2].map((index) => Object.hasOwn(list, index));
 
-if (mode === 'cycle') {
-  const shape = { name: 'loop' };
-  shape.self = shape;
-  const list = ['a'];
-  list.push(list);
-  const app = new Application('cycles')
-    .option('shape', { default: shape, type: 'string', validate: recording })
-    .argument('list', { default: list, validate: recording })
+if (mode === 'shared') {
+  // A proxy whose prototype reads plain once and as a Map after, held at two places in one default.
+  let reads = 0;
+  const shape = new Proxy(
+    { key: 'value' },
+    {
+      getPrototypeOf() {
+        reads += 1;
+        return reads === 1 ? Object.prototype : Map.prototype;
+      },
+    },
+  );
+  const app = new Application('shared')
+    .option('shape', { default: [shape, shape], type: 'string', validate: recording })
     .action(() => undefined);
-  const graph = app.inspect();
-  const copy = graph.root.options[0].default.value;
-  const listCopy = graph.root.arguments[0].default.value;
-  await app.run({ host: { argv: [] } });
+  const [first, second] = app.inspect().root.options[0].default.value;
   process.stdout.write(
-    `${JSON.stringify({
-      list: {
-        authors: listCopy === list,
-        cycle: listCopy[1] === listCopy,
-        frozen: Object.isFrozen(listCopy),
-        validated: received[1] === listCopy,
-      },
-      shape: {
-        authors: copy === shape,
-        cycle: copy.self === copy,
-        frozen: Object.isFrozen(copy),
-        validated: received[0] === copy,
-      },
-    })}\n`,
+    `${JSON.stringify({ copied: first !== shape && second !== shape, frozen: Object.isFrozen(second), same: first === second })}\n`,
   );
 } else if (mode === 'sparse') {
   // Writing past the end leaves a hole in the middle, which is the value under test.

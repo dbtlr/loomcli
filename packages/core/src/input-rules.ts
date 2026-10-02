@@ -180,6 +180,15 @@ const defaultShape = registerRule('@loomcli/core/default-shape', {
   headline: 'Default of the wrong shape',
 });
 
+/** The most arrays and plain objects any path through a declared default may hold. */
+const defaultLevels = 10;
+
+/** A declared default nested deeper than `defaultLevels`. */
+const defaultDepth = registerRule('@loomcli/core/default-depth', {
+  explanation: `A default stands in for the value an operator would supply, and every reader of the graph, help and the manifest included, walks it. Core keeps every path through a default within ${String(defaultLevels)} levels of arrays and plain objects, and a default that holds itself nests without end, so every reader stays far inside the call stack on every runtime.`,
+  headline: 'Default nested too deep',
+});
+
 /** A declared default its validator rejected. */
 const invalidDefault = registerRule('@loomcli/core/invalid-default', {
   explanation:
@@ -197,6 +206,8 @@ const schemaConverterFailed = registerRule('@loomcli/core/schema-converter-faile
 export {
   booleanOptionMultiple,
   booleanOptionValueRule,
+  defaultDepth,
+  defaultLevels,
   defaultShape,
   envName,
   envOnArgument,

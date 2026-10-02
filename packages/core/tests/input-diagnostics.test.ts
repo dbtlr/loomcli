@@ -24,6 +24,13 @@ const explanations = {
     'polarity decides the value an absent option reads. validate, default, required,',
     'and validateOmitted belong to inputs that take a value.',
   ],
+  'default-depth': [
+    'A default stands in for the value an operator would supply, and every reader of',
+    'the graph, help and the manifest included, walks it. Core keeps every path',
+    'through a default within 10 levels of arrays and plain objects, and a default',
+    'that holds itself nests without end, so every reader stays far inside the call',
+    'stack on every runtime.',
+  ],
   'default-shape': [
     'A default stands in for the value an operator would supply. Without a validator',
     'it is that raw value, a string or, for an input that takes several values, an',
@@ -246,6 +253,13 @@ const cases: Record<string, Expected> = {
     headline: 'BOOLEAN OPTION TAKES ONE VALUE',
     rule: 'boolean-option-multiple',
     sentence: 'Option "verbose" is a boolean option and declares multiple.',
+  },
+  'default-depth': {
+    correction: 'Nest a default at most 10 levels deep.',
+    findings: [onCommand(['get'], "option('limit', { default: … })", 'default: …')],
+    headline: 'DEFAULT NESTED TOO DEEP',
+    rule: 'default-depth',
+    sentence: 'Option "limit" default nests deeper than 10 levels.',
   },
   'default-shape': {
     correction: 'Supply a string default.',

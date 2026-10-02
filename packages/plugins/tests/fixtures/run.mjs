@@ -335,12 +335,10 @@ function folded() {
     .action(dispatch);
 }
 
-/** A default that holds itself, which JSON cannot render, beside a list that holds itself. */
-function cyclic() {
-  const shape = { name: 'loop' };
-  shape.self = shape;
-  const list = ['a'];
-  list.push(list);
+/** An object default and a list default that each hold a BigInt, which JSON cannot render. */
+function unencodable() {
+  const shape = { count: 7n, name: 'seven' };
+  const list = [7n];
   return new Application('app', { plugins, version: '1.2.0' })
     .option('shape', {
       default: shape,
@@ -364,7 +362,6 @@ const scenarios = {
   'broken-page': () => branded([override(helpPage, breaks)]),
   cells,
   children,
-  cyclic,
   facts,
   folded,
   marked: () =>
@@ -372,6 +369,7 @@ const scenarios = {
   nested,
   prose,
   scoped,
+  unencodable,
   unlisted,
   usage,
   variants: () => variants(),
