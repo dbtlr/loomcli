@@ -185,7 +185,7 @@ const defaultLevels = 10;
 
 /** A declared default nested deeper than `defaultLevels`. */
 const defaultDepth = registerRule('@loomcli/core/default-depth', {
-  explanation: `A default stands in for the value an operator would supply, and every reader of the graph, help and the manifest included, walks it. Core keeps every path through a default within ${String(defaultLevels)} levels of arrays and plain objects, so each reader walks it the same way on every runtime.`,
+  explanation: `A default stands in for the value an operator would supply, and every reader of the graph, help and the manifest included, walks it. Core keeps every path through a default within ${String(defaultLevels)} levels of arrays and plain objects, and a default that holds itself nests without end, so every reader stays far inside the call stack on every runtime.`,
   headline: 'Default nested too deep',
 });
 

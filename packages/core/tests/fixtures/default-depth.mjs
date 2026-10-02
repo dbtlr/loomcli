@@ -75,12 +75,19 @@ const [call, levels, shape] = process.argv.slice(2);
 /**
  * Each shape of default, `levels` deep. `shared` lists `levels - 1` lists, each holding the one
  * listed before it, so the walk reaches every one first at level 2 and the deepest path runs
- * through all of them. `cycle` is a nest inside a list that also holds itself.
+ * through all of them. `cycle` is a nest inside a list that also holds itself, and `indirect` a
+ * nest beside an object that holds the list both sit in.
  */
 const shapes = {
   cycle: (count) => {
     const list = [nested(count - 1)];
     list.push(list);
+    return list;
+  },
+  indirect: (count) => {
+    const inner = { back: undefined };
+    const list = [nested(count - 1), inner];
+    inner.back = list;
     return list;
   },
   shared: (count) => {

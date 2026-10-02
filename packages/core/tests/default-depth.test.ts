@@ -52,7 +52,14 @@ test('a path through containers the walk already copied counts every one of them
   });
 });
 
-test('a cycle counts each of its containers once', () => {
-  expect(declared('option', 10, 'cycle')).toBe('returned');
-  expect(declared('option', 11, 'cycle')).toMatchObject({ rule: '@loomcli/core/default-depth' });
-});
+test.each(['cycle', 'indirect'])(
+  'a default that holds itself (%s) nests without end, whatever its depth',
+  (shape) => {
+    expect(declared('option', 2, shape)).toEqual({
+      correction: 'Nest a default at most 10 levels deep.',
+      mark: ['1.default'],
+      rule: '@loomcli/core/default-depth',
+      sentence: 'Option "format" default nests deeper than 10 levels.',
+    });
+  },
+);

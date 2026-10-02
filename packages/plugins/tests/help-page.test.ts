@@ -131,14 +131,11 @@ test('a right cell carries the description, then the facts that apply, in one pa
   );
 });
 
-test('a default that holds itself prints as String renders it, because JSON cannot render it', () => {
-  const result = run('cyclic', ['--help']);
+test('a default JSON cannot render prints as String renders it', () => {
+  const result = run('unencodable', ['--help']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   expect(result.stdout).toContain('  --shape <shape>  The shape.  (default: [object Object])\n');
-  // Node elides the cycle in `String`, and Bun 1.4.0 overflows on it, so help prints Object's spelling.
-  expect(result.stdout).toMatch(
-    /^ {6}--list <list> {4}The list\. {2}\(default: (?:a,|\[object Array\])\)$/mu,
-  );
+  expect(result.stdout).toMatch(/^ {6}--list <list> {4}The list\. {2}\(default: 7\)$/mu);
 });
 
 test('a root with children prints GLOBAL OPTIONS and the action form', () => {

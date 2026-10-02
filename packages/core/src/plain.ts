@@ -60,10 +60,10 @@ function decidePlain(value: unknown): value is Record<string, unknown> {
 /**
  * A snapshot of one value. Arrays and plain objects are copied and frozen to any depth, so a
  * consumer cannot reach the source through the copy. A value that holds itself is copied with the
- * same cycle, because each source container is copied once and every path to it reaches that copy.
- * Primitives and library objects, such as a class instance or a `Date` a schema produced, are
- * reported as they are, because core cannot copy them meaningfully. Build reads it for a
- * converter's schema, and the chain for the request one middleware holds.
+ * same cycle, because each source object is judged and copied once and every path to it reaches
+ * that copy. Primitives and library objects, such as a class instance or a `Date` a schema
+ * produced, are reported as they are, because core cannot copy them meaningfully. Build reads it
+ * for a converter's schema, and the chain for the request one middleware holds.
  */
 function snapshot(value: unknown): unknown {
   return copied(value, copying(Number.POSITIVE_INFINITY), 1);
@@ -76,10 +76,10 @@ function snapshotRecord(value: Record<string, unknown>): Readonly<Record<string,
 
 /**
  * The snapshot `snapshot` takes, of a value whose paths may hold at most `levels` arrays and plain
- * objects, the value itself included. A path ends at a container it already passed through, so a
- * cycle counts each of its containers once. A longer path throws `NestedTooDeepError` before the walk
- * goes deeper than `levels`, so neither the walk nor any later reader of the copy overflows the
- * call stack. A declaring call reads it for a declared default.
+ * objects, the value itself included. Every path through a container the value holds twice counts
+ * it, and a value that holds itself has a path without end. Either kind of path past `levels`
+ * throws `NestedTooDeepError` before the walk goes deeper than `levels`, so neither the walk nor
+ * any later reader of the copy goes deeper either. A declaring call reads it for a declared default.
  */
 function boundedSnapshot(value: unknown, levels: number): unknown {
   return copied(value, copying(levels), 1);
@@ -92,9 +92,12 @@ class NestedTooDeepError extends Error {
 
 /** One snapshot in progress. */
 interface Copying {
-  /** The copy of every container reached. */
+  /** What the walk answers for every object it reached: its copy, or the object kept as it is. */
   readonly copies: Map<object, unknown>;
-  /** How many containers the longest path from each filled container holds, itself included. */
+  /**
+   * How many containers the longest path from each object the walk finished holds, itself
+   * included. A container still being filled has none yet.
+   */
   readonly heights: Map<object, number>;
   /** The most containers any path may hold. */
   readonly levels: number;
@@ -105,25 +108,44 @@ function copying(levels: number): Copying {
   return { copies: new Map(), heights: new Map(), levels };
 }
 
-/** One value of a snapshot in progress, reached at `level`, where the value itself is level 1. */
+/**
+ * One value of a snapshot in progress, reached at `level`, where the value itself is level 1. An
+ * object the walk reached already answers as it did then, so its prototype is read once.
+ */
 function copied(value: unknown, walk: Copying, level: number): unknown {
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+  if (walk.copies.has(value)) {
+    return walk.copies.get(value);
+  }
   if (Array.isArray(value)) {
     return copiedList(value, walk, level);
   }
   if (isPlainObject(value)) {
     return copiedRecord(value, walk, level);
   }
+  return kept(value, walk);
+}
+
+/** An object core cannot copy, kept as it is, which every later reach answers with unread. */
+function kept(value: object, walk: Copying): object {
+  walk.copies.set(value, value);
+  walk.heights.set(value, 0);
   return value;
 }
 
 /**
  * How many containers the longest path from one entry holds, once the walk has copied the entry of
  * a container reached at `level`. A container the walk filled counts every container below it,
- * even one it reached first by a shorter path. A container still being filled is a cycle, whose
- * path ends there, and any other value holds none.
+ * even one it reached first by a shorter path. A container still being filled is one this entry
+ * leads back into, so the path through it has no end, and any other value holds none.
  */
-function heightOf(entry: unknown, walk: Copying, level: number): number {
-  const height = typeof entry === 'object' && entry !== null ? (walk.heights.get(entry) ?? 0) : 0;
+function checkedHeight(entry: unknown, walk: Copying, level: number): number {
+  const height =
+    typeof entry === 'object' && entry !== null
+      ? (walk.heights.get(entry) ?? Number.POSITIVE_INFINITY)
+      : 0;
   if (level + height > walk.levels) {
     throw new NestedTooDeepError();
   }
@@ -139,23 +161,18 @@ function entryCopier(walk: Copying, level: number) {
   return {
     copy: (entry: unknown): unknown => {
       const copy = copied(entry, walk, level + 1);
-      height = Math.max(height, heightOf(entry, walk, level) + 1);
+      height = Math.max(height, checkedHeight(entry, walk, level) + 1);
       return copy;
     },
     height: (): number => height,
   };
 }
 
-/**
- * Starts the copy of one container reached at `level`, past the limit or not, and answers the copy
- * the walk already holds for it, if any.
- */
-function knownCopy(container: object, walk: Copying, level: number): unknown {
-  const known = walk.copies.get(container);
-  if (known === undefined && level > walk.levels) {
+/** Throws `NestedTooDeepError` for a container the walk first reaches past its limit. */
+function checkLevel(walk: Copying, level: number): void {
+  if (level > walk.levels) {
     throw new NestedTooDeepError();
   }
-  return known;
 }
 
 /**
@@ -163,10 +180,7 @@ function knownCopy(container: object, walk: Copying, level: number): unknown {
  * it reaches the copy, and it is frozen once it is filled. A hole stays a hole.
  */
 function copiedList(list: readonly unknown[], walk: Copying, level: number): unknown {
-  const known = knownCopy(list, walk, level);
-  if (known !== undefined) {
-    return known;
-  }
+  checkLevel(walk, level);
   const copy: unknown[] = [];
   walk.copies.set(list, copy);
   const entries = entryCopier(walk, level);
@@ -184,10 +198,7 @@ function copiedRecord(
   walk: Copying,
   level: number,
 ): Readonly<Record<string, unknown>> {
-  const known = knownCopy(record, walk, level);
-  if (isPlainObject(known)) {
-    return known;
-  }
+  checkLevel(walk, level);
   const copy: Record<string, unknown> = {};
   walk.copies.set(record, copy);
   const entries = entryCopier(walk, level);

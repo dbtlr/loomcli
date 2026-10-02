@@ -379,7 +379,6 @@ test('a declared default that is not plain JSON data fails the write, wherever t
     'deep-bigint',
     'global-nan',
     'child-nan',
-    'cycle',
   ]) {
     expect(unencodable(scenario)).toEqual(reportedAs('the default of option "--odd"'));
   }

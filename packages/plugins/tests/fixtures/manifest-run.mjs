@@ -127,7 +127,6 @@ const scenarios = {
   'array-date': () => defaulted([new Date(0)]),
   bigint: () => defaulted(10n),
   'child-nan': () => placed('child', Number.NaN),
-  cycle: () => defaulted(looped()),
   date: () => defaulted(new Date(0)),
   'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
   function: () => defaulted(() => 'ten'),

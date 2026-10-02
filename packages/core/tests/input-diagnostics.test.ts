@@ -27,8 +27,9 @@ const explanations = {
   'default-depth': [
     'A default stands in for the value an operator would supply, and every reader of',
     'the graph, help and the manifest included, walks it. Core keeps every path',
-    'through a default within 10 levels of arrays and plain objects, so each reader',
-    'walks it the same way on every runtime.',
+    'through a default within 10 levels of arrays and plain objects, and a default',
+    'that holds itself nests without end, so every reader stays far inside the call',
+    'stack on every runtime.',
   ],
   'default-shape': [
     'A default stands in for the value an operator would supply. Without a validator',

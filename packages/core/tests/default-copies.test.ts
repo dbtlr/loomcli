@@ -39,9 +39,8 @@ function cycles(mode: string): unknown {
   return JSON.parse(result.stdout);
 }
 
-test('a cyclic default is a frozen copy holding the same cycle, and its validator receives that copy', () => {
-  const copied = { authors: false, cycle: true, frozen: true, validated: true };
-  expect(cycles('cycle')).toEqual({ list: copied, shape: copied });
+test('an object a default holds twice is judged plain once, so its copy holds no live object', () => {
+  expect(cycles('shared')).toEqual({ copied: true, frozen: true, same: true });
 });
 
 test('a getter on a default runs once, at the declaring call, across a run and an inspection', () => {
