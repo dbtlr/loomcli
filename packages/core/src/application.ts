@@ -1,5 +1,6 @@
 import type { Writable } from 'node:stream';
 
+import { captureDeclaration, unreadableArgument } from './capture.js';
 import { runInvocation } from './chain.js';
 import { portableName } from './command-rules.js';
 import {
@@ -37,6 +38,7 @@ import type {
   ResultMethod,
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
+import { elided, spelled } from './diagnostic-text.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import {
   DeclarationError,
@@ -68,7 +70,7 @@ import type { CommandGraph } from './inspect.js';
 import { coreViews } from './lanes.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
-import { isPlainObject } from './plain.js';
+import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js';
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
@@ -361,11 +363,17 @@ class ApplicationBuilder<
     Result
   > {
     // The plugins' Commands attach at construction, so only the application's own calls close it.
+    // The config is judged after the order, so the finding prints it elided and reads none of it.
     if (this.#config.composed) {
       throw new DeclarationError(globalOptionAfterCommand, {
         correction: 'Declare global options before attaching Commands or registering an action.',
         findings: [
-          { arguments: callArguments(name, config), call: 'globalOption', mark: '0', path: [] },
+          {
+            arguments: callArguments(name, config === undefined ? undefined : spelled(elided)),
+            call: 'globalOption',
+            mark: '0',
+            path: [],
+          },
         ],
         sentence: `The Application declares global option ${quoted(name)} after command() or action().`,
       });
@@ -821,8 +829,14 @@ function runRendering(rendering: unknown): FactSite {
   };
 }
 
-/** Reject obsolete wiring before silently losing options that invocations depend on. */
-function checkOptions(name: string, options: unknown): ApplicationFacts {
+/**
+ * Reject obsolete wiring before silently losing options that invocations depend on. `options` is the
+ * copy `captureOptions` took, or `undefined` for an Application declared without options.
+ */
+function checkOptions(
+  name: string,
+  options: Readonly<Record<string, unknown>> | undefined,
+): ApplicationFacts {
   const site: FactSite = {
     at: '1',
     declaration: { arguments: callArguments(name, options), call: 'new Application' },
@@ -830,13 +844,6 @@ function checkOptions(name: string, options: unknown): ApplicationFacts {
   };
   if (options === undefined) {
     return { description: undefined, version: checkVersion(site, undefined) };
-  }
-  if (!isPlainObject(options)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply an Application options object.',
-      findings: [{ ...site.declaration, mark: '1' }],
-      sentence: 'The Application declares options that are not an object.',
-    });
   }
   for (const [key, correction] of retired) {
     if (key in options) {
@@ -889,22 +896,60 @@ function readPacket(name: string, packet: unknown): boolean {
   });
 }
 
+/** The parts of the Application options that are lists, each copied with its entries as built. */
+const optionLists = ['plugins', 'views', 'translators', 'extensions'] as const;
+
+/**
+ * The one copy of the options that `new Application(name, options)` reads: the options object, its
+ * packet and rendering policy, and each list it holds. An entry of a list is what its factory built
+ * and is not copied. A read that throws is the unreadable fault of the options, and a value that is
+ * not a plain object is the not-an-object fault. An Application declared without options has none
+ * to copy.
+ */
+function captureOptions(name: string, options: unknown): Record<string, unknown> | undefined {
+  if (options === undefined) {
+    return undefined;
+  }
+  return captureDeclaration(
+    options,
+    (copy, read) => {
+      read.nested(copy, 'packet', shallowRecord);
+      read.nested(copy, 'rendering', shallowRecord);
+      for (const list of optionLists) {
+        read.nested(copy, list, shallowList);
+      }
+    },
+    {
+      notAnObject: () =>
+        new DeclarationError(notAnObject, {
+          correction: 'Supply an Application options object.',
+          findings: [{ arguments: [name, options], call: 'new Application', mark: '1' }],
+          sentence: 'The Application declares options that are not an object.',
+        }),
+      unreadable: unreadableArgument(
+        { call: 'new Application', named: name, subject: 'The Application' },
+        'options',
+      ),
+    },
+  );
+}
+
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
  * application's own view overrides, its translations, the rendering policy, the options slot and
  * its facts, the installed list and every rule between two plugins, the root's extension values,
  * and then each plugin's Commands, which attach to the root first, in installation order and list
- * order.
+ * order. Each reads the one copy of the options `captureOptions` takes.
  */
 function declareApplication(
   name: string,
-  options: unknown,
+  declared: unknown,
 ): {
   config: ApplicationConfig;
   globals: GlobalsState<{}>;
   root: CommandState<{}, {}, {}>;
 } {
-  const slot = isPlainObject(options) ? options : undefined;
+  const slot = captureOptions(name, declared);
   const identities = viewIdentities(coreViews);
   const views = buildViews(
     {
@@ -923,7 +968,7 @@ function declareApplication(
     slot?.rendering,
     optionSite(name, 'rendering', slot?.rendering),
   );
-  const facts = checkOptions(name, options);
+  const facts = checkOptions(name, slot);
   const development = readPacket(name, slot?.packet);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
@@ -990,7 +1035,10 @@ class ApplicationDeclaration<
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);
-    super(checked, declareApplication(checked, options));
+    super(
+      checked,
+      declaring(() => declareApplication(checked, options)),
+    );
   }
 }
 

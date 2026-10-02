@@ -1,5 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { captureDeclaration, elidedRead, unreadableFault } from './capture.js';
+import type { CaptureFaults } from './capture.js';
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
@@ -19,8 +21,8 @@ import {
 } from './input-rules.js';
 import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
-import { isPlainObject, snapshot } from './plain.js';
-import { notAnObject, unreadableDeclaration } from './plugin-rules.js';
+import { shallowList, snapshot } from './plain.js';
+import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -164,66 +166,28 @@ class ValidatedInputs {
 }
 export type { ValidatedInputs };
 
-/** The two faults one declaring call raises when it cannot capture its config. */
-export interface ConfigFaults {
-  /** The config is not a plain object, so it has no keys for core to read. */
-  readonly notAnObject: () => DeclarationError;
-  /** A read of the config threw the value it receives. */
-  readonly unreadable: (thrown: unknown) => DeclarationError;
-}
-
 /**
- * Authoring's one read of a config: the prototype check, the copy of its keys, and the snapshot of
- * its default, inside one try. Every later check, the registry entry, and every sentence read the
- * copy and never the author's object again, so a getter runs once and the caller's later changes
- * reach nothing. The default is copied and frozen to any depth, cycles included, and that copy is
- * the value the graph publishes and a run validates; every other property is captured as declared,
- * because core clones no library object. A read that throws, from a getter or a proxy trap, is the
- * unreadable fault, and a value that is not a plain object is the not-an-object fault.
+ * Authoring's one read of a config, through `captureDeclaration`: the prototype verdict, the copy of
+ * every own string key, the copy of its `extensions` list, and the snapshot of its default, inside
+ * one try. Every later check, the registry entry, and every sentence read the copy and never the
+ * author's object again, so a getter runs once and the caller's later changes reach nothing. The
+ * default is copied and frozen to any depth, cycles included, and that copy is the value the graph
+ * publishes and a run validates; every other property is captured as declared, because core clones
+ * no library object. A read that throws, from a getter or a proxy trap, is the unreadable fault,
+ * named by the key it threw in, and a value that is not a plain object is the not-an-object fault.
  */
 export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
   config: Config,
-  faults: ConfigFaults,
+  faults: CaptureFaults,
 ): Config {
-  let captured: Config | undefined = undefined;
-  try {
-    captured = isPlainObject(config) ? copyConfig(config) : undefined;
-  } catch (error) {
-    throw faults.unreadable(error);
-  }
-  if (captured === undefined) {
-    throw faults.notAnObject();
-  }
-  return captured;
-}
-
-/** One plain config's copy, with its default, when it declares one, snapshotted. */
-function copyConfig<Config extends ArgumentConfig | OptionConfig>(config: Config): Config {
-  const copy = { ...config };
-  // Presence is the key, so a declared `default: undefined` stays a default.
-  return Object.hasOwn(copy, 'default') ? { ...copy, default: snapshot(copy.default) } : copy;
-}
-
-/** The correction every unreadable config carries, whichever call declared it. */
-const readableCorrection =
-  'Declare the config as a plain object literal whose properties read without throwing.';
-
-/**
- * The fault for a config whose read threw, named by `subject` and marked by `findings`. The thrown
- * value's reason ends the sentence and the value itself is the fault's cause.
- */
-export function unreadableConfig(
-  report: { readonly findings: readonly Finding[]; readonly subject: string },
-  thrown: unknown,
-): DeclarationError {
-  return new DeclarationError(
-    unreadableDeclaration,
-    {
-      correction: readableCorrection,
-      findings: report.findings,
-      sentence: `${report.subject} config could not be read: ${asSentence(reasonOf(thrown))}`,
+  return captureDeclaration(
+    config,
+    (copy, read) => {
+      // Presence is the key, so a declared `default: undefined` stays a default.
+      read.nested(copy, 'default', snapshot);
+      read.nested(copy, 'extensions', shallowList);
     },
-    { cause: thrown },
+    faults,
   );
 }
 
@@ -243,9 +207,12 @@ export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>
 ): Config {
   const { config, kind, name } = declared;
   const subject = `${kind === 'argument' ? 'Argument' : 'Option'} ${quoted(name)}`;
-  // The finding marks the config, which `shown` stands for when the call prints.
-  const findings = (shown: unknown) => [
-    siteFinding(callSite(subject, { arguments: [name, shown], ...place }), '1'),
+  // The finding marks the config, or one key inside it, which `shown` stands for when the call prints.
+  const findings = (shown: unknown, keys: readonly string[] = []) => [
+    siteFinding(
+      callSite(subject, { arguments: [name, shown], ...place }),
+      ['1', ...keys].join('.'),
+    ),
   ];
   return captureConfig(config, {
     notAnObject: () =>
@@ -254,9 +221,14 @@ export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>
         findings: findings(config),
         sentence: `${subject} declares a config that is not an object.`,
       }),
-    // A config whose read threw is never read again, so the finding prints it elided.
-    unreadable: (thrown) =>
-      unreadableConfig({ findings: findings(spelled(elided)), subject }, thrown),
+    // A part whose read threw is never read again, so the finding prints it elided.
+    unreadable: (thrown, slot) => {
+      const { keys, shown } = elidedRead(slot);
+      return unreadableFault(
+        { declared: 'config', findings: findings(shown, keys), subject },
+        thrown,
+      );
+    },
   });
 }
 
@@ -295,6 +267,16 @@ export function declaringSite(
   subject: string = declarationSubject(input),
 ): InputSite {
   return callSite(subject, { arguments: [input.name, input.config], ...place });
+}
+
+/**
+ * One input's site with its config printed elided, for a fault judged before the config is read,
+ * such as an invalid name, so the fault reads none of the config.
+ */
+export function configUnread(site: InputSite): InputSite {
+  const [name, config] = site.declaration.arguments;
+  const shown = config === undefined ? [name] : [name, spelled(elided)];
+  return { ...site, declaration: { ...site.declaration, arguments: shown } };
 }
 
 /**

@@ -18,7 +18,7 @@ import { checkOptionName, compileOptions, spellingMark } from './options.js';
 import type { CompileScope, SpellingRole } from './options.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig, OptionValue } from './types.js';
-import { captureInputConfig } from './validation.js';
+import { captureInputConfig, configUnread } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
@@ -202,7 +202,7 @@ function pluginSites(
     pluginOptionSite(
       { identity, options },
       input.name,
-      `Plugin ${quoted(identity)} option "${input.name}"`,
+      `Plugin ${quoted(identity)} option ${quoted(input.name)}`,
     );
 }
 
@@ -220,7 +220,7 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
   readonly state: GlobalsState<Globals & Record<Name, OptionValue<Config>>>;
 } {
   // The name is judged before the config, as every other declaration judges its own name first.
-  checkOptionName(declared.name, globalSite(declared));
+  checkOptionName(declared.name, configUnread(globalSite(declared)));
   const input = {
     ...declared,
     config: captureInputConfig(declared, { call: 'globalOption', path: [] }),
@@ -283,7 +283,7 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
     ...plugins.flatMap((installed) => {
       const siteOf = pluginSites(installed.identity, installed.inputs);
       return boundOptions(installed.inputs, (input) => ({
-        phrase: `plugin ${quoted(installed.identity)} option "${input.name}"`,
+        phrase: `plugin ${quoted(installed.identity)} option ${quoted(input.name)}`,
         site: siteOf(input),
       }));
     }),
@@ -335,7 +335,7 @@ function checkLocalOptions(
   }
   claimVariables(
     boundOptions(declarations, (input) => ({
-      phrase: `${subject} option "${input.name}"`,
+      phrase: `${subject} option ${quoted(input.name)}`,
       site: siteOf(input),
     })),
     table.variables,

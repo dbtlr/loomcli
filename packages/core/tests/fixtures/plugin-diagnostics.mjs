@@ -76,6 +76,24 @@ const scenarios = {
       .inspect(),
   'commands-entry': () => plugin('@acme/doctor', { commands: [leaf('check'), 'probe'] }),
   'commands-not-list': () => plugin('@acme/doctor', { commands: 'check' }),
+  'definition-prototype-unreadable': () =>
+    plugin(
+      '@acme/log',
+      new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw boom;
+          },
+        },
+      ),
+    ),
+  'definition-unreadable': () =>
+    plugin('@acme/log', {
+      get views() {
+        throw boom;
+      },
+    }),
   'extension-async': () =>
     new Command('get', {
       extensions: [
@@ -201,6 +219,10 @@ const scenarios = {
   'option-config': () => plugin('@acme/log', { options: { level: 'debug' } }),
   'option-rule': () =>
     plugin('@acme/log', { options: { level: { required: true, type: 'string' } } }),
+  'option-rule-sibling': () =>
+    plugin('@acme/log', {
+      options: { level: { required: true, type: 'string' }, trace: { type: 'boolean' } },
+    }),
   'option-unreadable': () =>
     plugin('@acme/log', {
       options: {
@@ -264,6 +286,12 @@ const scenarios = {
       options: { config: { extensions: [tag(true)], type: 'string' } },
       source: { binding: tag, load },
     }),
+  'source-own-option-escaped': () =>
+    plugin('@acme/config', {
+      extensions: [tag],
+      options: { '\u001b[31m': { extensions: [tag(true)], type: 'string' } },
+      source: { binding: tag, load },
+    }),
   'source-target': () =>
     plugin('@acme/config', { extensions: [note], source: { binding: note, load } }),
   'theme-chain': () => plugin('@acme/theme', { theme: { highlight: style.info.bold } }),
@@ -310,10 +338,11 @@ if (scenario === 'run-rendering') {
       throw error;
     }
     // The cause mode reads whether the fault kept the thrown value itself.
-    process.stdout.write(
-      process.argv[3] === 'cause'
-        ? `${JSON.stringify({ cause: error.cause === boom })}\n`
-        : `${error.message}\n`,
-    );
+    // The sentence mode reads the sentence the fault holds, before any rendering escapes it.
+    const modes = {
+      cause: () => JSON.stringify({ cause: error.cause === boom }),
+      sentence: () => error.sentence,
+    };
+    process.stdout.write(`${modes[process.argv[3]]?.() ?? error.message}\n`);
   }
 }

@@ -1,4 +1,5 @@
 import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
+import { captureDeclaration, unreadableArgument } from './capture.js';
 import {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -26,7 +27,7 @@ import {
   viewShape,
   viewsWithoutResult,
 } from './command-rules.js';
-import { quoteString, spelled } from './diagnostic-text.js';
+import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
 import {
@@ -90,7 +91,7 @@ import {
   spellingMark,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingRole } from './options.js';
-import { isPlainObject, snapshot } from './plain.js';
+import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -129,6 +130,7 @@ import type {
 } from './types.js';
 import {
   captureInputConfig,
+  configUnread,
   checkDeclarations,
   declaringSite,
   inputPlace,
@@ -339,16 +341,42 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
   return { arguments: callArguments(name, options), call: 'new Command', mark };
 }
 
-/** A named Command's options slot holds a plain options object, and never retired globals wiring. */
-function checkCommandOptions(name: string, options: unknown): void {
-  if (options !== undefined && !isPlainObject(options)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply a Command options object.',
-      findings: [constructorFinding(name, options, '1')],
-      sentence: `${commandSentence(name)} declares options that are not an object.`,
-    });
+/**
+ * The one copy of the options that `new Command(name, options)` reads, taken once the name is
+ * judged: the options object and its `extensions` list, whose entries are what their factory built
+ * and are not copied. A read that throws is the unreadable fault of the options, a value that is not
+ * a plain object is the not-an-object fault, and a Command declared without options has none.
+ */
+function captureCommandOptions(
+  name: string,
+  options: unknown,
+): Record<string, unknown> | undefined {
+  if (options === undefined) {
+    return undefined;
   }
-  if (isPlainObject(options) && 'globals' in options) {
+  return captureDeclaration(
+    options,
+    (copy, read) => {
+      read.nested(copy, 'extensions', shallowList);
+    },
+    {
+      notAnObject: () =>
+        new DeclarationError(notAnObject, {
+          correction: 'Supply a Command options object.',
+          findings: [constructorFinding(name, options, '1')],
+          sentence: `${commandSentence(name)} declares options that are not an object.`,
+        }),
+      unreadable: unreadableArgument(
+        { call: 'new Command', named: name, subject: commandSentence(name) },
+        'options',
+      ),
+    },
+  );
+}
+
+/** A named Command's options never carry the retired globals wiring. */
+function checkCommandOptions(name: string, options: Readonly<Record<string, unknown>>): void {
+  if ('globals' in options) {
     throw new DeclarationError(commandGlobals, {
       correction: 'Declare globals on the Application and register its environment.',
       findings: [constructorFinding(name, options, '1.globals')],
@@ -487,26 +515,31 @@ export function freshState<Globals>(declaration: {
 }
 
 /**
- * A named Command's own declaration, checked before the value exists: the name, the options slot,
- * the core facts, and the extension values the slot carries. A later change to the options object
- * the author passed changes nothing the declaration holds.
+ * A named Command's own declaration, checked before the value exists: the name, then the one copy
+ * of the options slot, its core facts, and the extension values it carries. A later change to the
+ * options object the author passed changes nothing the declaration holds.
  */
 function namedState<Globals>(
   name: unknown,
   options: unknown,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
   if (!isPortableName(name)) {
+    // The options are read after the name is judged, so the name's finding prints them elided.
     throw new DeclarationError(portableName, {
       correction: portableNameCorrection,
-      findings: [constructorFinding(name, options, '0')],
+      findings: [
+        constructorFinding(name, options === undefined ? undefined : spelled(elided), '0'),
+      ],
       sentence: `Command name ${quoted(name)} is invalid.`,
     });
   }
-  checkCommandOptions(name, options);
-  const slot = isPlainObject(options) ? options : undefined;
+  const slot = captureCommandOptions(name, options);
+  if (slot !== undefined) {
+    checkCommandOptions(name, slot);
+  }
   const site: FactSite = {
     at: '1',
-    declaration: { arguments: [name, options], call: 'new Command' },
+    declaration: { arguments: [name, slot], call: 'new Command' },
     subject: commandSentence(name),
   };
   // The facts are read in the order their diagnostics have always ranked.
@@ -576,6 +609,15 @@ function inputSite(
 function inputFinding(path: readonly string[], input: InputDeclaration, note?: string): Finding {
   const site = declaringSite(input, inputPlace(input, { global: false, path }));
   return siteFinding(site, site.named, note);
+}
+
+/**
+ * The finding for an input whose name is invalid, marking the name. The config is read after the
+ * name is judged, so it prints elided.
+ */
+function nameFinding(path: readonly string[], input: InputDeclaration): Finding {
+  const site = configUnread(declaringSite(input, inputPlace(input, { global: false, path })));
+  return siteFinding(site, site.named);
 }
 
 /** The scope one Command's own options compile under: its subject, and each option's call. */
@@ -671,7 +713,7 @@ function checkArgumentName(
   if (!isDeclaredName(input.name)) {
     throw new DeclarationError(declaredName, {
       correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
-      findings: [inputFinding(path, input)],
+      findings: [nameFinding(path, input)],
       sentence: `${commandSentence(command.name)} declares an argument named ${quoted(input.name)}.`,
     });
   }
@@ -749,12 +791,13 @@ export function declareOption<
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
   // The config is read once right after its name is judged, and every later check reads that copy.
-  checkOptionName(declared.name, inputSite(state.name, pathOf(state.name), declared));
+  const path = pathOf(state.name);
+  checkOptionName(declared.name, configUnread(inputSite(state.name, path, declared)));
   const input = {
     ...declared,
-    config: captureInputConfig(declared, { call: 'option', path: pathOf(state.name) }),
+    config: captureInputConfig(declared, { call: 'option', path }),
   };
-  const site = inputSite(state.name, pathOf(state.name), input);
+  const site = inputSite(state.name, path, input);
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'option',
@@ -1104,7 +1147,7 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
     throw new DeclarationError(groupOption, {
       correction: 'Register an action or remove the option.',
       findings: [inputFinding(place.path, option, 'no action reads it')],
-      sentence: `${commandSentence(name)} declares option "${option.name}" but registers no action to receive it.`,
+      sentence: `${commandSentence(name)} declares option ${quoted(option.name)} but registers no action to receive it.`,
     });
   }
 }
@@ -1664,7 +1707,7 @@ class AttachedCommandValue implements AttachedCommand {
       const { name } = declared;
       checkArgumentName({ name, path, subject: commandSubject(name) }, [], raw);
     } else {
-      checkOptionName(raw.name, inputSite(declared.name, path, raw));
+      checkOptionName(raw.name, configUnread(inputSite(declared.name, path, raw)));
     }
     // Each kind captures its own config, so the input keeps the pairing its kind declares.
     const place = { call: raw.kind, path };
@@ -2028,7 +2071,7 @@ function tableSpellings(globals: BuiltGlobals): SpellingPlace {
     const note =
       owner.kind === 'plugin'
         ? `an option of plugin ${quoted(owner.identity)}`
-        : `the global option "${name}"`;
+        : `the global option ${quoted(name)}`;
     return spellingPlace(site, role, note);
   };
 }
@@ -2065,7 +2108,7 @@ function checkAttachedInputs(
     const local = locals.get(name);
     return local === undefined || local.kind !== 'option'
       ? undefined
-      : spellingPlace(scope.siteOf(local), role, `the local option "${name}"`);
+      : spellingPlace(scope.siteOf(local), role, `the local option ${quoted(name)}`);
   });
   for (const entry of attached) {
     const { identity, input } = entry;
@@ -2473,7 +2516,7 @@ type CommandConstructor = new (
  */
 class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
   constructor(name: string, options?: CommandOptions) {
-    const declared = namedState<RegisteredGlobals>(name, options);
+    const declared = declaring(() => namedState<RegisteredGlobals>(name, options));
     super(declared.name, declared.state);
   }
 }

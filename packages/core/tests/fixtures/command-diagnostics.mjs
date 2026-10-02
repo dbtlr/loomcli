@@ -28,6 +28,21 @@ function flaky(declared) {
   };
 }
 
+/**
+ * Options whose description reads blank first and `LATER` on every later read, so a finding that
+ * read it again would print a value the rule never judged.
+ */
+function shifting(declared) {
+  let descriptionReads = 0;
+  return {
+    get description() {
+      descriptionReads += 1;
+      return descriptionReads === 1 ? '' : 'LATER';
+    },
+    ...declared,
+  };
+}
+
 /** A validator that accepts any value, which is what lets a default hold an object. */
 const anyValue = {
   '~standard': { validate: (value) => ({ value }), vendor: 'fixture', version: 1 },
@@ -44,9 +59,28 @@ const scenarios = {
   'alias-without-names': () => new Command('keys').alias(),
   'app-option-config': () => new Application('probe').option('format'),
   'application-description': () => new Application('probe', { description: '  ' }),
+  'application-description-read-once': () => new Application('probe', shifting({})),
   'application-hidden': () => new Application('probe', { hidden: true }),
   'application-name': () => new Application('bad name'),
   'application-options': () => new Application('probe', 'fast'),
+  'application-options-prototype-unreadable': () =>
+    new Application(
+      'probe',
+      new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw boom;
+          },
+        },
+      ),
+    ),
+  'application-options-unreadable': () =>
+    new Application('probe', {
+      get plugins() {
+        throw boom;
+      },
+    }),
   'application-version': () => new Application('probe', { version: 1 }),
   'argument-after-optional': () => new Command('keys').argument('path', {}).argument('name', {}),
   'argument-beside-child': () =>
@@ -74,10 +108,18 @@ const scenarios = {
   'child-without-action': () => new Command('store').command(new Command('get')),
   'command-deprecated': () => new Command('fetch', { deprecated: true }),
   'command-description': () => new Command('get', { description: 'Read\none value.' }),
+  'command-description-read-once': () => new Command('get', shifting({})),
   'command-globals': () => new Command('get', { globals: {} }),
   'command-hidden': () => new Command('fetch', { hidden: 'yes' }),
   'command-name': () => new Command('bad name'),
+  'command-name-with-options': () => new Command('bad name', { description: 'Read.' }),
   'command-options': () => new Command('get', 'fast'),
+  'command-options-unreadable': () =>
+    new Command('get', {
+      get extensions() {
+        throw boom;
+      },
+    }),
   'global-option-config': () => new Application('probe').globalOption('quiet', null),
   'global-option-read-once': () =>
     new Application('probe').globalOption('quiet', flaky({ type: 'string' })),
@@ -91,6 +133,10 @@ const scenarios = {
   'group-option': () =>
     new Command('store').command(
       new Command('cache').option('verbose', { type: 'boolean' }).command(leaf('clear')),
+    ),
+  'group-option-escaped': () =>
+    new Command('store').command(
+      new Command('cache').option('\u001b[31m', { type: 'boolean' }).command(leaf('clear')),
     ),
   'hook-argument-config': () =>
     new Application('probe', {
@@ -173,6 +219,8 @@ const scenarios = {
     }),
   'optional-before-required': () =>
     new Command('keys').argument('path', {}).argument('name', { required: true }),
+  'plugin-option-description-read-once': () =>
+    plugin('@acme/log', { options: { level: shifting({ type: 'string' }) } }),
   'plugin-sibling': () =>
     plugin('@acme/doctor', {
       commands: [leaf('check'), new Command('probe').alias('check').action(act)],
@@ -228,9 +276,11 @@ if (scenario === 'root-group-option' || scenario === 'root-without-action') {
     }
     // The cause mode reads whether the fault kept the thrown value itself.
     // The reads mode reads how often a flaky config's default was read.
+    // The sentence mode reads the sentence the fault holds, before any rendering escapes it.
     const modes = {
       cause: () => JSON.stringify({ cause: error.cause === boom }),
       reads: () => JSON.stringify({ reads }),
+      sentence: () => error.sentence,
     };
     process.stdout.write(`${modes[process.argv[3]]?.() ?? error.message}\n`);
   }

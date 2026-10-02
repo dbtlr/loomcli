@@ -177,9 +177,10 @@ const explanations = {
     'command-line program to stop, so a plugin claims one of those.',
   ],
   'unreadable-declaration': [
-    'Core reads a declaration by its keys once, at the call that declares it, and',
-    'checks and records the copy it takes. A read that throws, such as a throwing',
-    'getter or proxy trap, leaves core nothing to check or record.',
+    'Core reads a declaration by its keys, and each list in it by index, once, at the',
+    'call that declares it, and checks and records the copy it takes. A read that',
+    'throws, such as a throwing getter or proxy trap, leaves core nothing to check or',
+    'record.',
   ],
 };
 
@@ -282,6 +283,10 @@ function bare(call: string, target: string, note?: string, nth = 0) {
   return marked(`    ${call}`, target, note, nth);
 }
 
+/** The correction every unreadable plugin definition carries. */
+const readableDefinition =
+  'Declare the definition as a plain object literal whose properties read without throwing.';
+
 const twoPlugins = (first: string, second: string) =>
   `new Application('probe', { plugins: [plugin('${first}', …), plugin('${second}', …)] })`;
 
@@ -382,6 +387,20 @@ const cases: Record<string, Expected> = {
     headline: 'NOT A LIST',
     rule: 'not-a-list',
     sentence: 'Plugin "@acme/doctor" declares commands that are not an array.',
+  },
+  'definition-prototype-unreadable': {
+    correction: readableDefinition,
+    findings: [bare("plugin('@acme/log', …)", '…')],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
+  },
+  'definition-unreadable': {
+    correction: readableDefinition,
+    findings: [bare("plugin('@acme/log', { views: … })", 'views: …')],
+    headline: 'DECLARATION COULD NOT BE READ',
+    rule: 'unreadable-declaration',
+    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
   },
   'extension-async': {
     correction: 'Supply a schema that answers synchronously.',
@@ -618,10 +637,23 @@ const cases: Record<string, Expected> = {
     rule: 'plugin-option-rule',
     sentence: 'Plugin "@acme/log" option "level" declares required.',
   },
+  'option-rule-sibling': {
+    correction:
+      'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+    findings: [
+      bare(
+        "plugin('@acme/log', { options: { level: { required: true, type: 'string' }, trace: … } })",
+        'required: true',
+      ),
+    ],
+    headline: 'RULE ON A PLUGIN OPTION',
+    rule: 'plugin-option-rule',
+    sentence: 'Plugin "@acme/log" option "level" declares required.',
+  },
   'option-unreadable': {
     correction:
       'Declare the config as a plain object literal whose properties read without throwing.',
-    findings: [bare("plugin('@acme/log', { options: { level: … } })", 'level: …')],
+    findings: [bare("plugin('@acme/log', { options: { level: { default: … } } })", 'default: …')],
     headline: 'DECLARATION COULD NOT BE READ',
     rule: 'unreadable-declaration',
     sentence: 'Plugin "@acme/log" option "level" config could not be read: boom.',
@@ -1016,13 +1048,24 @@ test.each(Object.entries(cases))(
   },
 );
 
-test('an unreadable plugin option config keeps the value the read threw as its cause', () => {
-  expect(invoke(fixture, ['option-unreadable', 'cause'])).toEqual({
+test('a plugin option name in a source-binding sentence is escaped as every quoted name is', () => {
+  expect(invoke(fixture, ['source-own-option-escaped', 'sentence'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: '{"cause":true}\n',
+    stdout: `${String.raw`Plugin "@acme/config" option "\u001b[31m" carries its own source binding.`}\n`,
   });
 });
+
+test.each(['definition-prototype-unreadable', 'definition-unreadable', 'option-unreadable'])(
+  'the %s fault keeps the value the read threw as its cause',
+  (scenario) => {
+    expect(invoke(fixture, [scenario, 'cause'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '{"cause":true}\n',
+    });
+  },
+);
 
 test.each([
   'extension-unscoped',
