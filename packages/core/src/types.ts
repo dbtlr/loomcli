@@ -204,7 +204,7 @@ export interface ViewContext {
 export interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
   /** A view has one shape; the row view of Results is the other. */
-  row?: never;
+  row?: undefined;
 }
 /**
  * A row view renders a sequence one row at a time.
@@ -216,7 +216,7 @@ export interface RowView<Row> {
   head?: (context: ViewContext) => string;
   tail?: (count: number, context: ViewContext) => string;
   /** A row view has one shape; the whole view of Rendered output is the other. */
-  render?: never;
+  render?: undefined;
 }
 /** The views record of a value result: every entry renders the whole value. */
 export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
