@@ -35,6 +35,38 @@ function stringValue(value: unknown): string {
 
 export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
+/**
+ * How long a run that has a failure to report waits on its output before it stops waiting, in
+ * milliseconds. A host stream that never calls back, never errors, and never closes breaks the
+ * Writable contract, and no wait can tell it from a slow live consumer such as a pager, a slow
+ * pipe, or a stream under back-pressure. So the bound never applies to a run that has not failed:
+ * that run waits for every write to finish, and a stream that never finishes one holds it open the
+ * way an action that never settles does. A run that has a failure to report has already failed, so
+ * a wait cut short cannot turn its success into a failure, and core bounds each wait it makes: the
+ * wait for writes still in flight, each write of the failure report, and the plain fallback write.
+ * When the bound passes, core stops waiting and nothing else: the write stays queued on its stream,
+ * neither failed nor discarded, so a live consumer still receives every byte while the process
+ * runs. The cost is that a caller that ends the process as soon as `run()` resolves can cut a slow
+ * consumer short in a failed run. A failure report is a few lines, which a pipe buffers and a
+ * terminal or a file takes at once, so a second is far beyond a healthy stream's callback and short
+ * enough that a failed run on a dead stream does not read as a hang.
+ */
+const reportingBound = 1000;
+
+/**
+ * One wait under the reporting bound. A write that settles inside the bound settles the wait,
+ * rejection included, and the timer holds the process only while the wait is pending.
+ */
+function withinBound(work: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+  const expiry = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, reportingBound);
+  });
+  return Promise.race([work, expiry]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;
 
@@ -381,10 +413,11 @@ export class Output {
   /**
    * The failure report of one invocation. Like `render`, the text is queued on its destination
    * after style resolution: the caller already carries its own trailing newline, whether that text
-   * came from a resolved view or from core's own default text.
+   * came from a resolved view or from core's own default text. The wait is under the reporting
+   * bound, because only a run with a failure to report writes one.
    */
   report(text: string): Promise<void> {
-    return this.rendered(() => text, 'stderr');
+    return withinBound(this.rendered(() => text, 'stderr'));
   }
 
   /**
@@ -542,7 +575,23 @@ export class Output {
     return this.destination(stream).write(text);
   }
 
-  async settle(): Promise<WriteState> {
+  /**
+   * Waits for every write in flight, then answers whether a destination failed. A run with a
+   * failure to report passes `bounded`, so its wait stops at the reporting bound.
+   */
+  async settle(options: { bounded?: boolean } = {}): Promise<WriteState> {
+    const drained = this.drain();
+    await (options.bounded === true ? withinBound(drained) : drained);
+    for (const destination of this.destinations.values()) {
+      if (destination.state.kind === 'failed') {
+        return destination.state;
+      }
+    }
+    return { kind: 'ok' };
+  }
+
+  /** Resolves once no destination has a write in flight, including writes queued meanwhile. */
+  private async drain(): Promise<void> {
     let drained = false;
     while (!drained) {
       const pending = [...this.destinations.values()].map((destination) => ({
@@ -556,12 +605,6 @@ export class Output {
         pending.length === this.destinations.size &&
         pending.every(({ destination, tail }) => destination.tail === tail);
     }
-    for (const destination of this.destinations.values()) {
-      if (destination.state.kind === 'failed') {
-        return destination.state;
-      }
-    }
-    return { kind: 'ok' };
   }
 
   dispose(): void {
@@ -575,13 +618,14 @@ export class Output {
  * The plain fallback path: a fresh destination on stderr, outside the invocation's queues and
  * outside every override, so no application code runs on it. The caller composes the newlines
  * between whatever it is reporting, then passes the one string this writes verbatim. A failed
- * write ends reporting.
+ * write ends reporting. Only a run with a failure to report writes here, so the wait is under the
+ * reporting bound.
  */
 export async function reportPlainly(stderr: Writable, text: string): Promise<void> {
   try {
     const destination = new Destination(stderr);
     try {
-      await destination.write(text);
+      await withinBound(destination.write(text));
     } finally {
       await setImmediate();
       destination.dispose();

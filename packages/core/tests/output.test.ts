@@ -67,3 +67,49 @@ test('an unusable fallback destination still resolves the failure status', () =>
     stdout: 'resolved:1\n',
   });
 });
+
+/** One run of the replaced-stream fixture, with the line it prints read back. */
+function replacedStream(args: string[]) {
+  const result = invoke(new URL('fixtures/hostile-streams.mjs', import.meta.url), args);
+  const printed: unknown = JSON.parse(result.stdout);
+  return { printed, status: result.status, stderr: result.stderr };
+}
+
+/**
+ * A host stream that breaks the Writable contract cannot hold a failed run open. Core stops waiting
+ * on a stream that never calls back once the run has a failure to report, so the action's own
+ * failure is still reported. A stream whose own `_write` throws rejects that write at once, which is
+ * a broken destination, and holds every later write, the plain fallback's included.
+ */
+test.each([
+  ['stdout', 'silent', 'Action failed.\n'],
+  ['stderr', 'silent', ''],
+  ['stdout', 'throwing', 'hostile: Something went wrong.\n'],
+  ['stderr', 'throwing', ''],
+])(
+  'a failed run whose %s is %s resolves 1 and removes its signal listeners',
+  (stream, behavior, stderr) => {
+    expect(replacedStream([stream, behavior])).toEqual({
+      printed: { after: '0:0', atResolve: [], before: '0:0', code: 1, delivered: [] },
+      status: 1,
+      stderr,
+    });
+  },
+);
+
+test.each([
+  ['stdout', ['one\n'], 'Action failed.\n'],
+  ['stderr', ['ℹ one\n', 'Action failed.\n'], ''],
+])('a failed run keeps the action failure and every byte on a slow %s', (stream, bytes, stderr) => {
+  const { printed, status, stderr: written } = replacedStream([stream, 'slow']);
+  expect({ status, written }).toEqual({ status: 1, written: stderr });
+  expect(printed).toMatchObject({ code: 1, delivered: bytes });
+});
+
+test('a successful run waits for a slow stream past the reporting bound', () => {
+  expect(replacedStream(['stdout', 'slow', 'succeeds'])).toEqual({
+    printed: { after: '0:0', atResolve: ['one\n'], before: '0:0', code: 0, delivered: ['one\n'] },
+    status: 0,
+    stderr: '',
+  });
+});

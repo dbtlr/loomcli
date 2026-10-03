@@ -683,7 +683,9 @@ class ApplicationBuilder<
           const failure = toFailure(error);
           code = exitCodeOf(failure);
           output ??= new Output(captureHost(undefined, stderr), controller.signal);
-          const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
+          // The run has a failure to report, so its wait on output in flight is bounded.
+          const settled = await output.settle({ bounded: true });
+          const writes = answeredWrite(settled, translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
             const sink = { build, output, registry: registry ?? noViews, stderr };
@@ -738,7 +740,9 @@ class ApplicationBuilder<
         }
       }
       if (output) {
-        const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
+        // A failed run waits under the reporting bound, and any other run waits for every write.
+        const settled = await output.settle({ bounded: code !== 0 });
+        const writes = answeredWrite(settled, translatedFrom.get(primary));
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;

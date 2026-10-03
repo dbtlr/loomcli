@@ -1053,7 +1053,7 @@ Writes preserve call order within a destination. Separate stdout and stderr capt
 
 `out.fatal()` synchronously throws the exported `FatalError` without an eager write. An uncaught `FatalError` prints its message once and returns its class's code: 1, unless a subclass declares another under [Declared exit codes](#declared-exit-codes). A caught fatal error does not itself change success. Other exceptions use an internal-error diagnostic.
 
-A broken output pipe returns code 1 through the failure path below.
+A broken output pipe returns code 1 through the failure path below. Once a run has a failure to report, each wait core makes on its output, for the writes still in flight or for a write of its report, ends after one second, and core stops waiting without failing or discarding those writes, so a host stream that never calls back cannot hold a failed run open, while a run that has not failed waits for every write to finish.
 
 ### Rendered output
 
