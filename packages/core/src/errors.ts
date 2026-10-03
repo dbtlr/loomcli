@@ -357,8 +357,9 @@ export class RepeatedOptionError extends UsageError {
 
 /**
  * An option word the Command routing reached does not declare, while a visible Command below it
- * does, such as a Command's own option typed before its name. `commands` holds each such Command's
- * path from the root, in authoring order.
+ * does, such as a Command's own option typed before its name, or a parent's own option the routed
+ * Command declares with another value class. `commands` holds each such Command's path from the
+ * root, in authoring order.
  */
 export class MisplacedOptionError extends UsageError {
   readonly spelling: string;

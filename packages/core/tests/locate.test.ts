@@ -168,8 +168,22 @@ test('reads a bare word as a child name until routing commits', () => {
     { command: [], kind: 'command', own: true, prefix: 'k' },
     { command: [], kind: 'command', own: true, prefix: 'c' },
     { command: ['cache'], kind: 'command', own: true, prefix: 'l' },
+    { command: [], kind: 'command', own: true, prefix: 'k' },
     none,
+  ]);
+});
+
+test("reads a parent's own option and carries routing on to the child that receives it", () => {
+  expect(
+    locateAll([
+      ['--all', 'paths', '--'],
+      ['-a', 'keys', ''],
+      ['-aq', 'paths', '-'],
+    ]),
+  ).toEqual([
+    { command: ['paths'], kind: 'option', own: true, prefix: '--', supplied: ['all'] },
     none,
+    { command: ['paths'], kind: 'option', own: true, prefix: '-', supplied: ['all', 'quiet'] },
   ]);
 });
 

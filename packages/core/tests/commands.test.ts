@@ -118,9 +118,10 @@ test.each([
     ['--file', 'data.json', '-r', 'get', 'a.b'],
     'Option "-r" belongs to command "get". Supply it after "get".',
   ],
+  // The root's own -p carries routing on to get, which does not declare it.
   [
     ['--file', 'data.json', '-p', 'get', 'a.b'],
-    'The root Command accepts no arguments. Remove the supplied values.',
+    'Unknown option "-p". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file', 'data.json', 'get'], 'Argument "path" requires a value. Supply a value for "path".'],
   [
@@ -135,10 +136,9 @@ test.each([
     ['--file', 'one.json', 'get', 'a.b', '-f', 'two.json'],
     'Option "-f" can be supplied only once. Remove the repeated option.',
   ],
-  // The root declares -p, so the group reads it there, and get and a.b are the root's arguments.
   [
     ['-qp', '--file', 'data.json', 'get', 'a.b'],
-    'The root Command accepts no arguments. Remove the supplied values.',
+    'Unknown option "-p". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [
     ['-qZ', '--file', 'data.json', 'get', 'a.b'],

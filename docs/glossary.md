@@ -189,11 +189,11 @@ The point the middleware chain reaches when it continues past its last middlewar
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
-The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options alone, and one no global option declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
+The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with an action and children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
 _Avoid_: Dispatch (for selection), resolution, matching, pre-scan
 
 **Misplaced option**:
-An option word the routed Command's table does not hold, while a visible Command below it declares it, such as a Command's own option typed before the Command's name. It is held as `MisplacedOptionError`, whose sentence names those Commands.
+An option word the routed Command's table does not hold, while a visible Command below it declares it, such as a Command's own option typed before the Command's name, or a parent's own option that the routed Command declares with another value class. It is held as `MisplacedOptionError`, whose sentence names those Commands, or the routed Command.
 _Avoid_: Early option, out-of-scope option
 
 **Word position**:

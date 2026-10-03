@@ -9,8 +9,8 @@ function kit(argv: string[], scenario = 'kit') {
 }
 
 /** What the routed action received, for an invocation that dispatched. */
-function dispatched(argv: string[]): unknown {
-  const result = kit(argv);
+function dispatched(argv: string[], scenario = 'kit'): unknown {
+  const result = kit(argv, scenario);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   const [line] = result.stdout.split('\n');
@@ -125,10 +125,59 @@ test.each([
   },
 );
 
-test("the root's own option reads there, so the words after it are the root's arguments", () => {
-  expect(held(['-p', 'get', 'a.b'], 'rooted')).toEqual({
-    message: 'The root Command accepts no arguments. Remove the supplied values.',
-    name: 'UnexpectedArgumentError',
+test("routing reads a parent's own option and carries on to the child, which receives it", () => {
+  expect(dispatched(['-p', 'get', 'a.b'], 'rooted')).toEqual({
+    args: { path: 'a.b' },
+    command: ['get'],
+    options: { help: false, numbered: false, pretty: true, quiet: false, raw: false },
+    passthrough: [],
+  });
+  expect(dispatched(['-p'], 'rooted')).toMatchObject({ command: [], options: { pretty: true } });
+  expect(dispatched(['-pq', 'get', '-r'], 'rooted')).toMatchObject({
+    command: ['get'],
+    options: { pretty: true, quiet: true, raw: true },
+  });
+});
+
+test("a parent's own option reaches the Command routing reaches, at every depth", () => {
+  expect(dispatched(['-p', 'cache', '--deep', 'list'], 'rooted')).toMatchObject({
+    command: ['cache', 'list'],
+    options: { deep: true, plain: true },
+  });
+  expect(dispatched(['cache', '--deep'], 'rooted')).toMatchObject({
+    command: ['cache'],
+    options: { deep: true },
+  });
+});
+
+test("a parent's own option the routed Command does not declare is an unknown option", () => {
+  expect(held(['--verbose', 'get', 'a.b'], 'rooted')).toEqual({
+    message:
+      'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+    name: 'UnknownOptionError',
+    path: ['get'],
+    spelling: '--verbose',
+  });
+  // The parent's option precedes the later global fault in word order, so it is the one held.
+  expect(held(['--verbose', '--quiet=1', 'get', 'a.b'], 'rooted')).toMatchObject({
+    spelling: '--verbose',
+  });
+});
+
+test('a value class the routed Command declares differently is misplaced, and never guessed', () => {
+  expect(held(['-n', 'x', 'get', 'a.b'], 'rooted')).toEqual({
+    commands: [['get']],
+    message: 'Option "-n" belongs to command "get". Supply it after "get".',
+    name: 'MisplacedOptionError',
+    path: ['get'],
+    spelling: '-n',
+  });
+});
+
+test("a plain word after a parent's own option that names no child is the unknown command", () => {
+  expect(held(['-p', 'nope'], 'rooted')).toEqual({
+    message: 'Unknown command "nope". Use one of: get, cache.',
+    name: 'UnknownCommandError',
     path: [],
   });
 });

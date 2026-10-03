@@ -40,6 +40,7 @@ type Occurrence =
       lead?: string;
     }
   | { kind: 'unknown'; spelling: string }
+  | { kind: 'misplaced'; spelling: string }
   | { kind: 'unexpected'; option: TableSpelling; spelling: string; value: string }
   | { kind: 'repeated'; option: TableSpelling; spelling: string }
   | { kind: 'missing'; option: TableSpelling; spelling: string }
@@ -237,9 +238,19 @@ function readOptionWord(context: WordContext, word: string, next: string | undef
 
 /**
  * The first structural fault in word order: a failure, or the position of the first positional no
- * slot accepts, which becomes a failure once every later positional is known.
+ * slot accepts, which becomes a failure once every later positional is known. `at` is the order in
+ * which the faulted occurrence was read, so a fault found later than it was read still ranks by it.
  */
-type HeldFault = { error: LoomError } | { extra: number };
+type HeldFault = ({ error: LoomError } | { extra: number }) & { at: number };
+
+/**
+ * An occurrence routing read against the own option of a Command that has an action and children.
+ * It binds to the Command routing finally reaches, once routing ends.
+ */
+interface PendingOccurrence {
+  at: number;
+  occurrence: Occurrence & { kind: 'value' };
+}
 
 /** A string option the last word left waiting for its value. */
 interface AwaitingValue {
@@ -250,18 +261,37 @@ interface AwaitingValue {
 
 /**
  * The state one reading carries from word to word, through routing and the routed Command's words
- * alike. `supplied` lists each option name in the order a word first supplied it. `globalFault`
- * says a global option faulted, whether or not that fault is the one held.
+ * alike. `read` counts every occurrence and positional read so far, and `at` is the order of the one
+ * being applied. `supplied` holds each option name with the order in which it was first supplied.
+ * `globalFault` says a global option faulted, whether or not that fault is the one held.
  */
 interface ReadState {
+  at: number;
   awaiting: AwaitingValue | undefined;
   command: BuiltCommand;
   fault: HeldFault | undefined;
   globalFault: boolean;
   path: string[];
+  pending: PendingOccurrence[];
   positionals: string[];
-  supplied: string[];
+  read: number;
+  /** Whether routing has ended, after which a Command's own option binds where it is read. */
+  routed: boolean;
+  supplied: { at: number; name: string }[];
   values: { globals: OptionValues; locals: OptionValues };
+}
+
+/** Stamps the next occurrence or positional with its order in the words. */
+function stamp(state: ReadState): void {
+  state.at = state.read;
+  state.read += 1;
+}
+
+/** Holds a fault unless one read earlier is held already. */
+function keep(state: ReadState, fault: HeldFault): void {
+  if (state.fault === undefined || fault.at < state.fault.at) {
+    state.fault = fault;
+  }
 }
 
 /**
@@ -293,7 +323,7 @@ function unplaced(state: ReadState, spelling: string): LoomError {
 
 /** Holds a fault unless an earlier word already holds one, and notes a fault on a global option. */
 function hold(state: ReadState, error: LoomError, global: boolean): false {
-  state.fault ??= { error };
+  keep(state, { at: state.at, error });
   state.globalFault ||= global;
   return false;
 }
@@ -318,7 +348,12 @@ function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): b
   const { option, spelling } = occurrence;
   const values = option.global ? state.values.globals : state.values.locals;
   if (!values.spellings.has(option.name)) {
-    state.supplied.push(option.name);
+    // A parent's own option binds after routing, so it joins the list at the order it was read in.
+    const later = state.supplied.findIndex((entry) => entry.at > state.at);
+    state.supplied.splice(later === -1 ? state.supplied.length : later, 0, {
+      at: state.at,
+      name: option.name,
+    });
   }
   // A collecting option records its last occurrence, because each one overwrites the entry.
   values.spellings.set(option.name, spelling);
@@ -326,13 +361,27 @@ function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): b
   return true;
 }
 
+/**
+ * The failure a spelling reports where the routed Command reads it: one its table lacks, or one it
+ * declares with another value class than the parent's declaration routing read it by.
+ */
+function spellingFault(
+  state: ReadState,
+  occurrence: Occurrence & { kind: 'misplaced' | 'unknown' },
+): LoomError {
+  const { spelling } = occurrence;
+  return occurrence.kind === 'unknown'
+    ? unplaced(state, spelling)
+    : new MisplacedOptionError(spelling, [[...state.path]]);
+}
+
 /** Applies one occurrence, and answers whether the word's next occurrence is read. */
 function applyOccurrence(state: ReadState, occurrence: Occurrence): boolean {
   if (occurrence.kind === 'value') {
     return supply(state, occurrence);
   }
-  if (occurrence.kind === 'unknown') {
-    return hold(state, unplaced(state, occurrence.spelling), false);
+  if (occurrence.kind === 'unknown' || occurrence.kind === 'misplaced') {
+    return hold(state, spellingFault(state, occurrence), false);
   }
   const { option, spelling } = occurrence;
   if (occurrence.kind === 'awaiting') {
@@ -358,10 +407,44 @@ function optionFault(
 /** Applies a word's occurrences in order, up to the first that faults. A faulted one supplies nothing. */
 function apply(state: ReadState, reading: WordReading): void {
   for (const occurrence of reading.occurrences) {
-    if (!applyOccurrence(state, occurrence)) {
+    stamp(state);
+    if (occurrence.kind === 'value' && !occurrence.option.global && !state.routed) {
+      state.pending.push({ at: state.at, occurrence });
+    } else if (!applyOccurrence(state, occurrence)) {
       return;
     }
   }
+}
+
+/**
+ * The occurrence routing read against a parent's own option, read again against the routed
+ * Command's declaration of the same spelling. A Command without it reports the spelling as it
+ * reports any its table lacks, and a declaration of another value class is misplaced, because the
+ * parent's declaration already decided whether the next word was the value.
+ */
+function rebound(state: ReadState, pending: Occurrence & { kind: 'value' }): Occurrence {
+  const { spelling } = pending;
+  const option = state.command.table.get(spelling);
+  if (!option) {
+    return { kind: 'unknown', spelling };
+  }
+  if (option.type !== pending.option.type) {
+    return { kind: 'misplaced', spelling };
+  }
+  if (repeats({ table: state.command.table, values: state.values }, option)) {
+    return { kind: 'repeated', option, spelling };
+  }
+  const value = option.type === 'boolean' ? option.value : pending.value;
+  return { ...pending, option, value };
+}
+
+/** Binds each occurrence routing read against a parent's own option to the Command it reached. */
+function bindPending(state: ReadState): void {
+  for (const { at, occurrence } of state.pending) {
+    state.at = at;
+    applyOccurrence(state, rebound(state, occurrence));
+  }
+  state.pending = [];
 }
 
 /**
@@ -385,6 +468,15 @@ function argumentSlot(slots: readonly ArgumentSlot[], position: number): Argumen
   return slots[position] ?? (last?.variadic ? last : undefined);
 }
 
+/**
+ * Whether routing reads a Command's own options: it has an action and children. A Command with
+ * children takes no arguments, so a plain word after its own option can only name a child, and its
+ * own declaration says whether the next word is that option's value.
+ */
+function readsOwnOptions(command: BuiltCommand): boolean {
+  return command.dispatch !== undefined && command.children.size > 0;
+}
+
 /** One reading of one word list: the graph it reads against, and who hears each routed name. */
 interface Routing {
   graph: BuiltGraph;
@@ -393,13 +485,16 @@ interface Routing {
 }
 
 /**
- * An option word under routing, read against the global options alone. A walk that meets a
- * spelling no global option declares ends routing at the Command reached, which reads the word
+ * An option word under routing, read against the global options, and at a Command with an action
+ * and children against its whole table, whose own options bind once routing ends. A walk that meets
+ * a spelling those options do not declare ends routing at the Command reached, which reads the word
  * again against its own table. Answers how many words it read, and `0` where routing ends.
  */
 function routeOption(routing: Routing, state: ReadState, index: number): number {
   const { graph, words } = routing;
-  const context = { table: graph.globals.table, values: state.values };
+  const { command } = state;
+  const table = readsOwnOptions(command) ? command.table : graph.globals.table;
+  const context = { table, values: state.values };
   const reading = readOptionWord(context, words[index] ?? '', words[index + 1]);
   if (reading.occurrences.some((occurrence) => occurrence.kind === 'unknown')) {
     return 0;
@@ -457,10 +552,11 @@ function route(routing: Routing, state: ReadState): number {
 
 /** One plain word after routing: the routed Command's next positional, even one that names a child. */
 function positional(state: ReadState, word: string): void {
+  stamp(state);
   state.positionals.push(word);
   const position = state.positionals.length - 1;
   if (!argumentSlot(state.command.arguments, position)) {
-    state.fault ??= { extra: position };
+    keep(state, { at: state.at, extra: position });
   }
 }
 
@@ -504,13 +600,17 @@ interface WordsRead {
   passthrough: string[];
   path: string[];
   positionals: string[];
+  /** How many occurrences and positionals were read, the order a fault at the end ranks by. */
+  read: number;
   supplied: readonly string[];
   values: { globals: OptionValues; locals: OptionValues };
 }
 
 /**
- * Reads a word list through routing, against the global options alone, and then the routed
- * Command's own words, up to the first bare `--`, against the one table that Command holds.
+ * Reads a word list through routing, against the global options and the own options of each
+ * Command with an action and children it passes through, binds those own options to the Command
+ * routing reached, and then reads that Command's own words, up to the first bare `--`, against the
+ * one table it holds.
  * Parsing continues past a fault, so every global option is found wherever it sits, and only the
  * first fault in word order is held. Only an unknown Command throws.
  */
@@ -521,18 +621,29 @@ function readWords(
 ): WordsRead {
   const routing: Routing = { graph, walked, words };
   const state: ReadState = {
+    at: 0,
     awaiting: undefined,
     command: graph.root,
     fault: undefined,
     globalFault: false,
     path: [],
+    pending: [],
     positionals: [],
+    read: 0,
+    routed: false,
     supplied: [],
     values: { globals: emptyValues(), locals: emptyValues() },
   };
   const start = route(routing, state);
+  state.routed = true;
+  bindPending(state);
   const tail = readCommandWords(routing, state, start);
-  return { ...state, ...tail, committed: start < words.length && words[start] !== '--' };
+  return {
+    ...state,
+    ...tail,
+    committed: start < words.length && words[start] !== '--',
+    supplied: state.supplied.map(({ name }) => name),
+  };
 }
 
 /** One complete invocation, read through routing and the routed Command's table. */
@@ -570,7 +681,8 @@ function parseInvocation(
 ): ParsedInvocation {
   const read = readWords(graph, argv, walked);
   const { awaiting, command, passthrough, path, positionals, values } = read;
-  const fault = read.fault ?? (awaiting && { error: new MissingValueError(awaiting.spelling) });
+  const missing = awaiting && { at: read.read, error: new MissingValueError(awaiting.spelling) };
+  const fault = read.fault ?? missing;
   return {
     command,
     fault: fault && heldFailure(read, fault),

@@ -91,16 +91,33 @@ function kit() {
     .action(report([]));
 }
 
-/** A root with an action and its own `-p`, and a child `get` that declares `-r`. */
+/**
+ * A root with an action and children, and its own Boolean `-p`, root-only `--verbose`, and string
+ * `-n`. Its child `get` declares `-p` alike, `-n` as a Boolean, and its own `-r`. The child `cache`
+ * has an action and a child `list`, and both declare `--deep`; `list` declares `-p` too.
+ */
 function rooted() {
   const get = new Command('get')
     .argument('path', {})
+    .option('pretty', { short: 'p', type: 'boolean' })
     .option('raw', { short: 'r', type: 'boolean' })
+    .option('numbered', { short: 'n', type: 'boolean' })
     .action(report(['get']));
+  const list = new Command('list')
+    .option('deep', { type: 'boolean' })
+    .option('plain', { short: 'p', type: 'boolean' })
+    .action(report(['cache', 'list']));
+  const cache = new Command('cache')
+    .option('deep', { type: 'boolean' })
+    .command(list)
+    .action(report(['cache']));
   return new Application('rooted', { plugins: [help], views: [override(UsageError, facts)] })
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .option('pretty', { short: 'p', type: 'boolean' })
+    .option('verbose', { type: 'boolean' })
+    .option('name', { short: 'n', type: 'string' })
     .command(get)
+    .command(cache)
     .action(report([]));
 }
 

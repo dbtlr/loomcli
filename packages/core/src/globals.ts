@@ -159,8 +159,8 @@ interface GlobalTable {
  * the input-source stage fills them, validation checks them, and `inspect()` lists them. `sites`
  * holds the call that declared each of them, which a fault about one rebuilds. `bind` reads every
  * global option's validated value, keyed by declared name, as every action receives it. `table`
- * holds the global options alone as parser entries, which routing reads and every Command's table
- * joins.
+ * holds the global options alone as parser entries, which routing reads at a Command without its
+ * own options to offer and every Command's table joins.
  */
 interface BuiltGlobals extends GlobalTable {
   bind: (values: ValidatedInputs) => unknown;

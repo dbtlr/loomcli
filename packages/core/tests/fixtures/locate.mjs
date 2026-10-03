@@ -14,6 +14,7 @@ function kit() {
     .action(dispatch);
   const paths = new Command('paths')
     .option('format', { type: 'string' })
+    .option('all', { short: 'a', type: 'boolean' })
     .argument('root', { required: true })
     .argument('rest', { variadic: true })
     .action(dispatch);

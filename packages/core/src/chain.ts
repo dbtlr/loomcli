@@ -490,9 +490,9 @@ async function runChain(
 }
 
 /**
- * Runs one invocation: routing on the global options, the routed Command's words read against its
- * table, the dispatch this invocation prepares, and the middleware chain it then runs. Only an
- * unknown Command is raised before the chain. Parsing and validation run ahead of the chain so
+ * Runs one invocation: routing on the global options and a parent's own options, the routed
+ * Command's words read against its table, the dispatch this invocation prepares, and the
+ * middleware chain it then runs. Only an unknown Command is raised before the chain. Parsing and validation run ahead of the chain so
  * that a middleware reads the request, and every other fault they find is held until the dispatch
  * boundary. A middleware that returns without calling `next()` has taken over, so the held fault is
  * never raised and nothing later in the chain runs.
