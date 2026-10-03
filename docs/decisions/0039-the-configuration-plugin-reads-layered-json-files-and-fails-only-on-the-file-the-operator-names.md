@@ -4,7 +4,7 @@ title: ADR-0039 - The configuration plugin reads layered JSON files and fails on
 description: The first-party configuration plugin answers the configuration tier from a user file derived from the application name and the project files the application lists, combined key by key with the first listed file winning. `--config` replaces every file for one run. A file the plugin discovered never breaks a run; a file the operator named, and a wrong value in the file that answers a request, is a usage failure.
 status: accepted
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-10-03
 ---
 
 # ADR-0039 - The configuration plugin reads layered JSON files and fails only on the file the operator names
@@ -51,3 +51,4 @@ Accepted 2026-09-26 with the implementation in `@loomcli/plugins/config` and tex
 
 - 2026-09-26: Proposed with the configuration plugin contract.
 - 2026-09-26: Accepted with the implementation. The entry module builds the resolver from the listed files when `source.load` runs, so the lazily loaded module exports a factory rather than a bare resolver.
+- 2026-10-03: [ADR-0054](0054-the-configuration-plugin-reads-toml-and-yaml-files-chosen-by-the-authors-file-pattern.md), proposed, supersedes three clauses. Files read as JSON, TOML, or YAML, chosen by each file's extension, with a name that has no extension still read as JSON, so the JSON wording of the discovered-file, named-file, and value-shape rules extends to each format. The user file name is the `userFile` setting, a file pattern with `config.json` as its default, so the fixed `config.json` of the user-file rule is that default. The Consequences clause that TOML and YAML stay out no longer holds. Every other rule here stands. It binds when that record is accepted.
