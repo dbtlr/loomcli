@@ -119,7 +119,18 @@ The workflow depends on settings that live outside this repository's files.
 
 - Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
-- The npm trusted publisher for each library names this repository, the workflow file `release.yml`, and the `release` environment, and permits direct `npm publish`. npm attaches a trusted publisher only to a name that already exists on the registry, so a library joining the release set is first published by the maintainer as a placeholder `0.0.0`, from a directory outside this repository, and its publisher is configured on that record before the cut that carries it merges. The workflow reads only the version the manifests carry, so the placeholder never enters a plan, and the maintainer can deprecate it or unpublish it within npm's window once the first real version is on the registry.
+- Each library has one npm trusted publisher card, visible only on npmjs.com, and the card carries exactly these four fields:
+
+  | Field       | Value               |
+  | ----------- | ------------------- |
+  | Repository  | `dbtlr/loomcli`     |
+  | Workflow    | `release.yml`       |
+  | Environment | `release`           |
+  | Permission  | `publish`           |
+
+  A card that does not match fails the `publish` job for that library. A workflow filename that differs, such as `release.yaml`, fails with `ENEEDAUTH`. A card whose permission is `npm stage publish` fails with `E403 OIDC permission denied`. The permission stays `publish` because the `record` job reads the registry right after the publish, and a staged version is not on the registry. Correct the card on npmjs.com, then run `gh run rerun <run-id> --failed`. The re-run reads the current state and publishes only what is missing.
+
+  npm attaches a trusted publisher only to a name that already exists on the registry, so a library joining the release set is first published by the maintainer as a placeholder `0.0.0`, from a directory outside this repository, and its publisher is configured on that record before the cut that carries it merges. The workflow reads only the version the manifests carry, so the placeholder never enters a plan, and the maintainer can deprecate it or unpublish it within npm's window once the first real version is on the registry.
 
 ## Accepted risks
 
