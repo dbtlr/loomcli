@@ -4,7 +4,7 @@ title: ADR-0044 - A global option declares no presence rule
 description: A global option declares neither required nor validateOmitted, so its omission is always plain absence and a rule that a value must exist belongs to the Commands that read it. This supersedes the ADR-0026 clause that a global takes the same configuration as option().
 status: accepted
 created: 2026-09-26
-modified: 2026-09-26
+modified: 2026-10-03
 ---
 
 # ADR-0044 - A global option declares no presence rule
@@ -44,3 +44,4 @@ Accepted 2026-09-26 with the implementation. TypeScript rejects `required` and `
 ## Changelog
 
 - 2026-09-26: Accepted with the implementation.
+- 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, makes a plugin's options global options, so this rule governs them. `plugin()` rejects `required` and `validateOmitted` on an option it declares under `@loomcli/core/global-presence-rule`, in place of the plugin option rule ADR-0017 gave it, and a validator, which ADR-0017 refused, is allowed. It binds when that record is accepted.

@@ -48,8 +48,8 @@ The single object an action receives, carrying its parsed inputs, the passthroug
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
-The options declared on the Application through `globalOption()`. Their validated values reach every action; Application registration supplies their types to independently authored Commands. A global option declares no presence rule, neither `required` nor `validateOmitted`, so its omission is always plain absence; a Command that needs the value checks for it.
-_Avoid_: Root options, inherited options, common flags
+The options accepted on every Command: those the Application declares through `globalOption()` and those a plugin declares under its definition's `options`, one kind with one configuration whoever declares them. Their validated values reach every action and every middleware; Application registration supplies their types, a plugin's included, to independently authored Commands. A global option declares no presence rule, neither `required` nor `validateOmitted`, so its omission is always plain absence; a Command that needs the value checks for it.
+_Avoid_: Root options, inherited options, common flags, plugin option (for a plugin's global option)
 
 **Application environment**:
 The shallow type information extracted before Command composition: global output types and the installed plugin tuple. It excludes the Command graph and root-local inputs.
@@ -62,7 +62,7 @@ _Avoid_: Command wiring, plugin installation
 ## Inputs
 
 **Argument**:
-A positional input a Command binds from bare tokens in declaration order. A scalar argument binds one token; a variadic argument is last and takes the remaining tokens.
+A positional input a Command binds from plain words in declaration order. A scalar argument binds one token; a variadic argument is last and takes the remaining tokens.
 _Avoid_: Positional, operand, parameter
 
 **Option**:
@@ -86,8 +86,16 @@ The one-letter spelling of an option. It is a spelling of that option and appear
 _Avoid_: Short flag, shorthand
 
 **Short group**:
-One token that combines several short aliases, such as `-tm words`. Boolean aliases may combine; a value alias must be last.
+One option word that combines short aliases after a single hyphen, such as `-tm words`, read under the POSIX `getopt` rule: a Boolean letter is set and the walk continues, and a value letter ends the group, taking the rest of the word, after one leading `=`, or else the next word as its value. Its letters may belong to any option the routed Command's table holds, global or local.
 _Avoid_: Bundled flags, cluster, stacked options
+
+**Option word** and **Plain word**:
+An option word is a word the parser reads as options: `--` followed by at least one character, or `-` followed by an ASCII letter. Every other word is a plain word, which names a Command or is a value or an argument, so `-`, `-5`, and `-.5` are plain words. A separate word is an option's value unless it is an option word or the bare `--`.
+_Avoid_: Flag token, hyphen token (for the class), negative number (as a grammar rule)
+
+**Command table**:
+The one spelling table graph build gives each Command after the lifecycle hooks have run: its local options and every global option, each entry referencing its one declaration. The routed Command's words are read against it.
+_Avoid_: Globals table, merged options, copied globals
 
 **Polarity**:
 The Boolean option setting that selects which long forms exist and what an absent option means: `positive`, `negative`, or `both`.
@@ -169,7 +177,7 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` call: host capture, graph build, global pre-scan, routing, local parsing, the input-source stage, validation, the middleware chain, the action, and the exit status.
+One `run()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status.
 _Avoid_: Execution, call, request
 
 **Request**:
@@ -180,13 +188,13 @@ _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation
 The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view and dispatches the action. A takeover never reaches it.
 _Avoid_: Terminal step, end of chain, action phase
 
-**Pre-scan**:
-The invocation phase that consumes global options from the tokens before routing, stopping at the passthrough delimiter.
-_Avoid_: Global pass, first pass
-
 **Routing**:
-The invocation phase that reads bare tokens from the root downward and selects the Command that will parse the remaining tokens.
-_Avoid_: Dispatch (for selection), resolution, matching
+The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options alone, and one no global option declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
+_Avoid_: Dispatch (for selection), resolution, matching, pre-scan
+
+**Misplaced option**:
+An option word that stopped routing because no global option declares it, while a visible Command below the one reached does. It is held as `MisplacedOptionError`, whose sentence names that Command.
+_Avoid_: Early option, out-of-scope option
 
 **Word position**:
 Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tail, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
@@ -314,11 +322,11 @@ Any outcome `run()` reports as unsuccessful. Every failure is an instance of a p
 _Avoid_: Exception (as the model term), error object
 
 **Usage error**:
-A failure that means the invocation is wrong: unknown command, missing subcommand, unknown option, missing value, unexpected value, repeated option, unexpected argument, short group misuse, or rejected input. It exits 2.
+A failure that means the invocation is wrong: unknown command, missing subcommand, unknown or misplaced option, missing value, unexpected value, repeated option, unexpected argument, or rejected input. It exits 2.
 _Avoid_: User error, CLI error, validation error (as the class name)
 
 **Structure error**:
-A parse-time fault in the token stream, such as an unknown option or a missing value. It ranks after routing errors and before validator issues.
+A parse-time fault in the invocation's words, such as an unknown or misplaced option or a missing value. It is held, the first in word order, and ranks after an unknown command and ahead of a group's missing subcommand and every validator issue.
 _Avoid_: Syntax error, parse error
 
 **Input error**:
@@ -467,7 +475,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, the spellings of its own plugin's options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
@@ -489,10 +497,6 @@ _Avoid_: Contributor, producer, publisher
 **Core fact**:
 A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, and the input schema.
 _Avoid_: Built-in metadata, reserved field
-
-**Plugin option**:
-An option a plugin declares under its definition's `options`. It shares the globals table and the pre-scan with global options, but it carries no validator and reaches its own plugin's middleware alone, never an action. An option a plugin's lifecycle hook declares on one Command is a local option, not a plugin option.
-_Avoid_: Global option (for a plugin's option), flag
 
 **Plugin Command**:
 A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. The application cannot rename or remove it.

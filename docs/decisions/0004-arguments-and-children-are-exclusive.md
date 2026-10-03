@@ -4,7 +4,7 @@ title: ADR-0004 - A Command declares arguments or attaches children, never both
 description: A Command with children and no action is a group that routing passes through. Invoking a group, or a Command with neither children nor an action, is an error rather than a fallback.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-25
+modified: 2026-10-03
 ---
 
 # ADR-0004 - A Command declares arguments or attaches children, never both
@@ -33,3 +33,4 @@ A root with children accepts no arguments and reports that when given some. Help
 - 2026-09-15: [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md), proposed, moves the check again: it is judged before the chain, held, and raised at the dispatch boundary, so a plugin still takes over a group invocation before the error is raised and the class, code, and rank are unchanged. It binds when that record is accepted.
 - 2026-09-25: [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), proposed, supersedes the clause that graph build reports arguments beside children for JavaScript authors. The second call throws instead: `command()` on a Command that declares arguments, or `argument()` on one that holds children, the root with plugin Commands included. A Command with neither children nor an action is rejected when it is attached, and the root when the graph builds. It binds when that record is accepted.
 - 2026-09-25: ADR-0034 is accepted. The entry above binds as written.
+- 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, moves the group check's rank behind a structural fault in the invocation's words. An invocation that routes to a group still fails with exit 2 and lists the children's canonical names, held and raised at the dispatch boundary, but the option word that stopped routing ranks ahead of it, because that word is the mistake the operator made: `store cache --verbose` reports the unknown option, and `store cache` the missing subcommand. It binds when that record is accepted.
