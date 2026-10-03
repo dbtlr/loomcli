@@ -261,6 +261,28 @@ test("a rejected source option skips the source and reports with every other pro
   });
 });
 
+test('an option the skipped source would have filled reports no missing value', () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['x', '--profile', 'nope', '--title', 't'])).toEqual({
+    status: 2,
+    stderr: 'app: Option "--profile": Expected one of: dev, prod.\n',
+    stdout: 'resolved:2\n',
+  });
+});
+
+test('a required option the skipped source was never asked about still reports as missing', () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['x', '--profile', 'nope'])).toEqual({
+    status: 2,
+    stderr: [
+      'app: Option "--profile": Expected one of: dev, prod.',
+      'app: Option "--title" is required. Supply a value.',
+      '',
+    ].join('\n'),
+    stdout: 'resolved:2\n',
+  });
+});
+
 test("a source option's validator reads the same context as every other validator", () => {
   const argv = ['count', '--max', '7', '--limit', '3', '--config', 'other.json'];
   const result = run(argv, { FIXTURE_CONFIG_COUNT: 'context' });

@@ -80,10 +80,14 @@ interface ScopedInput {
 /**
  * What the input-source stage leaves for validation's messages, by option name: the label of each
  * value it filled, and the variable of each Boolean option whose value is outside the grammar.
+ * `unanswered` holds each option a configuration source would have filled had one of its own
+ * options not been rejected; such an option reports no missing value, because the operator's
+ * configuration may hold it.
  */
 export interface Provenance {
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
+  unanswered?: ReadonlySet<InputDeclaration>;
 }
 
 /** The raw tokens one invocation collected, keyed by declaration and by option name. */
@@ -868,8 +872,14 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   const values = new Map<InputDeclaration, unknown>();
   // Each input reports at most once, so insertion order is the order this phase reaches them.
   const reports = new Map<InputDeclaration, Report>();
-  /** One missing input, in the order this phase reaches it. */
+  /**
+   * One missing input, in the order this phase reaches it, unless a skipped configuration source
+   * would have been asked to fill it.
+   */
   const omit = (entry: ScopedInput, spelling: string, line: string) => {
+    if (sources.unanswered?.has(entry.input) === true) {
+      return;
+    }
     reports.set(entry.input, {
       lines: [line],
       problem: { input: identityOf(entry), reason: 'missing', spelling },

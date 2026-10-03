@@ -370,8 +370,9 @@ function requestedOf(
  * The input-source stage: the environment, then the configuration source, for every option in
  * scope that argv left unfilled. When no option is left to ask, the source never loads. The
  * source's own options pass their validators before it loads, and when one is rejected the source
- * is never called and the problem reports with every other validation problem. A source fault
- * stops the stage and fills nothing more.
+ * is never called and the problem reports with every other validation problem, while each option
+ * the source would have been asked to fill reports no missing value. A source fault stops the
+ * stage and fills nothing more.
  */
 async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   const scopes = stage.locals ? [stage.globals, stage.locals] : [stage.globals];
@@ -389,8 +390,13 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   let validated: Validation | undefined = undefined;
   try {
     validated = await stage.validate(owner.inputs, { labels, rejected });
-    // A rejected own option skips the source, and a run cancelled meanwhile loads nothing.
-    if (validated.failure || stage.signal.aborted) {
+    // A rejected own option skips the source, and the options it would have filled report no omission.
+    if (validated.failure) {
+      const unanswered = new Set(requested.map(({ input }) => input));
+      return { fault: undefined, labels, rejected, unanswered, validated };
+    }
+    // A run cancelled while the source's own options were validated loads nothing.
+    if (stage.signal.aborted) {
       return { fault: undefined, labels, rejected, validated };
     }
     const options = frozenValues(owner.inputs, validated.values);
