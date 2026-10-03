@@ -89,15 +89,19 @@ const thrown = [
   ],
   [
     'option-validate',
-    'Plugin "@loomcli/log" option "level" declares validate. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+    'Plugin "@loomcli/log" option "level" validate must be a Standard Schema v1 object. Supply a compatible validator.',
   ],
   [
     'option-validate-omitted',
-    'Plugin "@loomcli/log" option "level" declares validateOmitted. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+    'Plugin "@loomcli/log" option "level" declares validateOmitted. Remove validateOmitted, and check for the value in each Command that needs it.',
   ],
   [
     'option-required',
-    'Plugin "@loomcli/log" option "level" declares required. Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
+  ],
+  [
+    'option-required-false',
+    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
   ],
   [
     'option-global-key',

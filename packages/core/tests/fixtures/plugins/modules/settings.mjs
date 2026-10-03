@@ -1,11 +1,11 @@
 /**
- * Reports the option values this plugin's own declaration produced, then writes to the collection
- * it received, so a second run shows whether the declared default reached it afresh.
+ * Reports the global option values it received, then whether the collection it received is frozen,
+ * so a test shows that a middleware reads a copy and contributes nothing to what the action reads.
  */
 const middleware = async ({ next, options, out }) => {
   await out.print(`settings:${JSON.stringify(options)}`);
-  if (Array.isArray(options.tags)) {
-    options.tags.push('written');
+  if (Array.isArray(options?.tags)) {
+    await out.print(`frozen:${Object.isFrozen(options) && Object.isFrozen(options.tags)}`);
   }
   await next();
 };

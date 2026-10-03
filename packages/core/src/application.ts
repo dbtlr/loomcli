@@ -73,7 +73,7 @@ import type { WriteState } from './output.js';
 import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js';
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
-import type { BuiltPlugin, Plugin } from './plugin.js';
+import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
@@ -275,14 +275,14 @@ class ApplicationBuilder<
 
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
-  readonly #globals: GlobalsState<Globals>;
+  readonly #globals: GlobalsState;
   readonly #config: ApplicationConfig;
 
   constructor(
     name: string,
     declared: {
       config: ApplicationConfig;
-      globals: GlobalsState<Globals>;
+      globals: GlobalsState;
       root: CommandState<Args, Options, Globals>;
     },
   ) {
@@ -638,7 +638,8 @@ class ApplicationBuilder<
           inspected();
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
-        const defaults = await prepareInputs(inputs, host, inputPlaces(graph));
+        const places = inputPlaces(graph);
+        const defaults = await prepareInputs(inputs, host, places);
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
@@ -654,6 +655,7 @@ class ApplicationBuilder<
             inspected,
             offer,
             out: output.out,
+            places,
             plugins: built.plugins,
             report: (fault) => faults.push(fault),
             route: (path) => {
@@ -795,12 +797,17 @@ export type Application<
   | ResultMethod<Result>
 >;
 
+/**
+ * An Application starts with the option values its installed plugins contribute as its globals,
+ * computed once from the constructor's `plugins`, so every action reads them typed and each
+ * `globalOption()` call adds its own to them.
+ */
 interface ApplicationConstructor {
   new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
   new <const Plugins extends readonly Plugin[] = readonly []>(
     name: string,
     options: ApplicationOptions<Plugins>,
-  ): Application<{}, {}, {}, ApplicationMethod, Plugins>;
+  ): Application<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins>;
 }
 
 /** The core facts one Application declares, validated at construction and reported by `inspect()`. */
@@ -941,13 +948,13 @@ function captureOptions(name: string, options: unknown): Record<string, unknown>
  * and then each plugin's Commands, which attach to the root first, in installation order and list
  * order. Each reads the one copy of the options `captureOptions` takes.
  */
-function declareApplication(
+function declareApplication<Globals>(
   name: string,
   declared: unknown,
 ): {
   config: ApplicationConfig;
-  globals: GlobalsState<{}>;
-  root: CommandState<{}, {}, {}>;
+  globals: GlobalsState;
+  root: CommandState<{}, {}, Globals>;
 } {
   const slot = captureOptions(name, declared);
   const identities = viewIdentities(coreViews);
@@ -985,7 +992,7 @@ function declareApplication(
   });
   // The Application checks its own facts, so the root carries none.
   // Its diagnostics name the Application rather than the root Command.
-  let root = freshState<{}>({
+  let root = freshState<Globals>({
     descriptors,
     extensions,
     facts: { deprecated: undefined, description: undefined, hidden: false },
@@ -1028,10 +1035,13 @@ function checkApplicationName(name: unknown): string {
   return name;
 }
 
-/** Constructor inference preserves the installed plugin tuple; globals start empty. */
+/**
+ * Constructor inference preserves the installed plugin tuple, and the globals start as the option
+ * values the installed plugins contribute.
+ */
 class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
-> extends ApplicationBuilder<{}, {}, {}, ApplicationMethod, Plugins> {
+> extends ApplicationBuilder<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins> {
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);

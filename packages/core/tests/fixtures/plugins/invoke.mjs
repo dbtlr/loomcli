@@ -9,6 +9,7 @@ import {
   override,
   plugin,
 } from '@loomcli/core';
+import { z } from 'zod';
 
 import { argumentFact, commandFact, optionFact } from './extensions.mjs';
 
@@ -41,6 +42,20 @@ const plugins = {
     }),
   inner: () =>
     plugin('@fixture/inner', { middleware: { activate: 'always', load: load('inner') } }),
+  level: () =>
+    plugin('@fixture/level', {
+      middleware: { activate: 'always', load: load('observing') },
+      options: {
+        level: {
+          env: 'FIXTURE_LEVEL',
+          short: 'l',
+          type: 'string',
+          validate: z
+            .enum(['debug', 'info', 'warn'], { error: 'Use debug, info, or warn.' })
+            .transform((value) => value.toUpperCase()),
+        },
+      },
+    }),
   microtask: () =>
     plugin('@fixture/microtask', { middleware: { activate: 'always', load: load('microtask') } }),
   misuse: () =>
@@ -108,6 +123,7 @@ const installed = {
   stashed: ['stash-caller', 'stashing'],
   'sync-loader': ['sync-loader'],
   throwing: ['throwing'],
+  validated: ['settings', 'level'],
   wrapped: ['outer', 'inner'],
   'wrapped-catching': ['outer', 'catching'],
   'wrapped-help': ['outer', 'help'],

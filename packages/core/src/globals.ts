@@ -12,13 +12,14 @@ import {
   pluginOptionSite,
   siteFinding,
 } from './facts.js';
-import type { InputSite } from './facts.js';
+import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { checkOptionName, compileOptions, spellingMark } from './options.js';
 import type { CompileScope, SpellingRole } from './options.js';
+import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
-import type { OptionConfig, OptionValue } from './types.js';
-import { captureInputConfig, configUnread } from './validation.js';
+import type { OptionConfig } from './types.js';
+import { captureInputConfig, configUnread, declaringSite } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
@@ -153,30 +154,34 @@ interface GlobalTable {
 }
 
 /**
- * The compiled table one graph build shares. `inputs` holds the application's declarations alone,
- * because a plugin option is never validated and never reaches an action.
+ * The compiled table one graph build shares. `inputs` holds every global option, the application's
+ * in authoring order and then each installed plugin's in installation order, which is the order
+ * the input-source stage fills them, validation checks them, and `inspect()` lists them. `sites`
+ * holds the call that declared each of them, which a fault about one rebuilds. `bind` reads every
+ * global option's validated value, keyed by declared name, as every action receives it.
  */
 interface BuiltGlobals extends GlobalTable {
   bind: (values: ValidatedInputs) => unknown;
   inputs: readonly OptionInput[];
   plugins: readonly BuiltPlugin[];
+  sites: ReadonlyMap<InputDeclaration, InputSite>;
 }
 
 /** The validated extension record of each declaration, keyed by the declaration itself. */
 type InputRecords = ReadonlyMap<InputDeclaration, Readonly<Record<string, unknown>>>;
 
 /**
- * The Application's private global declarations, their schema-derived value binder, and the
- * extension record each declaration's own call validated.
+ * The Application's private global declarations and the extension record each declaration's own
+ * call validated. The global options' value types live on the Application's type, and the action
+ * reads every global option's value through the built table's binder.
  */
-interface GlobalsState<Globals = unknown> {
-  bind: (values: ValidatedInputs) => Globals;
+interface GlobalsState {
   inputs: readonly OptionInput[];
   records: InputRecords;
 }
 
-function emptyGlobals(): GlobalsState<{}> {
-  return { bind: () => ({}), inputs: [], records: new Map() };
+function emptyGlobals(): GlobalsState {
+  return { inputs: [], records: new Map() };
 }
 
 /** Where one global option was declared: its `globalOption()` call on the Application. */
@@ -207,18 +212,30 @@ function pluginSites(
 }
 
 /**
+ * A global option declares no presence rule, whether the application or a plugin declares it, and
+ * whatever the key's value. The fault marks the key on the call that declared the option.
+ */
+function checkNoPresenceRule(site: FactSite, config: OptionConfig): void {
+  const rejected = omissionRules.find((key) => key in config);
+  if (rejected !== undefined) {
+    throw factFault(globalPresenceRule, site, {
+      correction: `Remove ${rejected}, and check for the value in each Command that needs it.`,
+      fact: rejected,
+      sentence: `${site.subject} declares ${rejected}.`,
+    });
+  }
+}
+
+/**
  * One global option's own facts, binding, and extension values, checked at its `globalOption()`
  * call against the Application's descriptors. The rules that pair it with another option belong to
  * the table, which the caller rebuilds with it.
  */
-function declareGlobalOption<Globals, Name extends string, Config extends OptionConfig>(
-  state: GlobalsState<Globals>,
+function declareGlobalOption<Name extends string, Config extends OptionConfig>(
+  state: GlobalsState,
   declared: OptionInput<Name, Config>,
   descriptors: DescriptorRegistry,
-): {
-  readonly input: OptionInput<Name, Config>;
-  readonly state: GlobalsState<Globals & Record<Name, OptionValue<Config>>>;
-} {
+): { readonly input: OptionInput<Name, Config>; readonly state: GlobalsState } {
   // The name is judged before the config, as every other declaration judges its own name first.
   checkOptionName(declared.name, configUnread(globalSite(declared)));
   const input = {
@@ -227,14 +244,7 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
   };
   const site = globalSite(input);
   const sentence = site.subject;
-  const rejected = omissionRules.find((key) => key in input.config);
-  if (rejected !== undefined) {
-    throw factFault(globalPresenceRule, site, {
-      correction: `Remove ${rejected}, and check for the value in each Command that needs it.`,
-      fact: rejected,
-      sentence: `${sentence} declares ${rejected}.`,
-    });
-  }
+  checkNoPresenceRule(site, input.config);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -250,7 +260,6 @@ function declareGlobalOption<Globals, Name extends string, Config extends Option
   return {
     input,
     state: {
-      bind: (values) => ({ ...state.bind(values), ...values.option(input) }),
       inputs: [...state.inputs, input],
       records: new Map([...state.records, [input, record]]),
     },
@@ -291,9 +300,53 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
   return { names, options, variables };
 }
 
-/** The table one graph build shares, which every earlier call already proved free of collisions. */
+/**
+ * The validated value of each listed option, keyed by declared name. Entries become own keys even
+ * for a name such as `__proto__`, which assignment would not.
+ */
+function optionValues(
+  inputs: readonly OptionInput[],
+  values: ValidatedInputs,
+): Record<string, unknown> {
+  return Object.fromEntries(inputs.map((input) => [input.name, values.read(input)]));
+}
+
+/**
+ * The validated value of each listed option, keyed by declared name, as a plugin reads it: each
+ * value a plain-data copy frozen to every depth, as the request's values are, so a plugin that
+ * reaches into one contributes nothing to what another plugin or the action receives.
+ */
+function frozenValues(
+  inputs: readonly OptionInput[],
+  values: ValidatedInputs,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze(
+    Object.fromEntries(inputs.map((input) => [input.name, snapshot(values.read(input))])),
+  );
+}
+
+/**
+ * The table one graph build shares, which every earlier call already proved free of collisions.
+ * A plugin's options are global options, so they join the application's in every reading.
+ */
 function buildGlobals(node: GlobalsState, plugins: readonly BuiltPlugin[]): BuiltGlobals {
-  return { ...globalTable(node.inputs, plugins), bind: node.bind, inputs: node.inputs, plugins };
+  const inputs = [...node.inputs, ...plugins.flatMap((installed) => installed.inputs)];
+  const sites = new Map<InputDeclaration, InputSite>(
+    node.inputs.map((input) => [input, declaringSite(input, { call: 'globalOption', path: [] })]),
+  );
+  for (const installed of plugins) {
+    const siteOf = pluginSites(installed.identity, installed.inputs);
+    for (const input of installed.inputs) {
+      sites.set(input, siteOf(input));
+    }
+  }
+  return {
+    ...globalTable(node.inputs, plugins),
+    bind: (values) => optionValues(inputs, values),
+    inputs,
+    plugins,
+    sites,
+  };
 }
 
 /**
@@ -394,9 +447,12 @@ export {
   boundOptions,
   buildGlobals,
   checkLocalOptions,
+  checkNoPresenceRule,
   declareGlobalOption,
   emptyGlobals,
+  frozenValues,
   globalSite,
   globalTable,
+  optionValues,
   pluginSites,
 };

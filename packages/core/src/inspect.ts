@@ -4,13 +4,14 @@ import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
+import type { InputSite } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
 import type { compileOptions } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
-import { declaringSite, inputPlace, validatesOmission } from './validation.js';
+import { declarationSubject, declaringSite, inputPlace, validatesOmission } from './validation.js';
 
 /** A declaration that carries no extension value publishes one shared, empty frozen record. */
 const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
@@ -35,10 +36,10 @@ interface ArgumentNode {
 }
 
 /**
- * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms, and
- * `scope` tells an application's own option from a plugin option, which reaches no action. An
- * option a plugin's lifecycle hook declared on a Command is that Command's own in every respect, so
- * it reads `application` and names no plugin.
+ * One declared option, in the shape its type gives it. Spellings are the accepted CLI forms. A
+ * global option reads the same whether the application or a plugin declared it, and an option a
+ * plugin's lifecycle hook declared on a Command is that Command's own in every respect, so neither
+ * names a plugin.
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
@@ -54,7 +55,6 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
-      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
@@ -72,7 +72,6 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
-      readonly scope: 'application' | 'plugin';
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
@@ -188,9 +187,8 @@ function publishesSchema(
  */
 interface SchemaCheck {
   readonly development: boolean;
-  /** Whether the inputs are the Application's global options, which `globalOption()` declares. */
-  readonly global: boolean;
-  readonly path: readonly string[];
+  /** The call that declared one input, which a converter fault marks. */
+  readonly siteOf: (input: InputDeclaration) => InputSite | undefined;
 }
 
 /**
@@ -202,12 +200,12 @@ function converterFault(
   check: SchemaCheck,
   failed: { failure: string; cause?: unknown },
 ) {
-  const site = declaringSite(input, inputPlace(input, check));
+  const site = check.siteOf(input);
   const parts = {
     correction:
       'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
-    findings: [siteFinding(site, partOf(site, 'validate'))],
-    sentence: `${site.subject} validator's JSON Schema converter ${failed.failure}`,
+    findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'validate'))],
+    sentence: `${declarationSubject(input)} validator's JSON Schema converter ${failed.failure}`,
   };
   return 'cause' in failed
     ? new DeclarationError(schemaConverterFailed, parts, { cause: failed.cause })
@@ -260,16 +258,15 @@ function extensionsOf(records: ExtensionRecords, declaration: object) {
   return records.get(declaration) ?? noExtensions;
 }
 
-/** The scope one list of options is read under, with the registers its nodes read from. */
+/** The registers one list of options is read under. */
 interface OptionScope {
   check: SchemaCheck;
   records: ExtensionRecords;
-  scope: 'application' | 'plugin';
   table: ReturnType<typeof compileOptions>;
 }
 
 function optionNode(input: OptionInput, read: OptionScope): OptionNode {
-  const { check, records, scope, table } = read;
+  const { check, records, table } = read;
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
   const extensions = extensionsOf(records, input);
@@ -286,7 +283,6 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
           negative,
           polarity: config.polarity ?? 'positive',
           schema: null,
-          scope,
           short,
           type: 'boolean',
         }
@@ -303,7 +299,6 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
           name,
           required: config.required === true,
           schema: inputSchema(input, check),
-          scope,
           short,
           type: 'string',
           validateOmitted: validatesOmission(input),
@@ -352,7 +347,10 @@ function commandNode(
   },
 ): CommandNode {
   const { development, nodes, path, records } = place;
-  const check: SchemaCheck = { development, global: false, path };
+  const check: SchemaCheck = {
+    development,
+    siteOf: (input) => declaringSite(input, inputPlace(input, path)),
+  };
   const node: CommandNode = {
     aliases: Object.freeze([...command.aliases]),
     arguments: Object.freeze(
@@ -369,14 +367,7 @@ function commandNode(
     hasAction: command.dispatch !== undefined,
     hidden: command.hidden,
     name: command.name,
-    options: Object.freeze(
-      optionNodes(command.inputs, {
-        check,
-        records,
-        scope: 'application',
-        table: command.options,
-      }),
-    ),
+    options: Object.freeze(optionNodes(command.inputs, { check, records, table: command.options })),
     path,
     result: resultNode(command.result),
   };
@@ -400,8 +391,8 @@ function resultNode(result: DeclaredResult | undefined): ResultNode | null {
 /**
  * Renders one built graph as frozen plain data. Nothing here reads a host fact; each validated
  * input's converter is asked for its input schema, and in a development build a converter that
- * fails is a declaration fault. The globals list holds the application's own options, then each
- * installed plugin's in installation order, which is the order the globals table holds them in.
+ * fails is a declaration fault. The globals list holds every global option, the application's own
+ * and then each installed plugin's in installation order, which is the order the table holds them.
  */
 function inspectGraph(
   name: string,
@@ -412,15 +403,11 @@ function inspectGraph(
   const records = graph.extensions;
   const table = graph.globals.options;
   const nodes = new WeakMap<BuiltCommand, CommandNode>();
-  const check: SchemaCheck = { development, global: true, path: [] };
+  const { sites } = graph.globals;
+  const check: SchemaCheck = { development, siteOf: (input) => sites.get(input) };
   const inspected: CommandGraph = {
     description: facts.description,
-    globals: Object.freeze([
-      ...optionNodes(graph.globals.inputs, { check, records, scope: 'application', table }),
-      ...graph.globals.plugins.flatMap((installed) =>
-        optionNodes(installed.inputs, { check, records, scope: 'plugin', table }),
-      ),
-    ]),
+    globals: Object.freeze(optionNodes(graph.globals.inputs, { check, records, table })),
     name,
     root: commandNode(graph.root, {
       description: facts.description,

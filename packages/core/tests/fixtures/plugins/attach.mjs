@@ -170,7 +170,7 @@ const scenarios = {
 function inspected(graph) {
   const count = graph.root.children.find((child) => child.name === 'count');
   return {
-    options: count.options.map(({ name, scope }) => ({ name, scope })),
+    options: count.options.map(({ name }) => ({ name })),
     result: count.result,
   };
 }

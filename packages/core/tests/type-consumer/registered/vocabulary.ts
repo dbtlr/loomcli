@@ -9,7 +9,7 @@ type Vocabulary = keyof OptionsOf<RegisteredEnvironment['plugins'][number]>;
 const render: View<Vocabulary> = { render: (name) => name };
 const action: ActionHandler<typeof get> = ({ options }) => {
   const name: Vocabulary = 'identifier';
-  // @ts-expect-error TS2322: Registered plugin literal names reach an independently authored action.
+  // @ts-expect-error TS2820: Registered plugin literal names reach an independently authored action.
   const wrong: Vocabulary = 'identifer';
   return { file: options.file, rendered: render.render(name, { style, width: () => 0 }), wrong };
 };

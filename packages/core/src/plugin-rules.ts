@@ -62,13 +62,6 @@ const invalidIdentity = registerRule('@loomcli/core/invalid-identity', {
   headline: 'Invalid identity',
 });
 
-/** A validator or a presence rule on a plugin option. */
-const pluginOptionRule = registerRule('@loomcli/core/plugin-option-rule', {
-  explanation:
-    "A plugin's middleware interprets its own options' values, so a plugin option declares how it parses and nothing more: no validator and no presence rule.",
-  headline: 'Rule on a plugin option',
-});
-
 /** A middleware activation that is missing, empty, or names an option the plugin lacks. */
 const middlewareActivation = registerRule('@loomcli/core/middleware-activation', {
   explanation:
@@ -241,7 +234,6 @@ export {
   overrideKey,
   overrideTwice,
   pluginInstalledTwice,
-  pluginOptionRule,
   renderingPolicyRule,
   retiredApplicationOption,
   signalClaimedTwice,

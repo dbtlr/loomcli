@@ -6,13 +6,12 @@ import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
-import { loadDefault, pluginSentence, pluginSpellings, pluginValues } from './plugin.js';
+import { loadDefault, pluginSentence, pluginSpellings } from './plugin.js';
 import type {
   BuiltPlugin,
   PluginOptions,
   PluginOptionSpellings,
   PluginOptionValues,
-  PluginValues,
 } from './plugin.js';
 import { nextMisuse, viewSelection, viewSelectionCorrection } from './rules.js';
 import type { ContextualStyle } from './style.js';
@@ -25,7 +24,7 @@ import type {
   Request,
   ResultBinding,
 } from './types.js';
-import type { DefaultValues } from './validation.js';
+import type { DefaultValues, InputPlaces } from './validation.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
@@ -35,9 +34,13 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
 
 /**
  * What one middleware receives. `graph` is the frozen graph `inspect()` returns, built once for the
- * run, and `command` is the routed node inside it. `options` holds this plugin's own option values
- * and never another plugin's or the application's globals, and `spellings` holds the spelling that
- * supplied each of them as a token, which a filled or defaulted option never has. `request` is the
+ * run, and `command` is the routed node inside it. `options` holds the validated value of every
+ * global option, the application's and every plugin's, keyed by declared name: the plugin's own
+ * options are typed from its declaration and every other key reads `unknown`, because a plugin
+ * compiles without the Application that installs it. It is `null` when a global option was
+ * rejected, so a middleware never reads a global value no validator accepted, and a fault on a
+ * local option alone leaves it set. `spellings` holds the spelling that supplied each of the
+ * plugin's own options as a token, which a filled or defaulted option never has. `request` is the
  * routed Command's invocation, parsed and validated ahead of the chain, and `null` while core holds
  * a fault and on a group. `view` names the view the result renders through: it reads as the
  * declaration's default until a middleware assigns one, and as `null` on a Command that declares
@@ -45,7 +48,7 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
-  readonly options: PluginOptionValues<Options>;
+  readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
   readonly spellings: PluginOptionSpellings<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -146,11 +149,10 @@ function isMiddlewareExport(value: unknown): value is (context: MiddlewareContex
   return typeof value === 'function';
 }
 
-/** One activated plugin in the chain, with the option values and spellings its middleware reads. */
+/** One activated plugin in the chain, with the spellings of its own options its middleware reads. */
 interface ChainEntry {
   identity: string;
   load: () => unknown;
-  options: PluginValues;
   spellings: Readonly<Record<string, string>>;
 }
 
@@ -180,7 +182,6 @@ function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues)
       identity: installed.identity,
       // Activation proved the middleware exists, so the empty loader is never the one core calls.
       load: installed.middleware?.load ?? (() => undefined),
-      options: pluginValues(installed.inputs, values),
       spellings: pluginSpellings(installed.inputs, values),
     }));
 }
@@ -232,6 +233,8 @@ interface Invocation {
   out: Out<OpenResult>;
   /** The channel a configuration source receives, whose results call names the source. */
   sourceOut: Out<OpenResult>;
+  /** Where every input of the graph was declared, which a broken validator's finding rebuilds. */
+  places: InputPlaces;
   plugins: readonly BuiltPlugin[];
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
@@ -448,7 +451,7 @@ async function runChain(
       graph,
       host: invocation.host,
       next,
-      options: entry.options,
+      options: prepared.options,
       out: invocation.out,
       request: prepared.request,
       signal: invocation.signal,

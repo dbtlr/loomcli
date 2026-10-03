@@ -52,3 +52,11 @@ test('the routed Command does not change the line, because the version is the Ap
     stdout: 'app v1.2.0\n',
   });
 });
+
+test("help's and version's options reach the action as global options", () => {
+  expect(run('globals', ['-f', 'doc.json', '--raw'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"file":"doc.json","help":false,"version":false,"raw":true}\n',
+  });
+});

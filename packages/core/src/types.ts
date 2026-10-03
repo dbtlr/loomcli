@@ -479,25 +479,15 @@ export type BooleanOption =
       });
 export type OptionConfig = StringOption | BooleanOption;
 /**
- * The parsing part of a string option config, which is all a plugin option declares. A plugin
- * option carries no schema and no presence rule, because the pre-scan consumes it ahead of routing,
- * where the validation context every schema is promised cannot exist. Its middleware interprets
- * the value.
- * A Boolean plugin option is an ordinary `BooleanOption`, which already declares none of them.
+ * The configuration of a global option a plugin declares: everything `option()` takes except the
+ * presence rules, which a global option never declares, because its validation runs on every
+ * Command. `globalOption()` states the same rule through `GlobalOmissionConstraint`, which also
+ * accepts a config typed as the wide `OptionConfig`.
  */
-export type PluginStringOption = OptionSpelling &
-  Multiplicity &
-  Described &
-  Listed &
-  OptionExtensions & {
-    type: 'string';
-    default?: string | string[];
-    polarity?: never;
-    required?: never;
-    validate?: never;
-    validateOmitted?: never;
-  };
-export type PluginOptionConfig = PluginStringOption | BooleanOption;
+export type GlobalOptionConfig = OptionConfig & {
+  readonly required?: never;
+  readonly validateOmitted?: never;
+};
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
   ? Config extends { multiple: true }
     ? ValidatedValue<Config, string[]>

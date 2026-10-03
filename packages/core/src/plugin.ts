@@ -13,19 +13,18 @@ import {
   checkDeprecated,
   checkDescription,
   checkHidden,
-  factFault,
   partFinding,
   pluginOptionSite,
   slotSite,
 } from './facts.js';
 import type { FactSite } from './facts.js';
-import { boundOptions, pluginSites } from './globals.js';
+import { boundOptions, checkNoPresenceRule, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
 import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
-import { booleanValue, compileOptions } from './options.js';
+import { compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import {
   copyOwnKeys,
@@ -42,7 +41,6 @@ import {
   notAList,
   notAnObject,
   pluginInstalledTwice,
-  pluginOptionRule,
   signalClaimedTwice,
   slotTaken,
   sourceBinding,
@@ -57,22 +55,25 @@ import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js'
 import { buildTheme } from './theme.js';
 import { readTranslations } from './translators.js';
 import type { Translation, TranslationContributor } from './translators.js';
-import type { CommandAttachHook, Host, OptionValue, Out, PluginOptionConfig } from './types.js';
+import type { CommandAttachHook, GlobalOptionConfig, Host, OptionValue, Out } from './types.js';
 import { captureConfig, checkDeclarations, defaultDepthFault } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
 
 /**
- * The declaration record a plugin contributes its options under: the parsing part of an option
- * config, keyed by option name. A plugin option carries no schema and no presence rule, so the
- * config type publishes neither, and `plugin()` repeats the rule for a JavaScript author.
+ * The declaration record a plugin contributes its global options under, keyed by option name. Each
+ * entry takes the configuration `globalOption()` takes, so the config type publishes no presence
+ * rule, and `plugin()` repeats the rule for a JavaScript author.
  */
-type PluginOptions = Readonly<Record<string, PluginOptionConfig>>;
+type PluginOptions = Readonly<Record<string, GlobalOptionConfig>>;
 
-/** The values one plugin's own options take, read through the same rules an action's options are. */
+/**
+ * The values one plugin's options take, read through the same `OptionValue` an action's options
+ * are, so a validated option reads as its validator's output.
+ */
 type PluginOptionValues<Options extends PluginOptions> = {
-  readonly [Name in keyof Options]: OptionValue<Options[Name]>;
+  readonly [Name in keyof Options & string]: OptionValue<Options[Name]>;
 };
 
 /**
@@ -145,6 +146,20 @@ type OptionsOf<Contributor> =
     : Contributor extends (...args: never[]) => Plugin<infer Options>
       ? Options
       : PluginOptions;
+
+/**
+ * The option values an installed plugin tuple contributes to every action's options, each plugin's
+ * read through `PluginOptionValues`. The Application computes it once from the constructor's
+ * `plugins`. A plugin typed as the wide `Plugin` states no option names, and a list widened to
+ * `Plugin[]` states no plugins, so neither names an option.
+ */
+type InstalledOptionValues<Plugins extends readonly Plugin[]> = Plugins extends readonly [
+  infer First extends Plugin,
+  ...infer Rest extends readonly Plugin[],
+]
+  ? (string extends keyof OptionsOf<First> ? {} : PluginOptionValues<OptionsOf<First>>) &
+      InstalledOptionValues<Rest>
+  : {};
 
 /** A middleware reads its own plugin's options and either takes over or continues the chain. */
 type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
@@ -435,19 +450,16 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
   return { descriptors, plugins: installed };
 }
 
-/** The keys a plugin option may not declare, in the order its diagnostic names them. */
-const forbidden = ['validate', 'validateOmitted', 'required'] as const;
-
 /**
- * The rules a plugin option answers before every rule an ordinary declaration carries, read from
+ * The rules a plugin's option answers before every rule an ordinary declaration carries, read from
  * the one copy of its config that `captureConfig` takes, which it answers with for every later read.
  * `siteOf` places the option with the value its entry prints as: the config as declared for a value
  * that is not one, elided for a config whose read threw, and the copy for every later rule.
  */
 function checkPluginOption(
   siteOf: (shown: unknown) => FactSite,
-  declared: PluginOptionConfig,
-): PluginOptionConfig {
+  declared: GlobalOptionConfig,
+): GlobalOptionConfig {
   const sentence = siteOf(declared).subject;
   const config = captureConfig(declared, {
     notAnObject: () =>
@@ -471,15 +483,8 @@ function checkPluginOption(
     },
   });
   const site = siteOf(config);
-  const rejected = forbidden.find((key) => key in config);
-  if (rejected !== undefined) {
-    throw factFault(pluginOptionRule, site, {
-      correction:
-        'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
-      fact: rejected,
-      sentence: `${sentence} declares ${rejected}.`,
-    });
-  }
+  // A plugin's options are global options, so they answer the global option's presence rule.
+  checkNoPresenceRule(site, config);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);
@@ -997,40 +1002,6 @@ function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ProcessSignal[]
   return plugins.find((entry) => entry.signals.length > 0)?.signals ?? [];
 }
 
-/** The value shape a plugin option takes, which is what `OptionValue` gives its declaration. */
-type PluginValues = Record<string, string | string[] | boolean | undefined>;
-
-/** A collected value, or the declared array default, as this run's own copy. */
-function collectedValue(collected: readonly string[] | undefined, declared: unknown): string[] {
-  if (collected) {
-    return [...collected];
-  }
-  return Array.isArray(declared) ? [...declared] : [];
-}
-
-/** One plugin option's value for one run: what a tier supplied, or the declared default. */
-function pluginValue({ config, name }: OptionInput, values: OptionValues) {
-  const declared: unknown = config.default;
-  if (config.type === 'boolean') {
-    return booleanValue(values, name, config);
-  }
-  if (config.multiple === true) {
-    return collectedValue(values.lists.get(name), declared);
-  }
-  // Build already proved that a string option without a validator declares a string default.
-  return values.strings.get(name) ?? (typeof declared === 'string' ? declared : undefined);
-}
-
-/**
- * One plugin's own option values for one run: what argv or an input source supplied, or the
- * declared default, filled without validation. A collected value and an array default are copied,
- * so a plugin that writes to what it received changes neither the declaration nor the next run.
- * Entries become own keys even for a name such as `__proto__`, which assignment would not.
- */
-function pluginValues(inputs: readonly OptionInput[], values: OptionValues): PluginValues {
-  return Object.fromEntries(inputs.map((input) => [input.name, pluginValue(input, values)]));
-}
-
 /** One plugin's own spellings for one run, frozen, so no plugin writes what another reads. */
 function pluginSpellings(
   inputs: readonly OptionInput[],
@@ -1054,7 +1025,7 @@ export type {
   ThemeOf,
   BuiltPlugin,
   BuiltSource,
-  PluginValues,
+  InstalledOptionValues,
   SourceAnswer,
   SourceContext,
   SourceResolver,
@@ -1074,5 +1045,4 @@ export {
   pluginSentence,
   pluginSpellings,
   pluginViews,
-  pluginValues,
 };

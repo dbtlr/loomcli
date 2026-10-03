@@ -830,6 +830,35 @@ test('a global option validator that throws marks the validate key of its global
   expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
 });
 
+test("a plugin option's default its validator rejects marks the default in the plugin's options record", () => {
+  expect(invoke(fixture, ['plugin-invalid-default'])).toEqual({
+    status: 1,
+    stderr: diagnostic({
+      correction: 'Fix the default or its validator.',
+      findings: [
+        marked(
+          "    plugin('@acme/log', { options: { level: { default: 'x', type: 'string', validate: … } } })",
+          "default: 'x'",
+        ),
+      ],
+      headline: 'DEFAULT REJECTED',
+      rule: 'invalid-default',
+      sentence: 'Option "level" has an invalid default.\nOption "level": Use a whole number.',
+    }),
+    stdout: '',
+  });
+});
+
+test("a plugin option validator that throws marks the validate key in the plugin's options record", () => {
+  const result = invoke(fixture, ['plugin-validator-throws']);
+  expect(result.status).toBe(1);
+  const finding = marked(
+    "    plugin('@acme/log', { options: { level: { type: 'string', validate: … } } })",
+    'validate: …',
+  );
+  expect(result.stderr).toContain(`\n\n${finding.join('\n')}\n\n`);
+});
+
 test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set([
     ...Object.values(cases).map((expected) => expected.rule),

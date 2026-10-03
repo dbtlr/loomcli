@@ -96,7 +96,7 @@ test("inspect() runs the hooks and publishes a hook's option as the Command's ow
   const result = inspect('option');
   expect(result.stderr).toBe('');
   expect(lines(result.stdout)[0]).toEqual({
-    options: [{ name: 'format', scope: 'application' }],
+    options: [{ name: 'format' }],
     result: { default: 'text', kind: 'value', views: ['text'] },
   });
 });

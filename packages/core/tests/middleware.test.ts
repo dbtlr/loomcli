@@ -37,7 +37,9 @@ function loaded(scenario: string, argv: string[]) {
 test('an invocation that supplies no plugin option loads no plugin implementation', () => {
   const result = loaded('help', ['get', 'a.b']);
   expect(result.marks).toEqual([]);
-  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:0\n');
+  expect(result.stdout).toBe(
+    'get:a.b:{"help":false,"version":false,"raw":false}\naction-signal:true:false\nresolved:0\n',
+  );
 });
 
 test('a takeover earlier in the chain never loads a later plugin', () => {

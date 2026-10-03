@@ -217,11 +217,12 @@ const scenarios = {
   'middleware-object': () => plugin('@acme/help', { middleware: 'help' }),
   'on-failure': () => plugin('@acme/suggest', { onFailure: 'hint' }),
   'option-config': () => plugin('@acme/log', { options: { level: 'debug' } }),
-  'option-rule': () =>
+  'option-presence': () =>
     plugin('@acme/log', { options: { level: { required: true, type: 'string' } } }),
-  'option-rule-sibling': () =>
+  // A plugin's option is a global option, so the key is rejected whatever its value.
+  'option-presence-sibling': () =>
     plugin('@acme/log', {
-      options: { level: { required: true, type: 'string' }, trace: { type: 'boolean' } },
+      options: { level: { type: 'string', validateOmitted: false }, trace: { type: 'boolean' } },
     }),
   'option-unreadable': () =>
     plugin('@acme/log', {
