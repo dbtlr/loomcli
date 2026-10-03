@@ -233,6 +233,8 @@ export default defineConfig({
     rules: {
       'eslint/no-duplicate-imports': ['warn', { allowSeparateTypeImports: true }],
       'node/no-sync': 'off',
+      // The formatter writes hexadecimal digits in lowercase, which this rule would reverse.
+      'unicorn/number-literal-case': 'off',
       'vite-plus/prefer-vite-plus-imports': 'error',
 
       // Sort keys in ascending order, but allow line-separated groups (e.g. for readability)

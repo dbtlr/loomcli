@@ -1,7 +1,6 @@
-import { graphemeWidths } from '@rockorager/uucode/width';
-
 import type { TextUnit, Unit } from './style-ansi.js';
 import type { Attributes } from './style-state.js';
+import { graphemeWidths } from './style-width.js';
 import type { Padding } from './style-wire.js';
 
 /** Width at each tab-stop offset composes without rescanning nested text. */

@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = require('../package.json');
+const { devDependencies } = require('../../../package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:packed.');
 
@@ -169,7 +170,8 @@ try {
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
       },
-      devDependencies: { '@loomcli/loom': 'file:./loom.tgz' },
+      // Rolldown bundles the plain fixture below, at the version the repository pins.
+      devDependencies: { '@loomcli/loom': 'file:./loom.tgz', rolldown: devDependencies.rolldown },
       private: true,
       type: 'module',
     }),
@@ -349,12 +351,38 @@ try {
       `${name}: the packed bundle's defect`,
     );
   }
+  // Core reads no file at run time, so any bundler bundles an application without packet().
+  // Each bundle measures text with the packed Unicode tables and reads the source packet.
+  const plainSource = fileURLToPath(new URL('fixtures/bundled', import.meta.url));
+  await cp(plainSource, join(temporary, 'bundled'), { recursive: true });
+  const measured = [
+    '日本  |',
+    'e\u0301     |',
+    '👩\u200d💻    |',
+    '🇯🇵    |',
+    'abc   |',
+    'development',
+    '',
+  ].join('\n');
+  for (const [bundler, builder] of [
+    ['bun', 'bun'],
+    ['rolldown', process.execPath],
+  ]) {
+    const outdir = join(temporary, 'plain-dist', bundler);
+    const plain = run(builder, [join(temporary, 'bundled/bundle.mjs'), bundler, outdir], temporary);
+    assert.equal(plain.status, 0, plain.output);
+    for (const name of selected) {
+      const measuring = run(runtimes.get(name), [join(outdir, 'main.js'), 'measure'], temporary);
+      assert.equal(measuring.status, 0, measuring.output);
+      assert.equal(measuring.stdout, measured, `${name}: the packed bundle ${bundler} built`);
+    }
+  }
   assert.deepEqual(JSON.parse(await readFile(packetSource, 'utf8')), { build: 'development' });
   const sourced = run('bun', [join(temporary, 'packet-app/src/main.ts'), 'build'], temporary);
   assert.equal(sourced.status, 0, sourced.output);
   assert.equal(sourced.stdout, 'development\n', 'bun: the source packet');
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, a suggestion, and a fixture bundled with the packed packet() that reads distributed while its source reads development.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
