@@ -53,6 +53,7 @@ test.each([
   ['a lone high surrogate', 'a\uD800b'],
   ['a lone low surrogate', 'a\uDC00b'],
   ['a ZWJ after a non-pictograph', 'a‍💻'],
+  ['a ZWJ sequence followed by text', '👩‍💻日本'],
   ['ASCII before a combining mark', 'ab́'],
   ['an empty string', ''],
 ])('core measures %s as the pinned uucode release does', (_name, text) => {
