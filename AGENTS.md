@@ -55,6 +55,14 @@ A finding is a defect only when it passes both tests:
    interface. A construction built only to break the code, such as a default of a million shared
    paths, is a probe result.
 
+Loom is a general-purpose framework, so it does not decide how an application behaves. An action
+may stream a response from a service, or run a terminal interface that an operator works in for
+twelve hours. Loom cannot know which, and it does not guess. Core adds no time limit, no size limit,
+and no guard on how long an author's code runs, what it does, or what values it creates, throws, or
+hands back, and a finding that asks for one fails test 1. An application that needs a timeout or a
+limit gets it from its author, in the author's own action. Brief review seats to probe what Loom
+ships and what an operator can reach, not values only an author's code can construct.
+
 A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
 with that reason in the review record, and the review record is where it ends. A seed records an
 ask someone made or a defect someone hit; a question an agent imagines, such as whether a
