@@ -459,12 +459,12 @@ The one optional `source` a plugin definition declares, which answers for config
 _Avoid_: Config loader, config provider, settings store
 
 **Configuration file**:
-A JSON, TOML, or YAML file the first-party configuration plugin answers from, read as TOML for a `.toml` extension, as YAML for `.yaml` or `.yml`, and as JSON for every other name: the user file, named by `file` in the per-user directory the plugin derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
+The one JSON, TOML, or YAML file the first-party configuration plugin answers from in a run, never merged with another: the file `--config` names, or else the first found of the author's `file` in the working directory and then the operator's home directory. `.toml` reads as TOML, `.yaml` and `.yml` as YAML, and every other name as JSON. A discovered file never breaks a run, while the named file and a wrong value in the file are usage failures.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **File pattern**:
-How an author names a configuration file the plugin discovers, a `files` entry or the `file` setting: a file name whose extension alone may be `*` or a brace list such as `{toml,yaml}`, naming candidates in order. The first present candidate answers for the pattern, and the plugin warns about every other present one. A literal extension locks the file's format.
-_Avoid_: Glob (for the whole entry), wildcard path, file mask
+The configuration plugin's `file` setting: a file name or relative path whose last segment's extension alone may be `*` or a brace list such as `{toml,yaml}`, naming candidates in order. In each directory the plugin looks in, the first present candidate is the file it finds, and it warns about every other present one. A literal extension locks the file's format.
+_Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
 A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives its own options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
