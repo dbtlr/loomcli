@@ -19,7 +19,7 @@ const notAList = registerRule('@loomcli/core/not-a-list', {
  */
 const notAnObject = registerRule('@loomcli/core/not-an-object', {
   explanation:
-    "Core reads the options of a Command and of the Application, a plugin's definition, its options record, each of its option declarations, its middleware, its source, and the config of an argument or option by their keys. A value of any other kind has no keys to read.",
+    "Core reads the options of a Command and of the Application, a plugin's definition, its options record, each of its option declarations, its middleware, its source, the config of an argument or option, and the settings a plugin factory takes by their keys. A value of any other kind has no keys to read.",
   headline: 'Not an object',
 });
 

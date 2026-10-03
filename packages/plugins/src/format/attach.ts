@@ -7,7 +7,7 @@ import { json, jsonl } from './views.js';
 /**
  * The hook that appends `json` and `jsonl` to a Command's result where its record lacks the key,
  * then declares `--format` over the resulting names, with `short` as its short spelling or none
- * when it is undefined. Core judges that spelling as it judges any option's. A Command with no
+ * when it is undefined. `format()` has already judged that spelling at its call. A Command with no
  * result is returned unchanged.
  */
 export function attachFormat(short: FormatSettings['short']): CommandAttachHook {

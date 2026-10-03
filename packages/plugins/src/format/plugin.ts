@@ -1,8 +1,10 @@
-import { plugin } from '@loomcli/core';
+import { checkShortSetting, plugin } from '@loomcli/core';
 import type { Plugin, StringOption } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
 import { attachFormat } from './attach.js';
+
+const identity = `${Package.name}/format`;
 
 export { json, jsonl } from './views.js';
 
@@ -13,11 +15,13 @@ export interface FormatSettings {
 
 /**
  * A plugin that puts `--format` on every Command that declares a result and copies a supplied name
- * into `view`. It reads the settings once, at the call. The annotated return type is the boundary
- * that breaks the cycle between this module and the middleware module `load` names.
+ * into `view`. It judges the settings at the call, under core's rules for a short spelling, and
+ * reads them once. The annotated return type is the boundary that breaks the cycle between this
+ * module and the middleware module `load` names.
  */
 export function format(settings?: FormatSettings): Plugin<{}> {
-  return plugin(`${Package.name}/format`, {
+  checkShortSetting(settings, { call: 'format', option: 'format', plugin: identity });
+  return plugin(identity, {
     middleware: { activate: 'always', load: () => import('./middleware.js') },
     onCommandAttach: attachFormat(settings?.short),
   });

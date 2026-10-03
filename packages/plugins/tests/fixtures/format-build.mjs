@@ -44,11 +44,6 @@ const scenarios = {
     const count = withResult(new Command('count')).action(dispatch);
     return new Application('app', { plugins: [help(), format({ short: 'h' })] }).command(count);
   },
-  /** A short spelling that is not one ASCII letter, as a JavaScript author can pass it. */
-  'short-invalid': () => {
-    const count = withResult(new Command('count')).action(dispatch);
-    return new Application('app', { plugins: [format({ short: 'fo' })] }).command(count);
-  },
   /** The short spelling -f, which the Command's own --file already claims. */
   'short-local-collision': () => {
     const count = withResult(
