@@ -9,7 +9,7 @@ const commandKey = extension('@fixture/settings/command', {
   target: 'command',
 });
 
-// A plugin option binds a variable its author names, a string and a Boolean alike.
+// A plugin's option binds a variable its author names, a string and a Boolean alike.
 const declared = {
   config: { env: 'SETTINGS_FILE', type: 'string' },
   verbose: { env: 'VERBOSE', type: 'boolean' },
@@ -46,7 +46,7 @@ const listed = new Command('listed').option('fields', {
   type: 'string',
 });
 
-// @ts-expect-error TS2322: A multiple plugin option declares no env either.
+// @ts-expect-error TS2322: A plugin's multiple option declares no env either.
 const tags = { tags: { env: 'TAGS', multiple: true, type: 'string' } } satisfies PluginOptions;
 
 // An argument is identified by its place among bare tokens, so it cannot bind.

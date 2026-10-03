@@ -23,7 +23,7 @@ import {
 } from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type { Host, Out } from './types.js';
-import type { OptionInput, Provenance, ValidatedInputs, Validation } from './validation.js';
+import type { OptionInput, Provenance, Validation } from './validation.js';
 
 /**
  * One scope the stage fills: its options in declaration order, and the values argv supplied them.
@@ -57,8 +57,8 @@ interface SourceStage {
   style: ContextualStyle;
   /**
    * Validates the listed options alone, from the values the stage has filled so far, with what the
-   * environment tier found about them. A configuration source's own options pass through it before
-   * the source loads.
+   * environment tier found about them, under the context every validator of the run reads. A
+   * configuration source's own options pass through it before the source loads.
    */
   validate: (inputs: readonly OptionInput[], provenance: Provenance) => Promise<Validation>;
 }
@@ -67,13 +67,13 @@ interface SourceStage {
  * What the stage found beside the values it filled. `labels` names where each filled option's value
  * came from, by option name, and `rejected` names the variable of each Boolean option whose value
  * is outside the grammar. Both are internal to core's failure messages. `fault` is a configuration
- * source's own fault, the input problem one of its own options holds, or the failure its resolver
- * threw, which stops the stage and takes the place of every validation problem. `validated` holds
- * the source's own option values once they passed their validators ahead of its call.
+ * source's own fault, or the failure its resolver threw, which stops the stage and takes the place
+ * of every validation problem. `validated` is the pass over the source's own options ahead of its
+ * call, whose values and problems the run's one validation pass reads.
  */
 interface SourceOutcome extends Provenance {
   fault: LoomError | undefined;
-  validated: ValidatedInputs | undefined;
+  validated: Validation | undefined;
 }
 
 /** The Boolean grammar a bound variable is read through: the whole value, case-insensitive. */
@@ -369,9 +369,9 @@ function requestedOf(
 /**
  * The input-source stage: the environment, then the configuration source, for every option in
  * scope that argv left unfilled. When no option is left to ask, the source never loads. The
- * source's own options pass their validators before it loads, and a rejected one holds its input
- * problem as the source's fault, so the source is never called. A source fault stops the stage and
- * fills nothing more.
+ * source's own options pass their validators before it loads, and when one is rejected the source
+ * is never called and the problem reports with every other validation problem. A source fault
+ * stops the stage and fills nothing more.
  */
 async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   const scopes = stage.locals ? [stage.globals, stage.locals] : [stage.globals];
@@ -386,17 +386,14 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   if (!owner || requested.length === 0) {
     return { fault: undefined, labels, rejected, validated: undefined };
   }
-  let validated: ValidatedInputs | undefined = undefined;
+  let validated: Validation | undefined = undefined;
   try {
-    const own = await stage.validate(owner.inputs, { labels, rejected });
-    if (own.failure) {
-      throw own.failure;
-    }
-    validated = own.values;
-    // A run cancelled while the source's own options were validated loads nothing.
-    if (stage.signal.aborted) {
+    validated = await stage.validate(owner.inputs, { labels, rejected });
+    // A rejected own option skips the source, and a run cancelled meanwhile loads nothing.
+    if (validated.failure || stage.signal.aborted) {
       return { fault: undefined, labels, rejected, validated };
     }
+    const own = validated;
     const options = frozenValues(owner.inputs, own.values);
     for (const { label, target, value } of await askSource(stage, { options, owner, requested })) {
       fill(target.scope.values, target.input.name, value);
@@ -404,7 +401,7 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
     }
     return { fault: undefined, labels, rejected, validated };
   } catch (error) {
-    // The resolver's own failure keeps its class, and so its code, and so does a rejected own option.
+    // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
     const fault = error instanceof LoomError ? error : foreignFailure(error);
     return { fault, labels, rejected, validated };

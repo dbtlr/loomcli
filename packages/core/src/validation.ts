@@ -99,13 +99,20 @@ export interface Invocation {
   host: Host;
   inputs: ScopedInputs;
   passthrough: readonly string[];
+  /**
+   * The declarations this pass validates, when it validates only some of `inputs`, such as a
+   * configuration source's own options ahead of its call. Every declaration of `inputs` still
+   * appears in the validation context's `supplied` record.
+   */
+  only?: ReadonlySet<InputDeclaration>;
   /** Where each declaration was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
   /**
-   * Values an earlier pass of this invocation already validated, such as a configuration source's
-   * own options, which this pass reads and never sends to their validators a second time.
+   * An earlier pass of this invocation, such as the one over a configuration source's own options.
+   * This pass reads each value it accepted and each problem it reported, in this pass's own order,
+   * and never sends those values to their validators a second time.
    */
-  prior?: ValidatedInputs;
+  prior?: Validation;
   /** The run's cancellation signal, which stops this phase between two validator calls. */
   signal: AbortSignal;
   sources: Provenance;
@@ -787,14 +794,21 @@ function suppliedInputs(
 /** The Boolean grammar's one issue, which a variable outside it reports. */
 const grammarIssues: readonly StandardSchemaV1.Issue[] = [{ message: 'Use true, false, 1, or 0.' }];
 
+/** One rejected or missing input: the problem it reports, and the lines core's default text holds. */
+interface Report {
+  readonly lines: readonly string[];
+  readonly problem: InputProblem;
+}
+
 /**
- * What one validation pass produced: every value its validator accepted, and the problems it
- * found, aggregated in reporting order into one failure, or `undefined` when there were none. A
- * pass that found problems still answers with the values it accepted, so a reader of the global
- * options keeps them when only a local input was rejected.
+ * What one validation pass produced: every value its validator accepted, each input's report in
+ * reporting order, and those reports aggregated into one failure, or `undefined` when there were
+ * none. A pass that found problems still answers with the values it accepted, so a reader of the
+ * global options keeps them when only a local input was rejected.
  */
 export interface Validation {
   readonly failure: InputError | undefined;
+  readonly reports: ReadonlyMap<InputDeclaration, Report>;
   readonly values: ValidatedInputs;
 }
 
@@ -852,21 +866,30 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     };
   };
   const values = new Map<InputDeclaration, unknown>();
-  const lines: string[] = [];
-  const problems: InputProblem[] = [];
+  // Each input reports at most once, so insertion order is the order this phase reaches them.
+  const reports = new Map<InputDeclaration, Report>();
+  /** One missing input, in the order this phase reaches it. */
+  const omit = (entry: ScopedInput, spelling: string, line: string) => {
+    reports.set(entry.input, {
+      lines: [line],
+      problem: { input: identityOf(entry), reason: 'missing', spelling },
+    });
+  };
   /** One rejected input, whatever rejected it, in the order this phase reaches it. */
   const reject = (
     entry: ScopedInput,
     issues: readonly StandardSchemaV1.Issue[],
     subject: string,
   ) => {
-    problems.push({
-      input: identityOf(entry),
-      issues,
-      reason: 'invalid',
-      spelling: spellingOf(entry.input),
+    reports.set(entry.input, {
+      lines: messages(subject, issues),
+      problem: {
+        input: identityOf(entry),
+        issues,
+        reason: 'invalid',
+        spelling: spellingOf(entry.input),
+      },
     });
-    lines.push(...messages(subject, issues));
   };
   /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
@@ -885,7 +908,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       suppliedName(entry.input, spelling, originOf(entry.input)),
     );
   };
-  for (const entry of declarations) {
+  const { only } = invocation;
+  const validated = only ? declarations.filter(({ input }) => only.has(input)) : declarations;
+  for (const entry of validated) {
     if (invocation.signal.aborted) {
       /**
        * A cancelled run starts no further validator call. The one already in flight was awaited
@@ -896,9 +921,13 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     }
     const { input } = entry;
     const variable = sources.rejected.get(input.name);
-    if (prior?.has(input) === true) {
+    const earlier = prior?.reports.get(input);
+    if (prior?.values.has(input) === true) {
       // An earlier pass validated this value once, and one value meets its validator once.
-      values.set(input, prior.read(input));
+      values.set(input, prior.values.read(input));
+    } else if (earlier !== undefined) {
+      // The earlier pass's problem reports here, in this pass's order.
+      reports.set(input, earlier);
     } else if (input.kind === 'option' && variable !== undefined) {
       // A Boolean variable outside the grammar filled nothing, so it is the option's problem.
       reject(entry, grammarIssues, suppliedName(input, spellingOf(input), variable));
@@ -915,8 +944,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         if (input.config.required) {
           // An omitted required argument arrives here too, so omission has one class.
           // One aggregated diagnostic covers an omitted argument and an omitted option alike.
-          problems.push({ input: identityOf(entry), reason: 'missing', spelling });
-          lines.push(missingMessage(input, spelling, { collected }));
+          omit(entry, spelling, missingMessage(input, spelling, { collected }));
         } else if (collected && !defaults.has(input)) {
           // No occurrence has no value to validate, so the action receives an empty array.
           values.set(input, []);
@@ -929,15 +957,26 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         }
       } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
         // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
-        problems.push({ input: identityOf(entry), reason: 'missing', spelling });
-        lines.push(missingMessage(input, spelling, { collected, origin: originOf(input) }));
+        omit(
+          entry,
+          spelling,
+          missingMessage(input, spelling, { collected, origin: originOf(input) }),
+        );
       } else {
         await accept(entry, raw, spelling);
       }
     }
   }
+  const found = [...reports.values()];
   return {
-    failure: problems.length > 0 ? new InputError(lines.join('\n'), problems) : undefined,
+    failure:
+      found.length > 0
+        ? new InputError(
+            found.flatMap((report) => report.lines).join('\n'),
+            found.map((report) => report.problem),
+          )
+        : undefined,
+    reports,
     values: new ValidatedInputs(values),
   };
 }

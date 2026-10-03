@@ -47,7 +47,7 @@ const optional = { level: { required: false, type: 'string' } } satisfies Plugin
 // @ts-expect-error TS2322: A multiple option takes its list from the configuration source.
 const bound = { tags: { env: 'TAGS', multiple: true, type: 'string' } } satisfies PluginOptions;
 
-// A plugin option carries the two listing facts, as an application's own option does.
+// A plugin's option carries the two listing facts, as an application's own option does.
 const listed = {
   level: { deprecated: 'Use --verbosity instead.', hidden: true, type: 'string' },
 } satisfies PluginOptions;

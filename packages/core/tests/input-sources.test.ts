@@ -113,7 +113,7 @@ test('NO_COLOR keeps its presence rule while an option bound to it reads the gra
   expect(paint({ NO_COLOR: '1' })).toBe('paint:true:X');
 });
 
-test('a plugin option filled from the environment activates its middleware, with false as well', () => {
+test("a plugin's option filled from the environment activates its middleware, with false as well", () => {
   expect(valueOf(run([], { FIXTURE_VERBOSE: '1' }, 'plain').stdout, 'log', 'verbose')).toBe(true);
   expect(valueOf(run([], { FIXTURE_VERBOSE: 'false' }, 'plain').stdout, 'log', 'verbose')).toBe(
     false,
@@ -206,7 +206,7 @@ test('a failure on a filled value names its source, and an argv message is uncha
   );
 });
 
-test('with a local parse fault, a plugin option still fills and activates and a local one does not', () => {
+test("with a local parse fault, a plugin's option still fills and activates and a local one does not", () => {
   expect(run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' })).toEqual({
     status: 2,
     stderr:
@@ -246,6 +246,28 @@ test("the source's own options pass their validators before the call, which a re
     stderr: '',
     stdout: 'help\nresolved:0\n',
   });
+});
+
+test("a rejected source option skips the source and reports with every other problem, the application's first", () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['--size', 'zz', '--profile', 'nope'])).toEqual({
+    status: 2,
+    stderr: [
+      'app: Option "--size": Expected a whole number.',
+      'app: Option "--profile": Expected one of: dev, prod.',
+      '',
+    ].join('\n'),
+    stdout: 'resolved:2\n',
+  });
+});
+
+test("a source option's validator reads the same context as every other validator", () => {
+  const argv = ['count', '--max', '7', '--limit', '3', '--config', 'other.json'];
+  const result = run(argv, { FIXTURE_CONFIG_COUNT: 'context' });
+  expect(line(result.stdout, 'schema:config')).toBe('schema:config:{"limit":"3","max":"7"}');
+  expect(line(result.stdout, 'source')).toBe(
+    'source:{"options":{"config":"other.json"},"requests":["level","total"]}',
+  );
 });
 
 test("the source's own options meet their validator once per value", () => {

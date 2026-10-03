@@ -9,6 +9,8 @@ import {
   override,
   plugin,
 } from '@loomcli/core';
+import { help as packHelp } from '@loomcli/plugins/help';
+import { version as packVersion } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
 import { argumentFact, commandFact, optionFact } from './extensions.mjs';
@@ -66,6 +68,9 @@ const plugins = {
     }),
   outer: () =>
     plugin('@fixture/outer', { middleware: { activate: 'always', load: load('outer') } }),
+  // The first-party help and version plugins, whose options are global options like any other.
+  'pack-help': () => packHelp(),
+  'pack-version': () => packVersion(),
   recatching: () =>
     plugin('@fixture/recatching', { middleware: { activate: 'always', load: load('recatching') } }),
   settings: () =>
@@ -111,6 +116,7 @@ const installed = {
   facts: ['facts'],
   failures: ['failures'],
   'failures-both': ['failures'],
+  'first-party': ['pack-help', 'pack-version'],
   help: ['help', 'version'],
   inert: [],
   microtask: ['outer', 'microtask'],
@@ -180,6 +186,10 @@ function application() {
       }
       await out.print(`get:${args.path}:${JSON.stringify(options)}`);
       await out.print(`action-signal:${signal instanceof AbortSignal}:${signal.aborted}`);
+      // The action writes to the list it received, so a second run shows whether it reads a fresh one.
+      if (Array.isArray(options.tags)) {
+        options.tags.push('written');
+      }
     });
   // A group answers no invocation of its own, so the callable check is what rejects it.
   // Core holds that fault and raises it at the dispatch boundary, so a takeover swallows it.

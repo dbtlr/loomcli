@@ -830,7 +830,7 @@ test('a global option validator that throws marks the validate key of its global
   expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
 });
 
-test("a plugin option's default its validator rejects marks the default in the plugin's options record", () => {
+test("a default its validator rejects on a plugin's option marks the default in the plugin's options record", () => {
   expect(invoke(fixture, ['plugin-invalid-default'])).toEqual({
     status: 1,
     stderr: diagnostic({
@@ -849,7 +849,7 @@ test("a plugin option's default its validator rejects marks the default in the p
   });
 });
 
-test("a plugin option validator that throws marks the validate key in the plugin's options record", () => {
+test("a validator that throws on a plugin's option marks the validate key in the plugin's options record", () => {
   const result = invoke(fixture, ['plugin-validator-throws']);
   expect(result.status).toBe(1);
   const finding = marked(

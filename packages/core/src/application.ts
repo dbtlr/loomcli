@@ -946,15 +946,16 @@ function captureOptions(name: string, options: unknown): Record<string, unknown>
  * application's own view overrides, its translations, the rendering policy, the options slot and
  * its facts, the installed list and every rule between two plugins, the root's extension values,
  * and then each plugin's Commands, which attach to the root first, in installation order and list
- * order. Each reads the one copy of the options `captureOptions` takes.
+ * order. Each reads the one copy of the options `captureOptions` takes. The root's globals are
+ * the option values the declared `plugins` tuple contributes.
  */
-function declareApplication<Globals>(
+function declareApplication<Plugins extends readonly Plugin[]>(
   name: string,
-  declared: unknown,
+  declared: ApplicationOptions<Plugins> | undefined,
 ): {
   config: ApplicationConfig;
   globals: GlobalsState;
-  root: CommandState<{}, {}, Globals>;
+  root: CommandState<{}, {}, InstalledOptionValues<Plugins>>;
 } {
   const slot = captureOptions(name, declared);
   const identities = viewIdentities(coreViews);
@@ -992,7 +993,7 @@ function declareApplication<Globals>(
   });
   // The Application checks its own facts, so the root carries none.
   // Its diagnostics name the Application rather than the root Command.
-  let root = freshState<Globals>({
+  let root = freshState<InstalledOptionValues<Plugins>>({
     descriptors,
     extensions,
     facts: { deprecated: undefined, description: undefined, hidden: false },

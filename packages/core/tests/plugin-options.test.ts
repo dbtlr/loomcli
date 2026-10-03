@@ -52,7 +52,7 @@ test("a plugin's option values reach its own middleware and every action", () =>
   });
 });
 
-test('a plugin option is consumed at any placement, as a global option is', () => {
+test("a plugin's option is consumed at any placement, as every global option is", () => {
   const result = settings(['get', 'a.b', '--mode', 'fancy']);
   const values = '"cache":false,"mode":"fancy","quiet":false,"tags":["one"]';
   expect(result.stdout).toBe(
@@ -60,11 +60,21 @@ test('a plugin option is consumed at any placement, as a global option is', () =
   );
 });
 
-test('a declared default reaches each run afresh', () => {
+test('a declared default reaches each run afresh, whatever the action wrote to it', () => {
+  // The action writes to the list it received, so a shared default would hold the write in run two.
   const result = settings(['-q', 'get', 'a.b'], 'twice');
   const values = '"cache":false,"mode":"plain","quiet":true,"tags":["one"]';
   const run = `settings:{${values}}\nfrozen:true\nget:a.b:{${values},"raw":false}\naction-signal:true:false\n`;
   expect(result).toEqual({ status: 0, stderr: '', stdout: `${run}${run}resolved:0:0\n` });
+});
+
+test("the first-party help and version plugins' options reach the action as global options", () => {
+  expect(invoke(fixture, ['first-party', 'run', '-f', 'doc.json', 'get', 'a.b'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      'get:a.b:{"file":"doc.json","help":false,"version":false,"raw":false}\naction-signal:true:false\nresolved:0\n',
+  });
 });
 
 test("a plugin's validated option reaches every middleware and the action as its validator's output", () => {
@@ -77,7 +87,7 @@ test("a plugin's validated option reaches every middleware and the action as its
   });
 });
 
-test("a value a plugin option's validator rejects is an input problem, and options is null", () => {
+test("a value a plugin's option's validator rejects is an input problem, and options is null", () => {
   expect(validated(['--level', 'loud', 'get', 'a.b'])).toEqual({
     status: 2,
     stderr: 'app: Option "--level": Use debug, info, or warn.\n',
@@ -85,7 +95,7 @@ test("a value a plugin option's validator rejects is an input problem, and optio
   });
 });
 
-test("a rejected plugin option aggregates with the routed Command's own problems, globals first", () => {
+test("a plugin's rejected option aggregates with the routed Command's own problems, globals first", () => {
   expect(validated(['-l', 'loud', 'get'])).toEqual({
     status: 2,
     stderr:
@@ -131,7 +141,7 @@ test("a group's missing subcommand leaves options set, and a rejected global sti
   });
 });
 
-test('a structure fault in a plugin option is the pre-scan input error a global option produces', () => {
+test("a structure fault in a plugin's option is the pre-scan input error a global option produces", () => {
   expect(settings(['--mode'])).toEqual({
     status: 2,
     stderr: 'app: Option "--mode" requires a value. Supply a value after "--mode".\n',
@@ -153,7 +163,7 @@ test('a short group that mixes a plugin letter reads it as a global option', () 
   });
 });
 
-test('inspect() lists plugin options after the application globals, in installation order', () => {
+test("inspect() lists each plugin's options after the application's, in installation order", () => {
   const result = invoke(fixture, ['validated', 'inspect']);
   expect(result.status).toBe(0);
   const graph = JSON.parse(result.stdout);
@@ -167,7 +177,7 @@ test('inspect() lists plugin options after the application globals, in installat
   ]);
 });
 
-test('a plugin option publishes the node an application global option publishes', () => {
+test("a plugin's option publishes the node an application's global option publishes", () => {
   const graph = JSON.parse(invoke(fixture, ['validated', 'inspect']).stdout);
   expect(graph.globals[2]).toEqual({
     default: { value: 'plain' },

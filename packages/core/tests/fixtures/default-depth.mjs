@@ -15,14 +15,8 @@ function nested(levels) {
   return value;
 }
 
-/**
- * A config that declares `value` as its default, under a validator that accepts anything, except
- * on a plugin option, which declares no validator.
- */
-const configOf = (call, value) =>
-  call === 'plugin'
-    ? { default: value, type: 'string' }
-    : { default: value, type: 'string', validate: accepting };
+/** A config that declares `value` as its default, under a validator that accepts anything. */
+const configOf = (value) => ({ default: value, type: 'string', validate: accepting });
 
 /** Each declaring call, made with one config and the graph built over it. */
 const declare = {
@@ -103,4 +97,4 @@ const shapes = {
 };
 
 const value = shapes[shape](Number(levels));
-console.log(JSON.stringify(outcome(() => declare[call](configOf(call, value)))));
+console.log(JSON.stringify(outcome(() => declare[call](configOf(value)))));

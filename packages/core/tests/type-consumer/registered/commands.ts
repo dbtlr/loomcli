@@ -32,7 +32,7 @@ const keys = new Command('keys').action(({ args, options, passthrough }) => {
   // A plugin's options reach a registered Command typed, a validated one as its validator's output.
   const identifier: boolean = options.identifier;
   const level: string | undefined = options.level;
-  // @ts-expect-error TS2322: A validated plugin option reads its validator's output, never a number.
+  // @ts-expect-error TS2322: A plugin's validated option reads its validator's output, never a number.
   const wrong: number = options.level;
   // @ts-expect-error TS2339: A sibling Command's local options stay out of this handler.
   options.raw;
@@ -41,7 +41,7 @@ const keys = new Command('keys').action(({ args, options, passthrough }) => {
   return { file, identifier, level, limit, quiet, tail, wrong };
 });
 
-// @ts-expect-error TS2345: A registered Command's local option cannot take a plugin option's name.
+// @ts-expect-error TS2345: A registered Command's local option cannot take the name of a plugin's option.
 new Command('shadow').option('level', { type: 'string' });
 
 const jsonkit = new Application('jsonkit', { plugins: [vocabulary()] })

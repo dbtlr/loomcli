@@ -144,6 +144,7 @@ import type {
   InputPlaces,
   InputDeclaration,
   OptionInput,
+  Provenance,
   ValidatedInputs,
   Validation,
 } from './validation.js';
@@ -2805,9 +2806,10 @@ function tailOf(local: LocalPhase): readonly string[] {
  * their validators before the source is called, as a pass over those options alone.
  */
 async function fillScope(
-  { graph, invocation, routed }: Preparation,
+  preparation: Preparation,
   local: LocalPhase,
 ): Promise<{ globals: OptionValues; locals: OptionValues; sources: SourceOutcome }> {
+  const { graph, invocation, routed } = preparation;
   const globals = copyValues(routed.scan);
   const locals = copyValues(local.kind === 'parsed' ? local.options : emptyValues());
   const sources = await fillInputs({
@@ -2827,32 +2829,35 @@ async function fillScope(
     signal: invocation.signal,
     style: invocation.style,
     validate: (inputs, provenance) =>
-      validateValues({
-        command: routed.path,
-        defaults: invocation.defaults,
-        host: invocation.host,
-        inputs: { globals: inputs, locals: [] },
-        passthrough: tailOf(local),
-        places: invocation.places,
-        signal: invocation.signal,
+      validateInvocation(preparation, {
+        local,
+        locals,
+        only: new Set(inputs),
         sources: provenance,
-        supplied: { args: new Map(), options: globals },
+        values: globals,
       }),
   });
   return { globals, locals, sources };
 }
 
 /**
- * The one validation pass over the values the input-source stage left: every global option
+ * A validation pass over the values the input-source stage has filled: every global option
  * whatever local parsing held, and the routed Command's own declarations only when it held
- * nothing. A configuration source's own options were validated before its call, and this pass
- * reads those values rather than validating them again.
+ * nothing. `only` narrows the declarations a pass validates, as the pass over a configuration
+ * source's own options does ahead of its call, while every validator reads the same context. The
+ * run's one pass reads that earlier pass's values and problems rather than validating them again.
  */
 function validateInvocation(
   { graph, invocation, routed }: Preparation,
-  filled: { local: LocalPhase; locals: OptionValues; sources: SourceOutcome; values: OptionValues },
+  filled: {
+    local: LocalPhase;
+    locals: OptionValues;
+    only?: ReadonlySet<InputDeclaration>;
+    sources: Provenance & { validated?: Validation | undefined };
+    values: OptionValues;
+  },
 ): Promise<Validation> {
-  const { local, sources } = filled;
+  const { local, only, sources } = filled;
   const parsed = local.kind === 'parsed';
   return validateValues({
     command: routed.path,
@@ -2867,6 +2872,7 @@ function validateInvocation(
       args: parsed ? local.args : new Map(),
       options: parsed ? mergeValues(filled.values, filled.locals) : filled.values,
     },
+    ...(only ? { only } : {}),
     ...(sources.validated ? { prior: sources.validated } : {}),
   });
 }

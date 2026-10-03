@@ -37,7 +37,7 @@ const app = configured.action(({ options }) => {
   const depth: number = options.depth;
   const level: 'debug' | 'info' | 'warn' | undefined = options.level;
   const file: string | undefined = options.file;
-  // @ts-expect-error TS2322: A validated plugin option is never read as its raw string.
+  // @ts-expect-error TS2322: A plugin's validated option is never read as its raw string.
   const raw: string = options.depth;
   return { depth, file, level, printed, raw, shown, verbose };
 });
@@ -45,13 +45,13 @@ const app = configured.action(({ options }) => {
 type Received = ActionOptions<typeof app>;
 const received: Received['level'] = 'info';
 
-// @ts-expect-error TS2345: A root-local option cannot take a plugin option's name.
+// @ts-expect-error TS2345: A root-local option cannot take the name of a plugin's option.
 configured.option('verbose', { type: 'boolean' });
 
 // A list widened to `Plugin[]` states no plugins, so it names no option.
 const widened: readonly Plugin[] = [help()];
 new Application('wide', { plugins: widened }).action(({ options }) => {
-  // @ts-expect-error TS2339: A widened list names no plugin option.
+  // @ts-expect-error TS2339: A widened list names no plugin's option.
   void options.help;
 });
 

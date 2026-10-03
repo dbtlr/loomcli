@@ -350,14 +350,6 @@ function unencodable() {
     .action(dispatch);
 }
 
-/** An application whose action prints every option it receives, help's and version's included. */
-function globals() {
-  return new Application('app', { plugins, version: '1.2.0' })
-    .globalOption('file', { short: 'f', type: 'string' })
-    .option('raw', { type: 'boolean' })
-    .action(({ options, out }) => out.print(JSON.stringify(options)));
-}
-
 const scenarios = {
   'branded-line': () =>
     branded([override(versionLine, { render: (graph) => `<${graph.name}@${graph.version}>\n` })]),
@@ -372,7 +364,6 @@ const scenarios = {
   children,
   facts,
   folded,
-  globals,
   marked: () =>
     versioned({ description: 'A \uE001fixture\uE002 application.', version: '1.2.0\uE003' }),
   nested,

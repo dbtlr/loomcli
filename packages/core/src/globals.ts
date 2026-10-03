@@ -19,7 +19,7 @@ import type { CompileScope, SpellingRole } from './options.js';
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
-import { captureInputConfig, configUnread, declaringSite } from './validation.js';
+import { captureInputConfig, configUnread } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
 
 const globalSubject = 'the global options';
@@ -332,7 +332,7 @@ function frozenValues(
 function buildGlobals(node: GlobalsState, plugins: readonly BuiltPlugin[]): BuiltGlobals {
   const inputs = [...node.inputs, ...plugins.flatMap((installed) => installed.inputs)];
   const sites = new Map<InputDeclaration, InputSite>(
-    node.inputs.map((input) => [input, declaringSite(input, { call: 'globalOption', path: [] })]),
+    node.inputs.map((input) => [input, globalSite(input)]),
   );
   for (const installed of plugins) {
     const siteOf = pluginSites(installed.identity, installed.inputs);
