@@ -43,7 +43,7 @@ const application = [
 
 /** What one invocation of the inspection fixture reports about the installed plugin. */
 const inspected = z.object({
-  globals: z.array(z.object({ name: z.string(), scope: z.string() })),
+  globals: z.array(z.object({ name: z.string() })),
   root: z.object({
     children: z.array(
       z.object({ extensions: z.record(z.string(), z.unknown()), name: z.string() }),
@@ -89,17 +89,17 @@ test('jsonkit explains an otherwise invalid invocation instead of rejecting it',
   });
 });
 
-test('the inspected graph carries the plugin option, the extension value, and the version', () => {
+test("the inspected graph carries the plugin's option, the extension value, and the version", () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(result.status).toBe(0);
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
-  expect(graph.globals.map((option) => [option.name, option.scope])).toEqual([
-    ['file', 'application'],
-    ['help', 'plugin'],
-    ['version', 'plugin'],
-    ['manifest', 'plugin'],
-    ['explain', 'plugin'],
+  expect(graph.globals.map((option) => option.name)).toEqual([
+    'file',
+    'help',
+    'version',
+    'manifest',
+    'explain',
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
   // Help also supplies its value to the manifest's collecting extension, with no manifest installed.

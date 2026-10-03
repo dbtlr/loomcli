@@ -318,16 +318,19 @@ const scenarios = {
     withPlugin(named('@loomcli/log', { options: { level: { default: 7, type: 'string' } } })),
   'option-required': () =>
     withPlugin(named('@loomcli/log', { options: { level: { required: true, type: 'string' } } })),
+  'option-required-false': () =>
+    withPlugin(named('@loomcli/log', { options: { level: { required: false, type: 'string' } } })),
   'option-spelling': () =>
     new Application('app', {
       plugins: [named('@loomcli/help', { options: { help: { short: 'h', type: 'boolean' } } })],
     })
       .globalOption('host', { short: 'h', type: 'string' })
       .action(dispatch),
+  // A plugin's option meets every rule an option declaration meets, so its validator is a schema.
   'option-validate': () =>
     withPlugin(
       named('@loomcli/log', {
-        options: { level: { type: 'string', validate: z.string() } },
+        options: { level: { type: 'string', validate: 'level' } },
       }),
     ),
   'option-validate-omitted': () =>

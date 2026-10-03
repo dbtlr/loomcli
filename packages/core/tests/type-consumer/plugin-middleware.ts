@@ -17,8 +17,11 @@ type Options = OptionsOf<typeof help>;
 
 const middleware: Middleware<typeof help> = async (context) => {
   const { command, next, options, out } = context;
-  const values: PluginOptionValues<Options> = options;
-  const wanted: boolean = values.help;
+  // Options holds every global option's value, or null when one was rejected.
+  const values: PluginOptionValues<Options> | null = options;
+  const wanted: boolean = values?.help ?? false;
+  // Another plugin's option, or the application's, reads as unknown.
+  const other: unknown = options?.file;
   // A spelling is keyed by the plugin's own option names, and an option given no token has none.
   const spellings: PluginOptionSpellings<Options> = context.spellings;
   const spelled: string | undefined = spellings.help;
@@ -30,7 +33,7 @@ const middleware: Middleware<typeof help> = async (context) => {
   const request: Request | null = context.request;
   const path: unknown = request?.args.path;
   const selected: string | null = context.view;
-  await out.print(details ?? spelled ?? command.name ?? 'the root Command');
+  await out.print(details ?? spelled ?? command.name ?? String(other));
   if (!wanted) {
     context.view = selected ?? String(path);
     const outcome: ChainOutcome = await next();

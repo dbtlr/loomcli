@@ -60,6 +60,27 @@ interface EnvBinding {
  */
 type Omission = { validateOmitted: true } | { validateOmitted?: false };
 /**
+ * The presence rules a global option never declares, because its validation runs on every Command.
+ * `GlobalOptionConfig` and `GlobalOmissionConstraint` both read the rule from here.
+ */
+type PresenceRuleKey = 'required' | 'validateOmitted';
+
+/** The fault each presence rule names when a global option declares it. */
+interface PresenceRuleFaults {
+  required: {
+    'A global option declares no required; the Commands that read it check for it': never;
+  };
+  validateOmitted: {
+    'A global option declares no validateOmitted; its omission is plain absence': never;
+  };
+}
+
+/** The first presence rule a config declares, in the order the faults name them. */
+type DeclaredPresenceRule<Config> = {
+  [Key in PresenceRuleKey]: [Extract<Config, Record<Key, unknown>>] extends [never] ? never : Key;
+}[PresenceRuleKey];
+
+/**
  * The one-line summary every projection reads. It is a core fact: optional, and a string that holds
  * a character other than whitespace and no line terminator.
  */
@@ -344,7 +365,7 @@ export interface ResultBinding {
 /**
  * The routed Command's invocation after parsing and validation, which every middleware reads. The
  * values are what the action receives, the output of each declaration's schema, for that Command's
- * own arguments and local options; global and plugin option values are not here. The records are
+ * own arguments and local options; global option values are not here. The records are
  * untyped and frozen, because a middleware runs ahead of every action and the graph carries no
  * type for a value.
  */
@@ -433,15 +454,13 @@ export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted
 /**
  * A global option declares no presence rule, so its omission is always plain absence. A union
  * config fails when any member declares the key, and a wide `OptionConfig` passes, because its
- * members only allow the key.
+ * members only allow the key. `required` is named first when a config declares both.
  */
-export type GlobalOmissionConstraint<Config> = [Extract<Config, { required: unknown }>] extends [
-  never,
-]
-  ? [Extract<Config, { validateOmitted: unknown }>] extends [never]
-    ? unknown
-    : { 'A global option declares no validateOmitted; its omission is plain absence': never }
-  : { 'A global option declares no required; the Commands that read it check for it': never };
+export type GlobalOmissionConstraint<Config> = [DeclaredPresenceRule<Config>] extends [never]
+  ? unknown
+  : PresenceRuleFaults['required' extends DeclaredPresenceRule<Config>
+      ? 'required'
+      : 'validateOmitted'];
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   :
@@ -479,25 +498,12 @@ export type BooleanOption =
       });
 export type OptionConfig = StringOption | BooleanOption;
 /**
- * The parsing part of a string option config, which is all a plugin option declares. A plugin
- * option carries no schema and no presence rule, because the pre-scan consumes it ahead of routing,
- * where the validation context every schema is promised cannot exist. Its middleware interprets
- * the value.
- * A Boolean plugin option is an ordinary `BooleanOption`, which already declares none of them.
+ * The configuration of a global option a plugin declares: everything `option()` takes except the
+ * presence rules, which a global option never declares, because its validation runs on every
+ * Command. `globalOption()` states the same rule through `GlobalOmissionConstraint`, which also
+ * accepts a config typed as the wide `OptionConfig`.
  */
-export type PluginStringOption = OptionSpelling &
-  Multiplicity &
-  Described &
-  Listed &
-  OptionExtensions & {
-    type: 'string';
-    default?: string | string[];
-    polarity?: never;
-    required?: never;
-    validate?: never;
-    validateOmitted?: never;
-  };
-export type PluginOptionConfig = PluginStringOption | BooleanOption;
+export type GlobalOptionConfig = OptionConfig & Readonly<Partial<Record<PresenceRuleKey, never>>>;
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption
   ? Config extends { multiple: true }
     ? ValidatedValue<Config, string[]>

@@ -34,12 +34,51 @@ const loaders = {
   },
 };
 
+/** The source's own option names a JSON file, which its validator checks before the source runs. */
+const jsonFile = z.string().regex(/\.json$/u, 'Supply a JSON file.');
+
+/** The same rule, printing each value it receives, so a test counts the calls. */
+const countedFile = {
+  '~standard': {
+    validate: (value) => {
+      process.stdout.write(`schema:config:${value}\n`);
+      return jsonFile['~standard'].validate(value);
+    },
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/** The same rule, printing what its validation context supplied of a global and a local option. */
+const contextFile = {
+  '~standard': {
+    validate: (value, options) => {
+      const context = validationContext(options);
+      if (context?.phase === 'invocation') {
+        const { limit, max } = context.supplied.options;
+        process.stdout.write(`schema:config:${JSON.stringify({ limit, max })}\n`);
+      }
+      return jsonFile['~standard'].validate(value);
+    },
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/** The validator the source's own option takes, chosen by the test. */
+const configFile = { 1: countedFile, context: contextFile }[process.env.FIXTURE_CONFIG_COUNT ?? ''];
+
 /** The configuration plugin: one own option, and the source that answers for `configKey`. */
 const config = () =>
   plugin('@fixture/config', {
     extensions: [configKey],
     options: {
-      config: { default: 'fixture.json', env: 'FIXTURE_CONFIG_FILE', type: 'string' },
+      config: {
+        default: 'fixture.json',
+        env: 'FIXTURE_CONFIG_FILE',
+        type: 'string',
+        validate: configFile ?? jsonFile,
+      },
     },
     source: { binding: configKey, load: loaders[process.env.FIXTURE_LOADER ?? 'module'] },
   });

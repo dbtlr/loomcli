@@ -84,7 +84,8 @@ function received(stdout: string): unknown {
   return JSON.parse(line?.slice('root:'.length) ?? '');
 }
 
-const defaults = { fields: [], limit: '10', quiet: true, total: false };
+/** Every value the action receives when nothing supplies one, help's global option included. */
+const defaults = { fields: [], help: false, limit: '10', quiet: true, total: false };
 
 /** The line help adds under every usage failure, since the fixture installs it. */
 const helpHint = 'Run "app --help" to see the usage.\n';
@@ -193,6 +194,7 @@ test(
     space.write('pinned.json', json({ title: 'pinned' }));
     expect(received(space.run(['--config', 'pinned.json']).stdout)).toEqual({
       ...defaults,
+      config: 'pinned.json',
       title: 'pinned',
     });
     // The named path is no pattern, so its braces are part of the name, and it reads as JSON.
@@ -249,7 +251,9 @@ test(
     ]);
     expect(filled).toMatchObject({ status: 0, stderr: '' });
     expect(received(filled.stdout)).toEqual({
+      config: 'missing.json',
       fields: ['a'],
+      help: false,
       level: 'x',
       limit: '1',
       owner: 'o',
@@ -266,6 +270,7 @@ test(
     space.write('pinned.json', json({ title: 'pinned' }));
     expect(received(space.run(['-c', 'pinned.json'], settings({ short: 'c' })).stdout)).toEqual({
       ...defaults,
+      config: 'pinned.json',
       title: 'pinned',
     });
     expect(space.run(['-c', 'missing.json'], settings({ short: 'c' })).stderr).toBe(
@@ -326,7 +331,7 @@ test(
       const discovered = space.run([], settings({ file }));
       expect(discovered).toMatchObject({ status: 0, stderr: '' });
       expect(received(discovered.stdout)).toEqual(filled);
-      expect(received(space.run(['--config', file]).stdout)).toEqual(filled);
+      expect(received(space.run(['--config', file]).stdout)).toEqual({ ...filled, config: file });
     }
     // An extension compares as written, so .TOML reads as JSON.
     space.write('.app.TOML', 'total = true\n');
@@ -499,6 +504,7 @@ test(
     );
     expect(received(space.run([], yaml).stdout)).toEqual({
       fields: ['debug', '31', '1', 'no'],
+      help: false,
       level: 'debug',
       limit: '10',
       quiet: false,
@@ -618,7 +624,7 @@ test(
     space.write('.app.yaml', 'title: secret\n');
     // The action's line, with the options in declaration order, is all that reaches stdout.
     const expected =
-      'root:{"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret"}\nresolved:0\n';
+      'root:{"help":false,"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret"}\nresolved:0\n';
     expect(space.run([], { ...yaml, LOG_STREAM: '1', LOG_TOKENS: '1' })).toEqual({
       status: 0,
       stderr: '',
@@ -681,6 +687,7 @@ test(
     );
     expect(received(space.run([]).stdout)).toEqual({
       fields: ['a', '2'],
+      help: false,
       limit: '5',
       quiet: false,
       total: true,
@@ -865,7 +872,6 @@ test(
       graph.globals.find((option: { name: string }) => option.name === 'config'),
     ).toMatchObject({
       description: 'Read configuration from this file alone.',
-      scope: 'plugin',
       short: null,
       type: 'string',
     });

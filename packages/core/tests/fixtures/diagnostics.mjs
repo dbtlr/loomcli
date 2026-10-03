@@ -90,7 +90,7 @@ switch (scenario) {
             arguments: [{ options: { verbose: { type: 'boolean' } } }],
             call: 'trace',
             mark: '0.options.verbose',
-            note: 'the plugin option',
+            note: "the plugin's global option",
           },
           {
             arguments: ['verbose', { type: 'string', validate: { '~standard': {} } }],

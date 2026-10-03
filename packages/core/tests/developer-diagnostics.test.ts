@@ -67,7 +67,7 @@ test('a fault between two declarations carries a finding for each, and a correct
       'Option "verbose" is declared by plugin "@acme/trace" and as a local option on Command "get".',
       '',
       "    trace({ options: { verbose: { type: 'boolean' } } })",
-      '                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the plugin option',
+      "                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the plugin's global option",
       '',
       '    // get',
       "    new Command('get')",

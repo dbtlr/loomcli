@@ -491,7 +491,7 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/trace', { options: { verbose: { type: 'boolean' } } })",
         "verbose: { type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
       onApplication(
         "globalOption('verbose', { type: 'boolean' })",
@@ -509,7 +509,7 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/trace', { options: { trace: { short: 't', type: 'boolean' } } })",
         "short: 't'",
-        'the plugin option',
+        "the plugin's global option",
       ),
       onCommand(
         ['get'],
@@ -529,12 +529,12 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/log', { options: { verbose: { type: 'boolean' } } })",
         "verbose: { type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
       bare(
         "plugin('@acme/trace', { options: { verbose: { polarity: 'both', type: 'boolean' } } })",
         "verbose: { polarity: 'both', type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
     ],
     headline: 'OPTION DECLARED TWICE',
@@ -828,6 +828,35 @@ test('a global option validator that throws marks the validate key of its global
     'validate: …',
   );
   expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
+});
+
+test("a default its validator rejects on a plugin's option marks the default in the plugin's options record", () => {
+  expect(invoke(fixture, ['plugin-invalid-default'])).toEqual({
+    status: 1,
+    stderr: diagnostic({
+      correction: 'Fix the default or its validator.',
+      findings: [
+        marked(
+          "    plugin('@acme/log', { options: { level: { default: 'x', type: 'string', validate: … } } })",
+          "default: 'x'",
+        ),
+      ],
+      headline: 'DEFAULT REJECTED',
+      rule: 'invalid-default',
+      sentence: 'Option "level" has an invalid default.\nOption "level": Use a whole number.',
+    }),
+    stdout: '',
+  });
+});
+
+test("a validator that throws on a plugin's option marks the validate key in the plugin's options record", () => {
+  const result = invoke(fixture, ['plugin-validator-throws']);
+  expect(result.status).toBe(1);
+  const finding = marked(
+    "    plugin('@acme/log', { options: { level: { type: 'string', validate: … } } })",
+    'validate: …',
+  );
+  expect(result.stderr).toContain(`\n\n${finding.join('\n')}\n\n`);
 });
 
 test('every rule of the family has a pinned diagnostic', () => {

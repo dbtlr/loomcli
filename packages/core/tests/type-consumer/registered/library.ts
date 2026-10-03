@@ -6,7 +6,9 @@ import { build, colliding, direct, factory, summarize } from '../library/dist/li
 
 const help = extension('consumer/help', { schema: z.string(), target: 'command' });
 const enriched = build.extend(help('Application help.'));
-const app = new Application('consumer')
+const vocabulary = plugin('consumer/vocabulary', { options: { identifier: { type: 'boolean' } } });
+// The plugin's options join the globals, which library Commands that require none still meet.
+const app = new Application('consumer', { plugins: [vocabulary] })
   .globalOption('file', { short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
   .globalOption('limit', { type: 'string', validate: z.string().transform(Number) })
@@ -41,7 +43,6 @@ enriched.option;
 // @ts-expect-error TS2345: A command only accepts command-targeted values.
 enriched.extend(extension('consumer/input', { schema: z.string(), target: 'option' })('wrong'));
 
-const vocabulary = plugin('consumer/vocabulary', { options: { identifier: { type: 'boolean' } } });
 const configured = new Application('tuple', { plugins: [vocabulary] }).extend(help('Root'));
 type Vocabulary = keyof OptionsOf<EnvironmentOf<typeof configured>['plugins'][number]>;
 const name: Vocabulary = 'identifier';

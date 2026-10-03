@@ -197,8 +197,8 @@ function addSpelling(claims: Map<string, Claim>, spelling: string, claim: Claim)
 /**
  * One Boolean option's value for one invocation: the value the parser consumed, or the value its
  * declared polarity gives an absent option. A negative-only option is absent as `true`, because its
- * one spelling turns the value off. Every scope reads it here, so a plugin option and a validated
- * declaration answer the same rule.
+ * one spelling turns the value off. Validation reads every Boolean option's value here, whichever
+ * scope declared it.
  */
 export function booleanValue(values: OptionValues, name: string, config: OptionConfig): boolean {
   return values.booleans.get(name) ?? config.polarity === 'negative';

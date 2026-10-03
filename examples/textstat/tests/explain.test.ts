@@ -25,7 +25,7 @@ const application = [
 
 /** What one invocation of the inspection fixture reports about the installed plugin. */
 const inspected = z.object({
-  globals: z.array(z.object({ name: z.string(), scope: z.string() })),
+  globals: z.array(z.object({ name: z.string() })),
   root: z.object({ extensions: z.record(z.string(), z.unknown()) }),
   version: z.string(),
 });
@@ -72,17 +72,17 @@ test('an unknown option on the root gains the hint that names the application al
   });
 });
 
-test('the inspected graph carries the plugin option, the extension value, and the version', () => {
+test("the inspected graph carries the plugin's option, the extension value, and the version", () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(result.status).toBe(0);
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
-  expect(graph.globals.map((option) => [option.name, option.scope])).toEqual([
-    ['help', 'plugin'],
-    ['version', 'plugin'],
-    ['manifest', 'plugin'],
-    ['config', 'plugin'],
-    ['explain', 'plugin'],
+  expect(graph.globals.map((option) => option.name)).toEqual([
+    'help',
+    'version',
+    'manifest',
+    'config',
+    'explain',
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
   // Help also supplies its value to the manifest's collecting extension, with no manifest installed.

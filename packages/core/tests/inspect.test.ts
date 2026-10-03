@@ -8,14 +8,13 @@ const none = '#undefined';
 /** A declaration that carries no extension value reports the empty record, never a missing key. */
 const bare = { extensions: {}, schema: null };
 
-/** An option the application declared, global or local, reports the application scope. */
+/** The facts an option reports when its declaration states none of them, global or local. */
 const owned = {
   deprecated: none,
   env: null,
   extensions: {},
   hidden: false,
   schema: null,
-  scope: 'application',
 };
 
 function invokeInspect(graph: string, mode = 'json') {

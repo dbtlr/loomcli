@@ -216,6 +216,21 @@ const reported = {
         .option('limit', { default: 'x', type: 'string', validate: digits })
         .action(act),
     ),
+  // A plugin's option is a global option, so its default and its validator meet the same rules.
+  'plugin-invalid-default': () =>
+    new Application('probe', {
+      packet: { build: 'development' },
+      plugins: [
+        plugin('@acme/log', {
+          options: { level: { default: 'x', type: 'string', validate: digits } },
+        }),
+      ],
+    }).command(leaf('get')),
+  'plugin-validator-throws': () =>
+    new Application('probe', {
+      packet: { build: 'development' },
+      plugins: [plugin('@acme/log', { options: { level: { type: 'string', validate: broken } } })],
+    }).command(leaf('get')),
   'validator-throws': () =>
     new Application('probe', { packet: { build: 'development' } }).command(
       new Command('get').option('limit', { type: 'string', validate: broken }).action(act),
@@ -225,6 +240,7 @@ const reported = {
 /** The tokens each reported scenario runs with, when it needs more than the Command's name. */
 const argvOf = {
   'global-validator-throws': ['get', '--limit', '5'],
+  'plugin-validator-throws': ['get', '--level', '5'],
   'validator-throws': ['get', '--limit', '5'],
 };
 

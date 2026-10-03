@@ -8,11 +8,12 @@ import {
 } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isProseLine } from './facts.js';
+import { frozenValues } from './globals.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
-import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
+import { loadDefault, pluginSentence } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
 import {
   foreignThrow,
@@ -22,7 +23,7 @@ import {
 } from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type { Host, Out } from './types.js';
-import type { OptionInput } from './validation.js';
+import type { OptionInput, Provenance, Validation } from './validation.js';
 
 /**
  * One scope the stage fills: its options in declaration order, and the values argv supplied them.
@@ -54,6 +55,12 @@ interface SourceStage {
   signal: AbortSignal;
   /** The contextual style an action receives, so a source escapes raw data before it warns. */
   style: ContextualStyle;
+  /**
+   * Validates the listed options alone, from the values the stage has filled so far, with what the
+   * environment tier found about them, under the context every validator of the run reads. A
+   * configuration source's own options pass through it before the source loads.
+   */
+  validate: (inputs: readonly OptionInput[], provenance: Provenance) => Promise<Validation>;
 }
 
 /**
@@ -61,12 +68,12 @@ interface SourceStage {
  * came from, by option name, and `rejected` names the variable of each Boolean option whose value
  * is outside the grammar. Both are internal to core's failure messages. `fault` is a configuration
  * source's own fault, or the failure its resolver threw, which stops the stage and takes the place
- * of every validation problem.
+ * of every validation problem. `validated` is the pass over the source's own options ahead of its
+ * call, whose values and problems the run's one validation pass reads.
  */
-interface SourceOutcome {
+interface SourceOutcome extends Provenance {
   fault: LoomError | undefined;
-  labels: ReadonlyMap<string, string>;
-  rejected: ReadonlyMap<string, string>;
+  validated: Validation | undefined;
 }
 
 /** The Boolean grammar a bound variable is read through: the whole value, case-insensitive. */
@@ -243,8 +250,12 @@ function isResolverExport(value: unknown): value is (context: SourceContext) => 
   return typeof value === 'function';
 }
 
-/** The one installed plugin that declares a configuration source, and the options to ask it. */
+/**
+ * The one installed plugin that declares a configuration source, its own option values, which
+ * passed their validators before the call, and the options to ask it.
+ */
 interface SourceCall {
+  options: Readonly<Record<string, unknown>>;
   owner: BuiltPlugin & { source: BuiltSource };
   requested: readonly Requested[];
 }
@@ -266,7 +277,7 @@ function sourceFailure(sentence: string, error: unknown): InternalError {
  * Core builds the context before the call, so a fault of its own is never the plugin's.
  */
 async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]> {
-  const { owner, requested } = call;
+  const { options, owner, requested } = call;
   const resolver = await loadDefault(owner.identity, owner.source.load, {
     guard: isResolverExport,
     noun: 'source',
@@ -278,7 +289,8 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   const context: SourceContext = {
     graph: stage.inspected(),
     host: stage.host,
-    options: pluginValues(owner.inputs, stage.globals.values),
+    // Validation produced the record the plugin's option types describe.
+    options,
     out: stage.out,
     requests: requested.map(({ input, scope }) => stage.request(input, scope.global)),
     style: stage.style,
@@ -356,8 +368,11 @@ function requestedOf(
 
 /**
  * The input-source stage: the environment, then the configuration source, for every option in
- * scope that argv left unfilled. When no option is left to ask, the source never loads. A source
- * fault stops the stage and fills nothing more.
+ * scope that argv left unfilled. When no option is left to ask, the source never loads. The
+ * source's own options pass their validators before it loads, and when one is rejected the source
+ * is never called and the problem reports with every other validation problem, while each option
+ * the source would have been asked to fill reports no missing value. A source fault stops the
+ * stage and fills nothing more.
  */
 async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   const scopes = stage.locals ? [stage.globals, stage.locals] : [stage.globals];
@@ -370,19 +385,31 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
     ? requestedOf(scopes, rejected, { binding: owner.source.binding, extensions: stage.extensions })
     : [];
   if (!owner || requested.length === 0) {
-    return { fault: undefined, labels, rejected };
+    return { fault: undefined, labels, rejected, validated: undefined };
   }
+  let validated: Validation | undefined = undefined;
   try {
-    for (const { label, target, value } of await askSource(stage, { owner, requested })) {
+    validated = await stage.validate(owner.inputs, { labels, rejected });
+    // A rejected own option skips the source, and the options it would have filled report no omission.
+    if (validated.failure) {
+      const unanswered = new Set(requested.map(({ input }) => input));
+      return { fault: undefined, labels, rejected, unanswered, validated };
+    }
+    // A run cancelled while the source's own options were validated loads nothing.
+    if (stage.signal.aborted) {
+      return { fault: undefined, labels, rejected, validated };
+    }
+    const options = frozenValues(owner.inputs, validated.values);
+    for (const { label, target, value } of await askSource(stage, { options, owner, requested })) {
       fill(target.scope.values, target.input.name, value);
       labels.set(target.input.name, label);
     }
-    return { fault: undefined, labels, rejected };
+    return { fault: undefined, labels, rejected, validated };
   } catch (error) {
     // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
     const fault = error instanceof LoomError ? error : foreignFailure(error);
-    return { fault, labels, rejected };
+    return { fault, labels, rejected, validated };
   }
 }
 

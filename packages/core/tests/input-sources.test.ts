@@ -17,6 +17,20 @@ function line(stdout: string, label: string): string | undefined {
   return stdout.split('\n').find((entry) => entry.startsWith(`${label}:`));
 }
 
+/**
+ * The global option values every action and middleware reads when nothing else supplies them: the
+ * application's `limit`, then the configuration plugin's `config` under `full`, then the log and
+ * help plugins' options. An option whose value is undefined is absent from the printed JSON.
+ */
+const full = '"limit":"10","config":"fixture.json","verbose":false,"help":false';
+const plain = '"limit":"10","verbose":false,"help":false';
+
+/** One option's value in the JSON record one stdout line prints after its label. */
+function valueOf(stdout: string, label: string, name: string): unknown {
+  const printed = line(stdout, label)?.slice(label.length + 1);
+  return printed === undefined ? undefined : JSON.parse(printed)[name];
+}
+
 /** Settings the fixture source answers from, keyed by the binding value an option carries. */
 function settings(values: Record<string, unknown>): { FIXTURE_SETTINGS: string } {
   return { FIXTURE_SETTINGS: JSON.stringify(values) };
@@ -24,14 +38,13 @@ function settings(values: Record<string, unknown>): { FIXTURE_SETTINGS: string }
 
 test('argv wins over the environment, the environment over the source, the source over the default', () => {
   const both = { FIXTURE_LIMIT: '2', ...settings({ 'limits.bytes': '3' }) };
-  expect(line(run(['--limit', '1'], both).stdout, 'root')).toBe('root:{"limit":"1"}');
-  expect(line(run([], both).stdout, 'root')).toBe('root:{"limit":"2"}');
-  expect(line(run([], { ...both, FIXTURE_LIMIT: '' }).stdout, 'root')).toBe('root:{"limit":"3"}');
+  expect(valueOf(run(['--limit', '1'], both).stdout, 'root', 'limit')).toBe('1');
+  expect(valueOf(run([], both).stdout, 'root', 'limit')).toBe('2');
+  expect(valueOf(run([], { ...both, FIXTURE_LIMIT: '' }).stdout, 'root', 'limit')).toBe('3');
   expect(run([])).toEqual({
     status: 0,
     stderr: '',
-    stdout:
-      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{"limit":"10"}\nresolved:0\n',
+    stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{${full}}\nresolved:0\n`,
   });
 });
 
@@ -43,7 +56,7 @@ test('a value filled from the environment is supplied in every sense', () => {
     stderr: '',
     stdout: [
       'schema:file:{"supplied":"a.txt","value":"a.txt"}',
-      'count:{"limit":"10","max":"7","file":"a.txt","total":false,"quiet":true,"color":false}',
+      `count:{${plain},"max":"7","file":"a.txt","total":false,"quiet":true,"color":false}`,
       'resolved:0',
       '',
     ].join('\n'),
@@ -62,7 +75,7 @@ test.each([
   const result = run(['count', '--max', '1'], env, 'plain');
   expect(result.status).toBe(0);
   expect(line(result.stdout, 'count')).toBe(
-    `count:{"limit":"10","max":"1","file":"none","total":${expected},"quiet":${expected},"color":${expected}}`,
+    `count:{${plain},"max":"1","file":"none","total":${expected},"quiet":${expected},"color":${expected}}`,
   );
 });
 
@@ -78,7 +91,7 @@ test('a Boolean variable outside the grammar is a usage failure naming the varia
   );
 });
 
-test('problems report the globals, then a rejected plugin variable, then the local options', () => {
+test("problems report the application's globals, then a plugin's, then the local options", () => {
   const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'yes', FIXTURE_VERBOSE: 'yes' };
   expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
     [
@@ -100,17 +113,15 @@ test('NO_COLOR keeps its presence rule while an option bound to it reads the gra
   expect(paint({ NO_COLOR: '1' })).toBe('paint:true:X');
 });
 
-test('a plugin option filled from the environment activates its middleware, with false as well', () => {
-  expect(line(run([], { FIXTURE_VERBOSE: '1' }, 'plain').stdout, 'log')).toBe(
-    'log:{"verbose":true}',
-  );
-  expect(line(run([], { FIXTURE_VERBOSE: 'false' }, 'plain').stdout, 'log')).toBe(
-    'log:{"verbose":false}',
+test("a plugin's option filled from the environment activates its middleware, with false as well", () => {
+  expect(valueOf(run([], { FIXTURE_VERBOSE: '1' }, 'plain').stdout, 'log', 'verbose')).toBe(true);
+  expect(valueOf(run([], { FIXTURE_VERBOSE: 'false' }, 'plain').stdout, 'log', 'verbose')).toBe(
+    false,
   );
   expect(run([], {}, 'plain')).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'root:{"limit":"10"}\nresolved:0\n',
+    stdout: `root:{${plain}}\nresolved:0\n`,
   });
 });
 
@@ -139,11 +150,14 @@ test('a bad variable and a failing source report nothing under --help', () => {
   });
 });
 
+/** The global values when argv fills `limit` and the environment fills `level`. */
+const filled = '"limit":"1","config":"fixture.json","level":"info","verbose":false,"help":false';
+
 test('the source is never loaded when every bound option is already filled', () => {
   expect(run(['--limit', '1'], { FIXTURE_LEVEL: 'info', FIXTURE_LOADER: 'throws' })).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'log:{"level":"info","verbose":false}\nroot:{"limit":"1"}\nresolved:0\n',
+    stdout: `log:{${filled}}\nroot:{${filled}}\nresolved:0\n`,
   });
 });
 
@@ -158,7 +172,7 @@ test('a Boolean variable outside the grammar keeps the source unloaded', () => {
   ).toEqual({
     status: 2,
     stderr: 'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
-    stdout: 'schema:file:{}\nlog:{"level":"info","verbose":false}\nresolved:2\n',
+    stdout: `schema:file:{}\nlog:{${filled}}\nresolved:2\n`,
   });
 });
 
@@ -168,7 +182,7 @@ test('a source answers a multiple option with a list, and an empty string fills'
   expect(line(result.stdout, 'source')).toBe(
     'source:{"options":{"config":"fixture.json"},"requests":["limit","level","fields","title"]}',
   );
-  expect(line(result.stdout, 'select')).toBe('select:{"limit":"10","fields":["a","b"],"title":""}');
+  expect(line(result.stdout, 'select')).toBe(`select:{${full},"fields":["a","b"],"title":""}`);
 });
 
 test('an empty list still reports the required message of a required multiple option', () => {
@@ -192,18 +206,106 @@ test('a failure on a filled value names its source, and an argv message is uncha
   );
 });
 
-test('with a local parse fault, a plugin option still fills and activates and a local one does not', () => {
+test("with a local parse fault, a plugin's option still fills and activates and a local one does not", () => {
   expect(run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' })).toEqual({
     status: 2,
     stderr:
       'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
-    stdout:
-      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nlog:{"verbose":true}\nresolved:2\n',
+    stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nlog:{${full.replace('"verbose":false', '"verbose":true')}}\nresolved:2\n`,
   });
   expect(run(['cache'], { FIXTURE_VERBOSE: '1' }, 'plain')).toEqual({
     status: 2,
     stderr: 'app: Command "cache" requires a subcommand. Use one of: clear.\n',
-    stdout: 'log:{"verbose":true}\nresolved:2\n',
+    stdout: `log:{${plain.replace('"verbose":false', '"verbose":true')}}\nresolved:2\n`,
+  });
+});
+
+test("with a local parse fault, a global option's validator still runs and a rejection makes options null", () => {
+  expect(run(['count', '--bogus', '--limit', 'many'], { FIXTURE_VERBOSE: '1' }, 'plain')).toEqual({
+    status: 2,
+    stderr:
+      'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
+    stdout: 'log:null\nresolved:2\n',
+  });
+});
+
+test("the source's own options pass their validators before the call, which a rejection skips", () => {
+  expect(run(['--config', 'settings.txt'])).toEqual({
+    status: 2,
+    stderr: 'app: Option "--config": Supply a JSON file.\n',
+    stdout: 'resolved:2\n',
+  });
+  expect(run([], { FIXTURE_CONFIG_FILE: 'settings.txt', FIXTURE_VERBOSE: '1' })).toEqual({
+    status: 2,
+    stderr: 'app: Option "--config" (from FIXTURE_CONFIG_FILE): Supply a JSON file.\n',
+    stdout: 'log:null\nresolved:2\n',
+  });
+  // A takeover reports nothing, and the source is still never called.
+  expect(run(['--help', '--config', 'settings.txt'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'help\nresolved:0\n',
+  });
+});
+
+test("a rejected source option skips the source and reports with every other problem, the application's first", () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['--size', 'zz', '--profile', 'nope'])).toEqual({
+    status: 2,
+    stderr: [
+      'app: Option "--size": Expected a whole number.',
+      'app: Option "--profile": Expected one of: dev, prod.',
+      '',
+    ].join('\n'),
+    stdout: 'resolved:2\n',
+  });
+});
+
+test('an option the skipped source would have filled reports no missing value, and its validator never judges the omission', () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['x', '--profile', 'nope', '--title', 't'])).toEqual({
+    status: 2,
+    stderr: 'app: Option "--profile": Expected one of: dev, prod.\n',
+    stdout: 'resolved:2\n',
+  });
+});
+
+test('a required option the skipped source was never asked about still reports as missing', () => {
+  const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
+  expect(invoke(profiles, ['x', '--profile', 'nope'])).toEqual({
+    status: 2,
+    stderr: [
+      'app: Option "--profile": Expected one of: dev, prod.',
+      'app: Option "--title" is required. Supply a value.',
+      '',
+    ].join('\n'),
+    stdout: 'resolved:2\n',
+  });
+});
+
+test("a source option's validator reads the same context as every other validator", () => {
+  const argv = ['count', '--max', '7', '--limit', '3', '--config', 'other.json'];
+  const result = run(argv, { FIXTURE_CONFIG_COUNT: 'context' });
+  expect(line(result.stdout, 'schema:config')).toBe('schema:config:{"limit":"3","max":"7"}');
+  expect(line(result.stdout, 'source')).toBe(
+    'source:{"options":{"config":"other.json"},"requests":["level","total"]}',
+  );
+});
+
+test("the source's own options meet their validator once per value", () => {
+  const result = run(['--config', 'argv.json'], { FIXTURE_CONFIG_COUNT: '1' });
+  expect(result).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      // The declared default, validated before any token is read.
+      'schema:config:fixture.json',
+      'schema:config:argv.json',
+      'source:{"options":{"config":"argv.json"},"requests":["limit","level"]}',
+      `root:{${full.replace('fixture.json', 'argv.json')}}`,
+      'resolved:0',
+      '',
+    ].join('\n'),
   });
 });
 
@@ -477,8 +579,7 @@ test('a source warns through lanes.warn, ahead of a takeover, and an override re
   expect(run([], { FIXTURE_SOURCE: 'warn' })).toEqual({
     status: 0,
     stderr: `⚠ ${warned}`,
-    stdout:
-      'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{"limit":"10"}\nresolved:0\n',
+    stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{${full}}\nresolved:0\n`,
   });
   expect(run(['--help'], { FIXTURE_SOURCE: 'warn' })).toEqual({
     status: 0,

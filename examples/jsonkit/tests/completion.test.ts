@@ -7,7 +7,7 @@ import { main } from './documents.js';
 /** The documents in each session's directory: `d` completes to `doc-`, and `a` to `alp`. */
 const files = ['alpha.json', 'alpine.json', 'doc-a.json', 'doc-b.json'];
 
-/** The options in scope at every jsonkit Command: the global option and the plugin options. */
+/** The options in scope at every jsonkit Command: the global options, the application's and each plugin's. */
 const options = ['--explain', '--file', '--help', '--manifest', '--version'];
 
 /** The view names of the `paths` rows. */

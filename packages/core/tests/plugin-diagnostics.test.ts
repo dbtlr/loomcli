@@ -105,10 +105,6 @@ const explanations = {
     'middleware, hooks, and views once, so a second installation would contribute',
     'each of them again.',
   ],
-  'plugin-option-rule': [
-    "A plugin's middleware interprets its own options' values, so a plugin option",
-    'declares how it parses and nothing more: no validator and no presence rule.',
-  ],
   'rendering-policy': [
     'The rendering policy decides whether output carries color, modifiers,',
     'hyperlinks, and terminal controls. color, modifiers, and hyperlinks each read',
@@ -190,6 +186,11 @@ const shared = {
     'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
     "extension's collect each answer one yes-or-no question about a declaration, so",
     'each holds true or false. A value such as the string "false" would read as true.',
+  ],
+  'global-presence-rule': [
+    'A global option is validated on every Command, the Commands of plugins included,',
+    'so a rule that its value must exist would fail a Command that never reads it. An',
+    'omitted global option is absent.',
   ],
   'not-a-command': [
     'A Command value carries the declaration that routing, parsing, and help read.',
@@ -624,31 +625,29 @@ const cases: Record<string, Expected> = {
     rule: 'not-an-object',
     sentence: 'Plugin "@acme/log" option "level" is not an option declaration.',
   },
-  'option-rule': {
-    correction:
-      'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+  'option-presence': {
+    correction: 'Remove required, and check for the value in each Command that needs it.',
     findings: [
       bare(
         "plugin('@acme/log', { options: { level: { required: true, type: 'string' } } })",
         'required: true',
       ),
     ],
-    headline: 'RULE ON A PLUGIN OPTION',
-    rule: 'plugin-option-rule',
+    headline: 'PRESENCE RULE ON A GLOBAL OPTION',
+    rule: 'global-presence-rule',
     sentence: 'Plugin "@acme/log" option "level" declares required.',
   },
-  'option-rule-sibling': {
-    correction:
-      'Remove it; a plugin option carries no validator or presence rule, and the middleware interprets the value.',
+  'option-presence-sibling': {
+    correction: 'Remove validateOmitted, and check for the value in each Command that needs it.',
     findings: [
       bare(
-        "plugin('@acme/log', { options: { level: { required: true, type: 'string' }, trace: … } })",
-        'required: true',
+        "plugin('@acme/log', { options: { level: { type: 'string', validateOmitted: false }, trace: … } })",
+        'validateOmitted: false',
       ),
     ],
-    headline: 'RULE ON A PLUGIN OPTION',
-    rule: 'plugin-option-rule',
-    sentence: 'Plugin "@acme/log" option "level" declares required.',
+    headline: 'PRESENCE RULE ON A GLOBAL OPTION',
+    rule: 'global-presence-rule',
+    sentence: 'Plugin "@acme/log" option "level" declares validateOmitted.',
   },
   'option-unreadable': {
     correction:
