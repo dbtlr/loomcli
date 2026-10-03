@@ -510,9 +510,9 @@ interface WordsRead {
 
 /**
  * Reads a word list through routing, against the global options alone, and then the routed
- * Command's own words, up to the first bare `--`, against the one table that Command holds. Parsing continues past a fault, so every
- * global option is found wherever it sits, and only the first fault in word order is held. Only
- * an unknown Command throws.
+ * Command's own words, up to the first bare `--`, against the one table that Command holds.
+ * Parsing continues past a fault, so every global option is found wherever it sits, and only the
+ * first fault in word order is held. Only an unknown Command throws.
  */
 function readWords(
   graph: BuiltGraph,

@@ -214,6 +214,21 @@ test('reads every structural fault among the earlier words as no position', () =
   expect(locateAll([['keys', '-F', 'a', '-F', '']])).toEqual([awaiting(['keys'], 'field', '')]);
 });
 
+test('reads a last word that repeats an option that is not multiple as nothing to complete', () => {
+  expect(
+    locateAll([
+      ['keys', '-d', '1', '--depth=x'],
+      ['keys', '-d', '1', '-dx'],
+      ['keys', '-ss'],
+    ]),
+  ).toEqual([none, none, none]);
+  // A long spelling with no "=" may still grow into another spelling, so it stays an option.
+  expect(locateAll([['keys', '-s', '--sort']])[0]).toMatchObject({
+    kind: 'option',
+    prefix: '--sort',
+  });
+});
+
 test('lists the options earlier words supplied, globals and locals, in supplied order', () => {
   expect(
     locateAll([
