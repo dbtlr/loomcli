@@ -13,6 +13,7 @@ import { bashScript } from '../src/completion/bash.js';
 import { fishScript } from '../src/completion/fish.js';
 import { identifier } from '../src/completion/name.js';
 import { zshScript } from '../src/completion/zsh.js';
+import { format } from '../src/format/plugin.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
 
@@ -111,6 +112,21 @@ describe('the answer', () => {
     );
     expect(complete('paths', '--n')).toBe(framed(['--no-color\tColor output.'], 4));
     expect(complete('paths', '-q')).toBe(framed([], 4));
+  });
+
+  it("a root's own --format before a group's name leaves routing open, so the group's children are offered", () => {
+    const table = { render: () => 'table\n' };
+    const graph = new Application('store', { plugins: [format()] })
+      .command(new Command('cache').command(new Command('list').action(() => {})))
+      .result({ views: { table } })
+      .action(() => {})
+      .inspect();
+    expect(answer(graph, locate(graph, ['--format', 'json', 'cache', '']))).toBe(
+      answer(graph, locate(graph, ['cache', ''])),
+    );
+    expect(answer(graph, locate(graph, ['--format', 'json', 'cache', '']))).toBe(
+      framed(['list'], 4),
+    );
   });
 
   it('a value is never offered empty, and never as a word whose first character is a tilde', () => {

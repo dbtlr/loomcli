@@ -173,6 +173,24 @@ test('reads a bare word as a child name until routing commits', () => {
   ]);
 });
 
+test("leaves a parent's own option unbound while routing is still open, so a plain last word names a child", () => {
+  expect(
+    locateAll([
+      ['-a', 'cache', ''],
+      ['-a', 'cache', 'l'],
+      ['-a', ''],
+      ['-a', 'cache', 'list', ''],
+      ['-a', 'cache', '-'],
+    ]),
+  ).toEqual([
+    { command: ['cache'], kind: 'command', own: true, prefix: '' },
+    { command: ['cache'], kind: 'command', own: true, prefix: 'l' },
+    { command: [], kind: 'command', own: true, prefix: '' },
+    none,
+    none,
+  ]);
+});
+
 test("reads a parent's own option and carries routing on to the child that receives it", () => {
   expect(
     locateAll([

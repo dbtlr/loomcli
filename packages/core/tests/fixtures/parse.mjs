@@ -102,6 +102,8 @@ function rooted() {
     .option('pretty', { short: 'p', type: 'boolean' })
     .option('raw', { short: 'r', type: 'boolean' })
     .option('numbered', { short: 'n', type: 'boolean' })
+    .option('level', { type: 'string' })
+    .option('dry', { type: 'boolean' })
     .action(report(['get']));
   const list = new Command('list')
     .option('deep', { type: 'boolean' })
@@ -116,6 +118,8 @@ function rooted() {
     .option('pretty', { short: 'p', type: 'boolean' })
     .option('verbose', { type: 'boolean' })
     .option('name', { short: 'n', type: 'string' })
+    .option('level', { type: 'boolean' })
+    .option('dry', { type: 'string' })
     .command(get)
     .command(cache)
     .action(report([]));

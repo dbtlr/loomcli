@@ -243,13 +243,22 @@ function readOptionWord(context: WordContext, word: string, next: string | undef
  */
 type HeldFault = ({ error: LoomError } | { extra: number }) & { at: number };
 
+/** An occurrence of a declared option: a value, or a fault its declaration found. */
+type DeclaredOccurrence = Occurrence & { kind: 'missing' | 'repeated' | 'unexpected' | 'value' };
+
 /**
- * An occurrence routing read against the own option of a Command that has an action and children.
- * It binds to the Command routing finally reaches, once routing ends.
+ * An occurrence routing read against the own option of a Command that has an action and children,
+ * with the fault that declaration found, if any. It binds to the Command routing finally reaches,
+ * once routing ends.
  */
 interface PendingOccurrence {
   at: number;
-  occurrence: Occurrence & { kind: 'value' };
+  occurrence: DeclaredOccurrence;
+}
+
+/** Whether an occurrence is of a Command's own option, which routing holds back until it ends. */
+function isOwnOccurrence(occurrence: Occurrence): occurrence is DeclaredOccurrence {
+  return 'option' in occurrence && occurrence.kind !== 'awaiting' && !occurrence.option.global;
 }
 
 /** A string option the last word left waiting for its value. */
@@ -408,21 +417,24 @@ function optionFault(
 function apply(state: ReadState, reading: WordReading): void {
   for (const occurrence of reading.occurrences) {
     stamp(state);
-    if (occurrence.kind === 'value' && !occurrence.option.global && !state.routed) {
+    const held = !state.routed && isOwnOccurrence(occurrence);
+    if (held) {
       state.pending.push({ at: state.at, occurrence });
-    } else if (!applyOccurrence(state, occurrence)) {
+    }
+    if (held ? occurrence.kind !== 'value' : !applyOccurrence(state, occurrence)) {
       return;
     }
   }
 }
 
 /**
- * The occurrence routing read against a parent's own option, read again against the routed
- * Command's declaration of the same spelling. A Command without it reports the spelling as it
- * reports any its table lacks, and a declaration of another value class is misplaced, because the
- * parent's declaration already decided whether the next word was the value.
+ * The occurrence routing read against a parent's own option, bound to the routed Command's
+ * declaration of the same spelling. A Command without it reports the spelling as it reports any its
+ * table lacks, and a declaration of another value class is misplaced, because the parent's
+ * declaration already decided whether the next word was the value, and the words are never read
+ * again. A declaration of the same class keeps the fault the parent's declaration found, if any.
  */
-function rebound(state: ReadState, pending: Occurrence & { kind: 'value' }): Occurrence {
+function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
   const { spelling } = pending;
   const option = state.command.table.get(spelling);
   if (!option) {
@@ -431,6 +443,16 @@ function rebound(state: ReadState, pending: Occurrence & { kind: 'value' }): Occ
   if (option.type !== pending.option.type) {
     return { kind: 'misplaced', spelling };
   }
+  return pending.kind === 'value' ? boundValue(state, pending, option) : { ...pending, option };
+}
+
+/** A value routing held back, bound to the routed Command's declaration of the same class. */
+function boundValue(
+  state: ReadState,
+  pending: Occurrence & { kind: 'value' },
+  option: TableSpelling,
+): Occurrence {
+  const { spelling } = pending;
   if (repeats({ table: state.command.table, values: state.values }, option)) {
     return { kind: 'repeated', option, spelling };
   }
@@ -607,18 +629,46 @@ interface WordsRead {
 }
 
 /**
+ * How one word list is read: who hears each routed name, and whether a word after the list may
+ * still name a child, as the word `locate` completes may. While it may, routing has not ended where
+ * the list runs out at a Command with children, so a parent's own option stays unbound.
+ */
+interface ReadOptions {
+  continues?: boolean;
+  walked?: (path: readonly string[]) => void;
+}
+
+/**
+ * Whether routing ended where the words did: they stopped it, no later word can name a child, or a
+ * parent's own option already faulted, which binding reports wherever routing ends.
+ */
+function routingEnded(
+  state: ReadState,
+  start: number,
+  read: { continues: boolean | undefined; words: readonly string[] },
+): boolean {
+  return (
+    start < read.words.length ||
+    read.continues !== true ||
+    state.command.children.size === 0 ||
+    state.pending.some(({ occurrence }) => occurrence.kind !== 'value')
+  );
+}
+
+/**
  * Reads a word list through routing, against the global options and the own options of each
  * Command with an action and children it passes through, binds those own options to the Command
- * routing reached, and then reads that Command's own words, up to the first bare `--`, against the
- * one table it holds.
+ * routing reached once routing has ended, and then reads that Command's own words, up to the first
+ * bare `--`, against the one table it holds.
  * Parsing continues past a fault, so every global option is found wherever it sits, and only the
  * first fault in word order is held. Only an unknown Command throws.
  */
 function readWords(
   graph: BuiltGraph,
   words: readonly string[],
-  walked?: (path: readonly string[]) => void,
+  options: ReadOptions = {},
 ): WordsRead {
+  const { continues, walked } = options;
   const routing: Routing = { graph, walked, words };
   const state: ReadState = {
     at: 0,
@@ -635,8 +685,10 @@ function readWords(
     values: { globals: emptyValues(), locals: emptyValues() },
   };
   const start = route(routing, state);
-  state.routed = true;
-  bindPending(state);
+  if (routingEnded(state, start, { continues, words })) {
+    state.routed = true;
+    bindPending(state);
+  }
   const tail = readCommandWords(routing, state, start);
   return {
     ...state,
@@ -679,7 +731,7 @@ function parseInvocation(
   argv: readonly string[],
   walked: (path: readonly string[]) => void,
 ): ParsedInvocation {
-  const read = readWords(graph, argv, walked);
+  const read = readWords(graph, argv, { walked });
   const { awaiting, command, passthrough, path, positionals, values } = read;
   const missing = awaiting && { at: read.read, error: new MissingValueError(awaiting.spelling) };
   const fault = read.fault ?? missing;

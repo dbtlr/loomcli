@@ -129,7 +129,7 @@ test("routing reads a parent's own option and carries on to the child, which rec
   expect(dispatched(['-p', 'get', 'a.b'], 'rooted')).toEqual({
     args: { path: 'a.b' },
     command: ['get'],
-    options: { help: false, numbered: false, pretty: true, quiet: false, raw: false },
+    options: { dry: false, help: false, numbered: false, pretty: true, quiet: false, raw: false },
     passthrough: [],
   });
   expect(dispatched(['-p'], 'rooted')).toMatchObject({ command: [], options: { pretty: true } });
@@ -171,6 +171,35 @@ test('a value class the routed Command declares differently is misplaced, and ne
     name: 'MisplacedOptionError',
     path: ['get'],
     spelling: '-n',
+  });
+});
+
+/** The fault a spelling `get` declares with another value class than the root reports. */
+function misplacedOnGet(spelling: string) {
+  return {
+    commands: [['get']],
+    message: `Option "${spelling}" belongs to command "get". Supply it after "get".`,
+    name: 'MisplacedOptionError',
+    path: ['get'],
+    spelling,
+  };
+}
+
+test("a parent's own option that faulted under its declaration is misplaced when the routed Command declares another class", () => {
+  expect(held(['--level=3', 'get', 'a.b'], 'rooted')).toEqual(misplacedOnGet('--level'));
+  expect(held(['--dry', '-q', 'get', 'a.b'], 'rooted')).toEqual(misplacedOnGet('--dry'));
+  expect(held(['--dry', '-q', '--quiet=1', 'get', 'a.b'], 'rooted')).toEqual(
+    misplacedOnGet('--dry'),
+  );
+  // The same class keeps the fault the parent's declaration found.
+  expect(held(['--pretty=1', 'get', 'a.b'], 'rooted')).toMatchObject({
+    name: 'UnexpectedValueError',
+    path: ['get'],
+    spelling: '--pretty',
+  });
+  expect(held(['--verbose=1', 'get', 'a.b'], 'rooted')).toMatchObject({
+    name: 'UnknownOptionError',
+    spelling: '--verbose',
   });
 });
 
