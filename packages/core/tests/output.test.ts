@@ -113,3 +113,31 @@ test('a successful run waits for a slow stream past the reporting bound', () => 
     stderr: '',
   });
 });
+
+/**
+ * A write still in flight when core stops waiting can fail later, as a pipe whose reader quit
+ * does. Core keeps listening for that stream's error until the write settles, so the late failure
+ * neither crashes the process nor changes the code the run resolved.
+ */
+test.each([
+  ['stdout', 'Action failed.\n'],
+  ['stderr', ''],
+])('a write on %s that fails after a failed run resolved keeps its code', (stream, stderr) => {
+  expect(replacedStream([stream, 'failing-late'])).toEqual({
+    printed: { after: '0:0', atResolve: [], before: '0:0', code: 1, delivered: [] },
+    status: 1,
+    stderr,
+  });
+});
+
+/**
+ * A middleware that fails after the action returned gives the run a failure to report before its
+ * output drains, so the wait on a stream that never calls back is bounded too.
+ */
+test('a middleware failure after next() bounds the wait on a silent stdout', () => {
+  expect(replacedStream(['stdout', 'silent', 'middleware-fails'])).toEqual({
+    printed: { after: '0:0', atResolve: [], before: '0:0', code: 1, delivered: [] },
+    status: 1,
+    stderr: 'hostile: Something went wrong.\n',
+  });
+});

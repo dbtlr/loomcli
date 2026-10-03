@@ -667,7 +667,11 @@ class ApplicationBuilder<
         }
         // The fault check covers the same window the write accounting covers.
         // A render failure an unawaited helper raised is still this invocation's failure.
-        await output.settle();
+        // A fault recorded before output drains gives the run a failure to report.
+        // So that run's wait is bounded.
+        await output.settle({
+          bounded: faults.length > 0 || output.fault !== undefined || output.stopped.length > 0,
+        });
         const fault = output.fault;
         if (fault) {
           // The action returned, so the view failure is this invocation's own failure.

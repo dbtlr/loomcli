@@ -46,10 +46,12 @@ export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
  * wait for writes still in flight, each write of the failure report, and the plain fallback write.
  * When the bound passes, core stops waiting and nothing else: the write stays queued on its stream,
  * neither failed nor discarded, so a live consumer still receives every byte while the process
- * runs. The cost is that a caller that ends the process as soon as `run()` resolves can cut a slow
- * consumer short in a failed run. A failure report is a few lines, which a pipe buffers and a
- * terminal or a file takes at once, so a second is far beyond a healthy stream's callback and short
- * enough that a failed run on a dead stream does not read as a hang.
+ * runs. A write that fails after core stopped waiting is not reported, and its destination keeps
+ * listening for the stream's error until the write settles, so the late failure does not end the
+ * process either. The cost is that a caller that ends the process as soon as `run()` resolves can
+ * cut a slow consumer short in a failed run. A failure report is a few lines, which a pipe buffers
+ * and a terminal or a file takes at once, so a second is far beyond a healthy stream's callback and
+ * short enough that a failed run on a dead stream does not read as a hang.
  */
 const reportingBound = 1000;
 
@@ -83,8 +85,11 @@ interface Reservation {
 }
 
 class Destination {
-  tail: Promise<void> = Promise.resolve();
   state: WriteState = { kind: 'ok' };
+  // The end of the write queue, which settles once every write queued so far has.
+  private queued: Promise<void> = Promise.resolve();
+  // Whether the queue has settled, which is false while any write queued so far is in flight.
+  private idle = true;
 
   constructor(readonly stream: Writable) {
     stream.on('error', this.onError);
@@ -99,8 +104,23 @@ class Destination {
   write(text: string): Promise<void> {
     const pending = this.tail.then(() => this.accept(text));
     // Keep the returned rejection observable, while accounting for calls without await.
-    this.tail = pending.catch(this.onError);
+    this.enqueue(pending.catch(this.onError));
     return pending;
+  }
+
+  get tail(): Promise<void> {
+    return this.queued;
+  }
+
+  /** Moves the end of the queue, which never rejects and stays in flight until it settles. */
+  private enqueue(tail: Promise<void>): void {
+    this.queued = tail;
+    this.idle = false;
+    void tail.finally(() => {
+      if (this.queued === tail) {
+        this.idle = true;
+      }
+    });
   }
 
   /** One text queued behind whatever preceded it, on a destination that has not failed. */
@@ -123,7 +143,7 @@ class Destination {
     const gate = new Promise<void>((resolve) => {
       open = resolve;
     });
-    this.tail = previous.then(() => gate);
+    this.enqueue(previous.then(() => gate));
     // The sequence's own pieces queue on each other, ahead of the gate that holds its place.
     let pieces = previous;
     return {
@@ -172,8 +192,22 @@ class Destination {
     });
   }
 
+  /**
+   * Stops listening for the stream's errors. A write still in flight when core stopped waiting can
+   * fail later, and a Node stream calls that write back with the error before it emits the error,
+   * when the write's own listener is already gone. So a destination with a write in flight keeps
+   * its listener until its queue settles and one more turn has passed, and keeps it for good on a
+   * stream that never calls back, as an unhandled error would otherwise end the process.
+   */
   dispose(): void {
-    this.stream.off('error', this.onError);
+    const stop = (): void => {
+      this.stream.off('error', this.onError);
+    };
+    if (this.idle) {
+      stop();
+    } else {
+      void this.tail.then(() => setImmediate()).then(stop);
+    }
   }
 }
 
