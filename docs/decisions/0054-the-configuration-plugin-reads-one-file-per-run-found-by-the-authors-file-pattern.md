@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0054 - The configuration plugin reads one file per run, found by the author's file pattern
 description: A run reads at most one configuration file, never merged. `--config` names it, or else the plugin looks for the author's `file` in the working directory and then in the operator's home directory and reads the first it finds. `file` defaults to `.<app>.json` and may hold `*` or a brace list as its extension, and the extension chooses the parser, with `.toml`, `.yaml`, and `.yml` read as TOML and YAML and every other name as JSON. `short` gives `--config` a short spelling. This supersedes ADR-0039's layered files, its `files` setting, its derived per-user file, and its JSON-only format.
-status: proposed
+status: accepted
 created: 2026-10-03
 modified: 2026-10-03
 ---
@@ -78,8 +78,10 @@ A TOML date or time reaches an option as the file wrote it. `smol-toml` returns 
 
 ## Status
 
-Proposed with the contract in [Configuration](../core.md#configuration). It moves to accepted when the implementation lands in `@loomcli/plugins/config` with tests that prove these rules under Node and Bun through the configuration acceptance.
+Accepted 2026-10-03 with the implementation in `@loomcli/plugins/config` and textstat's adoption, `config({ file: '.textstat.{toml,json}', short: 'c' })`, proven under Node and Bun by the configuration acceptance in [Configuration](../core.md#configuration).
 
 ## Changelog
 
 - 2026-10-03: Proposed with the contract.
+- 2026-10-03: Accepted with the implementation. The plugin recovers a TOML date's written text from the document: once the text as written parses, which judges every literal, the plugin parses it again with each date, date-time, and time literal outside a comment or a string written as a basic string of its own text, so the parser returns that text. A local date in a key position is quoted too, which names the same key. The plugin builds the YAML value from the parsed document's nodes rather than through the parser's own conversion, so no parser warning prints, an alias shares the value its anchor names, and a non-string scalar key reads as its text as the file wrote it, such as `0x1F`, `~`, or `true`; two keys of one text are a repeated key. A candidate is present when a `stat` of its path does not report it absent, so a candidate the process cannot inspect is found and reported as unreadable.
+- 2026-10-03: A TOML file reads as `smol-toml` reads it: TOML 1.0, with the TOML 1.1 additions it accepts, such as a time written without seconds, the `\e` escape, and a trailing comma in an inline table. The plugin adds no check of its own, and [Configuration](../core.md#configuration) states the same. An alias that names no preceding anchor, misspelled or forward, as a value or a key, makes a YAML file not valid YAML.

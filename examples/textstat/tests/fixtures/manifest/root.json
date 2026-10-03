@@ -57,7 +57,7 @@
       "description": "Read configuration from this file alone.",
       "deprecated": null,
       "long": "--config",
-      "short": null,
+      "short": "-c",
       "required": false,
       "multiple": false,
       "schema": null,

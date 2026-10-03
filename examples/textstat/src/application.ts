@@ -45,7 +45,7 @@ export const textstat = new Application('textstat', {
     version(),
     format(),
     manifest(),
-    config({ files: ['.textstat.json'] }),
+    config({ file: '.textstat.{toml,json}', short: 'c' }),
     loomTheme(),
     explain(),
   ],

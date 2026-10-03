@@ -6,9 +6,9 @@ import { config } from '@loomcli/plugins/config';
  * Developer Diagnostic its message holds.
  */
 const scenarios = {
-  'config-entry': () => config({ files: ['ok.json', 7] }),
-  'config-files': () => config({ files: '.app.json' }),
-  'config-settings': () => config('files'),
+  'config-glob': () => config({ file: '*.json' }),
+  'config-list': () => config({ file: '.textstat.{toml,ini}' }),
+  'config-path': () => config({ file: '/etc/textstat.json' }),
 };
 
 try {

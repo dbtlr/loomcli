@@ -276,22 +276,21 @@ try {
       `${name}: packed validators rejection`,
     );
   }
-  // The packed configuration plugin reads the named file, then the user file the name derives.
+  // The packed configuration plugin reads the named TOML file, then the YAML file in the home directory.
+  // Each format proves its parser package installed beside the packed pack.
   const configured = join(temporary, 'dist/config.js');
-  await writeFile(join(temporary, 'settings.json'), '{ "greeting": { "word": "named" } }');
-  const xdg = join(temporary, 'xdg');
-  await mkdir(join(xdg, 'packed-config'), { recursive: true });
-  await writeFile(
-    join(xdg, 'packed-config', 'config.json'),
-    '{ "greeting": { "word": "configured" } }',
-  );
+  await writeFile(join(temporary, 'settings.toml'), '[greeting]\nword = "named"\n');
+  const home = join(temporary, 'home');
+  await mkdir(home, { recursive: true });
+  await writeFile(join(home, '.packed-config.yaml'), 'greeting:\n  word: configured\n');
+  const homes = { HOME: home, USERPROFILE: home };
   for (const name of selected) {
-    const named = run(runtimes.get(name), [configured, '--config', 'settings.json'], temporary);
+    const named = run(runtimes.get(name), [configured, '-c', 'settings.toml'], temporary, homes);
     assert.equal(named.status, 0, named.output);
     assert.equal(named.stdout, 'named\n', `${name}: packed configuration from the named file`);
-    const user = run(runtimes.get(name), [configured], temporary, { XDG_CONFIG_HOME: xdg });
-    assert.equal(user.status, 0, user.output);
-    assert.equal(user.stdout, 'configured\n', `${name}: packed configuration from the user file`);
+    const found = run(runtimes.get(name), [configured], temporary, homes);
+    assert.equal(found.status, 0, found.output);
+    assert.equal(found.stdout, 'configured\n', `${name}: packed configuration from the home file`);
   }
   // The packed completion plugin prints each shell's script for the application's name.
   const completing = join(temporary, 'dist/completion.js');
@@ -382,7 +381,7 @@ try {
   assert.equal(sourced.status, 0, sourced.output);
   assert.equal(sourced.stdout, 'development\n', 'bun: the source packet');
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named file and the user file, the three completion scripts, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

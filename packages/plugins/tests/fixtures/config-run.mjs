@@ -8,21 +8,6 @@ import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
 const digits = z.string().regex(/^[0-9]+$/u, 'Supply a whole number.');
 
-/** The settings each scenario installs the configuration plugin with. */
-const settings = {
-  absolute: () => ({ files: [process.env.FIXTURE_ABSOLUTE] }),
-  'bad-entry': () => ({ files: ['ok.json', 7] }),
-  'bad-list': () => ({ files: '.app.json' }),
-  'bidi-path': () => ({ files: ['.app.json'] }),
-  'control-entry': () => ({ files: [`ok${String.fromCodePoint(1)}.json`] }),
-  'list-settings': () => ['.app.json'],
-  none: () => undefined,
-  'not-object': () => 5,
-  project: () => ({ files: ['.app.json', 'shared/app.json'] }),
-  'separator-entry': () => ({ files: [`ok${String.fromCodePoint(8232)}.json`] }),
-  twice: () => ({ files: ['.app.json', './.app.json'] }),
-};
-
 const print =
   (label) =>
   ({ options, out }) =>
@@ -34,14 +19,16 @@ const views = {
   none: [],
 };
 
-/** Every value shape and spelling the plugin's rules touch, bound to dotted paths. */
-function application(scenario) {
-  // A right-to-left override in a key, which every diagnostic that quotes the path escapes.
-  const paths = { 'bad-path': 'a..b', 'bidi-path': `li\u{202e}mits.bytes` };
-  const bound = paths[scenario] ?? 'limits.bytes';
+/**
+ * Every value shape and spelling the plugin's rules touch, bound to dotted paths. The plugin's
+ * settings are the JSON `FIXTURE_SETTINGS` holds, or none, and `FIXTURE_LIMIT_PATH` rebinds
+ * `--limit`, so a test reaches a key no fixed path names.
+ */
+function application() {
+  const settings = process.env.FIXTURE_SETTINGS;
   return (
     new Application('app', {
-      plugins: [config(settings[scenario]?.()), help()],
+      plugins: [config(settings === undefined ? undefined : JSON.parse(settings)), help()],
       views: views[process.env.FIXTURE_VIEWS ?? 'none'],
     })
       .globalOption('level', {
@@ -54,7 +41,7 @@ function application(scenario) {
         default: '10',
         description: 'The limit.',
         env: 'FIXTURE_LIMIT',
-        extensions: [configInput({ path: bound })],
+        extensions: [configInput({ path: process.env.FIXTURE_LIMIT_PATH ?? 'limits.bytes' })],
         type: 'string',
         validate: digits,
       })
@@ -90,7 +77,10 @@ function application(scenario) {
   );
 }
 
-const [scenario, mode, ...argv] = process.argv.slice(2);
+const [mode, ...argv] = process.argv.slice(2);
+
+/** One variable's value, or "absent" when the process environment does not hold it. */
+const state = (name) => (name in process.env ? process.env[name] : 'absent');
 
 /** The host overrides a test sets: the platform, and the working directory the files resolve in. */
 function host() {
@@ -106,10 +96,14 @@ function host() {
 
 try {
   if (mode === 'inspect') {
-    process.stdout.write(`${JSON.stringify(application(scenario).inspect())}\n`);
+    process.stdout.write(`${JSON.stringify(application().inspect())}\n`);
   } else {
-    const code = await application(scenario).run({ host: host() });
+    const code = await application().run({ host: host() });
     process.stdout.write(`resolved:${code}\n`);
+    // The state of yaml's debug variables after the run, which reading a YAML file leaves as it was.
+    if (process.env.FIXTURE_DEBUG_VARIABLES !== undefined) {
+      process.stdout.write(`debug:${state('LOG_STREAM')},${state('LOG_TOKENS')}\n`);
+    }
   }
 } catch (error) {
   process.stdout.write(`${error.name}: ${ruleText(error)}\n`);
