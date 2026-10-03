@@ -1,0 +1,85 @@
+---
+type: adr
+title: ADR-0054 - The configuration plugin reads one file per run, found by the author's file pattern
+description: A run reads at most one configuration file, never merged. `--config` names it, or else the plugin looks for the author's `file` in the working directory and then in the operator's home directory and reads the first it finds. `file` defaults to `.<app>.json` and may hold `*` or a brace list as its extension, and the extension chooses the parser, with `.toml`, `.yaml`, and `.yml` read as TOML and YAML and every other name as JSON. `short` gives `--config` a short spelling. This supersedes ADR-0039's layered files, its `files` setting, its derived per-user file, and its JSON-only format.
+status: proposed
+created: 2026-10-03
+modified: 2026-10-03
+---
+
+# ADR-0054 - The configuration plugin reads one file per run, found by the author's file pattern
+
+## Context
+
+[ADR-0039](0039-the-configuration-plugin-reads-layered-json-files-and-fails-only-on-the-file-the-operator-names.md) layered several JSON files: the project files an application lists, then a user file derived from the application name under `XDG_CONFIG_HOME`, `HOME`, or `APPDATA`, combined key by key. Each layer brought rules of its own, a rank, a derived directory per platform, and labels that name which of several files answered, so an operator who wanted to know what configured a run had to read every file in the rank. Operators also write configuration by hand, and many command-line tools read TOML or YAML because both hold comments and neither quotes its keys, which ADR-0039 left out.
+
+A command-line tool that reads one dotfile, such as `.mimir.toml`, looks for it where the operator is working and then in the operator's home directory, and reads the first one it finds. That serves both cases the layers served, a setting for one project and a setting for every run of one operator, with one file per run.
+
+Two facts constrain the formats. A shipped application can already name a file with no extension, such as `.textstatrc`, or with an extension of its own choosing, such as `.textstat.conf`, and that file reads as JSON. And the plugin cannot tell a format from a file's content: a file that fails to parse gives no evidence of the syntax its writer meant, so a warning could not say which syntax to correct.
+
+## Decision
+
+- **Settings.** `config({ file, short })` takes one optional settings object. `file` is the configuration file's name or a relative path the author chooses, such as `.mimir.toml` or `.norn/config.toml`, and is a file pattern. With no `file`, the plugin reads `.<app>.json`, where `<app>` is the application name it reads from the graph when it runs. `short` gives `--config` a short spelling under the plugin settings convention, and with none `--config` has no short spelling.
+- **One file per run.** A run reads at most one configuration file, and nothing is merged across files.
+- **`--config` names the file.** When the operator gives `--config <path>`, that file is the configuration, and the plugin looks nowhere else. The path is not a pattern, so `*` and braces in it are part of the name, and a relative path resolves against the run's working directory, `host.cwd`.
+- **Otherwise the plugin looks for `file`.** It looks in the run's working directory, `host.cwd`, and then in the operator's home directory, and reads the first file it finds. The home directory is `host.env.USERPROFILE` when `host.platform` is `win32` and `host.env.HOME` on every other platform. A home variable that is unset, empty, or a relative path gives no home directory, and when the home directory is the working directory the plugin looks there once.
+- **A broken discovered file is absent.** A discovered file that cannot be read, does not parse, or does not hold an object warns once in its fixed sentence and is skipped, and the plugin goes on to the home directory as if the working directory held no file. A discovered file that does not exist is silent. A run that finds no usable file has no configuration, and every bound option falls through to its default.
+- **The named file is strict.** A `--config` file that does not exist, cannot be read, does not parse, or does not hold an object fails the run as a usage failure on `--config` with code 2.
+- **The extension chooses the parser.** `.toml` reads as TOML 1.0, and `.yaml` and `.yml` as YAML 1.2. Every other name reads as JSON: `.json`, a name with no extension, such as `.textstatrc`, and a name with any other extension, such as `.textstat.conf` or `config.cfg`. The rule is the same for a discovered file and the `--config` file. The file name is the path's last segment, and its extension is the text after its last `.`, unless that `.` is the name's first character. Extensions compare as written, so `.TOML` reads as JSON.
+- **The file pattern.** Glob syntax, the characters `*`, `?`, `[`, `]`, `{`, and `}`, may appear in `file` only as the whole extension of its last segment, in one of two forms. `*` accepts any format the plugin reads, `.textstat.*`. A brace list accepts the formats it lists, `.textstat.{toml,yaml}`, and lists only `json`, `toml`, `yaml`, and `yml`. A `file` with no glob syntax is literal, and its extension locks its format: `.textstat.yaml` reads only as YAML, and `.textstat.conf` only as JSON.
+- **Candidates.** A pattern names its candidates in order: a brace list in its listed order, where an extension listed twice counts at its first position, and `*` as `toml`, `yaml`, `yml`, then `json`. A literal name is its own single candidate. In each directory, the first candidate something is at is the file the plugin finds there. Every later candidate also present in that directory is skipped and never read, and the plugin warns once, ahead of any warning about the file it found: `Skipped <file>: <chosen> matches the same pattern first. Keep one of the files, and remove the others.` `<file>` lists every skipped candidate in candidate order, joined by `, `. A later candidate never answers in place of a broken first one.
+- **Faults at the call.** Under [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md), `config()` judges its settings when it is called. It applies core's `checkShortSetting` first, so settings that are not an object throw `@loomcli/core/not-an-object` and a `short` that is not one ASCII letter throws `@loomcli/core/short-alias`, each naming the plugin. Then:
+  - A `file` that is not a string, is empty, holds a control character, is absolute, or has an empty, `.`, or `..` segment throws under a new rule, `@loomcli/plugins/config/file-path`: `Plugin "@loomcli/plugins/config" file is not a relative path.`, corrected by `Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.` A path is absolute when it starts with `/` or `\` or with a drive letter and a colon, and its segments split on `/` and `\`.
+  - Glob syntax anywhere but as a whole extension of `*` or a brace list, in a directory segment, in the name before its extension, or in an extension such as `t*`, throws under a new rule, `@loomcli/plugins/config/file-pattern`: `Plugin "@loomcli/plugins/config" file holds glob syntax other than an extension of * or a brace list.`, corrected by `Write the name literally, and use * or a brace list only as the whole text after its last dot.`
+  - A brace list that lists anything other than `json`, `toml`, `yaml`, and `yml`, such as `.textstat.{toml,ini}` or an empty item, throws under the same rule: `Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.`, corrected by `List only json, toml, yaml, or yml in the braces, or use * for any of them.` A literal name never meets this sentence.
+
+  Each finding rebuilds the `config()` call and marks the settings, `short`, or `file`.
+- **Parsers.** YAML reads through `yaml` (ISC) under the YAML 1.2 core schema, so `no`, `yes`, `on`, and `off` stay strings. TOML reads through `smol-toml` (BSD-3-Clause) under TOML 1.0. Both become runtime dependencies of `@loomcli/plugins`. The plugin loads each with a dynamic import of a static specifier only when it has read the text of a file of that kind, so an application whose file is JSON never loads either.
+- **What a YAML file holds.** One document, with unique keys and only the tags the core schema defines. A second document, a repeated key, a tag the core schema does not define, such as `!!binary`, `!!timestamp`, or a local `!tag`, and a mapping key that is itself a mapping or a sequence make the file not valid YAML. An anchor's alias reads as the value it names. A scalar key that is not a string reads as its text.
+- **The top level.** The object the plugin reads is a JSON object, a TOML table, or a YAML mapping. A TOML document is always a table at the top, so an empty TOML file answers nothing and TOML has no clause for a top level of the wrong kind. An empty YAML file, and one that holds only comments, holds no mapping.
+- **Value shapes.** ADR-0039's shapes hold for every format, read from the value the parser returns:
+  - A string option takes a string as it is, and a number as its text. A finite number reaches it as `JSON.stringify` writes it, whatever the format wrote: TOML `5_000` and `0x1F` reach it as `5000` and `31`, and `1.0` as `1`. A TOML integer beyond the safe range, `-(2^53 - 1)` through `2^53 - 1`, reaches it as its exact decimal digits: the plugin reads it as a `bigint`, so it neither rounds nor lets the parser reject the document. A TOML date or time reaches it as its text as written in the file: `1979-05-27T07:32:00-08:00`, `1979-05-27 07:32:00`, `1979-05-27`, and `07:32:00.5` each fill as written. The YAML core schema has no date type, so `2001-12-14` is already a string.
+  - A Boolean option takes a TOML Boolean or a YAML core-schema Boolean, `true`, `True`, `TRUE`, or their `false` forms. A YAML `no` is a string, so a Boolean option given one is a wrong value.
+  - A multiple option takes a TOML array or a YAML sequence whose items each follow the string rule.
+  - Every other value is a wrong value under ADR-0039's rule, unchanged: the run fails with code 2 and the existing issue sentence. A YAML null, written `null`, `~`, or as a key with no value, is one, as a JSON `null` is. Infinity and not-a-number, TOML `inf` and `nan` and YAML `.inf` and `.nan`, are not finite numbers, as an overflowing JSON literal is not.
+- **Sentences.** Three clauses join JSON's in the plugin's one clause table, each with the fix for a discovered file and for the `--config` file:
+  - `is not valid TOML.`, fixed by `Correct its syntax, or remove it.` for a discovered file and `Correct its syntax, or supply another file.` for the named file.
+  - `is not valid YAML.`, with the same two fixes.
+  - `does not hold a YAML mapping.`, fixed by `Write its settings as one YAML mapping, or remove it.` and `Write its settings as one YAML mapping.`
+- **Labels.** An answer's label is `<path> in <file>`. A file found in the working directory shows as `file` names it, with a pattern's extension replaced by the candidate's, a file found in the home directory shows as its full path, and the `--config` file shows as the operator typed it.
+- **Text.** Every sentence stays fixed and carries no parser message, the YAML parser's warnings included, and every path the plugin shows escapes control characters as ADR-0039 states, the candidates the several-candidates warning names included.
+
+These rules of ADR-0039 stand: the `--config` option itself, the named file strict and a discovered file lenient, reading only when some value is needed, a wrong value as a usage failure, the value shapes, dotted paths, and fixed, escaped text.
+
+## Considered options
+
+- **Layered files answering key by key, as ADR-0039 chose.** Rejected. One run's settings were spread across several files, so an operator read every file in the rank to learn what configured a run, and the rank, the per-platform directory, and the labels naming one of several files were rules no single-file tool needs.
+- **A per-user file under `XDG_CONFIG_HOME` or `APPDATA`.** Rejected. The home directory serves the per-operator case with the same file name the working directory uses, under one rule on every platform.
+- **A broken file in the working directory stops the lookup.** Rejected. A discovered file is lenient, so a broken one behaves as if absent, and the home file answers as it would with no file in the working directory.
+- **A bare name means any format.** `.textstat` would read `.textstat.toml`, `.textstat.yaml`, `.textstat.yml`, or `.textstat.json`. Rejected, because it would silently change what a shipped extensionless name such as `.textstatrc` reads.
+- **The format read from the content.** Rejected. A file that fails to parse gives no evidence of the syntax its writer meant, so the warning could not say what to correct.
+- **An unrecognized literal extension throws at `config()`.** Rejected. Loom does not dictate an author's file names, and an application that names `.textstat.conf` holding JSON today would break. Such a name reads as JSON, as a name with no extension does.
+- **The next candidate answers when the first is broken.** Rejected. Which file answered would depend on whether another parses, and the operator would correct a file the run then stops reading.
+- **Every present candidate answers, key by key.** Rejected. Two files for one pattern in one directory are a mistake, and merging them would bring back layering.
+- **A TOML integer beyond the safe range is a wrong value, or fails the document.** Rejected. The file wrote an exact integer, and a number reaches a string option as its text. Failing the document, the parser's default, would also discard every other key in the file.
+- **The YAML 1.1 schema.** Rejected. It reads `no` and `off` as `false`, so a string value such as a country code changes type.
+
+## Consequences
+
+Removing `files` and the derived per-user file is a breaking change, and the implementation PR carries it as a breaking fragment with its migration. An application that lists `files` names its one file with `file` instead, and an operator's settings in `~/.config/<app>/config.json` or `%APPDATA%\<app>\config.json` move to `.<app>.json`, or the author's `file`, in the home directory. A `file` that holds glob syntax outside the two extension forms throws at `config()`.
+
+The plugin looks in the run's working directory, so a run started in another directory finds another file, and an option that changes the run's working directory, such as a `-C <dir>` option, changes where the plugin looks. Such an option is a separate feature, and `--config` names a file only. An ancestor walk from the working directory and a variable for `--config` stay out, as ADR-0039 left them.
+
+`config()` cannot know the application name, so the default `.<app>.json` is derived when the source runs, from the graph's name. The application name is a portable name, so the default is always a literal JSON file name.
+
+`@loomcli/plugins` gains its second and third runtime dependencies beside `zod`. npm installs each as its own package with its own license file, so the pack's `license` field, `MIT AND Apache-2.0`, still describes the pack's own files, and its NOTICE still covers only the Cobra code ported into them; neither changes. An application that bundles itself carries both parsers' code and keeps their notices with its bundle, as it already does for `zod`. The dynamic imports name static specifiers, so a bundler resolves them as it resolves the plugin's own lazily loaded resolver.
+
+A TOML date or time reaches an option as the file wrote it. `smol-toml` returns a date object whose text adds milliseconds and writes `T` for a space, and it keeps no source text, so the implementation must recover the written text and never add precision or change a separator the file did not write.
+
+## Status
+
+Proposed with the contract in [Configuration](../core.md#configuration). It moves to accepted when the implementation lands in `@loomcli/plugins/config` with tests that prove these rules under Node and Bun through the configuration acceptance.
+
+## Changelog
+
+- 2026-10-03: Proposed with the contract.
