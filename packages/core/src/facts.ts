@@ -1,6 +1,6 @@
 import { misplacedListingFact, notOneLine } from './command-rules.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
-import { DeclarationError } from './errors.js';
+import { DeclarationError, quoted } from './errors.js';
 import { flagNotBoolean } from './input-rules.js';
 
 /**
@@ -24,6 +24,14 @@ export interface FactSite {
   readonly subject: string;
   readonly declaration: Omit<Finding, 'mark' | 'note'>;
   readonly at: string;
+}
+
+/**
+ * The note a finding carries for what a plugin declared on the author's behalf, such as an input
+ * its hook declares or the settings its factory takes, so the diagnostic names the declarer.
+ */
+export function declarerNote(identity: string): string {
+  return `declared by plugin ${quoted(identity)}`;
 }
 
 /** The finding for the call one site holds, marking one part of it, with a note when given. */

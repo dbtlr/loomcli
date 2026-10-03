@@ -82,17 +82,23 @@ export function checkOptionName(name: unknown, site: InputSite): void {
   }
 }
 
+/** Whether a declared short alias is one ASCII letter, the rule every short spelling answers. */
+export function isShortAlias(short: unknown): boolean {
+  return typeof short === 'string' && /^[A-Za-z]$/u.test(short);
+}
+
+/** The sentence and correction of the short-alias fault for the option `subject` names. */
+export function shortAliasText(subject: string): { sentence: string; correction: string } {
+  return {
+    correction: 'Supply one ASCII letter.',
+    sentence: `${subject} declares a short alias that is not one ASCII letter.`,
+  };
+}
+
 /** The short alias, and `shortOnly`, which leaves the option that alias alone. */
 function checkShortForms(config: OptionConfig, site: InputSite, subject: string): void {
-  if (
-    config.short !== undefined &&
-    (typeof config.short !== 'string' || !/^[A-Za-z]$/u.test(config.short))
-  ) {
-    throw factFault(shortAlias, site, {
-      correction: 'Supply one ASCII letter.',
-      fact: 'short',
-      sentence: `${subject} declares a short alias that is not one ASCII letter.`,
-    });
+  if (config.short !== undefined && !isShortAlias(config.short)) {
+    throw factFault(shortAlias, site, { ...shortAliasText(subject), fact: 'short' });
   }
   if (config.shortOnly !== undefined && typeof config.shortOnly !== 'boolean') {
     throw flagFault(site, 'shortOnly');
