@@ -69,8 +69,8 @@ const rewords: FailureHook = (failure) => {
 // @ts-expect-error TS2339: A failure view's context carries no command.
 const noCommand: FailureView<UsageError> = { render: (failure, { command }) => String(command) };
 
-// @ts-expect-error TS2769: A lane view reads the plain view context, which carries no application.
 override(lanes.warn, {
+  // @ts-expect-error TS2322: A lane view reads the plain view context, which carries no application.
   render: (message: string, { application }: FailureViewContext) => message + application,
 });
 
