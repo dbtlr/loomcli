@@ -45,6 +45,7 @@ export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
+export { checkShortSetting } from './plugin-settings.js';
 export { translate } from './translators.js';
 export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';

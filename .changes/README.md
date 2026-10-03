@@ -39,7 +39,12 @@ Write links relative to the repository root, where the compiled entry will live.
 
 ## Explain a breaking change
 
-A change is breaking when it makes the public TypeScript contract, documented runtime behavior, or supported consumer requirements incompatible. Mark it with the filename prefix even when the change fixes a bug.
+A change is breaking when an update forces a consumer application to change its code or its requirements, or when a new rule rejects a value that an earlier release accepted. Mark it with the filename prefix even when the change fixes a bug.
+
+- A removed or renamed export, a required member added to a type that consumers implement, such as `Out`, and a raised minimum runtime version are breaking.
+- A declaration rule that rejects a default an earlier release accepted is breaking, even though the application compiles unchanged.
+- A required readonly field added to a type that core produces and consumers only read, such as `schema` on `OptionNode`, is not breaking.
+- A change to a template's text is never breaking. When the help page's bytes or a description's wording change, no application has to change its code, so the fragment is ordinary.
 
 After the change bullets, add one `### Migration` section with all five labels shown below. Give exact affected surfaces, a reason, before-and-after examples, ordered steps, and validation commands.
 
