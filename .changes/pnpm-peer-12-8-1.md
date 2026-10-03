@@ -1,1 +1,0 @@
-- Change the optional peer dependency of `@loomcli/loom` from `pnpm` 12.3.2 to 12.8.1, the version that prepares `pnpm-lock.yaml` for a release. The error for a missing pnpm now asks for 12.8.1. `@loomcli/plugins` and `@loomcli/loom` now depend on `zod` `^4.6.5`, and `@loomcli/loom` on `yaml` `^2.9.1`, so a fresh install resolves the newer releases.
