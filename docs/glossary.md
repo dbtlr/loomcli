@@ -459,11 +459,11 @@ The one optional `source` a plugin definition declares, which answers for config
 _Avoid_: Config loader, config provider, settings store
 
 **Configuration file**:
-A JSON, TOML, or YAML file the first-party configuration plugin answers from, read by the parser its extension chooses, with a name that has no extension read as JSON: the user file, named by `userFile` in the per-user directory the plugin derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
+A JSON, TOML, or YAML file the first-party configuration plugin answers from, read as TOML for a `.toml` extension, as YAML for `.yaml` or `.yml`, and as JSON for every other name: the user file, named by `file` in the per-user directory the plugin derives from the application name, a project file the application lists, or the one file `--config` names, which replaces the others for a run. Files answer key by key, the first listed winning and the user file last. A file the plugin discovered never breaks a run, while the named file and a wrong value in the file that answers are usage failures.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **File pattern**:
-How an author names a configuration file the plugin discovers, a `files` entry or `userFile`: a file name whose extension alone may be `*` or a brace list such as `{toml,yaml}`, naming candidates in order. The first present candidate answers for the pattern, and the plugin warns about every other present one. A literal extension locks the file's format.
+How an author names a configuration file the plugin discovers, a `files` entry or the `file` setting: a file name whose extension alone may be `*` or a brace list such as `{toml,yaml}`, naming candidates in order. The first present candidate answers for the pattern, and the plugin warns about every other present one. A literal extension locks the file's format.
 _Avoid_: Glob (for the whole entry), wildcard path, file mask
 
 **Middleware**:
