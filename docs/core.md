@@ -1542,6 +1542,7 @@ Development builds are proven when public APIs alone produce these results:
 - **Broken contracts.** A broken failure view and a broken `onFailure` hook each write the failure's own text and then one generic line in a distributed build, and the broken contract's Developer Diagnostic in a development build, with exit 1, or 130 in a run a caller cancelled.
 - **The converter.** A validated input whose converter throws is a `DeclarationError` from `run()` and `inspect()` in a development build and reads `null` in a distributed one.
 - **The writer.** A packed consumer installs `@loomcli/loom`, compiles against its emitted declarations with `skipLibCheck` off, imports `packet` from `@loomcli/loom/build`, bundles a fixture application with it under Bun, and the bundle reads `distributed` and writes the generic defect message under Node and Bun while the source file still reads `development`.
+- **Without the writer.** A packed consumer bundles a fixture application with `Bun.build` and with Rolldown, each with no plugin. Each bundle pads wide, combining, emoji, and flag text to its display width, and reads `development`, under Node and Bun.
 
 Each case runs under Node and Bun, except the source runs, which run under Bun.
 
