@@ -6,6 +6,190 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.7.0 - 2026-10-03
+
+0.7.0 is a hardening release. Every declaring call reads its declaration once and reports a declaration it cannot read at that call, a declared default nests at most ten levels, `override()` takes one signature derived from its key, and the configuration plugin reads one TOML, YAML, or JSON file per run. Core also carries its Unicode tables as a JavaScript module, so any bundler can bundle a Loom application.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.7.0`.
+
+The four migrations below share one idea: a fault surfaces where its author can fix it. A throwing getter or an over-deep default fails at the call that declares it rather than inside `inspect()` or a run, a mismatched `override()` replacement names its own type against the one its key expects, and an operator's settings live in one file the application names.
+
+### Breaking Changes
+
+- Add the rule `@loomcli/core/unreadable-declaration`. Every declaring call now reads its declaration once, at the call, copying every own string key, enumerable or not: `argument()`, `option()`, `globalOption()`, and an input a lifecycle hook declares read their config, its `extensions` list included; `plugin()` reads its whole definition, the `options` record and each option's config included; and `new Application()` and `new Command()` read their options. Every later check, every finding, and the graph read that one copy, so a getter runs once and a finding prints the value the rule judged. A read that throws, such as a getter or a proxy trap that throws, or one at any depth of a default, throws a `DeclarationError` from that call, such as `Option "format" config could not be read: boom.`, `Plugin "@acme/log" definition could not be read: boom.`, or `The Application options could not be read: boom.`, with the thrown value as its `cause`. Before, the throw escaped as the raw error, or, inside a default, broke `inspect()` and every plugin that reads the graph.
+- Change a declared default to one frozen snapshot that the declaring call takes. The graph publishes it, and a run passes the same frozen copy to the default's validator, so a validator, or an action that receives the validator's output unchanged, can no longer write to an object default. An array default still reaches the action as its own mutable copy, holes included.
+- Fix a converter's JSON Schema that holds itself. Core copies it with the same cycle instead of overflowing the stack, so a development build no longer reports it as `@loomcli/core/schema-converter-failed`, and the manifest reports that it cannot encode the schema as JSON. See the [core reference](docs/core.md).
+
+### Migration
+
+**Affected surface.** A config passed to `argument()`, `option()`, `globalOption()`, or a lifecycle hook's `argument()` or `option()`, whose own properties, `extensions` list, or default throw when read. A `plugin()` definition, an options object passed to `new Application()` or `new Command()`, or a plain object or list nested in one of them, such as a plugin's `options` record and each option's config, `middleware`, or `views`, or the Application's `packet`, `rendering`, or `plugins`, that throws when read. A `plugin()` definition, or a plain object or list nested in it, that holds a key that is not enumerable, which core now reads where it ignored it before. A default's validator or an action that writes to an object default it receives.
+
+**Why.** Core reads a declaration once, at the call that declares it, so every check, the graph, and every run read one copy. A read that throws now reports at that call, and the copy of a default that every reader shares is frozen so that no reader can change it for another.
+
+**Before and after.**
+
+Before, the declaration was accepted, and the first `inspect()` threw `boom`:
+
+```ts
+app.option('format', { default: { get style(): string { throw new Error('boom'); } }, type: 'string', validate });
+```
+
+After, declare the default as plain data:
+
+```ts
+app.option('format', { default: { style: 'plain' }, type: 'string', validate });
+```
+
+Before, a hand-written validator's `'~standard'.validate` method could normalize a default in place:
+
+```ts
+const validate: StandardSchemaV1<{ style?: string }> = {
+  '~standard': {
+    validate: (value) => {
+      if (typeof value !== 'object' || value === null) {
+        return { issues: [{ message: 'Expected an object.' }] };
+      }
+      Object.assign(value, { style: 'plain', ...value });
+      return { value };
+    },
+    vendor: 'acme',
+    version: 1,
+  },
+};
+```
+
+After, the method returns a new value:
+
+```ts
+const validate: StandardSchemaV1<{ style?: string }> = {
+  '~standard': {
+    validate: (value) =>
+      typeof value === 'object' && value !== null
+        ? { value: { style: 'plain', ...value } }
+        : { issues: [{ message: 'Expected an object.' }] },
+    vendor: 'acme',
+    version: 1,
+  },
+};
+```
+
+**Steps.**
+
+1. Replace each getter or proxy in a declaration config and its default, a plugin definition, or a constructor's options, with the plain value it returns.
+2. Change each validator or action that writes to an object default it receives so that it builds a new value instead.
+3. Remove each key that is not enumerable from a `plugin()` definition and the values nested in it, unless core should read it.
+
+**Validation.** Run `inspect()` on the Application in a test, and run each Command with no tokens so that every default passes through its validator and reaches its action. `inspect()` throws no `DeclarationError`, and no run reports `@loomcli/core/unreadable-declaration` or `@loomcli/core/validator-failed`.
+
+- Add the rule `@loomcli/core/default-depth`. No path through a declared default may hold more than 10 arrays and plain objects, counted from the default itself, with a list or object the default holds twice counted on every path through it, and a default that holds itself nests without end. `argument()`, `option()`, `globalOption()`, a lifecycle hook's `argument()` or `option()`, and `plugin()` for an option it declares throw a `DeclarationError` for a deeper default, such as `Option "deep" default nests deeper than 10 levels.`, on Node and Bun alike. Before, the declaring call accepted any default, and one nested deeply enough, or one that held itself, made `inspect()` throw `RangeError: Maximum call stack size exceeded` and every run fail as an internal error, at a depth that differed between Node and Bun. See [ADR-0053](docs/decisions/0053-a-declared-default-nests-at-most-ten-levels.md).
+
+### Migration
+
+**Affected surface.** A default passed to `argument()`, `option()`, `globalOption()`, a lifecycle hook's `argument()` or `option()`, or an option in a `plugin()` definition, that nests arrays and plain objects more than 10 levels deep, or holds itself.
+
+**Why.** Every reader of the graph walks a default, and each one spends the call stack at its own rate on each runtime. One cap at the declaring call keeps every reader within the stack everywhere.
+
+**Before and after.**
+
+Before, the declaration was accepted:
+
+```ts
+app.option('tree', { default: [[[[[[[[[[['leaf']]]]]]]]]]], type: 'string', validate });
+```
+
+After, declare a flatter default and build any deeper structure in the action:
+
+```ts
+app.option('tree', { default: ['leaf'], type: 'string', validate });
+```
+
+**Steps.**
+
+1. Find each default that nests arrays or plain objects more than 10 levels deep, or holds itself.
+2. Flatten it, or declare the shallow value and build the deeper structure from it in the action.
+
+**Validation.** Run `inspect()` on the Application in a test. It throws no `DeclarationError` with the rule `@loomcli/core/default-depth`.
+
+- Change `override()` from three overloads, one per key kind, to one signature whose type parameter is the key's type. The replacement's type is derived from the key, so a mismatched replacement now reports its own type against the one the key expects, such as `Argument of type 'View<number>' is not assignable to parameter of type 'View<readonly Row[]>'`, instead of `No overload matches this call`, and a key that is neither a declared view nor a failure class is reported at the key. Inference is unchanged for declared views, declared row views, and failure classes, and a helper generic over a view's data or a failure class's instances still forwards to `override()` unchanged.
+- Add the exported types `AnyOverrideKey`, every value an override can key on, and `ReplacementView<Key>`, the replacement view one key takes, so a helper generic over the key can type its replacement. See the [core reference](docs/core.md#views).
+
+### Migration
+
+**Affected surface.** A call to `override()` that passes an explicit type argument, such as `override<readonly Row[]>(summary, table)` or `override<InputError>(InputError, problems)`. A helper generic over a failure class's own type, such as `function f<C extends typeof UsageError>(key: C)`, that passes a concrete replacement. Any other call without a type argument compiles unchanged.
+
+**Why.** The type parameter is now the key's type rather than the view's data or the failure class's instance type, so a data or instance type passed as the type argument no longer satisfies its constraint and fails with `TS2344`. In a helper generic over the class type, the replacement's type stays unresolved until the key is known, so a concrete replacement fails with `TS2345`.
+
+**Before and after.**
+
+Before, the type argument named the data:
+
+```ts
+override<readonly Row[]>(summary, table);
+```
+
+After, drop it, because the key determines the replacement's type:
+
+```ts
+override(summary, table);
+```
+
+**Steps.**
+
+1. Find each `override<` call in the application and its plugins.
+2. Remove the type argument. Where the call must name a type, type the key or the replacement instead, such as `const table: View<readonly Row[]> = …`.
+3. Make a helper generic over the failure's instances instead of its class, such as `function f<F extends UsageError>(key: FailureClass<F>)`, and type the replacement's parameter as `Readonly<UsageError>`.
+
+**Validation.** Run `tsc --noEmit` on the application. It reports no error at an `override()` call.
+
+- Change `@loomcli/plugins/config` to read one configuration file per run, never merged: the file `--config` names, or else the first found of the application's `file` in the working directory and then in the home directory, `USERPROFILE` on Windows and `HOME` elsewhere. A broken file in the working directory warns and the lookup goes on to the home directory. See the [core reference](docs/core.md#configuration).
+- Remove the `files` setting of `config()`, the key-by-key answers across several files, and the user file derived from the application name under `XDG_CONFIG_HOME`, `HOME/.config`, or `APPDATA`.
+- Add the `file` setting to `config()`: the configuration file's name or relative path, `.<app>.json` by default. Its extension chooses the parser: `.toml` reads as TOML through `smol-toml` (TOML 1.0, with the TOML 1.1 additions it accepts), `.yaml` and `.yml` as YAML 1.2 under the core schema, and every other name as JSON. `file` is a file pattern whose extension may be `*`, which tries `toml`, `yaml`, `yml`, then `json`, or a brace list such as `{toml,json}`, tried in the order listed. When several candidates are present in one directory, the first answers and one warning names the others. A TOML date or time fills an option as the file wrote it, and a TOML integer beyond the safe range fills its exact digits.
+- Add the `short` setting to `config()`, so an application can give `--config` a short spelling such as `-c`. `config()` judges it under `checkShortSetting`, as `format()` does.
+- Add the declaration rules `@loomcli/plugins/config/file-path`, which `config()` throws for a `file` that is not a relative path, and `@loomcli/plugins/config/file-pattern`, which it throws for glob syntax outside a whole extension of `*` or a brace list, and for a brace list that names an extension the plugin cannot read. They replace `@loomcli/plugins/config/files`.
+- Add `yaml` and `smol-toml` as runtime dependencies of `@loomcli/plugins`. The configuration plugin loads each only after it reads the text of a file of that kind, so a run that reads a JSON file loads neither.
+
+### Migration
+
+**Affected surface.** An application that calls `config({ files: [...] })` from `@loomcli/plugins/config`, and an operator whose settings live in the derived user file, `~/.config/<app>/config.json`, `$XDG_CONFIG_HOME/<app>/config.json`, or `%APPDATA%\<app>\config.json`. An application that calls `config()` with no settings compiles unchanged and now reads `.<app>.json` in the working directory and then in the home directory.
+
+**Why.** A run now reads one file, so the list of project files and the derived user file are gone. The home directory serves the per-operator case with the same file name the working directory uses.
+
+**Before and after.**
+
+Before, the application listed its project files:
+
+```ts
+config({ files: ['.textstat.json'] });
+```
+
+After, it names its one file, which may let the operator choose a format:
+
+```ts
+config({ file: '.textstat.{toml,json}', short: 'c' });
+```
+
+Before, an operator kept per-user settings in `~/.config/textstat/config.json` or `%APPDATA%\textstat\config.json`. After, the same JSON lives in `~/.textstat.json`, or in the home directory under the name the application's `file` gives, such as `~/.textstat.toml` written as TOML.
+
+**Steps.**
+
+1. Replace `config({ files: [...] })` with `config({ file })`, naming the file the application looks for. An application that listed several files keeps the one its operators use, or names a pattern such as `.textstat.{toml,json}`.
+2. Move each operator's settings from `~/.config/<app>/config.json`, `$XDG_CONFIG_HOME/<app>/config.json`, or `%APPDATA%\<app>\config.json` to `.<app>.json`, or to the application's `file`, in the home directory.
+3. Merge any settings an operator kept in two files into one file, because a run no longer combines files key by key.
+
+**Validation.** Run `tsc --noEmit` on the application. It reports no error at the `config()` call. Then run the application in a project directory with a bound option unset, and confirm that it reads the value from the project file, and from the home file when the project directory holds none.
+
+### Changes
+
+- Add `format({ short })` to `@loomcli/plugins/format`, so an application can give `--format` a short spelling such as `-f`. `format()` judges its settings at its own call: settings that are not an object throw `@loomcli/core/not-an-object`, and a short spelling that is not one ASCII letter throws `@loomcli/core/short-alias`, the rule every option's short spelling answers, with a finding that quotes the `format()` call. A spelling another option already holds is the hook-collision build error naming both, and `format()` with no settings still declares `--format` with no short spelling. See the [core reference](docs/core.md#formatter).
+- Add `checkShortSetting(settings, declarer)` to `@loomcli/core`, so a plugin factory that takes a short spelling as `{ short }` judges it at its call under core's own rules and names itself in the finding. See [Plugin settings](docs/core.md#plugin-settings).
+
+- Change `@loomcli/core` to carry its Unicode width tables as a JavaScript module, so it reads no file at run time and any bundler, such as `Bun.build` or Rolldown, can bundle a Loom application that starts under Node and Bun. A distributed build still needs `packet()`, the `Bun.build` plugin from `@loomcli/loom/build`; a bundle made without it is a development build. Core no longer depends on `@rockorager/uucode`, and text measures and pads to the same columns as before. Core's license field reads `MIT AND Unicode-3.0`, because the tables derive from Unicode data, and the package ships the license texts in `licenses/` with a `NOTICE`.
+- Change `packet()` from `@loomcli/loom/build` to answer the packet alone. It no longer carries data files into the bundle, and an application bundled without it starts, reads its source packet, `development`, and is a development build. See [Development builds](docs/core.md#development-builds).
+
+- Change the optional peer dependency of `@loomcli/loom` from `pnpm` 12.3.2 to 12.8.1, the version that prepares `pnpm-lock.yaml` for a release. The error for a missing pnpm now asks for 12.8.1. `@loomcli/plugins` and `@loomcli/loom` now depend on `zod` `^4.6.5`, and `@loomcli/loom` on `yaml` `^2.9.1`, so a fresh install resolves the newer releases.
+
+- Fix the compiler error for a view whose data type does not match. Under `exactOptionalPropertyTypes`, TypeScript opened it with advice to add `undefined` to the target's properties; it now opens with the data type that does not match. `View` and the failure view mark `row` as `undefined`, and `RowView` marks `render` as `undefined`, so a value with both functions is still rejected.
+
 ## v0.6.0 - 2026-09-30
 
 0.6.0 is the failure handling release. A failure class declares its own exit code, a translator turns a foreign throw into one of the application's failure classes, plugins add hint lines under a failure, every message Loom ships says what went wrong and what to do instead, and the manifest lists the failures each Command can raise. `@loomcli/loom` joins the release set as the Loom toolchain. Install it as a development dependency for its `packet()` build plugin.
