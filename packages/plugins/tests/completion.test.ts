@@ -14,6 +14,7 @@ import { fishScript } from '../src/completion/fish.js';
 import { identifier } from '../src/completion/name.js';
 import { zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
+import { help } from '../src/help/plugin.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
 
@@ -127,6 +128,18 @@ describe('the answer', () => {
     expect(answer(graph, locate(graph, ['--format', 'json', 'cache', '']))).toBe(
       framed(['list'], 4),
     );
+  });
+
+  it("a root's own --format before a group's name leaves routing open for a hyphen word too", () => {
+    const table = { render: () => 'table\n' };
+    const graph = new Application('store', { plugins: [format(), help()] })
+      .command(new Command('cache').command(new Command('list').action(() => {})))
+      .result({ views: { table } })
+      .action(() => {})
+      .inspect();
+    const offered = answer(graph, locate(graph, ['cache', '--h']));
+    expect(offered).toBe(framed(['--help\tShow this help.'], 4));
+    expect(answer(graph, locate(graph, ['--format', 'json', 'cache', '--h']))).toBe(offered);
   });
 
   it('a value is never offered empty, and never as a word whose first character is a tilde', () => {

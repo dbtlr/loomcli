@@ -44,15 +44,13 @@ interface Scope {
 
 /**
  * The words before the last, as the parser reads them, stopped before any validation. Every
- * structural fault among them, an unknown Command included, reads as no position. When the last
- * word may still name a child and the earlier words ran out at a Command with children, routing
- * has not ended, so a parent's own option among them stays unbound.
+ * structural fault among them, an unknown Command included, reads as no position. When they run
+ * out at a Command with children, the last word may still continue routing, whatever it holds, so
+ * routing has not ended and a parent's own option among them stays unbound.
  */
 function readEarlier(graph: BuiltGraph, words: readonly string[]): WordsRead | undefined {
-  // A last word that is no hyphen word may still name a child, so routing may not have ended.
-  const continues = !(words.at(-1) ?? '').startsWith('-');
   try {
-    const read = readWords(graph, words.slice(0, -1), { continues });
+    const read = readWords(graph, words.slice(0, -1), { partial: true });
     return read.fault === undefined ? read : undefined;
   } catch (error) {
     if (error instanceof UsageError) {

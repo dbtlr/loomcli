@@ -352,17 +352,35 @@ function write(values: OptionValues, option: TableSpelling, value: string | bool
   }
 }
 
+/**
+ * Lists one supplied option name at the order it was read in. A parent's own option binds after
+ * routing, so it can join the list behind names read after it.
+ */
+function note(state: ReadState, entry: { at: number; name: string }): void {
+  const later = state.supplied.findIndex(({ at }) => at > entry.at);
+  state.supplied.splice(later === -1 ? state.supplied.length : later, 0, entry);
+}
+
+/**
+ * Lists the held-back options while routing is still open, each under the name the reached
+ * Command's own entry gives its spelling, so a reader offers none of them again. A spelling that
+ * Command does not hold lists nothing.
+ */
+function noteHeld(state: ReadState): void {
+  for (const { at, occurrence } of state.pending) {
+    const entry = state.command.table.get(occurrence.spelling);
+    if (entry && !state.supplied.some(({ name }) => name === entry.name)) {
+      note(state, { at, name: entry.name });
+    }
+  }
+}
+
 /** Writes one value an occurrence supplied. The reading already ended its walk at a repeat. */
 function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): boolean {
   const { option, spelling } = occurrence;
   const values = option.global ? state.values.globals : state.values.locals;
   if (!values.spellings.has(option.name)) {
-    // A parent's own option binds after routing, so it joins the list at the order it was read in.
-    const later = state.supplied.findIndex((entry) => entry.at > state.at);
-    state.supplied.splice(later === -1 ? state.supplied.length : later, 0, {
-      at: state.at,
-      name: option.name,
-    });
+    note(state, { at: state.at, name: option.name });
   }
   // A collecting option records its last occurrence, because each one overwrites the entry.
   values.spellings.set(option.name, spelling);
@@ -629,27 +647,29 @@ interface WordsRead {
 }
 
 /**
- * How one word list is read: who hears each routed name, and whether a word after the list may
- * still name a child, as the word `locate` completes may. While it may, routing has not ended where
- * the list runs out at a Command with children, so a parent's own option stays unbound.
+ * How one word list is read: who hears each routed name, and whether the list is the earlier words
+ * of an unfinished invocation, as `locate` reads them. A word after such a list may continue
+ * routing, so routing has not ended where the list runs out at a Command with children, and a
+ * parent's own option stays unbound.
  */
 interface ReadOptions {
-  continues?: boolean;
+  partial?: boolean;
   walked?: (path: readonly string[]) => void;
 }
 
 /**
- * Whether routing ended where the words did: they stopped it, no later word can name a child, or a
- * parent's own option already faulted, which binding reports wherever routing ends.
+ * Whether routing ended where the words did: they stopped it, the list is complete, no later word
+ * can continue routing, or a parent's own option already faulted, which binding reports wherever
+ * routing ends.
  */
 function routingEnded(
   state: ReadState,
   start: number,
-  read: { continues: boolean | undefined; words: readonly string[] },
+  read: { partial: boolean | undefined; words: readonly string[] },
 ): boolean {
   return (
     start < read.words.length ||
-    read.continues !== true ||
+    read.partial !== true ||
     state.command.children.size === 0 ||
     state.pending.some(({ occurrence }) => occurrence.kind !== 'value')
   );
@@ -668,7 +688,7 @@ function readWords(
   words: readonly string[],
   options: ReadOptions = {},
 ): WordsRead {
-  const { continues, walked } = options;
+  const { partial, walked } = options;
   const routing: Routing = { graph, walked, words };
   const state: ReadState = {
     at: 0,
@@ -685,9 +705,11 @@ function readWords(
     values: { globals: emptyValues(), locals: emptyValues() },
   };
   const start = route(routing, state);
-  if (routingEnded(state, start, { continues, words })) {
+  if (routingEnded(state, start, { partial, words })) {
     state.routed = true;
     bindPending(state);
+  } else {
+    noteHeld(state);
   }
   const tail = readCommandWords(routing, state, start);
   return {

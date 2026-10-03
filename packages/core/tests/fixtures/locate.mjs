@@ -19,6 +19,11 @@ function kit() {
     .argument('rest', { variadic: true })
     .action(dispatch);
   const debug = new Command('debug', { hidden: true }).action(dispatch);
+  // A parent with an action and children that declares the root's -a under its own name.
+  const mid = new Command('mid')
+    .option('any', { short: 'a', type: 'boolean' })
+    .command(new Command('leaf').action(dispatch))
+    .action(dispatch);
   const cache = new Command('cache')
     .command(new Command('clear').action(dispatch))
     .command(new Command('list').alias('l').action(dispatch));
@@ -31,6 +36,7 @@ function kit() {
     .command(paths)
     .command(debug)
     .command(cache)
+    .command(mid)
     .action(dispatch);
 }
 

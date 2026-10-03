@@ -181,13 +181,29 @@ test("leaves a parent's own option unbound while routing is still open, so a pla
       ['-a', ''],
       ['-a', 'cache', 'list', ''],
       ['-a', 'cache', '-'],
+      ['-a', 'cache', '--h'],
+      ['-a', 'cache', '-qf=x'],
+      ['-a', '-'],
     ]),
   ).toEqual([
     { command: ['cache'], kind: 'command', own: true, prefix: '' },
     { command: ['cache'], kind: 'command', own: true, prefix: 'l' },
     { command: [], kind: 'command', own: true, prefix: '' },
     none,
-    none,
+    { command: ['cache'], kind: 'option', own: true, prefix: '-', supplied: [] },
+    { command: ['cache'], kind: 'option', own: true, prefix: '--h', supplied: [] },
+    { command: ['cache'], kind: 'value', lead: '-qf=', option: 'file', own: true, prefix: 'x' },
+    { command: [], kind: 'option', own: true, prefix: '-', supplied: ['all'] },
+  ]);
+  // An unbound option of a parent lists the name the reached Command's own entry gives its spelling.
+  expect(
+    locateAll([
+      ['-qa', 'mid', '-'],
+      ['-a', 'mid', ''],
+    ]),
+  ).toEqual([
+    { command: ['mid'], kind: 'option', own: true, prefix: '-', supplied: ['quiet', 'any'] },
+    { command: ['mid'], kind: 'command', own: true, prefix: '' },
   ]);
 });
 
