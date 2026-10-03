@@ -242,25 +242,40 @@ type ViewOverride = Pick<OverrideDeclaration, typeof viewOverride>;
 /** What a plugin's own list holds: the views it declares and the overrides it makes. */
 type ViewContribution = AnyDeclaredView | ViewOverride;
 
+/** Every value an override can key on: a declared view of either shape or a failure class. */
+type AnyOverrideKey = AnyDeclaredView | FailureClass<LoomError>;
+
 /**
- * One override pairing a key with a replacement view. Under a declared view the replacement is
- * typed from the view's data; under a failure class it is typed from the class's instances, which
- * is the typed path for a class-keyed list, because an array literal cannot carry a different type
- * parameter per element.
+ * The replacement view one key takes, derived from the key alone. The declared-view branches come
+ * first, so a declared view is never read as a failure class. Each check is wrapped in a tuple so a
+ * union key is not split into a union of replacements that each answer only one of its members.
  */
-function override<Data>(key: DeclaredView<Data>, replacement: NoInfer<View<Data>>): ViewOverride;
-function override<Row>(key: DeclaredRowView<Row>, replacement: NoInfer<RowView<Row>>): ViewOverride;
-function override<Failure extends LoomError>(
-  // The brand is excluded so a declared view never satisfies this overload's key.
-  key: FailureClass<Failure> & { readonly [declaredView]?: never },
-  replacement: NoInfer<FailureView<Failure>>,
-): ViewOverride;
-function override(key: object, replacement: StoredView): ViewOverride {
+type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>]
+  ? View<Data>
+  : [Key] extends [DeclaredRowView<infer Row>]
+    ? RowView<Row>
+    : [Key] extends [FailureClass<infer Failure>]
+      ? FailureView<Failure>
+      : never;
+
+/**
+ * One override pairing a key with a replacement view. The replacement's type is derived from the
+ * key: under a declared view it is typed from the view's data, and under a failure class from the
+ * class's instances, which is the typed path for a class-keyed list, because an array literal cannot
+ * carry a different type parameter per element. One signature serves every key, so a mismatch
+ * names the replacement's type against the one the key expects.
+ */
+function override<Key extends AnyOverrideKey>(
+  key: Key,
+  replacement: NoInfer<ReplacementView<Key>>,
+): ViewOverride {
+  // Every replacement a key derives is a stored view, so it widens here with no check.
+  const supplied: StoredView = replacement;
   const stored: StoredView = {
-    head: replacement.head,
-    render: replacement.render,
-    row: replacement.row,
-    tail: replacement.tail,
+    head: supplied.head,
+    render: supplied.render,
+    row: supplied.row,
+    tail: supplied.tail,
   };
   const declared = declarations.get(key);
   if (declared) {
@@ -666,6 +681,7 @@ function describeFailure(
 
 export type {
   AnyDeclaredView,
+  AnyOverrideKey,
   DeclaredRowView,
   DeclaredView,
   DeclaredViewBrand,
@@ -673,6 +689,7 @@ export type {
   FailureReport,
   FailureView,
   FailureViewContext,
+  ReplacementView,
   ResolvedRowView,
   ViewContribution,
   ViewContributions,

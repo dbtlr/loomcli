@@ -65,12 +65,14 @@ export type { IncompleteResult } from './lanes.js';
 export type { WordPosition } from './locate.js';
 export type {
   AnyDeclaredView,
+  AnyOverrideKey,
   DeclaredRowView,
   DeclaredView,
   DeclaredViewBrand,
   FailureClass,
   FailureView,
   FailureViewContext,
+  ReplacementView,
   ViewContribution,
   ViewOverride,
 } from './view.js';
