@@ -279,16 +279,16 @@ describe('precedence', () => {
   });
 });
 
-describe("help's failure hint", () => {
-  /** Help adds its hint as the last line under core's text, and leaves the code alone. */
-  function hinted(argv: string[], line: string) {
-    const { core } = unchanged(argv, 'help-core');
-    return {
-      expected: { status: core.status, stderr: `${core.stderr}${line}\n` },
-      received: outcome('help-core', argv),
-    };
-  }
+/** Help adds its hint as the last line under core's text, and leaves the code alone. */
+function hinted(argv: string[], line: string) {
+  const { core } = unchanged(argv, 'help-core');
+  return {
+    expected: { status: core.status, stderr: `${core.stderr}${line}\n` },
+    received: outcome('help-core', argv),
+  };
+}
 
+describe("help's failure hint", () => {
   it('an unknown Command names the page of the Command routing reached', () => {
     const runs = [
       hinted(['nope'], 'Run "kit --help" to see the usage.'),

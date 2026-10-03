@@ -206,6 +206,11 @@ function holderOf(declaration, path) {
   return { holder: keys.reduce((value, key) => value[key], declaration), key: last };
 }
 
+/** A read that fails with the fixture's error. */
+function throws() {
+  throw boom;
+}
+
 /**
  * The declaration with one read made to throw. `getter <path>` makes the key at the path a getter
  * that throws, `<trap>` puts the whole declaration behind a proxy whose trap throws, and
@@ -213,9 +218,6 @@ function holderOf(declaration, path) {
  */
 function unreadable(declaration, spec) {
   const [kind, path] = spec.split(' ');
-  const throws = () => {
-    throw boom;
-  };
   if (kind === 'getter') {
     const { holder, key } = holderOf(declaration, path);
     Object.defineProperty(holder, key, { configurable: true, enumerable: true, get: throws });
