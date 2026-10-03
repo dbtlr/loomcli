@@ -2,7 +2,7 @@
 
 The Loom CLI toolchain. Its public surface is `@loomcli/loom/build`, which exports `packet()`.
 
-`packet()` is a `Bun.build` plugin. A Loom application keeps a `loom.packet.json` that reads `{ "build": "development" }` at its package root and passes it to its `Application` as `packet`. While Bun bundles the application, `packet()` writes `distributed` into the packet the bundle carries, so an operator sees one generic message for a defect, and the source file keeps reading `development`. The plugin also carries the data files core's Unicode tables read at run time, so a bundled application needs it to start.
+`packet()` is a `Bun.build` plugin. A Loom application keeps a `loom.packet.json` that reads `{ "build": "development" }` at its package root and passes it to its `Application` as `packet`. While Bun bundles the application, `packet()` writes `distributed` into the packet the bundle carries, so an operator sees one generic message for a defect, and the source file keeps reading `development`. An application bundled without it starts and reads the source packet, `development`.
 
 ## Install
 
