@@ -71,7 +71,7 @@ A review seat, a fix round, or a bot never creates a task or a seed. The control
 each finding first, separating unsafe behavior in what Loom ships from the author's freedom to write
 their own code, and only a finding that passes is fixed or filed.
 
-A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
+A finding that passes both tests is fixed, or filed as a task. A finding that fails either is dismissed
 with that reason in the review record, and the review record is where it ends. A seed records an
 ask someone made or a defect someone hit; a question an agent imagines, such as whether a
 middleware should ever emit a result, is a finding and passes both tests before it becomes a seed.
