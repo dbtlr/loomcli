@@ -1,5 +1,6 @@
 import { Application, Command, plugin } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
+import { help } from '@loomcli/plugins/help';
 
 const dispatch = ({ out }) => out.print('dispatched');
 
@@ -38,8 +39,36 @@ const scenarios = {
       .command(count)
       .action(dispatch);
   },
+  /** The short spelling -h, which help() installed ahead of format() already claims. */
+  'short-help-collision': () => {
+    const count = withResult(new Command('count')).action(dispatch);
+    return new Application('app', { plugins: [help(), format({ short: 'h' })] }).command(count);
+  },
+  /** A short spelling that is not one ASCII letter, as a JavaScript author can pass it. */
+  'short-invalid': () => {
+    const count = withResult(new Command('count')).action(dispatch);
+    return new Application('app', { plugins: [format({ short: 'fo' })] }).command(count);
+  },
+  /** The short spelling -f, which the Command's own --file already claims. */
+  'short-local-collision': () => {
+    const count = withResult(
+      new Command('count').option('file', { short: 'f', type: 'string' }),
+    ).action(dispatch);
+    return new Application('app', { plugins: [format({ short: 'f' })] }).command(count);
+  },
 };
 
 const [name, ...argv] = process.argv.slice(2);
 
-process.exitCode = await scenarios[name]().run({ host: { argv } });
+// "inspect <scenario>" prints the rule, sentence, and finding notes of the fault inspect() throws.
+if (name === 'inspect') {
+  try {
+    scenarios[argv[0]]().inspect();
+  } catch (error) {
+    const { findings, rule, sentence } = error;
+    const notes = findings.map((finding) => finding.note);
+    process.stdout.write(`${JSON.stringify({ notes, rule: rule?.identity, sentence })}\n`);
+  }
+} else {
+  process.exitCode = await scenarios[name]().run({ host: { argv } });
+}

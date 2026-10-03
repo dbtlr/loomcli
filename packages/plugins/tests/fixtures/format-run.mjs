@@ -70,6 +70,13 @@ const scenarios = {
     const count = new Command('count').action(dispatch);
     return new Application('app', { plugins }).command(count).action(dispatch);
   },
+  /** The formatter given the short spelling -f, so -f selects a view as --format does. */
+  short: () => {
+    const count = new Command('count').result({ views: { table } }).action(dispatch);
+    return new Application('app', { plugins: [help(), version(), format({ short: 'f' })] }).command(
+      count,
+    );
+  },
 };
 
 await recordLoads();

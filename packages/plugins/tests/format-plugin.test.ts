@@ -11,7 +11,11 @@ function run(scenario: string, argv: string[]) {
 
 interface InspectedGraph {
   root: {
-    children: { name: string; options: { name: string; schema?: unknown }[]; result: unknown }[];
+    children: {
+      name: string;
+      options: { name: string; schema?: unknown; short?: string | null }[];
+      result: unknown;
+    }[];
   };
 }
 
@@ -109,6 +113,60 @@ test("the hook-collision error names another plugin's option", () => {
     status: 1,
     stderr: 'app: Something went wrong.\n',
     stdout: '',
+  });
+});
+
+/** The rule, sentence, and finding notes of the fault one build scenario's inspect() throws. */
+function buildFault(scenario: string): unknown {
+  const result = invoke(rejected, ['inspect', scenario]);
+  expect(result.stderr).toBe('');
+  return JSON.parse(result.stdout);
+}
+
+test('format() gives --format no short spelling by default', () => {
+  const found = inspect('later-default').root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')?.short).toBeNull();
+  expect(run('later-default', ['count', '-f', 'json']).status).toBe(2);
+});
+
+test('format({ short }) gives --format that short spelling, and it selects a view', () => {
+  const found = inspect('short').root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')?.short).toBe('-f');
+  expect(run('short', ['count', '-f', 'json'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{\n  "label": "a",\n  "value": 1\n}\n',
+  });
+  expect(run('short', ['count', '--help']).stdout).toContain(
+    '  -f, --format <format>  Select the output format, table by default.',
+  );
+});
+
+test("a short spelling the Command's own option holds is the hook-collision error naming both", () => {
+  expect(buildFault('short-local-collision')).toEqual({
+    notes: ['declared by plugin "@loomcli/plugins/format"', 'the local option "file"'],
+    rule: '@loomcli/core/spelling-taken',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses.',
+  });
+});
+
+test("a short spelling another plugin's option holds is the hook-collision error naming both", () => {
+  expect(buildFault('short-help-collision')).toEqual({
+    notes: [
+      'declared by plugin "@loomcli/plugins/format"',
+      'an option of plugin "@loomcli/plugins/help"',
+    ],
+    rule: '@loomcli/core/spelling-taken',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-h" on Command "count", which "--help" already uses.',
+  });
+});
+
+test('a short spelling that is not one ASCII letter breaks the rule every short alias answers', () => {
+  expect(buildFault('short-invalid')).toMatchObject({
+    rule: '@loomcli/core/short-alias',
+    sentence: 'Option "format" declares a short alias that is not one ASCII letter.',
   });
 });
 
