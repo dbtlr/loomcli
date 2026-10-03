@@ -1117,9 +1117,15 @@ type AnyDeclaredView = (View<never> | RowView<never>) & DeclaredViewBrand & { re
 type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>; // both row-view shapes are defined in Results
-function override<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride;
-function override<Row>(key: DeclaredRowView<Row>, replacement: RowView<Row>): ViewOverride;
-function override<Failure extends LoomError>(key: FailureClass<Failure>, replacement: FailureView<Failure>): ViewOverride; // FailureView is defined in Failure views
+type AnyOverrideKey = AnyDeclaredView | FailureClass<LoomError>;
+type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>]
+  ? View<Data>
+  : [Key] extends [DeclaredRowView<infer Row>]
+    ? RowView<Row>
+    : [Key] extends [FailureClass<infer Failure>]
+      ? FailureView<Failure> // FailureView is defined in Failure views
+      : never;
+function override<Key extends AnyOverrideKey>(key: Key, replacement: NoInfer<ReplacementView<Key>>): ViewOverride;
 type ViewContribution = AnyDeclaredView | ViewOverride; // ViewOverride is opaque and branded
 ```
 
@@ -1129,7 +1135,7 @@ The identity string reaches diagnostics and nothing else: an application never s
 
 A declared view is exported from a declarations module of the plugin that declares it, `<subpath>/views`, beside the `<subpath>/extension` module that holds its descriptors, so an application that overrides the help page imports `helpPage` from `@loomcli/plugins/help/views` and never the middleware. The two modules are separate because a declared view carries its default function and the modules it needs, while a descriptor module stays declarations alone, which is the promise a projection that imports another plugin's facts relies on. The default function loads with the entry module, which is the one cost this design accepts: a plugin's middleware module stays lazy under [Activation](#activation), and its default view functions are part of its entry cost. A view function is synchronous, so nothing inside it can wait for a lazy import; a plugin whose default function is heavy pays that cost at install, and help's page function is pure string building.
 
-`override(key, replacement)` pairs a key with a replacement view and returns a `ViewOverride`. The key is a declared view or a failure class. Under a declared view the replacement is typed from the view's data, so a view that requires data the key does not carry is a compile error. Under a failure class, `FailureClass<Failure>` is an abstract constructor type, so `UsageError` and `LoomError` are valid keys and the replacement is a `FailureView` typed from the class's instances, as [Failure view context](#failure-view-context) describes. Under a declared view the replacement is any `View<Data>`; a declared view passed as the replacement contributes its function alone, and its own identity plays no part. An application lists its overrides under `views`; a plugin lists its declarations and its overrides together under its own `views`, as [Views from plugins](#views-from-plugins) describes. In this contract an application overrides and does not declare: `ApplicationOptions.views` is `readonly ViewOverride[]`, and an application declares no view under the results lane either, because a Command's result names bare views by view name, as [Results](#results) describes.
+`override(key, replacement)` pairs a key with a replacement view and returns a `ViewOverride`. The key is a declared view or a failure class, which `AnyOverrideKey` names. One signature serves every key: its type parameter is the key's type, and `ReplacementView<Key>` derives the replacement's type from it, so a key that is neither is rejected at the key and a mismatched replacement is reported as its own type against the one the key expects, such as `View<number>` against `View<readonly Row[]>`, rather than as a failure of every key kind. Under a declared view the replacement is typed from the view's data, so a view that requires data the key does not carry is a compile error. The declared-view branches are tried first, so a declared view is never read as a failure class. Under a failure class, `FailureClass<Failure>` is an abstract constructor type, so `UsageError` and `LoomError` are valid keys and the replacement is a `FailureView` typed from the class's instances, as [Failure view context](#failure-view-context) describes. A helper generic over a declared view's data or a failure class's instances forwards its key and replacement to `override` unchanged, and one generic over the key itself types its replacement as `ReplacementView<Key>`. Under a declared view the replacement is any `View<Data>`; a declared view passed as the replacement contributes its function alone, and its own identity plays no part. An application lists its overrides under `views`; a plugin lists its declarations and its overrides together under its own `views`, as [Views from plugins](#views-from-plugins) describes. In this contract an application overrides and does not declare: `ApplicationOptions.views` is `readonly ViewOverride[]`, and an application declares no view under the results lane either, because a Command's result names bare views by view name, as [Results](#results) describes.
 
 ```ts
 import { Application, InputError, override } from '@loomcli/core';
@@ -1737,7 +1743,7 @@ type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>
 
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
-function override<Row>(key: DeclaredRowView<Row>, replacement: RowView<Row>): ViewOverride;
+function override<Key extends AnyOverrideKey>(key: Key, replacement: NoInfer<ReplacementView<Key>>): ViewOverride; // a DeclaredRowView<Row> key takes a RowView<Row>
 
 // On Command and Application, before action().
 result<Value>(declaration: { views: ResultViews<Value> }): …
