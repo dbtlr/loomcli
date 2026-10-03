@@ -261,7 +261,7 @@ test("a rejected source option skips the source and reports with every other pro
   });
 });
 
-test('an option the skipped source would have filled reports no missing value', () => {
+test('an option the skipped source would have filled reports no missing value, and its validator never judges the omission', () => {
   const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
   expect(invoke(profiles, ['x', '--profile', 'nope', '--title', 't'])).toEqual({
     status: 2,

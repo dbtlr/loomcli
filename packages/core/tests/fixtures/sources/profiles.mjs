@@ -13,9 +13,26 @@ const profiles = plugin('@fixture/profiles', {
   source: { binding: configKey, load: () => import('./source.mjs') },
 });
 
-// `name` is required and bound to the source, and `title` is required and bound to nothing.
+/** An absence rule: the validator itself rejects an omitted value. */
+const present = {
+  '~standard': {
+    validate: (value) =>
+      value === undefined ? { issues: [{ message: 'Supply a region.' }] } : { value },
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+// `name` is required and bound to the source, and `region` sends its omission to its validator.
+// `title` is required and bound to nothing.
 const named = new Command('x')
   .option('name', { extensions: [configKey('name')], required: true, type: 'string' })
+  .option('region', {
+    extensions: [configKey('region')],
+    type: 'string',
+    validate: present,
+    validateOmitted: true,
+  })
   .option('title', { required: true, type: 'string' })
   .action(({ options, out }) => out.print(`x:${JSON.stringify(options)}`));
 

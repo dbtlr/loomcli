@@ -81,8 +81,8 @@ interface ScopedInput {
  * What the input-source stage leaves for validation's messages, by option name: the label of each
  * value it filled, and the variable of each Boolean option whose value is outside the grammar.
  * `unanswered` holds each option a configuration source would have filled had one of its own
- * options not been rejected; such an option reports no missing value, because the operator's
- * configuration may hold it.
+ * options not been rejected; such an option reports no missing value and no absence rule judges it,
+ * because the operator's configuration may hold it.
  */
 export interface Provenance {
   labels: ReadonlyMap<string, string>;
@@ -958,8 +958,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         } else if (collected && !defaults.has(input)) {
           // No occurrence has no value to validate, so the action receives an empty array.
           values.set(input, []);
-        } else if (validatesOmission(input)) {
+        } else if (validatesOmission(input) && sources.unanswered?.has(input) !== true) {
           // The flag sends the omission itself to the validator.
+          // An option a skipped configuration source would have filled is not judged absent.
           // An absence rule reads the context a supplied value reads, and reports input issues.
           await accept(entry, undefined, spelling);
         } else {
