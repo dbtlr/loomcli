@@ -351,7 +351,7 @@ function buildGlobals(node: GlobalsState, plugins: readonly BuiltPlugin[]): Buil
 
 /**
  * One Command's own options against the globals table, compiled for dispatch. The table holds the
- * application's globals and every plugin option, so a local collision reads the same sentence
+ * application's global options and every plugin's, so a local collision reads the same sentence
  * whichever scope on the other side claimed the name, the spelling, or the variable. One
  * invocation's scope is this Command's own options and the table, so a variable binds one option
  * there, while a sibling Command may bind it again. `scope` names the Command and places each of

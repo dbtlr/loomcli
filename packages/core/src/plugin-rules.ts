@@ -97,7 +97,7 @@ const sourceBinding = registerRule('@loomcli/core/source-binding', {
   headline: 'Invalid source binding',
 });
 
-/** A plugin option that carries its own plugin's source binding. */
+/** A plugin's option that carries its own plugin's source binding. */
 const sourceBoundOwnOption = registerRule('@loomcli/core/source-bound-own-option', {
   explanation:
     "A plugin's own options resolve before its configuration source loads, because the source reads them, so none of them can take a value from that source.",

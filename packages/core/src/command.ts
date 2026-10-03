@@ -1242,7 +1242,7 @@ interface JoinScope {
 /**
  * Walks one subtree joining an Application, once, for the rules only the Application can judge: one
  * Command value reached through two paths, two distinct descriptors under one identity, a local
- * option that meets a global or plugin option's key, spelling, or variable, and the nesting cap
+ * option that meets a global option's key, spelling, or variable, and the nesting cap
  * measured from the root. A claim is by node identity, and the name serves the diagnostic alone.
  * At a cap of two a named parent's `command()` already rejects every deeper tree, so the depth check
  * here fires only once the cap rises: attach reads one level, and only this walk knows each level.

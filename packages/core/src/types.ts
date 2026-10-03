@@ -365,7 +365,7 @@ export interface ResultBinding {
 /**
  * The routed Command's invocation after parsing and validation, which every middleware reads. The
  * values are what the action receives, the output of each declaration's schema, for that Command's
- * own arguments and local options; global and plugin option values are not here. The records are
+ * own arguments and local options; global option values are not here. The records are
  * untyped and frozen, because a middleware runs ahead of every action and the graph carries no
  * type for a value.
  */

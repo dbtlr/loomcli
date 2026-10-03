@@ -393,8 +393,7 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
     if (validated.failure || stage.signal.aborted) {
       return { fault: undefined, labels, rejected, validated };
     }
-    const own = validated;
-    const options = frozenValues(owner.inputs, own.values);
+    const options = frozenValues(owner.inputs, validated.values);
     for (const { label, target, value } of await askSource(stage, { options, owner, requested })) {
       fill(target.scope.values, target.input.name, value);
       labels.set(target.input.name, label);
