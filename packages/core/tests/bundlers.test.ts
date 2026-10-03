@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +19,12 @@ const timeout = 60_000;
 const measured = ['日本  |', 'é     |', '👩‍💻    |', '🇯🇵    |', 'abc   |', 'development', ''].join(
   '\n',
 );
+
+/**
+ * The copyright holders whose notices core's derived modules carry as legal comments: the Unicode
+ * tables, the width iterator ported from uucode, and the Inquirer glyph forms.
+ */
+const holders = ['Unicode, Inc.', 'Tim Culverhouse', 'Simon Boudrias'];
 
 const roots: string[] = [];
 
@@ -51,6 +57,19 @@ test.each(bundlers)(
     const bundle = join(outdir, 'main.js');
     expect(run('node', [bundle, 'measure'])).toBe(measured);
     expect(run('bun', [bundle, 'measure'])).toBe(measured);
+  },
+);
+
+test.each(bundlers)(
+  'an application $bundler bundles keeps the license notices of core',
+  ({ bundler, runtime }) => {
+    const outdir = mkdtempSync(join(tmpdir(), `loom-${bundler}-`));
+    roots.push(outdir);
+    run(runtime, [script, bundler, outdir]);
+    const bundle = readFileSync(join(outdir, 'main.js'), 'utf8');
+    for (const holder of holders) {
+      expect(bundle).toContain(holder);
+    }
   },
 );
 

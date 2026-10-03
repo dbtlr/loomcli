@@ -1,5 +1,8 @@
-// Ported from the grapheme width iterator of @rockorager/uucode 2.2.1, src/width.ts.
-// Copyright (c) 2026 Tim Culverhouse. Licensed under the MIT License, in licenses/uucode-LICENSE.md.
+/*!
+Ported from the grapheme width iterator of @rockorager/uucode 2.2.1, src/width.ts.
+Copyright (c) 2026 Tim Culverhouse. Licensed under the MIT License,
+in licenses/uucode-LICENSE.md of @loomcli/core.
+*/
 import { graphemeTable, widthTable } from './unicode.generated.js';
 
 /** One grapheme cluster of a string: where it starts and ends, and the columns it occupies. */
