@@ -22,7 +22,7 @@ test('a missing pnpm fails lockfile preparation with a sentence that says how to
     }),
   ).toThrow(
     new Error(
-      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.3.2 beside @loomcli/loom and run the command again.',
+      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.8.1 beside @loomcli/loom and run the command again.',
     ),
   );
 });

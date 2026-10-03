@@ -37,12 +37,12 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "12.3.2",
+      "version": "12.8.1",
       "onFail": "error"
     }
   },
   "engines": {
-    "pnpm": ">=12.3.2"
+    "pnpm": ">=12.8.1"
   },
-  "packageManager": "pnpm@12.3.2"
+  "packageManager": "pnpm@12.8.1"
 }
