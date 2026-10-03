@@ -136,6 +136,10 @@ function ending(action, options = {}) {
 
 /** Each broken translator, keyed by the scenario that registers it. */
 const brokenTranslators = {
+  'broken-endless': () => {
+    const endless = new Proxy({}, { getPrototypeOf: () => endless });
+    return endless;
+  },
   'broken-promise': () => Promise.reject(new Error('The promise rejected.')),
   'broken-string': () => 'text',
   'broken-throws': () => {

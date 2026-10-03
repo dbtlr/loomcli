@@ -74,6 +74,7 @@ import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, Plugin } from './plugin.js';
+import { isInstance } from './prototypes.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
@@ -134,14 +135,23 @@ interface PrepareStage {
 
 /**
  * Whether one failure is the cancellation the run already reports, which core does not report a
- * second time. Any other failure after cancellation is rendered as usual.
+ * second time. Any other failure after cancellation is rendered as usual. A value that cannot be
+ * read, such as an Error whose `name` getter throws, is not silenced, so it reports as the
+ * foreign throw it is.
  */
 function silenced(
   thrown: unknown,
   signal: AbortSignal,
   cancelled: CancellationCode | undefined,
 ): boolean {
-  return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
+  if (cancelled === undefined) {
+    return false;
+  }
+  try {
+    return isCancellationEcho(thrown, signal.reason);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -175,7 +185,7 @@ function carried(primary: unknown, cause: unknown): boolean {
     }
     seen.add(value);
     // A failure wraps its own cause under `cause`, and one that declares none ends the walk.
-    value = value instanceof Error && 'cause' in value ? value.cause : noPrimary;
+    value = isInstance(value, Error) && 'cause' in value ? value.cause : noPrimary;
   }
   return false;
 }

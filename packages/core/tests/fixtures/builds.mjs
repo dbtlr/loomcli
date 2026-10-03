@@ -385,9 +385,53 @@ function scenarioRun() {
       };
     }
     default: {
+      const unreadable = /^(?<cancelled>cancelled-)?(?<kind>.+)$/u.exec(scenario)?.groups;
+      if (unreadable !== undefined && Object.hasOwn(unreadableThrows, unreadable.kind)) {
+        return unreadableRun(
+          unreadableThrows[unreadable.kind](),
+          unreadable.cancelled !== undefined,
+        );
+      }
       throw new Error(`Unknown scenario ${scenario}.`);
     }
   }
+}
+
+/** Each thrown value core cannot read, by the kind a scenario names after an optional `cancelled-`. */
+const unreadableThrows = {
+  'endless-proxy': () => {
+    const endless = new Proxy({}, { getPrototypeOf: () => endless });
+    return endless;
+  },
+  'trap-proxy': () =>
+    new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('The prototype trap failed.');
+        },
+      },
+    ),
+  'unnamed-error': () =>
+    Object.defineProperty(new Error('Unnamed.'), 'name', {
+      get() {
+        throw new Error('The name getter failed.');
+      },
+    }),
+};
+
+/** A run whose action throws one unreadable value, after its caller cancelled it when asked. */
+function unreadableRun(thrown, cancelled) {
+  const controller = new AbortController();
+  return {
+    app: new Application('probe', packet).action(() => {
+      if (cancelled) {
+        controller.abort();
+      }
+      throw thrown;
+    }),
+    signal: controller.signal,
+  };
 }
 
 if (scenario === 'captured-reader') {

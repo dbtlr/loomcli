@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { escapeControlCharacters } from './controls.js';
 import { valueCode } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
+import { isInstance } from './prototypes.js';
 
 /**
  * What a development build reads a defect's source through: the working directory, the roots a
@@ -50,25 +51,12 @@ function readText(value: object, key: string): string | undefined {
   return typeof field === 'string' ? field : undefined;
 }
 
-/** Whether a value is an Error, read defensively, because a proxy's prototype trap can throw. */
-function isError(value: unknown): value is Error {
-  try {
-    return value instanceof Error;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * What one cause says about itself on its heading line. A `DeclarationError` says its sentence,
  * because its message holds its whole diagnostic.
  */
 function causeReason(cause: Error): string | undefined {
-  try {
-    return cause instanceof DeclarationError ? cause.sentence : readText(cause, 'message');
-  } catch {
-    return readText(cause, 'message');
-  }
+  return readText(cause, isInstance(cause, DeclarationError) ? 'sentence' : 'message');
 }
 
 /**
@@ -204,11 +192,7 @@ function excerpt(text: string, frame: Frame): string | undefined {
  * broken translator's defect holds the translator's throw and then the original throw this way.
  */
 function heldErrors(cause: Error): readonly unknown[] {
-  try {
-    if (!(cause instanceof AggregateError)) {
-      return [];
-    }
-  } catch {
+  if (!isInstance(cause, AggregateError)) {
     return [];
   }
   const errors = readField(cause, 'errors');
@@ -228,7 +212,7 @@ function framesOf(cause: Error): Frame[] {
  * cause's first frame's location alone.
  */
 function sourceSection(cause: Error, access: SourceAccess): string | undefined {
-  const stacks = [...heldErrors(cause).filter(isError), cause];
+  const stacks = [...heldErrors(cause).filter((held) => isInstance(held, Error)), cause];
   const frame = stacks
     .flatMap((stack) => framesOf(stack))
     .find((candidate) => qualified(candidate.file, access.roots) !== undefined);
@@ -266,7 +250,7 @@ interface ChainWalk {
  */
 function appendLink(cause: unknown, prefix: string, walk: ChainWalk): unknown {
   walk.seen.add(cause);
-  if (!isError(cause)) {
+  if (!isInstance(cause, Error)) {
     walk.lines.push(`${prefix}${valueCode(cause)}`);
     return undefined;
   }
@@ -310,7 +294,7 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
   if (cause === undefined) {
     return [];
   }
-  if (!isError(cause)) {
+  if (!isInstance(cause, Error)) {
     return [`Thrown value: ${valueCode(cause)}`];
   }
   const source = sourceSection(cause, access);

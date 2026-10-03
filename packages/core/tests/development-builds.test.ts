@@ -281,6 +281,30 @@ test('a thrown revoked proxy is a foreign throw that prints as a value', () => {
   expect(stderr).toContain('\n\nThrown value: …\n\n');
 });
 
+test.each([
+  ['endless-proxy', 'The thrown value has no readable message.'],
+  ['trap-proxy', 'The thrown value has no readable message.'],
+  ['unnamed-error', 'Unnamed.'],
+])(
+  'a thrown %s that core cannot read is a foreign throw by build, and a cancelled run keeps its signal code',
+  (kind, sentence) => {
+    for (const [scenario, code] of [
+      [kind, 1],
+      [`cancelled-${kind}`, 130],
+    ] as const) {
+      expect(run(scenario, 'distributed')).toEqual({
+        status: code,
+        stderr: 'probe: Something went wrong.\n',
+        stdout: `resolved:${String(code)}\n`,
+      });
+      const { status, stderr } = run(scenario, 'development');
+      expect(status).toBe(code);
+      expect(stderr.startsWith(`${foreignThrowBanner}\n${sentence}\n`)).toBe(true);
+      expect(stderr).not.toContain('Could not write invocation output');
+    }
+  },
+);
+
 test('two defects in one run write the generic message once, or two diagnostics a blank line apart', () => {
   expect(run('two-defects', 'distributed')).toEqual({
     status: 1,

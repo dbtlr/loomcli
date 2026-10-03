@@ -264,6 +264,14 @@ test.each([
     { FIXTURE_SOURCE: 'label-getter' },
     'Plugin "@fixture/config" failed in its configuration source: the answer label threw.',
   ],
+  [
+    { FIXTURE_SOURCE: 'endless-proxy' },
+    'Plugin "@fixture/config" failed in its configuration source: The thrown value has no readable message.',
+  ],
+  [
+    { FIXTURE_SOURCE: 'trap-proxy' },
+    'Plugin "@fixture/config" failed in its configuration source: The thrown value has no readable message.',
+  ],
 ])('a source fault %j reports its sentence with code 1', (env, sentence) => {
   expect(run([], env)).toMatchObject({ status: 1, stderr: 'app: Something went wrong.\n' });
   const result = run([], { ...env, FIXTURE_BUILD: 'development' });

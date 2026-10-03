@@ -10,7 +10,7 @@ import {
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import { foreignValue, notAFunction, notAList, translationKey } from './plugin-rules.js';
-import { prototypeChain } from './prototypes.js';
+import { isInstance, prototypeChain } from './prototypes.js';
 import { brokenTranslator, brokenTranslatorCorrection } from './rules.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 
@@ -111,18 +111,6 @@ function translateFinding(key: unknown, translator: unknown, mark: string) {
 }
 
 /**
- * Whether a key claims a thrown value as its instance. A value whose chain cannot be read is not
- * claimed, so its translator is never called and is not blamed for the failed read.
- */
-function claims<Thrown extends object>(thrown: object, key: ErrorClass<Thrown>): thrown is Thrown {
-  try {
-    return thrown instanceof key;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Pairs an error class with the translator that turns its instances into a failure. The
  * translator receives the thrown instance typed from the class, and a `translators` list on the
  * Application or a plugin registers the pair.
@@ -159,7 +147,8 @@ function translate<Thrown extends object>(
   }
   return new TranslationDeclaration({
     name: keyName(key),
-    offer: (thrown) => (claims(thrown, key) ? translator(thrown) : undefined),
+    // A value whose chain cannot be read is no instance, so its translator is never blamed for it.
+    offer: (thrown) => (isInstance(thrown, key) ? translator(thrown) : undefined),
     prototype,
   });
 }
@@ -249,15 +238,6 @@ function returnedKind(value: unknown): string {
   return /^[aeiou]/u.test(kind) ? `an ${kind}` : `a ${kind}`;
 }
 
-/** Whether a translator's answer is a failure, read without letting a hostile value throw. */
-function isFailure(value: unknown): value is LoomError {
-  try {
-    return value instanceof LoomError;
-  } catch {
-    return false;
-  }
-}
-
 /** The defect of a broken translator under its rule, with the sentence and cause each shape gives. */
 function brokenDefect(sentence: string, cause: unknown): InternalError {
   return new InternalError(brokenTranslator, {
@@ -294,7 +274,7 @@ function consult(
   } catch (error) {
     return threwDefect(who, error, thrown);
   }
-  if (answer === undefined || isFailure(answer)) {
+  if (answer === undefined || isInstance(answer, LoomError)) {
     return answer;
   }
   // A translator is synchronous, so a returned promise is ignored once its rejection is observed.

@@ -5,6 +5,8 @@ import { diagnosticText, isDiagnosticRule, valueCode } from './diagnostic-text.j
 import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
+import { inherits, readChain } from './prototypes.js';
+import type { ChainRead } from './prototypes.js';
 import {
   failureExitCode,
   foreignThrow,
@@ -539,25 +541,27 @@ export function asSentence(text: string): string {
  * its whole diagnostic. Every sentence that quotes a thrown value reads it here, so a reason stays
  * on one line and no bidirectional control reaches a terminal, whichever rule's sentence carries
  * it, while the author's words around it keep their line breaks. Reading it never throws: an Error
- * whose message is not a string or cannot be read, and a value whose prototype cannot be read, such
- * as a proxy whose trap throws, answer one fixed sentence.
+ * whose message is not a string or cannot be read, and a value whose prototype chain cannot be
+ * read, such as a proxy whose trap throws or whose chain never ends, answer one fixed sentence.
  */
 export function reasonOf(thrown: unknown): string {
-  return escapeControlCharacters(rawReasonOf(thrown));
+  return escapeControlCharacters(rawReason(readChain(thrown)));
 }
 
-/** The thrown value's reason as it was written, read without throwing. */
-function rawReasonOf(thrown: unknown): string {
+/** The reason one read of a thrown value gives, as it was written, read without throwing. */
+function rawReason(read: ChainRead): string {
   const unreadableReason = 'The thrown value has no readable message.';
+  if (read.chain === undefined) {
+    return unreadableReason;
+  }
+  if (!inherits(read, Error)) {
+    return 'An unknown error occurred.';
+  }
   try {
-    if (!(thrown instanceof Error)) {
-      return 'An unknown error occurred.';
-    }
-    if (thrown instanceof DeclarationError) {
-      return thrown.sentence;
-    }
-    const { message }: { message: unknown } = thrown;
-    return typeof message === 'string' ? message : unreadableReason;
+    const text: unknown = inherits(read, DeclarationError)
+      ? read.value.sentence
+      : read.value.message;
+    return typeof text === 'string' ? text : unreadableReason;
   } catch {
     return unreadableReason;
   }
@@ -575,30 +579,21 @@ export function notTextReason(value: unknown): string {
 }
 
 /**
- * Whether a thrown value is a failure class by its prototype chain, read defensively, because a
- * revoked proxy or a proxy whose prototype trap throws answers no chain. Such a value is foreign.
- */
-function isLoomError(thrown: unknown): thrown is LoomError {
-  try {
-    return thrown instanceof LoomError;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Every thrown value reaches reporting as a failure class; anything else is internal. A value that
  * inherits from a failure class without having been constructed holds no code, so it is internal
- * too.
+ * too. The value's prototype chain is read once, and both the verdict and a foreign throw's reason
+ * answer from that read, so a proxy whose trap throws, or whose chain never ends, is a foreign
+ * throw on every runtime.
  */
 export function toFailure(thrown: unknown): LoomError {
-  if (!isLoomError(thrown)) {
-    return foreignFailure(thrown);
+  const read = readChain(thrown);
+  if (!inherits(read, LoomError)) {
+    return foreignDefect(read);
   }
-  return failureCodes.has(thrown)
-    ? thrown
+  return failureCodes.has(read.value)
+    ? read.value
     : new InternalError(unconstructedFailure, {
-        cause: thrown,
+        cause: read.value,
         correction: 'Construct the failure with new before throwing it.',
         sentence: 'A thrown value inherits from a failure class but was never constructed as one.',
       });
@@ -609,10 +604,15 @@ export function toFailure(thrown: unknown): LoomError {
  * cause a development build's diagnostic shows.
  */
 export function foreignFailure(thrown: unknown): InternalError {
+  return foreignDefect(readChain(thrown));
+}
+
+/** The foreign-throw defect of one read of a thrown value. */
+function foreignDefect(read: ChainRead): InternalError {
   return new InternalError(foreignThrow, {
-    cause: thrown,
+    cause: read.value,
     correction: foreignThrowCorrection,
-    sentence: reasonOf(thrown),
+    sentence: escapeControlCharacters(rawReason(read)),
   });
 }
 

@@ -131,6 +131,7 @@ test.each([
   ['broken-throws', 'threw: The translator failed.'],
   ['broken-string', 'returned a string instead of a failure.'],
   ['broken-promise', 'returned a promise instead of a failure.'],
+  ['broken-endless', 'returned an object instead of a failure.'],
 ])('%s is a defect, and no later translator is called', (scenario, clause) => {
   expect(run(scenario)).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
   const developed = develop(scenario);

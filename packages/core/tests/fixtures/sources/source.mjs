@@ -31,6 +31,20 @@ const source = async ({ graph, host, options, out, requests, style }) => {
   if (mode === 'throw') {
     throw new Error(process.env.FIXTURE_REASON ?? 'the settings file is locked');
   }
+  if (mode === 'endless-proxy') {
+    const endless = new Proxy({}, { getPrototypeOf: () => endless });
+    throw endless;
+  }
+  if (mode === 'trap-proxy') {
+    throw new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('The prototype trap failed.');
+        },
+      },
+    );
+  }
   if (mode === 'context') {
     // The graph is the one inspect() returns, and each request is a node inside it.
     const globals = requests.map((request) => graph.globals.includes(request));

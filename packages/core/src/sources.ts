@@ -14,6 +14,7 @@ import type { OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
 import { loadDefault, pluginSentence, pluginValues } from './plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from './plugin.js';
+import { isInstance } from './prototypes.js';
 import {
   foreignThrow,
   foreignThrowCorrection,
@@ -291,7 +292,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
     // That covers an InputError, the FatalError out.fatal() throws, and its out.results() fault.
     // A foreign throw is offered to the translators.
     // One that no translator answers is the plugin's fault.
-    if (error instanceof LoomError) {
+    if (isInstance(error, LoomError)) {
       throw error;
     }
     throw stage.offer(error) ?? sourceFailure(sentence, error);
@@ -299,7 +300,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   try {
     return readAnswers(sentence, answers, requested);
   } catch (error) {
-    if (error instanceof InternalError && ruleFaults.has(error)) {
+    if (isInstance(error, InternalError) && ruleFaults.has(error)) {
       throw error;
     }
     throw sourceFailure(sentence, error);
@@ -381,7 +382,7 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   } catch (error) {
     // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.
-    const fault = error instanceof LoomError ? error : foreignFailure(error);
+    const fault = isInstance(error, LoomError) ? error : foreignFailure(error);
     return { fault, labels, rejected };
   }
 }

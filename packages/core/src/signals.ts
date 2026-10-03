@@ -1,4 +1,5 @@
 import { InternalError } from './errors.js';
+import { isInstance } from './prototypes.js';
 
 /** The signals a plugin may claim, which is the closed set core installs process listeners for. */
 type ProcessSignal = 'SIGINT' | 'SIGTERM';
@@ -37,15 +38,17 @@ function cancellationCode(reason: CancellationReason): CancellationCode {
  * Whether one thrown value is the cancellation the run already reports: the reason core aborted
  * with, which an API that rejects with `signal.reason` throws back, or an error every runtime
  * names `AbortError`. The chain wraps an unexpected throw, so the wrapped cause reads the same.
+ * A value whose prototype chain cannot be read is no echo. An Error whose `name` getter throws
+ * throws here, and each caller decides what such a value is.
  */
 function isCancellationEcho(thrown: unknown, reason: unknown): boolean {
   if (thrown === reason) {
     return true;
   }
-  if (thrown instanceof Error && thrown.name === 'AbortError') {
+  if (isInstance(thrown, Error) && thrown.name === 'AbortError') {
     return true;
   }
-  return thrown instanceof InternalError && isCancellationEcho(thrown.cause, reason);
+  return isInstance(thrown, InternalError) && isCancellationEcho(thrown.cause, reason);
 }
 
 /**
