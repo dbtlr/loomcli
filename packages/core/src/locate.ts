@@ -87,14 +87,17 @@ function plainWord(scope: Scope, last: string): WordPosition {
 }
 
 /**
- * A word the walk reads against the routed Command's table, as the parser reads it: no position
- * where the walk faults, the value a long spelling carries after `=` or a short value letter
- * carries after it, and otherwise `undefined`, an option spelling.
+ * A word the walk reads against the routed Command's table and the earlier words' values, as the
+ * parser reads it: no position where the walk faults, a repeat of an earlier option included, the
+ * value a long spelling carries after `=` or a short value letter carries after it, and otherwise
+ * `undefined`, an option spelling.
  */
 function carriedValue(scope: Scope, last: string): WordPosition | undefined {
-  const { occurrences } = readOptionWord(scope.earlier.command.table, last, undefined);
+  const { earlier } = scope;
+  const context = { table: earlier.command.table, values: earlier.values };
+  const { occurrences } = readOptionWord(context, last, undefined);
   for (const occurrence of occurrences) {
-    if (occurrence.kind === 'unknown' || occurrence.kind === 'unexpected') {
+    if (occurrence.kind !== 'value' && occurrence.kind !== 'awaiting') {
       return none;
     }
     if (occurrence.kind === 'value' && occurrence.lead !== undefined) {

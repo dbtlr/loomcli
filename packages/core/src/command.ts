@@ -2553,24 +2553,35 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
   return places;
 }
 
+/** One positional word bound to its slot: a variadic slot collects it, any other holds it. */
+function bindWord(
+  values: Map<InputDeclaration, string | string[]>,
+  slot: ArgumentSlot,
+  word: string,
+): void {
+  const bound = values.get(slot.input);
+  if (!slot.variadic) {
+    values.set(slot.input, word);
+  } else if (Array.isArray(bound)) {
+    bound.push(word);
+  } else {
+    values.set(slot.input, [word]);
+  }
+}
+
 /**
  * The words each positional slot received. Parsing already held the first positional no slot
  * accepts, so every positional here has a slot. An omitted required argument binds nothing and
  * reports as a missing input in the validation phase, so omission has one class whether the input
- * is an argument or an option.
+ * is an argument or an option. An empty variadic tail binds nothing, so validation reads it as
+ * `[]` or reports the omission.
  */
 function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
   const values = new Map<InputDeclaration, string | string[]>();
   for (const [position, word] of positionals.entries()) {
     const slot = argumentSlot(command.arguments, position);
-    // An empty variadic tail binds nothing, so validation reads it as `[]` or reports the omission.
-    const bound = slot && values.get(slot.input);
-    if (slot && !slot.variadic) {
-      values.set(slot.input, word);
-    } else if (Array.isArray(bound)) {
-      bound.push(word);
-    } else if (slot) {
-      values.set(slot.input, [word]);
+    if (slot) {
+      bindWord(values, slot, word);
     }
   }
   return values;
@@ -2703,10 +2714,10 @@ function tailOf(local: LocalPhase): readonly string[] {
 
 /**
  * The input-source stage over this run's own copies of the parsed values. The global options fill
- * whatever was held, and a faulted occurrence supplied nothing, so a source may fill its option; the
- * routed Command's own options fill only when nothing is held, because the request is `null`
- * otherwise. A configuration source's own options pass
- * their validators before the source is called, as a pass over those options alone.
+ * whatever was held, and a faulted occurrence supplied nothing, so a source may fill its option;
+ * the routed Command's own options fill only when nothing is held, because the request is `null`
+ * otherwise. A configuration source's own options pass their validators before the source is
+ * called, as a pass over those options alone.
  */
 async function fillScope(
   preparation: Preparation,
@@ -2746,9 +2757,10 @@ async function fillScope(
 /**
  * A validation pass over the values the input-source stage has filled: every global option
  * whatever was held, and the routed Command's own declarations only when nothing is held and the
- * Command is not a group. `only` narrows the declarations a pass validates, as the pass over a configuration
- * source's own options does ahead of its call, while every validator reads the same context. The
- * run's one pass reads that earlier pass's values and problems rather than validating them again.
+ * Command is not a group. `only` narrows the declarations a pass validates, as the pass over a
+ * configuration source's own options does ahead of its call, while every validator reads the same
+ * context. The run's one pass reads that earlier pass's values and problems rather than validating
+ * them again.
  */
 function validateInvocation(
   { graph, invocation, routed }: Preparation,

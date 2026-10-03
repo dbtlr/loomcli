@@ -41,6 +41,7 @@ type Occurrence =
     }
   | { kind: 'unknown'; spelling: string }
   | { kind: 'unexpected'; option: TableSpelling; spelling: string; value: string }
+  | { kind: 'repeated'; option: TableSpelling; spelling: string }
   | { kind: 'missing'; option: TableSpelling; spelling: string }
   | { kind: 'awaiting'; option: TableSpelling; spelling: string };
 
@@ -48,6 +49,39 @@ type Occurrence =
 interface WordReading {
   occurrences: readonly Occurrence[];
   takesNext: boolean;
+}
+
+/**
+ * What one option word is read against: a table, and the values earlier words supplied, so an
+ * option that does not collect and was supplied already is a repeat that ends the walk.
+ */
+interface WordContext {
+  table: SpellingTable;
+  values: { globals: OptionValues; locals: OptionValues };
+}
+
+/** Whether an option collects every occurrence: a multiple string option. */
+function collects(option: TableSpelling): boolean {
+  return option.type === 'string' && option.multiple;
+}
+
+/** Whether an occurrence of an option repeats one an earlier word supplied. */
+function repeats(context: WordContext, option: TableSpelling): boolean {
+  const values = option.global ? context.values.globals : context.values.locals;
+  return !collects(option) && isSupplied(values, option.name);
+}
+
+/**
+ * A repeated occurrence supplies nothing, and a string option still takes the value its form
+ * names, so the words after it read as they would have.
+ */
+function repeated(option: TableSpelling, spelling: string, takesNext: boolean): WordReading {
+  return { occurrences: [{ kind: 'repeated', option, spelling }], takesNext };
+}
+
+/** Whether a string option with no value in its own word takes the next word as its value. */
+function takesSeparate(next: string | undefined): boolean {
+  return next !== undefined && !refusesValue(next);
 }
 
 /**
@@ -69,14 +103,30 @@ function separateValue(
 }
 
 /** A word that starts with `--`, split at its first `=` into the spelling and the value it carries. */
-function readLong(table: SpellingTable, word: string, next: string | undefined): WordReading {
+function readLong(context: WordContext, word: string, next: string | undefined): WordReading {
   const equals = word.indexOf('=');
   const spelling = equals === -1 ? word : word.slice(0, equals);
   const inline = equals === -1 ? undefined : word.slice(equals + 1);
-  const option = table.get(spelling);
+  const option = context.table.get(spelling);
   if (!option) {
     return { occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
+  if (repeats(context, option)) {
+    const separate = option.type === 'string' && inline === undefined && takesSeparate(next);
+    return repeated(option, spelling, separate);
+  }
+  return longValue({ inline, option, spelling }, next);
+}
+
+/**
+ * The value a declared long spelling supplies: a Boolean's own value, which takes no `=`, or a
+ * string option's value after `=` or in the next word.
+ */
+function longValue(
+  long: { inline: string | undefined; option: TableSpelling; spelling: string },
+  next: string | undefined,
+): WordReading {
+  const { inline, option, spelling } = long;
   if (inline === undefined) {
     return option.type === 'boolean'
       ? {
@@ -92,11 +142,15 @@ function readLong(table: SpellingTable, word: string, next: string | undefined):
   return { occurrences: [occurrence], takesNext: false };
 }
 
-/** One short group being walked: its word, its letters by code point, and the word after it. */
+/**
+ * One short group being walked: its word, its letters by code point, the word after it, and the
+ * options its earlier letters set, which a later letter repeats.
+ */
 interface Group {
+  context: WordContext;
   letters: readonly string[];
   next: string | undefined;
-  table: SpellingTable;
+  set: Set<string>;
   word: string;
 }
 
@@ -142,11 +196,16 @@ function valueLetter(
 /** The letter at one index of a group, read against the group's table. */
 function readLetter(group: Group, index: number): LetterReading {
   const spelling = `-${group.letters[index] ?? ''}`;
-  const option = group.table.get(spelling);
+  const option = group.context.table.get(spelling);
   const rest = group.letters.slice(index + 1).join('');
   if (!option) {
     return { ends: true, occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
+  if (group.set.has(option.name) || repeats(group.context, option)) {
+    const takesNext = option.type === 'string' && rest === '' && takesSeparate(group.next);
+    return { ends: true, ...repeated(option, spelling, takesNext) };
+  }
+  group.set.add(option.name);
   return option.type === 'boolean'
     ? booleanLetter(option, spelling, rest)
     : valueLetter(group, { option, spelling }, rest);
@@ -154,10 +213,12 @@ function readLetter(group: Group, index: number): LetterReading {
 
 /**
  * A short group under the `getopt` rule, one code point per letter. The walk stops at a value
- * letter or at the first letter that faults, so the characters after it are never read as letters.
+ * letter or at the first letter that faults, a repeated one included, so the characters after it
+ * are never read as letters.
  */
-function readGroup(table: SpellingTable, word: string, next: string | undefined): WordReading {
-  const group: Group = { letters: word.slice(1).match(/./gsu) ?? [], next, table, word };
+function readGroup(context: WordContext, word: string, next: string | undefined): WordReading {
+  const letters = word.slice(1).match(/./gsu) ?? [];
+  const group: Group = { context, letters, next, set: new Set(), word };
   const occurrences: Occurrence[] = [];
   for (const index of group.letters.keys()) {
     const letter = readLetter(group, index);
@@ -170,8 +231,8 @@ function readGroup(table: SpellingTable, word: string, next: string | undefined)
 }
 
 /** One option word read against one table, with the word after it as its possible value. */
-function readOptionWord(table: SpellingTable, word: string, next: string | undefined): WordReading {
-  return word.startsWith('--') ? readLong(table, word, next) : readGroup(table, word, next);
+function readOptionWord(context: WordContext, word: string, next: string | undefined): WordReading {
+  return word.startsWith('--') ? readLong(context, word, next) : readGroup(context, word, next);
 }
 
 /**
@@ -237,11 +298,6 @@ function hold(state: ReadState, error: LoomError, global: boolean): false {
   return false;
 }
 
-/** Whether an option collects every occurrence: a multiple string option. */
-function collects(option: TableSpelling): boolean {
-  return option.type === 'string' && option.multiple;
-}
-
 /** Records one supplied value in the map its kind and its declaration decide. */
 function write(values: OptionValues, option: TableSpelling, value: string | boolean): void {
   const { name } = option;
@@ -257,13 +313,10 @@ function write(values: OptionValues, option: TableSpelling, value: string | bool
   }
 }
 
-/** Writes one value an occurrence supplied, unless it repeats an option that does not collect. */
+/** Writes one value an occurrence supplied. The reading already ended its walk at a repeat. */
 function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): boolean {
   const { option, spelling } = occurrence;
   const values = option.global ? state.values.globals : state.values.locals;
-  if (!collects(option) && isSupplied(values, option.name)) {
-    return hold(state, new RepeatedOptionError(spelling), option.global);
-  }
   if (!values.spellings.has(option.name)) {
     state.supplied.push(option.name);
   }
@@ -275,27 +328,31 @@ function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): b
 
 /** Applies one occurrence, and answers whether the word's next occurrence is read. */
 function applyOccurrence(state: ReadState, occurrence: Occurrence): boolean {
-  switch (occurrence.kind) {
-    case 'value': {
-      return supply(state, occurrence);
-    }
-    case 'unknown': {
-      return hold(state, unplaced(state, occurrence.spelling), false);
-    }
-    case 'unexpected': {
-      const { option, spelling, value } = occurrence;
-      return hold(state, new UnexpectedValueError(spelling, value), option.global);
-    }
-    case 'missing': {
-      const { option, spelling } = occurrence;
-      return hold(state, new MissingValueError(spelling, 'attached'), option.global);
-    }
-    default: {
-      const { option, spelling } = occurrence;
-      state.awaiting = { global: option.global, name: option.name, spelling };
-      return false;
-    }
+  if (occurrence.kind === 'value') {
+    return supply(state, occurrence);
   }
+  if (occurrence.kind === 'unknown') {
+    return hold(state, unplaced(state, occurrence.spelling), false);
+  }
+  const { option, spelling } = occurrence;
+  if (occurrence.kind === 'awaiting') {
+    state.awaiting = { global: option.global, name: option.name, spelling };
+    return false;
+  }
+  return hold(state, optionFault(occurrence), option.global);
+}
+
+/** The failure a faulted occurrence of a declared option reports. */
+function optionFault(
+  occurrence: Occurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
+): LoomError {
+  const { spelling } = occurrence;
+  if (occurrence.kind === 'unexpected') {
+    return new UnexpectedValueError(spelling, occurrence.value);
+  }
+  return occurrence.kind === 'repeated'
+    ? new RepeatedOptionError(spelling)
+    : new MissingValueError(spelling, 'attached');
 }
 
 /** Applies a word's occurrences in order, up to the first that faults. A faulted one supplies nothing. */
@@ -342,7 +399,8 @@ interface Routing {
  */
 function routeOption(routing: Routing, state: ReadState, index: number): number {
   const { graph, words } = routing;
-  const reading = readOptionWord(graph.globals.table, words[index] ?? '', words[index + 1]);
+  const context = { table: graph.globals.table, values: state.values };
+  const reading = readOptionWord(context, words[index] ?? '', words[index + 1]);
   if (reading.occurrences.some((occurrence) => occurrence.kind === 'unknown')) {
     return 0;
   }
@@ -412,7 +470,7 @@ function readCommandWord(state: ReadState, word: string, next: string | undefine
     positional(state, word);
     return 0;
   }
-  const reading = readOptionWord(state.command.table, word, next);
+  const reading = readOptionWord({ table: state.command.table, values: state.values }, word, next);
   apply(state, reading);
   return reading.takesNext ? 1 : 0;
 }
@@ -451,8 +509,8 @@ interface WordsRead {
 }
 
 /**
- * Reads a word list through routing and then the routed Command's own words, up to the first bare
- * `--`, against the one table the routed Command holds. Parsing continues past a fault, so every
+ * Reads a word list through routing, against the global options alone, and then the routed
+ * Command's own words, up to the first bare `--`, against the one table that Command holds. Parsing continues past a fault, so every
  * global option is found wherever it sits, and only the first fault in word order is held. Only
  * an unknown Command throws.
  */
@@ -524,7 +582,7 @@ function parseInvocation(
   };
 }
 
-export type { AwaitingValue, Occurrence, ParsedInvocation, WordsRead };
+export type { AwaitingValue, ParsedInvocation, WordsRead };
 export {
   argumentSlot,
   candidatesOf,

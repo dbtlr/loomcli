@@ -18,8 +18,8 @@ function dispatched(argv: string[]): unknown {
 }
 
 /** The facts of the usage failure an invocation held, and the path routing reached. */
-function held(argv: string[]): unknown {
-  const result = kit(argv);
+function held(argv: string[], scenario = 'kit'): unknown {
+  const result = kit(argv, scenario);
   expect(result.stdout).toBe('resolved:2\n');
   expect(result.status).toBe(2);
   return JSON.parse(result.stderr);
@@ -124,6 +124,55 @@ test.each([
     });
   },
 );
+
+test("the root's own option reads there, so the words after it are the root's arguments", () => {
+  expect(held(['-p', 'get', 'a.b'], 'rooted')).toEqual({
+    message: 'The root Command accepts no arguments. Remove the supplied values.',
+    name: 'UnexpectedArgumentError',
+    path: [],
+  });
+});
+
+test("an option word the routed Command's table lacks is misplaced, wherever routing stopped", () => {
+  expect(held(['-p', '-r', 'get'], 'rooted')).toEqual({
+    commands: [['get']],
+    message: 'Option "-r" belongs to command "get". Supply it after "get".',
+    name: 'MisplacedOptionError',
+    path: [],
+    spelling: '-r',
+  });
+});
+
+test('a deprecated group hides the letters below it, until routing reaches it', () => {
+  expect(held(['-x', 'old', 'sub'])).toEqual({
+    message: 'Unknown option "-x". Supply a declared option; prefix a hyphenated path with "./".',
+    name: 'UnknownOptionError',
+    path: [],
+    spelling: '-x',
+  });
+  expect(held(['old', '-x', 'sub'])).toEqual({
+    commands: [['old', 'sub']],
+    message: 'Option "-x" belongs to command "old sub". Supply it after "old sub".',
+    name: 'MisplacedOptionError',
+    path: ['old'],
+    spelling: '-x',
+  });
+});
+
+test('a repeated letter ends its walk, so routing never reads the letters after it', () => {
+  const repeated = {
+    message: 'Option "-q" can be supplied only once. Remove the repeated option.',
+    name: 'RepeatedOptionError',
+    path: ['get'],
+    spelling: '-q',
+  };
+  expect(held(['-q', '-qp', 'get', 'a.b'])).toEqual(repeated);
+  expect(held(['-qqp', 'get', 'a.b'])).toEqual(repeated);
+  expect(held(['get', 'a.b', '-p', '-ph'])).toMatchObject({
+    name: 'RepeatedOptionError',
+    spelling: '-p',
+  });
+});
 
 test('a misplaced option is held, so help takes it over on the Command routing reached', () => {
   expect(kit(['-qp', '-f', 'data.json', 'get', 'a.b', '--help'])).toEqual({

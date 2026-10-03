@@ -193,7 +193,7 @@ The invocation phase that reads words from the root downward and selects the Com
 _Avoid_: Dispatch (for selection), resolution, matching, pre-scan
 
 **Misplaced option**:
-An option word that stopped routing because no global option declares it, while a visible Command below the one reached does. It is held as `MisplacedOptionError`, whose sentence names that Command.
+An option word the routed Command's table does not hold, while a visible Command below it declares it, such as a Command's own option typed before the Command's name. It is held as `MisplacedOptionError`, whose sentence names those Commands.
 _Avoid_: Early option, out-of-scope option
 
 **Word position**:

@@ -73,6 +73,11 @@ function kit() {
   const fetch = new Command('fetch', { deprecated: 'Use get instead.' })
     .option('yank', { short: 'y', type: 'boolean' })
     .action(report(['fetch']));
+  const old = new Command('old', { deprecated: 'Use cache instead.' }).command(
+    new Command('sub')
+      .option('xenon', { short: 'x', type: 'boolean' })
+      .action(report(['old', 'sub'])),
+  );
   const plugins = scenario === 'observed' ? [observer, help] : [help];
   return new Application('kit', { plugins, views: [override(UsageError, facts)] })
     .globalOption('file', { short: 'f', type: 'string' })
@@ -82,8 +87,22 @@ function kit() {
     .command(cache)
     .command(debug)
     .command(fetch)
+    .command(old)
     .action(report([]));
 }
 
-const code = await kit().run({ host: { argv } });
+/** A root with an action and its own `-p`, and a child `get` that declares `-r`. */
+function rooted() {
+  const get = new Command('get')
+    .argument('path', {})
+    .option('raw', { short: 'r', type: 'boolean' })
+    .action(report(['get']));
+  return new Application('rooted', { plugins: [help], views: [override(UsageError, facts)] })
+    .globalOption('quiet', { short: 'q', type: 'boolean' })
+    .option('pretty', { short: 'p', type: 'boolean' })
+    .command(get)
+    .action(report([]));
+}
+
+const code = await (scenario === 'rooted' ? rooted() : kit()).run({ host: { argv } });
 process.stdout.write(`resolved:${code}\n`);

@@ -205,8 +205,13 @@ test('reads every structural fault among the earlier words as no position', () =
       ['-s', 'keys', ''],
       ['keys', 'extra', ''],
       ['---', ''],
+      ['-f', 'x', '-f', ''],
+      ['keys', '-d', '1', '-d', ''],
+      ['keys', '-s', '-sd', ''],
     ]),
-  ).toEqual([none, none, none, none, none, none, none, none, none, none, none]);
+  ).toEqual([none, none, none, none, none, none, none, none, none, none, none, none, none, none]);
+  // A multiple option repeats, so its next occurrence still waits for a value.
+  expect(locateAll([['keys', '-F', 'a', '-F', '']])).toEqual([awaiting(['keys'], 'field', '')]);
 });
 
 test('lists the options earlier words supplied, globals and locals, in supplied order', () => {
