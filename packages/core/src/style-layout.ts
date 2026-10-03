@@ -145,6 +145,8 @@ function padBlock(block: Block, padding: Padding, attributes: Attributes): Block
   if (!block.tabs && block.minimum >= padding.width) {
     return block;
   }
+  const space = (count: number) =>
+    leaf({ attributes, kind: 'text', text: ' '.repeat(count) }, count);
   const lines = block.lines.map((line, index) => {
     // A terminal newline has no extra line to align; interior blank lines do.
     if (index > 0 && index === block.lines.length - 1 && !line.content.text) {
@@ -161,8 +163,6 @@ function padBlock(block: Block, padding: Padding, attributes: Attributes): Block
     } else if (padding.align === 'center') {
       before = Math.floor(missing / 2);
     }
-    const space = (count: number) =>
-      leaf({ attributes, kind: 'text', text: ' '.repeat(count) }, count);
     // Re-segment inserted spaces too: a trailing Unicode Prepend character can absorb one.
     const spaced = join([space(before), content, space(missing - before)]);
     const row = measured([{ content: spaced, ending: [] }]);

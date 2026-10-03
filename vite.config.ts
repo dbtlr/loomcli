@@ -55,7 +55,8 @@ export default defineConfig({
           'eslint/func-style': ['error', 'declaration', { allowArrowFunctions: true }],
           'eslint/no-await-in-loop': 'off',
           'eslint/no-ternary': 'off',
-          'eslint/one-var': ['error', 'never'],
+          // The project turns one-var off on purpose, so a declaration may group or split variables.
+          'eslint/one-var': 'off',
           'eslint/prefer-destructuring': 'off',
           'eslint/sort-imports': 'off',
           'import/group-exports': 'off',

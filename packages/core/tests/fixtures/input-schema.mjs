@@ -123,12 +123,14 @@ function failing() {
     .action(dispatch);
 }
 
-/** A middleware prints the schema it reads on the routed Command's first option. */
+/** The middleware prints the schema it reads on the routed Command's first option. */
+async function observing({ command, next, out }) {
+  await out.print(encode(command.options[0].schema));
+  await next();
+}
+
+/** A graph whose middleware observes the first option's schema. */
 function observed() {
-  const observing = async ({ command, next, out }) => {
-    await out.print(encode(command.options[0].schema));
-    await next();
-  };
   const observer = plugin('@fixture/observer', {
     middleware: { activate: 'always', load: () => ({ default: observing }) },
   });
