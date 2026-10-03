@@ -2,14 +2,16 @@
   "name": "@loomcli/core",
   "version": "0.6.0",
   "description": "The Loom CLI core package. Provides the scaffolding for creating new Loom CLI applications.",
-  "license": "MIT",
+  "license": "MIT AND Unicode-3.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
   "files": [
     "dist",
-    "LICENSE"
+    "LICENSE",
+    "licenses",
+    "NOTICE"
   ],
   "type": "module",
   "exports": {
@@ -19,9 +21,11 @@
     }
   },
   "dependencies": {
-    "@rockorager/uucode": "2.2.1",
     "@standard-schema/spec": "^1.1.0",
     "@types/node": "22.20.1"
+  },
+  "devDependencies": {
+    "@rockorager/uucode": "2.2.1"
   },
   "engines": {
     "bun": ">=1.4.0",

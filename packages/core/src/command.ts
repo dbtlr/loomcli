@@ -65,6 +65,7 @@ import {
   checkDescription,
   checkHidden,
   checkNoListingFacts,
+  declarerNote,
   siteFinding,
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
@@ -1893,17 +1894,12 @@ function nameCollisionRule(
   return declared === 'option' ? optionDeclaredTwice : argumentDeclaredTwice;
 }
 
-/** The note a finding for one hook-declared input carries. */
-function hookNote(identity: string): string {
-  return `declared by plugin ${quoted(identity)}`;
-}
-
 /** The clause and the remedy an input another plugin's hook already declared earns. */
 function hookClause(earlier: AttachedInput, path: readonly string[]): Collision {
   const { identity, input } = earlier;
   return {
     clause: `an ${input.kind} plugin ${quoted(identity)} declared through onCommandAttach`,
-    held: inputFinding(path, input, hookNote(identity)),
+    held: inputFinding(path, input, declarerNote(identity)),
     kind: input.kind,
     remedy: 'Install one of them.',
   };
@@ -2039,14 +2035,14 @@ function checkAttachedSpelling(
       throw new DeclarationError(spellingTaken, {
         correction: 'Change one of the two spellings or omit the plugin.',
         findings: [
-          spellingPlace(site, option.role, hookNote(identity)),
+          spellingPlace(site, option.role, declarerNote(identity)),
           ...(used.finding === undefined ? [] : [used.finding]),
         ],
         sentence: `Plugin ${quoted(identity)} declares option ${quoted(input.name)} with spelling ${quoted(spelling)} on ${subject}, which ${quoted(used.form)} already uses.`,
       });
     }
   }
-  readSpellings(table, claimed, (_name, role) => spellingPlace(site, role, hookNote(identity)));
+  readSpellings(table, claimed, (_name, role) => spellingPlace(site, role, declarerNote(identity)));
 }
 
 /** The declarations of one kind, keyed by name, the first of each name winning. */
@@ -2116,7 +2112,7 @@ function checkAttachedInputs(
     if (collision) {
       throw new DeclarationError(nameCollisionRule(input.kind, collision.kind), {
         correction: collision.remedy,
-        findings: [inputFinding(path, input, hookNote(identity)), collision.held],
+        findings: [inputFinding(path, input, declarerNote(identity)), collision.held],
         sentence: `Plugin ${quoted(identity)} declares ${input.kind} ${quoted(input.name)} on ${subject}, which is already declared as ${collision.clause}.`,
       });
     }

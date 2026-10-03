@@ -11,7 +11,11 @@ function run(scenario: string, argv: string[]) {
 
 interface InspectedGraph {
   root: {
-    children: { name: string; options: { name: string; schema?: unknown }[]; result: unknown }[];
+    children: {
+      name: string;
+      options: { name: string; schema?: unknown; short?: string | null }[];
+      result: unknown;
+    }[];
   };
 }
 
@@ -110,6 +114,109 @@ test("the hook-collision error names another plugin's option", () => {
     stderr: 'app: Something went wrong.\n',
     stdout: '',
   });
+});
+
+/** The rule, sentence, and finding notes of the fault one build scenario's inspect() throws. */
+function buildFault(scenario: string): unknown {
+  const result = invoke(rejected, ['inspect', scenario]);
+  expect(result.stderr).toBe('');
+  return JSON.parse(result.stdout);
+}
+
+test('format() gives --format no short spelling by default', () => {
+  const found = inspect('later-default').root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')?.short).toBeNull();
+  expect(run('later-default', ['count', '-f', 'json']).status).toBe(2);
+});
+
+test('format({ short }) gives --format that short spelling, and it selects a view', () => {
+  const found = inspect('short').root.children.find((child) => child.name === 'count');
+  expect(found?.options.find((option) => option.name === 'format')?.short).toBe('-f');
+  expect(run('short', ['count', '-f', 'json'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{\n  "label": "a",\n  "value": 1\n}\n',
+  });
+  expect(run('short', ['count', '--help']).stdout).toContain(
+    '  -f, --format <format>  Select the output format, table by default.',
+  );
+});
+
+test("a short spelling the Command's own option holds is the hook-collision error naming both", () => {
+  expect(buildFault('short-local-collision')).toEqual({
+    notes: ['declared by plugin "@loomcli/plugins/format"', 'the local option "file"'],
+    rule: '@loomcli/core/spelling-taken',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses.',
+  });
+});
+
+test("a short spelling another plugin's option holds is the hook-collision error naming both", () => {
+  expect(buildFault('short-help-collision')).toEqual({
+    notes: [
+      'declared by plugin "@loomcli/plugins/format"',
+      'an option of plugin "@loomcli/plugins/help"',
+    ],
+    rule: '@loomcli/core/spelling-taken',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-h" on Command "count", which "--help" already uses.',
+  });
+});
+
+/** The fault a `format()` call throws for settings given as JSON, or `"returned"` when it returns. */
+function callFault(settings: unknown): Record<string, unknown> | 'returned' {
+  const settingsFixture = new URL('fixtures/format-settings.mjs', import.meta.url);
+  const result = invoke(settingsFixture, settings === undefined ? [] : [JSON.stringify(settings)]);
+  expect(result.stderr).toBe('');
+  return JSON.parse(result.stdout);
+}
+
+test.each([['fo'], ['-f'], ['1'], [''], ['é'], [5]])(
+  'format({ short: %j }) throws the short-alias fault at its own call, naming the plugin',
+  (short) => {
+    expect(callFault({ short })).toMatchObject({
+      correction: 'Supply one ASCII letter.',
+      findings: [
+        { call: 'format', mark: '0.short', note: 'declared by plugin "@loomcli/plugins/format"' },
+      ],
+      rule: '@loomcli/core/short-alias',
+      sentence: 'Option "format" declares a short alias that is not one ASCII letter.',
+    });
+  },
+);
+
+test("the short-alias fault's diagnostic quotes the format() call and marks short", () => {
+  const fault = callFault({ short: 'fo' });
+  expect(fault).not.toBe('returned');
+  const message = fault === 'returned' ? '' : String(fault.message);
+  expect(message).toContain(
+    [
+      "    format({ short: 'fo' })",
+      '             ^^^^^^^^^^^ declared by plugin "@loomcli/plugins/format"',
+    ].join('\n'),
+  );
+  expect(message).not.toContain('option(');
+});
+
+test.each([['f'], [5], [null], [['f']]])(
+  'format(%j) throws the not-an-object fault at its own call, naming the plugin',
+  (settings) => {
+    expect(callFault(settings)).toMatchObject({
+      correction: 'Supply a settings object, or omit the settings.',
+      findings: [
+        { call: 'format', mark: '0', note: 'declared by plugin "@loomcli/plugins/format"' },
+      ],
+      rule: '@loomcli/core/not-an-object',
+      sentence: 'Plugin "@loomcli/plugins/format" declares settings that are not an object.',
+    });
+  },
+);
+
+test('format() with no settings, empty settings, or one ASCII letter returns its plugin', () => {
+  expect(callFault(undefined)).toBe('returned');
+  expect(callFault({})).toBe('returned');
+  expect(callFault({ short: 'f' })).toBe('returned');
+  expect(callFault({ short: 'F' })).toBe('returned');
 });
 
 test('the formatter describes its declared default and publishes the ordered views as its enum, without a parser default', () => {

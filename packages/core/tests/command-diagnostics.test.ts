@@ -149,8 +149,8 @@ const shared = {
   'not-an-object': [
     "Core reads the options of a Command and of the Application, a plugin's",
     'definition, its options record, each of its option declarations, its middleware,',
-    'its source, and the config of an argument or option by their keys. A value of',
-    'any other kind has no keys to read.',
+    'its source, the config of an argument or option, and the settings a plugin',
+    'factory takes by their keys. A value of any other kind has no keys to read.',
   ],
   'unreadable-declaration': [
     'Core reads a declaration by its keys, and each list in it by index, once, at the',

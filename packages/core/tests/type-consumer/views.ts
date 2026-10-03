@@ -11,11 +11,15 @@ import {
   view,
 } from '@loomcli/core';
 import type {
+  AnyOverrideKey,
   ApplicationOptions,
   DeclaredRowView,
   DeclaredView,
+  FailureClass,
+  FailureView,
   InputProblem,
   LoomError,
+  ReplacementView,
   RowView,
   View,
   ViewOverride,
@@ -122,18 +126,25 @@ const views: readonly ViewOverride[] = [
   override(paths, lines),
 ];
 
-// @ts-expect-error TS2769: A class outside the failure hierarchy has no failure to render.
+// @ts-expect-error TS2345: A class outside the failure hierarchy is no key, so the key is the fault.
 override(Error, anyFailure);
-// @ts-expect-error TS2769: A view for another class cannot answer this one.
+// @ts-expect-error TS2379: A view for another class names its type against FailureView<UnknownCommandError>.
 override(UnknownCommandError, problems);
-// @ts-expect-error TS2769: A view for one subclass cannot answer every UsageError.
+// @ts-expect-error TS2379: A view for one subclass names its type against FailureView<UsageError>.
 override(UsageError, problems);
-// @ts-expect-error TS2769: A replacement cannot require data the key does not carry.
+// @ts-expect-error TS2379: A replacement that requires data the key does not carry names View<string>.
 override(lanes.warn, table);
-// @ts-expect-error TS2769: A replacement for another data type cannot answer this declared view.
+// @ts-expect-error TS2379: A replacement for another data type names View<readonly Row[]>.
 override(summary, counts);
-// @ts-expect-error TS2769: A declared row view takes a row view as its replacement.
+// @ts-expect-error TS2345: A declared row view names RowView<Row> as the replacement it takes.
 override(paths, table);
+override(summary, {
+  // @ts-expect-error TS2322: An inline replacement's function names the data the key carries.
+  render: (count: number) => String(count),
+});
+
+// @ts-expect-error TS2379: The exported derivation answers a forwarded key as override answers it.
+forward(summary, counts);
 
 const usageFailure: View<UsageError> = {
   render: (failure) => `${String(failure.exitCode)}: ${failure.message}`,
@@ -176,3 +187,24 @@ export const jsonkit = new Application('jsonkit', configured)
 
 // @ts-expect-error TS2375: A declared view is invariant, so it names one data type alone.
 export const reassigned: DeclaredView<number> = summary;
+
+/** A helper generic over a declared view's data forwards its key and replacement unchanged. */
+export function brandView<Data>(key: DeclaredView<Data>, replacement: View<Data>): ViewOverride {
+  return override(key, replacement);
+}
+
+/** A helper generic over a failure class forwards its key and replacement unchanged. */
+export function brandFailure<Failure extends LoomError>(
+  key: FailureClass<Failure>,
+  replacement: FailureView<Failure>,
+): ViewOverride {
+  return override(key, replacement);
+}
+
+/** A helper generic over the key itself names the replacement through the exported derivation. */
+export function forward<Key extends AnyOverrideKey>(
+  key: Key,
+  replacement: ReplacementView<Key>,
+): ViewOverride {
+  return override(key, replacement);
+}
