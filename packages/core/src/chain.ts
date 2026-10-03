@@ -1,11 +1,13 @@
-import type { BuiltGraph, Prepared, RoutedInvocation } from './command.js';
-import { prepareDispatch, routeInvocation } from './command.js';
+import type { BuiltGraph, Prepared } from './command.js';
+import { prepareDispatch } from './command.js';
 import { foreignFailure, InternalError, routedSubject } from './errors.js';
 import type { LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
+import { parseInvocation } from './parse.js';
+import type { ParsedInvocation } from './parse.js';
 import { loadDefault, pluginSentence, pluginSpellings } from './plugin.js';
 import type {
   BuiltPlugin,
@@ -37,15 +39,15 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * run, and `command` is the routed node inside it. `options` holds the validated value of every
  * global option, the application's and every plugin's, keyed by declared name: the plugin's own
  * options are typed from its declaration and every other key reads `unknown`, because a plugin
- * compiles without the Application that installs it. It is `null` when a global option was
- * rejected, so a middleware never reads a global value no validator accepted, and a fault on a
- * local option alone leaves it set. `spellings` holds the spelling that supplied each of the
- * plugin's own options as a token, which a filled or defaulted option never has. `request` is the
- * routed Command's invocation, parsed and validated ahead of the chain, and `null` while core holds
- * a fault and on a group. `view` names the view the result renders through: it reads as the
- * declaration's default until a middleware assigns one, and as `null` on a Command that declares
- * none. The last assignment before the dispatch boundary wins, and one made after it changes
- * nothing.
+ * compiles without the Application that installs it. It is `null` when a global option has a
+ * structural fault or was rejected, so a middleware never reads a global value no validator
+ * accepted, and a fault on a local option alone leaves it set. `spellings` holds the spelling that
+ * supplied each of the plugin's own options as a token, which a filled or defaulted option never
+ * has. `request` is the routed Command's invocation, parsed and validated ahead of the chain, and
+ * `null` while core holds a fault and on a group. `view` names the view the result renders
+ * through: it reads as the declaration's default until a middleware assigns one, and as `null` on
+ * a Command that declares none. The last assignment before the dispatch boundary wins, and one
+ * made after it changes nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
@@ -407,7 +409,7 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
  */
 async function runChain(
   invocation: Invocation,
-  routed: RoutedInvocation,
+  routed: ParsedInvocation,
   prepared: Prepared,
 ): Promise<{ value: unknown } | undefined> {
   const entries = activatedEntries(invocation.plugins, prepared.globals);
@@ -488,14 +490,15 @@ async function runChain(
 }
 
 /**
- * Runs one invocation: the global pre-scan, routing, the dispatch this invocation prepares, and the
- * middleware chain it then runs. Local parsing and validation run ahead of the chain so that a
- * middleware reads the request, and the fault they find is held until the dispatch boundary. A
- * middleware that returns without calling `next()` has taken over, so the held fault is never
- * raised and nothing later in the chain runs.
+ * Runs one invocation: routing on the global options, the routed Command's words read against its
+ * table, the dispatch this invocation prepares, and the middleware chain it then runs. Only an
+ * unknown Command is raised before the chain. Parsing and validation run ahead of the chain so
+ * that a middleware reads the request, and every other fault they find is held until the dispatch
+ * boundary. A middleware that returns without calling `next()` has taken over, so the held fault is
+ * never raised and nothing later in the chain runs.
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
-  const routed = routeInvocation(invocation.graph, invocation.host.argv, invocation.route);
+  const routed = parseInvocation(invocation.graph, invocation.host.argv, invocation.route);
   const prepared = await prepareDispatch(invocation.graph, routed, invocation);
   let raised: { value: unknown } | undefined = undefined;
   try {

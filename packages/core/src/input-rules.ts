@@ -81,7 +81,7 @@ const spellingTaken = registerRule('@loomcli/core/spelling-taken', {
  */
 const optionDeclaredTwice = registerRule('@loomcli/core/option-declared-twice', {
   explanation:
-    "An action reads the global options and its Command's own options from one options object, each under its declared name, and the pre-scan reads the global options and every installed plugin's options from one table. Two options with one name in either leave one of them unreadable.",
+    "An action reads the global options and its Command's own options from one options object, each under its declared name, and the global options, the application's and every installed plugin's, share every Command's one table of spellings. Two options with one name in either leave one of them unreadable.",
   headline: 'Option declared twice',
 });
 

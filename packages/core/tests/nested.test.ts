@@ -204,8 +204,15 @@ test('a root group that declares a local option is rejected at build', () => {
 
 test.each([
   [['cache'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
-  [['cache', '--verbose'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
-  [['cache', '-v'], 'Command "cache" requires a subcommand. Use one of: clear, list.'],
+  // A structural fault ranks ahead of the missing subcommand.
+  [
+    ['cache', '--verbose'],
+    'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+  ],
+  [
+    ['cache', '-v'],
+    'Unknown option "-v". Supply a declared option; prefix a hyphenated path with "./".',
+  ],
   [['cache', 'nope'], 'Unknown command "nope". Use one of: clear, list.'],
   [
     ['cache', 'list', '--force'],
@@ -236,7 +243,10 @@ test('a root group dispatches the child a bare token selects', () => {
 
 test.each([
   [[], 'A command is required. Use one of: get, keys.'],
-  [['--verbose'], 'A command is required. Use one of: get, keys.'],
+  [
+    ['--verbose'],
+    'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
+  ],
   [['--file', 'data.json'], 'A command is required. Use one of: get, keys.'],
 ] satisfies [string[], string][])('rejects the root group invocation %j', (argv, reason) => {
   const result = invokeNestedRoot(argv);

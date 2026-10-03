@@ -80,14 +80,40 @@ test('reads the word after a string option that waits for its next token as its 
   ]);
 });
 
-test('reads a nonempty hyphen word after a waiting option as no position', () => {
+test('reads an option word or -- after a waiting option as no position, and any other word as its value', () => {
   expect(
     locateAll([
-      ['--file', '-'],
       ['--file', '--x'],
       ['keys', '-d', '-s'],
+      ['--file', '--'],
+      ['--file', '-'],
+      ['keys', '-d', '-5'],
     ]),
-  ).toEqual([none, none, none]);
+  ).toEqual([none, none, none, awaiting([], 'file', '-'), awaiting(['keys'], 'depth', '-5')]);
+});
+
+test('reads a short group whose walk reaches a value letter with characters after it as that value', () => {
+  expect(
+    locateAll([['keys', '-sdfoo'], ['keys', '-sd=fo'], ['-qf=da'], ['-f=x'], ['ls', '-qsF', '']]),
+  ).toEqual([
+    { command: ['keys'], kind: 'value', lead: '-sd', option: 'depth', own: true, prefix: 'foo' },
+    { command: ['keys'], kind: 'value', lead: '-sd=', option: 'depth', own: true, prefix: 'fo' },
+    { command: [], kind: 'value', lead: '-qf=', option: 'file', own: true, prefix: 'da' },
+    { command: [], kind: 'value', lead: '-f=', option: 'file', own: true, prefix: 'x' },
+    awaiting(['keys'], 'field', ''),
+  ]);
+});
+
+test('reads a short group the walk cannot read as no position, and any other as an option spelling', () => {
+  expect(
+    locateAll([['keys', '-sx'], ['keys', '-s=1'], ['-s'], ['keys', '-qs'], ['keys', '-sd']]),
+  ).toEqual([
+    none,
+    none,
+    none,
+    { command: ['keys'], kind: 'option', own: true, prefix: '-qs', supplied: [] },
+    { command: ['keys'], kind: 'option', own: true, prefix: '-sd', supplied: [] },
+  ]);
 });
 
 test('reads a long spelling with an equals sign as the value of a string option in scope', () => {
@@ -119,12 +145,12 @@ test('reads an equals sign after a Boolean, unknown, or out-of-scope spelling as
 });
 
 test('reads any other hyphen word as an option spelling of the routed Command', () => {
-  expect(locateAll([['-'], ['--'], ['---'], ['keys', '-s'], ['-f=x'], ['debug', '--']])).toEqual([
+  expect(locateAll([['-'], ['--'], ['---'], ['keys', '-s'], ['--nop'], ['debug', '--']])).toEqual([
     { command: [], kind: 'option', own: true, prefix: '-', supplied: [] },
     { command: [], kind: 'option', own: true, prefix: '--', supplied: [] },
     { command: [], kind: 'option', own: true, prefix: '---', supplied: [] },
     { command: ['keys'], kind: 'option', own: true, prefix: '-s', supplied: [] },
-    { command: [], kind: 'option', own: true, prefix: '-f=x', supplied: [] },
+    { command: [], kind: 'option', own: true, prefix: '--nop', supplied: [] },
     { command: ['debug'], kind: 'option', own: true, prefix: '--', supplied: [] },
   ]);
 });
@@ -174,12 +200,13 @@ test('reads every structural fault among the earlier words as no position', () =
       ['--file', 'a', 'keys', '-f', 'b', ''],
       ['keys', '--depth', '-s', ''],
       ['keys', '--sort=x', ''],
-      ['keys', '-ds', ''],
+      ['keys', '-sx', ''],
       ['-qs', 'keys', ''],
+      ['-s', 'keys', ''],
       ['keys', 'extra', ''],
       ['---', ''],
     ]),
-  ).toEqual([none, none, none, none, none, none, none, none, none, none]);
+  ).toEqual([none, none, none, none, none, none, none, none, none, none, none]);
 });
 
 test('lists the options earlier words supplied, globals and locals, in supplied order', () => {
@@ -189,6 +216,7 @@ test('lists the options earlier words supplied, globals and locals, in supplied 
       ['--color', 'ls', '--depth', '1', '-'],
       ['--no-color', 'keys', '-sF', 'a', '--'],
       ['-qf', 'x', 'paths', '--format=j', '-'],
+      ['-aq', '--'],
     ]),
   ).toEqual([
     {
@@ -213,6 +241,7 @@ test('lists the options earlier words supplied, globals and locals, in supplied 
       prefix: '-',
       supplied: ['quiet', 'file', 'format'],
     },
+    { command: [], kind: 'option', own: true, prefix: '--', supplied: ['all', 'quiet'] },
   ]);
 });
 

@@ -81,63 +81,29 @@ test.each([
     },
   ],
   [
-    ['-f', 'x', 'get', 'a', '-dm', '1'],
+    ['-f', '--quiet', 'get', 'a'],
     {
       message:
-        'Value option "-d" must be last in its short group. Supply its value in the next token.',
-      name: 'ShortGroupError',
-      reason: 'value-position',
-      token: '-d',
-    },
-  ],
-  [
-    ['-fhunter2', 'get', 'a'],
-    {
-      message:
-        'Value option "-f" must be last in its short group. Supply its value in the next token.',
-      name: 'ShortGroupError',
-      reason: 'value-position',
-      token: '-f',
-    },
-  ],
-  [
-    ['-qfhunter2', 'get', 'a'],
-    {
-      message:
-        'Value option "-f" must be last in its short group. Supply its value in the next token.',
-      name: 'ShortGroupError',
-      reason: 'value-position',
-      token: '-f',
+        'Option "-f" requires a value. Supply a value after "-f", or attach one that starts with a hyphen as "-f=<value>".',
+      name: 'MissingValueError',
+      spelling: '-f',
     },
   ],
   [
     ['-qZ', '-f', 'x'],
     {
-      message:
-        'A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
-      name: 'ShortGroupError',
-      reason: 'mixed-scope',
-      token: '-qZ',
+      message: 'Unknown option "-Z". Supply a declared option; prefix a hyphenated path with "./".',
+      name: 'UnknownOptionError',
+      spelling: '-Z',
     },
   ],
   [
     ['-qmhunter2', '-f', 'x'],
     {
-      message:
-        'A short group mixes the global option "-q" with "-m", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
-      name: 'ShortGroupError',
-      reason: 'mixed-scope',
-      token: '-qmhunter2',
-    },
-  ],
-  [
-    ['-qm=hunter2', '-f', 'x'],
-    {
-      message:
-        'A short group mixes the global option "-q" with "-m", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
-      name: 'ShortGroupError',
-      reason: 'mixed-scope',
-      token: '-qm=hunter2',
+      commands: [['get']],
+      message: 'Option "-m" belongs to command "get". Supply it after "get".',
+      name: 'MisplacedOptionError',
+      spelling: '-m',
     },
   ],
 ] satisfies [string[], Record<string, unknown>][])(
@@ -351,9 +317,9 @@ test.each([
     `failures: Unknown option "--a${rightToLeftEscape}b". Supply a declared option; prefix a hyphenated path with "./".\n`,
   ],
   [
-    'a mixed short group',
+    'a letter of a short group',
     [`-q${rightToLeft}`],
-    `failures: A short group mixes the global option "-q" with "-${rightToLeftEscape}", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n`,
+    `failures: Unknown option "-${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".\n`,
   ],
   [
     'an issue path',
@@ -381,9 +347,9 @@ test('a failure keeps the raw token while its sentence escapes it', () => {
     token: `a${rightToLeft}b`,
   });
   expect(reported([`-q${rightToLeft}`])).toMatchObject({
-    name: 'ShortGroupError',
-    reason: 'mixed-scope',
-    token: `-q${rightToLeft}`,
+    message: `Unknown option "-${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,
+    name: 'UnknownOptionError',
+    spelling: `-${rightToLeft}`,
   });
   expect(reported(['get', 'x', `--a${rightToLeft}`])).toMatchObject({
     message: `Unknown option "--a${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,

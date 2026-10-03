@@ -68,18 +68,15 @@ function nonCallableMessage(command: readonly string[], candidates: readonly str
 }
 
 /**
- * The two short-group faults. A value option that is not last in its group names that option's
- * spelling; a group that mixes scopes names only the two letters that disagree, because the rest
- * of the group may hold an inline value. `token` keeps the whole group as the reported fact.
+ * The sentence for an option word the routed Command's table does not hold, while visible Commands
+ * below it declare it. Each Command reads as its path from the root.
  */
-type ShortGroupFault =
-  | { reason: 'value-position'; token: string }
-  | { reason: 'mixed-scope'; token: string; global: string; other: string };
-
-function shortGroupMessage(fault: ShortGroupFault): string {
-  return fault.reason === 'value-position'
-    ? `Value option ${quoted(fault.token)} must be last in its short group. Supply its value in the next token.`
-    : `A short group mixes the global option ${quoted(`-${fault.global}`)} with ${quoted(`-${fault.other}`)}, which is not a global option. Supply global options as separate tokens, and local options after their command name.`;
+function misplacedMessage(spelling: string, commands: readonly (readonly string[])[]): string {
+  const names = commands.map((path) => path.join(' '));
+  const [only] = names;
+  return names.length === 1 && only !== undefined
+    ? `Option ${quoted(spelling)} belongs to command ${quoted(only)}. Supply it after ${quoted(only)}.`
+    : `Option ${quoted(spelling)} belongs to commands ${names.join(', ')}. Supply it after the command name.`;
 }
 
 /**
@@ -315,11 +312,21 @@ export class UnknownOptionError extends UsageError {
   }
 }
 
+/**
+ * Where a missing value should have been: the words ran out, or the next word was an option word or
+ * the bare `--`, which is never a separate value, so the sentence names the attached form too.
+ */
+type MissingValueForm = 'attached' | 'separate';
+
 export class MissingValueError extends UsageError {
   readonly spelling: string;
 
-  constructor(spelling: string) {
-    super(`Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`);
+  constructor(spelling: string, form: MissingValueForm = 'separate') {
+    super(
+      form === 'attached'
+        ? `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}, or attach one that starts with a hyphen as ${quoted(`${spelling}=<value>`)}.`
+        : `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`,
+    );
     this.name = 'MissingValueError';
     this.spelling = spelling;
   }
@@ -348,15 +355,20 @@ export class RepeatedOptionError extends UsageError {
   }
 }
 
-export class ShortGroupError extends UsageError {
-  readonly token: string;
-  readonly reason: 'value-position' | 'mixed-scope';
+/**
+ * An option word the Command routing reached does not declare, while a visible Command below it
+ * does, such as a Command's own option typed before its name. `commands` holds each such Command's
+ * path from the root, in authoring order.
+ */
+export class MisplacedOptionError extends UsageError {
+  readonly spelling: string;
+  readonly commands: readonly (readonly string[])[];
 
-  constructor(fault: ShortGroupFault) {
-    super(shortGroupMessage(fault));
-    this.name = 'ShortGroupError';
-    this.reason = fault.reason;
-    this.token = fault.token;
+  constructor(spelling: string, commands: readonly (readonly string[])[]) {
+    super(misplacedMessage(spelling, commands));
+    this.commands = commands;
+    this.name = 'MisplacedOptionError';
+    this.spelling = spelling;
   }
 }
 
@@ -628,7 +640,7 @@ for (const Class of [
   MissingValueError,
   UnexpectedValueError,
   RepeatedOptionError,
-  ShortGroupError,
+  MisplacedOptionError,
   DeclarationError,
   FatalError,
   InternalError,

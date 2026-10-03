@@ -21,7 +21,7 @@ function seen(argv: string[], scenario = 'context') {
   return { context: JSON.parse(result.stderr), stdout: result.stdout };
 }
 
-test('a global-option fault in the pre-scan reads the application name and an empty path', () => {
+test('a global-option fault before any Command name reads the application name and an empty path', () => {
   expect(seen(['--file']).context).toEqual({
     application: 'store',
     hints: [],

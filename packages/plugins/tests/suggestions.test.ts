@@ -245,6 +245,14 @@ describe('the sentence', () => {
     const { core, plugin } = unchanged(['rank']);
     expect(plugin).toEqual(core);
   });
+
+  it('a misplaced option keeps core text, which already names the Command that declares it', () => {
+    const { core, plugin } = unchanged(['--color', 'opts']);
+    expect(core.stderr).toBe(
+      'kit: Option "--color" belongs to command "opts". Supply it after "opts".\n',
+    );
+    expect(plugin).toEqual(core);
+  });
 });
 
 describe('precedence', () => {
@@ -311,7 +319,7 @@ describe("help's failure hint", () => {
     expect(runs.map(({ received }) => received)).toEqual(runs.map(({ expected }) => expected));
   });
 
-  it('a missing value in the pre-scan names the root page', () => {
+  it('a missing global value before any Command name names the root page', () => {
     const { expected, received } = hinted(['--file'], 'Run "kit --help" to see the usage.');
     expect(received).toEqual(expected);
   });
@@ -324,14 +332,9 @@ describe("help's failure hint", () => {
     expect(received).toEqual(expected);
   });
 
-  it('a short group the pre-scan rejects names the root page', () => {
-    expect(run('help-core', ['opts', '-hk']).stderr).toBe(
-      [
-        'kit: A short group mixes the global option "-h" with "-k", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
-        'Run "kit --help" to see the usage.',
-        '',
-      ].join('\n'),
-    );
+  it('a misplaced option names the page of the Command routing reached', () => {
+    const { expected, received } = hinted(['-k', 'opts'], 'Run "kit --help" to see the usage.');
+    expect(received).toEqual(expected);
   });
 
   it('an omitted argument and an input error an action throws name the page', () => {

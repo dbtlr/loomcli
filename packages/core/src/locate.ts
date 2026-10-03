@@ -1,10 +1,9 @@
-import type { BuiltCommand, BuiltGraph } from './command.js';
-import { argumentSlot, readsAsChild, route } from './command.js';
+import type { BuiltGraph } from './command.js';
 import { UsageError } from './errors.js';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 import { graphMismatch, linkOf } from './inspect.js';
-import type { AwaitingValue, GlobalScan, InputScan } from './options.js';
-import { isOptionToken, longStringOption, longToken, scanGlobals, scanInputs } from './options.js';
+import { argumentSlot, isOptionWord, readOptionWord, readWords, refusesValue } from './parse.js';
+import type { AwaitingValue, WordsRead } from './parse.js';
 
 /**
  * Where the last word of an unfinished invocation sits. Every node is the given graph's own, so a
@@ -36,70 +35,21 @@ type WordPosition =
 
 const none: WordPosition = Object.freeze({ kind: 'none' });
 
-/** The complete words as the parser reads them, stopped before any validation. */
-interface EarlierWords {
-  awaiting: AwaitingValue | undefined;
-  command: BuiltCommand;
-  /** Whether a token after the route reached the routed Command, so no bare word names a child. */
-  committed: boolean;
-  delimited: boolean;
-  positionals: number;
-  supplied: readonly string[];
-}
-
-/** What the last word is read against: both readings of the graph and the earlier words. */
+/** What the last word is read against: the inspected graph, its routed node, and the earlier words. */
 interface Scope {
-  built: BuiltGraph;
   command: CommandNode;
-  earlier: EarlierWords;
+  earlier: WordsRead;
   graph: CommandGraph;
 }
 
 /**
- * The option names the earlier words supplied, globals and locals merged into token order.
- * Routing consumed the first `offset` rest tokens, so local token `i` is rest token `i + offset`.
+ * The earlier words as the parser reads them, stopped before any validation. Every structural
+ * fault among them, an unknown Command included, reads as no position.
  */
-function suppliedOrder(
-  count: number,
-  scans: { globals: GlobalScan; local: InputScan; offset: number },
-): string[] {
-  const { globals, local, offset } = scans;
-  const byToken: string[][] = Array.from({ length: count }, () => []);
-  for (const { name, token } of globals.supplied) {
-    byToken[token]?.push(name);
-  }
-  for (const { name, token } of local.supplied) {
-    byToken[globals.positions[token + offset] ?? count]?.push(name);
-  }
-  return byToken.flat();
-}
-
-/**
- * The parser's own pre-scan, routing, and local scan over the complete words. An earlier
- * positional that no slot accepts is the unexpected-argument fault, so it reads as no position.
- */
-function readStructure(graph: BuiltGraph, earlier: readonly string[]): EarlierWords | undefined {
-  const globals = scanGlobals(graph.globals.options, earlier);
-  const routed = route(graph.root, globals.rest);
-  const local = scanInputs(routed.command.options, routed.tokens);
-  const positionals = local.positionals.length;
-  if (positionals > 0 && !argumentSlot(routed.command.arguments, positionals - 1)) {
-    return undefined;
-  }
-  return {
-    awaiting: globals.awaiting ?? local.awaiting,
-    command: routed.command,
-    committed: routed.tokens.length > 0,
-    delimited: local.delimited,
-    positionals,
-    supplied: suppliedOrder(earlier.length, { globals, local, offset: routed.path.length }),
-  };
-}
-
-/** Every structural fault the grammar raises is a usage error, and it reads as no position. */
-function readEarlier(graph: BuiltGraph, earlier: readonly string[]): EarlierWords | undefined {
+function readEarlier(graph: BuiltGraph, earlier: readonly string[]): WordsRead | undefined {
   try {
-    return readStructure(graph, earlier);
+    const read = readWords(graph, earlier);
+    return read.fault === undefined ? read : undefined;
   } catch (error) {
     if (error instanceof UsageError) {
       return undefined;
@@ -120,40 +70,58 @@ function valueOf(scope: Scope, name: string, word: { lead: string; prefix: strin
   return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix };
 }
 
-/** A long token with an inline value is that option's value when it names a string option. */
-function inlineValue(scope: Scope, spelling: string, inline: string): WordPosition {
-  const name =
-    longStringOption(scope.built.globals.options, spelling) ??
-    longStringOption(scope.earlier.command.options, spelling);
-  return name === undefined ? none : valueOf(scope, name, { lead: `${spelling}=`, prefix: inline });
-}
-
 /** The word after a string option that ended the earlier words is that option's value. */
 function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): WordPosition {
-  return isOptionToken(last) ? none : valueOf(scope, awaiting.name, { lead: '', prefix: last });
+  return refusesValue(last) ? none : valueOf(scope, awaiting.name, { lead: '', prefix: last });
 }
 
-/** A bare word names a child until routing commits, and fills the next positional after. */
-function bareWord(scope: Scope, last: string): WordPosition {
+/** A plain word names a child until routing ends, and fills the next positional after. */
+function plainWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
-  if (!earlier.committed && readsAsChild(earlier.command, last)) {
+  if (!earlier.committed && earlier.command.children.size > 0) {
     return { command, kind: 'command', prefix: last };
   }
-  const slot = argumentSlot(earlier.command.arguments, earlier.positionals);
+  const slot = argumentSlot(earlier.command.arguments, earlier.positionals.length);
   const argument = slot && command.arguments[earlier.command.arguments.indexOf(slot)];
   return argument ? { argument, command, kind: 'argument', prefix: last } : none;
 }
 
-/** An option token: a long token's inline value, or else an option spelling being completed. */
-function optionWord(scope: Scope, last: string): WordPosition {
-  const long = longToken(last);
-  if (long?.inline !== undefined) {
-    return inlineValue(scope, long.spelling, long.inline);
+/**
+ * A word the walk reads against the routed Command's table, as the parser reads it: no position
+ * where the walk faults, the value a long spelling carries after `=` or a short value letter
+ * carries after it, and otherwise `undefined`, an option spelling.
+ */
+function carriedValue(scope: Scope, last: string): WordPosition | undefined {
+  const { occurrences } = readOptionWord(scope.earlier.command.table, last, undefined);
+  for (const occurrence of occurrences) {
+    if (occurrence.kind === 'unknown' || occurrence.kind === 'unexpected') {
+      return none;
+    }
+    if (occurrence.kind === 'value' && occurrence.lead !== undefined) {
+      const { lead, option } = occurrence;
+      return valueOf(scope, option.name, { lead, prefix: last.slice(lead.length) });
+    }
   }
-  return { command: scope.command, kind: 'option', prefix: last, supplied: scope.earlier.supplied };
+  return undefined;
 }
 
-/** The last word, read as the parser would read the next token. */
+/**
+ * An option word. A long spelling without `=` is still being typed, so it is an option spelling
+ * whatever it names; any other word is read by the walk.
+ */
+function optionWord(scope: Scope, last: string): WordPosition {
+  const typing = last.startsWith('--') && !last.includes('=');
+  return (
+    (typing ? undefined : carriedValue(scope, last)) ?? {
+      command: scope.command,
+      kind: 'option',
+      prefix: last,
+      supplied: scope.earlier.supplied,
+    }
+  );
+}
+
+/** The last word, read as the parser would read the next word. */
 function lastWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
   if (earlier.delimited) {
@@ -162,7 +130,10 @@ function lastWord(scope: Scope, last: string): WordPosition {
   if (earlier.awaiting) {
     return awaitedValue(scope, earlier.awaiting, last);
   }
-  return isOptionToken(last) ? optionWord(scope, last) : bareWord(scope, last);
+  if (last === '-' || last === '--') {
+    return { command, kind: 'option', prefix: last, supplied: earlier.supplied };
+  }
+  return isOptionWord(last) ? optionWord(scope, last) : plainWord(scope, last);
 }
 
 /**
@@ -181,7 +152,7 @@ function locate(graph: CommandGraph, words: readonly string[]): WordPosition {
   if (!command) {
     throw graphMismatch('The routed command is not in the inspected graph.');
   }
-  return lastWord({ built: link.graph, command, earlier, graph }, words.at(-1) ?? '');
+  return lastWord({ command, earlier, graph }, words.at(-1) ?? '');
 }
 
 export type { WordPosition };

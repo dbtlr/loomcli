@@ -545,7 +545,8 @@ function readOptions(
     );
     inputs.push(input);
   }
-  // Two options of one plugin meet in the one table the pre-scan reads, so they share its rules.
+  // Two options of one plugin meet in the globals table every Command's table holds.
+  // They therefore share its rules.
   const siteOf = pluginSites(identity, inputs);
   compileOptions(inputs, { siteOf, subject: `plugin ${quoted(identity)}` });
   claimVariables(

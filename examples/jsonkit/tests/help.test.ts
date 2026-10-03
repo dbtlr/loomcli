@@ -96,6 +96,33 @@ test('jsonkit --help prints the root page', () => {
   expect(invoke(main, ['--help'])).toEqual(root);
 });
 
+test('jsonkit -F name select names the Command that declares -F, and help takes the fault over', () => {
+  expect(invoke(main, ['-F', 'name', 'select'])).toEqual({
+    status: 2,
+    stderr:
+      'jsonkit: Option "-F" belongs to command "select". Supply it after "select".\nRun "jsonkit --help" to see the usage.\n',
+    stdout: '',
+  });
+  expect(invoke(main, ['-F', 'name', 'select', '--help'])).toEqual(root);
+});
+
+test('jsonkit holds a fault on a global option, so help after it renders the page', () => {
+  expect(invoke(main, ['--file'])).toEqual({
+    status: 2,
+    stderr:
+      'jsonkit: Option "--file" requires a value. Supply a value after "--file".\nRun "jsonkit --help" to see the usage.\n',
+    stdout: '',
+  });
+  expect(invoke(main, ['--file', '--help'])).toEqual(root);
+  expect(invoke(main, ['--help', '--help'])).toEqual(root);
+  expect(invoke(main, ['nope', '--help'])).toEqual({
+    status: 2,
+    stderr:
+      'jsonkit: Unknown command "nope". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
+    stdout: '',
+  });
+});
+
 test('jsonkit -h prints the compact root page, the child hint ahead of the pointer', () => {
   expect(invoke(main, ['-h'])).toEqual(
     page(

@@ -6,7 +6,7 @@ import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
-import type { compileOptions } from './options.js';
+import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
@@ -139,7 +139,7 @@ interface Spellings {
  * form the parser does not accept. Each entry carries its own role, so the naming convention has
  * one owner: the table that writes it.
  */
-function spellingsOf(table: ReturnType<typeof compileOptions>, name: string): Spellings {
+function spellingsOf(table: ReadonlyMap<string, OptionSpelling>, name: string): Spellings {
   const spellings: Spellings = { long: null, negative: null, short: null };
   for (const [spelling, option] of table) {
     if (option.name === name) {
@@ -262,7 +262,7 @@ function extensionsOf(records: ExtensionRecords, declaration: object) {
 interface OptionScope {
   check: SchemaCheck;
   records: ExtensionRecords;
-  table: ReturnType<typeof compileOptions>;
+  table: ReadonlyMap<string, OptionSpelling>;
 }
 
 function optionNode(input: OptionInput, read: OptionScope): OptionNode {
@@ -367,7 +367,7 @@ function commandNode(
     hasAction: command.dispatch !== undefined,
     hidden: command.hidden,
     name: command.name,
-    options: Object.freeze(optionNodes(command.inputs, { check, records, table: command.options })),
+    options: Object.freeze(optionNodes(command.inputs, { check, records, table: command.table })),
     path,
     result: resultNode(command.result),
   };

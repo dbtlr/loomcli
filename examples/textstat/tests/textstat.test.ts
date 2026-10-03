@@ -166,6 +166,9 @@ test.each([
   ],
   [['-tm', 'words'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
   [['--metric=lines', '-t'], 'COUNT  SOURCE\n    1  one.txt\n    1  two.txt\n    2  total\n'],
+  [['-mwords', '-t'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
+  [['-m=words', '-t'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
+  [['-tmwords'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
 ] satisfies [string[], string][])(
   'textstat counts the selected metric and total for %j',
   (options, stdout) => {
@@ -210,6 +213,17 @@ test.each(['unsupported', ''])('textstat rejects metric %j before file access', 
     'missing-fixture.txt',
   ]);
   expect(result).toEqual({
+    status: 2,
+    stderr:
+      'textstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
+    stdout: '',
+  });
+});
+
+test('textstat -m= hands the metric validator the empty string', () => {
+  expect(
+    invoke(new URL('../dist/main.js', import.meta.url), ['-m=', 'missing-fixture.txt']),
+  ).toEqual({
     status: 2,
     stderr:
       'textstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',

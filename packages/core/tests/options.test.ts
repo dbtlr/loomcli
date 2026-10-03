@@ -51,6 +51,17 @@ test.each([
   [['-m', '', 'one.txt'], { metric: '', total: false }],
   [['--metric=', 'one.txt'], { metric: '', total: false }],
   [['--metric=-value', 'one.txt'], { metric: '-value', total: false }],
+  [['-mwords', 'one.txt'], { metric: 'words', total: false }],
+  [['-m=words', 'one.txt'], { metric: 'words', total: false }],
+  [['-tmwords', 'one.txt'], { metric: 'words', total: true }],
+  [['-tm=words', 'one.txt'], { metric: 'words', total: true }],
+  [['-mt', 'one.txt'], { metric: 't', total: false }],
+  [['-m==x', 'one.txt'], { metric: '=x', total: false }],
+  [['-m=', 'one.txt'], { metric: '', total: false }],
+  [['-m-value', 'one.txt'], { metric: '-value', total: false }],
+  [['-m=-value', 'one.txt'], { metric: '-value', total: false }],
+  [['--metric', '-5', 'one.txt'], { metric: '-5', total: false }],
+  [['-m', '-', 'one.txt'], { metric: '-', total: false }],
 ] satisfies [string[], { metric?: string; total: boolean }][])(
   'binds supported option forms %j',
   (argv, options) => {
@@ -117,12 +128,52 @@ test.each([
   expect(result.stdout).toContain(reason);
 });
 
+test('a word that is not an option word is a value or an argument, with no -- escape', () => {
+  const argv = ['--depth', '-5', '-.5', '-5', '-', '-1e3'];
+  expect(JSON.parse(invokeOptions(argv).stdout)).toMatchObject({
+    args: { files: ['-.5', '-5', '-', '-1e3'] },
+    options: { depth: '-5' },
+  });
+  expect(JSON.parse(invokeOptions(['-d', '-5', 'one.txt']).stdout)).toMatchObject({
+    options: { depth: '-5' },
+  });
+  expect(JSON.parse(invokeOptions(['-td-.5', 'one.txt']).stdout)).toMatchObject({
+    options: { depth: '-.5', total: true },
+  });
+});
+
 test.each([
-  [['-mwords', 'one.txt'], '"-m"', 'last'],
-  [['-m=words', 'one.txt'], '"-m"', 'last'],
-  [['-mt', 'words', 'one.txt'], '"-m"', 'last'],
-  [['--metric', '--total', 'one.txt'], '"--metric"', 'requires a value'],
-  [['-m', '--', 'one.txt'], '"-m"', 'requires a value'],
+  [['--pattern', '-x', 'one.txt'], '--pattern'],
+  [['--metric', '--total', 'one.txt'], '--metric'],
+  [['-m', '-v', 'one.txt'], '-m'],
+  [['-m', '--', 'one.txt'], '-m'],
+  [['one.txt', '-tm', '--total'], '-m'],
+] satisfies [string[], string][])(
+  'a value option before an option word or -- names the attached form for %j',
+  (argv, spelling) => {
+    expect(invokeOptions(argv)).toEqual({
+      status: 2,
+      stderr: `options: Option "${spelling}" requires a value. Supply a value after "${spelling}", or attach one that starts with a hyphen as "${spelling}=<value>".\n`,
+      stdout: '',
+    });
+  },
+);
+
+test.each([
+  [['-tx', 'one.txt'], 'Unknown option "-x"'],
+  [['-t5', 'one.txt'], 'Unknown option "-5"'],
+  [['-té', 'one.txt'], 'Unknown option "-é"'],
+  [['-t=false', 'one.txt'], 'Boolean option "-t" does not accept a value'],
+  [['-tt', 'one.txt'], 'Option "-t" can be supplied only once'],
+  [['-tmx', '-tm', 'y', 'one.txt'], 'Option "-t" can be supplied only once'],
+] satisfies [string[], string][])('the short group %j fails with %s', (argv, sentence) => {
+  const result = invokeOptions(argv);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(`options: ${sentence}`);
+});
+
+test.each([
   [['--metric'], '"--metric"', 'requires a value'],
   [['--metric', 'words', '-m', 'bytes', 'one.txt'], '"-m"', 'only once'],
   [['--total', '-t', 'one.txt'], '"-t"', 'only once'],

@@ -198,9 +198,9 @@ const shared = {
   ],
   'option-declared-twice': [
     "An action reads the global options and its Command's own options from one",
-    'options object, each under its declared name, and the pre-scan reads the global',
-    "options and every installed plugin's options from one table. Two options with",
-    'one name in either leave one of them unreadable.',
+    'options object, each under its declared name, and the global options, the',
+    "application's and every installed plugin's, share every Command's one table of",
+    'spellings. Two options with one name in either leave one of them unreadable.',
   ],
   'spelling-taken': [
     "The parser reads each spelling as one option, and a Command's own options share",
