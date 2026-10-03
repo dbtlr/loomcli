@@ -143,6 +143,19 @@ test('a plugin option config whose extensions list throws is unreadable, marking
   });
 });
 
+test('an option default that throws a value whose prototype chain cannot be read is unreadable at the call', () => {
+  const unreadableChain = {
+    cause: false,
+    mark: ['1.default'],
+    rule: '@loomcli/core/unreadable-declaration',
+    sentence: 'Option "format" config could not be read: The thrown value has no readable message.',
+  };
+  expect(report('unreadable-chain', 'option', [])).toEqual({
+    endless: unreadableChain,
+    trap: unreadableChain,
+  });
+});
+
 /** Each call's top-level slots, and the nested parts of them the once mode counts. */
 const countedReads: Record<
   Exclude<Call, 'option'>,

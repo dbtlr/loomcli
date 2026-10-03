@@ -365,6 +365,30 @@ const modes = {
         outcome(() => declare[call](unreadable(declarations[call](), spec))),
       ]),
     ),
+  // The option config's default throws a value whose prototype chain cannot be read.
+  'unreadable-chain': () => {
+    const endless = new Proxy({}, { getPrototypeOf: () => endless });
+    const trap = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw boom;
+        },
+      },
+    );
+    return Object.fromEntries(
+      Object.entries({ endless, trap }).map(([kind, thrown]) => {
+        const config = declarations.option();
+        Object.defineProperty(config, 'default', {
+          enumerable: true,
+          get() {
+            throw thrown;
+          },
+        });
+        return [kind, outcome(() => declare.option(config))];
+      }),
+    );
+  },
 };
 
 process.stdout.write(`${JSON.stringify(modes[mode]())}\n`);

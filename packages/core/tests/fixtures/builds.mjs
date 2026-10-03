@@ -385,24 +385,35 @@ function scenarioRun() {
       };
     }
     default: {
-      const unreadable = /^(?<cancelled>cancelled-)?(?<kind>.+)$/u.exec(scenario)?.groups;
+      const unreadable = /^(?<origin>cancelled-|row-view-|rethrown-)?(?<kind>.+)$/u.exec(
+        scenario,
+      )?.groups;
       if (unreadable !== undefined && Object.hasOwn(unreadableThrows, unreadable.kind)) {
-        return unreadableRun(
-          unreadableThrows[unreadable.kind](),
-          unreadable.cancelled !== undefined,
-        );
+        return unreadableRuns[unreadable.origin ?? 'action'](unreadableThrows[unreadable.kind]());
       }
       throw new Error(`Unknown scenario ${scenario}.`);
     }
   }
 }
 
-/** Each thrown value core cannot read, by the kind a scenario names after an optional `cancelled-`. */
+/** Each thrown value core cannot read, by the kind a scenario names after its optional origin. */
 const unreadableThrows = {
+  'cause-getter': () =>
+    Object.defineProperty(new Error('Wrapped.'), 'cause', {
+      get() {
+        throw new Error('The cause getter failed.');
+      },
+    }),
   'endless-proxy': () => {
     const endless = new Proxy({}, { getPrototypeOf: () => endless });
     return endless;
   },
+  'has-trap': () =>
+    new Proxy(new Error('Wrapped.'), {
+      has() {
+        throw new Error('The has trap failed.');
+      },
+    }),
   'trap-proxy': () =>
     new Proxy(
       {},
@@ -420,18 +431,57 @@ const unreadableThrows = {
     }),
 };
 
-/** A run whose action throws one unreadable value, after its caller cancelled it when asked. */
-function unreadableRun(thrown, cancelled) {
-  const controller = new AbortController();
-  return {
+/**
+ * Each place a run meets one unreadable value, by the origin a scenario names before its kind: the
+ * action throws it, the action throws it after its caller cancelled the run, a row view throws it,
+ * or the action throws it after it caught the failure of its own row source.
+ */
+const unreadableRuns = {
+  action: (thrown) => ({
     app: new Application('probe', packet).action(() => {
-      if (cancelled) {
-        controller.abort();
-      }
       throw thrown;
     }),
-    signal: controller.signal,
-  };
+  }),
+  'cancelled-': (thrown) => {
+    const controller = new AbortController();
+    return {
+      app: new Application('probe', packet).action(() => {
+        controller.abort();
+        throw thrown;
+      }),
+      signal: controller.signal,
+    };
+  },
+  'rethrown-': (thrown) => ({
+    app: new Application('probe', packet)
+      .rows({ views: { lines: { row: (row) => `${JSON.stringify(row)}\n` } } })
+      .action(async ({ out }) => {
+        try {
+          await out.results(failingSource());
+        } catch {
+          throw thrown;
+        }
+      }),
+  }),
+  'row-view-': (thrown) => ({
+    app: new Application('probe', packet)
+      .rows({
+        views: {
+          lines: {
+            row: () => {
+              throw thrown;
+            },
+          },
+        },
+      })
+      .action(({ out }) => out.results([{ id: 1 }])),
+  }),
+};
+
+/** A row source that yields one row and then fails. */
+async function* failingSource() {
+  yield { id: 1 };
+  throw new Error('The source failed.');
 }
 
 if (scenario === 'captured-reader') {

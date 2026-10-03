@@ -305,6 +305,41 @@ test.each([
   },
 );
 
+test.each(['endless-proxy', 'trap-proxy'])(
+  'a row view that throws a %s reports a foreign throw with no readable message',
+  (kind) => {
+    const incomplete = 'Output is incomplete: the root Command stopped after 1 rows, 0 written.\n';
+    expect(run(`row-view-${kind}`, 'distributed')).toEqual({
+      status: 1,
+      stderr: `${incomplete}probe: Something went wrong.\n`,
+      stdout: 'resolved:1\n',
+    });
+    const { status, stderr } = run(`row-view-${kind}`, 'development');
+    expect(status).toBe(1);
+    expect(
+      stderr.startsWith(
+        `${incomplete}${foreignThrowBanner}\nThe thrown value has no readable message.\n`,
+      ),
+    ).toBe(true);
+  },
+);
+
+test.each(['cause-getter', 'has-trap'])(
+  'an action that rethrows an Error with a %s after its row source failed resolves 1',
+  (kind) => {
+    const incomplete = 'Output is incomplete: the root Command stopped after 1 rows, 1 written.\n';
+    expect(run(`rethrown-${kind}`, 'distributed')).toEqual({
+      status: 1,
+      stderr: `${incomplete}probe: Something went wrong.\n`,
+      stdout: '{"id":1}\nresolved:1\n',
+    });
+    const { status, stderr, stdout } = run(`rethrown-${kind}`, 'development');
+    expect(status).toBe(1);
+    expect(stdout).toBe('{"id":1}\nresolved:1\n');
+    expect(stderr.startsWith(`${incomplete}${foreignThrowBanner}\nWrapped.\n`)).toBe(true);
+  },
+);
+
 test('two defects in one run write the generic message once, or two diagnostics a blank line apart', () => {
   expect(run('two-defects', 'distributed')).toEqual({
     status: 1,

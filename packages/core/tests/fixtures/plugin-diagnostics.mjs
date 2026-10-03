@@ -32,6 +32,24 @@ const accepting = schema((value) => ({ value }));
 const note = extension('@acme/notes/command', { schema: accepting, target: 'command' });
 const tag = extension('@acme/notes/option', { schema: accepting, target: 'option' });
 
+/** Builds a graph whose plugin's onCommandAttach hook throws `thrown` for Command "count". */
+function throwingHook(thrown) {
+  return new Application('probe', {
+    plugins: [
+      plugin('@acme/format', {
+        onCommandAttach: (command) => {
+          if (command.name === 'count') {
+            throw thrown;
+          }
+          return command;
+        },
+      }),
+    ],
+  })
+    .command(leaf('count'))
+    .inspect();
+}
+
 /**
  * One faulty declaration per scenario. Each throws a declaration fault whose rule the plugin,
  * extension, view, translator, and Application option family declares, and the fixture prints the
@@ -59,21 +77,22 @@ const scenarios = {
     })
       .command(leaf('count'))
       .inspect(),
-  'attach-hook-throws': () =>
-    new Application('probe', {
-      plugins: [
-        plugin('@acme/format', {
-          onCommandAttach: (command) => {
-            if (command.name === 'count') {
-              throw new Error('No format\nfor this Command');
-            }
-            return command;
+  'attach-hook-throws': () => throwingHook(new Error('No format\nfor this Command')),
+  'attach-hook-throws-endless': () => {
+    const endless = new Proxy({}, { getPrototypeOf: () => endless });
+    return throwingHook(endless);
+  },
+  'attach-hook-throws-trap': () =>
+    throwingHook(
+      new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw boom;
           },
-        }),
-      ],
-    })
-      .command(leaf('count'))
-      .inspect(),
+        },
+      ),
+    ),
   'commands-entry': () => plugin('@acme/doctor', { commands: [leaf('check'), 'probe'] }),
   'commands-not-list': () => plugin('@acme/doctor', { commands: 'check' }),
   'definition-prototype-unreadable': () =>

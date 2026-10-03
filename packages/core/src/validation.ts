@@ -25,6 +25,7 @@ import { booleanValue } from './options.js';
 import type { OptionValues } from './options.js';
 import { boundedSnapshot, NestedTooDeepError, shallowList } from './plain.js';
 import { notAnObject } from './plugin-rules.js';
+import { isInstance } from './prototypes.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -200,7 +201,7 @@ export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
     {
       notAnObject: notAnObjectFault,
       unreadable: (thrown, slot) =>
-        thrown instanceof NestedTooDeepError ? tooDeep() : unreadable(thrown, slot),
+        isInstance(thrown, NestedTooDeepError) ? tooDeep() : unreadable(thrown, slot),
     },
   );
 }

@@ -287,6 +287,18 @@ function bare(call: string, target: string, note?: string, nth = 0) {
 const readableDefinition =
   'Declare the definition as a plain object literal whose properties read without throwing.';
 
+/** The diagnostic a throwing onCommandAttach hook raises for Command "count", given its reason. */
+function attachHookThrows(reason: string): Expected {
+  return {
+    correction:
+      'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
+    findings: [bare("plugin('@acme/format', { onCommandAttach: … })", 'onCommandAttach: …')],
+    headline: 'BROKEN ATTACH HOOK',
+    rule: 'broken-attach-hook',
+    sentence: `Plugin "@acme/format" failed in onCommandAttach for Command "count": ${reason}`,
+  };
+}
+
 const twoPlugins = (first: string, second: string) =>
   `new Application('probe', { plugins: [plugin('${first}', …), plugin('${second}', …)] })`;
 
@@ -364,14 +376,9 @@ const cases: Record<string, Expected> = {
     sentence:
       'Plugin "@acme/format" returned a value that is not the attached Command from onCommandAttach for Command "count".',
   },
-  'attach-hook-throws': {
-    correction:
-      'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
-    findings: [bare("plugin('@acme/format', { onCommandAttach: … })", 'onCommandAttach: …')],
-    headline: 'BROKEN ATTACH HOOK',
-    rule: 'broken-attach-hook',
-    sentence: String.raw`Plugin "@acme/format" failed in onCommandAttach for Command "count": No format\u000afor this Command.`,
-  },
+  'attach-hook-throws': attachHookThrows(String.raw`No format\u000afor this Command.`),
+  'attach-hook-throws-endless': attachHookThrows('The thrown value has no readable message.'),
+  'attach-hook-throws-trap': attachHookThrows('The thrown value has no readable message.'),
   'commands-entry': {
     correction: 'Supply the value returned by new Command(name).',
     findings: [

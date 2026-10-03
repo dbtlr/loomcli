@@ -184,10 +184,24 @@ function carried(primary: unknown, cause: unknown): boolean {
       return true;
     }
     seen.add(value);
-    // A failure wraps its own cause under `cause`, and one that declares none ends the walk.
-    value = isInstance(value, Error) && 'cause' in value ? value.cause : noPrimary;
+    value = wrappedCause(value);
   }
   return false;
+}
+
+/**
+ * The cause one failure wraps under `cause`, or `noPrimary` for a value that is no Error, declares
+ * no cause, or throws when its cause is read, which ends the walk `carried` takes.
+ */
+function wrappedCause(value: unknown): unknown {
+  if (!isInstance(value, Error)) {
+    return noPrimary;
+  }
+  try {
+    return 'cause' in value ? value.cause : noPrimary;
+  } catch {
+    return noPrimary;
+  }
 }
 
 /**

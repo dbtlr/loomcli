@@ -23,7 +23,7 @@ function walkChain(value: object): object[] | undefined {
  * Every prototype in one value's chain, most derived first, or `undefined` when the chain cannot
  * be read: a proxy trap throws, a link repeats, or the chain runs past `maxChainLinks` links. A
  * value with a `null` prototype has an empty chain. Override resolution, translator resolution,
- * and every class check on a value core did not construct walk the chain this returns.
+ * and every class check on a thrown value walk the chain this returns.
  */
 function prototypeChain(value: object): object[] | undefined {
   try {
@@ -70,9 +70,9 @@ function inherits<Instance>(
 }
 
 /**
- * Whether a value core did not construct is an instance of a class, which core checks this way
- * instead of with `instanceof`. A proxy's trap can throw, and on a chain that never ends
- * `instanceof` throws under Node and never returns under Bun, so such a value is no instance.
+ * Whether a thrown value is an instance of a class, which core checks this way instead of with
+ * `instanceof`. A proxy's trap can throw, and on a chain that never ends `instanceof` throws under
+ * Node and never returns under Bun, so such a value is no instance.
  */
 function isInstance<Instance>(value: unknown, Class: InstanceClass<Instance>): value is Instance {
   return inherits(readChain(value), Class);

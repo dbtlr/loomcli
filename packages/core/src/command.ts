@@ -94,6 +94,7 @@ import type { CompileScope, OptionValues, SpellingRole } from './options.js';
 import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
+import { isInstance } from './prototypes.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
 import type { ContextualStyle } from './style.js';
@@ -1746,7 +1747,7 @@ function callHook(
     return hook(value);
   } catch (error) {
     // A hook that reports a declaration fault of its own reports as itself.
-    if (error instanceof DeclarationError) {
+    if (isInstance(error, DeclarationError)) {
       throw error;
     }
     throw new DeclarationError(

@@ -1,5 +1,6 @@
 import { InternalError, routedSubject } from './errors.js';
 import type { IncompleteResult } from './lanes.js';
+import { isInstance } from './prototypes.js';
 import { resultContract } from './rules.js';
 import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
@@ -316,7 +317,7 @@ function raise<Row>(writer: SequenceWriter<Row>, error: unknown): void {
   if (error === stopRequested) {
     return;
   }
-  if (error instanceof SourceFault) {
+  if (isInstance(error, SourceFault)) {
     writer.stopped(error.cause);
     throw error.cause;
   }
