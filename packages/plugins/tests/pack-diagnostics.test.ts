@@ -6,10 +6,15 @@ import { invoke } from '../../../scripts/test-process.js';
 
 /** Each rule's explanation as an 80-column diagnostic wraps it. */
 const explanations = {
-  'config/files': [
-    'The configuration plugin reads the project files its settings list, most',
-    'specific first, and opens each path as it is written, so files is a list of',
-    'nonempty paths with no control character.',
+  'config/file-path': [
+    'The configuration plugin looks for its file in the working directory and then in',
+    'the home directory, so file is a relative path whose segments each name a',
+    'directory or a file, with no control character.',
+  ],
+  'config/file-pattern': [
+    "The configuration plugin chooses a file's parser by its extension, so file holds",
+    'glob syntax only as the whole extension of its name: * for any format the plugin',
+    'reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.',
   ],
 };
 
@@ -52,26 +57,29 @@ function marked(call: string, target: string): string[] {
 
 /** Each configuration settings fault, which a JavaScript author alone reaches, by scenario. */
 const settingsCases: Record<string, Expected> = {
-  'config-entry': {
-    correction: 'Supply a nonempty path with no control character.',
-    finding: marked("config({ files: ['ok.json', 7] })", '7'),
-    headline: 'INVALID CONFIGURATION FILES',
-    rule: 'config/files',
-    sentence: 'Plugin "@loomcli/plugins/config" file 1 is not a path.',
+  'config-glob': {
+    correction:
+      'Write the name literally, and use * or a brace list only as the whole text after its last dot.',
+    finding: marked("config({ file: '*.json' })", "file: '*.json'"),
+    headline: 'INVALID CONFIGURATION FILE PATTERN',
+    rule: 'config/file-pattern',
+    sentence:
+      'Plugin "@loomcli/plugins/config" file holds glob syntax other than an extension of * or a brace list.',
   },
-  'config-files': {
-    correction: 'Supply an array of paths.',
-    finding: marked("config({ files: '.app.json' })", "files: '.app.json'"),
-    headline: 'INVALID CONFIGURATION FILES',
-    rule: 'config/files',
-    sentence: 'Plugin "@loomcli/plugins/config" files is not a list.',
+  'config-list': {
+    correction: 'List only json, toml, yaml, or yml in the braces, or use * for any of them.',
+    finding: marked("config({ file: '.textstat.{toml,ini}' })", "file: '.textstat.{toml,ini}'"),
+    headline: 'INVALID CONFIGURATION FILE PATTERN',
+    rule: 'config/file-pattern',
+    sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
   },
-  'config-settings': {
-    correction: 'Supply an array of paths.',
-    finding: marked("config('files')", "'files'"),
-    headline: 'INVALID CONFIGURATION FILES',
-    rule: 'config/files',
-    sentence: 'Plugin "@loomcli/plugins/config" files is not a list.',
+  'config-path': {
+    correction:
+      'Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.',
+    finding: marked("config({ file: '/etc/textstat.json' })", "file: '/etc/textstat.json'"),
+    headline: 'INVALID CONFIGURATION FILE PATH',
+    rule: 'config/file-path',
+    sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
 };
 

@@ -8,11 +8,18 @@ import Package from '../package.json' with { type: 'json' };
  * it, as any third-party plugin declares its rules, and shared by every site that raises it.
  */
 
-/** A configuration plugin `files` setting that is not a list of paths. */
-const configFiles = diagnosticRule(`${Package.name}/config/files`, {
+/** A configuration plugin `file` setting that is not a relative path. */
+const configFilePath = diagnosticRule(`${Package.name}/config/file-path`, {
   explanation:
-    'The configuration plugin reads the project files its settings list, most specific first, and opens each path as it is written, so files is a list of nonempty paths with no control character.',
-  headline: 'Invalid configuration files',
+    'The configuration plugin looks for its file in the working directory and then in the home directory, so file is a relative path whose segments each name a directory or a file, with no control character.',
+  headline: 'Invalid configuration file path',
+});
+
+/** A configuration plugin `file` setting whose glob syntax is not a whole extension it can read. */
+const configFilePattern = diagnosticRule(`${Package.name}/config/file-pattern`, {
+  explanation:
+    "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.",
+  headline: 'Invalid configuration file pattern',
 });
 
 /** One failure name declared with two exit codes or two meanings. */
@@ -22,4 +29,4 @@ const failureNameConflict = diagnosticRule(`${Package.name}/manifest/failure-nam
   headline: 'Failure name conflict',
 });
 
-export { configFiles, failureNameConflict };
+export { configFilePath, configFilePattern, failureNameConflict };
