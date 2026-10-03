@@ -109,7 +109,7 @@ function correction(first: OptionOwner, second: OptionOwner): string {
 const sideNotes: Readonly<Record<OptionOwner['kind'], string>> = {
   application: 'the global option',
   local: 'the local option',
-  plugin: 'the plugin option',
+  plugin: "the plugin's global option",
 };
 
 /** One key claimed twice, whichever two scopes claimed it. */

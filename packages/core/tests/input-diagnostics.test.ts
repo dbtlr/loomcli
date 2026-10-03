@@ -491,7 +491,7 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/trace', { options: { verbose: { type: 'boolean' } } })",
         "verbose: { type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
       onApplication(
         "globalOption('verbose', { type: 'boolean' })",
@@ -509,7 +509,7 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/trace', { options: { trace: { short: 't', type: 'boolean' } } })",
         "short: 't'",
-        'the plugin option',
+        "the plugin's global option",
       ),
       onCommand(
         ['get'],
@@ -529,12 +529,12 @@ const cases: Record<string, Expected> = {
       bare(
         "plugin('@acme/log', { options: { verbose: { type: 'boolean' } } })",
         "verbose: { type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
       bare(
         "plugin('@acme/trace', { options: { verbose: { polarity: 'both', type: 'boolean' } } })",
         "verbose: { polarity: 'both', type: 'boolean' }",
-        'the plugin option',
+        "the plugin's global option",
       ),
     ],
     headline: 'OPTION DECLARED TWICE',

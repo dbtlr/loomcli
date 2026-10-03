@@ -89,7 +89,7 @@ test('jsonkit explains an otherwise invalid invocation instead of rejecting it',
   });
 });
 
-test('the inspected graph carries the plugin option, the extension value, and the version', () => {
+test("the inspected graph carries the plugin's option, the extension value, and the version", () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(result.status).toBe(0);
   const graph = inspected.parse(JSON.parse(result.stdout));
