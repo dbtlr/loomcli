@@ -63,6 +63,14 @@ hands back, and a finding that asks for one fails test 1. An application that ne
 limit gets it from its author, in the author's own action. Brief review seats to probe what Loom
 ships and what an operator can reach, not values only an author's code can construct.
 
+An author chooses Loom and is free to write good or bad code. A framework that is protective or
+prescriptive in ways that stop an author from building the application they want is frustrating to
+use, and the author works around it or chooses another one; an action can always call `console.log`
+and do what it likes. The controlling agent is therefore the gate between a review and the board.
+A review seat, a fix round, or a bot never creates a task or a seed. The controlling agent judges
+each finding first, separating unsafe behavior in what Loom ships from the author's freedom to write
+their own code, and only a finding that passes is fixed or filed.
+
 A finding that passes both is fixed, or filed as a task. A finding that fails either is dismissed
 with that reason in the review record, and the review record is where it ends. A seed records an
 ask someone made or a defect someone hit; a question an agent imagines, such as whether a
