@@ -308,36 +308,61 @@ test(
   }),
 );
 
-test(
-  'Formats: a run whose file is JSON loads neither parser',
-  inWorkspace((space) => {
-    // A copy of the bundle without the chunks that hold either parser package's code.
-    const bundle = join(space.root, 'dist');
-    cpSync(fileURLToPath(new URL('../dist', import.meta.url)), bundle, { recursive: true });
-    const parsers = readdirSync(bundle).filter((chunk) => {
-      const text = readFileSync(join(bundle, chunk), 'utf8');
-      return text.includes('Squirrel Chat') || text.includes('YAMLParseError');
-    });
-    expect(parsers.length).toBeGreaterThanOrEqual(2);
-    for (const chunk of parsers) {
+/** The text that marks the one bundle chunk holding each parser package's code. */
+const parserMarkers = { toml: 'Squirrel Chat', yaml: 'YAMLParseError' };
+
+/**
+ * A copy of the built bundle under a directory of its own, without the chunk that holds each
+ * parser named. Exactly one chunk holds each parser's code. Answers the copy's entry point.
+ */
+function strippedBundle(
+  space: Workspace,
+  name: string,
+  removed: readonly (keyof typeof parserMarkers)[],
+): URL {
+  const bundle = join(space.root, name);
+  cpSync(fileURLToPath(new URL('../dist', import.meta.url)), bundle, { recursive: true });
+  const chunks = readdirSync(bundle).map((chunk) => ({
+    chunk,
+    text: readFileSync(join(bundle, chunk), 'utf8'),
+  }));
+  for (const parser of removed) {
+    const holding = chunks.filter(({ text }) => text.includes(parserMarkers[parser]));
+    expect(holding).toHaveLength(1);
+    for (const { chunk } of holding) {
       rmSync(join(bundle, chunk));
     }
-    const stripped = pathToFileURL(join(bundle, 'main.js'));
+  }
+  return pathToFileURL(join(bundle, 'main.js'));
+}
+
+test(
+  'Formats: a run whose file is JSON loads neither parser, and each format loads only its own',
+  inWorkspace((space) => {
     const env = { HOME: space.home, USERPROFILE: space.profile };
+    const run = (bundle: URL, argv: string[] = []) =>
+      invoke(bundle, [...files, ...argv], { cwd: space.project, env });
+    const neither = strippedBundle(space, 'neither', ['toml', 'yaml']);
     space.write(space.project, '.textstat.json', json({ minBytes: 5 }));
-    expect(invoke(stripped, files, { cwd: space.project, env })).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: filtered,
-    });
+    expect(run(neither)).toEqual({ status: 0, stderr: '', stdout: filtered });
     // The same copy fails to load its source on a TOML file, so the removed chunks held a parser.
     rmSync(join(space.project, '.textstat.json'));
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
-    expect(invoke(stripped, files, { cwd: space.project, env })).toEqual({
+    expect(run(neither)).toEqual({
       status: 1,
       stderr: 'textstat: Something went wrong.\n',
       stdout: '',
     });
+    // A TOML run loads no YAML parser, and a YAML run no TOML parser.
+    expect(run(strippedBundle(space, 'toml-only', ['yaml']))).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filtered,
+    });
+    space.write(space.project, 'settings.yaml', 'minBytes: 5\n');
+    expect(
+      run(strippedBundle(space, 'yaml-only', ['toml']), ['--config', 'settings.yaml']),
+    ).toEqual({ status: 0, stderr: '', stdout: filtered });
   }),
 );
 

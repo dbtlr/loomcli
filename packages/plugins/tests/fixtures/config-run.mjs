@@ -79,6 +79,9 @@ function application() {
 
 const [mode, ...argv] = process.argv.slice(2);
 
+/** One variable's value, or "absent" when the process environment does not hold it. */
+const state = (name) => (name in process.env ? process.env[name] : 'absent');
+
 /** The host overrides a test sets: the platform, and the working directory the files resolve in. */
 function host() {
   const overrides = { argv };
@@ -97,6 +100,10 @@ try {
   } else {
     const code = await application().run({ host: host() });
     process.stdout.write(`resolved:${code}\n`);
+    // The state of yaml's debug variables after the run, which reading a YAML file leaves as it was.
+    if (process.env.FIXTURE_DEBUG_VARIABLES !== undefined) {
+      process.stdout.write(`debug:${state('LOG_STREAM')},${state('LOG_TOKENS')}\n`);
+    }
   }
 } catch (error) {
   process.stdout.write(`${error.name}: ${ruleText(error)}\n`);

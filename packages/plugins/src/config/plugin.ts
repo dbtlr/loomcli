@@ -1,15 +1,13 @@
 import { checkShortSetting, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions, StringOption } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
 import { configInput } from './extension.js';
+import { configIdentity as identity } from './names.js';
 import { fileCandidates } from './pattern.js';
 
 const options = {
   config: { description: 'Read configuration from this file alone.', type: 'string' },
 } satisfies PluginOptions;
-
-const identity = `${Package.name}/config`;
 
 export type ConfigOptions = typeof options;
 
@@ -25,7 +23,7 @@ export interface ConfigSettings {
  * The configuration plugin, the first-party configuration source. It answers the configuration tier
  * from one JSON, TOML, or YAML file per run: the file `--config` names, or else the first found of
  * the settings' `file` in the working directory and then in the home directory. It judges the
- * settings at the call, `short` under core's rules and then `file`, and reads each once. The
+ * settings at the call, `short` under core's rules and then `file`, which it reads once. The
  * resolver module loads only when core calls the source.
  */
 export function config(settings?: ConfigSettings): Plugin<ConfigOptions> {

@@ -586,6 +586,53 @@ test(
 );
 
 test(
+  'an alias that names no preceding anchor, as a value or a key, is not valid YAML',
+  inWorkspace((space) => {
+    const yaml = settings({ file: '.app.yaml' });
+    space.write('.app.yaml', 'title: home\n', space.home);
+    const unresolved = [
+      'defaults: &defaults 5\ntitle: *defualts\n',
+      'title: *later\nlater: &later 1\n',
+      '*nope : 1\ntitle: own\n',
+    ];
+    for (const content of unresolved) {
+      space.write('.app.yaml', content);
+      const discovered = space.run([], yaml);
+      expect(discovered).toMatchObject({ status: 0, stderr: skipped('.app.yaml', invalidYaml) });
+      expect(received(discovered.stdout)).toEqual({ ...defaults, title: 'home' });
+      expect(space.run(['--config', '.app.yaml'])).toMatchObject({
+        status: 2,
+        stderr: namedFailure(
+          '.app.yaml',
+          'is not valid YAML. Correct its syntax, or supply another file.',
+        ),
+      });
+    }
+  }),
+);
+
+test(
+  "yaml's debug variables print nothing while a YAML file is read, and keep their state",
+  inWorkspace((space) => {
+    const yaml = { ...settings({ file: '.app.yaml' }), FIXTURE_DEBUG_VARIABLES: '1' };
+    space.write('.app.yaml', 'title: secret\n');
+    // The action's line, with the options in declaration order, is all that reaches stdout.
+    const expected =
+      'root:{"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret"}\nresolved:0\n';
+    expect(space.run([], { ...yaml, LOG_STREAM: '1', LOG_TOKENS: '1' })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `${expected}debug:1,1\n`,
+    });
+    expect(space.run([], { ...yaml, LOG_STREAM: 'yes', LOG_TOKENS: undefined })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `${expected}debug:yes,absent\n`,
+    });
+  }),
+);
+
+test(
   'a leading byte order mark reads in every format, and an empty named file is not valid JSON',
   inWorkspace((space) => {
     const mark = String.fromCodePoint(65_279);
@@ -722,6 +769,14 @@ test(
       space.write(file, content);
       expect(received(space.run([], settings({ file })).stdout)).toMatchObject({ owner: 'own' });
     }
+    // A YAML __proto__ key is an own key, which a request path reaches like any other.
+    space.write('.app.yaml', '__proto__:\n  bytes: 7\n');
+    expect(
+      received(
+        space.run([], { ...settings({ file: '.app.yaml' }), FIXTURE_LIMIT_PATH: '__proto__.bytes' })
+          .stdout,
+      ),
+    ).toMatchObject({ limit: '7' });
   }),
 );
 

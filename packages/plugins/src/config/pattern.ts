@@ -1,11 +1,8 @@
 import { DeclarationError } from '@loomcli/core';
 import type { DiagnosticRule } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
 import { configFilePath, configFilePattern } from '../rules.js';
-import { splitExtension } from './names.js';
-
-const identity = `${Package.name}/config`;
+import { configIdentity as identity, splitExtension } from './names.js';
 
 /** The extensions a pattern may name, in the order `*` tries them. */
 const readable = ['toml', 'yaml', 'yml', 'json'];
