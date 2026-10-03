@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Merge with the repository and organization settings in the CodeRabbit UI instead of replacing them.
+inheritance: true
+reviews:
+  path_instructions:
+    - path: '.changes/*.md'
+      instructions: |
+        Change fragments are compiled into the root CHANGELOG.md, so their links resolve from the repository root, as .changes/README.md states.
+        A link such as `[core reference](docs/core.md)` is correct in a fragment.
+        Do not report root-relative links in these files as broken or ask to rewrite them relative to .changes/.
+        The exception is .changes/README.md, which is a guide rather than a fragment and uses ordinary file-relative links.
