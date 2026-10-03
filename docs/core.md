@@ -1060,7 +1060,7 @@ A broken output pipe returns code 1 through the failure path below.
 ```ts
 interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
-  row?: never; // a view has one shape; the row view of Results is the other
+  row?: undefined; // a view has one shape; the row view of Results is the other
 }
 ```
 
@@ -1361,7 +1361,7 @@ interface FailureViewContext extends ViewContext {
 }
 interface FailureView<Failure extends LoomError> {
   render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
-  row?: never;
+  row?: undefined;
 }
 ```
 
@@ -1727,13 +1727,13 @@ The block restates `View` from [Rendered output](#rendered-output) beside the sh
 ```ts
 interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
-  row?: never;
+  row?: undefined;
 }
 interface RowView<Row> {
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   head?: (context: ViewContext) => string;
   tail?: (count: number, context: ViewContext) => string;
-  render?: never;
+  render?: undefined;
 }
 interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
   readonly identity: string;

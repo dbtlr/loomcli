@@ -88,7 +88,7 @@ interface FailureViewContext extends ViewContext {
 interface FailureView<Failure extends LoomError> {
   render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
   /** A failure view has one shape, as a view does. */
-  row?: never;
+  row?: undefined;
 }
 
 /**
