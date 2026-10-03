@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "pnpm run build && pnpm run build:examples && vp check && pnpm run check:types && pnpm run loom changelog check",
+    "check": "pnpm run build && pnpm run build:examples && vp check && pnpm run check:types && node scripts/generate-unicode-tables.mjs --check && pnpm run loom changelog check",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && pnpm run build:examples && vp test --run",
@@ -29,6 +29,7 @@
     "@loomcli/plugins": "workspace:*",
     "@loomcli/validators": "workspace:*",
     "@types/node": "22.20.1",
+    "rolldown": "1.2.7",
     "typescript": "^7.0.2",
     "vite-plus": "0.3.0",
     "zod": "^4.5.4"
