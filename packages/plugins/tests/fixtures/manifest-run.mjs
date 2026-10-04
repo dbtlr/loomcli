@@ -17,7 +17,7 @@ const packet =
 const text = { render: (value) => `${value}\n` };
 
 /** Every entry rule the manifest states, spread over a small application. */
-function application() {
+function application(settings) {
   const get = new Command('get', {
     description: 'Read one value.',
     extensions: [
@@ -62,7 +62,7 @@ function application() {
   const empty = new Command('empty', { extensions: [manifestCommand({})] }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
-    plugins: [help(), version(), format(), manifest()],
+    plugins: [help(), version(), format(), manifest(settings)],
     version: '1.2.0',
   })
     .globalOption('file', { description: 'The document.', short: 'f', type: 'string' })
@@ -140,6 +140,7 @@ const scenarios = {
     defaulted(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
   schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
   'schema-cycle': published(looped),
+  short: () => application({ short: 'M' }),
 };
 
 const [scenario, ...argv] = process.argv.slice(2);

@@ -61,7 +61,9 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     describe('Options', () => {
       it('jsonkit paths -<Tab> lists long and short spellings', async () => {
         const { listed } = await complete('jsonkit paths -');
-        expect(counts(listed)).toEqual(counts([...options, '--format', '-f', '-h', '-v', '-V']));
+        expect(counts(listed)).toEqual(
+          counts([...options, '--format', '-e', '-f', '-h', '-M', '-o', '-v', '-V']),
+        );
       });
 
       it('jsonkit paths --<Tab> lists long spellings alone', async () => {

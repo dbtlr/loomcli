@@ -228,6 +228,79 @@ test('the manifest prints the routed slice as indented JSON in the contract key 
   });
 });
 
+test('manifest({ short }) prints the routed slice through its chosen short spelling', () => {
+  const result = run('short', ['get', '-M']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(result).toEqual(run('short', ['get', '--manifest']));
+  expect(printedSchema.parse(JSON.parse(result.stdout)).command.name).toBe('get');
+  expect(result.stdout).toContain('"short": "-M"');
+});
+
+test('manifest() declares no short spelling by default', () => {
+  expect(run('app', ['get', '-M'])).toMatchObject({ status: 2, stdout: '' });
+  expect(run('app', ['get', '--manifest'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${JSON.stringify(getDocument, null, 2)}\n`,
+  });
+});
+
+/** The factory or declaration fault observed through a process running the public API. */
+function settingsOutcome(mode: string, value?: string): unknown {
+  const settingsFixture = new URL('fixtures/manifest-settings.mjs', import.meta.url);
+  const result = invoke(settingsFixture, value === undefined ? [mode] : [mode, value]);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return JSON.parse(result.stdout);
+}
+
+test.each([['MM'], ['-M'], ['1'], [''], ['é'], [5]])(
+  'manifest({ short: %j }) throws the ordinary short-alias fault at the factory call',
+  (short) => {
+    expect(settingsOutcome('settings', JSON.stringify({ short }))).toMatchObject({
+      correction: 'Supply one ASCII letter.',
+      findings: [
+        {
+          call: 'manifest',
+          mark: '0.short',
+          note: 'declared by plugin "@loomcli/plugins/manifest"',
+        },
+      ],
+      rule: '@loomcli/core/short-alias',
+      sentence: 'Option "manifest" declares a short alias that is not one ASCII letter.',
+    });
+  },
+);
+
+test.each([['M'], [5], [null], [['M']]])(
+  'manifest(%j) rejects settings that are not an object at the factory call',
+  (settings) => {
+    expect(settingsOutcome('settings', JSON.stringify(settings))).toMatchObject({
+      findings: [
+        { call: 'manifest', mark: '0', note: 'declared by plugin "@loomcli/plugins/manifest"' },
+      ],
+      rule: '@loomcli/core/not-an-object',
+      sentence: 'Plugin "@loomcli/plugins/manifest" declares settings that are not an object.',
+    });
+  },
+);
+
+test('manifest accepts omitted or empty settings and either case of ASCII letter', () => {
+  expect(settingsOutcome('settings')).toBe('returned');
+  for (const settings of [{}, { short: 'm' }, { short: 'M' }]) {
+    expect(settingsOutcome('settings', JSON.stringify(settings))).toBe('returned');
+  }
+});
+
+test.each(['global', 'local', 'plugin'])(
+  'the manifest short spelling colliding with a %s option reports the ordinary spelling-taken rule',
+  (owner) => {
+    expect(settingsOutcome('collision', owner)).toMatchObject({
+      rule: '@loomcli/core/spelling-taken',
+      sentence: expect.stringContaining(owner === 'plugin' ? '-h' : '-M'),
+    });
+  },
+);
+
 test('the root slice lists every visible Command and omits the hidden one', () => {
   const text = printed(['--manifest']);
   const raw: unknown = JSON.parse(text);

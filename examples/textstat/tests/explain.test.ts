@@ -40,15 +40,18 @@ function withDirectory(run: (cwd: string) => void) {
   }
 }
 
-test('textstat explains the application and reads no file', () => {
-  withDirectory((cwd) => {
-    expect(invoke(main, ['--explain'], { cwd })).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: application,
+test.each(['--explain', '-e'])(
+  'textstat %s explains the application and reads no file',
+  (spelling) => {
+    withDirectory((cwd) => {
+      expect(invoke(main, [spelling], { cwd })).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: application,
+      });
     });
-  });
-});
+  },
+);
 
 test('textstat explains an otherwise invalid invocation instead of rejecting it', () => {
   // The named file does not exist, so a run that reached the action would fail reading it.

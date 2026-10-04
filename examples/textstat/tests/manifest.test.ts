@@ -17,6 +17,12 @@ test('textstat --manifest prints the whole application, omitting the hidden --ti
   });
 });
 
+test('textstat -M prints the same manifest through the installed short spelling', () => {
+  const result = invoke(main, ['-M']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(result).toEqual(invoke(main, ['--manifest']));
+});
+
 /** The part of the document an agent reads to build one invocation, parsed at the boundary. */
 const option = z.object({
   long: z.string().nullable(),

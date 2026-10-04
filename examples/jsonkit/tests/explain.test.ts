@@ -53,17 +53,20 @@ const inspected = z.object({
   version: z.string(),
 });
 
-test('jsonkit explains the routed Command and reads no document', () => {
-  // The directory holds a document that the invocation never names, and no file is supplied, so
-  // A run that reached the action would fail on the absent source rather than exit 0.
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    expect(invoke(main, ['get', '--explain'], { cwd })).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: command,
+test.each(['--explain', '-e'])(
+  'jsonkit get %s explains the routed Command and reads no document',
+  (spelling) => {
+    // The directory holds a document that the invocation never names, and no file is supplied, so
+    // A run that reached the action would fail on the absent source rather than exit 0.
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, ['get', spelling], { cwd })).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: command,
+      });
     });
-  });
-});
+  },
+);
 
 test('jsonkit explains the root when no subcommand is routed', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {

@@ -34,22 +34,25 @@ test('textstat prints one table for the counted files, with the total only when 
   }
 });
 
-test('textstat prints the header alone when the byte threshold filters every source', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-filtered-'));
-  try {
-    writeFileSync(join(directory, 'small.txt'), 'é');
-    writeFileSync(join(directory, 'large.txt'), 'hello');
-    expect(
-      invoke(
-        new URL('../dist/main.js', import.meta.url),
-        ['small.txt', 'large.txt', '--min-bytes', '6'],
-        { cwd: directory },
-      ),
-    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n' });
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-});
+test.each(['--min-bytes', '-b'])(
+  'textstat %s filters sources below the byte threshold',
+  (spelling) => {
+    const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-filtered-'));
+    try {
+      writeFileSync(join(directory, 'small.txt'), 'é');
+      writeFileSync(join(directory, 'large.txt'), 'hello');
+      expect(
+        invoke(
+          new URL('../dist/main.js', import.meta.url),
+          ['small.txt', 'large.txt', spelling, '6'],
+          { cwd: directory },
+        ),
+      ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n' });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  },
+);
 
 test.each([
   ['missing-fixture.txt', 'ENOENT'],

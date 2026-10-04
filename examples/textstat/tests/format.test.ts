@@ -22,14 +22,17 @@ function withOneFile(run: (cwd: string) => void) {
 /** The rows the source above produces. The action prints the argument as supplied, not resolved. */
 const rows = [{ count: 6, source: 'one.txt' }];
 
-test('textstat --format json prints the rows as one indented array on stdout', () => {
-  withOneFile((cwd) => {
-    const result = invoke(main, ['--format', 'json', 'one.txt'], { cwd });
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toBe(`${JSON.stringify(rows, null, 2)}\n`);
-  });
-});
+test.each(['--format', '-f'])(
+  'textstat %s json prints the rows as one indented array on stdout',
+  (spelling) => {
+    withOneFile((cwd) => {
+      const result = invoke(main, [spelling, 'json', 'one.txt'], { cwd });
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe(`${JSON.stringify(rows, null, 2)}\n`);
+    });
+  },
+);
 
 test('textstat --format jsonl prints one line per row', () => {
   withOneFile((cwd) => {

@@ -2210,7 +2210,27 @@ function checkShortSetting(
 ): void;
 ```
 
-`checkShortSetting(settings, declarer)` judges such settings at the factory's call, under core's rules, so a plugin applies core's check instead of a copy and the fault throws where the author wrote the call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Undefined settings pass. Settings that are not a plain object throw `@loomcli/core/not-an-object`: `Plugin "@loomcli/plugins/format" declares settings that are not an object. Supply a settings object, or omit the settings.` A `short` that is not one ASCII letter throws `@loomcli/core/short-alias` in the sentence every option's short spelling uses: `Option "format" declares a short alias that is not one ASCII letter. Supply one ASCII letter.` Each finding quotes the factory's call, `format({ short: 'fo' })`, marks the settings or their `short`, and carries the note `declared by plugin "@loomcli/plugins/format"`. A spelling another option already holds is still the hook-collision build error, because only build knows every option on a Command. `checkShortSetting` is exported from `@loomcli/core`.
+`checkShortSetting(settings, declarer)` judges such settings at the factory's call, under core's rules, so a plugin applies core's check instead of a copy and the fault throws where the author wrote the call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Undefined settings pass. Settings that are not a plain object throw `@loomcli/core/not-an-object`: `Plugin "@loomcli/plugins/format" declares settings that are not an object. Supply a settings object, or omit the settings.` A `short` that is not one ASCII letter throws `@loomcli/core/short-alias` in the sentence every option's short spelling uses: `Option "format" declares a short alias that is not one ASCII letter. Supply one ASCII letter.` Each finding quotes the factory's call, `format({ short: 'fo' })`, marks the settings or their `short`, and carries the note `declared by plugin "@loomcli/plugins/format"`. `checkShortSetting` judges the settings alone. The ordinary option declarations judge spelling ownership at the earliest point that knows both owners: construction or an option or Command attachment for globals, and graph build for a hook-declared option. `checkShortSetting` is exported from `@loomcli/core`.
+
+#### First-party and example short spellings
+
+Help and version have fixed short spellings. Configuration, the formatter, and the manifest let the application choose theirs through `short` and have none by default. The example applications choose these spellings without collisions:
+
+| Declaration | Long spelling | Short spelling | Rule |
+| ----------- | ------------- | -------------- | ---- |
+| Help | `--help` | `-h` | Fixed; selects compact help. |
+| Version | `--version` | `-V` | Fixed; leaves lowercase `-v` available. |
+| Configuration | `--config` | None by default; textstat chooses `-c`. | `config({ short: 'c' })`. |
+| Formatter | `--format` | None by default; textstat chooses `-f`, jsonkit chooses `-o`. | Keeps jsonkit's `-f` for its document. |
+| Manifest | `--manifest` | None by default; both examples choose `-M`. | Keeps textstat's `-m` for its metric. |
+| Private example plugin | `--explain` | `-e` | Fixed in the example plugin. |
+| textstat | `--metric` | `-m` | Selects bytes, words, or lines. |
+| textstat | `--min-bytes` | `-b` | Selects the byte threshold; `--minimum` remains an unadvertised alias. |
+| textstat | `--total` | `-t` | Adds the total row. |
+| textstat | `--timing` | None | Hidden diagnostic option, kept long-only. |
+| jsonkit | `--file` | `-f` | Global document option. |
+| jsonkit | `--verbose` | `-v` | Global counted option. |
+| jsonkit select | `--field` | `-F` | Local multiple option; lowercase `-f` belongs to the document. |
 
 ### Plugin Commands
 
@@ -2948,15 +2968,15 @@ COMMANDS
   fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
-      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
   -v, --verbose...   Name the document before reading it.
   -h, --help         Show this help.
   -V, --version      Print the version.
-      --manifest     Print this command's manifest as JSON.
-      --explain      Explain the selected command and exit.
+  -M, --manifest     Print this command's manifest as JSON.
+  -e, --explain      Explain the selected command and exit.
 
 EXAMPLES
   $ jsonkit -f doc.json
@@ -2981,8 +3001,8 @@ GLOBAL OPTIONS
   -v, --verbose...   Name the document before reading it.
   -h, --help         Show this help.
   -V, --version      Print the version.
-      --manifest     Print this command's manifest as JSON.
-      --explain      Explain the selected command and exit.
+  -M, --manifest     Print this command's manifest as JSON.
+  -e, --explain      Explain the selected command and exit.
 ```
 
 textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](#option-aliases) `--minimum` that no page lists, a fifth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
@@ -3000,14 +3020,14 @@ ARGUMENTS
 
 OPTIONS
   -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
-      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+  -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
   -t, --total                  Add a total row.
-      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
+  -f, --format <format>        Select the output format, table by default. One of: table, json, jsonl.
   -h, --help                   Show this help.
   -V, --version                Print the version.
-      --manifest               Print this command's manifest as JSON.
-      --config <config>        Read configuration from this file alone.
-      --explain                Explain the selected command and exit.
+  -M, --manifest               Print this command's manifest as JSON.
+  -c, --config <config>        Read configuration from this file alone.
+  -e, --explain                Explain the selected command and exit.
 
 EXAMPLES
   $ textstat one.txt two.txt
@@ -3027,14 +3047,14 @@ ARGUMENTS
 
 OPTIONS
   -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
-      --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+  -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
   -t, --total                  Add a total row.
-      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
+  -f, --format <format>        Select the output format, table by default. One of: table, json, jsonl.
   -h, --help                   Show this help.
   -V, --version                Print the version.
-      --manifest               Print this command's manifest as JSON.
-      --config <config>        Read configuration from this file alone.
-      --explain                Explain the selected command and exit.
+  -M, --manifest               Print this command's manifest as JSON.
+  -c, --config <config>        Read configuration from this file alone.
+  -e, --explain                Explain the selected command and exit.
 
 Run textstat --help for details and examples.
 ```
@@ -3057,15 +3077,15 @@ COMMANDS
   fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
-      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.
   -v, --verbose...   Name the document before reading it.
   -h, --help         Show this help.
   -V, --version      Print the version.
-      --manifest     Print this command's manifest as JSON.
-      --explain      Explain the selected command and exit.
+  -M, --manifest     Print this command's manifest as JSON.
+  -e, --explain      Explain the selected command and exit.
 
 Run jsonkit <command> -h for command details.
 Run jsonkit --help for details and examples.
@@ -3108,7 +3128,7 @@ Help variants are proven when public APIs alone produce these results under Node
 ```text
 OPTIONS
   -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
-      --format <format>        Select the output format, table by default. One of: table, json, jsonl.
+  -f, --format <format>        Select the output format, table by default. One of: table, json, jsonl.
 ```
 
 An option or an argument row states the values the input accepts, so a reader chooses a valid value before the first run rather than learning it from a validation error. The sentence sits in the right cell after the description and before the facts, under the right-cell rule.
@@ -3146,7 +3166,7 @@ declare const versionLine: DeclaredView<CommandGraph>;
 
 ```text
 OPTIONS
-      --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 ```
 
 - **Scope.** It changes the default help and version views and the formatter's option description. The restyle itself adds no export, extension field, theme requirement, glyph, or rendering policy; the `accepts` field and `helpArgument` arrive with [accepted values](#accepted-values). The existing help and version takeover, output destination, invocation rules, and view override identities stay unchanged.
@@ -3223,7 +3243,7 @@ import { help } from '@loomcli/plugins/help';
 import { table } from '@loomcli/plugins/table';
 import { version } from '@loomcli/plugins/version';
 
-export const textstat = new Application('textstat', { plugins: [help(), version(), format()] })
+export const textstat = new Application('textstat', { plugins: [help(), version(), format({ short: 'f' })] })
   // ...
   .rows<Row>({
     views: {
@@ -3295,7 +3315,7 @@ export default middleware;
 
 #### Formatter example coverage
 
-The formatter increment is proven when both example applications install `format()` after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat --format json one.txt` prints the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths --format jsonl -f doc.json` prints one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description names the declared default, as specified by the [help restyle](#help-and-version-restyle), and whose [accepted values](#accepted-values) list the view names. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, the hook-collision error against a local, a global, and another plugin's `format`, `format({ short: 'f' })` putting `-f` on the help row and selecting a view through it, its short spelling colliding with a local option's and with help's `-h`, and `format()` throwing at its call for `'fo'`, `'-f'`, `'1'`, `''`, `'é'`, and `5` under the short-alias rule and for settings of `'f'`, `5`, `null`, and an array under not-an-object. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when textstat installs `format({ short: 'f' })` and jsonkit installs `format({ short: 'o' })`, after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat -f json one.txt` and `textstat --format json one.txt` print the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths -o jsonl -f doc.json` and `jsonkit paths --format jsonl -f doc.json` print one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description names the declared default, as specified by the [help restyle](#help-and-version-restyle), and whose [accepted values](#accepted-values) list the view names. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, the hook-collision error against a local, a global, and another plugin's `format`, `format({ short: 'f' })` putting `-f` on the help row and selecting a view through it, its short spelling colliding with a local option's and with help's `-h`, and `format()` throwing at its call for `'fo'`, `'-f'`, `'1'`, `''`, `'é'`, and `5` under the short-alias rule and for settings of `'f'`, `5`, `null`, and an array under not-an-object. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
 
 ### Table
 
@@ -3488,13 +3508,16 @@ The implementation increment proves these cases through public APIs:
 
 ```ts
 // @loomcli/plugins/manifest
-import type { Plugin, PluginOptions, ResultNode } from '@loomcli/core';
+import type { BooleanOption, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
 
 const options = {
   manifest: { description: "Print this command's manifest as JSON.", type: 'boolean' },
 } satisfies PluginOptions;
 export type ManifestOptions = typeof options;
-export declare function manifest(): Plugin<ManifestOptions>;
+export interface ManifestSettings {
+  readonly short?: NonNullable<BooleanOption['short']>;
+}
+export declare function manifest(settings?: ManifestSettings): Plugin<ManifestOptions>;
 
 // The document the option prints, as JSON. The package exports no type for it.
 interface ManifestDocument {
@@ -3662,7 +3685,7 @@ type ManifestOption =
 
 The manifest plugin prints, for the routed Command, a self-contained JSON projection of the graph that an agent reads to construct a correct invocation before it makes one. The graph is the source of truth: the document copies facts [Graph inspection](#graph-inspection) publishes and adds nothing but the fixed statements of the envelope, and no projection, plugin, or core path reads a fact from it.
 
-- **The option.** `manifest()` takes no parameters and declares one Boolean [global option](#global-options-from-plugins), `manifest`, with no short spelling and the description `Print this command's manifest as JSON.`, and a middleware activated by it. Like `--help`, it is consumed at any placement before `--`. It lists `manifestCommand` under its `extensions`, declares no view, and claims no slot.
+- **The option.** `manifest(settings?)` takes the optional `short` setting and declares one Boolean global option, `manifest`, with the description `Print this command's manifest as JSON.`, and a middleware activated by it. `manifest({ short: 'M' })` adds `-M`; omitted or empty settings give it no short spelling. The factory judges settings at its call through `checkShortSetting`, with the ordinary not-an-object and short-alias rules naming `manifest()` and the plugin. A collision follows the ordinary global option spelling-taken rule. Like `--help`, either spelling is consumed at any placement before `--`. It lists `manifestCommand` under its `extensions`, declares no view, and claims no slot.
 - **The takeover.** The middleware prints the document for the routed Command and returns without calling `next()`, so the exit code is 0, the action never dispatches, and a fault core held from parsing or validation is never raised: a group prints its own document, and `jsonkit get --manifest` prints while `path` is missing. An unknown Command still fails in routing, so `jsonkit nope --manifest` reports the unknown command, and every other fault is held, so `--manifest` takes it over. An earlier-installed middleware that takes over wins, so in the example applications `jsonkit --help --manifest` prints help and `jsonkit --version --manifest` prints the version.
 - **The slice.** `command` is the routed Command's entry with its visible descendants nested under `children`, and the envelope carries the Application's `name`, `version`, `description`, and `globals`, so a slice needs no second document. At the root the slice is the whole application. A hidden Command routed to directly prints its own slice, as its help page does.
 - **What a listing omits.** A hidden Command, a hidden local option, and a hidden global option are omitted, as every listing omits them. Aliases never appear, a Command's or an option's. A deprecated member appears with its migration message under `deprecated`.
@@ -3758,15 +3781,16 @@ A Command states the failures it can raise, each with the exit code its class de
 
 #### Manifest acceptance
 
-The manifest is proven when both example applications install `manifest()` after `format()` and ahead of the example plugin, and public APIs alone produce these results under Node and Bun:
+The manifest is proven when both example applications install `manifest({ short: 'M' })` after their formatter and ahead of the example plugin, and public APIs alone produce these results under Node and Bun:
 
 - **Pinned documents.** `textstat --manifest`, `jsonkit --manifest`, and `jsonkit get --manifest` print documents compared byte for byte. `jsonkit get`'s `details` holds the author's value ahead of help's. `jsonkit fetch --manifest` shows the deprecated Command's message. `jsonkit debug --manifest` prints the hidden Command's own slice, and the root document omits it.
 - **An agent-shaped run.** A process test reads `textstat --manifest` alone, builds an invocation from it by choosing `--metric` from its schema's enum and `--format json` from the result's views, runs it, and parses stdout as the `json` encoding states.
 - **Help pages.** Every help page lists the `--manifest` row among its options, and the golden pages are re-pinned for it.
+- **Short spellings.** `textstat -M`, `jsonkit -M`, and `jsonkit get -M` print the same documents as their long forms. A fixture proves no short spelling by default, either case of an ASCII letter accepted, invalid settings rejected at the factory call, and collisions with an application global, a local option, and another plugin reported under the ordinary spelling-taken rule.
 - **Takeover and precedence.** `jsonkit get --manifest` without its required argument prints with exit 0, and so does `--manifest` on a group in a fixture application. An unknown Command still reports its routing error. `jsonkit --help --manifest` prints help and `jsonkit --version --manifest` prints the version. A `--manifest` token after `--` is not read as the option.
 - **Entries.** Fixture applications cover: a hidden option and a hidden global omitted. An explicit `default: undefined` reads `null`. Two `manifestCommand` values with `details` produce two strings in collection order, and a value with neither field adds nothing. A U+009B inside a description prints as `\u009b`. A declared `bigint`, `NaN`, or function default, and a published schema holding `NaN`, fail the write. Keys follow the type block's order, `result` included, and no version field appears.
 - **Declared failures.** jsonkit declares `invalid-json` on every Command that reads a document and `path-not-found` on `get`, `keys`, and the deprecated `fetch`, which runs `get`'s action, all 65, and `jsonkit get --manifest` prints the document above byte for byte, with the `65` row between `2` and `130`. A malformed document given to each Command that declares `invalid-json` exits 65, the code its manifest lists. Fixture applications cover: a Command with no declared failures reading `[]`; a class that declares no code listing 1 with no row added; one name declared on two Commands with one code and meaning listed on both with one row; one name with two codes, and with two meanings, reporting its `DeclarationError`; an author value and a plugin's `onCommandAttach` value concatenated in collection order, with an identical pair printed once; a hidden Command's code joining the table; a value holding a function that is not a failure class, a name with an uppercase letter, and a meaning with a line break each rejected at the call; and a failure class whose static `exitCode` is 200 rejected at the call.
-- **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs `--manifest`.
+- **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs its chosen `-M`.
 
 ### Configuration
 

@@ -25,6 +25,15 @@ test('jsonkit get --manifest prints the get slice while its required path is mis
   });
 });
 
+test.each([{ route: [] }, { route: ['get'] }])(
+  'jsonkit $route -M prints the routed manifest without dispatching',
+  ({ route }) => {
+    const result = invoke(main, [...route, '-M']);
+    expect(result).toMatchObject({ status: 0, stderr: '' });
+    expect(result).toEqual(invoke(main, [...route, '--manifest']));
+  },
+);
+
 test('jsonkit --help --manifest prints help and --version --manifest the version, by installation order', () => {
   expect(invoke(main, ['--help', '--manifest']).stdout).toMatch(/^jsonkit · /u);
   expect(invoke(main, ['--version', '--manifest']).stdout).toBe('jsonkit v0.0.0\n');
