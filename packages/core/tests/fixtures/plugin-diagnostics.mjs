@@ -189,6 +189,19 @@ const scenarios = {
     }
     return new OffScaleError('Off the scale.');
   },
+  'hook-alias-spelling': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) =>
+            command.name === 'count'
+              ? command.option('shape', { aliases: ['file'], type: 'string' })
+              : command,
+        }),
+      ],
+    })
+      .command(new Command('count').option('file', { type: 'string' }).action(act))
+      .inspect(),
   'hook-collision': () =>
     new Application('probe', {
       plugins: [

@@ -62,3 +62,24 @@ new Application('both-short-only').option('total', {
 });
 // @ts-expect-error TS2322: Only the declared Boolean polarities are supported.
 new Application('invalid-polarity').option('total', { polarity: 'unknown', type: 'boolean' });
+
+const renamed = { aliases: ['minimum'], type: 'string' } satisfies StringOption;
+const colour = { aliases: ['colour'], polarity: 'both', type: 'boolean' } satisfies BooleanOption;
+new Application('aliases')
+  .option('min-bytes', renamed)
+  .option('color', colour)
+  .action(({ options }) => {
+    const threshold: string | undefined = options['min-bytes'];
+    // @ts-expect-error TS2339: Aliases are not handler keys.
+    options.minimum;
+    return threshold;
+  });
+// @ts-expect-error TS2345: shortOnly removes every long spelling, so it declares no alias.
+new Application('alias-short-only').option('metric', {
+  aliases: ['measure'],
+  short: 'm',
+  shortOnly: true,
+  type: 'string',
+});
+// @ts-expect-error TS2322: Aliases are a list of names, never one string.
+new Application('alias-string').option('metric', { aliases: 'measure', type: 'string' });

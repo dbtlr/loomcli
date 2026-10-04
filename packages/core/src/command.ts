@@ -82,12 +82,15 @@ import {
   checkOptionName,
   compileOptions,
   copyValues,
+  declaredNameCorrection,
   emptyValues,
+  isDeclaredName,
   mergeValues,
+  repeatedAliasText,
   spellingMark,
   tableEntries,
 } from './options.js';
-import type { CompileScope, OptionValues, SpellingRole, SpellingTable } from './options.js';
+import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
 import { argumentSlot, candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
 import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
@@ -389,11 +392,6 @@ function checkCommandOptions(name: string, options: Readonly<Record<string, unkn
       sentence: `${commandSentence(name)} declares globals.`,
     });
   }
-}
-
-/** One name rule for an argument, option, or view name: a bare token the parser can read. */
-function isDeclaredName(name: unknown): name is string {
-  return typeof name === 'string' && Boolean(name) && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
 /**
@@ -718,7 +716,7 @@ function checkArgumentName(
   const { path } = command;
   if (!isDeclaredName(input.name)) {
     throw new DeclarationError(declaredName, {
-      correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
+      correction: declaredNameCorrection,
       findings: [nameFinding(path, input)],
       sentence: `${commandSentence(command.name)} declares an argument named ${quoted(input.name)}.`,
     });
@@ -863,18 +861,17 @@ export function declareAlias<Args, Options, Globals>(
   const aliases = [...state.aliases];
   for (const [index, alias] of names.entries()) {
     const repeated = { arguments: names, call: 'alias', mark: String(index), path };
+    const text = repeatedAliasText(commandSentence(name), alias);
     if (alias === name) {
       throw new DeclarationError(repeatedAlias, {
-        correction: 'Remove the alias.',
+        ...text.own,
         findings: [{ ...repeated, note: 'its own name' }],
-        sentence: `${commandSentence(name)} declares alias "${alias}", which is its own name.`,
       });
     }
     if (aliases.includes(alias)) {
       throw new DeclarationError(repeatedAlias, {
-        correction: 'Remove the repeated alias.',
+        ...text.twice,
         findings: [{ ...repeated, note: 'already an alias' }],
-        sentence: `${commandSentence(name)} declares alias "${alias}" twice.`,
       });
     }
     aliases.push(alias);
@@ -1996,8 +1993,8 @@ interface ClaimedSpelling {
   finding: Finding | undefined;
 }
 
-/** Where the option one table names declared one of its spellings, by its name and the role. */
-type SpellingPlace = (name: string, role: SpellingRole) => Finding | undefined;
+/** Where the option one table names declared one of its spellings, by its name and the origin. */
+type SpellingPlace = (name: string, origin: SpellingOrigin) => Finding | undefined;
 
 /** The spellings one compiled table holds, each with its form and the place that declared it. */
 function readSpellings(
@@ -2014,14 +2011,14 @@ function readSpellings(
   for (const [spelling, option] of table) {
     if (!claimed.has(spelling)) {
       const form = longs.get(option.name) ?? spelling;
-      claimed.set(spelling, { finding: placeOf(option.name, option.role), form });
+      claimed.set(spelling, { finding: placeOf(option.name, option), form });
     }
   }
 }
 
 /** The place one input's spelling sits: the key of its call that yields the spelling. */
-function spellingPlace(site: InputSite, role: SpellingRole, note: string): Finding {
-  return siteFinding(site, spellingMark(site, role), note);
+function spellingPlace(site: InputSite, origin: SpellingOrigin, note: string): Finding {
+  return siteFinding(site, spellingMark(site, origin), note);
 }
 
 /** One hook-declared option's spellings, against every spelling the table already claims. */
@@ -2040,14 +2037,16 @@ function checkAttachedSpelling(
       throw new DeclarationError(spellingTaken, {
         correction: 'Change one of the two spellings or omit the plugin.',
         findings: [
-          spellingPlace(site, option.role, declarerNote(identity)),
+          spellingPlace(site, option, declarerNote(identity)),
           ...(used.finding === undefined ? [] : [used.finding]),
         ],
         sentence: `Plugin ${quoted(identity)} declares option ${quoted(input.name)} with spelling ${quoted(spelling)} on ${subject}, which ${quoted(used.form)} already uses.`,
       });
     }
   }
-  readSpellings(table, claimed, (_name, role) => spellingPlace(site, role, declarerNote(identity)));
+  readSpellings(table, claimed, (_name, origin) =>
+    spellingPlace(site, origin, declarerNote(identity)),
+  );
 }
 
 /** The declarations of one kind, keyed by name, the first of each name winning. */
@@ -2063,7 +2062,7 @@ function byName(inputs: readonly InputDeclaration[]): Map<string, InputDeclarati
 
 /** Where the globals table's options declared their spellings, a global or a plugin's option. */
 function tableSpellings(globals: BuiltGlobals): SpellingPlace {
-  return (name, role) => {
+  return (name, origin) => {
     const entry = globals.names.get(name);
     if (!entry) {
       return undefined;
@@ -2073,7 +2072,7 @@ function tableSpellings(globals: BuiltGlobals): SpellingPlace {
       owner.kind === 'plugin'
         ? `an option of plugin ${quoted(owner.identity)}`
         : `the global option ${quoted(name)}`;
-    return spellingPlace(site, role, note);
+    return spellingPlace(site, origin, note);
   };
 }
 
@@ -2105,11 +2104,11 @@ function checkAttachedInputs(
   };
   const claimed = new Map<string, ClaimedSpelling>();
   readSpellings(globals.options, claimed, tableSpellings(globals));
-  readSpellings(compileOptions(options, scope), claimed, (name, role) => {
+  readSpellings(compileOptions(options, scope), claimed, (name, origin) => {
     const local = locals.get(name);
     return local === undefined || local.kind !== 'option'
       ? undefined
-      : spellingPlace(scope.siteOf(local), role, `the local option ${quoted(name)}`);
+      : spellingPlace(scope.siteOf(local), origin, `the local option ${quoted(name)}`);
   });
   for (const entry of attached) {
     const { identity, input } = entry;

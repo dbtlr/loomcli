@@ -37,6 +37,13 @@ const shortOnlyWithoutShort = registerRule('@loomcli/core/short-only-without-sho
   headline: 'Short only with no short alias',
 });
 
+/** `aliases` on an option that declares `shortOnly`. */
+const shortOnlyWithAliases = registerRule('@loomcli/core/short-only-with-aliases', {
+  explanation:
+    'shortOnly removes every long spelling of an option, and each alias adds a long spelling, so an option cannot declare both.',
+  headline: 'Short only with aliases',
+});
+
 /** `multiple` on a Boolean option. */
 const booleanOptionMultiple = registerRule('@loomcli/core/boolean-option-multiple', {
   explanation:
@@ -71,7 +78,7 @@ const shortOnlyBothPolarities = registerRule('@loomcli/core/short-only-both-pola
  */
 const spellingTaken = registerRule('@loomcli/core/spelling-taken', {
   explanation:
-    "The parser reads each spelling as one option, and a Command's own options share one invocation with the global options and every installed plugin's options. A spelling two options claim, a short alias or a generated negative form included, would reach only one of them.",
+    "The parser reads each spelling as one option, and a Command's own options share one invocation with the global options and every installed plugin's options. A spelling two options claim, a short alias, an alias, or a generated negative form included, would reach only one of them.",
   headline: 'Spelling used twice',
 });
 
@@ -228,6 +235,7 @@ export {
   schemaConverterFailed,
   shortAlias,
   shortOnlyBothPolarities,
+  shortOnlyWithAliases,
   shortOnlyWithoutShort,
   spellingTaken,
   variableBoundTwice,

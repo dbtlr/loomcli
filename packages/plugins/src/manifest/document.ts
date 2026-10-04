@@ -114,7 +114,7 @@ function defaultOf(node: { readonly default: { readonly value: unknown } | undef
     : { value: node.default.value };
 }
 
-/** One option's entry: its node without `hidden`, `extensions`, and the schema-run flags. */
+/** One option's entry: its node without `hidden`, `aliases`, `extensions`, and the schema-run flags. */
 function optionEntry(node: OptionNode): ManifestOption {
   const common = {
     name: node.name,

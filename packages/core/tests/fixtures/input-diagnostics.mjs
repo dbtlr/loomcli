@@ -76,6 +76,40 @@ const optionsPlugin = (identity, options) => plugin(identity, { options });
  * message holds.
  */
 const scenarios = {
+  'alias-global-local': () =>
+    new Application('probe')
+      .globalOption('file', { aliases: ['input'], type: 'string' })
+      .command(new Command('get').option('input', { type: 'boolean' }).action(act)),
+  'alias-list': () =>
+    new Command('get').option('min-bytes', { aliases: 'minimum', type: 'string' }),
+  'alias-name': () =>
+    new Command('get').option('min-bytes', { aliases: ['bad=name'], type: 'string' }),
+  'alias-name-kind': () => new Command('get').option('min-bytes', { aliases: [7], type: 'string' }),
+  'alias-negative-spelling': () =>
+    new Command('get')
+      .option('color', { aliases: ['colour'], polarity: 'both', type: 'boolean' })
+      .option('no-colour', { type: 'boolean' }),
+  'alias-own-name': () =>
+    new Command('get').option('min-bytes', { aliases: ['min-bytes'], type: 'string' }),
+  'alias-own-spelling': () =>
+    new Command('get').option('color', {
+      aliases: ['no-color'],
+      polarity: 'both',
+      type: 'boolean',
+    }),
+  'alias-short-only': () =>
+    new Command('get').option('file', {
+      aliases: ['input'],
+      short: 'f',
+      shortOnly: true,
+      type: 'string',
+    }),
+  'alias-spelling': () =>
+    new Command('get')
+      .option('min-bytes', { aliases: ['limit'], type: 'string' })
+      .option('limit', { type: 'string' }),
+  'alias-twice': () =>
+    new Command('get').option('min-bytes', { aliases: ['minimum', 'minimum'], type: 'string' }),
   'argument-env': () => new Command('get').argument('path', { env: 'PATH' }),
   'boolean-default': () =>
     new Command('get').option('verbose', { default: false, type: 'boolean' }),
@@ -139,6 +173,10 @@ const scenarios = {
   'option-twice': () =>
     new Command('get').option('raw', { type: 'boolean' }).option('raw', { type: 'string' }),
   'option-type': () => new Command('get').option('limit', { type: 'number' }),
+  'plugin-alias-spelling': () =>
+    new Application('probe', {
+      plugins: [optionsPlugin('@acme/trace', { trace: { aliases: ['tail'], type: 'boolean' } })],
+    }).command(new Command('get').option('tail', { type: 'string' }).action(act)),
   'plugin-boolean-default': () =>
     optionsPlugin('@acme/trace', { verbose: { default: true, type: 'boolean' } }),
   'plugin-global-key': () =>
@@ -149,6 +187,13 @@ const scenarios = {
     new Application('probe', {
       plugins: [optionsPlugin('@acme/trace', { trace: { short: 't', type: 'boolean' } })],
     }).command(new Command('get').option('tail', { short: 't', type: 'string' }).action(act)),
+  'plugins-alias-spelling': () =>
+    new Application('probe', {
+      plugins: [
+        optionsPlugin('@acme/log', { level: { aliases: ['verbosity'], type: 'string' } }),
+        optionsPlugin('@acme/trace', { verbosity: { type: 'boolean' } }),
+      ],
+    }),
   'plugins-key': () =>
     new Application('probe', {
       plugins: [

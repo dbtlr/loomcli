@@ -39,6 +39,8 @@ const rootHidden: boolean = root.hidden;
 const rootDeprecated: string | undefined = root.deprecated;
 const optionHidden = (option: OptionNode): boolean => option.hidden;
 const optionDeprecated = (option: OptionNode): string | undefined => option.deprecated;
+// Both option forms publish their declared aliases.
+const optionAliases = (option: OptionNode): readonly string[] => option.aliases;
 // @ts-expect-error TS2339: An argument carries neither listing fact.
 slots.map((slot) => slot.hidden);
 
@@ -118,3 +120,4 @@ void rootHidden;
 void rootDeprecated;
 void optionHidden;
 void optionDeprecated;
+void optionAliases;

@@ -90,6 +90,23 @@ describe('the answer', () => {
     expect(complete('fetch', '--d')).toBe(framed(['--deep'], 4));
   });
 
+  it("an option's alias is never offered, and a typed one completes its option's value", () => {
+    const graph = new Application('kit')
+      .option('metric', {
+        aliases: ['measure'],
+        type: 'string',
+        validate: shaped({ enum: ['bytes', 'words'] }),
+      })
+      .option('color', { aliases: ['colour'], polarity: 'both', type: 'boolean' })
+      .action(() => {})
+      .inspect();
+    expect(answer(graph, locate(graph, ['--']))).toBe(
+      framed(['--metric', '--color', '--no-color'], 4),
+    );
+    expect(answer(graph, locate(graph, ['--measure', 'w']))).toBe(framed(['words'], 4));
+    expect(answer(graph, locate(graph, ['--measure=b']))).toBe(framed(['--measure=bytes'], 4));
+  });
+
   it('an option position offers long spellings, and short ones too when the word is exactly a hyphen', () => {
     expect(complete('paths', '--')).toBe(
       framed([...globalLines, '--format\tThe view.', '--field\tA field.', '--quiet\tSay less.'], 4),

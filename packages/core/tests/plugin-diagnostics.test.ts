@@ -82,8 +82,9 @@ const explanations = {
     'core cannot call leaves it nothing to run.',
   ],
   'not-a-list': [
-    'Core reads plugins, commands, extensions, views, translators, and signals each',
-    'as a list, in order. A value of any other kind has no entries to read.',
+    'Core reads plugins, commands, extensions, views, translators, signals, and',
+    'aliases each as a list, in order. A value of any other kind has no entries to',
+    'read.',
   ],
   'not-an-object': [
     "Core reads the options of a Command and of the Application, a plugin's",
@@ -205,8 +206,8 @@ const shared = {
   'spelling-taken': [
     "The parser reads each spelling as one option, and a Command's own options share",
     "one invocation with the global options and every installed plugin's options. A",
-    'spelling two options claim, a short alias or a generated negative form included,',
-    'would reach only one of them.',
+    'spelling two options claim, a short alias, an alias, or a generated negative',
+    'form included, would reach only one of them.',
   ],
   'view-shape': [
     'A views entry is a view with render, which receives the whole result, or a row',
@@ -554,6 +555,27 @@ const cases: Record<string, Expected> = {
     headline: 'UNDECLARABLE EXIT CODE',
     rule: 'failure-exit-code',
     sentence: 'Failure class "OffScaleError" declares exit code 200.',
+  },
+  'hook-alias-spelling': {
+    correction: 'Change one of the two spellings or omit the plugin.',
+    findings: [
+      onCommand(
+        ['count'],
+        "option('shape', { aliases: ['file'], type: 'string' })",
+        "'file'",
+        'declared by plugin "@acme/format"',
+      ),
+      onCommand(
+        ['count'],
+        "option('file', { type: 'string' })",
+        "'file'",
+        'the local option "file"',
+      ),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence:
+      'Plugin "@acme/format" declares option "shape" with spelling "--file" on Command "count", which "--file" already uses.',
   },
   'hook-collision': {
     correction: "Rename the Command's option or omit the plugin.",

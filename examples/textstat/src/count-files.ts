@@ -49,17 +49,6 @@ function sources(files: readonly string[], host: Host): Source[] {
   }));
 }
 
-/** An omitted deprecated threshold drops nothing, so it never raises the effective minimum. */
-const NO_MINIMUM = 0;
-
-/**
- * The byte threshold one invocation applies. Two spellings name it while the deprecated one lives,
- * so the larger of the two rules and neither spelling loosens the other.
- */
-function threshold(options: ActionOptions<typeof textstat>): number {
-  return Math.max(options['min-bytes'], options.minimum ?? NO_MINIMUM);
-}
-
 /** What one pass over the sources produced: the rows it kept and the total of their counts. */
 interface Counted {
   rows: Row[];
@@ -75,7 +64,7 @@ async function countAll(
   selected: readonly Source[],
 ): Promise<Counted> {
   const rows: Row[] = [];
-  const minimum = threshold(options);
+  const minimum = options['min-bytes'];
   let total = 0;
   for (const source of selected) {
     const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {

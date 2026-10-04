@@ -9,7 +9,7 @@ import { registerRule } from './diagnostic-text.js';
 /** A slot that holds a list, such as `plugins` or `commands`, holding a value of another kind. */
 const notAList = registerRule('@loomcli/core/not-a-list', {
   explanation:
-    'Core reads plugins, commands, extensions, views, translators, and signals each as a list, in order. A value of any other kind has no entries to read.',
+    'Core reads plugins, commands, extensions, views, translators, signals, and aliases each as a list, in order. A value of any other kind has no entries to read.',
   headline: 'Not a list',
 });
 

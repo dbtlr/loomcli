@@ -4,7 +4,7 @@ title: ADR-0002 - The command graph is a tree, and hidden aliases replace multi-
 description: A Command value attaches at one point in one Application's graph. Extra operator spellings are hidden aliases that route to the Command but never appear in any report.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-27
+modified: 2026-10-04
 ---
 
 # ADR-0002 - The command graph is a tree, and hidden aliases replace multi-parent attachment
@@ -36,3 +36,4 @@ The unnamed root declares no aliases. A hidden alias never appears in a candidat
 - 2026-09-25: ADR-0034 and ADR-0035 are accepted. The entry above binds as written.
 - 2026-09-26: [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md), proposed, supersedes the clause that a completion consumer reads aliases, and the 2026-09-24 entry's conclusion that a completion script is the one projection that reads them. Completion never offers or rewrites an alias; routing and `locate` resolve a typed alias. No projection reads `aliases`, and `inspect()` still publishes the field. It binds when that record is accepted.
 - 2026-09-27: ADR-0043 is accepted. The entry above binds as written.
+- 2026-10-04: [ADR-0056](0056-an-option-alias-is-an-unadvertised-long-spelling-of-one-option.md), proposed, extends this record's doctrine to options: an option declares aliases, each an unadvertised long spelling of that one option, and an alias carries no deprecation message, as the rejected option above states for Commands. The decision here is unchanged.

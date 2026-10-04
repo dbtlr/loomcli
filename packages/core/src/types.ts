@@ -37,9 +37,13 @@ type LowercaseLetter =
   | 'y'
   | 'z';
 type ShortAlias = LowercaseLetter | Uppercase<LowercaseLetter>;
+/**
+ * The spellings an option declares beyond its long form. `aliases` adds a long spelling for each
+ * name, so `shortOnly`, which removes every long spelling, never declares one.
+ */
 type OptionSpelling =
-  | { short?: ShortAlias; shortOnly?: false }
-  | { short: ShortAlias; shortOnly: true };
+  | { short?: ShortAlias; shortOnly?: false; aliases?: readonly string[] }
+  | { short: ShortAlias; shortOnly: true; aliases?: never };
 
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
 /**
@@ -495,6 +499,7 @@ export type BooleanOption =
         polarity: 'both';
         short?: ShortAlias;
         shortOnly?: false;
+        aliases?: readonly string[];
       });
 export type OptionConfig = StringOption | BooleanOption;
 /**

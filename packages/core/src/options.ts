@@ -1,4 +1,4 @@
-import { declaredName } from './command-rules.js';
+import { declaredName, repeatedAlias } from './command-rules.js';
 import { valueCode } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
 import { factFault, flagFault, siteFinding } from './facts.js';
@@ -11,9 +11,11 @@ import {
   polarityOnString,
   shortAlias,
   shortOnlyBothPolarities,
+  shortOnlyWithAliases,
   shortOnlyWithoutShort,
   spellingTaken,
 } from './input-rules.js';
+import { notAList } from './plugin-rules.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -34,14 +36,19 @@ export function emptyValues(): OptionValues {
   return { booleans: new Map(), lists: new Map(), spellings: new Map(), strings: new Map() };
 }
 
-/** Which accepted form a table entry is. The table owns the convention, so readers never re-derive it. */
-export type SpellingRole = 'long' | 'negative' | 'short';
+/**
+ * Which accepted form a table entry is, and for an alias's spelling, positive or negative, its place
+ * in `aliases`. The table owns the convention, so readers never re-derive it.
+ */
+export type SpellingOrigin =
+  | { role: 'long' | 'negative' | 'short' }
+  | { role: 'alias'; index: number };
 
 type OptionForm =
   | { type: 'string'; name: string; multiple: boolean }
   | { type: 'boolean'; name: string; value: boolean };
 
-export type OptionSpelling = OptionForm & { role: SpellingRole };
+export type OptionSpelling = OptionForm & SpellingOrigin;
 
 /**
  * One entry of a Command's spelling table: a spelling of one declaration, and whether that
@@ -61,15 +68,29 @@ export function tableEntries(
 }
 
 /**
- * The part of one declaration that yields a spelling of the given role, which a spelling fault
- * marks: the declared name for the long form, `short` for the short alias, and the `polarity` that
- * generates a negative form.
+ * The part of one declaration that yields a spelling of the given origin, which a spelling fault
+ * marks: the declared name for the long form, `short` for the short alias, the `polarity` that
+ * generates a negative form, and the alias in `aliases` for either form of an alias.
  */
-export function spellingMark(site: InputSite, role: SpellingRole): string {
-  if (role === 'long') {
-    return site.named;
+export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
+  switch (origin.role) {
+    case 'long': {
+      return site.named;
+    }
+    case 'short': {
+      return `${site.at}.short`;
+    }
+    case 'negative': {
+      return `${site.at}.polarity`;
+    }
+    case 'alias': {
+      return `${site.at}.aliases.${String(origin.index)}`;
+    }
+    default: {
+      const exhaustive: never = origin;
+      return exhaustive;
+    }
   }
-  return `${site.at}.${role === 'short' ? 'short' : 'polarity'}`;
 }
 
 /** The declared name answers the declared-name rule an argument's name answers. */
@@ -82,13 +103,39 @@ export function checkOptionName(name: unknown, site: InputSite): void {
       sentence: `Option name ${valueCode(name)} is not a string.`,
     });
   }
-  if (!name || name.startsWith('-') || /[\s=]/u.test(name)) {
+  if (!isDeclaredName(name)) {
     throw new DeclarationError(declaredName, {
-      correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
+      correction: declaredNameCorrection,
       findings,
       sentence: `Option name ${quoted(name)} is invalid.`,
     });
   }
+}
+
+/**
+ * The one name rule for an argument, option, alias of an option, or view name: a bare token the
+ * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
+ */
+export function isDeclaredName(name: unknown): name is string {
+  return typeof name === 'string' && name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);
+}
+
+/** The one correction every declared-name diagnostic for a string ends with. */
+export const declaredNameCorrection =
+  'Use a nonempty name without a leading hyphen, whitespace, or "=".';
+
+/** The sentence and correction of each repeated-alias fault, for the Command or option `subject` names. */
+export function repeatedAliasText(subject: string, alias: string) {
+  return {
+    own: {
+      correction: 'Remove the alias.',
+      sentence: `${subject} declares alias ${quoted(alias)}, which is its own name.`,
+    },
+    twice: {
+      correction: 'Remove the repeated alias.',
+      sentence: `${subject} declares alias ${quoted(alias)} twice.`,
+    },
+  };
 }
 
 /** Whether a declared short alias is one ASCII letter, the rule every short spelling answers. */
@@ -118,6 +165,65 @@ function checkShortForms(config: OptionConfig, site: InputSite, subject: string)
       fact: 'shortOnly',
       sentence: `${subject} declares shortOnly and no short alias.`,
     });
+  }
+}
+
+/**
+ * The aliases, each a name the declared-name rule accepts, none repeating the option's name or
+ * another alias. `shortOnly` removes every long spelling, so it declares none.
+ */
+function checkAliases(config: OptionConfig, site: InputSite, name: string): void {
+  const subject = `Option ${quoted(name)}`;
+  // The types reject the pair, so this reads `shortOnly` before `aliases` narrows it away.
+  if (config.shortOnly === true && config.aliases !== undefined) {
+    throw factFault(shortOnlyWithAliases, site, {
+      correction: 'Remove aliases or shortOnly.',
+      fact: 'aliases',
+      sentence: `${subject} declares aliases and shortOnly, which removes every long spelling.`,
+    });
+  }
+  const { aliases } = config;
+  if (aliases === undefined) {
+    return;
+  }
+  if (!Array.isArray(aliases)) {
+    throw factFault(notAList, site, {
+      correction: 'Supply a list of alias names.',
+      fact: 'aliases',
+      sentence: `${subject} declares aliases that are not an array.`,
+    });
+  }
+  const seen = new Set<string>();
+  for (const [index, alias] of aliases.entries()) {
+    const at = `${site.at}.aliases.${String(index)}`;
+    if (typeof alias !== 'string') {
+      throw new DeclarationError(declaredName, {
+        correction: 'Supply a string name.',
+        findings: [siteFinding(site, at)],
+        sentence: `${subject} declares an alias named ${valueCode(alias)}.`,
+      });
+    }
+    if (!isDeclaredName(alias)) {
+      throw new DeclarationError(declaredName, {
+        correction: declaredNameCorrection,
+        findings: [siteFinding(site, at)],
+        sentence: `${subject} declares an alias named ${quoted(alias)}.`,
+      });
+    }
+    const repeated = repeatedAliasText(subject, alias);
+    if (alias === name) {
+      throw new DeclarationError(repeatedAlias, {
+        ...repeated.own,
+        findings: [siteFinding(site, at, 'its own name')],
+      });
+    }
+    if (seen.has(alias)) {
+      throw new DeclarationError(repeatedAlias, {
+        ...repeated.twice,
+        findings: [siteFinding(site, at, 'already an alias')],
+      });
+    }
+    seen.add(alias);
   }
 }
 
@@ -161,6 +267,7 @@ function validateDeclaration({ name, config }: OptionDeclaration, site: InputSit
     });
   }
   checkShortForms(config, site, subject);
+  checkAliases(config, site, name);
   if (config.type === 'boolean' && config.multiple !== undefined) {
     throw factFault(booleanOptionMultiple, site, {
       correction: 'Remove multiple or declare a string option.',
@@ -195,12 +302,47 @@ function addSpelling(claims: Map<string, Claim>, spelling: string, claim: Claim)
     throw new DeclarationError(spellingTaken, {
       correction: 'Change one declaration.',
       findings: [existing, claim].map(({ option, site }) =>
-        siteFinding(site, spellingMark(site, option.role)),
+        siteFinding(site, spellingMark(site, option)),
       ),
       sentence: `Option spelling ${quoted(spelling)} is used by both ${quoted(existing.option.name)} and ${quoted(claim.option.name)}.`,
     });
   }
   claims.set(spelling, claim);
+}
+
+/**
+ * The long forms one name yields for an option, the declared name or an alias: the positive form,
+ * unless the polarity is negative, and the negative form for `both` and `negative` polarity.
+ */
+function addLongForms(
+  claims: Map<string, Claim>,
+  option: { config: OptionConfig; positive: OptionForm; site: InputSite },
+  long: { name: string; positive: SpellingOrigin; negative: SpellingOrigin },
+): void {
+  const { config, positive, site } = option;
+  const forms: [string, OptionSpelling][] = [];
+  if (config.type === 'string' || config.polarity !== 'negative') {
+    forms.push([`--${long.name}`, { ...positive, ...long.positive }]);
+  }
+  if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
+    forms.push([
+      `--no-${long.name}`,
+      { name: positive.name, type: 'boolean', value: false, ...long.negative },
+    ]);
+  }
+  for (const [spelling, form] of forms) {
+    // The name's forms claim first, so a spelling the option already holds repeats it by an alias.
+    if (form.role === 'alias' && claims.get(spelling)?.option.name === positive.name) {
+      throw new DeclarationError(repeatedAlias, {
+        correction: 'Remove the alias.',
+        findings: [
+          siteFinding(site, spellingMark(site, form), 'a spelling the option already accepts'),
+        ],
+        sentence: `Option ${quoted(positive.name)} declares alias ${quoted(long.name)}, whose spelling ${quoted(spelling)} the option already accepts.`,
+      });
+    }
+    addSpelling(claims, spelling, { option: form, site });
+  }
 }
 
 /**
@@ -245,17 +387,15 @@ export function compileOptions<Declaration extends OptionDeclaration>(
         ? { multiple: config.multiple === true, name, type: 'string' }
         : { name, type: 'boolean', value: config.polarity !== 'negative' };
     if (!config.shortOnly) {
-      if (config.type === 'string' || config.polarity !== 'negative') {
-        addSpelling(claims, `--${name}`, { option: { ...positive, role: 'long' }, site });
-      }
-      if (
-        config.type === 'boolean' &&
-        (config.polarity === 'both' || config.polarity === 'negative')
-      ) {
-        addSpelling(claims, `--no-${name}`, {
-          option: { name, role: 'negative', type: 'boolean', value: false },
-          site,
-        });
+      const option = { config, positive, site };
+      addLongForms(claims, option, {
+        name,
+        negative: { role: 'negative' },
+        positive: { role: 'long' },
+      });
+      for (const [index, alias] of (config.aliases ?? []).entries()) {
+        const origin: SpellingOrigin = { index, role: 'alias' };
+        addLongForms(claims, option, { name: alias, negative: origin, positive: origin });
       }
     }
     if (config.short !== undefined) {
