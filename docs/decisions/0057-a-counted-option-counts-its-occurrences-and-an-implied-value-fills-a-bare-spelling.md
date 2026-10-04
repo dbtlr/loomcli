@@ -44,7 +44,7 @@ The original Loom specification described a counted string option instead: the o
 
 ## Consequences
 
-`OptionConfig` gains `CountOption`, `OptionNode` and the manifest's option entry gain a `count` variant, the string variants gain `implied`, and `SourceAnswer.value` and `SuppliedInputs.options` admit a number for a counted option. A consumer that switches on an option's `type` meets a third value. The manifest's arrival of the variant and the field is an ordinary change under its stability rule: an option entry may arrive with a new `type`, and a consumer reads an entry whose `type` it does not know by the fields it does know. `UnexpectedValueError` keeps its class and facts and gains a sentence for a counted spelling. ADR-0055's value class gains the two new members, and its short-group rule gains the counted letter and the implied-value letter; neither changes a form ADR-0055 already accepts.
+`OptionConfig` gains `CountOption`, `OptionNode` and the manifest's option entry gain a `count` variant, the string variants gain `implied`, and `SourceAnswer.value` and `SuppliedInputs.options` admit a number for a counted option. A consumer that switches on an option's `type` meets a third value, so the widened types are a breaking change for TypeScript code that narrows them in two ways or types a supplied token, and the release records its migration. The manifest's arrival of the variant and the field in the JSON document is an ordinary change under its stability rule: an option entry may arrive with a new `type`, and a consumer reads an entry whose `type` it does not know by the fields it does know. `UnexpectedValueError` keeps its class and facts and gains a sentence for a counted spelling. ADR-0055's value class gains the two new members, and its short-group rule gains the counted letter and the implied-value letter; neither changes a form ADR-0055 already accepts.
 
 ## Status
 
@@ -53,3 +53,4 @@ Proposed 2026-10-04 with the contract in [Counted options](../core.md#counted-op
 ## Changelog
 
 - 2026-10-04: Proposed with the contract.
+- 2026-10-04: Consequences record the widened option types as a breaking change for TypeScript consumers.

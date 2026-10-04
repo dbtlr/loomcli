@@ -480,6 +480,8 @@ test(
     const toml = settings({ file: '.app.toml' });
     space.write('.app.toml', 'verbose = 1_0\n');
     expect(received(space.run([], toml).stdout)).toEqual({ ...defaults, verbose: 10 });
+    space.write('.app.toml', 'verbose = 3.0\n');
+    expect(received(space.run([], toml).stdout)).toEqual({ ...defaults, verbose: 3 });
     const yaml = settings({ file: '.app.yaml' });
     space.write('.app.yaml', 'verbose: 0x3\n');
     expect(received(space.run([], yaml).stdout)).toEqual({ ...defaults, verbose: 3 });
