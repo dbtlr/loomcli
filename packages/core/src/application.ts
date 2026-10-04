@@ -88,6 +88,7 @@ import type {
   declaredTypes,
   DeclaredTypes,
   DefaultConstraint,
+  ImpliedConstraint,
   GlobalNameConstraint,
   GlobalOmissionConstraint,
   PerValueConstraint,
@@ -325,6 +326,7 @@ class ApplicationBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
@@ -351,6 +353,7 @@ class ApplicationBuilder<
         ? { 'This option name is already declared as a local option': Name }
         : unknown) &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>> &
       NoInfer<GlobalOmissionConstraint<Config>>,

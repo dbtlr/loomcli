@@ -112,6 +112,7 @@ import type {
   DeclaredResult,
   DeclaredTypes,
   DefaultConstraint,
+  ImpliedConstraint,
   GlobalNameConstraint,
   Host,
   PerValueConstraint,
@@ -2376,6 +2377,7 @@ export class CommandBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result> {

@@ -430,6 +430,24 @@ export type DefaultConstraint<Config> = Config extends unknown
   : never;
 
 /**
+ * An implied value is the string an operator would otherwise attach, so it must be a string the
+ * validator's input type accepts, as a default must be. A multiple option's validator reads one
+ * value, so the implied value meets that one value's input type. A validator that declares no types
+ * infers `never`, so it states nothing to check against. The key names the fault, the way the
+ * other declaration constraints do, because an intersection with the literal would reduce the whole
+ * config to `never` and report every key.
+ */
+export type ImpliedConstraint<Config> = Config extends { implied: infer Implied }
+  ? 'validate' extends keyof Config
+    ? [SchemaInput<Config['validate']>] extends [never]
+      ? unknown
+      : Implied extends SchemaInput<Config['validate']>
+        ? unknown
+        : { 'An implied value must be in the validator input type': Config['validate'] }
+    : unknown
+  : unknown;
+
+/**
  * A multiple option or a variadic argument passes each value to its validator alone, so the
  * declared validator must accept one `string`. The key names the fault, the way the other
  * declaration constraints do.

@@ -6,7 +6,6 @@ import type {
   Plugin,
   PluginOptions,
   SourceAnswer,
-  StringOption,
   SuppliedInputs,
 } from '@loomcli/core';
 import { z } from 'zod';
@@ -43,14 +42,9 @@ new Application('bad').option('verbose', { polarity: 'both', type: 'count' });
 new Application('bad').option('verbose', { implied: '1', type: 'count' });
 
 // An implied value leaves the action's type as it would be without it.
-const backup = {
-  implied: 'simple',
-  short: 'b',
-  type: 'string',
-  validate: z.enum(['none', 'simple', 'numbered']),
-} satisfies StringOption;
+const controls = z.enum(['none', 'simple', 'numbered']);
 new Application('copyit')
-  .option('backup', backup)
+  .option('backup', { implied: 'simple', short: 'b', type: 'string', validate: controls })
   .option('suffix', { default: '~', implied: '.bak', type: 'string' })
   .option('tag', { implied: 'all', multiple: true, type: 'string' })
   .action(({ options }) => {
@@ -62,6 +56,20 @@ new Application('copyit')
     return { control, present, suffix, tags };
   });
 
+// TypeScript checks an implied value against the validator's input type, as it checks a default.
+new Application('checked')
+  .globalOption('color', {
+    implied: 'always',
+    type: 'string',
+    validate: z.enum(['always', 'never']),
+  })
+  .option('depth', { implied: '3', type: 'string', validate: z.string().transform(Number) })
+  .option('tag', { implied: 'all', multiple: true, type: 'string', validate: z.string() });
+// @ts-expect-error TS2345: The implied value is outside the validator's input type.
+new Application('bad').option('backup', { implied: 'always', type: 'string', validate: controls });
+const rejected = { implied: 'always', type: 'string', validate: controls } as const;
+// @ts-expect-error TS2345: A global option's implied value meets the same check.
+new Application('bad').globalOption('backup', rejected);
 // @ts-expect-error TS2322: An implied value is a string, the value a bare spelling supplies.
 new Application('bad').option('backup', { implied: 1, type: 'string' });
 // @ts-expect-error TS2345: A Boolean option declares no implied value.
