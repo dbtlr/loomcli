@@ -640,8 +640,9 @@ function impliedPositions(
  * own path, so the action receives the array of outputs. Every other input passes its value once.
  * A bare spelling's implied value never meets the validator here: its output was prepared before
  * any token, so a scalar that a bare spelling supplied, and each bare occurrence in a multiple
- * option's list, reuse a copy of that output in place. Each call reads a fresh context whose arrays are copies, so a write to them never reaches the
- * next call. The host is the one captured object that every call and the action share.
+ * option's list, reuse a copy of that output in place. Each call reads a fresh context whose
+ * arrays are copies, so a write to them never reaches the next call. The host is the one captured
+ * object that every call and the action share.
  */
 async function validateDeclared(
   input: InputDeclaration,

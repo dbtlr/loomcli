@@ -544,8 +544,9 @@ function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
 
 /**
  * A fault routing held back, bound to the routed Command's declaration of the same class, which
- * keeps it. A value after a spelling that takes none is only ever bound to another such spelling,
- * since the classes match, so a string option there reads as misplaced.
+ * keeps it. A value after a spelling that takes none reaches here only with a Boolean or counted
+ * option, because a class mismatch is misplaced before this binds; the string branch exists only so
+ * the bound occurrence stays typed, and no invocation reaches it.
  */
 function boundFault(
   pending: DeclaredOccurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
