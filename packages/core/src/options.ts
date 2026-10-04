@@ -320,14 +320,28 @@ function addLongForms(
   long: { name: string; positive: SpellingOrigin; negative: SpellingOrigin },
 ): void {
   const { config, positive, site } = option;
+  const forms: [string, OptionSpelling][] = [];
   if (config.type === 'string' || config.polarity !== 'negative') {
-    addSpelling(claims, `--${long.name}`, { option: { ...positive, ...long.positive }, site });
+    forms.push([`--${long.name}`, { ...positive, ...long.positive }]);
   }
   if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
-    addSpelling(claims, `--no-${long.name}`, {
-      option: { name: positive.name, type: 'boolean', value: false, ...long.negative },
-      site,
-    });
+    forms.push([
+      `--no-${long.name}`,
+      { name: positive.name, type: 'boolean', value: false, ...long.negative },
+    ]);
+  }
+  for (const [spelling, form] of forms) {
+    // The name's forms claim first, so a spelling the option already holds repeats it by an alias.
+    if (form.role === 'alias' && claims.get(spelling)?.option.name === positive.name) {
+      throw new DeclarationError(repeatedAlias, {
+        correction: 'Remove the alias.',
+        findings: [
+          siteFinding(site, spellingMark(site, form), 'a spelling the option already accepts'),
+        ],
+        sentence: `Option ${quoted(positive.name)} declares alias ${quoted(long.name)}, whose spelling ${quoted(spelling)} the option already accepts.`,
+      });
+    }
+    addSpelling(claims, spelling, { option: form, site });
   }
 }
 

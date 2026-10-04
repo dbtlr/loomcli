@@ -91,6 +91,12 @@ const scenarios = {
       .option('no-colour', { type: 'boolean' }),
   'alias-own-name': () =>
     new Command('get').option('min-bytes', { aliases: ['min-bytes'], type: 'string' }),
+  'alias-own-spelling': () =>
+    new Command('get').option('color', {
+      aliases: ['no-color'],
+      polarity: 'both',
+      type: 'boolean',
+    }),
   'alias-short-only': () =>
     new Command('get').option('file', {
       aliases: ['input'],

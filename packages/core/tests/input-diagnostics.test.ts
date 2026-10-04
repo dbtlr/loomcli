@@ -318,6 +318,21 @@ const cases: Record<string, Expected> = {
     rule: 'repeated-alias',
     sentence: 'Option "min-bytes" declares alias "min-bytes", which is its own name.',
   },
+  'alias-own-spelling': {
+    correction: 'Remove the alias.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('color', { aliases: ['no-color'], polarity: 'both', type: 'boolean' })",
+        "'no-color'",
+        'a spelling the option already accepts',
+      ),
+    ],
+    headline: 'ALIAS REPEATS A NAME',
+    rule: 'repeated-alias',
+    sentence:
+      'Option "color" declares alias "no-color", whose spelling "--no-color" the option already accepts.',
+  },
   'alias-short-only': {
     correction: 'Remove aliases or shortOnly.',
     findings: [
