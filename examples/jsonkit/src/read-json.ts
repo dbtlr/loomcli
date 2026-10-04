@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
-import { FatalError } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import { escapeControlCharacters, FatalError } from '@loomcli/core';
+import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
 import { checkFileOrStdin } from './file-or-stdin.js';
 
@@ -17,35 +17,60 @@ interface Source {
 
 /**
  * The reason a runtime gave, or the fallback, as one sentence ending in a period. A reason that
- * already ends with one keeps it, so the fix that follows never reads after two periods.
+ * already ends with one keeps it, so the fix that follows never reads after two periods. A runtime
+ * reason can quote the path it failed on, so its control characters are escaped as the name's are.
  */
 function explain(error: unknown, fallback: string): string {
-  const reason = error instanceof Error ? error.message : fallback;
+  const reason = error instanceof Error ? escapeControlCharacters(error.message) : fallback;
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
 /**
  * The source of one invocation. A supplied file is the selection; without one the piped text is.
  * `readJson` has already decided whether omission is allowed, so this names the source and its
- * connection alone.
+ * connection alone, with the file name's control characters escaped.
  */
 function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {
     return { failure: 'stdin', stream: host.stdin };
   }
   return {
-    failure: `file: ${file}`,
+    failure: `file: ${escapeControlCharacters(file)}`,
     stream: createReadStream(resolve(host.cwd, file)),
   };
 }
 
+/** The count of `--verbose` from which the reader names its source before reading it. */
+const namingCount = 1;
+
 /**
- * Every action reads its document here, so a read failure reads the same everywhere. A malformed
- * document throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns
- * into its `InvalidJsonError`.
+ * What an action hands the reader: the two global options that choose and name the source, the
+ * host, the channel the source's name is written through, and the style that escapes it.
  */
-export async function readJson(file: string | undefined, host: Host): Promise<unknown> {
+export interface DocumentReading {
+  readonly host: Host;
+  readonly options: { readonly file: string | undefined; readonly verbose: number };
+  readonly out: Pick<Out, 'info'>;
+  readonly style: Pick<ContextualStyle, 'escape'>;
+}
+
+/**
+ * Every action reads its document here, so a read failure reads the same everywhere. With
+ * `--verbose` it first names the source on one info line, whatever the count, with its control
+ * characters escaped as every other operator-supplied name jsonkit prints. A malformed document
+ * throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns into its
+ * `InvalidJsonError`.
+ */
+export async function readJson({ host, options, out, style }: DocumentReading): Promise<unknown> {
+  const { file, verbose } = options;
   checkFileOrStdin(file, host);
+  if (verbose >= namingCount) {
+    await out.info(
+      file === undefined
+        ? 'Reading stdin.'
+        : `Reading ${style.escape(escapeControlCharacters(file))}.`,
+    );
+  }
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) => {
     throw new FatalError(

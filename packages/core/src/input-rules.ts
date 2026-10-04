@@ -6,10 +6,10 @@ import { registerRule } from './diagnostic-text.js';
  * raises it, as a plugin's rules are.
  */
 
-/** An option declared with a type other than string or Boolean. */
+/** An option declared with a type other than string, Boolean, or count. */
 const optionType = registerRule('@loomcli/core/option-type', {
   explanation:
-    'The type decides how the parser reads an option: a string option consumes a value, and a Boolean option consumes none. Core reads no other kind.',
+    'The type decides how the parser reads an option: a string option consumes a value, a Boolean option consumes none, and a counted option consumes none and counts its occurrences. Core reads no other kind.',
   headline: 'Invalid option type',
 });
 
@@ -49,6 +49,34 @@ const booleanOptionMultiple = registerRule('@loomcli/core/boolean-option-multipl
   explanation:
     'A Boolean option reports whether its spelling was supplied, so a repeat has no second value to collect. multiple collects each occurrence of a string option into an array.',
   headline: 'Boolean option takes one value',
+});
+
+/** `multiple` on a counted option. */
+const countOptionMultiple = registerRule('@loomcli/core/count-option-multiple', {
+  explanation:
+    'A counted option already counts every occurrence of every spelling, so it has no values to collect. multiple collects each occurrence of a string option into an array.',
+  headline: 'Counted option takes no values',
+});
+
+/** `polarity` on a counted option. */
+const polarityOnCount = registerRule('@loomcli/core/polarity-on-count', {
+  explanation:
+    'Polarity chooses which long forms a Boolean option accepts and what its absence means. A counted option reads how many times it was supplied, so it has no negative form and no polarity.',
+  headline: 'Polarity on a counted option',
+});
+
+/** `implied` on a Boolean or counted option. */
+const impliedOnBooleanOrCount = registerRule('@loomcli/core/implied-on-boolean-or-count', {
+  explanation:
+    'An implied value is the value a bare spelling of a string option supplies. A Boolean option and a counted option take no value, so a bare spelling already says everything they read.',
+  headline: 'Implied on a valueless option',
+});
+
+/** An `implied` value that is not a string. */
+const impliedNotAString = registerRule('@loomcli/core/implied-not-a-string', {
+  explanation:
+    "An implied value stands in for the string an operator would otherwise attach to the spelling, so it is a string, in the validator's input type.",
+  headline: 'Implied value not a string',
 });
 
 /** `polarity` on a string option. */
@@ -166,6 +194,13 @@ const booleanOptionValueRule = registerRule('@loomcli/core/boolean-option-value-
   headline: 'Value rule on a Boolean option',
 });
 
+/** `validate`, `default`, `required`, or `validateOmitted` on a counted option. */
+const countOptionValueRule = registerRule('@loomcli/core/count-option-value-rule', {
+  explanation:
+    'A counted option consumes no value and reads how many times it was supplied, 0 when nothing supplied it, so there is nothing to validate and no absence to decide. validate, default, required, and validateOmitted belong to inputs that take a value.',
+  headline: 'Value rule on a counted option',
+});
+
 /** A required input that also declares a default. */
 const requiredWithDefault = registerRule('@loomcli/core/required-with-default', {
   explanation:
@@ -203,6 +238,13 @@ const invalidDefault = registerRule('@loomcli/core/invalid-default', {
   headline: 'Default rejected',
 });
 
+/** A declared implied value its validator rejected. */
+const invalidImplied = registerRule('@loomcli/core/invalid-implied', {
+  explanation:
+    'Each run passes every implied value through its validator before it reads a token, because a bare spelling supplies it to the action as a validated value. An implied value the validator rejects is the declaration at fault, whatever the operator supplies, so the run reports it whether or not a bare spelling was typed.',
+  headline: 'Implied value rejected',
+});
+
 /** A validator's JSON Schema converter that threw or returned a value that is not a plain object. */
 const schemaConverterFailed = registerRule('@loomcli/core/schema-converter-failed', {
   explanation:
@@ -213,6 +255,8 @@ const schemaConverterFailed = registerRule('@loomcli/core/schema-converter-faile
 export {
   booleanOptionMultiple,
   booleanOptionValueRule,
+  countOptionMultiple,
+  countOptionValueRule,
   defaultDepth,
   defaultLevels,
   defaultShape,
@@ -222,7 +266,10 @@ export {
   flagNotBoolean,
   globalOptionAfterCommand,
   globalPresenceRule,
+  impliedNotAString,
+  impliedOnBooleanOrCount,
   invalidDefault,
+  invalidImplied,
   notAValidator,
   omissionAlreadyDecided,
   nameSharedAcrossKinds,
@@ -230,6 +277,7 @@ export {
   optionDeclaredTwice,
   optionPolarity,
   optionType,
+  polarityOnCount,
   polarityOnString,
   requiredWithDefault,
   schemaConverterFailed,

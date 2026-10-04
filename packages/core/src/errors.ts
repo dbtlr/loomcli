@@ -332,13 +332,21 @@ export class MissingValueError extends UsageError {
   }
 }
 
-/** A Boolean spelling takes no value, so the token carried one the declaration cannot accept. */
+/**
+ * A Boolean or counted spelling takes no value, so the token carried one the declaration cannot
+ * accept. A counted option's sentence tells the operator to repeat the spelling instead, and `kind`
+ * chooses the sentence alone.
+ */
 export class UnexpectedValueError extends UsageError {
   readonly spelling: string;
   readonly value: string;
 
-  constructor(spelling: string, value: string) {
-    super(`Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`);
+  constructor(spelling: string, value: string, kind: 'boolean' | 'count' = 'boolean') {
+    super(
+      kind === 'count'
+        ? `Counted option ${quoted(spelling)} does not accept a value. Repeat ${quoted(spelling)} to raise its count.`
+        : `Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`,
+    );
     this.name = 'UnexpectedValueError';
     this.spelling = spelling;
     this.value = value;

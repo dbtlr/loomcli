@@ -26,7 +26,7 @@ import type {
   Request,
   ResultBinding,
 } from './types.js';
-import type { DefaultValues, InputPlaces } from './validation.js';
+import type { InputPlaces, DeclaredValues } from './validation.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
@@ -209,12 +209,14 @@ interface EntryState {
   settled: boolean;
 }
 
-/** Everything one invocation needs after its graph is built and its defaults are validated. */
+/**
+ * Everything one invocation needs after its graph is built and its defaults and implied values are
+ * validated.
+ */
 interface Invocation {
   style: ContextualStyle;
   /** The action's own channel, built from the routed Command's declaration when it dispatches. */
   channel: (binding: ResultBinding) => ActionChannel;
-  defaults: DefaultValues;
   graph: BuiltGraph;
   host: Host;
   /**
@@ -238,6 +240,8 @@ interface Invocation {
   /** Where every input of the graph was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
   plugins: readonly BuiltPlugin[];
+  /** Every declared default and implied value, validated before any token was read. */
+  declaredValues: DeclaredValues;
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
   /**

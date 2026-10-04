@@ -85,7 +85,7 @@ function received(stdout: string): unknown {
 }
 
 /** Every value the action receives when nothing supplies one, help's global option included. */
-const defaults = { fields: [], help: false, limit: '10', quiet: true, total: false };
+const defaults = { fields: [], help: false, limit: '10', quiet: true, total: false, verbose: 0 };
 
 /** The line help adds under every usage failure, since the fixture installs it. */
 const helpHint = 'Run "app --help" to see the usage.\n';
@@ -248,9 +248,12 @@ test(
       't',
       '--owner',
       'o',
+      '-v',
+      '--backup',
     ]);
     expect(filled).toMatchObject({ status: 0, stderr: '' });
     expect(received(filled.stdout)).toEqual({
+      backup: 'simple',
       config: 'missing.json',
       fields: ['a'],
       help: false,
@@ -260,6 +263,7 @@ test(
       quiet: false,
       title: 't',
       total: true,
+      verbose: 1,
     });
   }),
 );
@@ -456,6 +460,48 @@ test(
 );
 
 test(
+  'a counted option takes a whole number of 0 or more, and any other value is a wrong value',
+  inWorkspace((space) => {
+    space.write('.app.json', json({ verbose: 3 }));
+    expect(received(space.run([]).stdout)).toEqual({ ...defaults, verbose: 3 });
+    space.write('.app.json', json({ verbose: 0 }));
+    expect(received(space.run([]).stdout)).toEqual(defaults);
+    expect(received(space.run(['-v']).stdout)).toEqual({ ...defaults, verbose: 1 });
+    for (const value of ['3', -1, 1.5, true]) {
+      space.write('.app.json', json({ verbose: value }));
+      expect(space.run([])).toEqual({
+        status: 2,
+        stderr: wrong(
+          'Option "--verbose" (from verbose in .app.json): Use a whole number of 0 or more.',
+        ),
+        stdout: 'resolved:2\n',
+      });
+    }
+    const toml = settings({ file: '.app.toml' });
+    space.write('.app.toml', 'verbose = 1_0\n');
+    expect(received(space.run([], toml).stdout)).toEqual({ ...defaults, verbose: 10 });
+    space.write('.app.toml', 'verbose = 3.0\n');
+    expect(received(space.run([], toml).stdout)).toEqual({ ...defaults, verbose: 3 });
+    const yaml = settings({ file: '.app.yaml' });
+    space.write('.app.yaml', 'verbose: 0x3\n');
+    expect(received(space.run([], yaml).stdout)).toEqual({ ...defaults, verbose: 3 });
+  }),
+);
+
+test(
+  'a string option with an implied value takes a value by the string rule, never its implied value',
+  inWorkspace((space) => {
+    space.write('.app.json', json({ backup: 'numbered' }));
+    expect(received(space.run([]).stdout)).toEqual({ ...defaults, backup: 'numbered' });
+    expect(received(space.run(['--backup']).stdout)).toEqual({ ...defaults, backup: 'simple' });
+    space.write('.app.json', json({ backup: true }));
+    expect(space.run([]).stderr).toBe(
+      wrong('Option "--backup" (from backup in .app.json): Use a string or a number.'),
+    );
+  }),
+);
+
+test(
   'a TOML value the option cannot take is a wrong value, and an invalid date is invalid TOML',
   inWorkspace((space) => {
     const toml = settings({ file: '.app.toml' });
@@ -510,6 +556,7 @@ test(
       quiet: false,
       title: '2001-12-14',
       total: true,
+      verbose: 0,
     });
     for (const [key, path] of [
       ['0x1F', '0x1F'],
@@ -624,7 +671,7 @@ test(
     space.write('.app.yaml', 'title: secret\n');
     // The action's line, with the options in declaration order, is all that reaches stdout.
     const expected =
-      'root:{"help":false,"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret"}\nresolved:0\n';
+      'root:{"help":false,"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret","verbose":0}\nresolved:0\n';
     expect(space.run([], { ...yaml, LOG_STREAM: '1', LOG_TOKENS: '1' })).toEqual({
       status: 0,
       stderr: '',
@@ -691,6 +738,7 @@ test(
       limit: '5',
       quiet: false,
       total: true,
+      verbose: 0,
     });
     space.write('.app.json', json({ total: 'yes' }));
     expect(space.run([])).toEqual({

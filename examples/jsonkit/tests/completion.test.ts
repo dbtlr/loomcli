@@ -8,7 +8,7 @@ import { main } from './documents.js';
 const files = ['alpha.json', 'alpine.json', 'doc-a.json', 'doc-b.json'];
 
 /** The options in scope at every jsonkit Command: the global options, the application's and each plugin's. */
-const options = ['--explain', '--file', '--help', '--manifest', '--version'];
+const options = ['--explain', '--file', '--help', '--manifest', '--verbose', '--version'];
 
 /** The view names of the `paths` rows. */
 const views = ['json', 'jsonl', 'list', 'table'];
@@ -61,7 +61,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     describe('Options', () => {
       it('jsonkit paths -<Tab> lists long and short spellings', async () => {
         const { listed } = await complete('jsonkit paths -');
-        expect(counts(listed)).toEqual(counts([...options, '--format', '-f', '-h', '-V']));
+        expect(counts(listed)).toEqual(counts([...options, '--format', '-f', '-h', '-v', '-V']));
       });
 
       it('jsonkit paths --<Tab> lists long spellings alone', async () => {
@@ -71,6 +71,11 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
 
       it('an option already given is not listed again', async () => {
         const { listed } = await complete('jsonkit paths --format json --');
+        expect(counts(listed)).toEqual(counts(options));
+      });
+
+      it('the counted --verbose is listed again after it was given', async () => {
+        const { listed } = await complete('jsonkit -v keys -v --');
         expect(counts(listed)).toEqual(counts(options));
       });
 

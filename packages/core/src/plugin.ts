@@ -183,11 +183,12 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
 }
 
 /**
- * One answer: a value of the option's raw type, a string, a Boolean, or a list of strings for a
- * multiple option, and the one-line label core prints in a diagnostic about the value.
+ * One answer: a value of the option's raw type, a string, a Boolean, a whole number of 0 or more
+ * for a counted option, or a list of strings for a multiple option, and the one-line label core
+ * prints in a diagnostic about the value.
  */
 interface SourceAnswer {
-  readonly value: string | boolean | readonly string[];
+  readonly value: string | boolean | number | readonly string[];
   readonly label: string;
 }
 

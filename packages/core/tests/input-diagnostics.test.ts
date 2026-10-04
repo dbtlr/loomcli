@@ -24,6 +24,17 @@ const explanations = {
     'polarity decides the value an absent option reads. validate, default, required,',
     'and validateOmitted belong to inputs that take a value.',
   ],
+  'count-option-multiple': [
+    'A counted option already counts every occurrence of every spelling, so it has no',
+    'values to collect. multiple collects each occurrence of a string option into an',
+    'array.',
+  ],
+  'count-option-value-rule': [
+    'A counted option consumes no value and reads how many times it was supplied, 0',
+    'when nothing supplied it, so there is nothing to validate and no absence to',
+    'decide. validate, default, required, and validateOmitted belong to inputs that',
+    'take a value.',
+  ],
   'default-depth': [
     'A default stands in for the value an operator would supply, and every reader of',
     'the graph, help and the manifest included, walks it. Core keeps every path',
@@ -67,10 +78,26 @@ const explanations = {
     'so a rule that its value must exist would fail a Command that never reads it. An',
     'omitted global option is absent.',
   ],
+  'implied-not-a-string': [
+    'An implied value stands in for the string an operator would otherwise attach to',
+    "the spelling, so it is a string, in the validator's input type.",
+  ],
+  'implied-on-boolean-or-count': [
+    'An implied value is the value a bare spelling of a string option supplies. A',
+    'Boolean option and a counted option take no value, so a bare spelling already',
+    'says everything they read.',
+  ],
   'invalid-default': [
     'Each run passes every declared default through its validator before it reads a',
     'token, because a default reaches the action as a validated value. A default the',
     'validator rejects would reach no action, whatever the operator supplies.',
+  ],
+  'invalid-implied': [
+    'Each run passes every implied value through its validator before it reads a',
+    'token, because a bare spelling supplies it to the action as a validated value.',
+    'An implied value the validator rejects is the declaration at fault, whatever the',
+    'operator supplies, so the run reports it whether or not a bare spelling was',
+    'typed.',
   ],
   'name-shared-across-kinds': [
     'An onCommandAttach hook adds inputs to a Command whose other inputs the plugin',
@@ -107,7 +134,13 @@ const explanations = {
   ],
   'option-type': [
     'The type decides how the parser reads an option: a string option consumes a',
-    'value, and a Boolean option consumes none. Core reads no other kind.',
+    'value, a Boolean option consumes none, and a counted option consumes none and',
+    'counts its occurrences. Core reads no other kind.',
+  ],
+  'polarity-on-count': [
+    'Polarity chooses which long forms a Boolean option accepts and what its absence',
+    'means. A counted option reads how many times it was supplied, so it has no',
+    'negative form and no polarity.',
   ],
   'polarity-on-string': [
     'Polarity chooses which long forms a Boolean option accepts and what its absence',
@@ -391,6 +424,15 @@ const cases: Record<string, Expected> = {
     rule: 'boolean-option-value-rule',
     sentence: 'Option "verbose" is Boolean and declares default.',
   },
+  'boolean-implied': {
+    correction: 'Remove implied or declare a string option.',
+    findings: [
+      onCommand(['get'], "option('total', { implied: 'yes', type: 'boolean' })", "implied: 'yes'"),
+    ],
+    headline: 'IMPLIED ON A VALUELESS OPTION',
+    rule: 'implied-on-boolean-or-count',
+    sentence: 'Option "total" is a Boolean option and declares implied.',
+  },
   'boolean-multiple': {
     correction: 'Remove multiple or declare a string option.',
     findings: [
@@ -403,6 +445,55 @@ const cases: Record<string, Expected> = {
     headline: 'BOOLEAN OPTION TAKES ONE VALUE',
     rule: 'boolean-option-multiple',
     sentence: 'Option "verbose" is a boolean option and declares multiple.',
+  },
+  'count-default': {
+    correction: 'Remove default; a counted option reads 0 when no occurrence supplies it.',
+    findings: [
+      onCommand(['get'], "option('verbose', { default: '1', type: 'count' })", "default: '1'"),
+    ],
+    headline: 'VALUE RULE ON A COUNTED OPTION',
+    rule: 'count-option-value-rule',
+    sentence: 'Option "verbose" is a counted option and declares default.',
+  },
+  'count-implied': {
+    correction: 'Remove implied or declare a string option.',
+    findings: [
+      onCommand(['get'], "option('verbose', { implied: '1', type: 'count' })", "implied: '1'"),
+    ],
+    headline: 'IMPLIED ON A VALUELESS OPTION',
+    rule: 'implied-on-boolean-or-count',
+    sentence: 'Option "verbose" is a counted option and declares implied.',
+  },
+  'count-multiple': {
+    correction: 'Remove multiple; a counted option already counts every occurrence.',
+    findings: [
+      onCommand(['list'], "option('verbose', { multiple: true, type: 'count' })", 'multiple: true'),
+    ],
+    headline: 'COUNTED OPTION TAKES NO VALUES',
+    rule: 'count-option-multiple',
+    sentence: 'Option "verbose" is a counted option and declares multiple.',
+  },
+  'count-polarity': {
+    correction: 'Remove polarity or use type "boolean".',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('verbose', { polarity: 'both', type: 'count' })",
+        "polarity: 'both'",
+      ),
+    ],
+    headline: 'POLARITY ON A COUNTED OPTION',
+    rule: 'polarity-on-count',
+    sentence: 'Option "verbose" declares polarity but is a counted option.',
+  },
+  'count-validate': {
+    correction: 'Remove validate; a counted option reads 0 when no occurrence supplies it.',
+    findings: [
+      onCommand(['get'], "option('verbose', { type: 'count', validate: … })", 'validate: …'),
+    ],
+    headline: 'VALUE RULE ON A COUNTED OPTION',
+    rule: 'count-option-value-rule',
+    sentence: 'Option "verbose" is a counted option and declares validate.',
   },
   'default-depth': {
     correction: 'Nest a default at most 10 levels deep.',
@@ -497,6 +588,15 @@ const cases: Record<string, Expected> = {
     rule: 'name-shared-across-kinds',
     sentence:
       'Plugin "@acme/tag" declares argument "tag" on Command "count", which is already declared as a local option.',
+  },
+  'implied-not-string': {
+    correction: 'Supply a string, the value a bare spelling supplies.',
+    findings: [
+      onCommand(['get'], "option('backup', { implied: 1, type: 'string' })", 'implied: 1'),
+    ],
+    headline: 'IMPLIED VALUE NOT A STRING',
+    rule: 'implied-not-a-string',
+    sentence: 'Option "backup" declares implied that is not a string.',
   },
   'multiple-flag': {
     correction: 'Use true or false.',
@@ -617,7 +717,7 @@ const cases: Record<string, Expected> = {
     sentence: 'Option "raw" is declared more than once on Command "get".',
   },
   'option-type': {
-    correction: 'Use "string" or "boolean".',
+    correction: 'Use "string", "boolean", or "count".',
     findings: [onCommand(['get'], "option('limit', { type: 'number' })", "type: 'number'")],
     headline: 'INVALID OPTION TYPE',
     rule: 'option-type',
@@ -899,6 +999,47 @@ test('a default its validator rejects reports from run() with the issue lines un
   });
 });
 
+test('an implied value its validator rejects reports from run() before any token is read', () => {
+  expect(invoke(fixture, ['invalid-implied'])).toEqual({
+    status: 1,
+    stderr: diagnostic({
+      correction: 'Fix the implied value or its validator.',
+      findings: [
+        onCommand(
+          ['probe', 'get'],
+          "option('backup', { implied: 'x', type: 'string', validate: … })",
+          "implied: 'x'",
+        ),
+      ],
+      headline: 'IMPLIED VALUE REJECTED',
+      rule: 'invalid-implied',
+      sentence:
+        'Option "backup" has an invalid implied value.\nOption "backup": Use none, simple, or numbered.',
+    }),
+    stdout: '',
+  });
+});
+
+test("an implied value its validator rejects on a plugin's option marks implied in the plugin's options record", () => {
+  expect(invoke(fixture, ['plugin-invalid-implied'])).toEqual({
+    status: 1,
+    stderr: diagnostic({
+      correction: 'Fix the implied value or its validator.',
+      findings: [
+        marked(
+          "    plugin('@acme/copy', { options: { backup: { implied: 'x', type: 'string', validate: … } } })",
+          "implied: 'x'",
+        ),
+      ],
+      headline: 'IMPLIED VALUE REJECTED',
+      rule: 'invalid-implied',
+      sentence:
+        'Option "backup" has an invalid implied value.\nOption "backup": Use none, simple, or numbered.',
+    }),
+    stdout: '',
+  });
+});
+
 test('a converter that throws is a declaration fault from run() in a development build', () => {
   expect(invoke(fixture, ['converter-throws'])).toEqual({
     status: 1,
@@ -1047,6 +1188,7 @@ test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set([
     ...Object.values(cases).map((expected) => expected.rule),
     'invalid-default',
+    'invalid-implied',
     'schema-converter-failed',
   ]);
   expect([...pinned].toSorted()).toEqual(

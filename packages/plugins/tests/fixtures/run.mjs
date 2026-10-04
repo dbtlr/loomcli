@@ -100,6 +100,49 @@ function cells() {
 }
 
 /** One row for each fact the right-cell rule can carry, and two rows that carry none. */
+/** Every spelling a counted option and a string option with an implied value print. */
+function kinds() {
+  return new Application('copyit', {
+    description: 'Copy files with backups.',
+    plugins,
+    version: '1.2.0',
+  })
+    .argument('files', { description: 'The files to copy.', required: true, variadic: true })
+    .option('backup', {
+      description: 'How to back up each file.',
+      extensions: [
+        helpInput({ accepts: 'Use none, simple, or numbered.', placeholder: 'control' }),
+      ],
+      implied: 'simple',
+      short: 'b',
+      type: 'string',
+    })
+    .option('suffix', {
+      default: '~',
+      description: 'The backup suffix.',
+      implied: '.bak',
+      type: 'string',
+    })
+    .option('color', { implied: 'auto', short: 'c', shortOnly: true, type: 'string' })
+    .option('tag', { implied: 'a\nb', multiple: true, required: true, type: 'string' })
+    .option('mode', {
+      implied: 'fast',
+      required: true,
+      short: 'm',
+      shortOnly: true,
+      type: 'string',
+    })
+    .option('verbose', {
+      description: 'Say more.',
+      extensions: [helpInput({ accepts: 'Never shown.', placeholder: 'level' })],
+      short: 'v',
+      type: 'count',
+    })
+    .option('quiet', { short: 'q', shortOnly: true, type: 'count' })
+    .option('level', { deprecated: 'Use -v instead.', type: 'count' })
+    .action(dispatch);
+}
+
 function facts() {
   return (
     new Application('app', {
@@ -364,6 +407,7 @@ const scenarios = {
   children,
   facts,
   folded,
+  kinds,
   marked: () =>
     versioned({ description: 'A \uE001fixture\uE002 application.', version: '1.2.0\uE003' }),
   nested,

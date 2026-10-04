@@ -31,7 +31,7 @@ function isEmpty(list: readonly unknown[]): boolean {
  * form, the negative form, or the combined `--[no-]name` when both spellings set a value.
  */
 function longSpelling(option: OptionNode): string | null {
-  if (option.type === 'string') {
+  if (option.type !== 'boolean') {
     return option.long;
   }
   if (option.polarity === 'both' && option.long !== null) {
@@ -60,22 +60,45 @@ function spellings(option: OptionNode, { style }: ViewContext): string {
     : `${style.highlight(style.escape(option.short))}${style.dim(',')} ${highlighted}`;
 }
 
-/** The left cell of one option row. A Boolean option takes no value, so it shows no placeholder. */
+/**
+ * How a string option's placeholder follows a spelling. A separate value follows after a space; an
+ * implied value is replaced only by an attached one, so its placeholder sits in brackets, after `=`
+ * on a long spelling and after the letter alone on a short one.
+ */
+function valueCell(option: StringOption, long: boolean): { separator: string; value: string } {
+  const shown = `<${placeholder(option)}>`;
+  if (option.implied === null) {
+    return { separator: ' ', value: shown };
+  }
+  return { separator: '', value: long ? `[=${shown}]` : `[${shown}]` };
+}
+
+/**
+ * The left cell of one option row. A Boolean option takes no value, so it shows no placeholder, and
+ * a counted option's spellings end with `...`, because each occurrence adds one.
+ */
 function optionCell(option: OptionNode, context: ViewContext): string {
   const { style } = context;
   const cell = spellings(option, context);
-  return option.type === 'string'
-    ? `${cell} ${style.dim.italic(style.escape(`<${placeholder(option)}>`))}`
-    : cell;
+  if (option.type === 'count') {
+    return `${cell}${style.dim.italic('...')}`;
+  }
+  if (option.type === 'boolean') {
+    return cell;
+  }
+  const { separator, value } = valueCell(option, option.long !== null);
+  return `${cell}${separator}${style.dim.italic(style.escape(value))}`;
 }
 
 /**
  * How the action form names one required option, with `...` for a multiple option. Only an option
- * that takes a value reaches this, because core rejects `required` on a Boolean option.
+ * that takes a value reaches this, because core rejects `required` on a Boolean or counted option.
  */
 function optionForm(option: StringOption, { style }: ViewContext): string {
-  const spelling = longSpelling(option) ?? option.short ?? '';
-  return `${style.highlight(style.escape(spelling))} ${style.dim.italic(style.escape(`<${placeholder(option)}>${option.multiple ? '...' : ''}`))}`;
+  const long = longSpelling(option);
+  const spelling = long ?? option.short ?? '';
+  const { separator, value } = valueCell(option, long !== null);
+  return `${style.highlight(style.escape(spelling))}${separator}${style.dim.italic(style.escape(`${value}${option.multiple ? '...' : ''}`))}`;
 }
 
 /** How the action form names one argument: required or optional, and variadic or scalar. */
@@ -193,6 +216,11 @@ function defaultFacts(
   return [style.dim(style.escape(`default: ${renderDefault(declared.value)}`))];
 }
 
+/** The fact an implied value contributes, which prints and escapes as a string default does. */
+function impliedFacts(implied: string | null, { style }: ViewContext): string[] {
+  return implied === null ? [] : [style.dim(style.escape(`implied: ${oneLine(implied)}`))];
+}
+
 /** The facts one string option row carries, in the order the right-cell rule names them. */
 function stringFacts(option: StringOption, context: ViewContext): string[] {
   const { style } = context;
@@ -200,6 +228,7 @@ function stringFacts(option: StringOption, context: ViewContext): string[] {
     ...(option.required ? [style.dim('required')] : []),
     ...(option.multiple ? [style.dim('repeatable')] : []),
     ...defaultFacts(option.default, context),
+    ...impliedFacts(option.implied, context),
   ];
 }
 
@@ -225,11 +254,32 @@ function deprecatedFacts(
     : [style.warning(style.escape(`deprecated: ${member.deprecated}`))];
 }
 
-/** The facts one option row carries, in the order the right-cell rule names them. */
+/**
+ * The facts one option row carries, in the order the right-cell rule names them. A counted option's
+ * `...` already says it repeats, and a count has no presence rule or default, so it carries none
+ * but its deprecation.
+ */
 function optionFacts(option: OptionNode, context: ViewContext): string[] {
-  const declared =
-    option.type === 'string' ? stringFacts(option, context) : booleanFacts(option, context);
-  return [...declared, ...deprecatedFacts(option, context)];
+  return [...kindFacts(option, context), ...deprecatedFacts(option, context)];
+}
+
+/** The facts one option's kind contributes ahead of its deprecation. */
+function kindFacts(option: OptionNode, context: ViewContext): string[] {
+  switch (option.type) {
+    case 'string': {
+      return stringFacts(option, context);
+    }
+    case 'boolean': {
+      return booleanFacts(option, context);
+    }
+    case 'count': {
+      return [];
+    }
+    default: {
+      const exhaustive: never = option;
+      return exhaustive;
+    }
+  }
 }
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */

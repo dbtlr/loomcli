@@ -32,6 +32,23 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       expect(line.trimEnd()).toBe('kit paths -qftable');
     });
 
+    it('kit backups -v --verb<Tab> inserts the counted --verbose again', async () => {
+      const { line } = await complete('kit backups -v --verb');
+      expect(line.trimEnd()).toBe('kit backups -v --verbose');
+    });
+
+    it('kit backups --backup=<Tab> lists the values of the option with an implied value', async () => {
+      const { listed } = await complete('kit backups --backup=');
+      // Bash lists the words after the last `=`, a word break; Zsh and Fish list whole words.
+      const values = listed.map((word) => word.replace(/^--backup=/u, ''));
+      expect(values.toSorted()).toEqual(['none', 'numbered', 'simple']);
+    });
+
+    it('kit backups --backup <Tab> lists what the next word may be and no value', async () => {
+      const { listed } = await complete('kit backups --backup ');
+      expect(listed.toSorted()).toEqual(['disk', 'tape']);
+    });
+
     it('a misplaced option earlier in the line inserts and lists nothing', async () => {
       await expect(complete('kit -q paths -')).resolves.toMatchObject({
         line: 'kit -q paths -',

@@ -43,9 +43,11 @@ interface ArgumentNode {
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
- * `schema` is the input schema the validator publishes. A Boolean option validates nothing, so its
- * variant carries the field at `null`, and every projection built on the node holds if a later
- * contract lets it validate.
+ * `schema` is the input schema the validator publishes. A Boolean option and a counted option
+ * validate nothing, so their variants carry the field at `null`, and every projection built on the
+ * node holds if a later contract lets a Boolean option validate. A counted option has no negative
+ * spelling, polarity, default, or validator, so its variant carries none of them. A string option's
+ * `implied` is the value a bare spelling supplies, or `null` when it declares none.
  * `env` is the variable the option's environment binding names, or `null` when it binds none.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
@@ -68,6 +70,7 @@ type OptionNode =
       readonly schema: InputSchema;
       readonly env: string | null;
       readonly default: { readonly value: unknown } | undefined;
+      readonly implied: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
     }
   | {
@@ -82,6 +85,19 @@ type OptionNode =
       readonly aliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
+      readonly env: string | null;
+      readonly extensions: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly type: 'count';
+      readonly name: string;
+      readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly aliases: readonly string[];
+      readonly schema: null;
       readonly env: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
     };
@@ -271,49 +287,58 @@ interface OptionScope {
   table: ReadonlyMap<string, OptionSpelling>;
 }
 
+/**
+ * One option's node, in the shape its kind gives it. Every kind publishes the listing facts and the
+ * spellings the declared name derives; a string option adds its value facts, a Boolean option its
+ * negative spelling and polarity, and a counted option nothing more.
+ */
 function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { check, records, table } = read;
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
-  const extensions = extensionsOf(records, input);
-  const aliases = Object.freeze([...(config.aliases ?? [])]);
-  const node: OptionNode =
-    config.type === 'boolean'
-      ? {
-          aliases,
-          deprecated: config.deprecated,
-          description: config.description,
-          env: config.env ?? null,
-          extensions,
-          hidden: config.hidden === true,
-          long,
-          name,
-          negative,
-          polarity: config.polarity ?? 'positive',
-          schema: null,
-          short,
-          type: 'boolean',
-        }
-      : {
-          aliases,
-          default: declaredDefault(config),
-          deprecated: config.deprecated,
-          description: config.description,
-          env: config.env ?? null,
-          extensions,
-          hidden: config.hidden === true,
-          long,
-          // The parser reads the same test, so a collection reports as one here and there.
-          multiple: config.multiple === true,
-          name,
-          required: config.required === true,
-          schema: inputSchema(input, check),
-          short,
-          type: 'string',
-          validateOmitted: validatesOmission(input),
-          validated: config.validate !== undefined,
-        };
-  return Object.freeze(node);
+  const shared = {
+    aliases: Object.freeze([...(config.aliases ?? [])]),
+    deprecated: config.deprecated,
+    description: config.description,
+    env: config.env ?? null,
+    extensions: extensionsOf(records, input),
+    hidden: config.hidden === true,
+    long,
+    name,
+    short,
+  };
+  switch (config.type) {
+    case 'string': {
+      return Object.freeze({
+        ...shared,
+        default: declaredDefault(config),
+        implied: config.implied ?? null,
+        // The parser reads the same test, so a collection reports as one here and there.
+        multiple: config.multiple === true,
+        required: config.required === true,
+        schema: inputSchema(input, check),
+        type: 'string',
+        validateOmitted: validatesOmission(input),
+        validated: config.validate !== undefined,
+      });
+    }
+    case 'boolean': {
+      return Object.freeze({
+        ...shared,
+        negative,
+        polarity: config.polarity ?? 'positive',
+        schema: null,
+        type: 'boolean',
+      });
+    }
+    case 'count': {
+      return Object.freeze({ ...shared, schema: null, type: 'count' });
+    }
+    default: {
+      const exhaustive: never = config;
+      return exhaustive;
+    }
+  }
 }
 
 /** The built slots already answer presence and arity, so the node repeats no config reading. */

@@ -72,36 +72,44 @@ const endings = {
  * ranking, excluded members, and options of every spelling kind on `opts`.
  */
 function kit(declared) {
-  return new Application('kit', declared)
-    .globalOption('file', { type: 'string' })
-    .command(group('edits', [leaf('get'), leaf('lane'), leaf('Build')]))
-    .command(group('budget', [leaf('four'), leaf('fives'), leaf('seasoned'), leaf('overnight')]))
-    .command(group('rank', [leaf('tap'), leaf('tip'), leaf('top'), leaf('tup')]))
-    .command(
-      group('excluded', [
-        leaf('secret', { hidden: true }),
-        leaf('legacy', { deprecated: 'Use keys instead.' }),
-        new Command('keys').alias('ls').action(dispatch),
-      ]),
-    )
-    .command(
-      new Command('opts')
-        .option('field', { type: 'string' })
-        .option('color', { polarity: 'both', type: 'boolean' })
-        .option('verbosity-level', { polarity: 'both', type: 'boolean' })
-        .option('ééé', { type: 'boolean' })
-        .option('xy', { type: 'boolean' })
-        .option('keep', { short: 'k', type: 'boolean' })
-        .option('secret', { hidden: true, type: 'boolean' })
-        .option('older', { deprecated: 'Use --keep instead.', type: 'boolean' })
-        .action(dispatch),
-    )
-    .command(
-      new Command('work')
-        .argument('name', { required: true })
-        .option('end', { type: 'string' })
-        .action((context) => (endings[context.options.end] ?? dispatch)(context)),
-    );
+  return (
+    new Application('kit', declared)
+      .globalOption('file', { type: 'string' })
+      .command(group('edits', [leaf('get'), leaf('lane'), leaf('Build')]))
+      .command(group('budget', [leaf('four'), leaf('fives'), leaf('seasoned'), leaf('overnight')]))
+      .command(group('rank', [leaf('tap'), leaf('tip'), leaf('top'), leaf('tup')]))
+      .command(
+        group('excluded', [
+          leaf('secret', { hidden: true }),
+          leaf('legacy', { deprecated: 'Use keys instead.' }),
+          new Command('keys').alias('ls').action(dispatch),
+        ]),
+      )
+      .command(
+        new Command('opts')
+          .option('field', { type: 'string' })
+          .option('color', { polarity: 'both', type: 'boolean' })
+          .option('verbosity-level', { polarity: 'both', type: 'boolean' })
+          .option('ééé', { type: 'boolean' })
+          .option('xy', { type: 'boolean' })
+          .option('keep', { short: 'k', type: 'boolean' })
+          .option('secret', { hidden: true, type: 'boolean' })
+          .option('older', { deprecated: 'Use --keep instead.', type: 'boolean' })
+          .action(dispatch),
+      )
+      // A counted option has one long spelling and no negative one; the group is hidden from listings.
+      .command(
+        new Command('tally', { hidden: true })
+          .option('quietness', { short: 'q', type: 'count' })
+          .action(dispatch),
+      )
+      .command(
+        new Command('work')
+          .argument('name', { required: true })
+          .option('end', { type: 'string' })
+          .action((context) => (endings[context.options.end] ?? dispatch)(context)),
+      )
+  );
 }
 
 const scenarios = {

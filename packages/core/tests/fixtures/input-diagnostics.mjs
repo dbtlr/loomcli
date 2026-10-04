@@ -18,6 +18,18 @@ const digits = {
   },
 };
 
+/** A validator that accepts one of the backup controls alone. */
+const controls = {
+  '~standard': {
+    validate: (value) =>
+      ['none', 'simple', 'numbered'].includes(value)
+        ? { value }
+        : { issues: [{ message: 'Use none, simple, or numbered.' }] },
+    vendor: 'probe',
+    version: 1,
+  },
+};
+
 /** A validator whose JSON Schema converter answers with `answer`, or throws what `answer` returns. */
 function converting(answer) {
   return {
@@ -113,8 +125,14 @@ const scenarios = {
   'argument-env': () => new Command('get').argument('path', { env: 'PATH' }),
   'boolean-default': () =>
     new Command('get').option('verbose', { default: false, type: 'boolean' }),
+  'boolean-implied': () => new Command('get').option('total', { implied: 'yes', type: 'boolean' }),
   'boolean-multiple': () =>
     new Command('list').option('verbose', { multiple: true, type: 'boolean' }),
+  'count-default': () => new Command('get').option('verbose', { default: '1', type: 'count' }),
+  'count-implied': () => new Command('get').option('verbose', { implied: '1', type: 'count' }),
+  'count-multiple': () => new Command('list').option('verbose', { multiple: true, type: 'count' }),
+  'count-polarity': () => new Command('get').option('verbose', { polarity: 'both', type: 'count' }),
+  'count-validate': () => new Command('get').option('verbose', { type: 'count', validate: text }),
   'default-depth': () =>
     new Command('get').option('limit', {
       default: [[[[[[[[[[['7']]]]]]]]]]],
@@ -148,6 +166,7 @@ const scenarios = {
     })
       .command(new Command('count').option('tag', { type: 'string' }).action(act))
       .inspect(),
+  'implied-not-string': () => new Command('get').option('backup', { implied: 1, type: 'string' }),
   'multiple-flag': () => new Command('get').option('field', { multiple: 'yes', type: 'string' }),
   'negative-spelling': () =>
     new Command('get')
@@ -261,6 +280,12 @@ const reported = {
         .option('limit', { default: 'x', type: 'string', validate: digits })
         .action(act),
     ),
+  'invalid-implied': () =>
+    new Application('probe', { packet: { build: 'development' } }).command(
+      new Command('get')
+        .option('backup', { implied: 'x', type: 'string', validate: controls })
+        .action(act),
+    ),
   // A plugin's option is a global option, so its default and its validator meet the same rules.
   'plugin-invalid-default': () =>
     new Application('probe', {
@@ -268,6 +293,15 @@ const reported = {
       plugins: [
         plugin('@acme/log', {
           options: { level: { default: 'x', type: 'string', validate: digits } },
+        }),
+      ],
+    }).command(leaf('get')),
+  'plugin-invalid-implied': () =>
+    new Application('probe', {
+      packet: { build: 'development' },
+      plugins: [
+        plugin('@acme/copy', {
+          options: { backup: { implied: 'x', type: 'string', validate: controls } },
         }),
       ],
     }).command(leaf('get')),

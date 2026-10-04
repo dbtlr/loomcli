@@ -36,15 +36,21 @@ type Occurrence =
       kind: 'value';
       option: TableSpelling;
       spelling: string;
-      value: string | boolean;
+      /** A string, a Boolean's own value, or the `1` one occurrence of a counted option adds. */
+      value: string | boolean | number;
       lead?: string;
+      /** A bare spelling of a string option with an implied value, which supplied that value. */
+      implied?: true;
     }
   | { kind: 'unknown'; spelling: string }
   | { kind: 'misplaced'; spelling: string }
-  | { kind: 'unexpected'; option: TableSpelling; spelling: string; value: string }
+  | { kind: 'unexpected'; option: ValuelessSpelling; spelling: string; value: string }
   | { kind: 'repeated'; option: TableSpelling; spelling: string }
   | { kind: 'missing'; option: TableSpelling; spelling: string }
   | { kind: 'awaiting'; option: TableSpelling; spelling: string };
+
+/** A spelling of an option that takes no value: a Boolean option or a counted option. */
+type ValuelessSpelling = TableSpelling & { type: 'boolean' | 'count' };
 
 /** What one option word holds, in order, and whether its last occurrence took the next word. */
 interface WordReading {
@@ -66,10 +72,47 @@ function collects(option: TableSpelling): boolean {
   return option.type === 'string' && option.multiple;
 }
 
+/**
+ * Whether every occurrence of an option adds to it: a multiple string option collects each, and a
+ * counted option counts each, so neither is ever a repeat.
+ */
+function accumulates(option: TableSpelling): boolean {
+  return option.type === 'count' || collects(option);
+}
+
 /** Whether an occurrence of an option repeats one an earlier word supplied. */
 function repeats(context: WordContext, option: TableSpelling): boolean {
   const values = option.global ? context.values.globals : context.values.locals;
-  return !collects(option) && isSupplied(values, option.name);
+  return !accumulates(option) && isSupplied(values, option.name);
+}
+
+/**
+ * What a spelling with nothing attached supplies, by its value class: a Boolean's own value, one
+ * occurrence of a count, or a string option's implied value. A string option that takes the next
+ * word has no value of its own, so it answers `undefined`.
+ */
+function bareValue(
+  option: TableSpelling,
+  spelling: string,
+): (Occurrence & { kind: 'value' }) | undefined {
+  switch (option.valueClass) {
+    case 'boolean': {
+      return { kind: 'value', option, spelling, value: option.value };
+    }
+    case 'count': {
+      return { kind: 'value', option, spelling, value: 1 };
+    }
+    case 'implied': {
+      return { implied: true, kind: 'value', option, spelling, value: option.implied };
+    }
+    case 'separate': {
+      return undefined;
+    }
+    default: {
+      const exhaustive: never = option;
+      return exhaustive;
+    }
+  }
 }
 
 /**
@@ -113,15 +156,17 @@ function readLong(context: WordContext, word: string, next: string | undefined):
     return { occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
   if (repeats(context, option)) {
-    const separate = option.type === 'string' && inline === undefined && takesSeparate(next);
+    const separate =
+      option.valueClass === 'separate' && inline === undefined && takesSeparate(next);
     return repeated(option, spelling, separate);
   }
   return longValue({ inline, option, spelling }, next);
 }
 
 /**
- * The value a declared long spelling supplies: a Boolean's own value, which takes no `=`, or a
- * string option's value after `=` or in the next word.
+ * The value a declared long spelling supplies: a Boolean's own value or one occurrence of a count,
+ * neither of which takes `=`, or a string option's value after `=`, else its implied value, else
+ * the next word.
  */
 function longValue(
   long: { inline: string | undefined; option: TableSpelling; spelling: string },
@@ -129,17 +174,13 @@ function longValue(
 ): WordReading {
   const { inline, option, spelling } = long;
   if (inline === undefined) {
-    return option.type === 'boolean'
-      ? {
-          occurrences: [{ kind: 'value', option, spelling, value: option.value }],
-          takesNext: false,
-        }
-      : separateValue(option, spelling, next);
+    const bare = bareValue(option, spelling);
+    return bare ? { occurrences: [bare], takesNext: false } : separateValue(option, spelling, next);
   }
   const occurrence: Occurrence =
-    option.type === 'boolean'
-      ? { kind: 'unexpected', option, spelling, value: inline }
-      : { kind: 'value', lead: `${spelling}=`, option, spelling, value: inline };
+    option.type === 'string'
+      ? { kind: 'value', lead: `${spelling}=`, option, spelling, value: inline }
+      : { kind: 'unexpected', option, spelling, value: inline };
   return { occurrences: [occurrence], takesNext: false };
 }
 
@@ -160,21 +201,21 @@ interface LetterReading extends WordReading {
   ends: boolean;
 }
 
-/** A Boolean letter is set and the walk continues; a `=` after it is a value it cannot take. */
-function booleanLetter(
-  option: TableSpelling & { type: 'boolean' },
-  spelling: string,
-  rest: string,
-): LetterReading {
+/**
+ * A Boolean letter is set, and a counted letter adds one, and the walk continues; a `=` after
+ * either is a value it cannot take.
+ */
+function valuelessLetter(option: ValuelessSpelling, spelling: string, rest: string): LetterReading {
   const occurrence: Occurrence = rest.startsWith('=')
     ? { kind: 'unexpected', option, spelling, value: rest.slice(1) }
-    : { kind: 'value', option, spelling, value: option.value };
+    : { kind: 'value', option, spelling, value: option.type === 'boolean' ? option.value : 1 };
   return { ends: occurrence.kind !== 'value', occurrences: [occurrence], takesNext: false };
 }
 
 /**
- * A value letter ends the group: the rest of the word is its value, with one leading `=` stripped,
- * or the next word is its value when nothing remains.
+ * A value letter ends the group: the rest of the word is its value, with one leading `=` stripped.
+ * When nothing remains, a letter with an implied value supplies it, and any other takes the next
+ * word as its value.
  */
 function valueLetter(
   group: Group,
@@ -183,7 +224,10 @@ function valueLetter(
 ): LetterReading {
   const { option, spelling } = letter;
   if (rest === '') {
-    return { ends: true, ...separateValue(option, spelling, group.next) };
+    const bare = bareValue(option, spelling);
+    return bare
+      ? { ends: true, occurrences: [bare], takesNext: false }
+      : { ends: true, ...separateValue(option, spelling, group.next) };
   }
   const value = rest.startsWith('=') ? rest.slice(1) : rest;
   const lead = group.word.slice(0, group.word.length - value.length);
@@ -194,6 +238,14 @@ function valueLetter(
   };
 }
 
+/**
+ * Whether a letter repeats an option an earlier letter of its group or an earlier word supplied. A
+ * counted letter adds another occurrence instead, and so would a multiple option's.
+ */
+function repeatsInGroup(group: Group, option: TableSpelling): boolean {
+  return (group.set.has(option.name) && !accumulates(option)) || repeats(group.context, option);
+}
+
 /** The letter at one index of a group, read against the group's table. */
 function readLetter(group: Group, index: number): LetterReading {
   const spelling = `-${group.letters[index] ?? ''}`;
@@ -202,14 +254,14 @@ function readLetter(group: Group, index: number): LetterReading {
   if (!option) {
     return { ends: true, occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
-  if (group.set.has(option.name) || repeats(group.context, option)) {
-    const takesNext = option.type === 'string' && rest === '' && takesSeparate(group.next);
+  if (repeatsInGroup(group, option)) {
+    const takesNext = option.valueClass === 'separate' && rest === '' && takesSeparate(group.next);
     return { ends: true, ...repeated(option, spelling, takesNext) };
   }
   group.set.add(option.name);
-  return option.type === 'boolean'
-    ? booleanLetter(option, spelling, rest)
-    : valueLetter(group, { option, spelling }, rest);
+  return option.type === 'string'
+    ? valueLetter(group, { option, spelling }, rest)
+    : valuelessLetter(option, spelling, rest);
 }
 
 /**
@@ -337,19 +389,43 @@ function hold(state: ReadState, error: LoomError, global: boolean): false {
   return false;
 }
 
-/** Records one supplied value in the map its kind and its declaration decide. */
-function write(values: OptionValues, option: TableSpelling, value: string | boolean): void {
+/**
+ * Records one supplied value in the map its kind and its declaration decide: a count adds its
+ * occurrence, and a bare spelling's implied value notes its position, so validation supplies the
+ * prepared output there.
+ */
+function write(values: OptionValues, occurrence: Occurrence & { kind: 'value' }): void {
+  const { option, value } = occurrence;
   const { name } = option;
-  const list = values.lists.get(name);
   if (typeof value === 'boolean') {
     values.booleans.set(name, value);
-  } else if (!collects(option)) {
-    values.strings.set(name, value);
-  } else if (list) {
-    list.push(value);
+  } else if (typeof value === 'number') {
+    values.counts.set(name, (values.counts.get(name) ?? 0) + value);
   } else {
-    values.lists.set(name, [value]);
+    const position = writeString(values, option, value);
+    if (occurrence.implied) {
+      values.implied.set(name, [...(values.implied.get(name) ?? []), position]);
+    }
   }
+}
+
+/**
+ * Records one string value: the option's one value, or the next of a multiple option's list.
+ * Answers the position the value took, `0` for a scalar and its index in the list otherwise.
+ */
+function writeString(values: OptionValues, option: TableSpelling, value: string): number {
+  const { name } = option;
+  if (!collects(option)) {
+    values.strings.set(name, value);
+    return 0;
+  }
+  const list = values.lists.get(name);
+  if (list) {
+    list.push(value);
+    return list.length - 1;
+  }
+  values.lists.set(name, [value]);
+  return 0;
 }
 
 /**
@@ -384,7 +460,7 @@ function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): b
   }
   // A collecting option records its last occurrence, because each one overwrites the entry.
   values.spellings.set(option.name, spelling);
-  write(values, option, occurrence.value);
+  write(values, occurrence);
   return true;
 }
 
@@ -424,7 +500,7 @@ function optionFault(
 ): LoomError {
   const { spelling } = occurrence;
   if (occurrence.kind === 'unexpected') {
-    return new UnexpectedValueError(spelling, occurrence.value);
+    return new UnexpectedValueError(spelling, occurrence.value, occurrence.option.type);
   }
   return occurrence.kind === 'repeated'
     ? new RepeatedOptionError(spelling)
@@ -458,10 +534,30 @@ function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
   if (!option) {
     return { kind: 'unknown', spelling };
   }
-  if (option.type !== pending.option.type) {
+  if (option.valueClass !== pending.option.valueClass) {
     return { kind: 'misplaced', spelling };
   }
-  return pending.kind === 'value' ? boundValue(state, pending, option) : { ...pending, option };
+  return pending.kind === 'value'
+    ? boundValue(state, pending, option)
+    : boundFault(pending, option);
+}
+
+/**
+ * A fault routing held back, bound to the routed Command's declaration of the same class, which
+ * keeps it. A value after a spelling that takes none reaches here only with a Boolean or counted
+ * option, because a class mismatch is misplaced before this binds; the string branch exists only so
+ * the bound occurrence stays typed, and no invocation reaches it.
+ */
+function boundFault(
+  pending: DeclaredOccurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
+  option: TableSpelling,
+): Occurrence {
+  if (pending.kind !== 'unexpected') {
+    return { ...pending, option };
+  }
+  return option.type === 'string'
+    ? { kind: 'misplaced', spelling: pending.spelling }
+    : { ...pending, option };
 }
 
 /** A value routing held back, bound to the routed Command's declaration of the same class. */
@@ -474,8 +570,11 @@ function boundValue(
   if (repeats({ table: state.command.table, values: state.values }, option)) {
     return { kind: 'repeated', option, spelling };
   }
-  const value = option.type === 'boolean' ? option.value : pending.value;
-  return { ...pending, option, value };
+  // The bound declaration decides what a spelling with nothing attached supplies.
+  // That is a Boolean's own value, one occurrence of a count, or its own implied value.
+  // A value in the next word or attached is the word the parent's declaration read.
+  const bare = pending.lead === undefined ? bareValue(option, spelling) : undefined;
+  return { ...pending, option, value: bare?.value ?? pending.value };
 }
 
 /** Binds each occurrence routing read against a parent's own option to the Command it reached. */

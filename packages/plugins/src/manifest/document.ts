@@ -70,6 +70,7 @@ type ManifestOption =
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: string | null;
       readonly default: { readonly value: unknown } | null;
+      readonly implied: string | null;
     }
   | {
       readonly type: 'boolean';
@@ -81,6 +82,16 @@ type ManifestOption =
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly env: string | null;
+    }
+  | {
+      readonly type: 'count';
+      readonly name: string;
+      readonly description: string | null;
+      readonly deprecated: string | null;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly schema: null;
       readonly env: string | null;
     };
 
@@ -123,16 +134,22 @@ function optionEntry(node: OptionNode): ManifestOption {
     long: node.long,
     short: node.short,
   };
-  return node.type === 'boolean'
-    ? {
+  switch (node.type) {
+    case 'boolean': {
+      return {
         type: 'boolean',
         ...common,
         negative: node.negative,
         polarity: node.polarity,
         schema: node.schema,
         env: node.env,
-      }
-    : {
+      };
+    }
+    case 'count': {
+      return { type: 'count', ...common, schema: node.schema, env: node.env };
+    }
+    case 'string': {
+      return {
         type: 'string',
         ...common,
         required: node.required,
@@ -140,7 +157,14 @@ function optionEntry(node: OptionNode): ManifestOption {
         schema: node.schema,
         env: node.env,
         default: defaultOf(node),
+        implied: node.implied,
       };
+    }
+    default: {
+      const exhaustive: never = node;
+      return exhaustive;
+    }
+  }
 }
 
 /** One argument's entry: its node without `validated`, `validateOmitted`, and `extensions`. */

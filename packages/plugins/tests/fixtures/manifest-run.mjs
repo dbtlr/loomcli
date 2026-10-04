@@ -37,6 +37,8 @@ function application() {
       validate: z.string().regex(/^[0-9]+$/u),
     })
     .option('tag', { multiple: true, type: 'string' })
+    .option('verbose', { description: 'Say more.', env: 'APP_VERBOSE', short: 'v', type: 'count' })
+    .option('backup', { default: 'none', implied: 'simple', type: 'string' })
     .option('mode', { default: undefined, type: 'string', validate: z.string().optional() })
     .action(dispatch)
     .extend(manifestCommand({ examples: [{ command: 'get a' }] }));

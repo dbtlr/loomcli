@@ -66,9 +66,22 @@ const leaf = new Application('wide', { description: 'Literal \uE001red\uE002.', 
   })
   .action(() => {});
 const minimal = new Application('app', { plugins }).action(() => {});
-const pages = { leaf, minimal, root };
-const key = input.minimal ? 'minimal' : 'root';
-const app = pages[input.leaf ? 'leaf' : key];
+const kinds = new Application('kinds', { plugins })
+  .option('backup', { implied: 'simple', type: 'string' })
+  .option('verbose', { short: 'v', type: 'count' })
+  .action(() => {});
+const pages = { kinds, leaf, minimal, root };
+/** The page a test names, or the root page when it names none. */
+function pageOf() {
+  if (input.kinds) {
+    return 'kinds';
+  }
+  if (input.leaf) {
+    return 'leaf';
+  }
+  return input.minimal ? 'minimal' : 'root';
+}
+const app = pages[pageOf()];
 await app.run({
   host: {
     argv: input.argv ?? ['--version'],

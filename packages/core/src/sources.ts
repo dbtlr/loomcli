@@ -65,8 +65,8 @@ interface SourceStage {
 
 /**
  * What the stage found beside the values it filled. `labels` names where each filled option's value
- * came from, by option name, and `rejected` names the variable of each Boolean option whose value
- * is outside the grammar. Both are internal to core's failure messages. `fault` is a configuration
+ * came from, by option name, and `rejected` names the variable of each Boolean or counted option
+ * whose value is outside its grammar. Both are internal to core's failure messages. `fault` is a configuration
  * source's own fault, or the failure its resolver threw, which stops the stage and takes the place
  * of every validation problem. `validated` is the pass over the source's own options ahead of its
  * call, whose values and problems the run's one validation pass reads.
@@ -84,16 +84,25 @@ const truths: ReadonlyMap<string, boolean> = new Map([
   ['true', true],
 ]);
 
-/** The raw value an option takes: a string, a Boolean, or a list for a multiple option. */
-type RawFill = string | boolean | readonly string[];
+/**
+ * The raw value an option takes: a string, a Boolean, a count, or a list for a multiple option.
+ */
+type RawFill = string | boolean | number | readonly string[];
 
 /** One option's value under the environment rules: a fill, a value outside the grammar, or unset. */
-type VariableReading = { kind: 'fill'; value: string | boolean } | { kind: 'rejected' } | undefined;
+type VariableReading =
+  | { kind: 'fill'; value: string | boolean | number }
+  | { kind: 'rejected' }
+  | undefined;
+
+/** The count grammar a bound variable is read through: the whole value, one or more ASCII digits. */
+const countText = /^[0-9]+$/u;
 
 /**
- * Reads one option's bound variable. An empty variable is unset and falls through, a string option
- * receives the raw string, and a Boolean option reads the whole value through the grammar, so the
- * value states the option's value and not a spelling.
+ * Reads one option's bound variable. An empty variable is unset and falls through, and a string
+ * option receives the raw string, never its implied value. A Boolean option reads the whole value
+ * through the grammar, so the value states the option's value and not a spelling, and a counted
+ * option reads the whole value as decimal digits.
  */
 function readVariable(input: OptionInput, env: Host['env']): VariableReading {
   const variable = input.config.env;
@@ -104,6 +113,9 @@ function readVariable(input: OptionInput, env: Host['env']): VariableReading {
   if (input.config.type === 'string') {
     return { kind: 'fill', value: raw };
   }
+  if (input.config.type === 'count') {
+    return countText.test(raw) ? { kind: 'fill', value: Number(raw) } : { kind: 'rejected' };
+  }
   const value = truths.get(raw.toLowerCase());
   return value === undefined ? { kind: 'rejected' } : { kind: 'fill', value };
 }
@@ -112,6 +124,8 @@ function readVariable(input: OptionInput, env: Host['env']): VariableReading {
 function fill(values: OptionValues, name: string, value: RawFill): void {
   if (typeof value === 'boolean') {
     values.booleans.set(name, value);
+  } else if (typeof value === 'number') {
+    values.counts.set(name, value);
   } else if (typeof value === 'string') {
     values.strings.set(name, value);
   } else {
@@ -126,18 +140,19 @@ interface Requested {
 }
 
 /** The shape one option's raw value takes, which decides what an answer must hold. */
-type RawKind = 'boolean' | 'list' | 'string';
+type RawKind = 'boolean' | 'count' | 'list' | 'string';
 
 /** How a fault names the value an answer owed, by the shape the option takes. */
 const owed: Readonly<Record<RawKind, string>> = {
   boolean: 'a Boolean',
+  count: 'a whole number of 0 or more',
   list: 'an array of strings',
   string: 'a string',
 };
 
 function rawKind(input: OptionInput): RawKind {
-  if (input.config.type === 'boolean') {
-    return 'boolean';
+  if (input.config.type !== 'string') {
+    return input.config.type;
   }
   return input.config.multiple === true ? 'list' : 'string';
 }
@@ -168,6 +183,9 @@ function rawValue(kind: RawKind, value: unknown): RawFill | undefined {
   }
   if (kind === 'boolean') {
     return typeof value === 'boolean' ? value : undefined;
+  }
+  if (kind === 'count') {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
   }
   return typeof value === 'string' ? value : undefined;
 }
@@ -320,8 +338,8 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
 
 /**
  * The environment tier: each option in scope that argv left unfilled reads its bound variable. A
- * filled option is labeled with its variable, and a Boolean one outside the grammar is recorded
- * as rejected, which fills nothing.
+ * filled option is labeled with its variable, and a Boolean or counted one outside its grammar is
+ * recorded as rejected, which fills nothing.
  */
 function fillFromEnvironment(
   scopes: readonly StageScope[],

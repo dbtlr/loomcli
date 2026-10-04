@@ -88,6 +88,7 @@ import type {
   declaredTypes,
   DeclaredTypes,
   DefaultConstraint,
+  ImpliedConstraint,
   GlobalNameConstraint,
   GlobalOmissionConstraint,
   PerValueConstraint,
@@ -103,7 +104,7 @@ import type {
   ValidateOmittedConstraint,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
-import { checkDeclarations, prepareInputs } from './validation.js';
+import { checkDeclarations, prepareDeclaredValues } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
@@ -325,6 +326,7 @@ class ApplicationBuilder<
       NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<
@@ -351,6 +353,7 @@ class ApplicationBuilder<
         ? { 'This option name is already declared as a local option': Name }
         : unknown) &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>> &
       NoInfer<GlobalOmissionConstraint<Config>>,
@@ -639,7 +642,7 @@ class ApplicationBuilder<
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = inputPlaces(graph);
-        const defaults = await prepareInputs(inputs, host, places);
+        const declaredValues = await prepareDeclaredValues(inputs, host, places);
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
@@ -649,7 +652,7 @@ class ApplicationBuilder<
           signals.install(ownedSignals(built.plugins));
           await runInvocation({
             channel: (binding) => invocationOutput.channel(binding),
-            defaults,
+            declaredValues,
             graph,
             host,
             inspected,

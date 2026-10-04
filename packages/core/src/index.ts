@@ -99,6 +99,7 @@ export type {
   AttachedCommand,
   BooleanOption,
   CommandAttachHook,
+  CountOption,
   ExitCode,
   Host,
   InputIdentity,

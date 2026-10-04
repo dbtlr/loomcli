@@ -6,7 +6,7 @@ import { readJson } from '../read-json.js';
 import { resolvePath } from '../resolve-path.js';
 
 export const getValue: ActionHandler<typeof get> = async ({ args, options, host, out, style }) => {
-  const document = await readJson(options.file, host);
+  const document = await readJson({ host, options, out, style });
   const value = resolvePath(document, args.path);
   await out.print(style.escape(formatJson(value)));
 };

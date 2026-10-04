@@ -96,6 +96,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
     'file',
+    'verbose',
     'help',
     'version',
     'manifest',
