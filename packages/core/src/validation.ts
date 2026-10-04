@@ -68,7 +68,7 @@ export type InputDeclaration<Name extends string = string> =
  * The declared values validated before any token is parsed: each default, and each implied value a
  * bare spelling supplies. Values stay `unknown` here.
  */
-export interface PreparedValues {
+export interface DeclaredValues {
   readonly defaults: ReadonlyMap<InputDeclaration, unknown>;
   readonly implied: ReadonlyMap<InputDeclaration, unknown>;
 }
@@ -108,7 +108,7 @@ interface SuppliedValues {
 export interface Invocation {
   command: readonly string[];
   /** Every declared default and implied value, validated before any token was read. */
-  declaredValues: PreparedValues;
+  declaredValues: DeclaredValues;
   host: Host;
   inputs: ScopedInputs;
   passthrough: readonly string[];
@@ -626,7 +626,7 @@ interface ImpliedPositions {
  */
 function impliedPositions(
   input: InputDeclaration,
-  read: { declaredValues: PreparedValues; options: OptionValues },
+  read: { declaredValues: DeclaredValues; options: OptionValues },
 ): ImpliedPositions | undefined {
   const positions = input.kind === 'option' ? read.options.implied.get(input.name) : undefined;
   return positions === undefined
@@ -638,7 +638,9 @@ function impliedPositions(
  * One validation of a declared value. A multiple option or a variadic argument passes each of its
  * values through the validator in order, and each issue reads at its value's position before its
  * own path, so the action receives the array of outputs. Every other input passes its value once.
- * Each call reads a fresh context whose arrays are copies, so a write to them never reaches the
+ * A bare spelling's implied value never meets the validator here: its output was prepared before
+ * any token, so a scalar that a bare spelling supplied, and each bare occurrence in a multiple
+ * option's list, reuse a copy of that output in place. Each call reads a fresh context whose arrays are copies, so a write to them never reaches the
  * next call. The host is the one captured object that every call and the action share.
  */
 async function validateDeclared(
@@ -654,7 +656,7 @@ async function validateDeclared(
   const { context, implied, signal, site } = call;
   if (!collects(input) && implied?.positions.includes(0) === true) {
     // A bare spelling supplied the implied value, whose output was prepared before any token.
-    return { value: freshDefault(implied.output) };
+    return { value: freshDeclaredValue(implied.output) };
   }
   if (!collects(input) || input.config.validate === undefined) {
     return validate(input, raw, { context: context(), site });
@@ -675,7 +677,7 @@ async function validateDeclared(
     // A bare occurrence holds the implied value, whose output was prepared before any token.
     const result =
       implied?.positions.includes(position) === true
-        ? { value: freshDefault(implied.output) }
+        ? { value: freshDeclaredValue(implied.output) }
         : await validate(input, value, { context: context(), site });
     if (result.issues === undefined) {
       outputs.push(result.value);
@@ -790,11 +792,11 @@ export type InputPlaces = ReadonlyMap<InputDeclaration, InputSite>;
  * declaration sits, which a rejected value's finding rebuilds. An implied value is judged whether or
  * not an invocation holds a bare spelling, because the author declared it.
  */
-export async function prepareInputs(
+export async function prepareDeclaredValues(
   inputs: ScopedInputs,
   host: Host,
   places: InputPlaces,
-): Promise<PreparedValues> {
+): Promise<DeclaredValues> {
   const defaults = new Map<InputDeclaration, unknown>();
   const implied = new Map<InputDeclaration, unknown>();
   for (const entry of scoped(inputs)) {
@@ -864,13 +866,13 @@ function impliedOf(input: InputDeclaration): string | undefined {
 }
 
 /**
- * An array default reaches the action as its own mutable copy, so an action that mutates its array
- * rewrites neither the declaration nor the next invocation. One prepared default serves every
- * invocation of a run, and an unvalidated default is the frozen snapshot the declaring call took,
- * so each read copies it. The copy keeps a hole where the default has one, as the graph's does.
- * Every other output passes through unchanged.
+ * An array default or implied output reaches the action as its own mutable copy, so an action that
+ * mutates its array rewrites neither the declaration nor the next invocation. One prepared declared
+ * value serves every invocation of a run, and an unvalidated default is the frozen snapshot the
+ * declaring call took, so each read copies it. The copy keeps a hole where the value has one, as
+ * the graph's does. Every other output passes through unchanged.
  */
-function freshDefault(value: unknown) {
+function freshDeclaredValue(value: unknown) {
   // A spread reads a hole as `undefined`, and `slice` keeps it.
   // oxlint-disable-next-line unicorn/prefer-spread
   return Array.isArray(value) ? value.slice() : value;
@@ -1085,7 +1087,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           // An absence rule reads the context a supplied value reads, and reports input issues.
           await accept(entry, undefined, spelling);
         } else {
-          values.set(input, freshDefault(defaults.get(input)));
+          values.set(input, freshDeclaredValue(defaults.get(input)));
         }
       } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
         // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.

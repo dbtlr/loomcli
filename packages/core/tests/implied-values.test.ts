@@ -128,33 +128,6 @@ test('an option with an implied value occurs once, whichever spelling supplied i
   });
 });
 
-/** The misplaced-option fault on the `other` Command for one spelling. */
-function misplaced(spelling: string) {
-  return {
-    commands: [['other']],
-    message: `Option "${spelling}" belongs to command "other". Supply it after "other".`,
-    name: 'MisplacedOptionError',
-    path: ['other'],
-    spelling,
-  };
-}
-
-test("a parent's own option rebinds to the child's option of the same value class", () => {
-  expect(received(['-f', '-v', '-b', '-n', 'x', 'same', 'a'], {}, 'rebind')).toEqual({
-    args: { path: 'a' },
-    command: ['same'],
-    options: { backup: 'numbered', flag: true, name: 'x', verbose: 1 },
-  });
-  expect(received(['--backup=none', 'same'], {}, 'rebind').options.backup).toBe('none');
-});
-
-test.each([['-f'], ['-v'], ['-b'], ['--backup'], ['-n', 'x']])(
-  "a parent's own option is misplaced before a child that declares its spelling with another value class %j",
-  (...words) => {
-    expect(held([...words, 'other', 'a'], 'rebind')).toEqual(misplaced(words[0] ?? ''));
-  },
-);
-
 test('inspection publishes the implied value on the string node and null where none is declared', () => {
   const result = run('copyit', [], {}, 'inspect');
   expect(result.stderr).toBe('');

@@ -9,13 +9,7 @@ import { schemaConverterFailed } from './input-rules.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
-import type {
-  ArgumentConfig,
-  BooleanOption,
-  DeclaredResult,
-  OptionConfig,
-  StringOption,
-} from './types.js';
+import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { declarationSubject, declaringSite, inputPlace, validatesOmission } from './validation.js';
 
@@ -293,88 +287,58 @@ interface OptionScope {
   table: ReadonlyMap<string, OptionSpelling>;
 }
 
+/**
+ * One option's node, in the shape its kind gives it. Every kind publishes the listing facts and the
+ * spellings the declared name derives; a string option adds its value facts, a Boolean option its
+ * negative spelling and polarity, and a counted option nothing more.
+ */
 function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { check, records, table } = read;
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
-  const extensions = extensionsOf(records, input);
-  const aliases = Object.freeze([...(config.aliases ?? [])]);
-  return Object.freeze(
-    config.type === 'count'
-      ? countNode(input, { aliases, extensions, long, short })
-      : spelledNode(input, config, { aliases, check, extensions, long, negative, short }),
-  );
-}
-
-/** The spellings and shared facts one option node carries, read once from the table and records. */
-interface NodeParts {
-  aliases: readonly string[];
-  extensions: Readonly<Record<string, unknown>>;
-  long: string | null;
-  short: string | null;
-}
-
-/** A counted option's node: no negative spelling, polarity, default, or validator. */
-function countNode({ config, name }: OptionInput, parts: NodeParts): OptionNode {
-  return {
-    ...parts,
+  const shared = {
+    aliases: Object.freeze([...(config.aliases ?? [])]),
     deprecated: config.deprecated,
     description: config.description,
     env: config.env ?? null,
+    extensions: extensionsOf(records, input),
     hidden: config.hidden === true,
+    long,
     name,
-    schema: null,
-    type: 'count',
+    short,
   };
-}
-
-/**
- * A string or Boolean option's node, in the shape its type gives it. `config` is the input's own,
- * narrowed by the caller; the input itself keys the schema check.
- */
-function spelledNode(
-  input: OptionInput,
-  config: StringOption | BooleanOption,
-  parts: NodeParts & { check: SchemaCheck; negative: string | null },
-): OptionNode {
-  const { name } = input;
-  const { aliases, check, extensions, long, negative, short } = parts;
-  return config.type === 'boolean'
-    ? {
-        aliases,
-        deprecated: config.deprecated,
-        description: config.description,
-        env: config.env ?? null,
-        extensions,
-        hidden: config.hidden === true,
-        long,
-        name,
-        negative,
-        polarity: config.polarity ?? 'positive',
-        schema: null,
-        short,
-        type: 'boolean',
-      }
-    : {
-        aliases,
+  switch (config.type) {
+    case 'string': {
+      return Object.freeze({
+        ...shared,
         default: declaredDefault(config),
-        deprecated: config.deprecated,
-        description: config.description,
-        env: config.env ?? null,
-        extensions,
-        hidden: config.hidden === true,
         implied: config.implied ?? null,
-        long,
         // The parser reads the same test, so a collection reports as one here and there.
         multiple: config.multiple === true,
-        name,
         required: config.required === true,
         schema: inputSchema(input, check),
-        short,
         type: 'string',
         validateOmitted: validatesOmission(input),
         validated: config.validate !== undefined,
-      };
+      });
+    }
+    case 'boolean': {
+      return Object.freeze({
+        ...shared,
+        negative,
+        polarity: config.polarity ?? 'positive',
+        schema: null,
+        type: 'boolean',
+      });
+    }
+    case 'count': {
+      return Object.freeze({ ...shared, schema: null, type: 'count' });
+    }
+    default: {
+      const exhaustive: never = config;
+      return exhaustive;
+    }
+  }
 }
 
 /** The built slots already answer presence and arity, so the node repeats no config reading. */

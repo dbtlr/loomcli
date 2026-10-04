@@ -44,10 +44,13 @@ type Occurrence =
     }
   | { kind: 'unknown'; spelling: string }
   | { kind: 'misplaced'; spelling: string }
-  | { kind: 'unexpected'; option: TableSpelling; spelling: string; value: string }
+  | { kind: 'unexpected'; option: ValuelessSpelling; spelling: string; value: string }
   | { kind: 'repeated'; option: TableSpelling; spelling: string }
   | { kind: 'missing'; option: TableSpelling; spelling: string }
   | { kind: 'awaiting'; option: TableSpelling; spelling: string };
+
+/** A spelling of an option that takes no value: a Boolean option or a counted option. */
+type ValuelessSpelling = TableSpelling & { type: 'boolean' | 'count' };
 
 /** What one option word holds, in order, and whether its last occurrence took the next word. */
 interface WordReading {
@@ -84,44 +87,26 @@ function repeats(context: WordContext, option: TableSpelling): boolean {
 }
 
 /**
- * Whether a spelling with nothing attached takes the next word as its value: a string option that
- * declares no implied value. A bare spelling of one that declares an implied value supplies it.
- */
-function takesNextWord(option: TableSpelling): boolean {
-  return option.type === 'string' && option.implied === undefined;
-}
-
-/**
- * The value class of one option, the way it reads words: a Boolean option, a counted option, a
- * string option with an implied value, or a string option that takes the next word.
- */
-function valueClass(option: TableSpelling): 'boolean' | 'count' | 'implied' | 'separate' {
-  if (option.type !== 'string') {
-    return option.type;
-  }
-  return option.implied === undefined ? 'separate' : 'implied';
-}
-
-/**
- * What a spelling with nothing attached supplies: a Boolean's own value, one occurrence of a
- * count, or a string option's implied value. A string option that takes the next word has no
- * value of its own, so it answers `undefined`.
+ * What a spelling with nothing attached supplies, by its value class: a Boolean's own value, one
+ * occurrence of a count, or a string option's implied value. A string option that takes the next
+ * word has no value of its own, so it answers `undefined`.
  */
 function bareValue(
   option: TableSpelling,
   spelling: string,
 ): (Occurrence & { kind: 'value' }) | undefined {
-  switch (option.type) {
+  switch (option.valueClass) {
     case 'boolean': {
       return { kind: 'value', option, spelling, value: option.value };
     }
     case 'count': {
       return { kind: 'value', option, spelling, value: 1 };
     }
-    case 'string': {
-      return option.implied === undefined
-        ? undefined
-        : { implied: true, kind: 'value', option, spelling, value: option.implied };
+    case 'implied': {
+      return { implied: true, kind: 'value', option, spelling, value: option.implied };
+    }
+    case 'separate': {
+      return undefined;
     }
     default: {
       const exhaustive: never = option;
@@ -171,7 +156,8 @@ function readLong(context: WordContext, word: string, next: string | undefined):
     return { occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
   if (repeats(context, option)) {
-    const separate = takesNextWord(option) && inline === undefined && takesSeparate(next);
+    const separate =
+      option.valueClass === 'separate' && inline === undefined && takesSeparate(next);
     return repeated(option, spelling, separate);
   }
   return longValue({ inline, option, spelling }, next);
@@ -219,11 +205,7 @@ interface LetterReading extends WordReading {
  * A Boolean letter is set, and a counted letter adds one, and the walk continues; a `=` after
  * either is a value it cannot take.
  */
-function valuelessLetter(
-  option: TableSpelling & { type: 'boolean' | 'count' },
-  spelling: string,
-  rest: string,
-): LetterReading {
+function valuelessLetter(option: ValuelessSpelling, spelling: string, rest: string): LetterReading {
   const occurrence: Occurrence = rest.startsWith('=')
     ? { kind: 'unexpected', option, spelling, value: rest.slice(1) }
     : { kind: 'value', option, spelling, value: option.type === 'boolean' ? option.value : 1 };
@@ -273,7 +255,7 @@ function readLetter(group: Group, index: number): LetterReading {
     return { ends: true, occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
   }
   if (repeatsInGroup(group, option)) {
-    const takesNext = takesNextWord(option) && rest === '' && takesSeparate(group.next);
+    const takesNext = option.valueClass === 'separate' && rest === '' && takesSeparate(group.next);
     return { ends: true, ...repeated(option, spelling, takesNext) };
   }
   group.set.add(option.name);
@@ -518,8 +500,7 @@ function optionFault(
 ): LoomError {
   const { spelling } = occurrence;
   if (occurrence.kind === 'unexpected') {
-    const kind = occurrence.option.type === 'count' ? 'count' : 'boolean';
-    return new UnexpectedValueError(spelling, occurrence.value, kind);
+    return new UnexpectedValueError(spelling, occurrence.value, occurrence.option.type);
   }
   return occurrence.kind === 'repeated'
     ? new RepeatedOptionError(spelling)
@@ -553,10 +534,29 @@ function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
   if (!option) {
     return { kind: 'unknown', spelling };
   }
-  if (valueClass(option) !== valueClass(pending.option)) {
+  if (option.valueClass !== pending.option.valueClass) {
     return { kind: 'misplaced', spelling };
   }
-  return pending.kind === 'value' ? boundValue(state, pending, option) : { ...pending, option };
+  return pending.kind === 'value'
+    ? boundValue(state, pending, option)
+    : boundFault(pending, option);
+}
+
+/**
+ * A fault routing held back, bound to the routed Command's declaration of the same class, which
+ * keeps it. A value after a spelling that takes none is only ever bound to another such spelling,
+ * since the classes match, so a string option there reads as misplaced.
+ */
+function boundFault(
+  pending: DeclaredOccurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
+  option: TableSpelling,
+): Occurrence {
+  if (pending.kind !== 'unexpected') {
+    return { ...pending, option };
+  }
+  return option.type === 'string'
+    ? { kind: 'misplaced', spelling: pending.spelling }
+    : { ...pending, option };
 }
 
 /** A value routing held back, bound to the routed Command's declaration of the same class. */

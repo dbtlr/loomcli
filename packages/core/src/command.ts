@@ -144,7 +144,7 @@ import type {
   InputPlaces,
   InputDeclaration,
   OptionInput,
-  PreparedValues,
+  DeclaredValues,
   Provenance,
   ValidatedInputs,
   Validation,
@@ -2594,7 +2594,7 @@ export interface DispatchInvocation {
   /** Where every input of the graph was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
   /** Every declared default and implied value, validated before any token was read. */
-  declaredValues: PreparedValues;
+  declaredValues: DeclaredValues;
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
   /** Offers a configuration source's foreign throw to the translators where its call settles. */

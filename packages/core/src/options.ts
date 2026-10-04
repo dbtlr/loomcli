@@ -67,13 +67,17 @@ export type SpellingOrigin =
   | { role: 'alias'; index: number };
 
 /**
- * How one option reads words. A string option with an implied value never takes the next word, and
- * supplies `implied` when its spelling is bare.
+ * How one option reads words: its kind, and its value class, of which there are four: a Boolean
+ * option, a counted option, a string option with an implied value, which never takes the next word
+ * and supplies `implied` when its spelling is bare, and a string option that takes the next word as
+ * its value when nothing is attached. Compiling the table derives the class once, and the parser, a
+ * rebound occurrence, and `locate` read that one fact.
  */
 type OptionForm =
-  | { type: 'string'; name: string; multiple: boolean; implied: string | undefined }
-  | { type: 'boolean'; name: string; value: boolean }
-  | { type: 'count'; name: string };
+  | { type: 'string'; valueClass: 'separate'; name: string; multiple: boolean }
+  | { type: 'string'; valueClass: 'implied'; name: string; multiple: boolean; implied: string }
+  | { type: 'boolean'; valueClass: 'boolean'; name: string; value: boolean }
+  | { type: 'count'; valueClass: 'count'; name: string };
 
 export type OptionSpelling = OptionForm & SpellingOrigin;
 
@@ -409,7 +413,13 @@ function addLongForms(
   if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
     forms.push([
       `--no-${long.name}`,
-      { name: positive.name, type: 'boolean', value: false, ...long.negative },
+      {
+        name: positive.name,
+        type: 'boolean',
+        value: false,
+        valueClass: 'boolean',
+        ...long.negative,
+      },
     ]);
   }
   for (const [spelling, form] of forms) {
@@ -441,13 +451,21 @@ export function booleanValue(values: OptionValues, name: string, config: OptionC
 function positiveForm(name: string, config: OptionConfig): OptionForm {
   switch (config.type) {
     case 'string': {
-      return { implied: config.implied, multiple: config.multiple === true, name, type: 'string' };
+      const multiple = config.multiple === true;
+      return config.implied === undefined
+        ? { multiple, name, type: 'string', valueClass: 'separate' }
+        : { implied: config.implied, multiple, name, type: 'string', valueClass: 'implied' };
     }
     case 'boolean': {
-      return { name, type: 'boolean', value: config.polarity !== 'negative' };
+      return {
+        name,
+        type: 'boolean',
+        value: config.polarity !== 'negative',
+        valueClass: 'boolean',
+      };
     }
     case 'count': {
-      return { name, type: 'count' };
+      return { name, type: 'count', valueClass: 'count' };
     }
     default: {
       const exhaustive: never = config;

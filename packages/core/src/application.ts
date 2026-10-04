@@ -103,7 +103,7 @@ import type {
   ValidateOmittedConstraint,
 } from './types.js';
 import type { ArgumentInput, OptionInput } from './validation.js';
-import { checkDeclarations, prepareInputs } from './validation.js';
+import { checkDeclarations, prepareDeclaredValues } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
@@ -639,7 +639,7 @@ class ApplicationBuilder<
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = inputPlaces(graph);
-        const declaredValues = await prepareInputs(inputs, host, places);
+        const declaredValues = await prepareDeclaredValues(inputs, host, places);
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**

@@ -144,32 +144,48 @@ function rejected() {
     .action(report([]));
 }
 
+/** The config of one option of each value class, implying `value` where the class implies one. */
+const classes = {
+  boolean: () => ({ type: 'boolean' }),
+  count: () => ({ type: 'count' }),
+  implied: (value) => ({ implied: value, type: 'string' }),
+  separate: () => ({ type: 'string' }),
+};
+
+/**
+ * Declares the four spellings `--boolean`, `--count`, `--implied`, and `--separate`, each with the
+ * class `kindOf` names for it.
+ */
+function declareAll(declarer, kindOf, implied) {
+  return Object.keys(classes).reduce(
+    // Each spelling's short alias is its name's first letter, whichever class declares it.
+    (declared, name) =>
+      declared.option(name, { ...classes[kindOf(name)](implied), short: name.charAt(0) }),
+    declarer,
+  );
+}
+
 /**
  * A root with an action and children, whose own options each have one of the four value classes,
- * and two children that declare the same spellings, one with the same classes and one with others.
+ * and a child named for each class that declares all four spellings with that class alone, so a
+ * parent's own option meets every pairing of classes.
  */
 function rebind() {
-  const same = new Command('same')
-    .argument('path', {})
-    .option('flag', { short: 'f', type: 'boolean' })
-    .option('verbose', { short: 'v', type: 'count' })
-    .option('backup', { implied: 'numbered', short: 'b', type: 'string' })
-    .option('name', { short: 'n', type: 'string' })
-    .action(report(['same']));
-  const other = new Command('other')
-    .argument('path', {})
-    .option('flag', { short: 'f', type: 'count' })
-    .option('verbose', { short: 'v', type: 'boolean' })
-    .option('backup', { short: 'b', type: 'string' })
-    .option('name', { implied: 'x', short: 'n', type: 'string' })
-    .action(report(['other']));
-  return new Application('rebind', { views: [override(UsageError, facts)] })
-    .option('flag', { short: 'f', type: 'boolean' })
-    .option('verbose', { short: 'v', type: 'count' })
-    .option('backup', { implied: 'simple', short: 'b', type: 'string' })
-    .option('name', { short: 'n', type: 'string' })
-    .command(same)
-    .command(other)
+  const root = declareAll(
+    new Application('rebind', { views: [override(UsageError, facts)] }),
+    (name) => name,
+    'parent',
+  );
+  return Object.keys(classes)
+    .reduce(
+      (app, kind) =>
+        app.command(
+          declareAll(new Command(kind).argument('path', {}), () => kind, 'child').action(
+            report([kind]),
+          ),
+        ),
+      root,
+    )
     .action(report([]));
 }
 

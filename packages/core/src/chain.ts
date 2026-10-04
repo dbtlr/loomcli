@@ -26,7 +26,7 @@ import type {
   Request,
   ResultBinding,
 } from './types.js';
-import type { InputPlaces, PreparedValues } from './validation.js';
+import type { InputPlaces, DeclaredValues } from './validation.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
@@ -241,7 +241,7 @@ interface Invocation {
   places: InputPlaces;
   plugins: readonly BuiltPlugin[];
   /** Every declared default and implied value, validated before any token was read. */
-  declaredValues: PreparedValues;
+  declaredValues: DeclaredValues;
   /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
   report: (fault: LoomError) => void;
   /**

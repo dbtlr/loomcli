@@ -145,11 +145,8 @@ test('a validator reads a counted option as its number of occurrences, and an om
 });
 
 test("a parent's own counted option rebinds to the routed Command's counted option and adds to its count", () => {
-  expect(received('rebind', ['-v', 'same', 'a', '-v']).options).toMatchObject({ verbose: 2 });
-  expect(received('rebind', ['-vf', 'same', 'a']).options).toMatchObject({
-    flag: true,
-    verbose: 1,
-  });
+  expect(received('rebind', ['-c', 'count', 'a', '-c']).options.count).toBe(2);
+  expect(received('rebind', ['-cc', 'count', 'a', '--count']).options.count).toBe(3);
 });
 
 test('inspection publishes a counted option as a count node with no value facts', () => {
