@@ -208,35 +208,28 @@ function diagnostic({ correction, findings, headline, rule, sentence }: Expected
   return `${sections.join('\n\n')}\n`;
 }
 
-/**
- * A marked part of a printed line: its text, found at its first place in the line, or at the first
- * place after the text `after` names, for a part whose text occurs earlier in the line too.
- */
-type Target = string | { readonly after: string; readonly text: string };
-
-/** One printed line of code, and the carets under the place `target` names in it. */
-function marked(line: string, part: Target, note?: string): string[] {
-  const target = typeof part === 'string' ? part : part.text;
-  const start =
-    typeof part === 'string'
-      ? line.indexOf(part)
-      : line.indexOf(part.text, line.indexOf(part.after) + part.after.length);
+/** One printed line of code, and the carets under the `nth` place `target` occurs in it. */
+function marked(line: string, target: string, note?: string, nth = 0): string[] {
+  let start = line.indexOf(target);
+  for (let seen = 0; seen < nth; seen += 1) {
+    start = line.indexOf(target, start + target.length);
+  }
   expect(start).toBeGreaterThanOrEqual(0);
   const carets = `${' '.repeat(start)}${'^'.repeat(target.length)}`;
   return [line, note === undefined ? carets : `${carets} ${note}`];
 }
 
 /** A finding for one call on the Command at `path`, which the comment above it names. */
-function onCommand(path: readonly string[], call: string, target: Target, note?: string) {
+function onCommand(path: readonly string[], call: string, target: string, note?: string, nth = 0) {
   return [
     `    // ${path.join(' ')}`,
     `    new Command('${path.at(-1) ?? ''}')`,
-    ...marked(`      .${call}`, target, note),
+    ...marked(`      .${call}`, target, note, nth),
   ];
 }
 
 /** A finding for one call on the Application, whose name a thrown fault does not know. */
-function onApplication(call: string, target: Target, note?: string) {
+function onApplication(call: string, target: string, note?: string) {
   return ['    new Application(…)', ...marked(`      .${call}`, target, note)];
 }
 
@@ -316,8 +309,9 @@ const cases: Record<string, Expected> = {
       onCommand(
         ['get'],
         "option('min-bytes', { aliases: ['min-bytes'], type: 'string' })",
-        { after: 'aliases: [', text: "'min-bytes'" },
+        "'min-bytes'",
         'its own name',
+        1,
       ),
     ],
     headline: 'ALIAS REPEATS A NAME',
@@ -353,8 +347,9 @@ const cases: Record<string, Expected> = {
       onCommand(
         ['get'],
         "option('min-bytes', { aliases: ['minimum', 'minimum'], type: 'string' })",
-        { after: "'minimum', ", text: "'minimum'" },
+        "'minimum'",
         'already an alias',
+        1,
       ),
     ],
     headline: 'ALIAS REPEATS A NAME',
@@ -677,6 +672,25 @@ const cases: Record<string, Expected> = {
     rule: 'spelling-taken',
     sentence:
       'Option spelling "-t" is used by plugin "@acme/trace" option "trace" and the local option "tail" on Command "get".',
+  },
+  'plugins-alias-spelling': {
+    correction: 'Change one declaration.',
+    findings: [
+      bare(
+        "plugin('@acme/log', { options: { level: { aliases: ['verbosity'], type: 'string' } } })",
+        "'verbosity'",
+        "the plugin's global option",
+      ),
+      bare(
+        "plugin('@acme/trace', { options: { verbosity: { type: 'boolean' } } })",
+        "verbosity: { type: 'boolean' }",
+        "the plugin's global option",
+      ),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence:
+      'Option spelling "--verbosity" is used by plugin "@acme/log" option "level" and plugin "@acme/trace" option "verbosity".',
   },
   'plugins-key': {
     correction: 'Install one of them or rename the option.',

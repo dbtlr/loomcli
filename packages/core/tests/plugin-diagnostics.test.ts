@@ -556,6 +556,27 @@ const cases: Record<string, Expected> = {
     rule: 'failure-exit-code',
     sentence: 'Failure class "OffScaleError" declares exit code 200.',
   },
+  'hook-alias-spelling': {
+    correction: 'Change one of the two spellings or omit the plugin.',
+    findings: [
+      onCommand(
+        ['count'],
+        "option('shape', { aliases: ['file'], type: 'string' })",
+        "'file'",
+        'declared by plugin "@acme/format"',
+      ),
+      onCommand(
+        ['count'],
+        "option('file', { type: 'string' })",
+        "'file'",
+        'the local option "file"',
+      ),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence:
+      'Plugin "@acme/format" declares option "shape" with spelling "--file" on Command "count", which "--file" already uses.',
+  },
   'hook-collision': {
     correction: "Rename the Command's option or omit the plugin.",
     findings: [

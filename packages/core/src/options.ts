@@ -42,7 +42,7 @@ export function emptyValues(): OptionValues {
  */
 export type SpellingOrigin =
   | { role: 'long' | 'negative' | 'short' }
-  | { role: 'alias'; alias: number };
+  | { role: 'alias'; index: number };
 
 type OptionForm =
   | { type: 'string'; name: string; multiple: boolean }
@@ -84,7 +84,7 @@ export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
       return `${site.at}.polarity`;
     }
     case 'alias': {
-      return `${site.at}.aliases.${String(origin.alias)}`;
+      return `${site.at}.aliases.${String(origin.index)}`;
     }
     default: {
       const exhaustive: never = origin;
@@ -103,9 +103,9 @@ export function checkOptionName(name: unknown, site: InputSite): void {
       sentence: `Option name ${valueCode(name)} is not a string.`,
     });
   }
-  if (!isOptionName(name)) {
+  if (!isDeclaredName(name)) {
     throw new DeclarationError(declaredName, {
-      correction: optionNameCorrection,
+      correction: declaredNameCorrection,
       findings,
       sentence: `Option name ${quoted(name)} is invalid.`,
     });
@@ -113,14 +113,30 @@ export function checkOptionName(name: unknown, site: InputSite): void {
 }
 
 /**
- * Whether a string can be an option's declared name or alias, each of which becomes a long
- * spelling: nonempty, with no leading hyphen, whitespace, or `=`, which the parser reads apart.
+ * The one name rule for an argument, option, alias of an option, or view name: a bare token the
+ * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
  */
-function isOptionName(name: string): boolean {
-  return name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);
+export function isDeclaredName(name: unknown): name is string {
+  return typeof name === 'string' && name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
-const optionNameCorrection = 'Use a nonempty name without a leading hyphen, whitespace, or "=".';
+/** The one correction every declared-name diagnostic for a string ends with. */
+export const declaredNameCorrection =
+  'Use a nonempty name without a leading hyphen, whitespace, or "=".';
+
+/** The sentence and correction of each repeated-alias fault, for the Command or option `subject` names. */
+export function repeatedAliasText(subject: string, alias: string) {
+  return {
+    own: {
+      correction: 'Remove the alias.',
+      sentence: `${subject} declares alias ${quoted(alias)}, which is its own name.`,
+    },
+    twice: {
+      correction: 'Remove the repeated alias.',
+      sentence: `${subject} declares alias ${quoted(alias)} twice.`,
+    },
+  };
+}
 
 /** Whether a declared short alias is one ASCII letter, the rule every short spelling answers. */
 export function isShortAlias(short: unknown): boolean {
@@ -187,25 +203,24 @@ function checkAliases(config: OptionConfig, site: InputSite, name: string): void
         sentence: `${subject} declares an alias named ${valueCode(alias)}.`,
       });
     }
-    if (!isOptionName(alias)) {
+    if (!isDeclaredName(alias)) {
       throw new DeclarationError(declaredName, {
-        correction: optionNameCorrection,
+        correction: declaredNameCorrection,
         findings: [siteFinding(site, at)],
         sentence: `${subject} declares an alias named ${quoted(alias)}.`,
       });
     }
+    const repeated = repeatedAliasText(subject, alias);
     if (alias === name) {
       throw new DeclarationError(repeatedAlias, {
-        correction: 'Remove the alias.',
+        ...repeated.own,
         findings: [siteFinding(site, at, 'its own name')],
-        sentence: `${subject} declares alias ${quoted(alias)}, which is its own name.`,
       });
     }
     if (seen.has(alias)) {
       throw new DeclarationError(repeatedAlias, {
-        correction: 'Remove the repeated alias.',
+        ...repeated.twice,
         findings: [siteFinding(site, at, 'already an alias')],
-        sentence: `${subject} declares alias ${quoted(alias)} twice.`,
       });
     }
     seen.add(alias);
@@ -365,7 +380,7 @@ export function compileOptions<Declaration extends OptionDeclaration>(
         positive: { role: 'long' },
       });
       for (const [index, alias] of (config.aliases ?? []).entries()) {
-        const origin: SpellingOrigin = { alias: index, role: 'alias' };
+        const origin: SpellingOrigin = { index, role: 'alias' };
         addLongForms(claims, option, { name: alias, negative: origin, positive: origin });
       }
     }

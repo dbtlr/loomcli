@@ -181,6 +181,13 @@ const scenarios = {
     new Application('probe', {
       plugins: [optionsPlugin('@acme/trace', { trace: { short: 't', type: 'boolean' } })],
     }).command(new Command('get').option('tail', { short: 't', type: 'string' }).action(act)),
+  'plugins-alias-spelling': () =>
+    new Application('probe', {
+      plugins: [
+        optionsPlugin('@acme/log', { level: { aliases: ['verbosity'], type: 'string' } }),
+        optionsPlugin('@acme/trace', { verbosity: { type: 'boolean' } }),
+      ],
+    }),
   'plugins-key': () =>
     new Application('probe', {
       plugins: [
