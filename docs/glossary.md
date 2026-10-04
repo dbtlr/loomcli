@@ -74,7 +74,7 @@ An option declared on one Command, by its author or by a plugin's lifecycle hook
 _Avoid_: Command option, scoped option
 
 **Declared name**:
-The exact string an argument or option is declared under, which is the key its action reads. When a long spelling exists, it is derived from the declared name verbatim.
+The exact string an argument or option is declared under, which is the key its action reads. An option's own long spelling, when it has one, is the declared name verbatim; each of its aliases adds another long spelling.
 _Avoid_: Key (when the spelling is meant), label
 
 **Spelling**:
@@ -82,7 +82,7 @@ A token form the parser accepts for an option: the long form, the short form, an
 _Avoid_: Flag name, syntax, alias (for the long form the declared name derives)
 
 **Short alias**:
-The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from a Command's alias.
+The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from an alias, a Command's or an option's, which no projection shows.
 _Avoid_: Short flag, shorthand
 
 **Short group**:
@@ -139,7 +139,7 @@ The one name a Command is declared with. Every routed path, diagnostic, candidat
 _Avoid_: Primary name, display name, real name
 
 **Portable name**:
-The one rule for every name an operator types as a command at a shell prompt: the application name, every Command name, and every alias. It holds characters from the POSIX portable filename set, `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, and starts with neither `-`, which reads as an option, nor `.`, which a shell hides. An argument or option name follows the declared-name rule instead: nonempty, not starting with `-`, and without whitespace or `=`. A view name follows that rule and is not integer-like.
+The one rule for every name an operator types as a command at a shell prompt: the application name, every Command name, and every Command alias. It holds characters from the POSIX portable filename set, `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, and starts with neither `-`, which reads as an option, nor `.`, which a shell hides. An argument or option name, and an option's alias, follows the declared-name rule instead: nonempty, not starting with `-`, and without whitespace or `=`. A view name follows that rule and is not integer-like.
 _Avoid_: Safe name, shell-safe name, identifier
 
 **Alias**:

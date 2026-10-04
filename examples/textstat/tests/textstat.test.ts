@@ -241,9 +241,9 @@ test('textstat --totl one.txt suggests the near option and points at the help an
   });
 });
 
-// `--minimun` is near only the deprecated `--minimum`, and too far from `--min-bytes`.
+// `--minimun` is near only `--minimum`, an alias of `--min-bytes`, and too far from `--min-bytes`.
 // `--timin` is near only the hidden `--timing`.
-// Neither a deprecated nor a hidden option is offered as the fix, so both keep core's text.
+// Neither an alias nor a hidden option is offered as the fix, so both keep core's text.
 test.each(['--minimun', '--timin'])(
   'textstat %s one.txt finds no offered near option and keeps the default text',
   (option) => {
@@ -297,7 +297,7 @@ test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
 );
 
 test.each(['-1', '1.5', '10KB'])(
-  'textstat rejects %j on the deprecated spelling by the shared rule',
+  'textstat rejects %j through the --minimum alias as a value of --min-bytes',
   (minimum) => {
     const result = invoke(new URL('../dist/main.js', import.meta.url), [
       `--minimum=${minimum}`,
@@ -305,18 +305,22 @@ test.each(['-1', '1.5', '10KB'])(
     ]);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Option "--minimum":');
+    expect(result.stderr).toContain('Option "--min-bytes":');
     expect(result.stderr).not.toContain('Cannot read file');
   },
 );
 
+// `--minimum` is the threshold's earlier name, so it is `--min-bytes` and the typed flag wins.
 test.each([
-  [['--minimum', '3'], 'COUNT  SOURCE\n    5  large.txt\n'],
-  [['--min-bytes', '3', '--minimum', '1'], 'COUNT  SOURCE\n    5  large.txt\n'],
-  [['--min-bytes', '1', '--minimum', '6'], 'COUNT  SOURCE\n'],
-] satisfies [string[], string][])(
-  'textstat drops a source below the larger of the two thresholds for %j',
-  (options, stdout) => {
+  [['--minimum', '3'], {}, 'COUNT  SOURCE\n    5  large.txt\n'],
+  [
+    ['--minimum', '1'],
+    { TEXTSTAT_MIN_BYTES: '5' },
+    'COUNT  SOURCE\n    2  small.txt\n    5  large.txt\n',
+  ],
+] satisfies [string[], Record<string, string>, string][])(
+  'textstat reads %j as --min-bytes',
+  (options, env, stdout) => {
     const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-minimum-'));
     try {
       writeFileSync(join(directory, 'small.txt'), 'é');
@@ -325,9 +329,7 @@ test.each([
         invoke(
           new URL('../dist/main.js', import.meta.url),
           ['small.txt', 'large.txt', ...options],
-          {
-            cwd: directory,
-          },
+          { cwd: directory, env },
         ),
       ).toEqual({ status: 0, stderr: '', stdout });
     } finally {
@@ -335,6 +337,21 @@ test.each([
     }
   },
 );
+
+test('textstat rejects --minimum beside --min-bytes, because both supply one option', () => {
+  const result = invoke(new URL('../dist/main.js', import.meta.url), [
+    '--min-bytes',
+    '3',
+    '--minimum',
+    '1',
+    'missing-fixture.txt',
+  ]);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(
+    'textstat: Option "--minimum" can be supplied only once. Remove the repeated option.',
+  );
+});
 
 test('textstat --timing reports the elapsed time on stderr after the rows', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-timing-'));
@@ -444,9 +461,8 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
 test("the inspected graph publishes the catalog validators' input schemas", () => {
   const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(inspected.status).toBe(0);
-  const graph: { root: { options: { name: string; schema: unknown }[] } } = JSON.parse(
-    inspected.stdout,
-  );
+  const graph: { root: { options: { aliases: string[]; name: string; schema: unknown }[] } } =
+    JSON.parse(inspected.stdout);
   const schemaOf = (name: string) =>
     graph.root.options.find((entry) => entry.name === name)?.schema;
   const draft = { $schema: 'https://json-schema.org/draft/2020-12/schema' };
@@ -456,7 +472,10 @@ test("the inspected graph publishes the catalog validators' input schemas", () =
     type: 'string',
   });
   expect(schemaOf('min-bytes')).toEqual({ ...draft, minimum: 0, type: 'integer' });
-  expect(schemaOf('minimum')).toEqual({ ...draft, minimum: 0, type: 'integer' });
+  expect(graph.root.options.find((entry) => entry.name === 'min-bytes')?.aliases).toEqual([
+    'minimum',
+  ]);
+  expect(schemaOf('minimum')).toBeUndefined();
 });
 
 test('the inspected graph reports the declared table and the formatter views on the root result', () => {

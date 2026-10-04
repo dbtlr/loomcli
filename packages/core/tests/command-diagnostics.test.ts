@@ -96,8 +96,8 @@ const explanations = {
     'file a shell hides.',
   ],
   'repeated-alias': [
-    'A Command answers to its name and to each of its aliases, so an alias that',
-    'repeats one of them routes nothing new.',
+    'A Command or an option answers to its name and to each of its aliases, so an',
+    'alias that repeats one of them adds nothing new.',
   ],
   'result-without-action': [
     'A declared result is a promise the action keeps by emitting through',

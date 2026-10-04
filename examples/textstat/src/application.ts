@@ -64,16 +64,12 @@ export const textstat = new Application('textstat', {
     validate: oneOf(['bytes', 'words', 'lines']),
   })
   .option('min-bytes', {
+    // The option's earlier name, which still binds it and which no listing shows.
+    aliases: ['minimum'],
     default: '0',
     description: 'Drop a source smaller than this many bytes.',
     env: 'TEXTSTAT_MIN_BYTES',
     extensions: [configInput({ path: 'minBytes' })],
-    type: 'string',
-    validate: byteThreshold,
-  })
-  .option('minimum', {
-    deprecated: 'Use --min-bytes instead.',
-    description: 'Drop a source smaller than this many bytes. The larger threshold wins.',
     type: 'string',
     validate: byteThreshold,
   })

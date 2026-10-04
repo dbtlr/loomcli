@@ -76,10 +76,10 @@ const aliasWithoutNames = registerRule('@loomcli/core/alias-without-names', {
   headline: 'Alias with no names',
 });
 
-/** An alias that repeats its own Command's name or another of its aliases. */
+/** An alias that repeats its own Command's or option's name or another of its aliases. */
 const repeatedAlias = registerRule('@loomcli/core/repeated-alias', {
   explanation:
-    'A Command answers to its name and to each of its aliases, so an alias that repeats one of them routes nothing new.',
+    'A Command or an option answers to its name and to each of its aliases, so an alias that repeats one of them adds nothing new.',
   headline: 'Alias repeats a name',
 });
 

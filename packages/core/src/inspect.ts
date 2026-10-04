@@ -47,6 +47,9 @@ interface ArgumentNode {
  * variant carries the field at `null`, and every projection built on the node holds if a later
  * contract lets it validate.
  * `env` is the variable the option's environment binding names, or `null` when it binds none.
+ * `aliases` holds the declared aliases as bare names in declaration order. An alias is
+ * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
+ * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
  */
 type OptionNode =
   | {
@@ -57,6 +60,7 @@ type OptionNode =
       readonly deprecated: string | undefined;
       readonly long: string | null;
       readonly short: string | null;
+      readonly aliases: readonly string[];
       readonly required: boolean;
       readonly multiple: boolean;
       readonly validated: boolean;
@@ -75,6 +79,7 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
+      readonly aliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
       readonly env: string | null;
@@ -142,7 +147,8 @@ interface Spellings {
 function spellingsOf(table: ReadonlyMap<string, OptionSpelling>, name: string): Spellings {
   const spellings: Spellings = { long: null, negative: null, short: null };
   for (const [spelling, option] of table) {
-    if (option.name === name) {
+    // An alias is unadvertised, so the node's spellings are the ones the declared name derives.
+    if (option.name === name && option.role !== 'alias') {
       spellings[option.role] = spelling;
     }
   }
@@ -270,9 +276,11 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
   const extensions = extensionsOf(records, input);
+  const aliases = Object.freeze([...(config.aliases ?? [])]);
   const node: OptionNode =
     config.type === 'boolean'
       ? {
+          aliases,
           deprecated: config.deprecated,
           description: config.description,
           env: config.env ?? null,
@@ -287,6 +295,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
           type: 'boolean',
         }
       : {
+          aliases,
           default: declaredDefault(config),
           deprecated: config.deprecated,
           description: config.description,

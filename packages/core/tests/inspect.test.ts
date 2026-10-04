@@ -10,6 +10,7 @@ const bare = { extensions: {}, schema: null };
 
 /** The facts an option reports when its declaration states none of them, global or local. */
 const owned = {
+  aliases: [],
   deprecated: none,
   env: null,
   extensions: {},

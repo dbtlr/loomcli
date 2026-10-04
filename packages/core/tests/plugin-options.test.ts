@@ -185,6 +185,7 @@ test("inspect() lists each plugin's options after the application's, in installa
 test("a plugin's option publishes the node an application's global option publishes", () => {
   const graph = JSON.parse(invoke(fixture, ['validated', 'inspect']).stdout);
   expect(graph.globals[2]).toEqual({
+    aliases: [],
     default: { value: 'plain' },
     description: undefined,
     env: null,
@@ -201,6 +202,7 @@ test("a plugin's option publishes the node an application's global option publis
     validated: false,
   });
   expect(graph.globals[1]).toEqual({
+    aliases: [],
     description: undefined,
     env: null,
     extensions: {},

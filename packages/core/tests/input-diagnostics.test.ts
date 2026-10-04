@@ -133,6 +133,10 @@ const explanations = {
     'it off. shortOnly leaves the option its short alias alone, and one spelling sets',
     'one value.',
   ],
+  'short-only-with-aliases': [
+    'shortOnly removes every long spelling of an option, and each alias adds a long',
+    'spelling, so an option cannot declare both.',
+  ],
   'short-only-without-short': [
     'shortOnly removes every long spelling of an option, so an option with no short',
     'alias would leave an operator no spelling to type.',
@@ -140,8 +144,8 @@ const explanations = {
   'spelling-taken': [
     "The parser reads each spelling as one option, and a Command's own options share",
     "one invocation with the global options and every installed plugin's options. A",
-    'spelling two options claim, a short alias or a generated negative form included,',
-    'would reach only one of them.',
+    'spelling two options claim, a short alias, an alias, or a generated negative',
+    'form included, would reach only one of them.',
   ],
   'variable-bound-twice': [
     "Within one invocation's scope a variable fills one option, so two options that",
@@ -149,16 +153,29 @@ const explanations = {
   ],
 };
 
-/** The rules this family shares with the Command family, which pins their explanations. */
+/** The rules this family shares with the Command and plugin families, which pin their explanations. */
 const shared = {
   'declared-name': [
     'An action reads each argument and option under its name, and help and',
     'diagnostics print it. A leading "-" reads as an option, and whitespace or "="',
     'splits the name where the parser reads it.',
   ],
+  'not-a-list': [
+    'Core reads plugins, commands, extensions, views, translators, signals, and',
+    'aliases each as a list, in order. A value of any other kind has no entries to',
+    'read.',
+  ],
+  'repeated-alias': [
+    'A Command or an option answers to its name and to each of its aliases, so an',
+    'alias that repeats one of them adds nothing new.',
+  ],
 };
 
 type Rule = keyof typeof explanations | keyof typeof shared;
+
+function isShared(rule: Rule): rule is keyof typeof shared {
+  return Object.hasOwn(shared, rule);
+}
 
 /** One rule's diagnostic: its banner, the sentence, each finding, the explanation, and the fix. */
 interface Expected {
@@ -177,7 +194,7 @@ function banner(headline: string, rule: Rule): string {
 }
 
 function explanationOf(rule: Rule): readonly string[] {
-  return rule === 'declared-name' ? shared[rule] : explanations[rule];
+  return isShared(rule) ? shared[rule] : explanations[rule];
 }
 
 function diagnostic({ correction, findings, headline, rule, sentence }: Expected): string {
@@ -191,16 +208,26 @@ function diagnostic({ correction, findings, headline, rule, sentence }: Expected
   return `${sections.join('\n\n')}\n`;
 }
 
-/** One printed line of code, and the carets under the first place `target` occurs in it. */
-function marked(line: string, target: string, note?: string): string[] {
-  const start = line.indexOf(target);
+/**
+ * A marked part of a printed line: its text, found at its first place in the line, or at the first
+ * place after the text `after` names, for a part whose text occurs earlier in the line too.
+ */
+type Target = string | { readonly after: string; readonly text: string };
+
+/** One printed line of code, and the carets under the place `target` names in it. */
+function marked(line: string, part: Target, note?: string): string[] {
+  const target = typeof part === 'string' ? part : part.text;
+  const start =
+    typeof part === 'string'
+      ? line.indexOf(part)
+      : line.indexOf(part.text, line.indexOf(part.after) + part.after.length);
   expect(start).toBeGreaterThanOrEqual(0);
   const carets = `${' '.repeat(start)}${'^'.repeat(target.length)}`;
   return [line, note === undefined ? carets : `${carets} ${note}`];
 }
 
 /** A finding for one call on the Command at `path`, which the comment above it names. */
-function onCommand(path: readonly string[], call: string, target: string, note?: string) {
+function onCommand(path: readonly string[], call: string, target: Target, note?: string) {
   return [
     `    // ${path.join(' ')}`,
     `    new Command('${path.at(-1) ?? ''}')`,
@@ -209,7 +236,7 @@ function onCommand(path: readonly string[], call: string, target: string, note?:
 }
 
 /** A finding for one call on the Application, whose name a thrown fault does not know. */
-function onApplication(call: string, target: string, note?: string) {
+function onApplication(call: string, target: Target, note?: string) {
   return ['    new Application(…)', ...marked(`      .${call}`, target, note)];
 }
 
@@ -221,6 +248,119 @@ function bare(call: string, target: string, note?: string) {
 const booleanRemedy = 'use polarity to control its absent value.';
 
 const cases: Record<string, Expected> = {
+  'alias-global-local': {
+    correction: 'Change one declaration.',
+    findings: [
+      onApplication(
+        "globalOption('file', { aliases: ['input'], type: 'string' })",
+        "'input'",
+        'the global option',
+      ),
+      onCommand(['get'], "option('input', { type: 'boolean' })", "'input'", 'the local option'),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence:
+      'Option spelling "--input" is used by the global option "file" and the local option "input" on Command "get".',
+  },
+  'alias-list': {
+    correction: 'Supply a list of alias names.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('min-bytes', { aliases: 'minimum', type: 'string' })",
+        "aliases: 'minimum'",
+      ),
+    ],
+    headline: 'NOT A LIST',
+    rule: 'not-a-list',
+    sentence: 'Option "min-bytes" declares aliases that are not an array.',
+  },
+  'alias-name': {
+    correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('min-bytes', { aliases: ['bad=name'], type: 'string' })",
+        "'bad=name'",
+      ),
+    ],
+    headline: 'INVALID DECLARED NAME',
+    rule: 'declared-name',
+    sentence: 'Option "min-bytes" declares an alias named "bad=name".',
+  },
+  'alias-name-kind': {
+    correction: 'Supply a string name.',
+    findings: [onCommand(['get'], "option('min-bytes', { aliases: [7], type: 'string' })", '7')],
+    headline: 'INVALID DECLARED NAME',
+    rule: 'declared-name',
+    sentence: 'Option "min-bytes" declares an alias named 7.',
+  },
+  'alias-negative-spelling': {
+    correction: 'Change one declaration.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('color', { aliases: ['colour'], polarity: 'both', type: 'boolean' })",
+        "'colour'",
+      ),
+      onCommand(['get'], "option('no-colour', { type: 'boolean' })", "'no-colour'"),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence: 'Option spelling "--no-colour" is used by both "color" and "no-colour".',
+  },
+  'alias-own-name': {
+    correction: 'Remove the alias.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('min-bytes', { aliases: ['min-bytes'], type: 'string' })",
+        { after: 'aliases: [', text: "'min-bytes'" },
+        'its own name',
+      ),
+    ],
+    headline: 'ALIAS REPEATS A NAME',
+    rule: 'repeated-alias',
+    sentence: 'Option "min-bytes" declares alias "min-bytes", which is its own name.',
+  },
+  'alias-short-only': {
+    correction: 'Remove aliases or shortOnly.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('file', { aliases: ['input'], short: 'f', shortOnly: true, type: 'string' })",
+        "aliases: ['input']",
+      ),
+    ],
+    headline: 'SHORT ONLY WITH ALIASES',
+    rule: 'short-only-with-aliases',
+    sentence: 'Option "file" declares aliases and shortOnly, which removes every long spelling.',
+  },
+  'alias-spelling': {
+    correction: 'Change one declaration.',
+    findings: [
+      onCommand(['get'], "option('min-bytes', { aliases: ['limit'], type: 'string' })", "'limit'"),
+      onCommand(['get'], "option('limit', { type: 'string' })", "'limit'"),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence: 'Option spelling "--limit" is used by both "min-bytes" and "limit".',
+  },
+  'alias-twice': {
+    correction: 'Remove the repeated alias.',
+    findings: [
+      onCommand(
+        ['get'],
+        "option('min-bytes', { aliases: ['minimum', 'minimum'], type: 'string' })",
+        { after: "'minimum', ", text: "'minimum'" },
+        'already an alias',
+      ),
+    ],
+    headline: 'ALIAS REPEATS A NAME',
+    rule: 'repeated-alias',
+    sentence: 'Option "min-bytes" declares alias "minimum" twice.',
+  },
   'argument-env': {
     correction: 'Remove it.',
     findings: [onCommand(['get'], "argument('path', { env: 'PATH' })", "env: 'PATH'")],
@@ -472,6 +612,21 @@ const cases: Record<string, Expected> = {
     headline: 'INVALID OPTION TYPE',
     rule: 'option-type',
     sentence: 'Option "limit" has an invalid type.',
+  },
+  'plugin-alias-spelling': {
+    correction: 'Change one declaration.',
+    findings: [
+      bare(
+        "plugin('@acme/trace', { options: { trace: { aliases: ['tail'], type: 'boolean' } } })",
+        "'tail'",
+        "the plugin's global option",
+      ),
+      onCommand(['get'], "option('tail', { type: 'string' })", "'tail'", 'the local option'),
+    ],
+    headline: 'SPELLING USED TWICE',
+    rule: 'spelling-taken',
+    sentence:
+      'Option spelling "--tail" is used by plugin "@acme/trace" option "trace" and the local option "tail" on Command "get".',
   },
   'plugin-boolean-default': {
     correction: `Remove default; ${booleanRemedy}`,

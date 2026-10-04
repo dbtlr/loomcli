@@ -15,7 +15,7 @@ import {
 import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
-import type { CompileScope, SpellingRole, SpellingTable } from './options.js';
+import type { CompileScope, SpellingOrigin, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
@@ -54,7 +54,7 @@ interface OptionSite extends TableEntry {
 
 /** One side of a spelling collision, which also says which of the option's forms the spelling is. */
 interface SpellingSite extends OptionSite {
-  role: SpellingRole;
+  origin: SpellingOrigin;
 }
 
 /** A collision sentence names a plugin first, then the application's globals, then a local. */
@@ -133,8 +133,8 @@ function spellingCollision(
   const [leading, trailing] = pair;
   return new DeclarationError(spellingTaken, {
     correction: 'Change one declaration.',
-    findings: pair.map(({ owner, role, site }) =>
-      siteFinding(site, spellingMark(site, role), sideNotes[owner.kind]),
+    findings: pair.map(({ origin, owner, site }) =>
+      siteFinding(site, spellingMark(site, origin), sideNotes[owner.kind]),
     ),
     sentence: `Option spelling ${quoted(spelling)} is used by ${usedBy(leading)} and ${usedBy(trailing)}.`,
   });
@@ -386,8 +386,8 @@ function checkLocalOptions(
     if (global && claimed && declaration) {
       throw spellingCollision(
         spelling,
-        { ...claimed, name: global.name, role: global.role },
-        { name: option.name, owner: local, role: option.role, site: siteOf(declaration) },
+        { ...claimed, name: global.name, origin: global },
+        { name: option.name, origin: option, owner: local, site: siteOf(declaration) },
       );
     }
   }
@@ -439,8 +439,8 @@ function join(
     if (existing && claimed && own) {
       throw spellingCollision(
         spelling,
-        { ...own, name: option.name, role: option.role },
-        { ...claimed, name: existing.name, role: existing.role },
+        { ...own, name: option.name, origin: option },
+        { ...claimed, name: existing.name, origin: existing },
       );
     }
     options.set(spelling, option);

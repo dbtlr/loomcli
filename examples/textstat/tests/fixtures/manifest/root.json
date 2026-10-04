@@ -160,23 +160,6 @@
         }
       },
       {
-        "type": "string",
-        "name": "minimum",
-        "description": "Drop a source smaller than this many bytes. The larger threshold wins.",
-        "deprecated": "Use --min-bytes instead.",
-        "long": "--minimum",
-        "short": null,
-        "required": false,
-        "multiple": false,
-        "schema": {
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "type": "integer",
-          "minimum": 0
-        },
-        "env": null,
-        "default": null
-      },
-      {
         "type": "boolean",
         "name": "total",
         "description": "Add a total row.",

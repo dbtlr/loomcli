@@ -194,14 +194,14 @@ export interface ConfigFaults extends CaptureFaults {
 
 /**
  * Authoring's one read of a config, through `captureDeclaration`: the prototype verdict, the copy of
- * every own string key, the copy of its `extensions` list, and the snapshot of its default, inside
- * one try. Every later check, the registry entry, and every sentence read the copy and never the
- * author's object again, so a getter runs once and the caller's later changes reach nothing. The
- * default is copied and frozen to `defaultLevels` levels, cycles included, and that copy is the
- * value the graph publishes and a run validates; every other property is captured as declared,
- * because core clones no library object. A read that throws, from a getter or a proxy trap, is the
- * unreadable fault, named by the key it threw in, a default nested deeper is the too-deep fault,
- * and a value that is not a plain object is the not-an-object fault.
+ * every own string key, the copies of its `extensions` and `aliases` lists, and the snapshot of its
+ * default, inside one try. Every later check, the registry entry, and every sentence read the copy
+ * and never the author's object again, so a getter runs once and the caller's later changes reach
+ * nothing. The default is copied and frozen to `defaultLevels` levels, cycles included, and that
+ * copy is the value the graph publishes and a run validates; every other property is captured as
+ * declared, because core clones no library object. A read that throws, from a getter or a proxy
+ * trap, is the unreadable fault, named by the key it threw in, a default nested deeper is the
+ * too-deep fault, and a value that is not a plain object is the not-an-object fault.
  */
 export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
   config: Config,
@@ -214,6 +214,7 @@ export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
       // Presence is the key, so a declared `default: undefined` stays a default.
       read.nested(copy, 'default', (value) => boundedSnapshot(value, defaultLevels));
       read.nested(copy, 'extensions', shallowList);
+      read.nested(copy, 'aliases', shallowList);
     },
     {
       notAnObject: notAnObjectFault,
