@@ -37,8 +37,8 @@ test('jsonkit doctor --help prints its page like any other Command', () => {
       '  -v, --verbose...   Name the document before reading it.',
       '  -h, --help         Show this help.',
       '  -V, --version      Print the version.',
-      "      --manifest     Print this command's manifest as JSON.",
-      '      --explain      Explain the selected command and exit.',
+      "  -M, --manifest     Print this command's manifest as JSON.",
+      '  -e, --explain      Explain the selected command and exit.',
       '',
     ].join('\n'),
   });

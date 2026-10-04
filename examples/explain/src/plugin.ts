@@ -6,7 +6,7 @@ import { explainCommand } from './extension.js';
 import { explainHint } from './hint.js';
 
 const options = {
-  explain: { description: 'Explain the selected command and exit.', type: 'boolean' },
+  explain: { description: 'Explain the selected command and exit.', short: 'e', type: 'boolean' },
 } satisfies PluginOptions;
 
 export type ExplainOptions = typeof options;

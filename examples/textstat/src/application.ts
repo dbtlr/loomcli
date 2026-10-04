@@ -43,8 +43,8 @@ export const textstat = new Application('textstat', {
     help(),
     suggestions(),
     version(),
-    format(),
-    manifest(),
+    format({ short: 'f' }),
+    manifest({ short: 'M' }),
     config({ file: '.textstat.{toml,json}', short: 'c' }),
     loomTheme(),
     explain(),
@@ -70,6 +70,7 @@ export const textstat = new Application('textstat', {
     description: 'Drop a source smaller than this many bytes.',
     env: 'TEXTSTAT_MIN_BYTES',
     extensions: [configInput({ path: 'minBytes' })],
+    short: 'b',
     type: 'string',
     validate: byteThreshold,
   })

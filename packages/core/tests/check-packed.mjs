@@ -241,11 +241,13 @@ try {
       {
         details: printed.command.details,
         examples: printed.command.examples,
+        manifestShort: printed.globals.find((option) => option.name === 'manifest').short,
         name: printed.command.name,
       },
       {
         details: ['Only an agent needs this.'],
         examples: [{ command: 'read x', note: null }],
+        manifestShort: '-M',
         name: 'read',
       },
       `${name}: packed manifest document`,

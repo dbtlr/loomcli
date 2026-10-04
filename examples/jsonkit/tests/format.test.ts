@@ -16,9 +16,9 @@ const entries = [
   { kind: 'boolean', path: 'ok' },
 ];
 
-test('jsonkit paths --format jsonl prints one line per Entry', () => {
+test.each(['--format', '-o'])('jsonkit paths %s jsonl prints one line per Entry', (spelling) => {
   withDocuments({ 'doc.json': walked }, (cwd) => {
-    const result = invoke(main, ['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd });
+    const result = invoke(main, ['paths', spelling, 'jsonl', '-f', 'doc.json'], { cwd });
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe(`${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`);

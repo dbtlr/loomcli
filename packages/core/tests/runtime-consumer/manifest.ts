@@ -6,9 +6,11 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
 /**
  * The packed manifest plugin and its declarations module. The author's value and the value the
- * packed help hook supplies collect on one Command, author first, and `--manifest` prints them.
+ * packed help hook supplies collect on one Command, author first, and the chosen `-M` prints them.
  */
-const supplier = new Application('supplier', { plugins: [help(), manifest()] }).command(
+const supplier = new Application('supplier', {
+  plugins: [help(), manifest({ short: 'M' })],
+}).command(
   new Command('read', {
     extensions: [
       manifestCommand({ details: 'Only an agent needs this.' }),
@@ -19,4 +21,4 @@ const supplier = new Application('supplier', { plugins: [help(), manifest()] }).
 
 const [read] = supplier.inspect().root.children;
 process.stdout.write(`${JSON.stringify(read ? readExtension(read, manifestCommand) : null)}\n`);
-await supplier.run({ host: { argv: ['read', '--manifest'] } });
+await supplier.run({ host: { argv: ['read', '-M'] } });
