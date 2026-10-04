@@ -78,8 +78,8 @@ The exact string an argument or option is declared under, which is the key its a
 _Avoid_: Key (when the spelling is meant), label
 
 **Spelling**:
-A token form the parser accepts for an option: the long form, the short form, or the generated negative form. Diagnostics about supplied input name the spelling; diagnostics about a declaration name the declared name.
-_Avoid_: Flag name, syntax, alias (for the long form)
+A token form the parser accepts for an option: the long form, the short form, an alias's long form, or a generated negative form. Diagnostics about supplied input name the spelling; diagnostics about a declaration name the declared name.
+_Avoid_: Flag name, syntax, alias (for the long form the declared name derives)
 
 **Short alias**:
 The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from a Command's alias.
@@ -143,7 +143,7 @@ The one rule for every name an operator types as a command at a shell prompt: th
 _Avoid_: Safe name, shell-safe name, identifier
 
 **Alias**:
-An unadvertised synonym that routes to a Command: another portable name for a common mistype or inference, so a guessed spelling succeeds. It changes routing alone; it is not a second name, not an option's short alias, and not a hidden Command. Every canonical name and alias under one parent shares one set of names that must not repeat.
+An unadvertised synonym for a Command or an option: another name for a common mistype, an inference, or a former name, so a guessed or retired spelling still succeeds. A Command's alias routes to that Command, and every canonical name and alias under one parent shares one set of names that must not repeat. An option's alias is one more long spelling of that option, in the table its other spellings share. An alias is not a second advertised name, not an option's short alias, and not a hidden member.
 _Avoid_: Hidden alias, alternate command, shortcut
 
 **Hidden Command**:
