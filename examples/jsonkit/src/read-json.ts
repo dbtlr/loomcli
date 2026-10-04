@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
-import { FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError } from '@loomcli/core';
 import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
 import { checkFileOrStdin } from './file-or-stdin.js';
@@ -55,7 +55,8 @@ export interface DocumentReading {
 
 /**
  * Every action reads its document here, so a read failure reads the same everywhere. With
- * `--verbose` it first names the source on one info line, whatever the count. A malformed document
+ * `--verbose` it first names the source on one info line, whatever the count, with its control
+ * characters escaped as every other operator-supplied name jsonkit prints. A malformed document
  * throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns into its
  * `InvalidJsonError`.
  */
@@ -63,7 +64,11 @@ export async function readJson({ host, options, out, style }: DocumentReading): 
   const { file, verbose } = options;
   checkFileOrStdin(file, host);
   if (verbose >= namingCount) {
-    await out.info(file === undefined ? 'Reading stdin.' : `Reading ${style.escape(file)}.`);
+    await out.info(
+      file === undefined
+        ? 'Reading stdin.'
+        : `Reading ${style.escape(escapeControlCharacters(file))}.`,
+    );
   }
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) => {

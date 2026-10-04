@@ -498,7 +498,7 @@ test('jsonkit -v names stdin when no file is supplied, and escapes a file name i
   const name = 'doc\u{202e}.json';
   withDocuments({ [name]: '{"a":1}' }, (cwd) => {
     expect(invoke(main, ['-v', 'keys', '-f', name], { cwd }).stderr).toBe(
-      `${String.raw`ℹ Reading doc‮.json.`}\n`,
+      `${String.raw`ℹ Reading doc\u202e.json.`}\n`,
     );
   });
 });
