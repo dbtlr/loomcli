@@ -5,9 +5,13 @@ import { factFault, flagFault, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import {
   booleanOptionMultiple,
+  countOptionMultiple,
+  impliedNotAString,
+  impliedOnBooleanOrCount,
   optionDeclaredTwice,
   optionPolarity,
   optionType,
+  polarityOnCount,
   polarityOnString,
   shortAlias,
   shortOnlyBothPolarities,
@@ -27,13 +31,31 @@ export interface OptionValues {
   strings: Map<string, string>;
   lists: Map<string, string[]>;
   booleans: Map<string, boolean>;
+  /** How many times each counted option was supplied, or the count an input source filled. */
+  counts: Map<string, number>;
   /** The spelling of the token that supplied each parsed option, which no input source writes. */
   spellings: Map<string, string>;
+  /**
+   * For each string option a bare spelling supplied, the positions that held its implied value: `0`
+   * for a scalar, and each such occurrence's index in a multiple option's list. Validation supplies
+   * the implied value's prepared output there, and no input source writes it.
+   */
+  implied: Map<string, number[]>;
 }
 
-/** Every parsed value lands in one of these maps; `lists` holds the repeated string options. */
+/**
+ * Every parsed value lands in one of these maps; `lists` holds the repeated string options and
+ * `counts` the counted ones.
+ */
 export function emptyValues(): OptionValues {
-  return { booleans: new Map(), lists: new Map(), spellings: new Map(), strings: new Map() };
+  return {
+    booleans: new Map(),
+    counts: new Map(),
+    implied: new Map(),
+    lists: new Map(),
+    spellings: new Map(),
+    strings: new Map(),
+  };
 }
 
 /**
@@ -44,9 +66,14 @@ export type SpellingOrigin =
   | { role: 'long' | 'negative' | 'short' }
   | { role: 'alias'; index: number };
 
+/**
+ * How one option reads words. A string option with an implied value never takes the next word, and
+ * supplies `implied` when its spelling is bare.
+ */
 type OptionForm =
-  | { type: 'string'; name: string; multiple: boolean }
-  | { type: 'boolean'; name: string; value: boolean };
+  | { type: 'string'; name: string; multiple: boolean; implied: string | undefined }
+  | { type: 'boolean'; name: string; value: boolean }
+  | { type: 'count'; name: string };
 
 export type OptionSpelling = OptionForm & SpellingOrigin;
 
@@ -227,12 +254,21 @@ function checkAliases(config: OptionConfig, site: InputSite, name: string): void
   }
 }
 
-/** A Boolean option's polarity, which a string option does not declare. */
+/** A Boolean option's polarity, which a string option and a counted option do not declare. */
 function checkPolarity(config: OptionConfig, site: InputSite, subject: string): void {
+  // The type is read before the check below narrows the config to the kind the types allow.
+  const { type } = config;
   if (config.polarity === undefined) {
     return;
   }
-  if (config.type !== 'boolean') {
+  if (type === 'count') {
+    throw factFault(polarityOnCount, site, {
+      correction: 'Remove polarity or use type "boolean".',
+      fact: 'polarity',
+      sentence: `${subject} declares polarity but is a counted option.`,
+    });
+  }
+  if (type !== 'boolean') {
     throw factFault(polarityOnString, site, {
       correction: 'Remove polarity or use type "boolean".',
       fact: 'polarity',
@@ -255,30 +291,76 @@ function checkPolarity(config: OptionConfig, site: InputSite, subject: string): 
   }
 }
 
-/** Every rule one option declaration answers alone, before the table meets it. */
-function validateDeclaration({ name, config }: OptionDeclaration, site: InputSite) {
-  checkOptionName(name, site);
-  const subject = `Option ${quoted(name)}`;
-  if (!['string', 'boolean'].includes(config.type)) {
-    throw factFault(optionType, site, {
-      correction: 'Use "string" or "boolean".',
-      fact: 'type',
-      sentence: `${subject} has an invalid type.`,
-    });
+/** `multiple` belongs to a string option: a Boolean option has one value and a count counts. */
+function checkMultiple(config: OptionConfig, site: InputSite, subject: string): void {
+  // The type is read before the check below narrows the config to the kind the types allow.
+  const { type } = config;
+  if (config.multiple === undefined) {
+    return;
   }
-  checkShortForms(config, site, subject);
-  checkAliases(config, site, name);
-  if (config.type === 'boolean' && config.multiple !== undefined) {
+  if (type === 'boolean') {
     throw factFault(booleanOptionMultiple, site, {
       correction: 'Remove multiple or declare a string option.',
       fact: 'multiple',
       sentence: `${subject} is a boolean option and declares multiple.`,
     });
   }
-  if (config.multiple !== undefined && typeof config.multiple !== 'boolean') {
+  if (type === 'count') {
+    throw factFault(countOptionMultiple, site, {
+      correction: 'Remove multiple; a counted option already counts every occurrence.',
+      fact: 'multiple',
+      sentence: `${subject} is a counted option and declares multiple.`,
+    });
+  }
+  if (typeof config.multiple !== 'boolean') {
     throw flagFault(site, 'multiple');
   }
+}
+
+/** The kind each option type reads as in a sentence about a value it cannot take. */
+const valuelessKinds = { boolean: 'a Boolean option', count: 'a counted option' } as const;
+
+/**
+ * A string option's implied value, the string a bare spelling supplies. A Boolean option and a
+ * counted option take no value, so neither declares one. Presence is the key, so a declared
+ * `undefined` is a declaration the rule reads.
+ */
+function checkImplied(config: OptionConfig, site: InputSite, subject: string): void {
+  if (!('implied' in config)) {
+    return;
+  }
+  if (config.type !== 'string') {
+    throw factFault(impliedOnBooleanOrCount, site, {
+      correction: 'Remove implied or declare a string option.',
+      fact: 'implied',
+      sentence: `${subject} is ${valuelessKinds[config.type]} and declares implied.`,
+    });
+  }
+  if (typeof config.implied !== 'string') {
+    throw factFault(impliedNotAString, site, {
+      correction: 'Supply a string, the value a bare spelling supplies.',
+      fact: 'implied',
+      sentence: `${subject} declares implied that is not a string.`,
+    });
+  }
+}
+
+/** Every rule one option declaration answers alone, before the table meets it. */
+function validateDeclaration({ name, config }: OptionDeclaration, site: InputSite) {
+  checkOptionName(name, site);
+  const subject = `Option ${quoted(name)}`;
+  if (!['string', 'boolean', 'count'].includes(config.type)) {
+    throw factFault(optionType, site, {
+      correction: 'Use "string", "boolean", or "count".',
+      fact: 'type',
+      sentence: `${subject} has an invalid type.`,
+    });
+  }
+  checkShortForms(config, site, subject);
+  checkAliases(config, site, name);
+  checkMultiple(config, site, subject);
   checkPolarity(config, site, subject);
+  checkImplied(config, site, subject);
 }
 
 /**
@@ -321,7 +403,7 @@ function addLongForms(
 ): void {
   const { config, positive, site } = option;
   const forms: [string, OptionSpelling][] = [];
-  if (config.type === 'string' || config.polarity !== 'negative') {
+  if (config.type !== 'boolean' || config.polarity !== 'negative') {
     forms.push([`--${long.name}`, { ...positive, ...long.positive }]);
   }
   if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
@@ -355,6 +437,25 @@ export function booleanValue(values: OptionValues, name: string, config: OptionC
   return values.booleans.get(name) ?? config.polarity === 'negative';
 }
 
+/** The form an option's positive spellings read words by, its long form and short alias alike. */
+function positiveForm(name: string, config: OptionConfig): OptionForm {
+  switch (config.type) {
+    case 'string': {
+      return { implied: config.implied, multiple: config.multiple === true, name, type: 'string' };
+    }
+    case 'boolean': {
+      return { name, type: 'boolean', value: config.polarity !== 'negative' };
+    }
+    case 'count': {
+      return { name, type: 'count' };
+    }
+    default: {
+      const exhaustive: never = config;
+      return exhaustive;
+    }
+  }
+}
+
 /**
  * One scope's options compiled into the spelling table the parser reads, with every rule one
  * declaration answers alone and every rule two of them answer together.
@@ -382,10 +483,7 @@ export function compileOptions<Declaration extends OptionDeclaration>(
       });
     }
     names.set(name, declaration);
-    const positive: OptionForm =
-      config.type === 'string'
-        ? { multiple: config.multiple === true, name, type: 'string' }
-        : { name, type: 'boolean', value: config.polarity !== 'negative' };
+    const positive = positiveForm(name, config);
     if (!config.shortOnly) {
       const option = { config, positive, site };
       addLongForms(claims, option, {
@@ -410,13 +508,20 @@ export function compileOptions<Declaration extends OptionDeclaration>(
  * from an input source. A declared default is never in these maps, so it never counts.
  */
 export function isSupplied(values: OptionValues, name: string): boolean {
-  return values.strings.has(name) || values.lists.has(name) || values.booleans.has(name);
+  return (
+    values.strings.has(name) ||
+    values.lists.has(name) ||
+    values.booleans.has(name) ||
+    values.counts.has(name)
+  );
 }
 
 /** One run's own copy of parsed values, which the input-source stage fills without touching argv's. */
 export function copyValues(values: OptionValues): OptionValues {
   return {
     booleans: new Map(values.booleans),
+    counts: new Map(values.counts),
+    implied: new Map([...values.implied].map(([name, positions]) => [name, [...positions]])),
     lists: new Map([...values.lists].map(([name, list]) => [name, [...list]])),
     spellings: new Map(values.spellings),
     strings: new Map(values.strings),
@@ -427,6 +532,8 @@ export function copyValues(values: OptionValues): OptionValues {
 export function mergeValues(globals: OptionValues, locals: OptionValues): OptionValues {
   return {
     booleans: new Map([...globals.booleans, ...locals.booleans]),
+    counts: new Map([...globals.counts, ...locals.counts]),
+    implied: new Map([...globals.implied, ...locals.implied]),
     lists: new Map([...globals.lists, ...locals.lists]),
     spellings: new Map([...globals.spellings, ...locals.spellings]),
     strings: new Map([...globals.strings, ...locals.strings]),

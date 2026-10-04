@@ -201,8 +201,11 @@ export interface InputIdentity {
 export interface SuppliedInputs {
   /** Raw positional values of the routed Command: one string, or the tokens of a variadic. */
   args: Readonly<Record<string, string | readonly string[] | undefined>>;
-  /** Raw option values, globals and locals: a string, every occurrence, or a Boolean presence. */
-  options: Readonly<Record<string, string | readonly string[] | boolean | undefined>>;
+  /**
+   * Raw option values, globals and locals: a string, every occurrence, a Boolean presence, or the
+   * number of times a counted option was supplied.
+   */
+  options: Readonly<Record<string, string | readonly string[] | boolean | number | undefined>>;
 }
 
 /**
@@ -396,7 +399,13 @@ export type StringOption = OptionSpelling &
   Omission &
   Described &
   Listed &
-  OptionExtensions & { type: 'string'; polarity?: never; validate?: StandardSchemaV1 };
+  OptionExtensions & {
+    type: 'string';
+    polarity?: never;
+    validate?: StandardSchemaV1;
+    /** The value a bare spelling supplies, so an explicit value is attached to the spelling. */
+    implied?: string;
+  };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence &
   Described &
@@ -484,6 +493,7 @@ export type BooleanOption =
         multiple?: never;
         required?: never;
         validateOmitted?: never;
+        implied?: never;
         polarity?: 'positive' | 'negative';
       })
   | (Described &
@@ -496,12 +506,31 @@ export type BooleanOption =
         multiple?: never;
         required?: never;
         validateOmitted?: never;
+        implied?: never;
         polarity: 'both';
         short?: ShortAlias;
         shortOnly?: false;
         aliases?: readonly string[];
       });
-export type OptionConfig = StringOption | BooleanOption;
+/**
+ * A counted option takes no value and reads how many times it was supplied, across every spelling,
+ * so it declares no validator, default, presence rule, collection, polarity, or implied value.
+ */
+export type CountOption = OptionSpelling &
+  Described &
+  Listed &
+  EnvBinding &
+  OptionExtensions & {
+    type: 'count';
+    validate?: never;
+    default?: never;
+    multiple?: never;
+    required?: never;
+    validateOmitted?: never;
+    polarity?: never;
+    implied?: never;
+  };
+export type OptionConfig = StringOption | BooleanOption | CountOption;
 /**
  * The configuration of a global option a plugin declares: everything `option()` takes except the
  * presence rules, which a global option never declares, because its validation runs on every
@@ -517,7 +546,9 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
         | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
             ? never
             : undefined)
-  : boolean;
+  : Config extends CountOption
+    ? number
+    : boolean;
 
 /**
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and

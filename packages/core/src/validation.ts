@@ -12,10 +12,12 @@ import { callSite, factFault, flagFault, partOf, siteFinding } from './facts.js'
 import type { InputSite } from './facts.js';
 import {
   booleanOptionValueRule,
+  countOptionValueRule,
   defaultDepth,
   defaultLevels,
   defaultShape,
   invalidDefault,
+  invalidImplied,
   notAValidator,
   omissionAlreadyDecided,
   omissionWithoutValidator,
@@ -62,8 +64,14 @@ export type InputDeclaration<Name extends string = string> =
   | ArgumentInput<Name>
   | OptionInput<Name>;
 
-/** Validated defaults, read before any token is parsed. Values stay `unknown` here. */
-export type DefaultValues = ReadonlyMap<InputDeclaration, unknown>;
+/**
+ * The declared values validated before any token is parsed: each default, and each implied value a
+ * bare spelling supplies. Values stay `unknown` here.
+ */
+export interface PreparedValues {
+  readonly defaults: ReadonlyMap<InputDeclaration, unknown>;
+  readonly implied: ReadonlyMap<InputDeclaration, unknown>;
+}
 
 /** The declarations one pass reads, by the scope that holds them: the graph's, then a Command's. */
 export interface ScopedInputs {
@@ -79,8 +87,8 @@ interface ScopedInput {
 
 /**
  * What the input-source stage leaves for validation's messages, by option name: the label of each
- * value it filled, and the variable of each Boolean option whose value is outside the grammar.
- * `unanswered` holds each option a configuration source would have filled had one of its own
+ * value it filled, and the variable of each Boolean or counted option whose value is outside its
+ * grammar. `unanswered` holds each option a configuration source would have filled had one of its own
  * options not been rejected; such an option reports no missing value and no absence rule judges it,
  * because the operator's configuration may hold it.
  */
@@ -99,7 +107,8 @@ interface SuppliedValues {
 /** Everything one invocation validates: its declarations, its tokens, and where they were read. */
 export interface Invocation {
   command: readonly string[];
-  defaults: DefaultValues;
+  /** Every declared default and implied value, validated before any token was read. */
+  declaredValues: PreparedValues;
   host: Host;
   inputs: ScopedInputs;
   passthrough: readonly string[];
@@ -449,7 +458,7 @@ function checkOmissionValidation(input: InputDeclaration, site: InputSite, subje
   }
 }
 
-/** The value rules a Boolean option may not declare, in the order its diagnostic names them. */
+/** The value rules a Boolean or counted option may not declare, in the order a diagnostic names them. */
 const valueRules = ['validate', 'default', 'required', 'validateOmitted'] as const;
 
 /** Whether a `validate` value is a Standard Schema v1 object that core can call. */
@@ -467,17 +476,33 @@ function isStandardSchema(validator: unknown): boolean {
   );
 }
 
+/**
+ * The value rules a Boolean or counted option declares, which take a value it never consumes. Each
+ * kind names its own absent value in the correction.
+ */
+function checkValueless(config: OptionConfig, site: InputSite, subject: string) {
+  const declared = valueRules.find((key) => key in config);
+  if (declared === undefined) {
+    return;
+  }
+  if (config.type === 'count') {
+    throw factFault(countOptionValueRule, site, {
+      correction: `Remove ${declared}; a counted option reads 0 when no occurrence supplies it.`,
+      fact: declared,
+      sentence: `${subject} is a counted option and declares ${declared}.`,
+    });
+  }
+  throw factFault(booleanOptionValueRule, site, {
+    correction: `Remove ${declared}; use polarity to control its absent value.`,
+    fact: declared,
+    sentence: `${subject} is Boolean and declares ${declared}.`,
+  });
+}
+
 function checkDeclaration(input: InputDeclaration, site: InputSite, subject: string) {
   const { config } = input;
-  if (input.kind === 'option' && input.config.type === 'boolean') {
-    const declared = valueRules.find((key) => key in config);
-    if (declared !== undefined) {
-      throw factFault(booleanOptionValueRule, site, {
-        correction: `Remove ${declared}; use polarity to control its absent value.`,
-        fact: declared,
-        sentence: `${subject} is Boolean and declares ${declared}.`,
-      });
-    }
+  if (input.kind === 'option' && input.config.type !== 'string') {
+    checkValueless(input.config, site, subject);
     return;
   }
   if (config.required !== undefined && typeof config.required !== 'boolean') {
@@ -587,6 +612,29 @@ async function validate(
 }
 
 /**
+ * Where a bare spelling supplied a string option's implied value among the values it collected,
+ * and the output its validator gave that value before any token was read.
+ */
+interface ImpliedPositions {
+  readonly output: unknown;
+  readonly positions: readonly number[];
+}
+
+/**
+ * Where a bare spelling supplied one option's implied value, with that value's prepared output, or
+ * `undefined` when no bare spelling supplied it.
+ */
+function impliedPositions(
+  input: InputDeclaration,
+  read: { declaredValues: PreparedValues; options: OptionValues },
+): ImpliedPositions | undefined {
+  const positions = input.kind === 'option' ? read.options.implied.get(input.name) : undefined;
+  return positions === undefined
+    ? undefined
+    : { output: read.declaredValues.implied.get(input), positions };
+}
+
+/**
  * One validation of a declared value. A multiple option or a variadic argument passes each of its
  * values through the validator in order, and each issue reads at its value's position before its
  * own path, so the action receives the array of outputs. Every other input passes its value once.
@@ -596,9 +644,18 @@ async function validate(
 async function validateDeclared(
   input: InputDeclaration,
   raw: unknown,
-  call: { context: () => ValidationContext; site: InputSite | undefined; signal?: AbortSignal },
+  call: {
+    context: () => ValidationContext;
+    site: InputSite | undefined;
+    signal?: AbortSignal;
+    implied?: ImpliedPositions | undefined;
+  },
 ): Promise<StandardSchemaV1.Result<unknown>> {
-  const { context, signal, site } = call;
+  const { context, implied, signal, site } = call;
+  if (!collects(input) && implied?.positions.includes(0) === true) {
+    // A bare spelling supplied the implied value, whose output was prepared before any token.
+    return { value: freshDefault(implied.output) };
+  }
   if (!collects(input) || input.config.validate === undefined) {
     return validate(input, raw, { context: context(), site });
   }
@@ -615,7 +672,11 @@ async function validateDeclared(
       // A cancelled run starts no further call; the run resolves its cancellation code instead.
       break;
     }
-    const result = await validate(input, value, { context: context(), site });
+    // A bare occurrence holds the implied value, whose output was prepared before any token.
+    const result =
+      implied?.positions.includes(position) === true
+        ? { value: freshDefault(implied.output) }
+        : await validate(input, value, { context: context(), site });
     if (result.issues === undefined) {
       outputs.push(result.value);
     } else {
@@ -723,38 +784,83 @@ export function checkDeclarations(inputs: readonly SitedInput[], named?: string)
 export type InputPlaces = ReadonlyMap<InputDeclaration, InputSite>;
 
 /**
- * Every declared default, validated before any token is read. The host is captured by then, so a
- * default's validator reads the same Host its action will, under the `default` phase. `places`
- * says where each declaration sits, which a rejected default's finding rebuilds.
+ * Every declared default and implied value, validated before any token is read, in declaration
+ * order, a declaration's default before its implied value. The host is captured by then, so each
+ * validator reads the same Host its action will, under the `default` phase. `places` says where each
+ * declaration sits, which a rejected value's finding rebuilds. An implied value is judged whether or
+ * not an invocation holds a bare spelling, because the author declared it.
  */
 export async function prepareInputs(
   inputs: ScopedInputs,
   host: Host,
   places: InputPlaces,
-): Promise<DefaultValues> {
-  const declarations = scoped(inputs);
+): Promise<PreparedValues> {
   const defaults = new Map<InputDeclaration, unknown>();
-  for (const entry of declarations.filter(({ input }) => hasDefault(input))) {
+  const implied = new Map<InputDeclaration, unknown>();
+  for (const entry of scoped(inputs)) {
     const { input } = entry;
-    const subject = declarationSubject(input);
-    const site = places.get(input);
-    const result = await validateDeclared(input, input.config.default, {
-      context: () => ({ host, input: identityOf(entry), phase: 'default' }),
-      site,
-    });
-    if (result.issues !== undefined) {
-      throw new DeclarationError(invalidDefault, {
-        correction: 'Fix the default or its validator.',
-        findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'default'))],
-        sentence: [
-          `${subject} has an invalid default.`,
-          ...messages(subject, reported(result.issues)),
-        ].join('\n'),
-      });
+    const call = {
+      context: (): ValidationContext => ({ host, input: identityOf(entry), phase: 'default' }),
+      site: places.get(input),
+    };
+    if (hasDefault(input)) {
+      const result = await validateDeclared(input, input.config.default, call);
+      defaults.set(input, declaredOutput(input, result, { fault: 'default', site: call.site }));
     }
-    defaults.set(input, result.value);
+    const value = impliedOf(input);
+    if (value !== undefined) {
+      // A bare spelling supplies one value, so even a multiple option's validator reads it alone.
+      const result = await validate(input, value, { context: call.context(), site: call.site });
+      implied.set(input, declaredOutput(input, result, { fault: 'implied', site: call.site }));
+    }
   }
-  return defaults;
+  return { defaults, implied };
+}
+
+/** How each declared value names itself when its validator rejects it, and the fix. */
+const declaredFaults = {
+  default: {
+    correction: 'Fix the default or its validator.',
+    noun: 'default',
+    rule: invalidDefault,
+  },
+  implied: {
+    correction: 'Fix the implied value or its validator.',
+    noun: 'implied value',
+    rule: invalidImplied,
+  },
+} as const;
+
+/**
+ * The output of a declared value its validator accepted, or the declaration fault it is when the
+ * validator rejected it, one line per issue under the sentence, marking the key that declares it.
+ */
+function declaredOutput(
+  input: InputDeclaration,
+  result: StandardSchemaV1.Result<unknown>,
+  declared: { fault: keyof typeof declaredFaults; site: InputSite | undefined },
+): unknown {
+  if (result.issues === undefined) {
+    return result.value;
+  }
+  const { fault, site } = declared;
+  const { correction, noun, rule } = declaredFaults[fault];
+  const subject = declarationSubject(input);
+  throw new DeclarationError(rule, {
+    correction,
+    findings: site === undefined ? [] : [siteFinding(site, partOf(site, fault))],
+    sentence: [
+      `${subject} has an invalid ${noun}.`,
+      ...messages(subject, reported(result.issues)),
+    ].join('\n'),
+  });
+}
+
+/** The implied value a string option declares, which a bare spelling supplies, or `undefined`. */
+function impliedOf(input: InputDeclaration): string | undefined {
+  return input.kind === 'option' && input.config.type === 'string'
+    ? input.config.implied
+    : undefined;
 }
 
 /**
@@ -780,13 +886,15 @@ function suppliedInputs(
   supplied: SuppliedValues,
 ): SuppliedInputs {
   const args: Record<string, string | readonly string[] | undefined> = {};
-  const options: Record<string, string | readonly string[] | boolean | undefined> = {};
+  const options: Record<string, string | readonly string[] | boolean | number | undefined> = {};
   for (const input of declarations) {
     const collected = collects(input);
     if (input.kind === 'argument') {
       args[input.name] = copied(supplied.args.get(input)) ?? (collected ? [] : undefined);
     } else if (input.config.type === 'boolean') {
       options[input.name] = supplied.options.booleans.get(input.name);
+    } else if (input.config.type === 'count') {
+      options[input.name] = supplied.options.counts.get(input.name);
     } else {
       options[input.name] =
         copied(suppliedOption(supplied.options, input.name, collected)) ??
@@ -796,8 +904,15 @@ function suppliedInputs(
   return { args, options };
 }
 
-/** The Boolean grammar's one issue, which a variable outside it reports. */
-const grammarIssues: readonly StandardSchemaV1.Issue[] = [{ message: 'Use true, false, 1, or 0.' }];
+/**
+ * The one issue a variable outside its option's grammar reports: the Boolean grammar, or the count
+ * grammar of ASCII decimal digits.
+ */
+function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
+  return input.config.type === 'count'
+    ? [{ message: 'Use a whole number of 0 or more.' }]
+    : [{ message: 'Use true, false, 1, or 0.' }];
+}
 
 /** One rejected or missing input: the problem it reports, and the lines core's default text holds. */
 interface Report {
@@ -830,7 +945,8 @@ export function rejectsGlobal(validation: Validation): boolean {
  * plugin's, and then the routed Command's own declarations, each in authoring order.
  */
 export async function validateValues(invocation: Invocation): Promise<Validation> {
-  const { defaults, prior, sources, supplied } = invocation;
+  const { declaredValues, prior, sources, supplied } = invocation;
+  const { defaults } = declaredValues;
   const declarations = scoped(invocation.inputs);
   /** Where a filled option's value came from, which its diagnostic names; argv names none. */
   const originOf = (input: InputDeclaration) =>
@@ -906,6 +1022,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
     const result = await validateDeclared(entry.input, raw, {
       context: () => contextOf(entry),
+      implied: impliedPositions(entry.input, { declaredValues, options: supplied.options }),
       signal: invocation.signal,
       site: invocation.places.get(entry.input),
     });
@@ -940,10 +1057,13 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       // The earlier pass's problem reports here, in this pass's order.
       reports.set(input, earlier);
     } else if (input.kind === 'option' && variable !== undefined) {
-      // A Boolean variable outside the grammar filled nothing, so it is the option's problem.
-      reject(entry, grammarIssues, suppliedName(input, spellingOf(input), variable));
+      // A variable outside its option's grammar filled nothing, so it is the option's problem.
+      reject(entry, grammarIssues(input), suppliedName(input, spellingOf(input), variable));
     } else if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(input, booleanValue(supplied.options, input.name, input.config));
+    } else if (input.kind === 'option' && input.config.type === 'count') {
+      // A count passes no validator, and no occurrence and no source reads 0.
+      values.set(input, supplied.options.counts.get(input.name) ?? 0);
     } else {
       const collected = collects(input);
       const spelling = spellingOf(input);

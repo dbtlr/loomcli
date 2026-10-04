@@ -46,7 +46,11 @@ slots.map((slot) => slot.hidden);
 
 // The option union reads by its `type` tag, and each form publishes its own spellings.
 const spelling = (option: OptionNode) =>
-  option.type === 'boolean' ? option.negative : option.default;
+  option.type === 'boolean' ? option.negative : option.long;
+// Only a string option publishes a default, so a counted one is narrowed away first.
+const declared = (option: OptionNode) => (option.type === 'string' ? option.default : undefined);
+// @ts-expect-error TS2339: A counted option publishes no default value.
+graph.globals.map((option) => (option.type === 'boolean' ? null : option.default));
 
 // @ts-expect-error TS2339: A boolean option publishes no default value.
 graph.globals.map((option) => (option.type === 'boolean' ? option.default : null));
@@ -100,6 +104,7 @@ function describe(error: unknown): string {
 }
 
 void spelling;
+void declared;
 void describe;
 void argumentSchema;
 void optionSchema;

@@ -323,7 +323,10 @@ const rejected = [
     'hook-missing-default',
     'Command "count" selects default view "wide", which it does not name. Name the view or select a named one.',
   ],
-  ['hook-invalid-option', 'Option "format" has an invalid type. Use "string" or "boolean".'],
+  [
+    'hook-invalid-option',
+    'Option "format" has an invalid type. Use "string", "boolean", or "count".',
+  ],
 ] satisfies [string, string][];
 
 test.each(rejected)('inspect() and run() reject the %s declaration alike', (scenario, message) => {

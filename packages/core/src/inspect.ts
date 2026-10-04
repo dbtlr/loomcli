@@ -9,7 +9,13 @@ import { schemaConverterFailed } from './input-rules.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
-import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
+import type {
+  ArgumentConfig,
+  BooleanOption,
+  DeclaredResult,
+  OptionConfig,
+  StringOption,
+} from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { declarationSubject, declaringSite, inputPlace, validatesOmission } from './validation.js';
 
@@ -43,9 +49,11 @@ interface ArgumentNode {
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
  * deprecated one; parsing binds without reading either.
- * `schema` is the input schema the validator publishes. A Boolean option validates nothing, so its
- * variant carries the field at `null`, and every projection built on the node holds if a later
- * contract lets it validate.
+ * `schema` is the input schema the validator publishes. A Boolean option and a counted option
+ * validate nothing, so their variants carry the field at `null`, and every projection built on the
+ * node holds if a later contract lets a Boolean option validate. A counted option has no negative
+ * spelling, polarity, default, or validator, so its variant carries none of them. A string option's
+ * `implied` is the value a bare spelling supplies, or `null` when it declares none.
  * `env` is the variable the option's environment binding names, or `null` when it binds none.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
@@ -68,6 +76,7 @@ type OptionNode =
       readonly schema: InputSchema;
       readonly env: string | null;
       readonly default: { readonly value: unknown } | undefined;
+      readonly implied: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
     }
   | {
@@ -82,6 +91,19 @@ type OptionNode =
       readonly aliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
+      readonly env: string | null;
+      readonly extensions: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly type: 'count';
+      readonly name: string;
+      readonly description: string | undefined;
+      readonly hidden: boolean;
+      readonly deprecated: string | undefined;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly aliases: readonly string[];
+      readonly schema: null;
       readonly env: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
     };
@@ -277,43 +299,82 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { long, negative, short } = spellingsOf(table, name);
   const extensions = extensionsOf(records, input);
   const aliases = Object.freeze([...(config.aliases ?? [])]);
-  const node: OptionNode =
-    config.type === 'boolean'
-      ? {
-          aliases,
-          deprecated: config.deprecated,
-          description: config.description,
-          env: config.env ?? null,
-          extensions,
-          hidden: config.hidden === true,
-          long,
-          name,
-          negative,
-          polarity: config.polarity ?? 'positive',
-          schema: null,
-          short,
-          type: 'boolean',
-        }
-      : {
-          aliases,
-          default: declaredDefault(config),
-          deprecated: config.deprecated,
-          description: config.description,
-          env: config.env ?? null,
-          extensions,
-          hidden: config.hidden === true,
-          long,
-          // The parser reads the same test, so a collection reports as one here and there.
-          multiple: config.multiple === true,
-          name,
-          required: config.required === true,
-          schema: inputSchema(input, check),
-          short,
-          type: 'string',
-          validateOmitted: validatesOmission(input),
-          validated: config.validate !== undefined,
-        };
-  return Object.freeze(node);
+  return Object.freeze(
+    config.type === 'count'
+      ? countNode(input, { aliases, extensions, long, short })
+      : spelledNode(input, config, { aliases, check, extensions, long, negative, short }),
+  );
+}
+
+/** The spellings and shared facts one option node carries, read once from the table and records. */
+interface NodeParts {
+  aliases: readonly string[];
+  extensions: Readonly<Record<string, unknown>>;
+  long: string | null;
+  short: string | null;
+}
+
+/** A counted option's node: no negative spelling, polarity, default, or validator. */
+function countNode({ config, name }: OptionInput, parts: NodeParts): OptionNode {
+  return {
+    ...parts,
+    deprecated: config.deprecated,
+    description: config.description,
+    env: config.env ?? null,
+    hidden: config.hidden === true,
+    name,
+    schema: null,
+    type: 'count',
+  };
+}
+
+/**
+ * A string or Boolean option's node, in the shape its type gives it. `config` is the input's own,
+ * narrowed by the caller; the input itself keys the schema check.
+ */
+function spelledNode(
+  input: OptionInput,
+  config: StringOption | BooleanOption,
+  parts: NodeParts & { check: SchemaCheck; negative: string | null },
+): OptionNode {
+  const { name } = input;
+  const { aliases, check, extensions, long, negative, short } = parts;
+  return config.type === 'boolean'
+    ? {
+        aliases,
+        deprecated: config.deprecated,
+        description: config.description,
+        env: config.env ?? null,
+        extensions,
+        hidden: config.hidden === true,
+        long,
+        name,
+        negative,
+        polarity: config.polarity ?? 'positive',
+        schema: null,
+        short,
+        type: 'boolean',
+      }
+    : {
+        aliases,
+        default: declaredDefault(config),
+        deprecated: config.deprecated,
+        description: config.description,
+        env: config.env ?? null,
+        extensions,
+        hidden: config.hidden === true,
+        implied: config.implied ?? null,
+        long,
+        // The parser reads the same test, so a collection reports as one here and there.
+        multiple: config.multiple === true,
+        name,
+        required: config.required === true,
+        schema: inputSchema(input, check),
+        short,
+        type: 'string',
+        validateOmitted: validatesOmission(input),
+        validated: config.validate !== undefined,
+      };
 }
 
 /** The built slots already answer presence and arity, so the node repeats no config reading. */

@@ -639,7 +639,7 @@ class ApplicationBuilder<
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = inputPlaces(graph);
-        const defaults = await prepareInputs(inputs, host, places);
+        const declaredValues = await prepareInputs(inputs, host, places);
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
@@ -649,7 +649,7 @@ class ApplicationBuilder<
           signals.install(ownedSignals(built.plugins));
           await runInvocation({
             channel: (binding) => invocationOutput.channel(binding),
-            defaults,
+            declaredValues,
             graph,
             host,
             inspected,

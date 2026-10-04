@@ -141,10 +141,10 @@ import {
 } from './validation.js';
 import type {
   ArgumentInput,
-  DefaultValues,
   InputPlaces,
   InputDeclaration,
   OptionInput,
+  PreparedValues,
   Provenance,
   ValidatedInputs,
   Validation,
@@ -2590,10 +2590,11 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
 export interface DispatchInvocation {
   /** The channel the action receives, which the results lane builds from the routed node. */
   channel: (binding: ResultBinding) => ActionChannel;
-  defaults: DefaultValues;
   host: Host;
   /** Where every input of the graph was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
+  /** Every declared default and implied value, validated before any token was read. */
+  declaredValues: PreparedValues;
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
   /** Offers a configuration source's foreign throw to the translators where its call settles. */
@@ -2775,7 +2776,7 @@ function validateInvocation(
   const parsed = local.kind === 'parsed';
   return validateValues({
     command: routed.path,
-    defaults: invocation.defaults,
+    declaredValues: invocation.declaredValues,
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: parsed ? routed.command.inputs : [] },
     passthrough: tailOf(local),
