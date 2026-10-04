@@ -218,6 +218,13 @@ test.each([[[]], [['get', 'name']], [['keys']]])(
   },
 );
 
+test('jsonkit escapes the control characters of a file name it cannot read', () => {
+  const result = invoke(main, ['--file', 'missing\u{202e}.json', 'keys']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(String.raw`Cannot read file: missing\u202e.json: `);
+  expect(result.stderr).not.toContain('\u{202e}');
+});
+
 test.each([
   ['malformed.json', '{"name":'],
   ['empty.json', ''],

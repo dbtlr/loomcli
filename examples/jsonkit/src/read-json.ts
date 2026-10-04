@@ -17,24 +17,25 @@ interface Source {
 
 /**
  * The reason a runtime gave, or the fallback, as one sentence ending in a period. A reason that
- * already ends with one keeps it, so the fix that follows never reads after two periods.
+ * already ends with one keeps it, so the fix that follows never reads after two periods. A runtime
+ * reason can quote the path it failed on, so its control characters are escaped as the name's are.
  */
 function explain(error: unknown, fallback: string): string {
-  const reason = error instanceof Error ? error.message : fallback;
+  const reason = error instanceof Error ? escapeControlCharacters(error.message) : fallback;
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
 /**
  * The source of one invocation. A supplied file is the selection; without one the piped text is.
  * `readJson` has already decided whether omission is allowed, so this names the source and its
- * connection alone.
+ * connection alone, with the file name's control characters escaped.
  */
 function select(file: string | undefined, host: Host): Source {
   if (file === undefined) {
     return { failure: 'stdin', stream: host.stdin };
   }
   return {
-    failure: `file: ${file}`,
+    failure: `file: ${escapeControlCharacters(file)}`,
     stream: createReadStream(resolve(host.cwd, file)),
   };
 }
