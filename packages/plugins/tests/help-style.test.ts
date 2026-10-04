@@ -183,6 +183,21 @@ test('themed option cells separate spellings, placeholders, facts, and warning t
   expect(result.stdout).toContain('  \u001b[90;3m界é\u001b[39;23m  Wide.\n');
 });
 
+test("an implied value's brackets and a count's ellipsis share the placeholder style, and the implied fact is dim", () => {
+  const result = run({
+    argv: ['--help'],
+    kinds: true,
+    rendering: { color: 'always', modifiers: 'always' },
+  });
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain(
+    '      \u001b[33m--backup\u001b[90;3m[=<backup>]\u001b[39;23m  \u001b[90m(implied: simple)\u001b[39m\n',
+  );
+  expect(result.stdout).toContain(
+    '  \u001b[33m-v\u001b[90m,\u001b[39m \u001b[33m--verbose\u001b[90;3m...\u001b[39;23m\n',
+  );
+});
+
 test('a deprecated routed Command highlights only the deprecation line as warning', () => {
   expect(
     run({ argv: ['get', '--help'], rendering: { color: 'always', modifiers: 'always' } }).stdout,

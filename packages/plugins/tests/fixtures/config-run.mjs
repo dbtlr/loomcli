@@ -73,6 +73,20 @@ function application() {
         extensions: [configInput({ path: 'constructor' })],
         type: 'string',
       })
+      // A counted option takes a whole number of 0 or more.
+      .option('verbose', {
+        description: 'Say more.',
+        extensions: [configInput({ path: 'verbose' })],
+        short: 'v',
+        type: 'count',
+      })
+      // A string option with an implied value takes a value by the string rule alone.
+      .option('backup', {
+        description: 'How to back up.',
+        extensions: [configInput({ path: 'backup' })],
+        implied: 'simple',
+        type: 'string',
+      })
       .action(print('root'))
   );
 }

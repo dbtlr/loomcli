@@ -41,10 +41,11 @@ function derived(schema: Schema | null): string | undefined {
 
 /**
  * The accepted-values sentence one option's row prints: its authored `accepts`, which always
- * wins, or the list derived from its schema. A Boolean option takes no value and prints none.
+ * wins, or the list derived from its schema. A Boolean or counted option takes no value and prints
+ * none.
  */
 function optionAccepts(option: OptionNode): string | undefined {
-  if (option.type === 'boolean') {
+  if (option.type !== 'string') {
     return undefined;
   }
   return readExtension(option, helpInput)?.accepts ?? derived(option.schema);

@@ -25,7 +25,7 @@ type Issue = Extract<InputProblem, { reason: 'invalid' }>['issues'][number];
 
 /** A value read at a request's path: one the option takes, or the issues that say why not. */
 type Shaped =
-  | { kind: 'value'; value: string | boolean | readonly string[] }
+  | { kind: 'value'; value: string | boolean | number | readonly string[] }
   | { kind: 'wrong'; issues: readonly Issue[] };
 
 /** What one request came to: an answer, a wrong value with its reported lines, or nothing. */
@@ -84,12 +84,36 @@ function shapeList(value: readonly unknown[]): Shaped {
   return first === undefined ? { kind: 'value', value: items } : { issues, kind: 'wrong' };
 }
 
-/** The raw value an option takes from one value, by the option's type, or the issues it raises. */
+/** The fewest occurrences a count holds, which a configured count may not go below. */
+const fewestOccurrences = 0;
+
+/**
+ * The count a counted option takes from one value: a JSON number, a TOML integer, or a YAML integer
+ * that is a whole number of 0 or more. A TOML integer beyond the safe range reads as a `bigint`,
+ * which counts as the nearest number.
+ */
+function countOf(value: unknown): number | undefined {
+  const count = typeof value === 'bigint' ? Number(value) : value;
+  return typeof count === 'number' && Number.isInteger(count) && count >= fewestOccurrences
+    ? count
+    : undefined;
+}
+
+/**
+ * The raw value an option takes from one value, by the option's type, or the issues it raises. A
+ * string option with an implied value takes a string by the string rule, never its implied value.
+ */
 function shape(request: OptionNode, value: unknown): Shaped {
   if (request.type === 'boolean') {
     return typeof value === 'boolean'
       ? { kind: 'value', value }
       : { issues: [{ message: 'Use true or false.' }], kind: 'wrong' };
+  }
+  if (request.type === 'count') {
+    const count = countOf(value);
+    return count === undefined
+      ? { issues: [{ message: 'Use a whole number of 0 or more.' }], kind: 'wrong' }
+      : { kind: 'value', value: count };
   }
   if (request.multiple) {
     return Array.isArray(value)

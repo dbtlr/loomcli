@@ -131,6 +131,32 @@ test('a right cell carries the description, then the facts that apply, in one pa
   );
 });
 
+test('a counted option ends its spellings with an ellipsis, and an implied value brackets its placeholder', () => {
+  expect(run('kinds', ['--help'])).toEqual(
+    page(
+      'copyit · Copy files with backups.',
+      '',
+      'USAGE',
+      '  copyit <files...> --tag[=<tag>]... -m[<mode>] [options]',
+      '',
+      'ARGUMENTS',
+      '  files  The files to copy.',
+      '',
+      'OPTIONS',
+      '  -b, --backup[=<control>]  How to back up each file. Use none, simple, or numbered.  (implied: simple)',
+      '      --suffix[=<suffix>]   The backup suffix.  (default: ~, implied: .bak)',
+      '  -c[<color>]               (implied: auto)',
+      String.raw`      --tag[=<tag>]         (required, repeatable, implied: a\nb)`,
+      '  -m[<mode>]                (required, implied: fast)',
+      '  -v, --verbose...          Say more.',
+      '  -q...',
+      '      --level...            (deprecated: Use -v instead.)',
+      '  -h, --help                Show this help.',
+      '  -V, --version             Print the version.',
+    ),
+  );
+});
+
 test('a default JSON cannot render prints as String renders it', () => {
   const result = run('unencodable', ['--help']);
   expect(result).toMatchObject({ status: 0, stderr: '' });

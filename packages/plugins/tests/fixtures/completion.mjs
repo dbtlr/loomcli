@@ -87,6 +87,23 @@ const odd = new Command('odd', { hidden: true })
   )
   .command(new Command('colon', { description: 'One: two \\ three.' }).action(() => {}));
 
+/**
+ * A counted option, a string option with an implied value and a closed set, and an argument with a
+ * closed set of its own, so a test tells a value of the option from the next word. The Command is
+ * hidden, so no root listing shows it.
+ */
+const backups = new Command('backups', { hidden: true })
+  .argument('target', { validate: shaped({ enum: ['disk', 'tape'] }) })
+  .option('backup', {
+    description: 'How to back up.',
+    implied: 'simple',
+    short: 'b',
+    type: 'string',
+    validate: shaped({ enum: ['none', 'simple', 'numbered'] }),
+  })
+  .option('verbose', { description: 'Say more.', short: 'v', type: 'count' })
+  .action(() => {});
+
 const cache = new Command('cache', { description: String.fromCodePoint(1) })
   .command(new Command('clear').action(() => {}))
   .command(new Command('list', { description: 'List entries.' }).action(() => {}));
@@ -101,6 +118,7 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(fetch)
   .command(debug)
   .command(cache)
-  .command(odd);
+  .command(odd)
+  .command(backups);
 
 await app.run({ host: { argv: process.argv.slice(2) } });

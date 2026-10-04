@@ -62,7 +62,8 @@
       "multiple": false,
       "schema": null,
       "env": null,
-      "default": null
+      "default": null,
+      "implied": null
     },
     {
       "type": "boolean",
@@ -138,7 +139,8 @@
         "env": null,
         "default": {
           "value": "bytes"
-        }
+        },
+        "implied": null
       },
       {
         "type": "string",
@@ -157,7 +159,8 @@
         "env": "TEXTSTAT_MIN_BYTES",
         "default": {
           "value": "0"
-        }
+        },
+        "implied": null
       },
       {
         "type": "boolean",
@@ -190,7 +193,8 @@
           ]
         },
         "env": null,
-        "default": null
+        "default": null,
+        "implied": null
       }
     ],
     "children": []

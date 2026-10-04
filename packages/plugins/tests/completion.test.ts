@@ -186,6 +186,26 @@ describe('the answer', () => {
     expect(complete('--file', 'x', 'paths', '--fi')).toBe(framed(['--field\tA field.'], 4));
   });
 
+  it('a counted option is offered again, because another occurrence adds to its count', () => {
+    expect(complete('backups', '-v', '--v')).toBe(framed(['--verbose\tSay more.'], 4));
+    expect(complete('backups', '-vv', '--verbose', '--v')).toBe(
+      framed(['--verbose\tSay more.'], 4),
+    );
+  });
+
+  it('a string option with an implied value offers its values only when they are attached', () => {
+    expect(complete('backups', '--backup=')).toBe(
+      framed(['--backup=none', '--backup=simple', '--backup=numbered'], 4),
+    );
+    expect(complete('backups', '--backup=n')).toBe(
+      framed(['--backup=none', '--backup=numbered'], 4),
+    );
+    expect(complete('backups', '-bn')).toBe(framed(['-bnone', '-bnumbered'], 4));
+    // A bare spelling is complete, so the next word offers what follows it and no value.
+    expect(complete('backups', '--backup', '')).toBe(framed(['disk', 'tape'], 4));
+    expect(complete('backups', '-b', '')).toBe(framed(['disk', 'tape'], 4));
+  });
+
   it('a value position offers the closed set after its lead, filtered by the typed value', () => {
     expect(complete('paths', '--format', '')).toBe(framed(['json', 'jsonl', 'table'], 4));
     expect(complete('paths', '-f', 't')).toBe(framed(['table'], 4));

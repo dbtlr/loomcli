@@ -71,9 +71,12 @@ function childOffers(command: CommandNode): Offer[] {
     );
 }
 
-/** Whether an option may be given again: only a multiple string option repeats. */
+/**
+ * Whether an option may be given again: a multiple string option collects another occurrence, and
+ * a counted option adds one.
+ */
 function repeats(option: OptionNode): boolean {
-  return option.type === 'string' && option.multiple;
+  return option.type === 'count' || (option.type === 'string' && option.multiple);
 }
 
 /**

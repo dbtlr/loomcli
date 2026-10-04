@@ -146,6 +146,15 @@ describe('the matcher', () => {
     );
   });
 
+  it('a counted option offers its long spelling alone', () => {
+    expect(suggested(['tally', '--quietnes'])).toBe(
+      option('--quietnes', 'Did you mean "--quietness"?'),
+    );
+    expect(suggested(['tally', '--no-quietness'])).toBe(
+      option('--no-quietness', 'Did you mean "--quietness"?'),
+    );
+  });
+
   it('a plugin option is a candidate', () => {
     expect(run('helped', ['opts', '--hlep']).stderr).toBe(
       [
