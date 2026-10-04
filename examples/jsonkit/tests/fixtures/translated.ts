@@ -15,8 +15,8 @@ const cause = plugin('@fixture/cause', {
 const application = new Application('jsonkit', {
   plugins: [cause],
   translators: [invalidJson],
-}).action(async ({ host }) => {
-  await readJson(undefined, host);
+}).action(async ({ host, out, style }) => {
+  await readJson({ host, options: { file: undefined, verbose: 0 }, out, style });
 });
 
 process.exitCode = await application.run();

@@ -463,3 +463,51 @@ test('jsonkit never reads stdin when the file global is supplied', () => {
     stdout: '"loom"\n0\treads\n',
   });
 });
+
+test.each([
+  [['-v', 'keys', '-f', 'doc.json']],
+  [['keys', '-f', 'doc.json', '-v']],
+  [['-vv', 'keys', '-f', 'doc.json']],
+  [['--verbose', 'keys', '-f', 'doc.json', '-v']],
+])('jsonkit %j names the document on one info line before it reads it', (argv) => {
+  withDocuments({ 'doc.json': '{"a":1,"b":2}' }, (cwd) => {
+    expect(invoke(main, argv, { cwd })).toEqual({
+      status: 0,
+      stderr: 'ℹ Reading doc.json.\n',
+      stdout: 'a\nb\n',
+    });
+  });
+});
+
+test('jsonkit with no --verbose writes no info line', () => {
+  withDocuments({ 'doc.json': '{"a":1}' }, (cwd) => {
+    expect(invoke(main, ['keys', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'a\n',
+    });
+  });
+});
+
+test('jsonkit -v names stdin when no file is supplied, and escapes a file name it prints', () => {
+  expect(invoke(main, ['-v', 'keys'], { input: '{"a":1}' })).toEqual({
+    status: 0,
+    stderr: 'ℹ Reading stdin.\n',
+    stdout: 'a\n',
+  });
+  const name = 'doc\u{202e}.json';
+  withDocuments({ [name]: '{"a":1}' }, (cwd) => {
+    expect(invoke(main, ['-v', 'keys', '-f', name], { cwd }).stderr).toBe(
+      `${String.raw`ℹ Reading doc‮.json.`}\n`,
+    );
+  });
+});
+
+test('jsonkit --verbose=2 fails with the counted unexpected-value error', () => {
+  const result = invoke(main, ['--verbose=2', 'keys']);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain(
+    'jsonkit: Counted option "--verbose" does not accept a value. Repeat "--verbose" to raise its count.\n',
+  );
+  expect(invoke(main, ['-v2', 'keys']).stderr).toContain('jsonkit: Unknown option "-2".');
+});

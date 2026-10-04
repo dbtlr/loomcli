@@ -59,12 +59,18 @@ const configured = new Application('jsonkit', {
   translators: [invalidJson],
   version: Package.version,
   views: [override(FatalError, fatalError)],
-}).globalOption('file', {
-  description: 'The document to read. Omit it to read piped text.',
-  extensions: [helpInput({ placeholder: 'path' })],
-  short: 'f',
-  type: 'string',
-});
+})
+  .globalOption('file', {
+    description: 'The document to read. Omit it to read piped text.',
+    extensions: [helpInput({ placeholder: 'path' })],
+    short: 'f',
+    type: 'string',
+  })
+  .globalOption('verbose', {
+    description: 'Name the document before reading it.',
+    short: 'v',
+    type: 'count',
+  });
 
 declare module '@loomcli/core' {
   interface Register {

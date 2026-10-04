@@ -7,7 +7,7 @@ import { resolvePath } from '../resolve-path.js';
 
 /** An omitted path selects the whole document, so the root keeps its own wording. */
 export const listKeys: ActionHandler<typeof keys> = async ({ args, options, host, out, style }) => {
-  const document = await readJson(options.file, host);
+  const document = await readJson({ host, options, out, style });
   const path: string | undefined = args.path;
   const value = path === undefined ? document : resolvePath(document, path);
   const where = path === undefined ? 'the root' : path;

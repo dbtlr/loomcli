@@ -4,7 +4,7 @@ import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
 import { FatalError } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
 import { checkFileOrStdin } from './file-or-stdin.js';
 
@@ -39,13 +39,32 @@ function select(file: string | undefined, host: Host): Source {
   };
 }
 
+/** The count of `--verbose` from which the reader names its source before reading it. */
+const namingCount = 1;
+
 /**
- * Every action reads its document here, so a read failure reads the same everywhere. A malformed
- * document throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns
- * into its `InvalidJsonError`.
+ * What an action hands the reader: the two global options that choose and name the source, the
+ * host, the channel the source's name is written through, and the style that escapes it.
  */
-export async function readJson(file: string | undefined, host: Host): Promise<unknown> {
+export interface DocumentReading {
+  readonly host: Host;
+  readonly options: { readonly file: string | undefined; readonly verbose: number };
+  readonly out: Pick<Out, 'info'>;
+  readonly style: Pick<ContextualStyle, 'escape'>;
+}
+
+/**
+ * Every action reads its document here, so a read failure reads the same everywhere. With
+ * `--verbose` it first names the source on one info line, whatever the count. A malformed document
+ * throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns into its
+ * `InvalidJsonError`.
+ */
+export async function readJson({ host, options, out, style }: DocumentReading): Promise<unknown> {
+  const { file, verbose } = options;
   checkFileOrStdin(file, host);
+  if (verbose >= namingCount) {
+    await out.info(file === undefined ? 'Reading stdin.' : `Reading ${style.escape(file)}.`);
+  }
   const source = select(file, host);
   const contents = await text(source.stream).catch((error: unknown) => {
     throw new FatalError(

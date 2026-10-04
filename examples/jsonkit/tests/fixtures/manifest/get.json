@@ -27,7 +27,18 @@
       "multiple": false,
       "schema": null,
       "env": null,
-      "default": null
+      "default": null,
+      "implied": null
+    },
+    {
+      "type": "count",
+      "name": "verbose",
+      "description": "Name the document before reading it.",
+      "deprecated": null,
+      "long": "--verbose",
+      "short": "-v",
+      "schema": null,
+      "env": null
     },
     {
       "type": "boolean",
