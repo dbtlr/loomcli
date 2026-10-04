@@ -66,7 +66,7 @@ A positional input a Command binds from plain words in declaration order. A scal
 _Avoid_: Positional, operand, parameter
 
 **Option**:
-A named input introduced by a hyphen spelling. A string option consumes a value; a Boolean option consumes none and reports the value of its spelling.
+A named input introduced by a hyphen spelling, of one of three kinds. A string option consumes a value; a Boolean option consumes none and reports the value of its spelling; a counted option consumes none and reports how many times it was supplied.
 _Avoid_: Flag, switch, parameter
 
 **Local option**:
@@ -86,12 +86,16 @@ The one-letter spelling of an option. It is a spelling of that option and appear
 _Avoid_: Short flag, shorthand
 
 **Short group**:
-One option word that combines short aliases after a single hyphen, such as `-tm words`, read under the POSIX `getopt` rule: a Boolean letter is set and the walk continues, and a value letter ends the group, taking the rest of the word, after one leading `=`, or else the next word as its value. Its letters may belong to any option the routed Command's table holds, global or local.
+One option word that combines short aliases after a single hyphen, such as `-tm words`, read under the POSIX `getopt` rule: a Boolean letter is set and the walk continues, a counted letter adds one and the walk continues, and a value letter ends the group and takes the rest of the word, after one leading `=`, as its value; when nothing remains it takes the next word, or supplies its implied value when it declares one. Its letters may belong to any option the routed Command's table holds, global or local.
 _Avoid_: Bundled flags, cluster, stacked options
 
 **Option word** and **Plain word**:
-An option word is a word the parser reads as options: `--` followed by at least one character, or `-` followed by an ASCII letter. Every other word is a plain word, which names a Command or is a value or an argument, so `-`, `-5`, and `-.5` are plain words. A separate word is an option's value unless it is an option word or the bare `--`.
+An option word is a word the parser reads as options: `--` followed by at least one character, or `-` followed by an ASCII letter. Every other word is a plain word, which names a Command or is a value or an argument, so `-`, `-5`, and `-.5` are plain words. A separate word is the value of a string option that declares no implied value, unless it is an option word or the bare `--`.
 _Avoid_: Flag token, hyphen token (for the class), negative number (as a grammar rule)
+
+**Value class**:
+The way an option reads words, of which there are four: a Boolean option, a counted option, a string option with an implied value, and a string option that takes a separate value. A parent's own option typed before a child's name binds to the child's option of that spelling only when both have one value class.
+_Avoid_: Arity, option shape, value kind
 
 **Command table**:
 The one spelling table graph build gives each Command after the lifecycle hooks have run: its local options and every global option, each entry referencing its one declaration. The routed Command's words are read against it.
@@ -105,8 +109,16 @@ _Avoid_: Negation mode, inverse flag
 A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty array rather than `undefined`. The same validator checks each value, so no occurrence makes no validator call.
 _Avoid_: Repeatable flag, array option, list option
 
+**Counted option**:
+An option that takes no value and reads, as a number, how many times it was supplied across every spelling, so `-vvv` reads 3 and an option nothing supplied reads 0. Repeating it is never a fault.
+_Avoid_: Verbosity flag, counter, incrementing flag
+
 **Default**:
 The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value. Core snapshots it once, at the call that declares it: arrays and plain objects are copied and frozen, and other values are kept as they are. No path through a default holds more than 10 arrays and plain objects, and a default that holds itself nests without end, so every reader of a default stays far inside the call stack on every runtime. That copy is the value the graph publishes and the validator receives.
+
+**Implied value**:
+The value a string option takes when its spelling is supplied bare, with nothing attached. An explicit value is attached to the spelling, because a bare spelling never takes the next word; a default, by contrast, fills an option nothing supplied. Like a default, it passes through the option's validator before any token is read.
+_Avoid_: Optional argument, flag value, const value
 
 **Input-source stage**:
 The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.
@@ -334,7 +346,7 @@ The usage error that carries the whole validation phase: every omitted required 
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
-A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A default its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory, and carries its Developer Diagnostic. One that `run()` meets reports with exit 1, as a defect in a distributed build; one thrown at a call or an attach is an uncaught exception whose message holds the diagnostic.
+A failure caused by the author's declarations. A declaration fault throws at the earliest moment that holds the data proving it: the authoring call or constructor, the attach, or graph build. A declared default or implied value its validator rejects and a validator that throws or returns a malformed result are declaration errors found during a run. It names the declaration, or, for a validator factory's argument, the factory, and carries its Developer Diagnostic. One that `run()` meets reports with exit 1, as a defect in a distributed build; one thrown at a call or an attach is an uncaught exception whose message holds the diagnostic.
 _Avoid_: Config error, definition error, developer error (in the class name)
 
 **Fatal error**:
