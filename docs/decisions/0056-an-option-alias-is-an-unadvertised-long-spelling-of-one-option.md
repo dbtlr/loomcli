@@ -23,3 +23,7 @@ An alias name follows the rule the option's own declared name follows, because b
 - **A second option merged in the action.** Rejected. Two options resolve their sources separately, so precedence breaks across the old and new spellings, and every projection lists the old option as its own member.
 - **An alias that adds only the positive long spelling.** Rejected. Renaming a Boolean option that declares a negative form would then break `--no-<old>`, which is the spelling the rename was meant to keep.
 - **Portable names for option aliases, as Command aliases use.** Rejected. An alias is a long spelling of an option, so it answers the option name rule, and an alias could not otherwise keep an option name that the portable rule refuses.
+
+## Status
+
+Proposed 2026-10-04 with the contract in [Option aliases](../core.md#option-aliases). It moves to accepted inside the release PR of the release that ships the implementation: an alias of a local, global, plugin, or hook-declared option binding that option, `TEXTSTAT_MIN_BYTES=5 textstat --minimum 1` applying 1, help, the manifest, completion, and suggestions listing no alias, and the alias declaration faults marking the alias, under Node and Bun.
