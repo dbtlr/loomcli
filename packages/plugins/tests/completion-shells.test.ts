@@ -19,6 +19,27 @@ function unquoted(word: string): string {
 }
 
 describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
+  describe.skipIf(!installed)("the parser's grammar", () => {
+    const { complete } = useSession({ main: fixture, name: 'kit', shell, sources });
+
+    it("kit paths -qf <Tab> lists the values the group's last value letter awaits", async () => {
+      const { listed } = await complete('kit paths -qf ');
+      expect(listed.toSorted()).toEqual(['json', 'jsonl', 'table']);
+    });
+
+    it('kit paths -qft<Tab> inserts the value attached to the value letter', async () => {
+      const { line } = await complete('kit paths -qft');
+      expect(line.trimEnd()).toBe('kit paths -qftable');
+    });
+
+    it('a misplaced option earlier in the line inserts and lists nothing', async () => {
+      await expect(complete('kit -q paths -')).resolves.toMatchObject({
+        line: 'kit -q paths -',
+        listed: [],
+      });
+    });
+  });
+
   describe.skipIf(!installed)('typed text is never evaluated', () => {
     const { complete, cwd } = useSession({ main: fixture, name: 'kit', shell, sources });
     const sentinel = () => existsSync(join(cwd(), 'sentinel'));

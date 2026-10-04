@@ -2,7 +2,7 @@
 - Add the type `GlobalOptionConfig`, and remove the types `PluginStringOption` and `PluginOptionConfig`. `PluginOptions` is `Readonly<Record<string, GlobalOptionConfig>>`, and `PluginOptionValues` reads a validated option as its validator's output.
 - Change validation so that a plugin's option values pass their validators with the application's global options, the application's own first in authoring order and then each plugin's in installation order. A rejected value is an input problem with exit code 2, reported with every other validation problem of the run. A configuration source's own options pass their validators before the source is called. When one is rejected, the source is never called, and the problem is reported with every other validation problem in that order; it is not a source failure. An option the skipped source would have filled reports no missing value, and an absence rule never judges its omission, because the operator's configuration may hold it. The global options are now validated when a local option holds a fault too.
 - Change every action's `options` to hold every global option's validated value, the application's and every plugin's, a plugin Command's action included. An action's type names them through the constructor's `plugins` tuple, and a Command built where the Application's `Register` augmentation is visible names them through `EnvironmentOf`. In both places `.option()` now rejects the name of a plugin's option at compile time, as it rejects the name of an application's global option.
-- Change `MiddlewareContext.options` to hold every global option's validated value, the application's and every plugin's, keyed by declared name, typed `(PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null`. It is `null` when a global option was rejected, and a fault on a local option alone leaves it set. Each value is a copy frozen to every depth, as the request's values are. Activation and `spellings` still cover the plugin's own options alone.
+- Change `MiddlewareContext.options` to hold every global option's validated value, the application's and every plugin's, keyed by declared name, typed `(PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null`. It is `null` when a global option has a structural fault or was rejected, and a fault on a local option alone leaves it set. Each value is a copy frozen to every depth, as the request's values are. Activation and `spellings` still cover the plugin's own options alone.
 - Change `SourceContext.options` to hold each of the source's own options as its validator's output, frozen to every depth, so a source that writes to a value in it fails.
 - Remove `OptionNode.scope`. A global option reads the same whether the application or a plugin declared it.
 
@@ -38,7 +38,7 @@ import { oneOf } from '@loomcli/validators';
 const options = { level: { type: 'string', validate: oneOf(['debug', 'info']) } } satisfies PluginOptions;
 
 const middleware: Middleware<typeof log> = ({ next, options }) => {
-  // `options` is null when a global option was rejected, and core reports that problem.
+  // `options` is null when a global option faulted or was rejected, and core reports that problem.
   const level: 'debug' | 'info' | undefined = options?.level;
   configureLogging(level);
   return next();

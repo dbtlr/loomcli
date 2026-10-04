@@ -119,6 +119,13 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         });
       });
 
+      it('a misplaced option earlier in the line inserts and lists nothing', async () => {
+        await expect(complete('jsonkit -F name s')).resolves.toMatchObject({
+          line: 'jsonkit -F name s',
+          listed: [],
+        });
+      });
+
       it('an unclosed quote under the cursor inserts and lists nothing', async () => {
         await expect(complete('jsonkit get "a')).resolves.toMatchObject({
           line: 'jsonkit get "a',

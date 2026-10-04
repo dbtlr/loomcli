@@ -14,8 +14,8 @@ import {
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
-import { checkOptionName, compileOptions, spellingMark } from './options.js';
-import type { CompileScope, SpellingRole } from './options.js';
+import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
+import type { CompileScope, SpellingRole, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
@@ -141,10 +141,10 @@ function spellingCollision(
 }
 
 /**
- * The globals table the pre-scan reads, with every rule that pairs two of its options settled: one
- * spelling map, the scope that owns each key and where it was declared, and the variable each
- * option binds. It holds the application's global options and every installed plugin's options,
- * because the pre-scan reads one table.
+ * The globals table, with every rule that pairs two of its options settled: one spelling map, the
+ * scope that owns each key and where it was declared, and the variable each option binds. It holds
+ * the application's global options and every installed plugin's options, because both are global
+ * options that routing reads and every Command's table holds.
  */
 interface GlobalTable {
   names: ReadonlyMap<string, TableEntry>;
@@ -158,13 +158,16 @@ interface GlobalTable {
  * in authoring order and then each installed plugin's in installation order, which is the order
  * the input-source stage fills them, validation checks them, and `inspect()` lists them. `sites`
  * holds the call that declared each of them, which a fault about one rebuilds. `bind` reads every
- * global option's validated value, keyed by declared name, as every action receives it.
+ * global option's validated value, keyed by declared name, as every action receives it. `table`
+ * holds the global options alone as parser entries, which routing reads at a Command without its
+ * own options to offer and every Command's table joins.
  */
 interface BuiltGlobals extends GlobalTable {
   bind: (values: ValidatedInputs) => unknown;
   inputs: readonly OptionInput[];
   plugins: readonly BuiltPlugin[];
   sites: ReadonlyMap<InputDeclaration, InputSite>;
+  table: SpellingTable;
 }
 
 /** The validated extension record of each declaration, keyed by the declaration itself. */
@@ -267,9 +270,9 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
 }
 
 /**
- * The one table the pre-scan reads: the application's global options in authoring order, then each
- * installed plugin's options in installation order. Every collision between the two scopes, by key
- * or by spelling, is reported here, so the pre-scan meets a table with one owner per name.
+ * The globals table: the application's global options in authoring order, then each installed
+ * plugin's options in installation order. Every collision between the two scopes, by key or by
+ * spelling, is reported here, so the parser meets a table with one owner per name.
  */
 function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlugin[]): GlobalTable {
   const names = new Map<string, TableEntry>();
@@ -340,12 +343,14 @@ function buildGlobals(node: GlobalsState, plugins: readonly BuiltPlugin[]): Buil
       sites.set(input, siteOf(input));
     }
   }
+  const table = globalTable(node.inputs, plugins);
   return {
-    ...globalTable(node.inputs, plugins),
+    ...table,
     bind: (values) => optionValues(inputs, values),
     inputs,
     plugins,
     sites,
+    table: new Map(tableEntries(table.options, true)),
   };
 }
 

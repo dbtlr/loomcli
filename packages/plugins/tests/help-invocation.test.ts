@@ -110,13 +110,27 @@ test('an unknown command still fails in routing, before any middleware runs', ()
   });
 });
 
-test('a mixed-scope short group is the pre-scan error rather than help', () => {
-  expect(run('cells', ['-ht'])).toEqual({
+test("a short group mixes help's letter with a local letter, so -ht renders the compact page", () => {
+  const page = run('cells', ['-h']);
+  expect(page.status).toBe(0);
+  expect(run('cells', ['-ht'])).toEqual(page);
+  expect(run('cells', ['-thmwords'])).toEqual(page);
+});
+
+test('a letter that faults ends its group, so -xh reports the unknown option and help never runs', () => {
+  expect(run('cells', ['-xh'])).toEqual({
     status: 2,
     stderr:
-      'app: A short group mixes the global option "-h" with "-t", which is not a global option. Supply global options as separate tokens, and local options after their command name.\nRun "app --help" to see the usage.\n',
+      'app: Unknown option "-x". Supply a declared option; prefix a hyphenated path with "./".\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
+});
+
+test('a missing value and a repeated --help are held, so help after them renders the page', () => {
+  const page = run('cells', ['--help']);
+  expect(page.status).toBe(0);
+  expect(run('cells', ['--file', '--help'])).toEqual(page);
+  expect(run('cells', ['--help', '--help'])).toEqual(page);
 });
 
 test('a details value with a blank line is rejected at its call the way any extension value is', () => {

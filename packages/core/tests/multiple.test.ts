@@ -20,11 +20,12 @@ test('a multiple option collects every occurrence across its spellings in suppli
   });
 });
 
-test('a multiple string alias still has to end its short group', () => {
-  const result = multiple('plain', ['-Ft', 'b']);
-  expect(result.status).toBe(2);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain('Value option "-F" must be last in its short group.');
+test('a multiple string alias ends its short group, taking the rest of the word as its value', () => {
+  expect(multiple('plain', ['-Ft', '-F=b', '-tFc'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"options":{"field":["t","b","c"],"total":true},"passthrough":[]}\n',
+  });
 });
 
 test('an omitted multiple option calls no validator and gives the action an empty array', () => {
@@ -138,7 +139,7 @@ test('a required multiple option reports absence as a validation issue', () => {
   });
 });
 
-test('a multiple global is consumed by the pre-scan at every placement', () => {
+test('a multiple global is collected at every placement, whichever layer reads it', () => {
   expect(multiple('global', ['--field', 'a', 'show', '-F', 'b', '--local', '--field=c'])).toEqual({
     status: 0,
     stderr: '',

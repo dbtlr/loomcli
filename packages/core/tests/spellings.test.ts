@@ -52,7 +52,7 @@ test('the global alias and a local alias of the same letter case stay separate',
   });
 });
 
-test('a hyphen token commits to the Command that owns the spelling', () => {
+test('an option word no global option declares ends routing, and names the Commands that declare it', () => {
   expect(invokeSpellings(['count', '--field', 'select'])).toEqual({
     status: 2,
     stderr: 'spellings: Command "count" accepts no arguments. Remove the supplied values.\n',
@@ -61,12 +61,13 @@ test('a hyphen token commits to the Command that owns the spelling', () => {
   expect(invokeSpellings(['--field', 'name', 'select'])).toEqual({
     status: 2,
     stderr:
-      'spellings: Unknown option "--field". Supply a declared option; prefix a hyphenated path with "./".\n',
+      'spellings: Option "--field" belongs to commands select, count, cache set. Supply it after the command name.\n',
     stdout: '',
   });
   expect(invokeSpellings(['cache', '--field', 'x'])).toEqual({
     status: 2,
-    stderr: 'spellings: Command "cache" requires a subcommand. Use one of: set.\n',
+    stderr:
+      'spellings: Option "--field" belongs to command "cache set". Supply it after "cache set".\n',
     stdout: '',
   });
 });

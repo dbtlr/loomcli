@@ -39,8 +39,6 @@ import {
   quoted,
   ResultError,
   toFailure,
-  UnexpectedArgumentError,
-  UnknownCommandError,
   reasonOf,
 } from './errors.js';
 import type { LoomError } from './errors.js';
@@ -85,13 +83,13 @@ import {
   compileOptions,
   copyValues,
   emptyValues,
-  extractGlobals,
-  isOptionToken,
   mergeValues,
-  parseInputs,
   spellingMark,
+  tableEntries,
 } from './options.js';
-import type { CompileScope, OptionValues, SpellingRole } from './options.js';
+import type { CompileScope, OptionValues, SpellingRole, SpellingTable } from './options.js';
+import { argumentSlot, candidatesOf } from './parse.js';
+import type { ParsedInvocation } from './parse.js';
 import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
@@ -200,7 +198,12 @@ export interface BuiltCommand {
   hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
-  options: ReturnType<typeof compileOptions>;
+  /**
+   * The one table the parser reads this Command's words against, built after every lifecycle hook
+   * ran: its own options, hook-declared ones included, and every global option. Each entry names
+   * one declaration, so a group's table holds the global options alone.
+   */
+  table: SpellingTable;
   /** The result the Command declares, or nothing where it declares none. */
   /** The built declaration is the shape the write site reads, so the channel carries it. */
   result: DeclaredResult | undefined;
@@ -2262,6 +2265,7 @@ export function buildCommand<Args, Options, Globals>(
     globals,
     localScope(name, context.path),
   );
+  const table: SpellingTable = new Map([...tableEntries(options, false), ...globals.table]);
   // A hook's erased calls answer the declaration rules an authored call answers at the call.
   checkDeclarations(
     hookInputs.map(({ input }) => ({ input, site: inputSite(name, context.path, input) })),
@@ -2290,9 +2294,9 @@ export function buildCommand<Args, Options, Globals>(
     hidden: facts.hidden,
     inputs: hooked.inputs,
     name,
-    options,
     result,
     routes,
+    table,
   };
 }
 
@@ -2549,126 +2553,38 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
   return places;
 }
 
-/**
- * The names a routing failure offers: the canonical names of the visible, current children, in
- * authoring order. A candidate list is a listing, so a hidden or a deprecated child is absent from
- * it, as completion leaves them out, and a parent whose children are all hidden or deprecated
- * offers none. A deprecated child typed in full still routes.
- */
-function candidatesOf(command: BuiltCommand): string[] {
-  return [...command.children]
-    .filter(([, child]) => !child.hidden && child.deprecated === undefined)
-    .map(([name]) => name);
-}
-
-/**
- * Whether a token names one of the Command's children: the Command has children and the token is
- * no option token. Routing and `locate` read a bare word through this rule.
- */
-export function readsAsChild(command: BuiltCommand, token: string): boolean {
-  return command.children.size > 0 && !isOptionToken(token);
-}
-
-/**
- * Bare tokens, names or aliases, select children until a Command has none; a hyphen commits.
- * `walked` receives the path after each name routes, so an unknown Command leaves its caller
- * holding the partial path walked before it.
- */
-export function route(
-  root: BuiltCommand,
-  tokens: readonly string[],
-  walked?: (path: readonly string[]) => void,
-) {
-  let command = root;
-  const path: string[] = [];
-  let index = 0;
-  for (let token = tokens[index]; token !== undefined; token = tokens[index]) {
-    if (!readsAsChild(command, token)) {
-      break;
-    }
-    const child = command.routes.get(token);
-    if (!child) {
-      throw new UnknownCommandError(token, candidatesOf(command));
-    }
-    // An alias routes like the canonical name, and the path it walks reports that name alone.
-    command = child.command;
-    path.push(child.name);
-    walked?.(Object.freeze([...path]));
-    index += 1;
+/** One positional word bound to its slot: a variadic slot collects it, any other holds it. */
+function bindWord(
+  values: Map<InputDeclaration, string | string[]>,
+  slot: ArgumentSlot,
+  word: string,
+): void {
+  const bound = values.get(slot.input);
+  if (!slot.variadic) {
+    values.set(slot.input, word);
+  } else if (Array.isArray(bound)) {
+    bound.push(word);
+  } else {
+    values.set(slot.input, [word]);
   }
-  return { command, path, tokens: tokens.slice(index) };
 }
 
 /**
- * The tokens each positional slot received. An omitted required argument binds nothing here and
+ * The words each positional slot received. Parsing already held the first positional no slot
+ * accepts, so every positional here has a slot. An omitted required argument binds nothing and
  * reports as a missing input in the validation phase, so omission has one class whether the input
- * is an argument or an option. Extra tokens are a token fault, so this phase still reports them.
+ * is an argument or an option. An empty variadic tail binds nothing, so validation reads it as
+ * `[]` or reports the omission.
  */
-function bindArguments(
-  command: BuiltCommand,
-  path: readonly string[],
-  positionals: readonly string[],
-) {
+function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
   const values = new Map<InputDeclaration, string | string[]>();
-  for (const [position, token] of positionals.entries()) {
+  for (const [position, word] of positionals.entries()) {
     const slot = argumentSlot(command.arguments, position);
-    if (!slot) {
-      throw new UnexpectedArgumentError(
-        path,
-        command.arguments.length,
-        positionals.slice(position),
-      );
-    }
-    // An empty variadic tail binds nothing, so validation reads it as `[]` or reports the omission.
-    const bound = values.get(slot.input);
-    if (!slot.variadic) {
-      values.set(slot.input, token);
-    } else if (Array.isArray(bound)) {
-      bound.push(token);
-    } else {
-      values.set(slot.input, [token]);
+    if (slot) {
+      bindWord(values, slot, word);
     }
   }
   return values;
-}
-
-/**
- * The slot the positional at one index fills: the slot at that index, else a variadic last slot,
- * which accepts every later positional, else none. Binding and `locate` read positions through it.
- */
-export function argumentSlot(
-  slots: readonly ArgumentSlot[],
-  position: number,
-): ArgumentSlot | undefined {
-  const last = slots.at(-1);
-  return slots[position] ?? (last?.variadic ? last : undefined);
-}
-
-/** One invocation after the pre-scan and routing, which the middleware chain runs on top of. */
-export interface RoutedInvocation {
-  command: BuiltCommand;
-  path: readonly string[];
-  scan: OptionValues;
-  tokens: readonly string[];
-}
-
-/**
- * Consumes the globals table, then routes the remaining bare tokens to a Command. `walked`
- * receives the path as routing extends it, the partial path of an unknown Command included.
- */
-export function routeInvocation(
-  graph: BuiltGraph,
-  argv: readonly string[],
-  walked: (path: readonly string[]) => void,
-): RoutedInvocation {
-  const scan = extractGlobals(graph.globals.options, [...argv]);
-  const routed = route(graph.root, scan.rest, walked);
-  return {
-    command: routed.command,
-    path: routed.path,
-    scan: scan.values,
-    tokens: routed.tokens,
-  };
 }
 
 /** What one invocation reaches the middleware chain with. */
@@ -2696,7 +2612,8 @@ export interface DispatchInvocation {
  * routed Command declared, whose views a middleware selects among, on either shape. `globals` holds
  * the globals table's values after the input-source stage, which activation and each plugin's
  * spellings read on either shape. `options` is every global option's validated value, which every
- * middleware reads, or `null` when a global option was rejected or the values could not be read.
+ * middleware reads, or `null` when a global option has a structural fault or was rejected, or the
+ * values could not be read.
  */
 export type Prepared = {
   globals: OptionValues;
@@ -2732,7 +2649,7 @@ function requestOf(
   });
 }
 
-/** The routed Command's own tokens after local parsing, or the fault that phase holds. */
+/** The routed Command's own values after parsing, or the fault parsing or the callable check holds. */
 type LocalPhase =
   | {
       args: ReadonlyMap<InputDeclaration, string | string[]>;
@@ -2744,29 +2661,25 @@ type LocalPhase =
   | { fault: unknown; kind: 'held' };
 
 /**
- * The callable check and local parsing. A group answers no invocation of its own, so it holds the
- * missing-subcommand error with the rank the routing errors have and parses no token; a token
- * fault holds the same way.
+ * The held structural fault, then the callable check. A group answers no invocation of its own, so
+ * it holds the missing-subcommand error, which ranks after every structural fault.
  */
-function parseLocal(routed: RoutedInvocation): LocalPhase {
-  const { command, path } = routed;
+function parseLocal(routed: ParsedInvocation): LocalPhase {
+  const { command, fault, path } = routed;
   const { dispatch } = command;
-  try {
-    if (!dispatch) {
-      throw new NonCallableCommandError(path, candidatesOf(command));
-    }
-    const parsed = parseInputs(command.options, routed.tokens);
-    const args = bindArguments(command, path, parsed.positionals);
-    return {
-      args,
-      dispatch,
-      kind: 'parsed',
-      options: parsed.options,
-      passthrough: parsed.passthrough,
-    };
-  } catch (error) {
-    return { fault: error, kind: 'held' };
+  if (fault) {
+    return { fault, kind: 'held' };
   }
+  if (!dispatch) {
+    return { fault: new NonCallableCommandError(path, candidatesOf(command)), kind: 'held' };
+  }
+  return {
+    args: bindArguments(command, routed.positionals),
+    dispatch,
+    kind: 'parsed',
+    options: routed.values.locals,
+    passthrough: routed.passthrough,
+  };
 }
 
 /**
@@ -2791,26 +2704,27 @@ function requestNode(
 interface Preparation {
   graph: BuiltGraph;
   invocation: DispatchInvocation;
-  routed: RoutedInvocation;
+  routed: ParsedInvocation;
 }
 
-/** The passthrough tail a validator reads: the routed Command's, or none while parsing holds a fault. */
+/** The passthrough tail a validator reads: the routed Command's, or none while a fault is held. */
 function tailOf(local: LocalPhase): readonly string[] {
   return local.kind === 'parsed' ? local.passthrough : [];
 }
 
 /**
  * The input-source stage over this run's own copies of the parsed values. The global options fill
- * whatever local parsing held; the routed Command's own options fill only when local parsing held
- * no fault, because the request is `null` otherwise. A configuration source's own options pass
- * their validators before the source is called, as a pass over those options alone.
+ * whatever was held, and a faulted occurrence supplied nothing, so a source may fill its option;
+ * the routed Command's own options fill only when nothing is held, because the request is `null`
+ * otherwise. A configuration source's own options pass their validators before the source is
+ * called, as a pass over those options alone.
  */
 async function fillScope(
   preparation: Preparation,
   local: LocalPhase,
 ): Promise<{ globals: OptionValues; locals: OptionValues; sources: SourceOutcome }> {
   const { graph, invocation, routed } = preparation;
-  const globals = copyValues(routed.scan);
+  const globals = copyValues(routed.values.globals);
   const locals = copyValues(local.kind === 'parsed' ? local.options : emptyValues());
   const sources = await fillInputs({
     extensions: graph.extensions,
@@ -2842,10 +2756,11 @@ async function fillScope(
 
 /**
  * A validation pass over the values the input-source stage has filled: every global option
- * whatever local parsing held, and the routed Command's own declarations only when it held
- * nothing. `only` narrows the declarations a pass validates, as the pass over a configuration
- * source's own options does ahead of its call, while every validator reads the same context. The
- * run's one pass reads that earlier pass's values and problems rather than validating them again.
+ * whatever was held, and the routed Command's own declarations only when nothing is held and the
+ * Command is not a group. `only` narrows the declarations a pass validates, as the pass over a
+ * configuration source's own options does ahead of its call, while every validator reads the same
+ * context. The run's one pass reads that earlier pass's values and problems rather than validating
+ * them again.
  */
 function validateInvocation(
   { graph, invocation, routed }: Preparation,
@@ -2927,15 +2842,16 @@ function readyDispatch(
 /**
  * Prepares one dispatch ahead of the middleware chain and holds whatever fault it found, so a
  * middleware reads the request before the action runs and a takeover never observes the fault.
- * The phases run in order: local parsing, the input-source stage, and validation. A local fault
- * outranks a configuration source's fault, and a source's fault takes the place of every
- * validation problem. Validation checks the global options whatever local parsing held, so a
- * middleware reads them after a local fault; a rejected global option, a source's fault, or a
- * validator's own fault leaves `options` `null`.
+ * The phases run in order: the structural fault parsing held, a group's missing subcommand, the
+ * input-source stage, and validation. Either of the first two outranks a configuration source's
+ * fault, and a source's fault takes the place of every validation problem. Validation checks the
+ * global options whatever was held, so a middleware reads them after a local fault; a structural
+ * fault on a global option, a rejected global option, a source's fault, or a validator's own fault
+ * leaves `options` `null`.
  */
 export async function prepareDispatch(
   graph: BuiltGraph,
-  routed: RoutedInvocation,
+  routed: ParsedInvocation,
   invocation: DispatchInvocation,
 ): Promise<Prepared> {
   const result = routed.command.result;
@@ -2960,9 +2876,10 @@ export async function prepareDispatch(
       sources,
       values: globals,
     });
-    const options = rejectsGlobal(validation)
-      ? null
-      : frozenValues(graph.globals.inputs, validation.values);
+    const options =
+      routed.globalFault || rejectsGlobal(validation)
+        ? null
+        : frozenValues(graph.globals.inputs, validation.values);
     if (local.kind === 'held' || validation.failure) {
       return held(validation.failure, options);
     }

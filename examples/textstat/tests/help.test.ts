@@ -69,6 +69,12 @@ test('textstat -h prints the compact page and points to the details and examples
   );
 });
 
+test("textstat -ht mixes help's letter with the root's total and prints the compact page", () => {
+  const compact = invoke(main, ['-h']);
+  expect(compact.status).toBe(0);
+  expect(invoke(main, ['-ht'])).toEqual(compact);
+});
+
 test('textstat --version prints the name and the declared version', () => {
   expect(invoke(main, ['--version'])).toEqual({
     status: 0,

@@ -236,6 +236,23 @@ test(
 );
 
 test(
+  "Mixed groups: -tc reads -t as the root's total and -c as the configuration plugin's --config",
+  inWorkspace((space) => {
+    space.write(space.project, 'pinned.toml', 'minBytes = 5\n');
+    expect(space.textstat(['-tc', 'pinned.toml', ...files])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filteredTotal,
+    });
+    expect(space.textstat(['-tcpinned.toml', ...files])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filteredTotal,
+    });
+  }),
+);
+
+test(
   'Discovered files: a missing file is silent, and a broken one warns once and the run exits 0',
   inWorkspace((space) => {
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });

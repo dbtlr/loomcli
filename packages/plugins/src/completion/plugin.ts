@@ -32,7 +32,7 @@ function shellCommand(name: string, shell: string, script: (application: string)
   );
 }
 
-// The words arrive after a bare `--`, so the pre-scan never reads one of them as an option.
+// The words arrive after a bare `--`, so the parser never reads one of them as an option.
 const answerCommand = new Command('__complete', {
   description: 'Answer a completion script.',
   hidden: true,

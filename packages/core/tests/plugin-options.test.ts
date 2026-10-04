@@ -141,24 +141,29 @@ test("a group's missing subcommand leaves options set, and a rejected global sti
   });
 });
 
-test("a structure fault in a plugin's option is the pre-scan input error a global option produces", () => {
+test("a structural fault in a plugin's option is held, and the faulted occurrence activates nothing", () => {
   expect(settings(['--mode'])).toEqual({
     status: 2,
     stderr: 'app: Option "--mode" requires a value. Supply a value after "--mode".\n',
     stdout: 'resolved:2\n',
   });
+  // The first -q stands and activates the middleware, which reads null for the faulted global.
   expect(settings(['-q', 'get', 'a.b', '-q'])).toEqual({
     status: 2,
     stderr: 'app: Option "-q" can be supplied only once. Remove the repeated option.\n',
-    stdout: 'resolved:2\n',
+    stdout: 'settings:null\nresolved:2\n',
   });
 });
 
-test('a short group that mixes a plugin letter reads it as a global option', () => {
-  expect(settings(['-qZ', 'get', 'a.b'])).toEqual({
+test("a plugin's letters read in a short group under the getopt rule, like any global option's", () => {
+  const values = '"cache":false,"mode":"fancy","quiet":true,"tags":["one"]';
+  expect(settings(['-qmfancy', 'get', 'a.b']).stdout).toBe(
+    `settings:{${values}}\nfrozen:true\nget:a.b:{${values},"raw":false}\naction-signal:true:false\nresolved:0\n`,
+  );
+  expect(settings(['-Zq', 'get', 'a.b'])).toEqual({
     status: 2,
     stderr:
-      'app: A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.\n',
+      'app: Unknown option "-Z". Supply a declared option; prefix a hyphenated path with "./".\n',
     stdout: 'resolved:2\n',
   });
 });

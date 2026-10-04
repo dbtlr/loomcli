@@ -14,6 +14,15 @@ function incomplete(yielded: number, written: number) {
   return `Output is incomplete: Command "paths" stopped after ${String(yielded)} rows, ${String(written)} written.\n`;
 }
 
+test("jsonkit --format json paths carries the root's own --format on to paths", () => {
+  withDocuments({ 'doc.json': walked }, (cwd) => {
+    const placed = invoke(main, ['--format', 'json', 'paths', '-f', 'doc.json'], { cwd });
+    expect(placed).toMatchObject({ status: 0, stderr: '' });
+    expect(Array.isArray(JSON.parse(placed.stdout))).toBe(true);
+    expect(placed).toEqual(invoke(main, ['paths', '--format', 'json', '-f', 'doc.json'], { cwd }));
+  });
+});
+
 test('jsonkit paths writes one row per path as the walk yields it, the root first', () => {
   withDocuments({ 'doc.json': walked }, (cwd) => {
     expect(invoke(main, ['paths', '-f', 'doc.json'], { cwd })).toEqual({

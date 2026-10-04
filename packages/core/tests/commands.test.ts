@@ -94,7 +94,7 @@ test('a global value wins over a token that also names a child', () => {
   });
 });
 
-test('passthrough tokens keep global spellings out of the pre-scan', () => {
+test('words after the first bare -- are never read as global options', () => {
   expect(report(['--file', 'data.json', 'get', 'a.b', '--', '--file', 'other', '-qf'])).toEqual({
     args: { path: 'a.b' },
     command: 'get',
@@ -116,11 +116,12 @@ test.each([
   [['--file', 'data.json', 'nope'], 'Unknown command "nope". Use one of: get, keys.'],
   [
     ['--file', 'data.json', '-r', 'get', 'a.b'],
-    'Unknown option "-r". Supply a declared option; prefix a hyphenated path with "./".',
+    'Option "-r" belongs to command "get". Supply it after "get".',
   ],
+  // The root's own -p carries routing on to get, which does not declare it.
   [
     ['--file', 'data.json', '-p', 'get', 'a.b'],
-    'The root Command accepts no arguments. Remove the supplied values.',
+    'Unknown option "-p". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file', 'data.json', 'get'], 'Argument "path" requires a value. Supply a value for "path".'],
   [
@@ -137,21 +138,19 @@ test.each([
   ],
   [
     ['-qp', '--file', 'data.json', 'get', 'a.b'],
-    'A short group mixes the global option "-q" with "-p", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'Unknown option "-p". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [
     ['-qZ', '--file', 'data.json', 'get', 'a.b'],
-    'A short group mixes the global option "-q" with "-Z", which is not a global option. Supply global options as separate tokens, and local options after their command name.',
+    'Unknown option "-Z". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [
     ['--file', 'data.json', 'get', '--pretty', 'a.b'],
     'Unknown option "--pretty". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file'], 'Option "--file" requires a value. Supply a value after "--file".'],
-  [
-    ['--file', '--quiet', 'nope'],
-    'Option "--file" requires a value. Supply a value after "--file".',
-  ],
+  // The missing value is held, and routing continues to the unknown command, which ranks first.
+  [['--file', '--quiet', 'nope'], 'Unknown command "nope". Use one of: get, keys.'],
   [
     ['--file', 'data.json', '--limit', 'abc', 'nope'],
     'Unknown command "nope". Use one of: get, keys.',
