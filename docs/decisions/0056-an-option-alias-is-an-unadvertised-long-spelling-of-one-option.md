@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0056 - An option alias is an unadvertised long spelling of one option
 description: An option declares aliases, each one more long spelling that binds the one option it belongs to. An alias is unadvertised, as a Command's alias is under ADR-0002, so no listing shows it, and it carries no deprecation message of its own.
-status: proposed
+status: accepted
 created: 2026-10-04
-modified: 2026-10-04
+modified: 2026-10-05
 ---
 
 # ADR-0056 - An option alias is an unadvertised long spelling of one option
@@ -26,4 +26,4 @@ An alias name follows the rule the option's own declared name follows, because b
 
 ## Status
 
-Proposed 2026-10-04 with the contract in [Option aliases](../core.md#option-aliases). It moves to accepted inside the release PR of the release that ships the implementation: an alias of a local, global, plugin, or hook-declared option binding that option, `TEXTSTAT_MIN_BYTES=5 textstat --minimum 1` applying 1, help, the manifest, completion, and suggestions listing no alias, and the alias declaration faults marking the alias, under Node and Bun.
+Accepted in 0.8.0.

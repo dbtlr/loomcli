@@ -6,6 +6,193 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.8.0 - 2026-10-05
+
+0.8.0 gives every option one system. A plugin's options are ordinary global options, validated with the application's and typed in every action, and an invocation parses in one pass: routing reads the global options, then the routed Command's words are read against one table of its own options and every global option. Options also gain unadvertised aliases, counted options such as `-vvv`, implied values for a bare `--backup`, and ordered help sections.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.8.0`.
+
+The three migrations below follow from that one change. A plugin option needs no class of its own, so its types and rules become the global option's. A short group may mix a global letter with a Command's letter, so a group that once failed now parses. And an option reads its words by one of four value classes, so a counted or implied option is an ordinary option that every declarer, help page, manifest, and completion script reads the same way.
+
+### Breaking Changes
+
+- Change a plugin's options into global options, with no difference from the ones `globalOption()` declares. Each entry of a plugin's `options` record takes `GlobalOptionConfig`, the configuration `globalOption()` takes: everything `option()` takes except `required` and `validateOmitted`. A plugin's option may now carry a validator, a default of its validator's input type, and every other rule an option declaration meets. `plugin()` rejects `required` and `validateOmitted`, whatever their value, under `@loomcli/core/global-presence-rule`, such as `Plugin "@acme/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.` The rule `@loomcli/core/plugin-option-rule` is removed. See [Global options from plugins](docs/core.md#global-options-from-plugins).
+- Add the type `GlobalOptionConfig`, and remove the types `PluginStringOption` and `PluginOptionConfig`. `PluginOptions` is `Readonly<Record<string, GlobalOptionConfig>>`, and `PluginOptionValues` reads a validated option as its validator's output.
+- Change validation so that a plugin's option values pass their validators with the application's global options, the application's own first in authoring order and then each plugin's in installation order. A rejected value is an input problem with exit code 2, reported with every other validation problem of the run. A configuration source's own options pass their validators before the source is called. When one is rejected, the source is never called, and the problem is reported with every other validation problem in that order; it is not a source failure. An option the skipped source would have filled reports no missing value, and an absence rule never judges its omission, because the operator's configuration may hold it. The global options are now validated when a local option holds a fault too.
+- Change every action's `options` to hold every global option's validated value, the application's and every plugin's, a plugin Command's action included. An action's type names them through the constructor's `plugins` tuple, and a Command built where the Application's `Register` augmentation is visible names them through `EnvironmentOf`. In both places `.option()` now rejects the name of a plugin's option at compile time, as it rejects the name of an application's global option.
+- Change `MiddlewareContext.options` to hold every global option's validated value, the application's and every plugin's, keyed by declared name, typed `(PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null`. It is `null` when a global option has a structural fault or was rejected, and a fault on a local option alone leaves it set. Each value is a copy frozen to every depth, as the request's values are. Activation and `spellings` still cover the plugin's own options alone.
+- Change `SourceContext.options` to hold each of the source's own options as its validator's output, frozen to every depth, so a source that writes to a value in it fails.
+- Remove `OptionNode.scope`. A global option reads the same whether the application or a plugin declared it.
+
+### Migration
+
+**Affected surface.** A plugin whose `options` record is typed with `PluginStringOption` or `PluginOptionConfig`, or whose option declares `required` or `validateOmitted`. A middleware that reads `options`, assumes it holds the plugin's own options alone, or writes to a value in it. A configuration source that writes to a value in its `options`. Code that reads `OptionNode.scope`. An `Application<Args, Options, Globals>` annotation whose `Globals` omits the installed plugins' option values. An Application that attaches Commands built under another Application's `Register` augmentation without installing the same plugins. Code that serializes or compares an action's whole `options` object.
+
+**Why.** A plugin's options were a second class of global option that parsed with the globals but carried no validator and reached their own plugin's middleware alone. They are now ordinary global options, so they validate once with the application's, and every action and every middleware reads them under [ADR-0055](docs/decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md).
+
+**Before and after.**
+
+Before, the plugin declared its option without a validator, and its middleware checked the raw value:
+
+```ts
+import type { Middleware, PluginOptionConfig } from '@loomcli/core';
+
+const options = { level: { type: 'string' } } satisfies Record<string, PluginOptionConfig>;
+
+const middleware: Middleware<typeof log> = ({ next, options }) => {
+  if (options.level !== undefined && !['debug', 'info'].includes(options.level)) {
+    throw new FatalError('Use debug or info.');
+  }
+  return next();
+};
+```
+
+After, the option carries its validator, and the middleware handles `null`:
+
+```ts
+import type { Middleware, PluginOptions } from '@loomcli/core';
+import { oneOf } from '@loomcli/validators';
+
+const options = { level: { type: 'string', validate: oneOf(['debug', 'info']) } } satisfies PluginOptions;
+
+const middleware: Middleware<typeof log> = ({ next, options }) => {
+  // `options` is null when a global option faulted or was rejected, and core reports that problem.
+  const level: 'debug' | 'info' | undefined = options?.level;
+  configureLogging(level);
+  return next();
+};
+```
+
+Before, an annotation named the application's own global options:
+
+```ts
+function serve(app: Application<{}, {}, { file: string | undefined }>) {}
+```
+
+After, it names the configured Application's environment, which holds the plugins' option values too:
+
+```ts
+function serve(app: Application<{}, {}, EnvironmentOf<typeof configured>['globals']>) {}
+```
+
+**Steps.**
+
+1. Replace `PluginStringOption` and `PluginOptionConfig` with `GlobalOptionConfig`, or declare the record with `satisfies PluginOptions`.
+2. Remove `required` and `validateOmitted` from each of a plugin's options, and check for the value in each Command that needs it.
+3. Move a check a middleware made on its own option's raw value into the option's validator, and read the validator's output.
+4. In each middleware that reads `options`, handle `null`, read another plugin's or the application's option as `unknown`, and copy a value before changing it. In a configuration source, copy a value of its `options` before changing it too.
+5. Replace each read of `OptionNode.scope`. A plugin's options are the names its own declaration holds.
+6. Install the same plugins in every Application that attaches Commands built under one `Register` augmentation, and name the globals of an `Application` annotation with `EnvironmentOf<typeof configured>['globals']`.
+7. Update code that serializes or compares an action's whole `options` object to expect every global option's key.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, to find each removed type, presence rule, `scope` read, and annotation. Run the application's tests, then run the application with a value the validator of each of a plugin's options rejects, and check that it exits 2 with the validator's message.
+
+- Change how core reads an invocation. Routing reads the words before the first bare `--` against the global options and the own options of each Command with an action and children, the routed Command's words are read against one table of its own options and every global option, and each owner reads its values, under [ADR-0055](docs/decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md). See [Global consumption and routing](docs/core.md#global-consumption-and-routing).
+- Allow a short group to mix a global option's letter with a letter of the routed Command, so `textstat -ht` renders help and `get a.b -qp` reads a global `-q` and `get`'s own `-p`. Read a short group under the POSIX `getopt` rule: a value letter takes the rest of its word with one leading `=` stripped, so `-mwords`, `-m=words`, `-tmwords`, and `-m=` are accepted. A word that is neither `--` and at least one character nor `-` and an ASCII letter, such as `-5`, `-.5`, `-1e3`, or `-`, is a value or an argument.
+- Allow an option of a Command with an action and children, typed before a child's name, to reach that child: `jsonkit --format json paths` routes to `paths` with the root's `--format`, where it reported that the root accepts no arguments. The option binds to the Command routing reaches, so that Command reports it as an unknown option when it does not declare the spelling, and as a `MisplacedOptionError` that names it when it declares the spelling with another value class.
+- Change a short group whose value letter is followed by more characters, such as `-mt` where `m` takes a value, to give that option the rest of the word, `t`, instead of failing. The option's validator is where such a typo surfaces.
+- Add `MisplacedOptionError`, a `UsageError` with exit code 2 and the facts `spelling` and `commands`, for an option word the routed Command's table does not hold while a visible Command below it declares it, such as a Command's own option typed before the Command's name: `Option "-F" belongs to command "select". Supply it after "select".` Such an invocation reported `UnknownOptionError` before. The error also names the routed Command when it declares a parent's own option, typed before its name, with another value class.
+- Remove `ShortGroupError`. An undeclared letter of a short group is an `UnknownOptionError` that names that letter, a `=` after a Boolean letter is an `UnexpectedValueError`, and a repeated letter is a `RepeatedOptionError`. The walk stops at the first letter that faults, so the characters after it supply nothing.
+- Change every fault except an unknown command to be held to the dispatch boundary, so a middleware such as help can take it over. A structural fault on a global option, such as a missing value, a repeated option, or a value after a Boolean, was raised before the chain and is now held, so `jsonkit --file --help` and `jsonkit --help --help` render help. Parsing continues past a fault to find every global option, the first fault in word order is reported, and an occurrence that faulted supplies no value and activates no plugin. A failure view's `path` is the path routing reached.
+- Change the order in which faults rank: an unknown command, then the first structural fault in word order, then a group's missing subcommand, then validation problems. `store cache --verbose` reports the unknown option instead of the missing subcommand, and `app --file --quiet nope`, where `--quiet` is a global Boolean option, reports the unknown command instead of the missing value.
+- Add the attached form to the missing-value sentence when the word after a value option is an option word or `--`: `Option "--pattern" requires a value. Supply a value after "--pattern", or attach one that starts with a hyphen as "--pattern=<value>".` `MissingValueError` takes an optional second constructor argument, `'attached'` or `'separate'`, which selects the sentence.
+
+### Migration
+
+**Affected surface.** Code that imports `ShortGroupError`, overrides its view, or reads its `reason` or `token`. Code that matches `UnknownOptionError` for an option typed before its Command's name. A middleware or a test that expects a structural fault on a global option to be raised before the middleware chain, or that pins which failure an invocation with several faults reports. An application whose operators rely on `-mt` failing when `m` takes a value.
+
+**Why.** The global pre-scan read one table of global options before routing, so it rejected a short group that mixed a global letter with a local one, and it raised a global option's fault before help could take it over. Core now routes on the global options and reads the routed Command's words against one table, under [ADR-0055](docs/decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md).
+
+**Before and after.**
+
+Before, a view override matched the short-group fault:
+
+```ts
+import { override, ShortGroupError } from '@loomcli/core';
+
+const views = [override(ShortGroupError, { render: (failure) => `app: ${failure.message}\n` })];
+```
+
+After, the override matches the misplaced-option fault, and a short-group fault reaches the view of its own class:
+
+```ts
+import { MisplacedOptionError, override } from '@loomcli/core';
+
+const views = [
+  override(MisplacedOptionError, {
+    render: (failure) => `app: Run "${failure.commands[0]?.join(' ')} --help" for ${failure.spelling}.\n`,
+  }),
+];
+```
+
+**Steps.**
+
+1. Remove each import and `override()` of `ShortGroupError`. Match `UnknownOptionError`, `UnexpectedValueError`, or `RepeatedOptionError` for a fault inside a short group.
+2. Match `MisplacedOptionError` where code matched `UnknownOptionError` for an option typed before its Command's name, and read `commands` for the paths of the Commands that declare it.
+3. In a middleware that runs on every invocation, handle a run whose global option faulted: `options` and `request` are `null`, and core raises the fault after the chain unless the middleware takes the invocation over.
+4. Update tests that pin the failure an invocation reports to the new ranking: an unknown command, the first structural fault in word order, a group's missing subcommand, then validation problems.
+5. Give a value option a validator where a mistyped group such as `-mt` must fail.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, and check that it reports no use of `ShortGroupError`. Run the application's tests, including a middleware test where a global value option is missing its value, and check that the middleware handles `options` and `request` as `null`. Then run three invocations with the application's own names. An option of a child Command typed before the child's name, such as `app -x get`, exits 2 and prints `Option "-x" belongs to command "get". Supply it after "get".` The same words followed by `--help` exit 0 and print help when the help plugin is installed, because the fault is held. A global value option with no value before an unknown command, such as `app --file --quiet nope` where `--quiet` is a global Boolean option, exits 2 and prints `Unknown command "nope"`, because an unknown command ranks first.
+
+- Add counted options. `type: 'count'` declares an option that takes no value and reads, as a `number`, how many times it was supplied across every spelling, alias, and word, so `-vvv`, `-v -v -v`, and `--verbose -vv` each read `3` and an omitted one reads `0`. A global counted option adds its occurrences on both sides of the Command name. A value attached to a counted spelling, as in `--verbose=3`, is the unexpected-value error, worded to tell the operator to repeat the spelling instead. An environment variable of ASCII decimal digits and a configuration answer of a whole number of 0 or more fill it when no occurrence did. A counted option declares no `validate`, `default`, `required`, `validateOmitted`, `multiple`, `polarity`, or `implied`, which TypeScript rejects and the call rejects under `@loomcli/core/count-option-value-rule`, `@loomcli/core/count-option-multiple`, `@loomcli/core/polarity-on-count`, and `@loomcli/core/implied-on-boolean-or-count`. Help prints its row as `-v, --verbose...`. See [Counted options](docs/core.md#counted-options) in the [core reference](docs/core.md).
+- Add `implied` to a string option, the value a bare spelling supplies. `--backup` and `-b` supply it, an explicit value is attached as `--backup=numbered`, `-bnumbered`, or `-b=numbered`, and a bare spelling never takes the next word. Each run passes the implied value through the option's validator before it reads a token, and a rejected one is the declaration error `@loomcli/core/invalid-implied`. Input sources never supply it. `implied` on a Boolean or counted option and an `implied` that is not a string are rejected under `@loomcli/core/implied-on-boolean-or-count` and `@loomcli/core/implied-not-a-string`. Help prints the option as `-b, --backup[=<control>]` with the fact `implied: <value>`, and completion offers its values only after `=` or the letter. See [Implied values](docs/core.md#implied-values) in the [core reference](docs/core.md).
+- Change `OptionNode`, `OptionConfig`, and the manifest's option entry type to unions of three kinds: each gains a `count` variant, which carries no `negative`, `polarity`, `required`, `multiple`, or `default`, and the string variants gain `implied`, the implied value or `null`. `SuppliedInputs.options` and `SourceAnswer.value` admit a `number` for a counted option. TypeScript code that narrows one of these unions by `type` in two ways, or that types a validator's `context.supplied.options` values, no longer compiles until it handles the third kind.
+
+### Migration
+
+**Affected surface.** TypeScript code that reads `OptionNode` from `inspect()`, a lifecycle hook, a configuration source's `requests`, or a failure hook, or that reads an option entry of the manifest document, and narrows by `type` in two ways, such as `option.type === 'boolean' ? option.negative : option.default`. A validator that types the values of `context.supplied.options` as `string | readonly string[] | boolean | undefined`. Code that assigns `OptionConfig` to a type that names only `StringOption` and `BooleanOption`.
+
+**Why.** A counted option is a third kind of option under [ADR-0057](docs/decisions/0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md). It has no default, polarity, or negative spelling, so code that treats every option that is not Boolean as a string option reads fields a counted option does not have, and its token is a number.
+
+**Before and after.**
+
+Before, every option that was not Boolean was a string option:
+
+```ts
+const facts = (option: OptionNode) =>
+  option.type === 'boolean' ? option.negative : option.default;
+
+const supplied: string | readonly string[] | boolean | undefined = context.supplied.options.verbose;
+```
+
+After, the string variant is narrowed by its own tag, and a supplied count is a number:
+
+```ts
+const facts = (option: OptionNode) => {
+  switch (option.type) {
+    case 'boolean':
+      return option.negative;
+    case 'string':
+      return option.default;
+    case 'count':
+      return undefined;
+  }
+};
+
+const supplied: string | readonly string[] | boolean | number | undefined =
+  context.supplied.options.verbose;
+```
+
+**Steps.**
+
+1. Find each narrowing of `OptionNode`, `OptionConfig`, or a manifest option entry by `type` that assumes two kinds, such as a conditional on `'boolean'` or `'string'` alone.
+2. Narrow the string variant by `type === 'string'`, and handle `type === 'count'`, whose node carries `long`, `short`, `aliases`, `env`, and `schema: null` and no value facts.
+3. Add `number` to any type that holds a value of `SuppliedInputs.options` or of a configuration source's `SourceAnswer.value`.
+4. A consumer of the manifest JSON reads an entry whose `type` it does not know by the fields it knows, under the manifest's stability rule, so JSON consumers need no change.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, and expect no error at a narrowing of `OptionNode` or a manifest option entry. Run `inspect()` on an application that declares a counted option and check that each projection the application builds reads its node.
+
+### Changes
+
+- Add `aliases` to every option config, a local option, a global option, an option a plugin declares, and an option a lifecycle hook declares alike, so a renamed option keeps its earlier name. Each alias is one more long spelling of the same option, with `--no-<alias>` where the option's polarity generates a negative form, so repetition, input sources, and validation see one option whichever spelling the operator typed. Help, the manifest, completion, and suggestions never list an alias, and `inspect()` reports the declared names as `aliases` on each `OptionNode`. The [core reference](docs/core.md#option-aliases) describes the rules.
+
+- Add `manifest({ short })` so an application can choose a short spelling for `--manifest`. Without the setting, the option keeps no short spelling.
+
+- Add ordered help sections for Commands and options through `helpCommand` and `helpInput`. Section paths contain one or two headings, each help page can prioritize its Command and option sections, and matching named sections combine local and global options. Both help variants use the same grouping; applications without section fields retain their existing layout.
+
+- Add `reportedSpelling(option)` to `@loomcli/core`. It returns the spelling a reported problem names an `OptionNode` by, the one core's own validation reports: the long form, a negative-only Boolean option's `--no-<name>`, and otherwise the short form of a `shortOnly` option. A plugin that builds an `InputProblem`, such as a configuration source, names the option the way core does. The [core reference](docs/core.md#failure-classes) describes the rule.
+
 ## v0.7.0 - 2026-10-03
 
 0.7.0 is a hardening release. Every declaring call reads its declaration once and reports a declaration it cannot read at that call, a declared default nests at most ten levels, `override()` takes one signature derived from its key, and the configuration plugin reads one TOML, YAML, or JSON file per run. Core also carries its Unicode tables as a JavaScript module, so any bundler can bundle a Loom application.

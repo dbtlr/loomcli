@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0055 - An invocation routes on global options, then parses the routed Command's words against one table
 description: A plugin's options are global options with no difference from the application's, validated with them and typed in every action. An invocation parses in three layers - routing reads the global options and the own options of each Command with an action and children, the routed Command's words are read against one table of its local options and every global option, and each owner reads its values - with short groups under the getopt rule and every fault held except an unknown command. This supersedes the pre-scan, the first-hyphen commit, the mixed-scope fault, and the rejected per-Command table that ADR-0026 carries from ADR-0003, and ADR-0017's plugin option class.
-status: proposed
+status: accepted
 created: 2026-10-03
-modified: 2026-10-04
+modified: 2026-10-05
 ---
 
 # ADR-0055 - An invocation routes on global options, then parses the routed Command's words against one table
@@ -66,7 +66,7 @@ Faults move between raised and held, and their order changes on purpose: a struc
 
 ## Status
 
-Proposed 2026-10-03 with the contract in [Local options](../core.md#local-options), [Global consumption and routing](../core.md#global-consumption-and-routing), and [Global options from plugins](../core.md#global-options-from-plugins). It moves to accepted inside the release PR of the release that ships the implementation: a plugin's options typed in an action and validated as ordinary global options, the three-layer parse with `textstat -ht` rendering help, `jsonkit -F name select` failing with a sentence that names `select`, a fixture with a global Boolean `-q` and `get`'s Boolean `-p` parsing `get a.b -qp` and naming `get` for `-qp --file data.json get a.b`, `jsonkit --format json paths` reaching `paths` with the root's own `--format`, and completion re-proven in Bash, Zsh, and Fish, under Node and Bun.
+Accepted in 0.8.0.
 
 ## Changelog
 
