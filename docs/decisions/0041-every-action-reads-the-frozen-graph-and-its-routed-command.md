@@ -4,7 +4,7 @@ title: ADR-0041 - Every action reads the frozen graph and its routed Command
 description: The action context gains graph and command, the same frozen CommandGraph and routed CommandNode a middleware reads, so a Command whose job is to project the graph, such as shell completion, does that job in its own action. No plugin-specific lane exists.
 status: accepted
 created: 2026-09-26
-modified: 2026-09-27
+modified: 2026-10-05
 ---
 
 # ADR-0041 - Every action reads the frozen graph and its routed Command
@@ -43,3 +43,4 @@ Accepted 2026-09-27 with the implementation. Every action, an application's or a
 - 2026-09-27: The two members are lazy. Reading either builds the run's graph once, so a run without middleware whose action reads neither calls no schema converter.
 - 2026-09-27: Accepted with the implementation.
 - 2026-09-27: A run that asks a configuration source builds the graph too, because the source reads it. A run calls no schema converter only when it has no middleware, asks no configuration source, and its action reads neither member.
+- 2026-10-05: [ADR-0059](0059-a-command-runs-by-name-through-invoke.md), proposed, adds `invoke` to the action context. It runs another Command of the same frozen graph by name and resolves a structured outcome, and every action receives it alike, an application's and a plugin Command's, so the MCP plugin's `mcp` Command serves tools from its own action. A middleware's context does not gain it. The implementation reports the editor-latency gate against the baseline on `main`, as this record's did. It binds when that record is accepted.

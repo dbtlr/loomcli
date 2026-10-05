@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, and the routed Command.
+The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, and `invoke`, which runs another Command of the same graph by name.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -82,7 +82,7 @@ A token form the parser accepts for an option: the long form, the short form, an
 _Avoid_: Flag name, syntax, alias (for the long form the declared name derives)
 
 **Reported spelling**:
-The one spelling every validation diagnostic and reported problem names an option by, whichever spelling the operator typed: its long form, else the negative form a negative-only Boolean option publishes, and otherwise its short form, which a short-only option alone publishes. An alias is never the reported spelling. A parser fault names the spelling typed instead.
+The one spelling every validation diagnostic and reported problem names an option by, whichever spelling the operator typed: its long form, else the negative form a negative-only Boolean option publishes, and otherwise its short form, which a short-only option alone publishes. An alias is never the reported spelling. A parser fault names the spelling typed instead. An invocation by name types no spelling, so there every problem names the option by its declared name.
 _Avoid_: Display name, canonical spelling
 
 **Short alias**:
@@ -116,6 +116,10 @@ _Avoid_: Repeatable flag, array option, list option
 **Counted option**:
 An option that takes no value and reads, as a number, how many times it was supplied across every spelling, so `-vvv` reads 3 and an option nothing supplied reads 0. Repeating it is never a fault.
 _Avoid_: Verbosity flag, counter, incrementing flag
+
+**Control option**:
+An option that controls the invocation rather than feeding the Command's work, such as `--help`, `--version`, `--manifest`, or `--format`. The declarer marks it with `control`, core never reads the mark, and a projection that lists what a Command needs, such as the MCP tool listing, leaves it out.
+_Avoid_: Meta option, system option, framework option, takeover option (for the mark)
 
 **Default**:
 The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value. Core snapshots it once, at the call that declares it: arrays and plain objects are copied and frozen, and other values are kept as they are. No path through a default holds more than 10 arrays and plain objects, and a default that holds itself nests without end, so every reader of a default stays far inside the call stack on every runtime. That copy is the value the graph publishes and the validator receives.
@@ -193,8 +197,12 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status.
+One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` reuses the graph its own run built.
 _Avoid_: Execution, call, request
+
+**Invocation by name**:
+An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It behaves as the argv that spells the same values, reports its inputs by name, and touches no process. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
+_Avoid_: Programmatic run, child run, sub-invocation, tool call (for the invocation)
 
 **Request**:
 The read-only snapshot of the routed Command's validated argument, local option, and passthrough values that middleware reads through `request`. Global options are separate, and the request is `null` while core holds a fault or the routed Command is a group.
@@ -319,6 +327,10 @@ _Avoid_: Color, style name, class
 A named, unstyled mark from core's inventory with main and compatibility forms. Glyph identity is independent of theme appearance.
 _Avoid_: Icon, symbol, emoji, bullet
 
+**Media type**:
+The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name.
+_Avoid_: Encoding (for the fact), format, content type, encoding name
+
 **Result**:
 What a Command declares it produces and its action emits once through `out.results`: one value under `result<Value>()`, or a sequence of rows under `rows<Row>()`, emitted as any iterable or async iterable. The author states the type, the declaration carries a record of views keyed by view name with the first as the default, replaced by name through `views()` and never by identity, and a declared result owns stdout on that Command. No schema and no cardinality are part of it.
 _Avoid_: Return value, payload, output value, document, stream (for the declaration)
@@ -386,7 +398,7 @@ A message that runs while the author develops the application, such as a declara
 _Avoid_: Developer error (for the message), debug message
 
 **Failure view**:
-The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, and the hints plugins added. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, and whether the run received argv or names. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Hint**:
@@ -415,7 +427,7 @@ One entry in an input error: an omitted required input or a rejected value toget
 ## Product surface
 
 **Projection**:
-A public surface derived from the Command graph, such as help, a manifest, completions, or an agent tool listing. A projection reads the graph and adds nothing the graph does not hold.
+A public surface derived from the Command graph, such as help, a manifest, completions, or the MCP tool listing. A projection reads the graph and adds nothing the graph does not hold.
 _Avoid_: Export, output format, adapter
 
 **Help page**:
@@ -475,7 +487,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure `run()` renders after graph build and returns hints. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure `run()` renders after graph build and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
@@ -515,7 +527,7 @@ The author or a plugin whose lifecycle hook gives a value to a collecting extens
 _Avoid_: Contributor, producer, publisher
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, and the input schema.
+A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, the input schema, and a result's media types.
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:
