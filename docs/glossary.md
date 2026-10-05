@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its parsed inputs, the passthrough tail, the output channel, and the host.
+The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, and the routed Command.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -193,7 +193,7 @@ One `run()` call: host capture, graph build, routing, parsing the routed Command
 _Avoid_: Execution, call, request
 
 **Request**:
-The routed Command's argument, option, and passthrough values after parsing and validation, as a middleware reads them through `request` before the action runs. It is `null` while core holds a fault.
+The read-only snapshot of the routed Command's validated argument, local option, and passthrough values that middleware reads through `request`. Global options are separate, and the request is `null` while core holds a fault or the routed Command is a group.
 _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:

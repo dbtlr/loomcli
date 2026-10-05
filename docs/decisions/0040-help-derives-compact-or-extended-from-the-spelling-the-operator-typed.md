@@ -4,7 +4,7 @@ title: ADR-0040 - Help derives compact or extended from the spelling the operato
 description: A middleware reads the spelling that supplied each of its own plugin's typed options, and help derives its variant from it, so -h prints a compact page and --help an extended page that adds details and examples. Core supplies no variant fact. This narrows the ADR-0032 clause that nothing publishes where a value came from.
 status: accepted
 created: 2026-09-26
-modified: 2026-10-03
+modified: 2026-10-05
 ---
 
 # ADR-0040 - Help derives compact or extended from the spelling the operator typed
@@ -53,3 +53,4 @@ Accepted 2026-09-26 with the implementation. Core records the spelling of each o
 - 2026-09-26: Proposed with the help variants contract.
 - 2026-09-26: Accepted with the implementation.
 - 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, makes a plugin's options global options whose values reach every middleware's `options`. `spellings` keeps this record's scope: the spellings of the plugin's own declared options alone, whatever its activation, and the rejected option of spellings for every option in scope keeps its ruling. A value letter whose value is attached records its spelling alone, so `-n5` records `-n`, and an occurrence that faulted records none. It binds when that record is accepted.
+- 2026-10-05: The existing action facts left open above are settled in the dated addendum to [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md). Actions read typed input values, the graph, and the routed Command without input-source or token-spelling metadata. Middleware retains the spellings of its own plugin options alone. Derived context contributions remain a separate deferred capability, and the source-transparency rule above stands.
