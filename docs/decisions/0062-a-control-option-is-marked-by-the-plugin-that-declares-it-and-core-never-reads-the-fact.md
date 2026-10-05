@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0062 - A control option is marked by the plugin that declares it, and core never reads the fact
-description: An option config takes control, a Boolean core fact that marks an option as controlling the invocation rather than feeding the Command's work. Whoever declares the option sets it; help, version, the manifest, and the formatter set it on their options. inspect() and the manifest publish it, the MCP tool listing omits marked options, help is unchanged, and core behaves the same at run time.
+description: An option config takes control, a Boolean core fact that marks an option as controlling the invocation rather than feeding the Command's work. Whoever declares the option sets it; help, version, the manifest, the formatter, and the configuration plugin set it on their options. inspect() and the manifest publish it, the MCP tool listing omits marked options, help is unchanged, and core behaves the same at run time.
 status: proposed
 created: 2026-10-05
 modified: 2026-10-05
@@ -31,7 +31,7 @@ The projection cannot tell these options apart by origin. Under [ADR-0055](0055-
 
 ## Consequences
 
-The manifest document gains `control` on every option entry, an ordinary change under its stability rule. Help and the manifest may read the fact later to separate control options on a page. A first-party option that controls the invocation and is not marked, such as the configuration plugin's `--config`, still appears in a tool listing until its declarer marks it.
+The manifest document gains `control` on every option entry, an ordinary change under its stability rule. Help and the manifest may read the fact later to separate control options on a page. The configuration plugin marks `--config`, because it says where the run reads its configuration rather than feeding the Command's work, and the private example plugin marks `--explain`, a takeover like `--help`.
 
 ## Status
 
