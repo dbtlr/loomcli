@@ -1,1 +1,0 @@
-- Add ordered help sections for Commands and options through `helpCommand` and `helpInput`. Section paths contain one or two headings, each help page can prioritize its Command and option sections, and matching named sections combine local and global options. Both help variants use the same grouping; applications without section fields retain their existing layout.

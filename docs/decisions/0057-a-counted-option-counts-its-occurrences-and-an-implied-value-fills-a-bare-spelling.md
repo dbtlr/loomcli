@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0057 - A counted option counts its occurrences and an implied value fills a bare spelling
 description: An option declares type count to read how many times it was supplied, as a number that is 0 when absent, with no value, validator, default, or presence rule. A string option declares implied to name the value a bare spelling supplies, so an explicit value is attached and the next word is never taken. Both are ordinary options on every declarer, and a parent's own option rebinds to a child's only when both read words the same way.
-status: proposed
+status: accepted
 created: 2026-10-04
-modified: 2026-10-04
+modified: 2026-10-05
 ---
 
 # ADR-0057 - A counted option counts its occurrences and an implied value fills a bare spelling
@@ -48,7 +48,7 @@ The original Loom specification described a counted string option instead: the o
 
 ## Status
 
-Proposed 2026-10-04 with the contract in [Counted options](../core.md#counted-options), [Implied values](../core.md#implied-values), [Short groups](../core.md#short-groups), and [Global consumption and routing](../core.md#global-consumption-and-routing). It moves to accepted inside the release PR of the release that ships the implementation: jsonkit's global `-v, --verbose` counting across spellings and both sides of the Command name and writing its stderr line, `--verbose=2` failing with the counted sentence, a fixture string option with an implied value reading each form of the contract, a parent's own option rebinding only within one value class, both forms filled from the environment and the configuration source as the contract states, help, the manifest, completion, and suggestions rendering both forms, and every new declaration rule rejected at the call, under Node and Bun.
+Accepted in 0.8.0.
 
 ## Changelog
 

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0058 - Help owns ordered sections with at most two heading levels
 description: Commands and options declare help section membership as one or two heading strings. Each page owns separate partial orders for Command sections and option sections, and named option sections combine local and global members. The help plugin owns every field and both help variants use the same layout.
-status: proposed
+status: accepted
 created: 2026-10-05
 modified: 2026-10-05
 ---
@@ -43,7 +43,7 @@ The existing descriptors gain optional fields, and the help renderer groups rows
 
 ## Status
 
-Proposed 2026-10-05 with [Ordered help sections](../core.md#ordered-help-sections). It moves to accepted in the release PR that ships the implementation, after the public API, validation, layout, default compatibility, and packed-package acceptance run under Node and Bun.
+Accepted in 0.8.0.
 
 ## Changelog
 

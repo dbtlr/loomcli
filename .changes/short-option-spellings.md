@@ -1,1 +1,0 @@
-- Add `manifest({ short })` so an application can choose a short spelling for `--manifest`. Without the setting, the option keeps no short spelling.
