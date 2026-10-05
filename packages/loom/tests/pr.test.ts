@@ -127,17 +127,22 @@ const decisionIndex = [
   '| ---------------------------- | -------------- | -------- |',
   '| [ADR-0001](0001-first.md)    | The first one. | proposed |',
   '| [ADR-0002](0002-second.md)   | The second.    | proposed |',
+  '| [ADR-0003](0003-third.md)    | The third.     | proposed |',
   '',
   'ADR-0002 narrows ADR-0001.',
   '',
 ].join('\n');
 
-// A cut at 0.4.8, dated 2026-09-07, over a base that holds two proposed decisions.
-function decisionCut() {
+// Decision 0003 ends with its Status section, as a record with no Changelog entries does.
+const proposedThird = proposedRecord('0003').split('\n## Changelog')[0] ?? '';
+
+// A cut at 0.4.8, dated 2026-09-07, over a base that holds three proposed decisions.
+function decisionCut(first = proposedRecord('0001'), index = decisionIndex) {
   const { root } = repository();
-  put(root, 'docs/decisions/0001-first.md', proposedRecord('0001'));
+  put(root, 'docs/decisions/0001-first.md', first);
   put(root, 'docs/decisions/0002-second.md', proposedRecord('0002'));
-  put(root, 'docs/decisions/README.md', decisionIndex);
+  put(root, 'docs/decisions/0003-third.md', proposedThird);
+  put(root, 'docs/decisions/README.md', index);
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
   expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
@@ -158,10 +163,25 @@ const acceptedFirstIndex = decisionIndex.replace(
   '| The first one. | accepted |',
 );
 
-test('a release cut may mark a shipped decision accepted and leave another proposed', () => {
+test('a release cut may mark shipped decisions accepted and leave another proposed', () => {
   const { base, root } = decisionCut();
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
-  put(root, 'docs/decisions/README.md', acceptedFirstIndex);
+  put(
+    root,
+    'docs/decisions/0003-third.md',
+    proposedThird
+      .replace('status: proposed', 'status: accepted')
+      .replace('modified: 2026-09-02', 'modified: 2026-09-07')
+      .replace(
+        'Proposed with the contract. It moves to accepted in the release PR that ships it.',
+        'Accepted in 0.4.8.',
+      ),
+  );
+  put(
+    root,
+    'docs/decisions/README.md',
+    acceptedFirstIndex.replace('| The third.     | proposed |', '| The third.     | accepted |'),
+  );
   commit(root);
   expect(releaseCheck(root, base, '0.4.8')).toEqual({
     status: 0,
@@ -197,12 +217,12 @@ test.each([
     },
   },
   {
-    edit: 'another record left proposed',
+    edit: 'another proposed record',
     files: {
       'docs/decisions/0002-second.md': proposedRecord('0002').replace('The context.', 'New.'),
     },
   },
-  { edit: 'a new record', files: { 'docs/decisions/0003-third.md': proposedRecord('0003') } },
+  { edit: 'a new record', files: { 'docs/decisions/0004-fourth.md': proposedRecord('0004') } },
 ])('a release cut that changes $edit fails naming the record', ({ files }) => {
   const { base, root } = decisionCut();
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
@@ -217,6 +237,65 @@ test.each([
       `${Object.keys(files)[0]}: a release cut changes a decision record only to mark a proposed decision accepted`,
     ),
   });
+});
+
+test('a release cut replaces the whole Status section, subsections included', () => {
+  const evidence = '\n### Evidence\n\nThe acceptance run.\n';
+  const { base, root } = decisionCut(
+    proposedRecord('0001').replace('ships it.\n', `ships it.\n${evidence}`),
+  );
+  put(
+    root,
+    'docs/decisions/0001-first.md',
+    acceptedFirst.replace('Accepted in 0.4.8.\n', `Accepted in 0.4.8.\n${evidence}`),
+  );
+  put(root, 'docs/decisions/README.md', acceptedFirstIndex);
+  commit(root);
+  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+    'docs/decisions/0001-first.md: a release cut changes a decision record only',
+  );
+  put(root, 'docs/decisions/0001-first.md', acceptedFirst);
+  commit(root);
+  expect(releaseCheck(root, base, '0.4.8').status).toBe(0);
+});
+
+test('a record with two Status sections cannot be accepted', () => {
+  const { base, root } = decisionCut(
+    proposedRecord('0001').replace('## Changelog', '## Status\n\nAgain.\n\n## Changelog'),
+  );
+  put(
+    root,
+    'docs/decisions/0001-first.md',
+    acceptedFirst.replace('## Changelog', '## Status\n\nAgain.\n\n## Changelog'),
+  );
+  put(root, 'docs/decisions/README.md', acceptedFirstIndex);
+  commit(root);
+  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+    'docs/decisions/0001-first.md: a release cut changes a decision record only',
+  );
+});
+
+test.each([
+  {
+    index: decisionIndex.replace(
+      '| [ADR-0002]',
+      '| [ADR-0001](0001-first.md)    | The first one. | proposed |\n| [ADR-0002]',
+    ),
+    shape: 'two rows',
+  },
+  { index: acceptedFirstIndex, shape: 'a row that already reads accepted' },
+])('a record whose index has $shape cannot be accepted', ({ index }) => {
+  const { base, root } = decisionCut(proposedRecord('0001'), index);
+  put(root, 'docs/decisions/0001-first.md', acceptedFirst);
+  put(
+    root,
+    'docs/decisions/README.md',
+    index.replace('| The first one. | proposed |', '| The first one. | accepted |'),
+  );
+  commit(root);
+  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+    'docs/decisions/README.md: a release cut changes the decision index only',
+  );
 });
 
 test('a release cut that deletes a record fails naming the record', () => {

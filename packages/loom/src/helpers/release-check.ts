@@ -61,12 +61,13 @@ export function checkRelease(
       throw new Error(`${library.path}: release cuts change only the version field.`);
     }
   }
+  const decisions = checkDecisions(root, base, head, { date: options.date, version }, changed);
   const allowed = new Set([
     'CHANGELOG.md',
     'pnpm-lock.yaml',
     ...libraries.map((library) => library.path),
     ...release.fragments.map((fragment) => `.changes/${fragment.name}`),
-    ...checkDecisions(root, base, head, { date: options.date, version }, changed),
+    ...decisions,
   ]);
   for (const path of changed) {
     if (!allowed.has(path)) {
