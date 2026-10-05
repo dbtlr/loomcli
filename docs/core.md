@@ -2782,6 +2782,8 @@ The page is derived from the graph and the variant by the rules below and nothin
 
 Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
+The `section`, `commandSections`, and `optionSections` fields shown below are the [proposed ordered sections contract](#ordered-help-sections). Those fields and grouped rendering await implementation.
+
 ```ts
 // @loomcli/plugins/help/views
 import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
@@ -3174,7 +3176,7 @@ With no section membership or order fields, existing help pages keep their bytes
 
 #### Ordered help sections acceptance
 
-Public API fixtures prove these rules under Node and Bun:
+The implementation is accepted when public API fixtures prove the following rules under Node and Bun. Draft-schema probes check the proposed schemas and TypeScript shapes alone. Rendered output and packed-package checks remain implementation requirements.
 
 - **Paths and storage.** One-level and two-level membership compile and reach the frozen extension values, whether help is installed or not. An empty path, a three-entry path, and a non-string heading fail TypeScript checks and ordinary extension validation. A blank or multiline heading fails the `line` rule. The same checks apply to entries in either order list. Membership paths whose headings have the same uppercase form combine, order entries match that same form, and title-case references such as `Global options` match default headings. Stored strings retain their authored spelling.
 - **Commands.** A page with direct and nested sections, unsectioned children, interleaved order entries, duplicate entries, unlisted sections, and an entry for an absent section pins the heading and member order. A two-entry order path for an absent or entirely hidden subsection does not position its visible outer heading. A parent-only order entry positions that outer heading when another subsection is visible. A child page uses its own ordering, while that child's membership affects only its row on the parent page. Plugin-attached Commands use the same membership rules.
