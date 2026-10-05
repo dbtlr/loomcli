@@ -18,7 +18,7 @@ The projection cannot tell these options apart by origin. Under [ADR-0055](0055-
 ## Decision
 
 - **A core fact on an option.** Every option config takes `control?: boolean`: a local option, a global option, a plugin's option, and an option a lifecycle hook declares. An omitted `control` reads `false`, and a value that is not a Boolean is the `@loomcli/core/flag-not-boolean` declaration error. An argument is always the Command's input, so `control` on an argument is the `@loomcli/core/misplaced-listing-fact` error.
-- **The declarer marks it.** Help, version, the manifest, and the formatter set `control: true` on `--help`, `--version`, `--manifest`, and `--format`. An application sets it on an option of its own that does the same kind of job.
+- **The declarer marks it.** Help, version, the manifest, the formatter, and the configuration plugin set `control: true` on `--help`, `--version`, `--manifest`, `--format`, and `--config`, and the private example plugin `@loom/explain` sets it on `--explain`. An application sets it on an option of its own that does the same kind of job.
 - **Core never reads it.** Routing, parsing, input sources, validation, activation, and dispatch behave as they would without it. `invoke()` accepts a control option like any other, so an invocation by name still behaves as the argv that spells it.
 - **Its readers.** `inspect()` publishes `control` on every `OptionNode` variant, and the manifest copies it. The MCP tool listing omits a marked option. Help is unchanged and lists every option it listed before.
 
@@ -35,7 +35,7 @@ The manifest document gains `control` on every option entry, an ordinary change 
 
 ## Status
 
-Proposed 2026-10-05 with the contract in [Control options](../core.md#control-options). It moves to accepted inside the release PR of the release that ships the implementation: the fact published on every option node, the four first-party options marked, help unchanged, and the acceptance in that section, under Node and Bun.
+Proposed 2026-10-05 with the contract in [Control options](../core.md#control-options). It moves to accepted inside the release PR of the release that ships the implementation: the fact published on every option node, the five first-party options marked, help unchanged, and the acceptance in that section, under Node and Bun.
 
 ## Changelog
 

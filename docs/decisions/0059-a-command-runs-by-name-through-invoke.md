@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0059 - A Command runs by name through invoke
-description: Core gains invoke(path, values, options?), on the action context and on Application, which runs one Command of a built graph with named values lowered to the tokens argv would give, captures what the selected view and the lanes write, renders a failure's view into the captured messages and lets the caller's handler add structure, reports inputs by declared name, marks the failure contexts with invokedBy, and touches no process. run() is unchanged.
+description: Core gains invoke(path, values, options?), on the action context and on Application, which runs one Command of a built graph with named values lowered to the tokens argv would give, captures what the selected view and the lanes write, renders a failure's view into the captured messages and lets the caller's handler add structure, reports inputs by declared name, marks the failure and source contexts with invokedBy, and touches no process. run() is unchanged.
 status: proposed
 created: 2026-10-05
 modified: 2026-10-05
@@ -52,7 +52,7 @@ An MCP plugin could build argv and parse its own JSON output with no core change
 
 `invoke` returns the structured outcome ADR-0009 rejected for `run()`. `run()` keeps returning an exit code alone, and ADR-0009's reason, that an embedding host observes one result whichever way the invocation failed, holds for `invoke` too: the outcome is that one result.
 
-The action context gains a member, so the implementation measures editor latency against the baseline. The failure contexts gain a field, which a hint plugin reads. Help's hint and the suggestions plugin change behavior for an invocation by name alone. A problem a plugin builds, such as a configuration source's, names the option by the spelling that plugin chooses, so under `invoke` it keeps the argv spelling.
+The action context gains a member, so the implementation measures editor latency against the baseline. The failure contexts gain a field, which a hint plugin reads. Help's hint and the suggestions plugin change behavior for an invocation by name alone. `SourceContext` gains the same field, so a configuration source names a problem's option by its declared name under `invoke`, as core's own problems do.
 
 `invoke` is the path a test harness and the MCP plugin of [ADR-0063](0063-the-mcp-plugin-serves-opted-in-commands-as-tools.md) take. [ADR-0009](0009-core-captures-the-host-and-resolves-an-exit-code.md), [ADR-0018](0018-one-run-signal-carries-cancellation-and-one-owner-brackets-process-signals.md), [ADR-0041](0041-every-action-reads-the-frozen-graph-and-its-routed-command.md), and [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md) carry dated entries.
 
