@@ -197,7 +197,7 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Invocation**:
-One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` reuses the graph its own run built.
+One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
@@ -487,7 +487,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure `run()` renders after graph build and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:

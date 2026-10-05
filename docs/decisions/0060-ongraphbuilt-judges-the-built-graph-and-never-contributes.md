@@ -11,7 +11,7 @@ modified: 2026-10-05
 
 ## Context
 
-Some rules span the whole graph and belong to a plugin rather than to core. The MCP plugin serves each opted-in Command as a tool named from its path, and two Commands such as `scratch create` and `scratch_create` give one tool name. No `onCommandAttach` hook can see that, because it receives one Command at a time and an earlier Command's facts may still change under a later hook. The fault must still surface where every declaration fault surfaces: at build, from `run()` and `inspect()`, as a Developer Diagnostic in a development build, and not first when an agent calls a tool.
+Some rules span the whole graph and belong to a plugin rather than to core. The MCP plugin serves each opted-in Command as a tool named from its path, and two Commands such as `scratch create` and `scratch_create` give one tool name. No `onCommandAttach` hook can see that, because it receives one Command at a time and an earlier Command's facts may still change under a later hook. The fault must still surface where every declaration fault surfaces: at build, where `inspect()` throws the `DeclarationError` and `run()` reports it by build, as a Developer Diagnostic in a development build and the generic defect message in a distributed one, with exit 1, and not first when an agent calls a tool.
 
 [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) named lifecycle hooks `on<Event>` and left more hooks to the plugins that need them. An earlier design carried a build-complete hook that wrote derived data into plugin storage, which brings a storage contract and a contribution order that no reader needs.
 
