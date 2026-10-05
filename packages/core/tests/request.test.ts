@@ -82,6 +82,14 @@ test('a takeover under a held fault exits 0 with no diagnostic', () => {
   });
 });
 
+test('a successful validator effect precedes a takeover', () => {
+  expect(run('effect-takeover', ['get', 'a.b', '--help'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'effects:validation,takeover\nhelp:request\nresolved:0\n',
+  });
+});
+
 test('a takeover under a throwing validator exits 0 with no diagnostic', () => {
   expect(run('throwing-takeover', ['get', 'a.b', '--help'])).toEqual({
     status: 0,

@@ -5,6 +5,19 @@ const argv = process.argv.slice(3);
 
 /** The run's own controller, so a scenario cancels from inside a validator or a middleware. */
 const controller = new AbortController();
+const effects = [];
+
+/** Accepting validation can have effects even when middleware ends the invocation. */
+const effectful = {
+  '~standard': {
+    validate: (value) => {
+      effects.push('validation');
+      return { value };
+    },
+    vendor: 'fixture',
+    version: 1,
+  },
+};
 
 /** A schema that reads decimal digits, so a request carries the output and not the token. */
 const digits = {
@@ -53,6 +66,7 @@ const breaking = {
 /** The schema the routed argument declares, which one scenario chooses. */
 const schemas = {
   'cancel-validator': aborting,
+  'effect-takeover': effectful,
   'throwing-bare': breaking,
   'throwing-takeover': breaking,
 };
@@ -128,6 +142,10 @@ async function mutating({ next, out, request }) {
 
 /** A middleware that takes the invocation over, as a help plugin does. */
 async function taking({ out, request }) {
+  if (scenario === 'effect-takeover') {
+    effects.push('takeover');
+    await out.print(`effects:${effects.join(',')}`);
+  }
   await out.print(`help:${request === null ? 'null' : 'request'}`);
 }
 
@@ -185,6 +203,7 @@ const installed = {
   bare: [],
   'cancel-chain': ['canceller'],
   'cancel-validator': ['reader'],
+  'effect-takeover': ['help'],
   late: ['late'],
   mutating: ['mutator'],
   reading: ['reader'],

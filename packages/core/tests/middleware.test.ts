@@ -198,6 +198,14 @@ test('a failure thrown before next() resolves through the failure path with its 
   });
 });
 
+test('a middleware failure before next() wins over a held missing argument', () => {
+  expect(run('throwing', ['get'], { LOOM_FIXTURE_THROW: 'fatal' })).toEqual({
+    status: 1,
+    stderr: 'the plugin stopped the invocation\n',
+    stdout: 'resolved:1\n',
+  });
+});
+
 test('a throw during unwinding is reported after the primary outcome and turns a 0 into 1', () => {
   const result = run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind' });
   expect(result.status).toBe(1);
