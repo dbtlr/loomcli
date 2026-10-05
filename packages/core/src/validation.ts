@@ -23,8 +23,8 @@ import {
   omissionWithoutValidator,
   requiredWithDefault,
 } from './input-rules.js';
-import { booleanValue } from './options.js';
-import type { OptionValues } from './options.js';
+import { booleanValue, reportedOf, spellingsOf } from './options.js';
+import type { OptionValues, SpellingTable } from './options.js';
 import { boundedSnapshot, NestedTooDeepError, shallowList } from './plain.js';
 import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
@@ -130,6 +130,8 @@ export interface Invocation {
   signal: AbortSignal;
   sources: Provenance;
   supplied: SuppliedValues;
+  /** The routed Command's spelling table, which names each option the way a problem reports it. */
+  table: SpellingTable;
 }
 
 /** Every declaration in validation order: the globals first, then the reading Command's own. */
@@ -333,23 +335,15 @@ export function configUnread(site: InputSite): InputSite {
 }
 
 /**
- * The token an operator would type for one declaration: `--file` for an option, `-F` when the
- * option declares `shortOnly`, and the declared name for an argument. Every input diagnostic and
+ * The token an operator would type for one declaration: an option's reported spelling, read from
+ * the routed Command's table, and the declared name for an argument. Every input diagnostic and
  * every reported problem names the declaration this way, so an omission and a rejected value read
  * alike and a `shortOnly` option is never named by a long form it does not accept.
  */
-function spellingOf(input: InputDeclaration): string {
-  if (input.kind === 'argument') {
-    return input.name;
-  }
-  const { config } = input;
-  if (config.shortOnly === true && config.short !== undefined) {
-    return `-${config.short}`;
-  }
-  // A negative-only Boolean option accepts its negative form alone.
-  return config.type === 'boolean' && config.polarity === 'negative'
-    ? `--no-${input.name}`
-    : `--${input.name}`;
+function spellingOf(input: InputDeclaration, table: SpellingTable): string {
+  return input.kind === 'argument'
+    ? input.name
+    : reportedOf(spellingsOf(table, input.name), input.name);
 }
 
 /**
@@ -1017,7 +1011,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         input: identityOf(entry),
         issues,
         reason: 'invalid',
-        spelling: spellingOf(entry.input),
+        spelling: spellingOf(entry.input, invocation.table),
       },
     });
   };
@@ -1061,7 +1055,11 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       reports.set(input, earlier);
     } else if (input.kind === 'option' && variable !== undefined) {
       // A variable outside its option's grammar filled nothing, so it is the option's problem.
-      reject(entry, grammarIssues(input), suppliedName(input, spellingOf(input), variable));
+      reject(
+        entry,
+        grammarIssues(input),
+        suppliedName(input, spellingOf(input, invocation.table), variable),
+      );
     } else if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(input, booleanValue(supplied.options, input.name, input.config));
     } else if (input.kind === 'option' && input.config.type === 'count') {
@@ -1069,7 +1067,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       values.set(input, supplied.options.counts.get(input.name) ?? 0);
     } else {
       const collected = collects(input);
-      const spelling = spellingOf(input);
+      const spelling = spellingOf(input, invocation.table);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)

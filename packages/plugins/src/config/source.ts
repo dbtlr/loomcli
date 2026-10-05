@@ -1,4 +1,10 @@
-import { escapeControlCharacters, InputError, issuePath, readExtension } from '@loomcli/core';
+import {
+  escapeControlCharacters,
+  InputError,
+  issuePath,
+  readExtension,
+  reportedSpelling,
+} from '@loomcli/core';
 import type {
   CommandGraph,
   InputProblem,
@@ -127,20 +133,6 @@ function shape(request: OptionNode, value: unknown): Shaped {
 }
 
 /**
- * The spelling core reports an option by: its long form, a negative-only Boolean option's negative
- * form, and otherwise its short form, which a short-only option alone publishes.
- */
-function spellingOf(request: OptionNode): string {
-  if (request.long !== null) {
-    return request.long;
-  }
-  if (request.type === 'boolean' && request.negative !== null) {
-    return request.negative;
-  }
-  return request.short ?? `--${request.name}`;
-}
-
-/**
  * The lines one wrong value reports, one per issue, each naming the option, its origin, and any
  * position. The position is read and escaped as core's own validation lines read it.
  */
@@ -165,7 +157,7 @@ function answer(request: OptionNode, usable: UsableFile, graph: CommandGraph): A
   if (shaped.kind === 'value') {
     return { answer: { label: located.label, value: shaped.value }, kind: 'answer' };
   }
-  const spelling = spellingOf(request);
+  const spelling = reportedSpelling(request);
   return {
     kind: 'wrong',
     lines: wrongValueLines(`Option "${spelling}" (from ${located.label})`, shaped.issues),

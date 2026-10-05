@@ -51,6 +51,7 @@ export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';
 export type { ViewContext } from './types.js';
 export { pad, style } from './style.js';
+export { reportedSpelling } from './inspect.js';
 export { issuePath } from './validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions, Packet } from './application.js';

@@ -2789,6 +2789,7 @@ function validateInvocation(
       args: parsed ? local.args : new Map(),
       options: parsed ? mergeValues(filled.values, filled.locals) : filled.values,
     },
+    table: routed.command.table,
     ...(only ? { only } : {}),
     ...(sources.validated ? { prior: sources.validated } : {}),
   });
