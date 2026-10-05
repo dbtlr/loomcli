@@ -2782,6 +2782,8 @@ The page is derived from the graph and the variant by the rules below and nothin
 
 Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
+The `section`, `commandSections`, and `optionSections` fields shown below are the [proposed ordered sections contract](#ordered-help-sections). Those fields and grouped rendering await implementation.
+
 ```ts
 // @loomcli/plugins/help/views
 import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
@@ -2832,10 +2834,15 @@ import { z } from 'zod';
 
 import { line, prose } from '../lines.js';
 
+const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
+
 export const helpCommand = extension(`${Package.name}/help/command`, {
   schema: z.object({
+    commandSections: z.array(sectionPath).optional(),
     details: prose.optional(),
     examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
+    optionSections: z.array(sectionPath).optional(),
+    section: sectionPath.optional(),
   }),
   target: 'command',
 });
@@ -2843,6 +2850,7 @@ export const helpInput = extension(`${Package.name}/help/input`, {
   schema: z.object({
     accepts: line.optional(),
     placeholder: z.string().regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.').optional(),
+    section: sectionPath.optional(),
   }),
   target: 'option',
 });
@@ -2853,6 +2861,8 @@ export const helpArgument = extension(`${Package.name}/help/argument`, {
 ```
 
 `helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead, one authored line per page line, each indented two spaces, with line breaks kept and nothing wrapped; every line of it holds a character other than whitespace, so it adds no blank line of its own to the page and no line terminator at either end. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
+
+`section` places a Command or an option in an authored [help section](#ordered-help-sections). `commandSections` and `optionSections` order the sections on that Command's own help page. The fields are optional and belong to help, including on a global option a plugin declares. Arguments keep their existing block and gain no section field.
 
 ```ts
 import { Application, Command } from '@loomcli/core';
@@ -2930,9 +2940,9 @@ Help decides that its prose belongs in the [manifest](#manifest), and it supplie
 
 #### The help page
 
-The page rules below define content and layout. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. Each rule applies to both [variants](#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
+The page rules below define the default content and layout. [Ordered help sections](#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. Each rule applies to both [variants](#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
 
-The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Section titles are upper case at the left margin, and every other line is indented two spaces, so a line at the left margin is the masthead, a section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
+The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
 1. **Masthead.** `<path> · <description>`, with a space, U+00B7, and a space as the separator, or `<path>` alone when the node has no description. When the routed Command is deprecated, a second line `  Deprecated: <message>` follows in the same block.
 2. **Details.** Extended alone. The routed node's `details`, one authored line per page line, each indented two spaces. The page view splits on the same line terminators the schema recognizes, CRLF and each single terminator, and joins with LF, so an authored CR or NEL never reaches the page.
@@ -2942,7 +2952,7 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 6. **OPTIONS.** The routed node's visible local options in declaration order, one row each; on the root page of an Application with no children, the visible globals follow them in `graph.globals` order, in this one section. The left cell is the spellings, then ` <placeholder>` for a string option: `-f, --file <path>` with both spellings, `    --explain` with a long spelling alone, indented four spaces so the long spellings align, and `-m <metric>` for a `shortOnly` string option. A string option with an [implied value](#implied-values) shows its placeholder in brackets after `=`, `-b, --backup[=<control>]`, and after the letter alone, `-b[<control>]`, for a `shortOnly` one, because only an attached value replaces the implied value, and its right cell carries the fact `implied: <value>`, so the row reads `-b, --backup[=<control>]  How to back up each file.  (implied: simple)`. A [counted option](#counted-options) has no placeholder, and its spellings end with `...`, `-v, --verbose...`, or `-v...` for a `shortOnly` one, because each occurrence adds one; it never carries `repeatable`, `required`, or `default`, since the `...` already says it repeats and a count has no presence rule or default. A Boolean option's long spelling follows its polarity: `--total` for `positive`, `--no-total` for `negative`, and `--[no-]total` for `both`. The right cell follows the right-cell rule. A Boolean option with `negative` polarity carries the fact `default: true`, because its absent value is `true` and both of its spellings set it to `false`; the other polarities carry no default fact, because their absent value is `false`.
 7. **GLOBAL OPTIONS.** On every page except the root page of an Application with no children, the visible globals in `graph.globals` order, one row each under the OPTIONS rule, so the reader sees which options belong to this Command and which reach every Command.
 8. **EXAMPLES.** Extended alone. For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
-9. **Hints.** One block of up to two lines, each at the left margin. When the page printed COMMANDS, the first line is `Run <path> <command> --help for command details.` on the extended page and `Run <path> <command> -h for command details.` on the compact page. On the compact page alone, when the extended page of the same node would print Details or EXAMPLES, the last line is `Run <path> --help for details and examples.`
+9. **Hints.** One block of up to two lines, each at the left margin. When the page printed any child Command row, the first line is `Run <path> <command> --help for command details.` on the extended page and `Run <path> <command> -h for command details.` on the compact page. On the compact page alone, when the extended page of the same node would print Details or EXAMPLES, the last line is `Run <path> --help for details and examples.`
 
 The right-cell rule: the description when the member has one, then, for an option or an argument that has them, its [accepted values](#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, `repeatable` for a multiple option, `default: <value>`, `implied: <value>` for an option with an [implied value](#implied-values), and `deprecated: <message>`. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, `implied: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. An implied value prints, and is escaped, exactly as a default that is a string does. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise, or as Object's own spelling, such as `[object Array]`, where `String` throws; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
 
@@ -3094,6 +3104,86 @@ Run jsonkit --help for details and examples.
 `jsonkit select -h` prints the `jsonkit select --help` page above unchanged, because `select` carries no details or examples, so the compact page has nothing to point to.
 
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+
+#### Ordered help sections
+
+```ts
+// The shared schema in the help declarations module.
+const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
+```
+
+```ts
+import { Application, Command } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
+
+const next = new Command('next', {
+	description: 'Find ready tasks.',
+	extensions: [helpCommand({ section: ['Work commands', 'Read'] })],
+}).action(() => {});
+const done = new Command('done', {
+	description: 'Complete a task.',
+	extensions: [helpCommand({ section: ['Work commands', 'Lifecycle'] })],
+}).action(() => {});
+const doctor = new Command('doctor', {
+	description: 'Check the application.',
+}).action(() => {});
+
+const app = new Application('work', {
+	extensions: [helpCommand({
+		commandSections: [
+			['Work commands', 'Read'],
+			['Work commands', 'Lifecycle'],
+			['COMMANDS'],
+		],
+		optionSections: [['Output'], ['GLOBAL OPTIONS']],
+	})],
+	plugins: [help()],
+})
+	.globalOption('quiet', {
+		description: 'Suppress progress messages.',
+		extensions: [helpInput({ section: ['Output'] })],
+		short: 'q',
+		type: 'boolean',
+	})
+	.command(done)
+	.command(next)
+	.command(doctor);
+```
+
+- **Membership.** A child's `helpCommand.section` places its row on the parent's help page. An option's `helpInput.section` places its row on every page that shows it. A path has exactly one or two heading strings. Each string follows the existing `line` schema. Headings match by their uppercase form, which is also the form printed. They are not trimmed, and stored extension values retain their authored strings. TypeScript rejects an empty path, a path with three entries, and a non-string heading. Extension validation rejects those shapes and any heading the `line` schema rejects. A Command's membership does not enclose its own help page. The root's membership has no effect because the root has no parent.
+- **Defaults.** A Command without membership uses `['COMMANDS']`. A local option without membership uses `['OPTIONS']`. A global option without membership uses `['GLOBAL OPTIONS']`, except on a childless root, where it uses `['OPTIONS']` as today. An authored path replaces the default for that member. Default paths participate in ordering and matching like authored paths, so an option explicitly assigned `['OPTIONS']` joins that default section. Arguments remain in ARGUMENTS.
+- **Ownership.** The routed Command's `helpCommand.commandSections` orders its visible children's sections. Its `optionSections` orders the sections of its visible local and global options together. Both lists are optional and may be empty. Neither list is inherited, and the Application's value orders the root page alone. Commands remain before ARGUMENTS, and option sections remain after ARGUMENTS. A Command and an option with the same path belong to separate sections in those separate parts of the page.
+- **Ordering.** Ordering applies at each heading level. Listed headings appear first, in their first listed order, and unlisted headings follow by their first visible member's appearance. Each listed path orders its outer heading and, when it has two entries, its inner heading. A one-entry path participates when its outer heading has visible direct members or visible subsections. A two-entry path participates only when that inner section has visible members. Otherwise the entire entry is ignored, even if another subsection makes the outer heading visible. Repeating a path adds no second section or second priority. Outer sections stay together even when their paths are interleaved in the order list. For example, `['Work', 'Read']`, `['Machinery']`, `['Work', 'Lifecycle']` renders Work with Read and Lifecycle, then Machinery. Direct members of an outer section precede its subsections.
+- **Member order.** Visible children enter in authoring order. Visible options enter with the local options in declaration order, followed by globals in `graph.globals` order. Members keep that order within each section. Local and global options with the same authored path share one section, with local members first. Membership never changes the graph's lists or the order another projection reads.
+- **Layout.** Outer headings are uppercase at the left margin. Direct members are indented two spaces. An inner heading is uppercase and indented two spaces, followed by members indented four spaces. Every outer section is one block, without an internal blank line. One blank line separates it from the next block. The existing row cells, accepted values, facts, and semantic styles apply. Column widths are measured independently for direct members and for each inner section, using `context.width` and `pad` as today. Hidden members are filtered before ordering and measurement. A heading with no visible members beneath it prints nothing, and a parent with visible subsections prints its heading even when it has no direct members.
+- **Variants and projections.** Both variants use the same sections and order. Compact help still omits details and examples alone. Both variants retain their child hint whenever any visible child row prints, including when every child uses an authored section. Heading text is uppercased, then escaped before styling. The default section style is `dim` at both levels. The three descriptor identities, `HelpPage`, and the whole-page override remain unchanged. `readExtension` publishes the new fields through the ordinary extension values. Help still supplies only details and examples to `manifestCommand`, and completion keeps its existing descriptions and ordering. No section field is added to core or the manifest.
+
+The command part of `work --help` in the example is:
+
+```text
+WORK COMMANDS
+  READ
+    next  Find ready tasks.
+  LIFECYCLE
+    done  Complete a task.
+
+COMMANDS
+  doctor  Check the application.
+```
+
+With no section membership or order fields, existing help pages keep their bytes. [ADR-0058](decisions/0058-help-owns-ordered-sections-with-at-most-two-heading-levels.md) records the decision.
+
+#### Ordered help sections acceptance
+
+The implementation is accepted when public API fixtures prove the following rules under Node and Bun. Draft-schema probes check the proposed schemas and TypeScript shapes alone. Rendered output and packed-package checks remain implementation requirements.
+
+- **Paths and storage.** One-level and two-level membership compile and reach the frozen extension values, whether help is installed or not. An empty path, a three-entry path, and a non-string heading fail TypeScript checks and ordinary extension validation. A blank or multiline heading fails the `line` rule. The same checks apply to entries in either order list. Membership paths whose headings have the same uppercase form combine, order entries match that same form, and title-case references such as `Global options` match default headings. Stored strings retain their authored spelling.
+- **Commands.** A page with direct and nested sections, unsectioned children, interleaved order entries, duplicate entries, unlisted sections, and an entry for an absent section pins the heading and member order. A two-entry order path for an absent or entirely hidden subsection does not position its visible outer heading. A parent-only order entry positions that outer heading when another subsection is visible. A child page uses its own ordering, while that child's membership affects only its row on the parent page. Plugin-attached Commands use the same membership rules.
+- **Options.** `optionSections` orders local and global sections together, including GLOBAL OPTIONS before OPTIONS when explicitly listed that way. Direct and nested option sections cover partial, interleaved, repeated, parent-only, and absent order entries. A child's page uses its own order for global and local members even when the root declares an option order. Every option section remains after ARGUMENTS. A named section combines a local option and a global option, with local members first. A childless root folds unsectioned globals into OPTIONS, while a page with children retains the two default sections. A root with hidden children alone retains GLOBAL OPTIONS as today. An authored default path joins the default section. Global options declared by a plugin follow the same rules.
+- **Filtering and layout.** Hidden members create no headings and affect no widths. An outer heading containing only visible subsections remains. Golden bytes pin two-space inner headings, four-space inner rows, two-space direct rows, blank lines, and the final newline. Wide and combining characters align using the existing width rules. Marker characters in headings print literally under both plain and styled output.
+- **Variants and other projections.** Compact and extended pages have the same section layout, with their existing differences in details, examples, and hints. Both variants retain the child hint when every visible child uses an authored section and no COMMANDS heading prints. A whole-page replacement can read section fields through `readExtension`. The manifest receives details and examples alone, and its graph order and completion output are unchanged.
+- **Compatibility and delivery.** Existing unsectioned example pages remain byte-for-byte unchanged. Both examples demonstrate authored sections through the public descriptors, and packed-package checks exercise grouped help under Node and Bun. An ordinary change fragment describes the new fields and layout. No version field changes in the implementation PR.
 
 #### Help variants
 
