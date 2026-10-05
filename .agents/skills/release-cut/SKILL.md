@@ -54,7 +54,9 @@ Replace the date with one valid UTC release date for both commands. Add `--initi
 
 An empty fragment set after the initial release does not create a release. A failed or interrupted write is not a prepared cut. Inspect its diagnostic; preserve the failed checkout for diagnosis and restart preparation from the recorded base in a fresh checkout when necessary.
 
-Review the complete diff. It must contain only participating manifest version changes, the lockfile, the compiled changelog section, and consumed-fragment deletions. Preserve `workspace:*` references in repository manifests. Commit these changes together once; obtain the target version from the generated manifests.
+Accept every proposed decision the release ships. List the records in `docs/decisions/` whose frontmatter reads `status: proposed`, and read each one's Status section for the implementation it waits on. When the cycle diff ships that implementation, mark the record accepted in the cut: set `status: accepted`, set `modified` to the release date, and replace the Status section's text with `Accepted in <version>.`, using the target version. Add no Changelog entry, because the Status section records the release. Change that record's status cell in `docs/decisions/README.md` from `proposed` to `accepted`. Leave a record proposed when the release does not ship its implementation, and name it in the PR body with the reason. The release guard rejects any other change to a decision record or the index, so land other decision text in an ordinary preparatory PR before the cut.
+
+Review the complete diff. It must contain only participating manifest version changes, the lockfile, the compiled changelog section, consumed-fragment deletions, and decision acceptances. Preserve `workspace:*` references in repository manifests. Commit these changes together once; obtain the target version from the generated manifests.
 
 Validate the committed cut using its exact base and head. Set `base_sha` and `head_sha` from the recorded Git SHAs. Write the exact release title as one newline-terminated line in a file outside the checkout. Use a file-writing tool, preserving the title as data. Set `release_title_file` to that file's path.
 
@@ -76,6 +78,7 @@ Recheck that the target version is still unpublished and untagged, and that no o
 - Previous-release tag and npm evidence, or a statement that this is the initial cut.
 - Validation results and any merge blocker.
 - Consumed fragments and optional narrative rationale.
+- Decisions the cut accepts, and each proposed decision it leaves proposed with the reason.
 
 Use a body file or a structured API argument to preserve Markdown and avoid shell evaluation. The generated release diff is its changelog decision; it needs no new fragment or `skip-changelog` exemption.
 

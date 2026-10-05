@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
+import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile, releaseInsertion } from './release-files.js';
 import { prepareRelease, releaseDate, requireReleaseNotes } from './release.js';
 import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
@@ -65,6 +66,7 @@ export function checkRelease(
     'pnpm-lock.yaml',
     ...libraries.map((library) => library.path),
     ...release.fragments.map((fragment) => `.changes/${fragment.name}`),
+    ...checkDecisions(root, base, head, { date: options.date, version }, changed),
   ]);
   for (const path of changed) {
     if (!allowed.has(path)) {
