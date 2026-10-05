@@ -15,7 +15,8 @@ import {
   rightCell,
 } from './cells.js';
 import type { Row, StringOption } from './cells.js';
-import { helpCommand } from './extension.js';
+import { helpCommand, helpInput } from './extension.js';
+import { sectionBlocks } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
 
 /**
@@ -31,7 +32,7 @@ function visible<Member extends { readonly hidden: boolean }>(
   return members.filter((member) => !member.hidden);
 }
 
-/** The help facts one Command carries, which the page reads once per rendering. */
+/** The help facts one Command carries, read through the descriptor's typed accessor. */
 function commandHelp(command: CommandNode) {
   return readExtension(command, helpCommand);
 }
@@ -130,16 +131,21 @@ function childRow(child: CommandNode, context: ViewContext): Row {
   };
 }
 
-function commands(children: readonly CommandNode[], context: ViewContext): string[] {
-  return isEmpty(children)
-    ? []
-    : [
-        context.style.dim('COMMANDS'),
-        ...column(
-          children.map((child) => childRow(child, context)),
-          context,
-        ),
-      ];
+function commands(
+  { command, children }: { command: CommandNode; children: readonly CommandNode[] },
+  context: ViewContext,
+): string[][] {
+  return sectionBlocks(
+    {
+      order: commandHelp(command)?.commandSections,
+      rows: children.map((child) => ({
+        fallback: 'COMMANDS',
+        path: commandHelp(child)?.section,
+        row: childRow(child, context),
+      })),
+    },
+    context,
+  );
 }
 
 function args(command: CommandNode, context: ViewContext): string[] {
@@ -170,19 +176,23 @@ function foldsGlobals(graph: CommandGraph): boolean {
   return isEmpty(graph.root.children);
 }
 
-function options(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
-  const folded = foldsGlobals(graph) ? visible(graph.globals) : [];
-  const rows = [...visible(command.options), ...folded].map((option) => optionRow(option, context));
-  return isEmpty(rows) ? [] : [context.style.dim('OPTIONS'), ...column(rows, context)];
-}
-
-/** The options that reach every Command, on every page except a leaf Application's root. */
-function globalOptions(graph: CommandGraph, context: ViewContext): string[] {
-  if (foldsGlobals(graph)) {
-    return [];
-  }
-  const rows = visible(graph.globals).map((option) => optionRow(option, context));
-  return isEmpty(rows) ? [] : [context.style.dim('GLOBAL OPTIONS'), ...column(rows, context)];
+function options(command: CommandNode, graph: CommandGraph, context: ViewContext): string[][] {
+  const member = (option: OptionNode, fallback: string) => ({
+    fallback,
+    path: readExtension(option, helpInput)?.section,
+    row: optionRow(option, context),
+  });
+  const globalHeading = foldsGlobals(graph) ? 'OPTIONS' : 'GLOBAL OPTIONS';
+  return sectionBlocks(
+    {
+      order: commandHelp(command)?.optionSections,
+      rows: [
+        ...visible(command.options).map((option) => member(option, 'OPTIONS')),
+        ...visible(graph.globals).map((option) => member(option, globalHeading)),
+      ],
+    },
+    context,
+  );
 }
 
 /** One example: the invocation, then its note on the next line indented two more spaces. */
@@ -203,7 +213,7 @@ function examples(graph: CommandGraph, command: CommandNode, context: ViewContex
 }
 
 /**
- * The closing hints. The child hint prints when the page printed COMMANDS and spells the variant's
+ * The closing hints. The child hint prints when the page printed child rows and spells the variant's
  * own help option. The pointer prints on the compact page alone, when the extended page of the
  * same node holds a block the compact page omitted.
  */
@@ -244,7 +254,7 @@ function hints(
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
-  // They are the children usage form, the COMMANDS section, and the child hint.
+  // They are the children usage form, the Command sections, and the child hint.
   const children = visible(command.children);
   const prose = details(command, context);
   const listed = examples(graph, command, context);
@@ -254,10 +264,9 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     masthead(path, command, context),
     extended ? prose : [],
     usage({ children, command, graph }, context),
-    commands(children, context),
+    ...commands({ children, command }, context),
     args(command, context),
-    options(command, graph, context),
-    globalOptions(graph, context),
+    ...options(command, graph, context),
     extended ? listed : [],
     hints({ children, omitted, path, variant }, context),
   ]

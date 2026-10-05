@@ -48,3 +48,4 @@ Proposed 2026-10-05 with [Ordered help sections](../core.md#ordered-help-section
 ## Changelog
 
 - 2026-10-05: Proposed with the ordered help sections contract.
+- 2026-10-05: Implementation adds the descriptor fields and shared section renderer. textstat groups its counting options, and jsonkit groups its document Commands. Runtime fixtures and packed consumers cover both help variants, combined named option sections, and unchanged unsectioned pages. The record stays proposed until the release PR accepts it.

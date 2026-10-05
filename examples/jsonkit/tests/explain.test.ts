@@ -113,6 +113,11 @@ test("the inspected graph carries the plugin's option, the extension value, and 
       examples: ['jsonkit -f doc.json', 'jsonkit get user.name -f doc.json'],
     },
     '@loomcli/plugins/help/command': {
+      commandSections: [
+        ['Document commands', 'Read'],
+        ['Document commands', 'Reshape'],
+        ['Commands'],
+      ],
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
       examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
     },
@@ -136,6 +141,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
         { command: 'get name -f doc.json' },
         { command: 'get nested.deep.value -f doc.json' },
       ],
+      section: ['Document commands', 'Read'],
     },
     // The author's agent-only value comes first, then the value help supplied at its hook.
     '@loomcli/plugins/manifest/command': [

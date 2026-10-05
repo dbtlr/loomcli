@@ -2782,8 +2782,6 @@ The page is derived from the graph and the variant by the rules below and nothin
 
 Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
-The `section`, `commandSections`, and `optionSections` fields shown below are the [proposed ordered sections contract](#ordered-help-sections). Those fields and grouped rendering await implementation.
-
 ```ts
 // @loomcli/plugins/help/views
 import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
@@ -2969,13 +2967,17 @@ USAGE
   jsonkit [options]
   jsonkit <command> [options]
 
+DOCUMENT COMMANDS
+  READ
+    get    Read one value at a path.
+    keys   List the keys at a path.
+    fetch  Read one value at a path.  (deprecated: Use get instead.)
+  RESHAPE
+    select  Keep the named fields of the document.
+
 COMMANDS
   doctor                Check the host this application runs on.
   completion <command>  Print a shell completion script.
-  get                   Read one value at a path.
-  keys                  List the keys at a path.
-  select                Keep the named fields of the document.
-  fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -3028,16 +3030,21 @@ USAGE
 ARGUMENTS
   files  The files to count. Omit them to read piped text.
 
+COUNTING
+  MEASURE
+    -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)
+  FILTER
+    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+  SUMMARY
+    -t, --total  Add a total row.
+
 OPTIONS
-  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
-  -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
-  -t, --total                  Add a total row.
-  -f, --format <format>        Select the output format, table by default. One of: table, json, jsonl.
-  -h, --help                   Show this help.
-  -V, --version                Print the version.
-  -M, --manifest               Print this command's manifest as JSON.
-  -c, --config <config>        Read configuration from this file alone.
-  -e, --explain                Explain the selected command and exit.
+  -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+  -h, --help             Show this help.
+  -V, --version          Print the version.
+  -M, --manifest         Print this command's manifest as JSON.
+  -c, --config <config>  Read configuration from this file alone.
+  -e, --explain          Explain the selected command and exit.
 
 EXAMPLES
   $ textstat one.txt two.txt
@@ -3055,16 +3062,21 @@ USAGE
 ARGUMENTS
   files  The files to count. Omit them to read piped text.
 
+COUNTING
+  MEASURE
+    -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)
+  FILTER
+    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
+  SUMMARY
+    -t, --total  Add a total row.
+
 OPTIONS
-  -m, --metric <metric>        What each row counts. One of: bytes, words, lines.  (default: bytes)
-  -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)
-  -t, --total                  Add a total row.
-  -f, --format <format>        Select the output format, table by default. One of: table, json, jsonl.
-  -h, --help                   Show this help.
-  -V, --version                Print the version.
-  -M, --manifest               Print this command's manifest as JSON.
-  -c, --config <config>        Read configuration from this file alone.
-  -e, --explain                Explain the selected command and exit.
+  -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+  -h, --help             Show this help.
+  -V, --version          Print the version.
+  -M, --manifest         Print this command's manifest as JSON.
+  -c, --config <config>  Read configuration from this file alone.
+  -e, --explain          Explain the selected command and exit.
 
 Run textstat --help for details and examples.
 ```
@@ -3078,13 +3090,17 @@ USAGE
   jsonkit [options]
   jsonkit <command> [options]
 
+DOCUMENT COMMANDS
+  READ
+    get    Read one value at a path.
+    keys   List the keys at a path.
+    fetch  Read one value at a path.  (deprecated: Use get instead.)
+  RESHAPE
+    select  Keep the named fields of the document.
+
 COMMANDS
   doctor                Check the host this application runs on.
   completion <command>  Print a shell completion script.
-  get                   Read one value at a path.
-  keys                  List the keys at a path.
-  select                Keep the named fields of the document.
-  fetch                 Read one value at a path.  (deprecated: Use get instead.)
 
 OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -3176,14 +3192,14 @@ With no section membership or order fields, existing help pages keep their bytes
 
 #### Ordered help sections acceptance
 
-The implementation is accepted when public API fixtures prove the following rules under Node and Bun. Draft-schema probes check the proposed schemas and TypeScript shapes alone. Rendered output and packed-package checks remain implementation requirements.
+Public API fixtures prove the following rules under Node and Bun, including rendered output and packed-package checks.
 
 - **Paths and storage.** One-level and two-level membership compile and reach the frozen extension values, whether help is installed or not. An empty path, a three-entry path, and a non-string heading fail TypeScript checks and ordinary extension validation. A blank or multiline heading fails the `line` rule. The same checks apply to entries in either order list. Membership paths whose headings have the same uppercase form combine, order entries match that same form, and title-case references such as `Global options` match default headings. Stored strings retain their authored spelling.
 - **Commands.** A page with direct and nested sections, unsectioned children, interleaved order entries, duplicate entries, unlisted sections, and an entry for an absent section pins the heading and member order. A two-entry order path for an absent or entirely hidden subsection does not position its visible outer heading. A parent-only order entry positions that outer heading when another subsection is visible. A child page uses its own ordering, while that child's membership affects only its row on the parent page. Plugin-attached Commands use the same membership rules.
 - **Options.** `optionSections` orders local and global sections together, including GLOBAL OPTIONS before OPTIONS when explicitly listed that way. Direct and nested option sections cover partial, interleaved, repeated, parent-only, and absent order entries. A child's page uses its own order for global and local members even when the root declares an option order. Every option section remains after ARGUMENTS. A named section combines a local option and a global option, with local members first. A childless root folds unsectioned globals into OPTIONS, while a page with children retains the two default sections. A root with hidden children alone retains GLOBAL OPTIONS as today. An authored default path joins the default section. Global options declared by a plugin follow the same rules.
 - **Filtering and layout.** Hidden members create no headings and affect no widths. An outer heading containing only visible subsections remains. Golden bytes pin two-space inner headings, four-space inner rows, two-space direct rows, blank lines, and the final newline. Wide and combining characters align using the existing width rules. Marker characters in headings print literally under both plain and styled output.
 - **Variants and other projections.** Compact and extended pages have the same section layout, with their existing differences in details, examples, and hints. Both variants retain the child hint when every visible child uses an authored section and no COMMANDS heading prints. A whole-page replacement can read section fields through `readExtension`. The manifest receives details and examples alone, and its graph order and completion output are unchanged.
-- **Compatibility and delivery.** Existing unsectioned example pages remain byte-for-byte unchanged. Both examples demonstrate authored sections through the public descriptors, and packed-package checks exercise grouped help under Node and Bun. An ordinary change fragment describes the new fields and layout. No version field changes in the implementation PR.
+- **Compatibility and delivery.** Unsectioned fixture pages remain byte-for-byte unchanged. Both examples opt into authored sections through the public descriptors, and packed-package checks exercise grouped help under Node and Bun. An ordinary change fragment describes the new fields and layout. No version field changes in the implementation PR.
 
 #### Help variants
 

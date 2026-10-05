@@ -7,8 +7,11 @@ const scenario = process.argv[2];
 
 /** The root's help: prose and one example. */
 const rootHelp = helpCommand({
+  commandSections: [['Work', 'Read']],
   details: 'The whole fixture.\nIts second line.',
   examples: [{ command: 'noted x', note: 'One example.' }],
+  optionSections: [['Output']],
+  section: ['Root'],
 });
 
 /** Four Commands: help examples with an author value, an empty help value, none, and details alone. */

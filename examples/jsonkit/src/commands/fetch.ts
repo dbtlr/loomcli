@@ -1,4 +1,5 @@
 import { Command } from '@loomcli/core';
+import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
 import { getValue } from '../actions/get-value.js';
@@ -9,7 +10,10 @@ import { pathFailures, readFailures } from '../failures.js';
 export const fetch = new Command('fetch', {
   deprecated: 'Use get instead.',
   description: 'Read one value at a path.',
-  extensions: [manifestCommand({ failures: [...pathFailures, ...readFailures] })],
+  extensions: [
+    manifestCommand({ failures: [...pathFailures, ...readFailures] }),
+    helpCommand({ section: ['Document commands', 'Read'] }),
+  ],
 })
   .argument('path', { description: 'Dot path to read.', required: true })
   .action(getValue);

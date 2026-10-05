@@ -5,7 +5,7 @@ import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
-import { helpCommand } from '@loomcli/plugins/help/extension';
+import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { suggestions } from '@loomcli/plugins/suggestions';
 import { table } from '@loomcli/plugins/table';
@@ -31,6 +31,12 @@ export const textstat = new Application('textstat', {
     helpCommand({
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
+      optionSections: [
+        ['Counting', 'Measure'],
+        ['Counting', 'Filter'],
+        ['Counting', 'Summary'],
+        ['Options'],
+      ],
     }),
     explainCommand({
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
@@ -59,6 +65,7 @@ export const textstat = new Application('textstat', {
   .option('metric', {
     default: 'bytes',
     description: 'What each row counts.',
+    extensions: [helpInput({ section: ['Counting', 'Measure'] })],
     short: 'm',
     type: 'string',
     validate: oneOf(['bytes', 'words', 'lines']),
@@ -69,7 +76,7 @@ export const textstat = new Application('textstat', {
     default: '0',
     description: 'Drop a source smaller than this many bytes.',
     env: 'TEXTSTAT_MIN_BYTES',
-    extensions: [configInput({ path: 'minBytes' })],
+    extensions: [configInput({ path: 'minBytes' }), helpInput({ section: ['Counting', 'Filter'] })],
     short: 'b',
     type: 'string',
     validate: byteThreshold,
@@ -77,7 +84,7 @@ export const textstat = new Application('textstat', {
   .option('total', {
     description: 'Add a total row.',
     env: 'TEXTSTAT_TOTAL',
-    extensions: [configInput({ path: 'total' })],
+    extensions: [configInput({ path: 'total' }), helpInput({ section: ['Counting', 'Summary'] })],
     short: 't',
     type: 'boolean',
   })
