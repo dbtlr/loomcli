@@ -12,9 +12,16 @@ import { line, prose } from '../lines.js';
  */
 
 const example = z.object({ command: line, note: line.optional() });
+const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
 
 export const helpCommand = extension(`${Package.name}/help/command`, {
-  schema: z.object({ details: prose.optional(), examples: z.array(example).optional() }),
+  schema: z.object({
+    commandSections: z.array(sectionPath).optional(),
+    details: prose.optional(),
+    examples: z.array(example).optional(),
+    optionSections: z.array(sectionPath).optional(),
+    section: sectionPath.optional(),
+  }),
   target: 'command',
 });
 
@@ -25,6 +32,7 @@ export const helpInput = extension(`${Package.name}/help/input`, {
       .string()
       .regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.')
       .optional(),
+    section: sectionPath.optional(),
   }),
   target: 'option',
 });

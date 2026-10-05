@@ -33,6 +33,11 @@ const configured = new Application('jsonkit', {
   description: 'Read and reshape one JSON document.',
   extensions: [
     helpCommand({
+      commandSections: [
+        ['Document commands', 'Read'],
+        ['Document commands', 'Reshape'],
+        ['Commands'],
+      ],
       details: 'With no subcommand, jsonkit summarizes the document and its top-level keys.',
       examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
     }),

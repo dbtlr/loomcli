@@ -20,6 +20,7 @@ export const get = new Command('get', {
         { command: 'get name -f doc.json' },
         { command: 'get nested.deep.value -f doc.json' },
       ],
+      section: ['Document commands', 'Read'],
     }),
     explainCommand({
       details: 'A path is a dot-separated walk from the root of the document.',

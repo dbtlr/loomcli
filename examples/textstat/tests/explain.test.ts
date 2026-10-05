@@ -97,6 +97,12 @@ test("the inspected graph carries the plugin's option, the extension value, and 
     '@loomcli/plugins/help/command': {
       details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
+      optionSections: [
+        ['Counting', 'Measure'],
+        ['Counting', 'Filter'],
+        ['Counting', 'Summary'],
+        ['Options'],
+      ],
     },
     '@loomcli/plugins/manifest/command': [
       {

@@ -14,7 +14,12 @@ const supplier = new Application('supplier', {
   new Command('read', {
     extensions: [
       manifestCommand({ details: 'Only an agent needs this.' }),
-      helpCommand({ examples: [{ command: 'read x' }] }),
+      helpCommand({
+        commandSections: [['Work']],
+        examples: [{ command: 'read x' }],
+        optionSections: [['Output']],
+        section: ['Work', 'Read'],
+      }),
     ],
   }).action(() => {}),
 );

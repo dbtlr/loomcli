@@ -253,6 +253,58 @@ try {
       `${name}: packed manifest document`,
     );
   }
+  const groupedRoot = [
+    'grouped',
+    '',
+    'USAGE',
+    '  grouped <command> [options]',
+    '',
+    'WORK',
+    '  READ',
+    '    read  Read work.',
+    '  EDIT',
+    '    edit  Edit work.',
+    '',
+    'OUTPUT',
+    '  -q, --quiet  Say less.',
+    '',
+    'GLOBAL OPTIONS',
+    '  -h, --help  Show this help.',
+    '',
+  ];
+  const groupedLeaf = [
+    'grouped read · Read work.',
+    '',
+    'USAGE',
+    '  grouped read [options]',
+    '',
+    'OUTPUT',
+    '  -f, --format <format>  Select the format.',
+    '  -q, --quiet            Say less.',
+    '',
+    'GLOBAL OPTIONS',
+    '  -h, --help  Show this help.',
+    '',
+  ].join('\n');
+  for (const name of selected) {
+    const grouped = join(temporary, 'dist/help-sections.js');
+    for (const spelling of ['--help', '-h']) {
+      const result = run(runtimes.get(name), [grouped, spelling], temporary);
+      assert.equal(result.status, 0, result.output);
+      assert.equal(
+        result.stdout,
+        [...groupedRoot, `Run grouped <command> ${spelling} for command details.`, ''].join('\n'),
+        `${name}: packed grouped ${spelling} page`,
+      );
+    }
+    const result = run(runtimes.get(name), [grouped, 'read', '--help'], temporary);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(
+      result.stdout,
+      groupedLeaf,
+      `${name}: packed combined local/global option section`,
+    );
+  }
   const validators = join(temporary, 'dist/validators.js');
   for (const name of selected) {
     const accepted = run(
