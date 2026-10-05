@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its parsed inputs, the passthrough tail, the output channel, and the host.
+The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, and the routed Command.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
