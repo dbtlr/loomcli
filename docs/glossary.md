@@ -418,6 +418,10 @@ _Avoid_: Export, output format, adapter
 The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts, and examples, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
 _Avoid_: Usage text, man page, help screen
 
+**Help section**:
+A named set of Command rows or option rows on a help page, under one heading or an outer and an inner heading. A section groups rows for the reader and does not define a routing Group.
+_Avoid_: Group (for help grouping), category, plane
+
 **Compact help**:
 The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, ending with a pointer to `--help` when the extended page holds more.
 _Avoid_: Short help, summary, brief help
