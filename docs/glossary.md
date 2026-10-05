@@ -537,7 +537,7 @@ A pending record of one pull request's consumer-visible changes and any required
 _Avoid_: Changeset, release note draft
 
 **Release cut**:
-The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release.
+The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release. It may also mark accepted the proposed decisions the release ships, and change nothing else.
 _Avoid_: Version bump, release build
 
 **Cut commit**:
