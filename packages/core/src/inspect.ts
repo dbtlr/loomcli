@@ -6,6 +6,7 @@ import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
+import { reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
@@ -148,27 +149,14 @@ interface CommandGraph {
   readonly root: CommandNode;
 }
 
-/** The accepted spellings of one option, `null` where the declaration publishes none. */
-interface Spellings {
-  long: string | null;
-  negative: string | null;
-  short: string | null;
-}
-
 /**
- * Reads the spellings out of the compiled table the parser uses, so inspection cannot report a
- * form the parser does not accept. Each entry carries its own role, so the naming convention has
- * one owner: the table that writes it.
+ * The spelling every reported problem names one option by, the one core's own validation reports:
+ * its long form, a negative-only Boolean option's negative form, and otherwise its short form. A
+ * plugin that reports a problem for an option, such as an input source, names it this way too.
  */
-function spellingsOf(table: ReadonlyMap<string, OptionSpelling>, name: string): Spellings {
-  const spellings: Spellings = { long: null, negative: null, short: null };
-  for (const [spelling, option] of table) {
-    // An alias is unadvertised, so the node's spellings are the ones the declared name derives.
-    if (option.name === name && option.role !== 'alias') {
-      spellings[option.role] = spelling;
-    }
-  }
-  return spellings;
+export function reportedSpelling(option: OptionNode): string {
+  const negative = option.type === 'boolean' ? option.negative : null;
+  return reportedOf({ long: option.long, negative, short: option.short }, option.name);
 }
 
 /**

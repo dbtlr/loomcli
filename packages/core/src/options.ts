@@ -98,6 +98,40 @@ export function tableEntries(
   return [...spellings].map(([spelling, option]) => [spelling, { ...option, global }]);
 }
 
+/** The accepted spellings of one option, `null` where the declaration publishes none. */
+export interface Spellings {
+  long: string | null;
+  negative: string | null;
+  short: string | null;
+}
+
+/**
+ * Reads one option's spellings out of a compiled table, so a reader cannot report a form the parser
+ * does not accept. Each entry carries its own role, so the naming convention has one owner: the
+ * table that writes it.
+ */
+export function spellingsOf(table: ReadonlyMap<string, OptionSpelling>, name: string): Spellings {
+  const spellings: Spellings = { long: null, negative: null, short: null };
+  for (const [spelling, option] of table) {
+    // An alias is unadvertised, so the spellings are the ones the declared name derives.
+    if (option.name === name && option.role !== 'alias') {
+      spellings[option.role] = spelling;
+    }
+  }
+  return spellings;
+}
+
+/**
+ * The spelling every reported problem names an option by: its long form, a negative-only Boolean
+ * option's negative form, and otherwise its short form, which a short-only option alone publishes.
+ * The problem belongs to the option, so an alias or the spelling the operator typed is never it.
+ */
+export function reportedOf({ long, negative, short }: Spellings, name: string): string {
+  // Every compiled option publishes one of the three, because shortOnly requires a short.
+  // A node no table wrote falls back to the declared name's long form.
+  return long ?? negative ?? short ?? `--${name}`;
+}
+
 /**
  * The part of one declaration that yields a spelling of the given origin, which a spelling fault
  * marks: the declared name for the long form, `short` for the short alias, the `polarity` that

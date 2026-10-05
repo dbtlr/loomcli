@@ -81,6 +81,10 @@ _Avoid_: Key (when the spelling is meant), label
 A token form the parser accepts for an option: the long form, the short form, an alias's long form, or a generated negative form. Diagnostics about supplied input name the spelling; diagnostics about a declaration name the declared name.
 _Avoid_: Flag name, syntax, alias (for the long form the declared name derives)
 
+**Reported spelling**:
+The one spelling every validation diagnostic and reported problem names an option by, whichever spelling the operator typed: its long form, else the negative form a negative-only Boolean option publishes, and otherwise its short form, which a short-only option alone publishes. An alias is never the reported spelling. A parser fault names the spelling typed instead.
+_Avoid_: Display name, canonical spelling
+
 **Short alias**:
 The one-letter spelling of an option. It is a spelling of that option and appears in every projection, which distinguishes it from an alias, a Command's or an option's, which no projection shows.
 _Avoid_: Short flag, shorthand
