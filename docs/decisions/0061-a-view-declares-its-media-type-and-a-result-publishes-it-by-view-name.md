@@ -4,7 +4,7 @@ title: ADR-0061 - A view declares its media type, and a result publishes it by v
 description: Every view shape takes an optional mediaType string, and ResultNode publishes mediaTypes keyed by view name, null where a view declares none. Core stores the string at the call that stores the view and never checks it. The formatter's json() and jsonl() declare application/json and application/jsonl, and the manifest reads the fact in place of the json and jsonl naming promise. This closes the deferral ADR-0023 recorded.
 status: proposed
 created: 2026-10-05
-modified: 2026-10-05
+modified: 2026-10-06
 ---
 
 # ADR-0061 - A view declares its media type, and a result publishes it by view name
@@ -40,3 +40,4 @@ Proposed 2026-10-05 with the contract in [Media types](../core.md#media-types). 
 ## Changelog
 
 - 2026-10-05: Proposed with the contract.
+- 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, gives the media type one run-time reader. A failed `run()` reads its selected view's media type, through the failure view context, to find a failure encoder, comparing exact strings. Selection stays by name, and core still holds no grammar or registry of media types and never checks the string. It binds with this record and ADR-0064.

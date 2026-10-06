@@ -171,7 +171,7 @@ A full Command kept off every listing. It routes, runs, and has its own help pag
 _Avoid_: Secret command, unlisted command, alias (for this concept)
 
 **Deprecated member**:
-A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every page that includes it shows beside it; a member that is also hidden appears in none. A candidate list leaves it out, as the [Candidates](#candidates) entry states.
+A Command or option the application still accepts but no longer advertises as the way to do its job. It carries a one-line migration message that every page that includes it shows beside it; a member that is also hidden appears in none. A candidate list leaves it out, as the [Candidates](#names-and-routing) entry states.
 _Avoid_: Legacy, obsolete, retired
 
 **Route** and **Routed path**:
@@ -328,7 +328,7 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Media type**:
-The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name.
+The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name. A failed run reads its selected view's media type to find a failure encoder.
 _Avoid_: Encoding (for the fact), format, content type, encoding name
 
 **Result**:
@@ -398,8 +398,20 @@ A message that runs while the author develops the application, such as a declara
 _Avoid_: Developer error (for the message), debug message
 
 **Failure view**:
-The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, and whether the run received argv or names. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the run had selected when it failed with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
+
+**Failure code**:
+The kebab-case name a failure class declares as its static `code`, such as `unknown-option` or `path-not-found`, read from the nearest ancestor that declares one and captured at the class's first construction, so a machine reader tells failures apart where many share an exit code. Every defect and declaration fault reads `internal`, in both builds.
+_Avoid_: Error code, failure name, exit name, rule identity (for a failure)
+
+**Failure form**:
+One failure as plain data, `{ code, exitCode, message, hints }`: its failure code, its declared exit code, its sentence as plain text without the application-name prefix, by build for a defect, and the hint lines. Core builds it for every reported failure, and an invocation by name's outcome, a failure encoder, and the MCP tool error read it.
+_Avoid_: Error object, error payload, error JSON, failure document
+
+**Failure encoder**:
+A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s selected view declares that media type, core writes the encoder's text to stderr in place of the failure view. One media type has one encoder, and core encodes nothing itself.
+_Avoid_: Error formatter, JSON failure view, error serializer, failure override
 
 **Hint**:
 A line a plugin adds under a failure message through its `onFailure` lifecycle hook. Hints from every installed plugin accumulate in installation order and reach the failure view, which decides whether to print them; core's default text prints each on its own line under the sentence. A hint adds to a diagnostic and never replaces a view.
@@ -451,8 +463,8 @@ The projection a shell reads while the operator types: a printed script that cal
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Formatter**:
-The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`. There is no encoding outside the view model: a machine view is a view like a table is.
-_Avoid_: Format plugin, encoder, serializer, format (for the view), output mode
+The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
+_Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
 
 **Theme**:
 The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
@@ -507,7 +519,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, the spellings of its own plugin's options, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, the spellings of its own plugin's options and their validated values, which hold even while core holds a fault, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
