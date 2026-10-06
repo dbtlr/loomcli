@@ -111,15 +111,16 @@ export function isAuthorFault(failure: LoomError): failure is DeclarationError |
 /**
  * Core's own text for one failure, with the trailing newline every view's text carries. The
  * application name opens every line of a usage failure's message, one line for each problem it
- * reports, so the operator reads who is speaking on each. A declaration fault and a defect read
- * the generic defect message, because only the author can act on their detail, and a development
- * build shows that detail ahead of every view. Every other class writes its message alone, even
+ * reports, so the operator reads who is speaking on each, and it opens a working directory
+ * failure's line the same way. A declaration fault and a defect read the generic defect message,
+ * because only the author can act on their detail, and a development build shows that detail
+ * ahead of every view. Every other class writes its message alone, even
  * one that declares a usage error's exit code. It is the default view of every failure class and
  * the text the plain fallback path writes, so it runs no application code and nothing downstream
  * composes its newline.
  */
 export function defaultText(failure: LoomError, application: string): string {
-  if (failure instanceof UsageError) {
+  if (failure instanceof UsageError || failure instanceof WorkingDirectoryError) {
     return failure.message
       .split('\n')
       .map((line) => `${application}: ${line}\n`)
@@ -620,6 +621,23 @@ export class FatalError extends LoomError {
 }
 
 /**
+ * Exit 1: the process's working directory cannot be read, as when another process removed it.
+ * Core raises it when it captures the host, before the graph builds, and its `cause` is the value
+ * the capture threw. It is an operator failure, so both builds print the same line.
+ */
+export class WorkingDirectoryError extends LoomError {
+  static override readonly code: string = 'working-directory-unreadable';
+
+  constructor(options?: ErrorOptions) {
+    super(
+      'The current working directory cannot be read. Change to a directory that exists and run the command again.',
+      options,
+    );
+    this.name = 'WorkingDirectoryError';
+  }
+}
+
+/**
  * Exit 1: a defect, such as an unexpected exception, a non-error throw, or a view that could not
  * answer. A rule and the defect's own parts build it, or a sentence and the thrown value do for a
  * defect with no rule. `message` stays the sentence, because only `run()` reports a defect, and a
@@ -782,6 +800,7 @@ for (const Class of [
   MisplacedOptionError,
   DeclarationError,
   FatalError,
+  WorkingDirectoryError,
   InternalError,
   ResultError,
 ]) {

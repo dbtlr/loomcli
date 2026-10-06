@@ -102,7 +102,7 @@ function enabled(policy: SwitchPolicy | undefined, automatic: boolean): boolean 
 
 /** A run owns captured facts; stdout and stderr each resolve this one policy independently. */
 function capabilities(
-  host: Host,
+  host: Pick<Host, 'env' | 'platform' | 'terminal'>,
   destination: 'stdout' | 'stderr',
   policy: RenderingPolicy,
 ): Capabilities {

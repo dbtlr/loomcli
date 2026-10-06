@@ -71,6 +71,7 @@ import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
+import type { HostCapture, ReportHost } from './host.js';
 import { globalOptionAfterCommand } from './input-rules.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
@@ -82,7 +83,7 @@ import {
   processFields,
   readCall,
 } from './invoke.js';
-import type { InvocationFields, ReadCall } from './invoke.js';
+import type { CapturedFields, ReadCall } from './invoke.js';
 import { coreViews } from './lanes.js';
 import { lowerInvocation } from './lower.js';
 import { Output, reportPlainly } from './output.js';
@@ -690,12 +691,17 @@ class ApplicationBuilder<
     let selected: () => FailureSelection = unselected;
     // The failure encoders a `run()` writes through, once the plugins are installed for the build.
     let encoders: EncoderRegistry | undefined = undefined;
-    // The host a failure's report reads, once it is captured; before that, the door's fallback.
-    let reportHost: Host | undefined = undefined;
-    const scene = (): FailureScene & { host: Host } => ({
+    /**
+     * The host a failure's report reads: what the run's capture read, even when its working
+     * directory could not be read, or the door's fallback when the run failed before capturing.
+     * Nothing captures the host a second time.
+     */
+    let reportHost: ReportHost | undefined = undefined;
+    const reportingHost = (): ReportHost => (reportHost ??= door.fallback(stderr));
+    const scene = (): FailureScene & { host: ReportHost } => ({
       application: this.#name,
       built: reached,
-      host: (reportHost ??= door.fallback(stderr)),
+      host: reportingHost(),
       invokedBy: door.invokedBy,
       path: walked,
       selection: selected(),
@@ -744,8 +750,12 @@ class ApplicationBuilder<
       try {
         const entered = door.enter();
         stderr = entered.stderr ?? stderr;
-        const host = entered.host(stderr);
-        reportHost = host;
+        const capture = entered.host(stderr);
+        reportHost = capture.report;
+        if ('failure' in capture) {
+          throw capture.failure;
+        }
+        const { host } = capture;
         const invocationOutput = door.output(host, controller.signal);
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
@@ -836,7 +846,7 @@ class ApplicationBuilder<
           const failure = toFailure(error);
           code = exitCodeOf(failure);
           decisive = failure;
-          output ??= door.output(door.fallback(stderr), controller.signal);
+          output ??= door.output(reportingHost(), controller.signal);
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
@@ -991,7 +1001,7 @@ interface BoundGraph {
 /** What a call an action makes reads from its run: the graph, the four host fields, the signal. */
 interface ActionCall {
   bound: BoundGraph;
-  fields: InvocationFields;
+  fields: CapturedFields;
   parent: ParentRun;
 }
 
@@ -999,8 +1009,11 @@ interface ActionCall {
 interface RunEntry {
   /** The stderr the caller's host names, if it names one. */
   stderr: Writable | undefined;
-  /** The run's host, captured around the stderr the run writes to. */
-  host: (stderr: Writable) => Host;
+  /**
+   * The run's host, captured around the stderr the run writes to, or the failure a working
+   * directory that cannot be read raised beside the facts its report writes through.
+   */
+  host: (stderr: Writable) => HostCapture;
   /** Subscribes the run's controller to whatever cancels it. */
   bracket: (controller: AbortController) => SignalBracket;
   /** Reads the run's inputs against the built graph. */
@@ -1024,9 +1037,9 @@ interface RunDoor {
   /** Reads what the caller passed, at run entry. */
   enter: () => RunEntry;
   /** The host a report reads when the run failed before its own was captured. */
-  fallback: (stderr: Writable) => Host;
+  fallback: (stderr: Writable) => ReportHost;
   /** The run's output, before the build hands it the declared policy. */
-  output: (host: Host, signal: AbortSignal) => Output;
+  output: (host: ReportHost, signal: AbortSignal) => Output;
   /** The policy the run resolves its output by, from the Application's declared one. */
   rendering: (declared: RenderingPolicy) => RenderingPolicy;
   /** The graph an action's run built, which this run reuses, or none for a run that builds. */
@@ -1050,7 +1063,7 @@ function argvDoor(options: RunOptions | undefined): RunDoor {
         stderr: overrides?.stderr,
       };
     },
-    fallback: (stderr) => captureHost(undefined, stderr),
+    fallback: (stderr) => captureHost(undefined, stderr).report,
     invokedBy: 'argv',
     output: (host, signal) => new Output(host, signal),
     rendering: (declared) => {
@@ -1074,7 +1087,7 @@ function nameDoor<Mapped>(
   setup: {
     action: ActionCall | undefined;
     declared: RenderingPolicy;
-    fields: () => InvocationFields;
+    fields: () => CapturedFields;
     streams: { stderr: Writable; stdout: Writable };
   },
 ): RunDoor {
@@ -1097,7 +1110,7 @@ function nameDoor<Mapped>(
         stderr: undefined,
       };
     },
-    fallback: host,
+    fallback: () => host().report,
     invokedBy: 'name',
     output: (captured, signal) => {
       const output = new Output(captured, signal);

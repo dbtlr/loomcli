@@ -5,8 +5,8 @@ import type { Anatomy } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 import type { InternalError } from './errors.js';
 import { sourceRoots } from './host.js';
+import type { ReportHost } from './host.js';
 import type { ContextualStyle } from './style.js';
-import type { Host } from './types.js';
 
 /**
  * Where a development build's diagnostics print: the application name a finding's path opens with,
@@ -14,12 +14,21 @@ import type { Host } from './types.js';
  */
 interface DeveloperScene {
   readonly application: string;
-  readonly host: Pick<Host, 'cwd' | 'readSource' | 'terminal'>;
+  readonly host: Pick<ReportHost, 'cwd' | 'readSource' | 'terminal'>;
 }
 
-/** What a defect's source is read through: the host's working directory, its roots, and reader. */
+/**
+ * What a defect's source is read through: the host's working directory, its roots, and reader. A
+ * working directory that could not be read gives no root and no reader, so no source is read.
+ */
 function sourceAccess({ cwd, readSource }: DeveloperScene['host']): SourceAccess {
-  return { cwd, readSource, roots: sourceRoots(cwd) };
+  if (cwd === undefined) {
+    return { read: undefined, roots: [] };
+  }
+  return {
+    read: readSource && ((path) => readSource(path, cwd)),
+    roots: sourceRoots(cwd),
+  };
 }
 
 /** The parts one fault renders, with a defect's source and causes read here, in development alone. */

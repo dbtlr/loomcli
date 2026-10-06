@@ -3,6 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 
 import { FatalError, notTextReason, ResultError } from './errors.js';
 import type { ResultFault } from './errors.js';
+import type { ReportHost } from './host.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
 import { capabilities, plainPolicy } from './rendering.js';
@@ -14,7 +15,6 @@ import type { Palette } from './style-state.js';
 import { createStyle, tokens } from './style.js';
 import type {
   ActionChannel,
-  Host,
   OpenResult,
   Out,
   ResultBinding,
@@ -233,7 +233,7 @@ export class Output {
   style = createStyle();
 
   constructor(
-    readonly host: Host,
+    readonly host: ReportHost,
     private readonly signal: AbortSignal,
   ) {
     this.out = {

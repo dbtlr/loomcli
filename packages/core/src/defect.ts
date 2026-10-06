@@ -6,14 +6,13 @@ import { valueCode } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 
 /**
- * What a development build reads a defect's source through: the working directory, the roots a
- * frame may lie under, and a reader. The roots are `cwd` and the path it resolves to through
+ * What a development build reads a defect's source through: the roots a frame may lie under, and
+ * a reader bound to the working directory. The roots are `cwd` and the path it resolves to through
  * symbolic links, because a runtime names a module by its resolved path.
  */
 interface SourceAccess {
-  readonly cwd: string;
   readonly roots: readonly string[];
-  readonly readSource: ((path: string, cwd: string) => string | undefined) | undefined;
+  readonly read: ((path: string) => string | undefined) | undefined;
 }
 
 /** How many causes a chain prints before it stops, so a chain a getter grows cannot run forever. */
@@ -162,7 +161,7 @@ function locationText(frame: Frame, roots: readonly string[]): string {
 /** The source one reader answers for a file, or `undefined` when it answers none or throws. */
 function readFile(access: SourceAccess, file: string): string | undefined {
   try {
-    const text: unknown = access.readSource?.(resolve(file), access.cwd);
+    const text: unknown = access.read?.(resolve(file));
     return typeof text === 'string' ? text : undefined;
   } catch {
     return undefined;
