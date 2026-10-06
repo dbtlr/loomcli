@@ -6,6 +6,7 @@ import {
   quoted,
   reasonOf,
 } from './errors.js';
+import type { InvokedBy } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
@@ -43,6 +44,8 @@ interface SourceStage {
   host: Host;
   /** The graph `inspect()` would return for the run, built on its first read. */
   inspected: () => CommandGraph;
+  /** How the run received its inputs, which the source reads to name an option as core does. */
+  invokedBy: InvokedBy;
   /** The routed Command's own options, or `undefined` while local parsing holds a fault. */
   locals: StageScope | undefined;
   /** Offers the resolver's foreign throw to the translators, ahead of the plugin-fault wrap. */
@@ -307,6 +310,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
   const context: SourceContext = {
     graph: stage.inspected(),
     host: stage.host,
+    invokedBy: stage.invokedBy,
     // Validation produced the record the plugin's option types describe.
     options,
     out: stage.out,

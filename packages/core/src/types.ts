@@ -3,6 +3,7 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import type { ExtensionValue } from './extension.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
@@ -569,8 +570,60 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     : boolean;
 
 /**
+ * The values an invocation by name supplies, mirroring the action context: `args` keyed by argument
+ * name, `options` by the declared name of a local or global option, and the passthrough tail. Each
+ * value lowers to the tokens argv would give: a string or a number is one token, a Boolean a
+ * spelling or its absence, a number on a counted option that many occurrences, and an array one
+ * occurrence per element.
+ */
+export interface InvocationValues {
+  readonly args?: Readonly<
+    Record<string, string | number | boolean | readonly (string | number)[] | undefined>
+  >;
+  readonly options?: Readonly<
+    Record<string, string | number | boolean | readonly (string | number)[] | undefined>
+  >;
+  readonly passthrough?: readonly string[];
+}
+
+/**
+ * How one invocation by name runs: the starting view selection, the handler that maps a failure
+ * into the outcome, and a signal that cancels the call.
+ */
+export interface InvokeOptions<Mapped = LoomError> {
+  /** The starting view selection, as a middleware's `view` assignment. */
+  readonly view?: string;
+  readonly failure?: (
+    failure: Readonly<LoomError>,
+    context: {
+      readonly application: string;
+      readonly path: readonly string[];
+      readonly exitCode: FailureExitCode;
+    },
+  ) => Mapped;
+  /** Composed with the parent run's signal when an action calls `invoke`. */
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * What one invocation by name resolved: a run that would resolve 0, one that would resolve a failure
+ * code, with what the run wrote, or a cancelled one, whose captured text is discarded.
+ */
+export type InvocationOutcome<Mapped = LoomError> =
+  | { readonly status: 'completed'; readonly output: string; readonly messages: string }
+  | {
+      readonly status: 'failed';
+      readonly failure: Mapped;
+      readonly exitCode: FailureExitCode;
+      readonly output: string;
+      readonly messages: string;
+    }
+  | { readonly status: 'cancelled'; readonly exitCode: 130 | 143 };
+
+/**
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
  * `command` is the routed node inside it: the same two values the run's middleware receive.
+ * `invoke` runs another Command of that graph by name.
  */
 export interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly style: ContextualStyle;
@@ -583,6 +636,12 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
   host: Host;
   /** The run's cancellation signal, which a caller or an installed signals owner aborts. */
   signal: AbortSignal;
+  /** Runs another Command of the graph this run built, by name, and captures what it writes. */
+  readonly invoke: <Mapped = LoomError>(
+    path: readonly string[],
+    values: InvocationValues,
+    options?: InvokeOptions<Mapped>,
+  ) => Promise<InvocationOutcome<Mapped>>;
 }
 export type Action<Args, Options = {}, Result = unknown> = (
   context: ActionContext<Args, Options, Result>,

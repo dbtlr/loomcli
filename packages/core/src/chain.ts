@@ -1,12 +1,11 @@
-import type { BuiltGraph, Prepared } from './command.js';
+import type { BuiltGraph, DispatchInput, Prepared } from './command.js';
 import { prepareDispatch } from './command.js';
 import { foreignFailure, InternalError, routedSubject } from './errors.js';
-import type { LoomError } from './errors.js';
+import type { InvokedBy, LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
-import { parseInvocation } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
 import { loadDefault, pluginSentence, pluginSpellings } from './plugin.js';
 import type {
@@ -15,7 +14,12 @@ import type {
   PluginOptionSpellings,
   PluginOptionValues,
 } from './plugin.js';
-import { nextMisuse, viewSelection, viewSelectionCorrection } from './rules.js';
+import {
+  invokeViewCorrection,
+  nextMisuse,
+  viewSelection,
+  viewSelectionCorrection,
+} from './rules.js';
 import type { ContextualStyle } from './style.js';
 import type {
   ActionChannel,
@@ -45,8 +49,8 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * supplied each of the plugin's own options as a token, which a filled or defaulted option never
  * has. `request` is the routed Command's invocation, parsed and validated ahead of the chain, and
  * `null` while core holds a fault and on a group. `view` names the view the result renders
- * through: it reads as the declaration's default until a middleware assigns one, and as `null` on
- * a Command that declares none. The last assignment before the dispatch boundary wins, and one
+ * through: it reads as the declaration's default, or the view an invocation by name started from,
+ * until a middleware assigns one, and as `null` on a Command that declares none. The last assignment before the dispatch boundary wins, and one
  * made after it changes nothing.
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
@@ -63,24 +67,41 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly next: () => Promise<ChainOutcome>;
 }
 
-/** One middleware's assignment of the view a result renders through, and the plugin that made it. */
+/**
+ * One assignment of the view a result renders through, who made it, as a fault's sentence opens,
+ * and the fix that fault states: the plugin whose middleware assigned it, or `invoke()` for the
+ * starting selection.
+ */
 interface ViewAssignment {
-  identity: string;
+  correction: string;
+  subject: string;
+  name: unknown;
+}
+
+/** The view an invocation by name starts from, kept as the caller passed it. */
+interface StartingView {
   name: unknown;
 }
 
 /**
  * The view one run selects, which is one value whichever middleware wrote it. The assignment is
  * kept as it arrived, because a JavaScript caller reaches the setter with any value and the check
- * belongs at the dispatch boundary, where the fault it raises ranks behind a held fault.
+ * belongs at the dispatch boundary, where the fault it raises ranks behind a held fault. An
+ * invocation by name starts from the view its caller selected, which reads as an assignment made
+ * before any middleware's, so a later one wins.
  */
 class ViewSelection {
-  #assigned: ViewAssignment | undefined = undefined;
+  #assigned: ViewAssignment | undefined;
   #reached = false;
   readonly #result: DeclaredResult | undefined;
 
-  constructor(result: DeclaredResult | undefined) {
+  constructor(result: DeclaredResult | undefined, start: StartingView | undefined) {
     this.#result = result;
+    this.#assigned = start && {
+      correction: invokeViewCorrection,
+      name: start.name,
+      subject: 'invoke()',
+    };
   }
 
   /**
@@ -103,7 +124,11 @@ class ViewSelection {
   /** The last assignment before the boundary wins; one made after it changes nothing. */
   assign(identity: string, name: unknown): void {
     if (!this.#reached) {
-      this.#assigned = { identity, name };
+      this.#assigned = {
+        correction: viewSelectionCorrection,
+        name,
+        subject: pluginSentence(identity),
+      };
     }
   }
 
@@ -113,29 +138,32 @@ class ViewSelection {
   }
 
   /**
-   * The name the boundary dispatches through: `null` when no middleware assigned one and the
-   * declaration's default stands. A plugin that selected a view has the name checked here.
+   * The name the boundary dispatches through: `null` when nothing selected one and the
+   * declaration's default stands. A plugin or a caller that selected a view has the name checked
+   * here.
    */
   resolve(path: readonly string[]): string | null {
     const assigned = this.#assigned;
     if (assigned === undefined) {
       return null;
     }
-    const plugin = pluginSentence(assigned.identity);
-    const { name } = assigned;
+    const { correction, name, subject } = assigned;
     if (!this.#result) {
       throw selectionFault(
-        `${plugin} selected view "${String(name)}" on ${routedSubject(path)}, which declares no result.`,
+        `${subject} selected view "${String(name)}" on ${routedSubject(path)}, which declares no result.`,
+        correction,
       );
     }
     if (typeof name !== 'string') {
       throw selectionFault(
-        `${plugin} selected a view that is not a string on ${routedSubject(path)}.`,
+        `${subject} selected a view that is not a string on ${routedSubject(path)}.`,
+        correction,
       );
     }
     if (!this.#result.views.has(name)) {
       throw selectionFault(
-        `${plugin} selected view "${name}", which ${routedSubject(path)} does not name.`,
+        `${subject} selected view "${name}", which ${routedSubject(path)} does not name.`,
+        correction,
       );
     }
     return name;
@@ -250,6 +278,17 @@ interface Invocation {
    */
   route: (path: readonly string[]) => void;
   signal: AbortSignal;
+  /** How the run received its inputs, which names every input a problem reports. */
+  invokedBy: InvokedBy;
+  /**
+   * Reads the run's inputs against the built graph: argv words through the parser, or an
+   * invocation by name's values through lowering, which produces the result the parser would.
+   */
+  read: (graph: BuiltGraph, walked: (path: readonly string[]) => void) => ParsedInvocation;
+  /** The view an invocation by name starts from, or none. */
+  start: StartingView | undefined;
+  /** Runs another Command of this run's graph by name, which the action receives. */
+  invoke: DispatchInput['invoke'];
 }
 
 /** The state one chain shares: what it reached, what it raised, and how it continues. */
@@ -282,12 +321,8 @@ interface EntryTurn {
 }
 
 /** The defect a view selection the routed Command cannot render reports. */
-function selectionFault(sentence: string): InternalError {
-  return new InternalError(viewSelection, {
-    cause: undefined,
-    correction: viewSelectionCorrection,
-    sentence,
-  });
+function selectionFault(sentence: string, correction: string): InternalError {
+  return new InternalError(viewSelection, { cause: undefined, correction, sentence });
 }
 
 /** A `next()` call that is no longer live: it dispatches nothing and rejects. */
@@ -421,7 +456,7 @@ async function runChain(
     invoked: false,
     raised: undefined,
   };
-  const selection = new ViewSelection(prepared.result);
+  const selection = new ViewSelection(prepared.result, invocation.start);
   /**
    * The dispatch boundary: the point the chain reaches when its last middleware continues. Core
    * raises the held fault here, so it ranks ahead of a bad view assignment, or else reads the
@@ -502,7 +537,7 @@ async function runChain(
  * never raised and nothing later in the chain runs.
  */
 async function runInvocation(invocation: Invocation): Promise<void> {
-  const routed = parseInvocation(invocation.graph, invocation.host.argv, invocation.route);
+  const routed = invocation.read(invocation.graph, invocation.route);
   const prepared = await prepareDispatch(invocation.graph, routed, invocation);
   let raised: { value: unknown } | undefined = undefined;
   try {
@@ -519,5 +554,5 @@ async function runInvocation(invocation: Invocation): Promise<void> {
   }
 }
 
-export type { ChainOutcome, Invocation, MiddlewareContext };
+export type { ChainOutcome, Invocation, MiddlewareContext, StartingView };
 export { runInvocation };

@@ -282,6 +282,12 @@ export class NonCallableCommandError extends UsageError {
   }
 }
 
+/**
+ * How a run received its inputs: as argv words, or by name through `invoke()`. A sentence about an
+ * input a caller named reads the name the caller wrote, because no spelling was typed.
+ */
+export type InvokedBy = 'argv' | 'name';
+
 export class UnexpectedArgumentError extends UsageError {
   readonly command: readonly string[];
   readonly accepted: number;
@@ -310,6 +316,30 @@ export class UnknownOptionError extends UsageError {
     this.name = 'UnknownOptionError';
     this.spelling = spelling;
   }
+}
+
+/**
+ * The unknown option of an invocation by name: `spelling` holds the key the caller wrote, and the
+ * sentence asks for a declared name, because the caller typed no spelling.
+ */
+export function unknownOptionName(name: string): UnknownOptionError {
+  const failure = new UnknownOptionError(name);
+  failure.message = `Unknown option ${quoted(name)}. Supply the name of a declared option.`;
+  return failure;
+}
+
+/**
+ * An `args` key the routed Command does not declare, in an invocation by name: `extra` holds the
+ * key alone, `accepted` the number of arguments the Command declares, and the sentence names the key.
+ */
+export function undeclaredArgument(
+  command: readonly string[],
+  accepted: number,
+  name: string,
+): UnexpectedArgumentError {
+  const failure = new UnexpectedArgumentError(command, accepted, [name]);
+  failure.message = `${routedSentence(command)} declares no argument ${quoted(name)}. Supply the name of a declared argument.`;
+  return failure;
 }
 
 /**

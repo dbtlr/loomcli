@@ -111,6 +111,12 @@ export interface Invocation {
   declaredValues: DeclaredValues;
   host: Host;
   inputs: ScopedInputs;
+  /**
+   * Present for an invocation by name, which types no spelling, so every problem names an option by
+   * its declared name. `unlowered` holds each input whose value no token spells, with the issue
+   * that says what the input takes; each reports as a rejected value in authoring order.
+   */
+  named?: { unlowered: ReadonlyMap<InputDeclaration, string> } | undefined;
   passthrough: readonly string[];
   /**
    * The declarations this pass validates, when it validates only some of `inputs`, such as a
@@ -338,12 +344,16 @@ export function configUnread(site: InputSite): InputSite {
  * The token an operator would type for one declaration: an option's reported spelling, read from
  * the routed Command's table, and the declared name for an argument. Every input diagnostic and
  * every reported problem names the declaration this way, so an omission and a rejected value read
- * alike and a `shortOnly` option is never named by a long form it does not accept.
+ * alike and a `shortOnly` option is never named by a long form it does not accept. An invocation by
+ * name types no spelling, so there an option is named by its declared name, the key the caller wrote.
  */
-function spellingOf(input: InputDeclaration, table: SpellingTable): string {
-  return input.kind === 'argument'
+function spellingOf(
+  input: InputDeclaration,
+  invocation: Pick<Invocation, 'named' | 'table'>,
+): string {
+  return input.kind === 'argument' || invocation.named !== undefined
     ? input.name
-    : reportedOf(spellingsOf(table, input.name), input.name);
+    : reportedOf(spellingsOf(invocation.table, input.name), input.name);
 }
 
 /**
@@ -1011,7 +1021,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         input: identityOf(entry),
         issues,
         reason: 'invalid',
-        spelling: spellingOf(entry.input, invocation.table),
+        spelling: spellingOf(entry.input, invocation),
       },
     });
   };
@@ -1047,18 +1057,22 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     const { input } = entry;
     const variable = sources.rejected.get(input.name);
     const earlier = prior?.reports.get(input);
+    const unlowered = invocation.named?.unlowered.get(input);
     if (prior?.values.has(input) === true) {
       // An earlier pass validated this value once, and one value meets its validator once.
       values.set(input, prior.values.read(input));
     } else if (earlier !== undefined) {
       // The earlier pass's problem reports here, in this pass's order.
       reports.set(input, earlier);
+    } else if (unlowered !== undefined) {
+      // A value no token spells supplied nothing, and the caller's value is the input's problem.
+      reject(entry, [{ message: unlowered }], suppliedName(input, input.name));
     } else if (input.kind === 'option' && variable !== undefined) {
       // A variable outside its option's grammar filled nothing, so it is the option's problem.
       reject(
         entry,
         grammarIssues(input),
-        suppliedName(input, spellingOf(input, invocation.table), variable),
+        suppliedName(input, spellingOf(input, invocation), variable),
       );
     } else if (input.kind === 'option' && input.config.type === 'boolean') {
       values.set(input, booleanValue(supplied.options, input.name, input.config));
@@ -1067,7 +1081,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       values.set(input, supplied.options.counts.get(input.name) ?? 0);
     } else {
       const collected = collects(input);
-      const spelling = spellingOf(input, invocation.table);
+      const spelling = spellingOf(input, invocation);
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)

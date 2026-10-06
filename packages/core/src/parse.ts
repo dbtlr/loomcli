@@ -11,6 +11,7 @@ import {
 import type { LoomError } from './errors.js';
 import { emptyValues, isSupplied } from './options.js';
 import type { OptionValues, SpellingTable, TableSpelling } from './options.js';
+import type { InputDeclaration } from './validation.js';
 
 /**
  * Whether a word is an option word: `--` and at least one more character, or `-` and an ASCII
@@ -819,8 +820,16 @@ function readWords(
   };
 }
 
-/** One complete invocation, read through routing and the routed Command's table. */
+/** The value each argument slot received, keyed by the declaration it fills. */
+type BoundArguments = ReadonlyMap<InputDeclaration, string | string[]>;
+
+/**
+ * One complete invocation, read through routing and the routed Command's table, or lowered from
+ * the values an invocation by name supplied.
+ */
 interface ParsedInvocation {
+  /** What each argument slot received; an omitted argument binds nothing. */
+  args: BoundArguments;
   command: BuiltCommand;
   /** The first structural fault in word order, which core holds to the dispatch boundary. */
   fault: LoomError | undefined;
@@ -828,8 +837,46 @@ interface ParsedInvocation {
   globalFault: boolean;
   passthrough: string[];
   path: readonly string[];
-  positionals: string[];
+  /**
+   * Each input an invocation by name gave a value no token spells, with the one issue that says
+   * what the input takes. Validation reports each as a rejected value; argv words leave it empty.
+   */
+  unlowered: ReadonlyMap<InputDeclaration, string>;
   values: { globals: OptionValues; locals: OptionValues };
+}
+
+/** One positional word bound to its slot: a variadic slot collects it, any other holds it. */
+function bindWord(
+  values: Map<InputDeclaration, string | string[]>,
+  slot: ArgumentSlot,
+  word: string,
+): void {
+  const bound = values.get(slot.input);
+  if (!slot.variadic) {
+    values.set(slot.input, word);
+  } else if (Array.isArray(bound)) {
+    bound.push(word);
+  } else {
+    values.set(slot.input, [word]);
+  }
+}
+
+/**
+ * The words each positional slot received. Parsing already held the first positional no slot
+ * accepts, so every positional here has a slot. An omitted required argument binds nothing and
+ * reports as a missing input in the validation phase, so omission has one class whether the input
+ * is an argument or an option. An empty variadic tail binds nothing, so validation reads it as
+ * `[]` or reports the omission.
+ */
+function bindArguments(command: BuiltCommand, positionals: readonly string[]): BoundArguments {
+  const values = new Map<InputDeclaration, string | string[]>();
+  for (const [position, word] of positionals.entries()) {
+    const slot = argumentSlot(command.arguments, position);
+    if (slot) {
+      bindWord(values, slot, word);
+    }
+  }
+  return values;
 }
 
 /** The failure a held fault reports once every word is read. */
@@ -857,17 +904,18 @@ function parseInvocation(
   const missing = awaiting && { at: read.read, error: new MissingValueError(awaiting.spelling) };
   const fault = read.fault ?? missing;
   return {
+    args: bindArguments(command, positionals),
     command,
     fault: fault && heldFailure(read, fault),
     globalFault: read.globalFault || awaiting?.global === true,
     passthrough,
     path,
-    positionals,
+    unlowered: new Map(),
     values,
   };
 }
 
-export type { AwaitingValue, ParsedInvocation, WordsRead };
+export type { AwaitingValue, BoundArguments, Occurrence, ParsedInvocation, WordsRead };
 export {
   argumentSlot,
   candidatesOf,
@@ -876,4 +924,5 @@ export {
   readOptionWord,
   readWords,
   refusesValue,
+  write,
 };

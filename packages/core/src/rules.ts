@@ -92,19 +92,29 @@ const validatorFailed = registerRule('@loomcli/core/validator-failed', {
 /** A middleware that assigned `view` a name the routed Command's result cannot render. */
 const viewSelection = registerRule('@loomcli/core/view-selection', {
   explanation:
-    "A middleware selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.",
+    "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.",
   headline: 'Invalid view selection',
 });
 
-/** The fix every invalid view selection shares. */
+/** The fix every invalid view selection a middleware made shares. */
 const viewSelectionCorrection =
   "Assign view one of the view names the routed Command's result declares, and only on a Command that declares a result.";
+
+/** The fix every invalid starting view an `invoke()` caller selected shares. */
+const invokeViewCorrection = "Supply a view name the Command's result declares.";
 
 /** A `run()` option that holds a value of the wrong kind. */
 const runOptions = registerRule('@loomcli/core/run-options', {
   explanation:
     'run() reads its options before it builds the graph. A caller that embeds the application, such as a test, passes them, and a value of the wrong kind leaves the run nothing to act on.',
   headline: 'Invalid run options',
+});
+
+/** An `invoke()` call that holds a value of the wrong kind in one of its slots. */
+const invokeOptions = registerRule('@loomcli/core/invoke-options', {
+  explanation:
+    'invoke() reads its path, values, and options before it builds the graph. A caller that runs a Command by name, such as an agent protocol or a test, passes them, and a value of the wrong kind leaves the call nothing to act on.',
+  headline: 'Invalid invoke options',
 });
 
 /** A configuration source whose answers break the answers rule. */
@@ -175,6 +185,8 @@ export {
   foreignGraphCorrection,
   foreignThrow,
   foreignThrowCorrection,
+  invokeOptions,
+  invokeViewCorrection,
   nextMisuse,
   pluginLoaderFailed,
   resultContract,
