@@ -57,6 +57,14 @@ function optionSpellings(graph: CommandGraph, command: CommandNode): string[][] 
 }
 
 /**
+ * The declared name of each option in the globals and then the routed Command's options, which an
+ * invocation by name writes in place of a spelling.
+ */
+function optionNames(graph: CommandGraph, command: CommandNode): string[][] {
+  return [...graph.globals, ...command.options].filter(offered).map(({ name }) => [name]);
+}
+
+/**
  * The sentence that names what the operator typed and offers the matches as its fix, or
  * `undefined` when nothing matched. Every quoted text is escaped, a declared option name included,
  * because the declared-name rule allows a control character.
@@ -76,7 +84,7 @@ function sentence(kind: string, typed: string, names: readonly string[]): string
 
 function suggestion(
   failure: Readonly<LoomError>,
-  { command, graph }: FailureHookContext,
+  { command, graph, invokedBy }: FailureHookContext,
 ): string | undefined {
   // A failure an action built may carry a replaced field, so the typed word is checked first.
   if (failure instanceof UnknownCommandError && typeof failure.token === 'string') {
@@ -87,8 +95,12 @@ function suggestion(
     );
   }
   if (failure instanceof UnknownOptionError && typeof failure.spelling === 'string') {
-    const spellings = optionSpellings(graph, command);
-    return sentence('option', failure.spelling, nearest(failure.spelling, spellings, 'option'));
+    // An invocation by name names an option by its declared name, so it is offered names alone.
+    const matches =
+      invokedBy === 'name'
+        ? nearest(failure.spelling, optionNames(graph, command), 'name')
+        : nearest(failure.spelling, optionSpellings(graph, command), 'option');
+    return sentence('option', failure.spelling, matches);
   }
   return undefined;
 }

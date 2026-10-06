@@ -10,6 +10,7 @@ import type {
   InputProblem,
   OptionNode,
   SourceAnswer,
+  SourceContext,
   SourceResolver,
 } from '@loomcli/core';
 
@@ -144,11 +145,21 @@ function wrongValueLines(subject: string, issues: readonly Issue[]): string[] {
   });
 }
 
+/** How the run received its inputs, which decides how a problem names its option. */
+type InvokedBy = SourceContext['invokedBy'];
+
 /**
  * One request answered from the file when its path leads to a value. A request the file does not
- * answer comes to nothing, and a value the option cannot take is the problem core reports.
+ * answer comes to nothing, and a value the option cannot take is the problem core reports, which
+ * names the option as core does: by its reported spelling, or, in an invocation by name, by its
+ * declared name.
  */
-function answer(request: OptionNode, usable: UsableFile, graph: CommandGraph): Answered {
+function answer(
+  request: OptionNode,
+  usable: UsableFile,
+  scene: { graph: CommandGraph; invokedBy: InvokedBy },
+): Answered {
+  const { graph, invokedBy } = scene;
   const located = locate(request, usable);
   if (located === undefined) {
     return undefined;
@@ -157,7 +168,7 @@ function answer(request: OptionNode, usable: UsableFile, graph: CommandGraph): A
   if (shaped.kind === 'value') {
     return { answer: { label: located.label, value: shaped.value }, kind: 'answer' };
   }
-  const spelling = reportedSpelling(request);
+  const spelling = invokedBy === 'name' ? request.name : reportedSpelling(request);
   return {
     kind: 'wrong',
     lines: wrongValueLines(`Option "${spelling}" (from ${located.label})`, shaped.issues),
@@ -196,10 +207,10 @@ function locate(
 function answerAll(
   requests: readonly OptionNode[],
   usable: UsableFile,
-  graph: CommandGraph,
+  scene: { graph: CommandGraph; invokedBy: InvokedBy },
 ): Record<string, SourceAnswer> {
   const answered = requests.map((request) => ({
-    outcome: answer(request, usable, graph),
+    outcome: answer(request, usable, scene),
     request,
   }));
   const wrong = answered.flatMap(({ outcome }) => (outcome?.kind === 'wrong' ? [outcome] : []));
@@ -226,13 +237,14 @@ function answerAll(
 export function configSource(
   candidates: readonly string[] | undefined,
 ): SourceResolver<typeof config> {
-  return async ({ graph, host, options, out, requests, style }) => {
+  return async ({ graph, host, invokedBy, options, out, requests, style }) => {
     const lookup = {
       candidates: candidates ?? [`.${graph.name}.json`],
       host,
+      invokedBy,
       named: options.config,
     };
     const usable = await findFile(lookup, { out, style });
-    return usable === undefined ? {} : answerAll(requests, usable, graph);
+    return usable === undefined ? {} : answerAll(requests, usable, { graph, invokedBy });
   };
 }

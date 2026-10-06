@@ -33,6 +33,11 @@ interface Lookup {
   readonly host: Host;
   /** The file `--config` named, which is the run's only file. */
   readonly named: string | undefined;
+  /**
+   * How a problem names the `config` option: by its spelling, `--config`, or, in an invocation by
+   * name, by its declared name, as core names an option there.
+   */
+  readonly invokedBy: 'argv' | 'name';
 }
 
 /** The channels a warning about a discovered file is written through. */
@@ -149,25 +154,33 @@ async function read(file: ConfigFile): Promise<Reading> {
     : parseFile(file.path, text.text);
 }
 
-/** The failure a `--config` file that cannot be used raises: a usage failure on the option itself. */
-function namedFailure(file: ConfigFile, clause: Clause): InputError {
+/**
+ * The failure a `--config` file that cannot be used raises: a usage failure on the option itself,
+ * named by its spelling, or by its declared name in an invocation by name.
+ */
+function namedFailure(
+  file: ConfigFile,
+  clause: Clause,
+  invokedBy: Lookup['invokedBy'],
+): InputError {
   const message = `File "${file.shown}" ${clause} ${fixes[clause].named}`;
-  return new InputError(`Option "--config": ${message}`, [
+  const spelling = invokedBy === 'name' ? 'config' : '--config';
+  return new InputError(`Option "${spelling}": ${message}`, [
     {
       input: { global: true, kind: 'option', name: 'config' },
       issues: [{ message }],
       reason: 'invalid',
-      spelling: '--config',
+      spelling,
     },
   ]);
 }
 
 /** The file `--config` named, which answers alone, resolved against the host's working directory. */
-async function namedFile(named: string, host: Host): Promise<UsableFile> {
-  const file = configFile(resolve(host.cwd, named), named);
+async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
+  const file = configFile(resolve(lookup.host.cwd, named), named);
   const reading = await read(file);
   if (reading.kind === 'unusable') {
-    throw namedFailure(file, reading.clause);
+    throw namedFailure(file, reading.clause, lookup.invokedBy);
   }
   return { file, object: reading.object };
 }
@@ -243,7 +256,7 @@ async function directoryFile(
  */
 async function findFile(lookup: Lookup, channels: Channels): Promise<UsableFile | undefined> {
   if (lookup.named !== undefined) {
-    return namedFile(lookup.named, lookup.host);
+    return namedFile(lookup.named, lookup);
   }
   for (const files of candidateFiles(lookup)) {
     const usable = await directoryFile(files, channels);

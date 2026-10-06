@@ -1,5 +1,8 @@
-/** Whether the typed word is a Command name or an option spelling, whose leading hyphens fold away. */
-type Spelled = 'command' | 'option';
+/**
+ * Whether the typed word is a Command name, an option spelling, whose leading hyphens fold away, or
+ * an option's declared name, which an invocation by name writes and which is compared as written.
+ */
+type Spelled = 'command' | 'name' | 'option';
 
 /** The cost of one edit: an insertion, a deletion, a substitution, or an adjacent transposition. */
 const edit = 1;

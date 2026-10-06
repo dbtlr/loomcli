@@ -111,6 +111,14 @@ function host() {
 try {
   if (mode === 'inspect') {
     process.stdout.write(`${JSON.stringify(application().inspect())}\n`);
+  } else if (mode === 'invoke') {
+    // The root runs by name, with the named values a test passes as JSON in place of argv.
+    const { argv: _argv, ...fields } = host();
+    const values = JSON.parse(argv[0] ?? '{}');
+    const { exitCode, messages, output, status } = await application().invoke([], values, {
+      host: fields,
+    });
+    process.stdout.write(`${JSON.stringify({ exitCode, messages, output, status })}\n`);
   } else {
     const code = await application().run({ host: host() });
     process.stdout.write(`resolved:${code}\n`);
