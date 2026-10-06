@@ -200,6 +200,8 @@ export interface BuiltCommand {
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
+  /** The plugin whose lifecycle hook declared each input a hook declared, by its identity. */
+  declarers: ReadonlyMap<InputDeclaration, string>;
   deprecated: string | undefined;
   description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
@@ -207,6 +209,11 @@ export interface BuiltCommand {
   hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
+  /**
+   * The call that attached this Command, opening with the whole path to its parent, or nothing for
+   * the root, which no call attaches.
+   */
+  placement: Finding | undefined;
   /**
    * The one table the parser reads this Command's words against, built after every lifecycle hook
    * ran: its own options, hook-declared ones included, and every global option. Each entry names
@@ -293,6 +300,8 @@ interface BuildContext {
   globals: BuiltGlobals;
   /** The route from the root to the Command being built, which a lifecycle hook reads. */
   path: readonly string[];
+  /** The call that attached the Command being built, or nothing for the root. */
+  placement: Finding | undefined;
   /** The installed plugins in installation order, whose hooks run over every Command. */
   plugins: readonly BuiltPlugin[];
 }
@@ -2265,6 +2274,15 @@ function checkInputFacts(
   }
 }
 
+/**
+ * The call that attached one child, opening with the whole path to its parent. A named parent's
+ * `command()` call knew its own name alone, so build places it under the root; a plugin's
+ * `commands` entry sits on no Command and keeps its call as it is.
+ */
+function rootedPlacement(placement: Finding, parent: readonly string[]): Finding {
+  return placement.path === undefined ? placement : { ...placement, path: parent };
+}
+
 /** One Command declares arguments or attaches children, whichever declaration made each of them. */
 function checkArgumentPlacement(
   command: CommandPlace,
@@ -2341,7 +2359,11 @@ export function buildCommand<Args, Options, Globals>(
   const routes = new Map<string, RoutedChild>();
   for (const child of state.children) {
     const routed: RoutedChild = {
-      command: child.node.build({ ...context, path: [...context.path, child.name] }),
+      command: child.node.build({
+        ...context,
+        path: [...context.path, child.name],
+        placement: rootedPlacement(child.placement, context.path),
+      }),
       name: child.name,
     };
     children.set(routed.name, routed.command);
@@ -2354,6 +2376,7 @@ export function buildCommand<Args, Options, Globals>(
     aliases: state.aliases,
     arguments: slots,
     children,
+    declarers: new Map(hookInputs.map(({ identity, input }) => [input, identity])),
     deprecated: facts.deprecated,
     description: facts.description,
     dispatch: action ? bindDispatch(hooked, action, globals) : undefined,
@@ -2361,6 +2384,7 @@ export function buildCommand<Args, Options, Globals>(
     hidden: facts.hidden,
     inputs: hooked.inputs,
     name,
+    placement: context.placement,
     result,
     routes,
     table,
@@ -2392,6 +2416,7 @@ export function buildGraph<Args, Options, Globals>(
     extensions,
     globals: buildGlobals(globals, plugins),
     path: [],
+    placement: undefined,
     plugins,
   };
   return { extensions, globals: context.globals, root: buildCommand(root, context) };

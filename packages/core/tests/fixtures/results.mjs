@@ -311,9 +311,13 @@ function resultViews(declared) {
 function routed() {
   const declared = declarations[scenario];
   if (declared === 'none') {
-    return new Command('plain').action(act);
+    return new Command('plain', {
+      description: 'The plain command.',
+    }).action(act);
   }
-  const command = new Command('count');
+  const command = new Command('count', {
+    description: 'The count command.',
+  });
   const record = resultViews(declared);
   const withResult =
     declared === 'value' ? command.result({ views: record }) : command.rows({ views: record });
@@ -324,6 +328,7 @@ function routed() {
 function build() {
   // A test that reads a defect's own sentence runs the fixture as a development build.
   const options = {
+    description: 'Render results.',
     ...(process.env.FIXTURE_BUILD === undefined
       ? {}
       : { packet: { build: process.env.FIXTURE_BUILD } }),

@@ -202,6 +202,13 @@ const misplacedListingFact = registerRule('@loomcli/core/misplaced-listing-fact'
   headline: 'Listing fact out of place',
 });
 
+/** A Command, an option, or an argument with no description, which a development run rejects. */
+const undescribed = registerRule('@loomcli/core/undescribed', {
+  explanation:
+    'Agents, MCP tools, help, and the manifest read each Command, option, and argument by its description, so a development build fails a run whose graph leaves one out, and the author meets the gap before an operator or an agent does. A distributed build skips the check.',
+  headline: 'Missing description',
+});
+
 export {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -225,6 +232,7 @@ export {
   resultWithoutViews,
   rowViewOnValue,
   siblingNameTaken,
+  undescribed,
   unknownDefaultView,
   variadicArgumentLast,
   viewMediaType,

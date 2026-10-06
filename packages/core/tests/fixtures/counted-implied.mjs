@@ -99,20 +99,23 @@ const quiet = plugin('@fixture/quiet', {
  */
 function copyit() {
   return new Application('copyit', {
+    description: 'Copy files.',
     packet: { build: 'development' },
     plugins: [settings],
     views: mode === 'facts' ? [override(UsageError, facts)] : [],
   })
-    .argument('files', { variadic: true })
-    .option('total', { short: 't', type: 'boolean' })
+    .argument('files', { description: 'The files to copy.', variadic: true })
+    .option('total', { description: 'Print a total.', short: 't', type: 'boolean' })
     .option('verbose', {
       aliases: ['chatty'],
+      description: 'Print more.',
       env: 'VERBOSE',
       extensions: [settingKey('verbose')],
       short: 'v',
       type: 'count',
     })
     .option('backup', {
+      description: 'Keep a backup.',
       env: 'BACKUP',
       extensions: [settingKey('backup')],
       implied: 'simple',
@@ -120,9 +123,25 @@ function copyit() {
       type: 'string',
       validate: controls,
     })
-    .option('suffix', { default: '~', implied: '.bak', type: 'string' })
-    .option('tag', { implied: 'all', multiple: true, short: 'g', type: 'string' })
-    .option('probe', { type: 'string', validate: probe, validateOmitted: true })
+    .option('suffix', {
+      default: '~',
+      description: 'The backup suffix.',
+      implied: '.bak',
+      type: 'string',
+    })
+    .option('tag', {
+      description: 'Tag a copy.',
+      implied: 'all',
+      multiple: true,
+      short: 'g',
+      type: 'string',
+    })
+    .option('probe', {
+      description: 'Probe the supplied tokens.',
+      type: 'string',
+      validate: probe,
+      validateOmitted: true,
+    })
     .action(report([]));
 }
 
@@ -139,8 +158,16 @@ function fetchit() {
 
 /** A global string option implying a value, judged before any token is read. */
 function rejected() {
-  return new Application('rejected', { packet: { build: 'development' } })
-    .globalOption('color', { implied: 'sometimes', type: 'string', validate: controls })
+  return new Application('rejected', {
+    description: 'Reject an implied value.',
+    packet: { build: 'development' },
+  })
+    .globalOption('color', {
+      description: 'Color the output.',
+      implied: 'sometimes',
+      type: 'string',
+      validate: controls,
+    })
     .action(report([]));
 }
 

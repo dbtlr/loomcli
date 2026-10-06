@@ -81,7 +81,23 @@ function application(settings) {
 
 /** An application whose one option declares a default that JSON cannot carry. */
 function defaulted(value) {
-  return new Application('app', { ...packet, plugins: [manifest()] })
+  return new Application('app', {
+    ...packet,
+    description: 'Probe a default.',
+    plugins: [manifest()],
+  })
+    .option('odd', {
+      default: value,
+      description: 'An odd default.',
+      type: 'string',
+      validate: z.any(),
+    })
+    .action(dispatch);
+}
+
+/** The same application with no description anywhere, which a distributed build runs. */
+function undescribed(value) {
+  return new Application('app', { plugins: [manifest()] })
     .option('odd', { default: value, type: 'string', validate: z.any() })
     .action(dispatch);
 }
@@ -100,8 +116,8 @@ function publishing(input) {
 
 /** An application whose one option publishes the schema `input` returns. */
 const published = (input) => () =>
-  new Application('app', { ...packet, plugins: [manifest()] })
-    .option('odd', { type: 'string', validate: publishing(input) })
+  new Application('app', { ...packet, description: 'Probe a schema.', plugins: [manifest()] })
+    .option('odd', { description: 'An odd schema.', type: 'string', validate: publishing(input) })
     .action(dispatch);
 
 /** A value that holds itself, which no JSON text can carry. */
@@ -113,15 +129,25 @@ function looped() {
 
 /** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
 function placed(where, value) {
-  const odd = { default: value, type: 'string', validate: z.any() };
-  const app = new Application('app', { ...packet, plugins: [manifest()] });
+  const odd = { default: value, description: 'An odd default.', type: 'string', validate: z.any() };
+  const app = new Application('app', {
+    ...packet,
+    description: 'Probe a default.',
+    plugins: [manifest()],
+  });
   if (where === 'global') {
     return app.globalOption('odd', odd).action(dispatch);
   }
   if (where === 'argument') {
-    return app.argument('odd', { default: value, validate: z.any() }).action(dispatch);
+    return app
+      .argument('odd', { default: value, description: 'An odd default.', validate: z.any() })
+      .action(dispatch);
   }
-  return app.command(new Command('child').option('odd', odd).action(dispatch)).action(dispatch);
+  return app
+    .command(
+      new Command('child', { description: 'Hold the option.' }).option('odd', odd).action(dispatch),
+    )
+    .action(dispatch);
 }
 
 /**
@@ -147,7 +173,7 @@ const scenarios = {
   map: () => defaulted(new Map()),
   nan: () => defaulted(Number.NaN),
   'null-prototype': () =>
-    defaulted(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
+    undescribed(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
   schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
   'schema-cycle': published(looped),
   short: () => application({ short: 'M' }),

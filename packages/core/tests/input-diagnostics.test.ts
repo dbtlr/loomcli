@@ -973,7 +973,9 @@ function converterFault(path: readonly string[]): Expected {
   return {
     correction:
       'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
-    findings: [onCommand(path, "argument('path', { validate: … })", 'validate: …')],
+    findings: [
+      onCommand(path, "argument('path', { description: 'Path.', validate: … })", 'validate: …'),
+    ],
     headline: 'SCHEMA CONVERTER FAILED',
     rule: 'schema-converter-failed',
     sentence: String.raw`Argument "path" validator's JSON Schema converter failed for target "draft-2020-12": No JSON Schema\u000afor a transform.`,
@@ -988,7 +990,7 @@ test('a default its validator rejects reports from run() with the issue lines un
       findings: [
         onCommand(
           ['probe', 'get'],
-          "option('limit', { default: 'x', type: 'string', validate: … })",
+          "option('limit', { default: 'x', description: 'Limit.', type: 'string', validate: … })",
           "default: 'x'",
         ),
       ],
@@ -1008,7 +1010,7 @@ test('an implied value its validator rejects reports from run() before any token
       findings: [
         onCommand(
           ['probe', 'get'],
-          "option('backup', { implied: 'x', type: 'string', validate: … })",
+          "option('backup', { description: 'Backup.', implied: 'x', type: 'string', validate: … })",
           "implied: 'x'",
         ),
       ],
@@ -1028,7 +1030,7 @@ test("an implied value its validator rejects on a plugin's option marks implied 
       correction: 'Fix the implied value or its validator.',
       findings: [
         marked(
-          "    plugin('@acme/copy', { options: { backup: { implied: 'x', type: 'string', validate: … } } })",
+          "    plugin('@acme/copy', { options: { backup: { description: 'Backup.', implied: 'x', type: 'string', validate: … } } })",
           "implied: 'x'",
         ),
       ],
@@ -1062,7 +1064,7 @@ test('a converter that answers with a value that is not a plain object is a decl
       findings: [
         onCommand(
           ['probe', 'get'],
-          "option('limit', { type: 'string', validate: … })",
+          "option('limit', { description: 'Limit.', type: 'string', validate: … })",
           'validate: …',
         ),
       ],
@@ -1092,7 +1094,7 @@ function limitConverterFault(failure: string): Expected {
     findings: [
       onCommand(
         ['probe', 'get'],
-        "option('limit', { type: 'string', validate: … })",
+        "option('limit', { description: 'Limit.', type: 'string', validate: … })",
         'validate: …',
       ),
     ],
@@ -1140,7 +1142,7 @@ test('a validator that throws marks the validate key of the call that declared i
   expect(result.status).toBe(1);
   const finding = onCommand(
     ['probe', 'get'],
-    "option('limit', { type: 'string', validate: … })",
+    "option('limit', { description: 'Limit.', type: 'string', validate: … })",
     'validate: …',
   );
   expect(result.stderr).toContain(`\n\n${finding.join('\n')}\n\n`);
@@ -1150,7 +1152,7 @@ test('a global option validator that throws marks the validate key of its global
   const result = invoke(fixture, ['global-validator-throws']);
   expect(result.status).toBe(1);
   const finding = marked(
-    "      .globalOption('limit', { type: 'string', validate: … })",
+    "      .globalOption('limit', { description: 'Limit.', type: 'string', validate: … })",
     'validate: …',
   );
   expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
@@ -1163,7 +1165,7 @@ test("a default its validator rejects on a plugin's option marks the default in 
       correction: 'Fix the default or its validator.',
       findings: [
         marked(
-          "    plugin('@acme/log', { options: { level: { default: 'x', type: 'string', validate: … } } })",
+          "    plugin('@acme/log', { options: { level: { default: 'x', description: 'Level.', type: 'string', validate: … } } })",
           "default: 'x'",
         ),
       ],
@@ -1179,7 +1181,7 @@ test("a validator that throws on a plugin's option marks the validate key in the
   const result = invoke(fixture, ['plugin-validator-throws']);
   expect(result.status).toBe(1);
   const finding = marked(
-    "    plugin('@acme/log', { options: { level: { type: 'string', validate: … } } })",
+    "    plugin('@acme/log', { options: { level: { description: 'Level.', type: 'string', validate: … } } })",
     'validate: …',
   );
   expect(result.stderr).toContain(`\n\n${finding.join('\n')}\n\n`);

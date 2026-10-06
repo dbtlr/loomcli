@@ -2,7 +2,7 @@ import { Application } from '@loomcli/core';
 import { z } from 'zod';
 
 // A development build, so a fault only the author can fix prints its Developer Diagnostic.
-const development = { packet: { build: 'development' } };
+const development = { description: 'Validate options.', packet: { build: 'development' } };
 
 const [scenario, ...argv] = process.argv.slice(2);
 const numberSchema = {
@@ -24,17 +24,23 @@ switch (scenario) {
   case 'invalid-default': {
     app = app.option('size', {
       default: scenario === 'default' ? '10' : 'bad',
+      description: 'The size option.',
       type: 'string',
       validate: numberSchema,
     });
     break;
   }
   case 'transform': {
-    app = app.option('size', { type: 'string', validate: numberSchema });
+    app = app.option('size', {
+      description: 'The size option.',
+      type: 'string',
+      validate: numberSchema,
+    });
     break;
   }
   case 'absence': {
     app = app.option('size', {
+      description: 'The size option.',
       type: 'string',
       validate: z
         .string()
@@ -55,6 +61,7 @@ switch (scenario) {
   case 'async': {
     app = app.option('size', {
       default: '10',
+      description: 'The size option.',
       type: 'string',
       validate: schema(async (raw) => {
         await delay();
@@ -68,6 +75,7 @@ switch (scenario) {
   case 'issues': {
     app = app
       .option('same', {
+        description: 'The same option.',
         type: 'string',
         validate: schema(async () => {
           await delay();
@@ -75,11 +83,13 @@ switch (scenario) {
         }),
       })
       .argument('same', {
+        description: 'The same argument.',
         required: true,
         validate: z.string().min(2, 'Too short.'),
         variadic: true,
       })
       .option('last', {
+        description: 'The last option.',
         type: 'string',
         validate: schema(() => ({ issues: [{ message: 'Last.' }] })),
       });
@@ -87,6 +97,7 @@ switch (scenario) {
   }
   case 'each': {
     app = app.argument('files', {
+      description: 'The files argument.',
       required: true,
       validate: z.string().transform((file) => file.toUpperCase()),
       variadic: true,
@@ -106,6 +117,7 @@ switch (scenario) {
   case 'reject': {
     app = app
       .option('size', {
+        description: 'The size option.',
         type: 'string',
         validate: schema(() => {
           if (scenario === 'reject') {
@@ -115,6 +127,7 @@ switch (scenario) {
         }),
       })
       .option('later', {
+        description: 'The later option.',
         type: 'string',
         validate: schema(() => {
           process.stdout.write('later ran\n');
@@ -124,7 +137,11 @@ switch (scenario) {
     break;
   }
   case 'empty-issues': {
-    app = app.option('size', { type: 'string', validate: schema(() => ({ issues: [] })) });
+    app = app.option('size', {
+      description: 'The size option.',
+      type: 'string',
+      validate: schema(() => ({ issues: [] })),
+    });
     break;
   }
   case 'malformed-issue': {
@@ -137,8 +154,13 @@ switch (scenario) {
       path: { message: 'Bad.', path: [null] },
     }[argv.shift()];
     app = app
-      .option('size', { type: 'string', validate: schema(() => ({ issues: [malformed] })) })
+      .option('size', {
+        description: 'The size option.',
+        type: 'string',
+        validate: schema(() => ({ issues: [malformed] })),
+      })
       .option('later', {
+        description: 'The later option.',
         type: 'string',
         validate: schema(() => {
           process.stdout.write('later ran\n');
@@ -148,16 +170,26 @@ switch (scenario) {
     break;
   }
   case 'malformed-result': {
-    app = app.option('size', { type: 'string', validate: schema(() => ({})) });
+    app = app.option('size', {
+      description: 'The size option.',
+      type: 'string',
+      validate: schema(() => ({})),
+    });
     break;
   }
   case 'required': {
-    app = app.option('size', { required: true, type: 'string', validate: numberSchema });
+    app = app.option('size', {
+      description: 'The size option.',
+      required: true,
+      type: 'string',
+      validate: numberSchema,
+    });
     break;
   }
   case 'required-default': {
     app = app.option('size', {
       default: '1',
+      description: 'The size option.',
       required: true,
       type: 'string',
       validate: numberSchema,
@@ -165,24 +197,33 @@ switch (scenario) {
     break;
   }
   case 'boolean-schema': {
-    app = app.option('size', { type: 'boolean', validate: numberSchema });
+    app = app.option('size', {
+      description: 'The size option.',
+      type: 'boolean',
+      validate: numberSchema,
+    });
     break;
   }
   case 'invalid-schema': {
-    app = app.option('size', { type: 'string', validate: { '~standard': { version: 2 } } });
+    app = app.option('size', {
+      description: 'The size option.',
+      type: 'string',
+      validate: { '~standard': { version: 2 } },
+    });
     break;
   }
   case 'raw-default': {
-    app = app.option('size', { default: 'raw', type: 'string' });
+    app = app.option('size', { default: 'raw', description: 'The size option.', type: 'string' });
     break;
   }
   case 'nonstring-default': {
-    app = app.option('size', { default: 12, type: 'string' });
+    app = app.option('size', { default: 12, description: 'The size option.', type: 'string' });
     break;
   }
   case 'undefined-default': {
     app = app.option('size', {
       default: undefined,
+      description: 'The size option.',
       type: 'string',
       validate: z.string().default('internal'),
     });
@@ -191,6 +232,7 @@ switch (scenario) {
   case 'undefined-output': {
     app = app.option('size', {
       default: '10',
+      description: 'The size option.',
       type: 'string',
       validate: z.string().transform(() => {
         calls++;
@@ -205,6 +247,7 @@ switch (scenario) {
   case 'rerun': {
     const config = {
       default: '10',
+      description: 'The proto option.',
       type: 'string',
       validate: schema(async (raw) => ({ value: { call: ++calls, size: Number(raw) } })),
     };
@@ -224,6 +267,7 @@ switch (scenario) {
   }
   case 'throw-controls': {
     app = app.option('size', {
+      description: 'The size option.',
       type: 'string',
       validate: schema(() => {
         throw new Error('bad\u202eevil\nsecond line x');

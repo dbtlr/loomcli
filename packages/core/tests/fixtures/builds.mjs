@@ -18,8 +18,8 @@ import {
 
 const [scenario, build = 'none', ...argv] = process.argv.slice(2);
 
-/** The packet one run reads: none at all, or one that reads the named build. */
-const packet = build === 'none' ? {} : { packet: { build } };
+/** The options every probe declares: its description, and no packet or one that reads the build. */
+const probe = { description: 'Probe a build.', ...(build === 'none' ? {} : { packet: { build } }) };
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
@@ -61,7 +61,7 @@ function scenarioRun() {
   switch (scenario) {
     case 'type-error': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           const value = undefined;
           return value.length;
         }),
@@ -69,21 +69,21 @@ function scenarioRun() {
     }
     case 'thrown-string': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw 'a\u2028b';
         }),
       };
     }
     case 'chain': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw new Error('Outer.', { cause: new SyntaxError('Inner.') });
         }),
       };
     }
     case 'escaped': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw new Error('line\nbreak \u202e bidi \u2028 separator');
         }),
       };
@@ -91,7 +91,7 @@ function scenarioRun() {
     case 'app-override': {
       return {
         app: new Application('probe', {
-          ...packet,
+          ...probe,
           views: [override(InternalError, { render: () => 'application override\n' })],
         }).action(() => {
           throw new TypeError('Boom.');
@@ -100,24 +100,24 @@ function scenarioRun() {
     }
     case 'plugin-override': {
       return {
-        app: new Application('probe', { ...packet, plugins: [brandsDefects] }).action(() => {
+        app: new Application('probe', { ...probe, plugins: [brandsDefects] }).action(() => {
           throw new TypeError('Boom.');
         }),
       };
     }
     case 'hint': {
       return {
-        app: new Application('probe', { ...packet, plugins: [hintPlugin] }).action(() => {
+        app: new Application('probe', { ...probe, plugins: [hintPlugin] }).action(() => {
           throw new TypeError('Boom.');
         }),
       };
     }
     case 'build-fault': {
-      return { app: new Application('probe', packet) };
+      return { app: new Application('probe', probe) };
     }
     case 'thrown-declaration': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw new DeclarationError(retryLimit, {
             correction: 'Pass a whole number from 0 through 10.',
             findings: [{ arguments: [50], call: 'retry', mark: '0', path: ['get'] }],
@@ -129,7 +129,7 @@ function scenarioRun() {
     case 'broken-view': {
       return {
         app: new Application('probe', {
-          ...packet,
+          ...probe,
           views: [
             override(UsageError, {
               render: () => {
@@ -138,21 +138,21 @@ function scenarioRun() {
             }),
           ],
         })
-          .argument('name', { required: true })
+          .argument('name', { description: 'The name.', required: true })
           .action(() => undefined),
       };
     }
     case 'broken-hook': {
       return {
-        app: new Application('probe', { ...packet, plugins: [brokenHook, hintPlugin] })
-          .argument('name', { required: true })
+        app: new Application('probe', { ...probe, plugins: [brokenHook, hintPlugin] })
+          .argument('name', { description: 'The name.', required: true })
           .action(() => undefined),
       };
     }
     case 'broken-both': {
       return {
         app: new Application('probe', {
-          ...packet,
+          ...probe,
           plugins: [brokenHook],
           views: [
             override(UsageError, {
@@ -162,14 +162,14 @@ function scenarioRun() {
             }),
           ],
         })
-          .argument('name', { required: true })
+          .argument('name', { description: 'The name.', required: true })
           .action(() => undefined),
       };
     }
     case 'broken-cancelled': {
       const controller = new AbortController();
       return {
-        app: new Application('probe', { ...packet, plugins: [brokenHook] }).action(() => {
+        app: new Application('probe', { ...probe, plugins: [brokenHook] }).action(() => {
           controller.abort();
           throw new TypeError('Boom.');
         }),
@@ -178,7 +178,7 @@ function scenarioRun() {
     }
     case 'broken-output': {
       return {
-        app: new Application('probe', packet).action(({ out }) => {
+        app: new Application('probe', probe).action(({ out }) => {
           void out.render('x', {
             render: () => {
               throw new Error('Output view broke.');
@@ -189,7 +189,7 @@ function scenarioRun() {
     }
     case 'forged-outside': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged(['outside (/elsewhere/secret.js:3:5)']);
         }),
         host: { cwd: here, readSource: recorded(() => 'never read') },
@@ -197,7 +197,7 @@ function scenarioRun() {
     }
     case 'forged-missing': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged([`missing (${join(here, 'no-such-file.mjs')}:3:5)`]);
         }),
         host: { cwd: here, readSource: recorded(() => undefined) },
@@ -205,7 +205,7 @@ function scenarioRun() {
     }
     case 'reader-throws': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged([`reader (${join(here, 'builds.mjs')}:3:5)`]);
         }),
         host: {
@@ -218,7 +218,7 @@ function scenarioRun() {
     }
     case 'node-modules': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged([
             `library (${join(here, 'node_modules', 'lib', 'index.js')}:1:1)`,
             `author (${join(here, 'modules', 'source.mjs')}:3:9)`,
@@ -234,7 +234,7 @@ function scenarioRun() {
     }
     case 'file-url': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged([`url (${pathToFileURL(join(here, 'modules', 'source.mjs')).href}:2:1)`]);
         }),
         host: { cwd: here, readSource: recorded(() => 'first\nsecond\nthird') },
@@ -245,7 +245,7 @@ function scenarioRun() {
         middleware: { activate: 'always', load: () => Promise.reject(new Error('Cannot load.')) },
       });
       return {
-        app: new Application('probe', { ...packet, plugins: [lazy] }).action(() => undefined),
+        app: new Application('probe', { ...probe, plugins: [lazy] }).action(() => undefined),
       };
     }
     case 'next-twice': {
@@ -262,19 +262,19 @@ function scenarioRun() {
         },
       });
       return {
-        app: new Application('probe', { ...packet, plugins: [twice] }).action(() => undefined),
+        app: new Application('probe', { ...probe, plugins: [twice] }).action(() => undefined),
       };
     }
     case 'unconstructed': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw Object.create(InternalError.prototype);
         }),
       };
     }
     case 'result-missing': {
       return {
-        app: new Application('probe', packet)
+        app: new Application('probe', probe)
           .result({ views: { plain: { render: (value) => `${JSON.stringify(value)}\n` } } })
           .action(() => undefined),
       };
@@ -286,8 +286,8 @@ function scenarioRun() {
         },
       });
       return {
-        app: new Application('probe', { ...packet, plugins: [hook] })
-          .argument('name', { required: true })
+        app: new Application('probe', { ...probe, plugins: [hook] })
+          .argument('name', { description: 'The name.', required: true })
           .action(() => undefined),
       };
     }
@@ -305,14 +305,14 @@ function scenarioRun() {
         },
       });
       return {
-        app: new Application('probe', { ...packet, plugins: [lazy] }).action(() => undefined),
+        app: new Application('probe', { ...probe, plugins: [lazy] }).action(() => undefined),
       };
     }
     case 'message-frame': {
       // The message carries a line that reads as a frame, as operator input interpolated into it can.
       const injected = `x\n    at ${join(here, 'secret.txt')}:1:1`;
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw new Error(`Cannot read ${injected}`);
         }),
         host: { cwd: here, readSource: recorded(() => undefined) },
@@ -322,7 +322,7 @@ function scenarioRun() {
     case 'parenthesized-frame': {
       const directory = scenario === 'spaced-frame' ? 'dir with space' : 'dir (x)';
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw forged([`<anonymous> (${join(here, directory, 'src.mjs')}:3:9)`]);
         }),
         host: {
@@ -335,7 +335,7 @@ function scenarioRun() {
       const { proxy, revoke } = Proxy.revocable({}, {});
       revoke();
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           throw proxy;
         }),
       };
@@ -355,18 +355,18 @@ function scenarioRun() {
         },
       });
       return {
-        app: new Application('probe', { ...packet, plugins: [twice] }).action(() => undefined),
+        app: new Application('probe', { ...probe, plugins: [twice] }).action(() => undefined),
       };
     }
     case 'not-a-signal': {
       return {
-        app: new Application('probe', packet).action(() => undefined),
+        app: new Application('probe', probe).action(() => undefined),
         signal: 'not a signal',
       };
     }
     case 'foreign-graph': {
       return {
-        app: new Application('probe', packet).action(() => {
+        app: new Application('probe', probe).action(() => {
           locate(Object.freeze({}), ['']);
         }),
       };
@@ -378,7 +378,7 @@ function scenarioRun() {
         },
       });
       return {
-        app: new Application('probe', packet).action(async ({ out }) => {
+        app: new Application('probe', probe).action(async ({ out }) => {
           await out.print('hello');
         }),
         host: { stdout },
@@ -404,7 +404,10 @@ if (scenario === 'captured-reader') {
   symlinkSync(real, linked);
   symlinkSync(join(outside, 'secret.js'), join(real, 'escape.js'));
   const captured = { reader: undefined };
-  const app = new Application('probe', { packet: { build: 'development' } }).action(({ host }) => {
+  const app = new Application('probe', {
+    description: 'Probe a build.',
+    packet: { build: 'development' },
+  }).action(({ host }) => {
     captured.reader = host.readSource;
   });
   await app.run({ host: { argv: [], cwd: linked } });
@@ -429,13 +432,18 @@ if (scenario === 'captured-reader') {
   );
   symlinkSync(real, linked);
   const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
-  const app = new Application('probe', { packet: { build: 'development' } }).action(fails);
+  const app = new Application('probe', {
+    description: 'Probe a build.',
+    packet: { build: 'development' },
+  }).action(fails);
   await app.run({ host: { argv: [], cwd: linked } });
 } else if (scenario === 'packet-mutation') {
   const source = { build: 'development' };
-  const app = new Application('probe', { packet: source }).action(() => {
-    throw new TypeError('Boom.');
-  });
+  const app = new Application('probe', { description: 'Probe a build.', packet: source }).action(
+    () => {
+      throw new TypeError('Boom.');
+    },
+  );
   source.build = 'distributed';
   await app.run({ host: { argv: [] } });
 } else if (scenario.startsWith('packet-')) {
@@ -446,7 +454,10 @@ if (scenario === 'captured-reader') {
     'packet-staging': { build: 'staging' },
   };
   try {
-    const app = new Application('probe', { packet: packets[scenario] }).action(() => {
+    const app = new Application('probe', {
+      description: 'Probe a build.',
+      packet: packets[scenario],
+    }).action(() => {
       throw new TypeError('Boom.');
     });
     await app.run({ host: { argv: [] } });
@@ -457,7 +468,7 @@ if (scenario === 'captured-reader') {
   }
 } else if (scenario === 'inspect') {
   try {
-    new Application('probe', packet).inspect();
+    new Application('probe', probe).inspect();
   } catch (error) {
     process.stdout.write(`thrown: ${error.name}: ${error.sentence}\n`);
   }
