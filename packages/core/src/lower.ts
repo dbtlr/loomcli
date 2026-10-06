@@ -25,6 +25,7 @@ const takes = {
   count: 'Use a whole number of 0 or more.',
   implied: 'Use a string, a number, or true.',
   list: 'Use a string, a number, or a list of them.',
+  listOrImplied: 'Use a string, a number, true, or a list of strings and numbers.',
   scalar: 'Use a string or a number.',
 } as const;
 
@@ -144,10 +145,11 @@ function countOccurrences(option: TableSpelling, value: unknown): Lowering<Lower
 
 /** The issue a string option reports for a value no token spells, by what the option takes. */
 function stringIssue(option: TableSpelling & { type: 'string' }): string {
+  const implied = option.valueClass === 'implied';
   if (option.multiple) {
-    return takes.list;
+    return implied ? takes.listOrImplied : takes.list;
   }
-  return option.valueClass === 'implied' ? takes.implied : takes.scalar;
+  return implied ? takes.implied : takes.scalar;
 }
 
 /**

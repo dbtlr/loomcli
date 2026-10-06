@@ -46,6 +46,7 @@ test('each value lowers to the tokens argv would give, row by row', () => {
       ratio: '0.5',
       tag: ['a', '2'],
       verbose: 3,
+      versions: ['latest'],
     },
   });
 });
@@ -62,7 +63,7 @@ test('false on a positive option, true on a negative option, 0 on a count, and a
   const { absent }: Lowering = JSON.parse(report('lowering'));
   expect(echoed(absent)).toEqual({
     args: { files: [], target: 't' },
-    options: { color: false, flag: false, keep: true, tag: [], verbose: 0 },
+    options: { color: false, flag: false, keep: true, tag: [], verbose: 0, versions: [] },
   });
 });
 
@@ -94,6 +95,7 @@ test('each unlowerable value is an invalid problem in authoring order whose issu
       'probe: Option "backup": Use a string, a number, or true.',
       'probe: Option "verbose": Use a whole number of 0 or more.',
       'probe: Option "tag": Use a string, a number, or a list of them.',
+      'probe: Option "versions": Use a string, a number, true, or a list of strings and numbers.',
       '',
     ].join('\n'),
     status: 'failed',

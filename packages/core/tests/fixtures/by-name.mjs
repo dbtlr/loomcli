@@ -68,6 +68,7 @@ function echo(name) {
     .option('backup', { implied: 'simple', type: 'string' })
     .option('verbose', { short: 'v', type: 'count' })
     .option('tag', { multiple: true, type: 'string' })
+    .option('versions', { implied: 'latest', multiple: true, type: 'string' })
     .action(async ({ args, options, out }) => {
       await out.print(JSON.stringify({ args, options }));
     });
@@ -108,6 +109,7 @@ if (scenario === 'lowering') {
         ratio: 0.5,
         tag: ['a', 2],
         verbose: 3,
+        versions: true,
       },
     }),
     missing: await app.invoke(['need'], { options: { item: [] } }),
@@ -124,6 +126,7 @@ if (scenario === 'lowering') {
         ratio: Number.NaN,
         tag: [{}],
         verbose: 1.5,
+        versions: false,
       },
     }),
     unlowerableMore: await app.invoke(['echo'], {
