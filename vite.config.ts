@@ -135,6 +135,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/mcp/**'],
+        rules: {
+          // A tool, its input schema, and a text item keep the member order the protocol writes them in.
+          'eslint/sort-keys': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/form.ts'],
         rules: {
           // The failure form's key order is part of its contract: code, exitCode, message, hints.

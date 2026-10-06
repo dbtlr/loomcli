@@ -55,6 +55,14 @@
       "types": "./dist/src/manifest/extension.d.ts",
       "import": "./dist/src/manifest/extension.js"
     },
+    "./mcp": {
+      "types": "./dist/src/mcp/plugin.d.ts",
+      "import": "./dist/src/mcp/plugin.js"
+    },
+    "./mcp/extension": {
+      "types": "./dist/src/mcp/extension.d.ts",
+      "import": "./dist/src/mcp/extension.js"
+    },
     "./records": {
       "types": "./dist/src/records.d.ts",
       "import": "./dist/src/records.js"
@@ -84,6 +92,9 @@
     "smol-toml": "^1.9.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@loom/mcp": "workspace:*"
   },
   "peerDependencies": {
     "@loomcli/core": "workspace:*"

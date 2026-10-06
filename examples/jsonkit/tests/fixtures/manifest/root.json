@@ -247,6 +247,22 @@
         ]
       },
       {
+        "name": "mcp",
+        "path": [
+          "mcp"
+        ],
+        "description": "Serve this application's tools to an MCP client over stdin and stdout.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": true,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "options": [],
+        "children": []
+      },
+      {
         "name": "get",
         "path": [
           "get"

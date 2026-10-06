@@ -29,6 +29,27 @@ const failureCodeConflict = diagnosticRule(`${Package.name}/manifest/failure-cod
   headline: 'Failure code conflict',
 });
 
+/** Two opted-in Commands whose paths give one MCP tool name. */
+const mcpToolNameTaken = diagnosticRule(`${Package.name}/mcp/tool-name-taken`, {
+  explanation:
+    'An MCP client calls a tool by its name, which joins the Command path with underscores and writes each hyphen as one, so two Commands whose paths give one name leave the client no way to call either one.',
+  headline: 'MCP tool name taken',
+});
+
+/** `mcpCommand` on a Command that registers no action. */
+const mcpToolWithoutAction = diagnosticRule(`${Package.name}/mcp/tool-without-action`, {
+  explanation:
+    "An MCP tool call runs the Command's action, so a Command with no action, such as a group, has nothing to run when a client calls it.",
+  headline: 'MCP tool without an action',
+});
+
+/** An argument and an option one MCP tool would list under one name. */
+const mcpPropertyNameTaken = diagnosticRule(`${Package.name}/mcp/property-name-taken`, {
+  explanation:
+    'An MCP tool takes its arguments and options as one object keyed by declared name, so an argument and an option that share a name leave the client no way to supply each one.',
+  headline: 'MCP property name taken',
+});
+
 /** A version plugin `postfix` setting that is not one line of prose. */
 const versionPostfix = diagnosticRule(`${Package.name}/version/postfix`, {
   explanation:
@@ -36,4 +57,12 @@ const versionPostfix = diagnosticRule(`${Package.name}/version/postfix`, {
   headline: 'Invalid version postfix',
 });
 
-export { configFilePath, configFilePattern, failureCodeConflict, versionPostfix };
+export {
+  configFilePath,
+  configFilePattern,
+  failureCodeConflict,
+  mcpPropertyNameTaken,
+  mcpToolNameTaken,
+  mcpToolWithoutAction,
+  versionPostfix,
+};

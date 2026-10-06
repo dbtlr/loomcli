@@ -1,6 +1,7 @@
 import { Command } from '@loomcli/core';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 
 import { listKeys } from '../actions/list-keys.js';
 import { pathFailures, readFailures } from '../failures.js';
@@ -11,6 +12,7 @@ export const keys = new Command('keys', {
   extensions: [
     manifestCommand({ failures: [...pathFailures, ...readFailures] }),
     helpCommand({ section: ['Document commands', 'Read'] }),
+    mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
 })
   .alias('ls')

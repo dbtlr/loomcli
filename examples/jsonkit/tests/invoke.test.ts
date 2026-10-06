@@ -102,7 +102,7 @@ test('an unknown path element lists the root children, an unknown argument names
   expect(unknown).toMatchObject({
     exitCode: 2,
     messages:
-      'jsonkit: Unknown command "nope". Use one of: doctor, completion, get, keys, select.\n',
+      'jsonkit: Unknown command "nope". Use one of: doctor, completion, mcp, get, keys, select.\n',
     status: 'failed',
   });
   expect(argument).toMatchObject({

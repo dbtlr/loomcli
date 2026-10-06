@@ -315,7 +315,7 @@ test.each(['summary', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
         stdout: '',
       });
     });
@@ -360,7 +360,7 @@ test.each(['lss', 'fetc'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, [name, '-f', 'doc.json'], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
         stdout: '',
       });
     });

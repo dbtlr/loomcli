@@ -35,7 +35,9 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     describe('Commands', () => {
       it('jsonkit <Tab> lists the visible root children and never a deprecated, hidden, or alias name', async () => {
         const { listed } = await complete('jsonkit ');
-        expect(counts(listed)).toEqual(counts(['completion', 'doctor', 'get', 'keys', 'select']));
+        expect(counts(listed)).toEqual(
+          counts(['completion', 'doctor', 'get', 'keys', 'mcp', 'select']),
+        );
       });
 
       it('jsonkit ls --<Tab> lists the options in scope at keys, global and plugin options included', async () => {

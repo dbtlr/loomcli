@@ -700,7 +700,7 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ### Example coverage
 
-[jsonkit](../examples/jsonkit/src/application.ts) declares two global options, an optional `--file` and the [counted option](#counted-options) `-v, --verbose` with the description `Name the document before reading it.`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path` and the alias `ls`, a `select` Command, a `fetch` Command that is deprecated in favor of `get`, and a `debug` Command that is hidden. `jsonkit ls` lists keys exactly as `jsonkit keys` does, and `jsonkit typo` offers `doctor, completion, get, keys, select`, because a routing failure's candidate list omits the hidden `debug` and the deprecated `fetch`. `select` declares `--field` as a required multiple option with the alias `-F` and the validator `text()` from the [validator catalog](validators.md), so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all six read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. When `verbose` is at least 1, the reader first writes one line through `out.info` that names the source, `Reading doc.json.` for `-f doc.json` and `Reading stdin.` without a file, with the file name passed through `escapeControlCharacters` and the action's `style.escape`, as jsonkit's other operator-supplied names are; a higher count writes the same one line, and with no occurrence it writes nothing. A read failure names the file or `stdin`, and a parse failure names the document the same way; a file name and a runtime reason that quotes it print with their control characters escaped. The reader also holds the rule that one of the two sources must exist, because a global option declares no presence rule, and the [validation example coverage](#example-coverage-1) describes it.
+[jsonkit](../examples/jsonkit/src/application.ts) declares two global options, an optional `--file` and the [counted option](#counted-options) `-v, --verbose` with the description `Name the document before reading it.`, a root summary action, a `get` Command with a required scalar `path`, a `keys` Command with an optional scalar `path` and the alias `ls`, a `select` Command, a `fetch` Command that is deprecated in favor of `get`, and a `debug` Command that is hidden. `jsonkit ls` lists keys exactly as `jsonkit keys` does, and `jsonkit typo` offers `doctor, completion, mcp, get, keys, select`, because a routing failure's candidate list omits the hidden `debug` and the deprecated `fetch`. `select` declares `--field` as a required multiple option with the alias `-F` and the validator `text()` from the [validator catalog](validators.md), so its action receives `string[]` and prints the requested top-level keys in supplied order. A field the document does not hold is skipped with a warning on stderr while the rest still print, which is the example use of a non-fatal `out` channel. An omitted `keys` path lists the root; a supplied one resolves with the syntax `get` uses, through the resolver both Commands share. Each action is a separate module typed with `ActionHandler`, and all six read their document through one shared reader. That reader selects the source: a supplied `--file` streams from disk, and without one the document streams from `host.stdin`. When `verbose` is at least 1, the reader first writes one line through `out.info` that names the source, `Reading doc.json.` for `-f doc.json` and `Reading stdin.` without a file, with the file name passed through `escapeControlCharacters` and the action's `style.escape`, as jsonkit's other operator-supplied names are; a higher count writes the same one line, and with no occurrence it writes nothing. A read failure names the file or `stdin`, and a parse failure names the document the same way; a file name and a runtime reason that quotes it print with their control characters escaped. The reader also holds the rule that one of the two sources must exist, because a global option declares no presence rule, and the [validation example coverage](#example-coverage-1) describes it.
 
 ## Input sources
 
@@ -2386,7 +2386,7 @@ COUNT  SOURCE
 | --------------------------------------- | ---------------------------------------------------------------------------------------- | ---- |
 | `jsonkit select --field '' -f doc.json` | `jsonkit: Option "--field" at 0: Expected a nonempty value.` then `Run "jsonkit select --help" to see the usage.` | 2 |
 | `jsonkit get -f doc.json`               | `jsonkit: Argument "path" requires a value. Supply a value for "path".` then `Run "jsonkit get --help" to see the usage.` | 2 |
-| `jsonkit typo -f doc.json`              | `jsonkit: Unknown command "typo". Use one of: doctor, completion, get, keys, select.` then `Run "jsonkit --help" to see the usage.` | 2 |
+| `jsonkit typo -f doc.json`              | `jsonkit: Unknown command "typo". Use one of: doctor, completion, mcp, get, keys, select.` then `Run "jsonkit --help" to see the usage.` | 2 |
 | `jsonkit gte -f doc.json`               | `jsonkit: Unknown command "gte". Did you mean "get"?` then `Run "jsonkit --help" to see the usage.` | 2 |
 | `jsonkit get missing -f doc.json`       | `Path not found: "missing". Run jsonkit keys to list the keys at the root.`                | 65   |
 | `jsonkit keys missing -f doc.json`      | `Path not found: "missing". Run jsonkit keys to list the keys at the root.`                | 65   |
@@ -3617,7 +3617,7 @@ The right-cell rule: the description when the member has one, then, for an optio
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
 
-The root of jsonkit has an action and eight children: the `doctor` Command the private `@loom/doctor` plugin attaches and the `completion` group the [completion](#completion) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and nine children: the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](#completion) plugin attaches, and the `mcp` Command the [MCP](#mcp) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -3639,6 +3639,7 @@ DOCUMENT COMMANDS
 COMMANDS
   doctor                Check the host this application runs on.
   completion <command>  Print a shell completion script.
+  mcp                   Serve this application's tools to an MCP client over stdin and stdout.
 
 OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -3762,6 +3763,7 @@ DOCUMENT COMMANDS
 COMMANDS
   doctor                Check the host this application runs on.
   completion <command>  Print a shell completion script.
+  mcp                   Serve this application's tools to an MCP client over stdin and stdout.
 
 OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
@@ -4899,7 +4901,7 @@ Both example applications install `suggestions()`. jsonkit drops its `unknownCom
 | --------------------------------------- | --------------------------------------------------------------------------------------------------- | ---- |
 | `jsonkit gte name -f doc.json`          | `jsonkit: Unknown command "gte". Did you mean "get"?` then `Run "jsonkit --help" to see the usage.` | 2    |
 | `jsonkit Get name -f doc.json`          | `jsonkit: Unknown command "Get". Did you mean "get"?` then the help hint                            | 2    |
-| `jsonkit typo -f doc.json`              | `jsonkit: Unknown command "typo". Use one of: doctor, completion, get, keys, select.` then the help hint | 2 |
+| `jsonkit typo -f doc.json`              | `jsonkit: Unknown command "typo". Use one of: doctor, completion, mcp, get, keys, select.` then the help hint | 2 |
 | `jsonkit lss -f doc.json`               | Core's text, because `ls` is an alias and `keys` is too far                                         | 2    |
 | `jsonkit fetc -f doc.json`              | Core's text, because `fetch` is deprecated                                                          | 2    |
 | `jsonkit select --fields name -f doc.json` | `jsonkit: Unknown option "--fields". Did you mean "--field"?` then the help hint, then `Run "jsonkit select --explain" to explain this command.` | 2 |

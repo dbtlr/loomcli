@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -133,6 +133,57 @@ function run(command, args, cwd, env = {}) {
   return { output: result.stdout + result.stderr, status: result.status, stdout: result.stdout };
 }
 
+/** The `_meta` every request of the MCP revision the packed plugin speaks carries. */
+const mcpMeta = {
+  'io.modelcontextprotocol/clientCapabilities': {},
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+};
+
+/**
+ * One MCP session with a packed application: each request is written once the answer to the one
+ * before it arrives, so a tool call is answered before stdin ends, and then stdin ends. Resolves
+ * with every message the server wrote, its stderr, and its exit status.
+ */
+function mcpSession(command, args, cwd, requests) {
+  const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], timeout: 10_000 });
+  let stdout = '';
+  let stderr = '';
+  let sent = 0;
+  const sendNext = () => {
+    const next = requests[sent];
+    sent += 1;
+    if (next === undefined) {
+      child.stdin.end();
+    } else {
+      child.stdin.write(
+        `${JSON.stringify({ ...next, jsonrpc: '2.0', params: { ...next.params, _meta: mcpMeta } })}\n`,
+      );
+    }
+  };
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+    while (stdout.split('\n').length - 1 >= sent && sent <= requests.length) {
+      sendNext();
+    }
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  sendNext();
+  return new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (status) => {
+      const messages = stdout
+        .split('\n')
+        .filter((line) => line !== '')
+        .map((line) => JSON.parse(line));
+      resolve({ messages, status, stderr });
+    });
+  });
+}
+
 function pnpm(args, cwd) {
   let command = packageManager;
   let commandArgs = args;
@@ -161,6 +212,16 @@ try {
     version,
     `The packed @loomcli/loom must depend on @loomcli/core ${version}, not "${loomCore}".`,
   );
+  // The plugin pack inlines the private MCP protocol package, so no consumer installs it.
+  const pluginsManifest = run('tar', ['-xzOf', 'plugins.tgz', 'package/package.json'], temporary);
+  assert.equal(pluginsManifest.status, 0, pluginsManifest.output);
+  const { dependencies = {}, peerDependencies = {} } = JSON.parse(pluginsManifest.stdout);
+  for (const [field, listed] of Object.entries({ dependencies, peerDependencies })) {
+    assert.ok(
+      !Object.hasOwn(listed, '@loom/mcp'),
+      `The packed @loomcli/plugins must not list @loom/mcp under ${field}.`,
+    );
+  }
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -363,6 +424,63 @@ try {
       );
     }
   }
+  // The packed MCP plugin serves a session: discovery, the listing, and one call through invoke.
+  const serving = join(temporary, 'dist/mcp.js');
+  const serverInfo = { name: 'packed-mcp', version: '1.0.0' };
+  for (const name of selected) {
+    const session = await mcpSession(runtimes.get(name), [serving, 'mcp'], temporary, [
+      { id: 1, method: 'server/discover', params: {} },
+      { id: 2, method: 'tools/list', params: {} },
+      {
+        id: 3,
+        method: 'tools/call',
+        params: { arguments: { subject: 'world' }, name: 'packed_mcp_greet' },
+      },
+    ]);
+    assert.deepEqual(
+      { status: session.status, stderr: session.stderr },
+      { status: 0, stderr: '' },
+      `${name}: the packed MCP session ended`,
+    );
+    assert.deepEqual(
+      session.messages.map((message) => message.id),
+      [1, 2, 3],
+      `${name}: the packed MCP session answered each request`,
+    );
+    const [discovered, listed, called] = session.messages;
+    assert.deepEqual(
+      discovered.result.supportedVersions,
+      ['2026-07-28'],
+      `${name}: packed discovery`,
+    );
+    assert.deepEqual(
+      listed.result.tools,
+      [
+        {
+          annotations: { readOnlyHint: true },
+          description: 'Greet one subject.',
+          inputSchema: {
+            additionalProperties: false,
+            properties: { subject: { description: 'The name to greet.', type: 'string' } },
+            required: ['subject'],
+            type: 'object',
+          },
+          name: 'packed_mcp_greet',
+        },
+      ],
+      `${name}: the packed MCP listing`,
+    );
+    assert.deepEqual(
+      called.result,
+      {
+        _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
+        content: [{ text: 'hello: world\n', type: 'text' }],
+        isError: false,
+        resultType: 'complete',
+      },
+      `${name}: the packed MCP call`,
+    );
+  }
   // The packed suggestions plugin offers the near match as the fix inside the sentence.
   const suggesting = join(temporary, 'dist/suggestions.js');
   for (const name of selected) {
@@ -435,7 +553,7 @@ try {
   assert.equal(sourced.status, 0, sourced.output);
   assert.equal(sourced.stdout, 'development\n', 'bun: the source packet');
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
