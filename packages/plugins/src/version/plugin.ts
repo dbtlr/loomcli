@@ -1,4 +1,4 @@
-import { checkShortSetting, DeclarationError, isProseLine, plugin } from '@loomcli/core';
+import { checkPluginSettings, DeclarationError, isProseLine, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
@@ -42,7 +42,7 @@ export interface VersionSettings {
  * and the middleware module `load` names.
  */
 export function version(settings?: VersionSettings): Plugin<VersionOptions> {
-  checkShortSetting(settings, { call: 'version', option: 'version', plugin: identity });
+  checkPluginSettings(settings, { call: 'version', plugin: identity });
   const postfix = postfixOf(settings);
   return plugin(identity, {
     middleware: {

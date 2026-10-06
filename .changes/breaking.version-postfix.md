@@ -1,6 +1,7 @@
 - Add `postfix` to the version plugin's settings, so `version({ postfix: '(Report schema v1)' })` prints `app v1.2.0 (Report schema v1)`: the standard line, one space, and the postfix, dim and escaped. A postfix that is not one line of prose throws `@loomcli/plugins/version/postfix` from `version()`. See [Version](docs/core.md#version).
 - Change the data `versionLine` renders from the `CommandGraph` to `VersionLine`, `{ graph, postfix }`, so an override reads the postfix beside the graph. `VersionSettings` and `VersionLine` are exported.
 - Add `isProseLine` to `@loomcli/core`, the one-line rule every core fact string follows, so a plugin judges a setting printed inside one line against core's rule. See [Plugin settings](docs/core.md#plugin-settings).
+- Add `checkPluginSettings` to `@loomcli/core`, which judges a plugin factory's settings object alone, so a factory with no `short` setting applies core's not-an-object rule without judging a `short` key. `checkShortSetting` applies it first and behaves as before.
 
 ### Migration
 

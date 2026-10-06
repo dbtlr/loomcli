@@ -91,3 +91,7 @@ test('version() with empty settings prints the standard line', () => {
     stdout: 'app v1.2.0\n',
   });
 });
+
+test('version() judges no short setting, because its short spelling is fixed', () => {
+  expect(settingsOutcome({ short: 'ab' })).toBe('returned');
+});
