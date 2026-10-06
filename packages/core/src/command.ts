@@ -635,7 +635,11 @@ function inputSite(
 }
 
 /** The finding for the `argument()` or `option()` call that declared one input, marking its name. */
-function inputFinding(path: readonly string[], input: InputDeclaration, note?: string): Finding {
+export function inputFinding(
+  path: readonly string[],
+  input: InputDeclaration,
+  note?: string,
+): Finding {
   const site = declaringSite(input, inputPlace(input, path));
   return siteFinding(site, site.named, note);
 }
@@ -1079,6 +1083,15 @@ function childPath(parent: CommandPlace, child: string): readonly string[] {
   return [...parent.path, child];
 }
 
+/**
+ * The call that attached one child, opening with the whole path to its parent. The root's attach
+ * knew that whole path, so a root child keeps its call, a plugin's `commands` entry included. A
+ * named parent's `command()` call knew its own name alone, so the walk rebuilds it under the root.
+ */
+function rootedPlacement(parent: CommandPlace, child: AttachedChild): Finding {
+  return parent.name === null ? child.placement : commandPlacement(parent.path, child.name);
+}
+
 /** The call that attached one child, noted with the child's name. */
 function childFinding(entry: AttachedChild): Finding {
   return { ...entry.placement, note: `child "${entry.name}"` };
@@ -1300,8 +1313,7 @@ function joinSubtree(
   const path = childPath(parent, name);
   checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));
   for (const entry of node.declared.children) {
-    // A nested child's own placement knew its parent alone, so the walk places it under the root.
-    const rooted = { ...entry, placement: commandPlacement(path, entry.name) };
+    const rooted = { ...entry, placement: rootedPlacement({ name, path }, entry) };
     joinSubtree(scope, rooted, { level: level + 1, parent: { name, path } });
   }
 }
@@ -2274,15 +2286,6 @@ function checkInputFacts(
   }
 }
 
-/**
- * The call that attached one child, opening with the whole path to its parent. A named parent's
- * `command()` call knew its own name alone, so build places it under the root; a plugin's
- * `commands` entry sits on no Command and keeps its call as it is.
- */
-function rootedPlacement(placement: Finding, parent: readonly string[]): Finding {
-  return placement.path === undefined ? placement : { ...placement, path: parent };
-}
-
 /** One Command declares arguments or attaches children, whichever declaration made each of them. */
 function checkArgumentPlacement(
   command: CommandPlace,
@@ -2362,7 +2365,7 @@ export function buildCommand<Args, Options, Globals>(
       command: child.node.build({
         ...context,
         path: [...context.path, child.name],
-        placement: rootedPlacement(child.placement, context.path),
+        placement: rootedPlacement(place, child),
       }),
       name: child.name,
     };

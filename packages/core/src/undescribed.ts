@@ -1,20 +1,18 @@
 import { undescribed } from './command-rules.js';
 import type { BuiltCommand, BuiltGraph } from './command.js';
+import { inputFinding } from './command.js';
 import { spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
 import { declarerNote, siteFinding } from './facts.js';
-import type { InputSite } from './facts.js';
 import type { InputDeclaration } from './validation.js';
-import { declaringSite, inputPlace } from './validation.js';
 
 /** The note every finding of the check carries beside the member's name. */
 const gapNote = 'no description';
 
-/** The finding for one undescribed input, marking its name inside the call that declared it. */
-function inputGap(site: InputSite, declarer: string | undefined): Finding {
-  const note = declarer === undefined ? gapNote : `${gapNote}, ${declarerNote(declarer)}`;
-  return siteFinding(site, site.named, note);
+/** The note for one undescribed input a Command holds, naming the plugin whose hook declared it. */
+function inputNote(declarer: string | undefined): string {
+  return declarer === undefined ? gapNote : `${gapNote}, ${declarerNote(declarer)}`;
 }
 
 /**
@@ -33,9 +31,7 @@ function commandGaps(command: BuiltCommand, path: readonly string[]): Finding[] 
   ];
   const gaps = inputs
     .filter((input) => input.config.description === undefined)
-    .map((input) =>
-      inputGap(declaringSite(input, inputPlace(input, path)), command.declarers.get(input)),
-    );
+    .map((input) => inputFinding(path, input, inputNote(command.declarers.get(input))));
   const below = [...command.children].flatMap(([name, child]) =>
     commandGaps(child, [...path, name]),
   );
@@ -55,7 +51,7 @@ export function checkDescribed(
   // The sites hold every global option in table order, the application's and then each plugin's.
   const globalGaps = [...graph.globals.sites]
     .filter(([input]) => input.config.description === undefined)
-    .map(([, site]) => inputGap(site, undefined));
+    .map(([, site]) => siteFinding(site, site.named, gapNote));
   const root: Finding[] =
     application.description === undefined
       ? [
