@@ -174,9 +174,12 @@ function readInvokeCall<Mapped>(
 
 /**
  * One `invoke()` call as read where it entered, or the fault reading it raised, which the run
- * reports through its failure path before it builds the graph.
+ * reports through its failure path before it builds the graph. The fault is the primary failure,
+ * so it keeps the caller's failure handler whenever that slot holds a function.
  */
-type ReadCall<Mapped> = { call: InvokeCall<Mapped> } | { fault: unknown };
+type ReadCall<Mapped> =
+  | { call: InvokeCall<Mapped> }
+  | { fault: unknown; failure: InvokeOptions<Mapped>['failure'] };
 
 /** Reads one `invoke()` call and keeps a fault as a value, so the call itself never throws. */
 function readCall<Mapped>(
@@ -186,7 +189,8 @@ function readCall<Mapped>(
   try {
     return { call: readInvokeCall(call, door) };
   } catch (error) {
-    return { fault: error };
+    const failure = call.options?.failure;
+    return { failure: typeof failure === 'function' ? failure : undefined, fault: error };
   }
 }
 

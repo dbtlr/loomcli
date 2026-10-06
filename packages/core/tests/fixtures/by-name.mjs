@@ -329,6 +329,40 @@ if (scenario === 'lowering') {
     outcomes[slot] = await app.invoke(...call);
   }
   print(outcomes);
+} else if (scenario === 'shape-handled') {
+  const received = [];
+  const handler = (failure, context) => {
+    received.push({ context, identity: failure.rule.identity });
+    return { mapped: failure.message };
+  };
+  const thrown = new Error('the handler broke');
+  const app = new Application('probe', packet).command(
+    new Command('nested').action(async ({ invoke, out }) => {
+      const nested = await invoke(['x'], { options: null }, { failure: handler });
+      await out.print(JSON.stringify(nested));
+    }),
+  );
+  print({
+    action: await app.invoke(['nested'], {}),
+    args: await app.invoke(['x'], { args: [] }, { failure: handler }),
+    options: await app.invoke(['x'], { options: null }, { failure: handler }),
+    received,
+    rejected: await app
+      .invoke(
+        ['x'],
+        { options: null },
+        {
+          failure: () => {
+            throw thrown;
+          },
+        },
+      )
+      .then(
+        () => 'resolved',
+        (error) => error === thrown,
+      ),
+    signal: await app.invoke(['x'], {}, { failure: handler, signal: {} }),
+  });
 }
 
 if (scenario === 'isolation') {

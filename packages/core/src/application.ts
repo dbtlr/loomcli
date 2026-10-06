@@ -612,7 +612,7 @@ class ApplicationBuilder<
       return { messages, output, status: 'completed' };
     }
     const { exitCode, path } = end;
-    const handler = 'call' in read ? read.call.failure : undefined;
+    const handler = 'call' in read ? read.call.failure : read.failure;
     const failure = mappedFailure(end.failure, handler, {
       application: this.#name,
       exitCode,
@@ -1014,13 +1014,14 @@ function nameDoor<Mapped>(
         host,
         read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
         start: call.view,
-        stderr: streams.stderr,
+        stderr: undefined,
       };
     },
     fallback: host,
     invokedBy: 'name',
     output: (captured, signal) => {
       const output = new Output(captured, signal);
+      // A malformed call's report must already render plain, so the policy applies before the call is read.
       output.configure(plainPolicy(declared), new Map());
       return output;
     },

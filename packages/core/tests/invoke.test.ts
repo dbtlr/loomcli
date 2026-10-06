@@ -420,6 +420,42 @@ test.each([
   expect(development[slot]?.messages).toContain(`\n\n${sentence}\n`);
 });
 
+/** The fixture's report of malformed calls that pass a failure handler. */
+interface HandledShapes {
+  action: Outcome;
+  args: Outcome;
+  options: Outcome;
+  received: { context: unknown; identity: string }[];
+  rejected: boolean | string;
+  signal: Outcome;
+}
+
+/** A failed outcome whose failure the fixture's handler mapped to the defect's sentence. */
+function mapped(sentence: string): Outcome {
+  return {
+    exitCode: 1,
+    failure: { mapped: sentence },
+    messages: 'probe: Something went wrong.\n',
+    output: '',
+    status: 'failed',
+  };
+}
+
+test("a malformed slot's invoke-options defect reaches the caller's failure handler, from app.invoke and an action's invoke", () => {
+  const handled: HandledShapes = JSON.parse(report('shape-handled'));
+  expect(handled.args).toEqual(mapped('invoke() received args that are not an object.'));
+  expect(handled.options).toEqual(mapped('invoke() received options that are not an object.'));
+  expect(handled.signal).toEqual(mapped('invoke() received a signal that is not an AbortSignal.'));
+  expect(JSON.parse(handled.action.output ?? '')).toEqual(
+    mapped('invoke() received options that are not an object.'),
+  );
+  const context = { application: 'probe', exitCode: 1, path: [] };
+  expect(handled.received).toEqual(
+    Array.from({ length: 4 }, () => ({ context, identity: '@loomcli/core/invoke-options' })),
+  );
+  expect(handled.rejected).toBe(true);
+});
+
 test("a value lowered by name is recorded in a middleware's spellings under the option's reported spelling", () => {
   expect(echoed(JSON.parse(report('spellings')))).toEqual({
     loud: '--loud',
