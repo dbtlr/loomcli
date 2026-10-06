@@ -1,6 +1,7 @@
 /**
  * Whether the typed word is a Command name, an option spelling, whose leading hyphens fold away, or
- * an option's declared name, which an invocation by name writes and which is compared as written.
+ * an option's declared name, which an invocation by name writes. A declared name folds like a
+ * spelling, normalized and lowercased, except that no leading hyphens are stripped.
  */
 type Spelled = 'command' | 'name' | 'option';
 

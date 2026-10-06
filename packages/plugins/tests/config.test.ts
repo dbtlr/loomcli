@@ -1054,10 +1054,10 @@ function invokedRoot(space: Workspace, values: unknown, env: Record<string, stri
 test(
   'in an invocation by name, a wrong value from the file names its option by declared name, with no help hint',
   inWorkspace((space) => {
-    space.write('.app.json', json({ limits: { bytes: 'x' } }));
+    space.write('.app.json', json({ limits: { bytes: true } }));
     expect(invokedRoot(space, {})).toEqual({
       exitCode: 2,
-      messages: 'app: Option "limit" (from limits.bytes in .app.json): Supply a whole number.\n',
+      messages: 'app: Option "limit" (from limits.bytes in .app.json): Use a string or a number.\n',
       output: '',
       status: 'failed',
     });
