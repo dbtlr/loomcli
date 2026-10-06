@@ -107,9 +107,9 @@ const wrongRows: ActionHandler<typeof paths> = async ({ out }) => {
 new Command('both-shapes').result<Table>({ views: { both } });
 // @ts-expect-error TS2322: The same rule holds in a views() call.
 count.views({ both });
-// @ts-expect-error TS2322: A row view answers a rows declaration, never a value result.
+// @ts-expect-error TS2375: A row view answers a rows declaration, never a value result.
 new Command('row-on-value').result<Table>({ views: { list } });
-// @ts-expect-error TS2322: The same rule holds in a views() call.
+// @ts-expect-error TS2375: The same rule holds in a views() call.
 count.views({ list });
 // @ts-expect-error TS2339: A Command that registered its action declares no result.
 plain.result;

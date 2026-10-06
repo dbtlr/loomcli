@@ -74,8 +74,41 @@ test('the declared result names both views and the formatter appends its own, th
   expect(found?.result).toEqual({
     default: 'list',
     kind: 'rows',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', list: null, table: null },
     views: ['list', 'table', 'json', 'jsonl'],
   });
+});
+
+/** One option as the inspected graph publishes it, read for its control mark. */
+interface Marked {
+  name: string;
+  control: boolean;
+}
+
+/** Each option's control mark, by name. */
+function marks(options: readonly Marked[]): Record<string, boolean> {
+  return Object.fromEntries(options.map((option) => [option.name, option.control]));
+}
+
+test('the inspected graph marks the control options and leaves the work options unmarked', () => {
+  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(inspected.status).toBe(0);
+  const graph: {
+    globals: Marked[];
+    root: { children: { name: string | null; options: Marked[] }[] };
+  } = JSON.parse(inspected.stdout);
+  const optionsOf = (name: string) =>
+    graph.root.children.find((child) => child.name === name)?.options ?? [];
+  expect(marks(graph.globals)).toEqual({
+    explain: true,
+    file: false,
+    help: true,
+    manifest: true,
+    verbose: false,
+    version: true,
+  });
+  expect(marks(optionsOf('paths'))).toEqual({ format: true });
+  expect(marks(optionsOf('select'))).toMatchObject({ field: false });
 });
 
 test('the hidden Command stays off the help page and out of the candidate list', () => {

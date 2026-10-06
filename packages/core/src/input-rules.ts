@@ -21,12 +21,12 @@ const shortAlias = registerRule('@loomcli/core/short-alias', {
 });
 
 /**
- * A yes-or-no declaration key, such as `required`, `hidden`, or an extension descriptor's
+ * A yes-or-no declaration key, such as `required`, `hidden`, `control`, or an extension descriptor's
  * `collect`, that holds a value other than a Boolean.
  */
 const flagNotBoolean = registerRule('@loomcli/core/flag-not-boolean', {
   explanation:
-    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an extension\'s collect each answer one yes-or-no question about a declaration, so each holds true or false. A value such as the string "false" would read as true.',
+    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and an extension\'s collect each answer one yes-or-no question about a declaration, so each holds true or false. A value such as the string "false" would read as true.',
   headline: 'Flag not a Boolean',
 });
 

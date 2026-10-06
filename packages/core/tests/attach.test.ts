@@ -40,7 +40,12 @@ test('a hook reads the result and the action of every Command it receives', () =
   expect(seen[1]).toMatchObject({
     hasAction: true,
     name: 'count',
-    result: { default: 'json', kind: 'value', views: ['json', 'text'] },
+    result: {
+      default: 'json',
+      kind: 'value',
+      mediaTypes: { json: null, text: null },
+      views: ['json', 'text'],
+    },
   });
   expect(seen[3]).toMatchObject({ hasAction: false, name: 'cache', result: null });
 });
@@ -77,7 +82,7 @@ test('a views() call reshapes the result the same hook then reads', () => {
   const result = run('views', ['count']);
   expect(result.stdout).toBe(
     [
-      '{"after":{"default":"json","kind":"value","views":["text","json"]},"before":{"default":"text","kind":"value","views":["text"]}}',
+      '{"after":{"default":"json","kind":"value","mediaTypes":{"text":null,"json":null},"views":["text","json"]},"before":{"default":"text","kind":"value","mediaTypes":{"text":null},"views":["text"]}}',
       'json:{}',
       'resolved:0',
       '',
@@ -97,13 +102,18 @@ test("inspect() runs the hooks and publishes a hook's option as the Command's ow
   expect(result.stderr).toBe('');
   expect(lines(result.stdout)[0]).toEqual({
     options: [{ name: 'format' }],
-    result: { default: 'text', kind: 'value', views: ['text'] },
+    result: { default: 'text', kind: 'value', mediaTypes: { text: null }, views: ['text'] },
   });
 });
 
 test('inspect() publishes the views a hook reshaped', () => {
   expect(lines(inspect('views').stdout).at(-1)).toEqual({
     options: [],
-    result: { default: 'json', kind: 'value', views: ['text', 'json'] },
+    result: {
+      default: 'json',
+      kind: 'value',
+      mediaTypes: { json: null, text: null },
+      views: ['text', 'json'],
+    },
   });
 });

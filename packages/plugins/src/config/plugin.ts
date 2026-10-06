@@ -6,7 +6,11 @@ import { configIdentity as identity } from './names.js';
 import { fileCandidates } from './pattern.js';
 
 const options = {
-  config: { description: 'Read configuration from this file alone.', type: 'string' },
+  config: {
+    control: true,
+    description: 'Read configuration from this file alone.',
+    type: 'string',
+  },
 } satisfies PluginOptions;
 
 export type ConfigOptions = typeof options;

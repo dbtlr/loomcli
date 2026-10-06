@@ -155,6 +155,7 @@ test('inspection publishes a counted option as a count node with no value facts'
   const [verboseNode, quietNode, depthNode] = JSON.parse(result.stdout);
   expect(verboseNode).toEqual({
     aliases: [],
+    control: false,
     deprecated: undefined,
     description: undefined,
     env: null,

@@ -57,8 +57,22 @@ const targets = {
     const get = new Command('get').argument('path', facts).action(dispatch);
     return new Application('facts').command(get).action(dispatch);
   },
+  'count-option': (facts) => {
+    const get = new Command('get').option('verbose', { ...facts, type: 'count' }).action(dispatch);
+    return new Application('facts').command(get).action(dispatch);
+  },
   'global-option': (facts) =>
     new Application('facts').globalOption('file', { ...facts, type: 'string' }).action(dispatch),
+  'hook-option': (facts) => {
+    const get = new Command('get').action(dispatch);
+    const hook = (command) =>
+      command.name === 'get' ? command.option('trace', { ...facts, type: 'boolean' }) : command;
+    return new Application('facts', {
+      plugins: [plugin('@loomcli/trace', { onCommandAttach: hook })],
+    })
+      .command(get)
+      .action(dispatch);
+  },
   option: (facts) => {
     const get = new Command('get').option('raw', { ...facts, type: 'string' }).action(dispatch);
     return new Application('facts').command(get).action(dispatch);

@@ -442,25 +442,29 @@ if (scenario === 'isolation') {
     );
   print({ both: await app.invoke(['both'], {}), inner: await app.invoke(['inner'], {}) });
 } else if (scenario === 'graph') {
-  const calls = { attach: 0 };
+  const calls = { attach: 0, built: 0 };
   const counting = plugin('@fixture/counting', {
     onCommandAttach: (command) => {
       calls.attach += 1;
       return command;
+    },
+    onGraphBuilt: () => {
+      calls.built += 1;
+      return undefined;
     },
   });
   const app = new Application('probe', { ...packet, plugins: [counting] })
     .command(new Command('leaf').action(() => undefined))
     .command(
       new Command('caller').action(async ({ invoke, out }) => {
-        const before = calls.attach;
+        const before = { ...calls };
         await invoke(['leaf'], {});
         await invoke(['leaf'], {});
-        await out.print(String(calls.attach - before));
+        await out.print(`${calls.attach - before.attach} ${calls.built - before.built}`);
       }),
     );
   const ran = await app.invoke(['caller'], {});
-  const afterOne = calls.attach;
+  const afterOne = { ...calls };
   await app.invoke(['leaf'], {});
   const failing = plugin('@fixture/failing', {
     onCommandAttach: () => {
@@ -474,7 +478,7 @@ if (scenario === 'isolation') {
     broken,
     fromAction: ran.output,
     perBuild: afterOne,
-    perCall: calls.attach - afterOne,
+    perCall: { attach: calls.attach - afterOne.attach, built: calls.built - afterOne.built },
   });
 } else if (scenario === 'invoked-by') {
   const seen = [];

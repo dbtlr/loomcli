@@ -189,6 +189,29 @@ const scenarios = {
     }
     return new OffScaleError('Off the scale.');
   },
+  'graph-hook-not-function': () => plugin('@acme/mcp', { onGraphBuilt: 'judge' }),
+  'graph-hook-promise': () =>
+    new Application('probe', {
+      plugins: [plugin('@acme/mcp', { onGraphBuilt: () => Promise.resolve(undefined) })],
+    })
+      .action(act)
+      .inspect(),
+  'graph-hook-returns': () =>
+    new Application('probe', { plugins: [plugin('@acme/mcp', { onGraphBuilt: () => true })] })
+      .action(act)
+      .inspect(),
+  'graph-hook-throws': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/mcp', {
+          onGraphBuilt: () => {
+            throw new Error('Two tools share\nthe name "scratch_create"');
+          },
+        }),
+      ],
+    })
+      .action(act)
+      .inspect(),
   'hook-alias-spelling': () =>
     new Application('probe', {
       plugins: [
@@ -331,6 +354,7 @@ const scenarios = {
   'view-deep': () => view('@loomcli/core/lanes/stdout', { render }),
   'view-identity': () => view('@acme', { render }),
   'view-identity-kind': () => view(null, { render }),
+  'view-media-type': () => view('@acme/notes/page', { mediaType: 5, render }),
   'view-neither': () => view('@acme/page', {}),
   'view-unscoped': () => view('page', { render }),
   'views-entry': () => plugin('@acme/brand', { views: [render] }),

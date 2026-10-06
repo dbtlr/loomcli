@@ -103,6 +103,7 @@ export type {
   CommandAttachHook,
   CountOption,
   ExitCode,
+  GraphBuiltHook,
   Host,
   InputIdentity,
   InputTerminal,

@@ -21,7 +21,9 @@ export function attachFormat(short: FormatSettings['short']): CommandAttachHook 
     const reshaped = command.views(Object.fromEntries(added));
     // `views()` appends a name the record lacks and leaves the place of one it holds.
     const names = [...result.views, ...added.map(([name]) => name)];
+    // `--format` says how the run prints, not what the Command works on, so it is a control option.
     return reshaped.option('format', {
+      control: true,
       description: `Select the output format, ${result.default} by default.`,
       ...(short === undefined ? {} : { short }),
       type: 'string',

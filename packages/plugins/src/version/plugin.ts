@@ -8,7 +8,7 @@ import { versionLine } from './views.js';
 const identity = `${Package.name}/version`;
 
 const options = {
-  version: { description: 'Print the version.', short: 'V', type: 'boolean' },
+  version: { control: true, description: 'Print the version.', short: 'V', type: 'boolean' },
 } satisfies PluginOptions;
 
 /**

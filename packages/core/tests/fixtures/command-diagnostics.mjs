@@ -178,6 +178,7 @@ const scenarios = {
     })
       .command(leaf('count'))
       .inspect(),
+  'media-type': () => new Command('count').rows({ views: { csv: { mediaType: 5, render } } }),
   'multiple-actions': () => new Command('get').action(act).action(act),
   'multiple-results': () =>
     new Command('get').result({ views: { plain: { render } } }).rows({ views: { lines: { row } } }),

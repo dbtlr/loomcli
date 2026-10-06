@@ -102,6 +102,14 @@ interface Listed {
   hidden?: boolean;
   deprecated?: string;
 }
+/**
+ * The core fact that marks an option as controlling the invocation rather than feeding the
+ * Command's work, such as `--help` or `--format`. An omitted mark reads `false`. Core never reads
+ * it at run time; a projection that lists what a Command needs does.
+ */
+interface Controlled {
+  control?: boolean;
+}
 /** The extension values one option declaration carries, whatever scope declares the option. */
 interface OptionExtensions {
   extensions?: readonly ExtensionValue<'option'>[];
@@ -232,6 +240,8 @@ export interface ViewContext {
 /** A pure synchronous view turns one typed value into the marked text core resolves. */
 export interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
+  /** The media type of the text the view writes, such as `application/json`; omitted for none. */
+  mediaType?: string;
   /** A view has one shape; the row view of Results is the other. */
   row?: undefined;
 }
@@ -244,6 +254,8 @@ export interface RowView<Row> {
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   head?: (context: ViewContext) => string;
   tail?: (count: number, context: ViewContext) => string;
+  /** The media type of the text the rows write together, such as `application/jsonl`. */
+  mediaType?: string;
   /** A row view has one shape; the whole view of Rendered output is the other. */
   render?: undefined;
 }
@@ -269,6 +281,8 @@ export interface DeclaredResult {
   default: string;
   kind: 'value' | 'rows';
   views: ReadonlyMap<string, ResultView>;
+  /** Each view's media type as the call that stored it read it, by view name, `null` for none. */
+  mediaTypes: ReadonlyMap<string, string | null>;
 }
 
 /** Phantom key. It brands the surface a lifecycle hook receives, so a forged value is not one. */
@@ -310,6 +324,13 @@ export interface AttachedCommand {
  * receiving what the previous plugin's hook returned.
  */
 export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
+
+/**
+ * The lifecycle hook core calls once per graph build, after every `onCommandAttach` hook, with the
+ * frozen graph. It judges the graph and never contributes: it returns nothing, and it rejects the
+ * graph by throwing a `DeclarationError`.
+ */
+export type GraphBuiltHook = (graph: CommandGraph) => undefined;
 
 /**
  * What `out.results` accepts for one declared result. The declaration rides in the declared types
@@ -400,6 +421,7 @@ export type StringOption = OptionSpelling &
   Omission &
   Described &
   Listed &
+  Controlled &
   OptionExtensions & {
     type: 'string';
     polarity?: never;
@@ -504,6 +526,7 @@ export type BooleanOption =
   | (OptionSpelling &
       Described &
       Listed &
+      Controlled &
       EnvBinding &
       OptionExtensions & {
         type: 'boolean';
@@ -517,6 +540,7 @@ export type BooleanOption =
       })
   | (Described &
       Listed &
+      Controlled &
       EnvBinding &
       OptionExtensions & {
         type: 'boolean';
@@ -538,6 +562,7 @@ export type BooleanOption =
 export type CountOption = OptionSpelling &
   Described &
   Listed &
+  Controlled &
   EnvBinding &
   OptionExtensions & {
     type: 'count';

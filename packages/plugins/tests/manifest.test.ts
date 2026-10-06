@@ -71,6 +71,7 @@ function plugin(name: string, description: string, short: string | null) {
     name,
     description,
     deprecated: null,
+    control: true,
     long: `--${name}`,
     short,
     negative: null,
@@ -86,6 +87,7 @@ const globals = [
     name: 'file',
     description: 'The document.',
     deprecated: null,
+    control: false,
     long: '--file',
     short: '-f',
     required: false,
@@ -138,6 +140,7 @@ const getDocument = {
         name: 'raw',
         description: 'Print raw.',
         deprecated: null,
+        control: false,
         long: '--raw',
         short: null,
         negative: '--no-raw',
@@ -150,6 +153,7 @@ const getDocument = {
         name: 'limit',
         description: 'The limit.',
         deprecated: null,
+        control: false,
         long: '--limit',
         short: '-l',
         required: false,
@@ -168,6 +172,7 @@ const getDocument = {
         name: 'tag',
         description: null,
         deprecated: null,
+        control: false,
         long: '--tag',
         short: null,
         required: false,
@@ -182,6 +187,7 @@ const getDocument = {
         name: 'verbose',
         description: 'Say more.',
         deprecated: null,
+        control: false,
         long: '--verbose',
         short: '-v',
         schema: null,
@@ -192,6 +198,7 @@ const getDocument = {
         name: 'backup',
         description: null,
         deprecated: null,
+        control: false,
         long: '--backup',
         short: null,
         required: false,
@@ -206,6 +213,7 @@ const getDocument = {
         name: 'mode',
         description: null,
         deprecated: null,
+        control: false,
         long: '--mode',
         short: null,
         required: false,
@@ -336,12 +344,18 @@ test('the root slice lists every visible Command and omits the hidden one', () =
   ]);
 });
 
-test('a result reads kind, views, and default in order, and the formatter option carries its enum', () => {
+test('a result reads kind, views, default, and media types in order, and the formatter option carries its enum and its control mark', () => {
   const show = entryAt(documentOf(['show', '--manifest']), []);
-  expect(show.result).toEqual({ default: 'text', kind: 'value', views: ['text', 'json', 'jsonl'] });
-  expect(Object.keys(Object(show.result))).toEqual(['kind', 'views', 'default']);
+  expect(show.result).toEqual({
+    default: 'text',
+    kind: 'value',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', text: null },
+    views: ['text', 'json', 'jsonl'],
+  });
+  expect(Object.keys(Object(show.result))).toEqual(['kind', 'views', 'default', 'mediaTypes']);
   expect(show.options).toEqual([
     {
+      control: true,
       default: null,
       deprecated: null,
       description: 'Select the output format, text by default.',
@@ -360,6 +374,19 @@ test('a result reads kind, views, and default in order, and the formatter option
       type: 'string',
     },
   ]);
+});
+
+test('a result reads each encoding from the media types its views declare, never from a view name', () => {
+  const result = run('wired', ['--manifest']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  const document: { encodings: unknown; command: { result: unknown } } = JSON.parse(result.stdout);
+  expect(document.encodings).toEqual(encodings);
+  expect(document.command.result).toEqual({
+    kind: 'value',
+    views: ['json', 'wire', 'jsonl'],
+    default: 'json',
+    mediaTypes: { json: null, wire: 'application/json', jsonl: 'application/jsonl' },
+  });
 });
 
 test('a deprecated Command carries its message, and a value with no field adds nothing', () => {
@@ -390,6 +417,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       name: 'marked',
       description: null,
       deprecated: null,
+      control: false,
       long: '--marked',
       short: null,
       required: false,

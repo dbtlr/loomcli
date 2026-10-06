@@ -63,6 +63,7 @@ type ManifestOption =
       readonly name: string;
       readonly description: string | null;
       readonly deprecated: string | null;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
@@ -77,6 +78,7 @@ type ManifestOption =
       readonly name: string;
       readonly description: string | null;
       readonly deprecated: string | null;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
@@ -89,6 +91,7 @@ type ManifestOption =
       readonly name: string;
       readonly description: string | null;
       readonly deprecated: string | null;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly schema: null;
@@ -108,7 +111,11 @@ const coreExitCodes: Readonly<Record<string, string>> = {
   '143': 'Cancelled by SIGTERM',
 };
 
-/** What the view names `json` and `jsonl` promise under Declaring a result. */
+/**
+ * What the media types `application/json` and `application/jsonl` promise, under the keys the
+ * document has always carried. A result's `mediaTypes` names the views that declare each, so the
+ * statements apply by media type and never by view name.
+ */
 const encodings = {
   json: "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
   jsonl:
@@ -131,6 +138,7 @@ function optionEntry(node: OptionNode): ManifestOption {
     name: node.name,
     description: node.description ?? null,
     deprecated: node.deprecated ?? null,
+    control: node.control,
     long: node.long,
     short: node.short,
   };
@@ -322,7 +330,12 @@ function commandEntry(node: CommandNode): ManifestCommand {
     result:
       node.result === null
         ? null
-        : { kind: node.result.kind, views: node.result.views, default: node.result.default },
+        : {
+            kind: node.result.kind,
+            views: node.result.views,
+            default: node.result.default,
+            mediaTypes: node.result.mediaTypes,
+          },
     failures: failuresOf(node),
     arguments: node.arguments.map(argumentEntry),
     options: visible(node.options).map(optionEntry),

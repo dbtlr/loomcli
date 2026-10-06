@@ -11,6 +11,7 @@ const bare = { extensions: {}, schema: null };
 /** The facts an option reports when its declaration states none of them, global or local. */
 const owned = {
   aliases: [],
+  control: false,
   deprecated: none,
   env: null,
   extensions: {},
@@ -347,10 +348,18 @@ test('reports the declared result on every Command, and null where none is decla
     (child: { name: string; result: unknown }) => [child.name, child.result],
   );
   expect(children).toEqual([
-    ['count', { default: 'table', kind: 'value', views: ['table'] }],
+    ['count', { default: 'table', kind: 'value', mediaTypes: { table: null }, views: ['table'] }],
     // The names keep their record order.
     // The later views() call appended one name and moved the default to it.
-    ['paths', { default: 'wide', kind: 'rows', views: ['list', 'table', 'wide'] }],
+    [
+      'paths',
+      {
+        default: 'wide',
+        kind: 'rows',
+        mediaTypes: { list: null, table: null, wide: null },
+        views: ['list', 'table', 'wide'],
+      },
+    ],
     ['plain', null],
   ]);
   expect(invokeInspect('results').root.result).toBeNull();

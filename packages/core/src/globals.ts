@@ -7,6 +7,7 @@ import {
   callSite,
   checkDeprecated,
   checkDescription,
+  checkControl,
   checkHidden,
   factFault,
   pluginOptionSite,
@@ -251,6 +252,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
+  checkControl(site, input.config.control);
   checkEnvBinding(site, input.config);
   const record = buildExtensions({
     declared: input.config.extensions,

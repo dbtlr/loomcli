@@ -32,6 +32,8 @@ test('an author-declared json view is kept with its own map and its declared pos
   expect(found?.result).toEqual({
     default: 'json',
     kind: 'value',
+    // The author's own json() declares its media type under its own map.
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', table: null },
     views: ['json', 'table', 'jsonl'],
   });
   // The default view is the author's json, so an omitted --format renders through its own map.
@@ -53,6 +55,7 @@ test('an author-declared ndjson key is not served by the alias, which names it d
   expect(found?.result).toEqual({
     default: 'ndjson',
     kind: 'value',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', ndjson: null, table: null },
     views: ['ndjson', 'table', 'json', 'jsonl'],
   });
   expect(run('author-ndjson', ['count', '--format', 'ndjson'])).toEqual({

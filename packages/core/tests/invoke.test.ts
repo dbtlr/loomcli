@@ -366,11 +366,11 @@ test('two overlapping calls capture their own bytes, and an invoked action resol
   expect(echoed(inner)).toEqual({ messages: '', output: lines('left'), status: 'completed' });
 });
 
-test("an action's call runs no lifecycle hook again, and each app.invoke runs every onCommandAttach once", () => {
+test("an action's call runs no lifecycle hook again, and each app.invoke runs every onCommandAttach and onGraphBuilt once", () => {
   expect(JSON.parse(report('graph'))).toMatchObject({
-    fromAction: '0\n',
-    perBuild: 3,
-    perCall: 3,
+    fromAction: '0 0\n',
+    perBuild: { attach: 3, built: 1 },
+    perCall: { attach: 3, built: 1 },
   });
 });
 
