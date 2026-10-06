@@ -48,6 +48,17 @@ const explanations = {
     'the call that carries it, so a descriptor with no schema leaves the value',
     'unchecked.',
   ],
+  'failure-code': [
+    "A failure's code tells a script or an agent which failure ended the run, where",
+    'many failures share one exit code. A machine reader branches on the code, so it',
+    'follows one grammar: words of lowercase letters and digits joined by single',
+    'hyphens. A code outside it is rejected where the class is first constructed.',
+  ],
+  'failure-encoder-taken': [
+    'A failed run writes its failure through the one encoder registered for the media',
+    'type its selected view declares. Two encoders for one media type leave core no',
+    'way to choose between them.',
+  ],
   'failure-exit-code': [
     "A failure's exit code tells the shell how the run ended: 0 means success, and",
     '126 and above belong to the shell and to signals, so a failure exits with a code',
@@ -57,8 +68,9 @@ const explanations = {
   ],
   'foreign-value': [
     'Core reads a plugin, an extension, an extension value, a declared view, a view',
-    'override, and a translation through facts its factory recorded when it built the',
-    'value. Any other value carries none, even one of the same shape.',
+    'override, a translation, and a failure encoding through facts its factory',
+    'recorded when it built the value. Any other value carries none, even one of the',
+    'same shape.',
   ],
   'invalid-extension-value': [
     "An extension value passes its descriptor's schema at the call that carries it,",
@@ -84,13 +96,14 @@ const explanations = {
   'not-a-function': [
     'Core calls each of these values at a point of its own: load when a run first',
     'reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph',
-    'build, onFailure when a failure renders, and a translator when a foreign throw',
-    'reaches it. A value core cannot call leaves it nothing to run.',
+    'build, onFailure when a failure renders, a translator when a foreign throw',
+    'reaches it, and a failure encoder when a failed run selected its media type. A',
+    'value core cannot call leaves it nothing to run.',
   ],
   'not-a-list': [
-    'Core reads plugins, commands, extensions, views, translators, signals, and',
-    'aliases each as a list, in order. A value of any other kind has no entries to',
-    'read.',
+    'Core reads plugins, commands, extensions, views, translators, failure encoders,',
+    'signals, and aliases each as a list, in order. A value of any other kind has no',
+    'entries to read.',
   ],
   'not-an-object': [
     "Core reads the options of a Command and of the Application, a plugin's",
@@ -229,7 +242,7 @@ const shared = {
 };
 
 /** The rules core declares beside its defects that this family raises. */
-const fromCore = ['failure-exit-code', 'rule-docs', 'rule-identity', 'rule-prose'];
+const fromCore = ['failure-code', 'failure-exit-code', 'rule-docs', 'rule-identity', 'rule-prose'];
 
 type Rule = keyof typeof explanations | keyof typeof shared;
 
@@ -416,6 +429,27 @@ const cases: Record<string, Expected> = {
     rule: 'unreadable-declaration',
     sentence: 'Plugin "@acme/log" definition could not be read: boom.',
   },
+  'encoder-taken': {
+    correction: 'Register one.',
+    findings: [
+      bare("plugin('@acme/json', { failureEncoders: […, …] })", '…', 'the first encoding'),
+      bare("plugin('@acme/json', { failureEncoders: […, …] })", '…', 'the second encoding', 1),
+    ],
+    headline: 'FAILURE ENCODER TAKEN',
+    rule: 'failure-encoder-taken',
+    sentence: 'Plugin "@acme/json" registers two failure encoders for "application/json".',
+  },
+  'encoder-taken-across': {
+    correction: 'Install one of them.',
+    findings: [
+      bare(twoPlugins('@acme/json', '@acme/wire'), "plugin('@acme/json', …)", 'the first encoder'),
+      bare(twoPlugins('@acme/json', '@acme/wire'), "plugin('@acme/wire', …)", 'the second encoder'),
+    ],
+    headline: 'FAILURE ENCODER TAKEN',
+    rule: 'failure-encoder-taken',
+    sentence:
+      'Plugin "@acme/wire" registers a failure encoder for "application/json", which plugin "@acme/json" already registers.',
+  },
   'extension-async': {
     correction: 'Supply a schema that answers synchronously.',
     findings: [
@@ -560,6 +594,14 @@ const cases: Record<string, Expected> = {
     headline: 'VALUE NOT FROM ITS FACTORY',
     rule: 'foreign-value',
     sentence: 'Command "get" holds a value that is not an extension value.',
+  },
+  'failure-code': {
+    correction:
+      'Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
+    findings: [],
+    headline: 'INVALID FAILURE CODE',
+    rule: 'failure-code',
+    sentence: 'Failure class "RegistryDownError" declares failure code "Registry_Down".',
   },
   'failure-exit-code': {
     correction: 'Declare a whole number from 1 through 125.',

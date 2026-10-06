@@ -83,3 +83,48 @@ test('jsonkit inspect reports formatter views on the root records and paths resu
     views: ['list', 'table', 'json', 'jsonl'],
   });
 });
+
+/** A document whose second key the walk refuses, so the sequence stops with rows already written. */
+const refused = '{"name":"loom","boom":{"deep":1}}';
+
+test('jsonkit paths --format json -f broken.json writes the invalid-json line alone and exits 65', () => {
+  withDocuments({ 'broken.json': '{"name":' }, (cwd) => {
+    expect(invoke(main, ['paths', '--format', 'json', '-f', 'broken.json'], { cwd })).toEqual({
+      status: 65,
+      stderr:
+        '{"error":{"code":"invalid-json","exitCode":65,"message":"The document is not valid JSON. Correct its syntax, or supply another document.","hints":[]}}\n',
+      stdout: '',
+    });
+  });
+});
+
+test("jsonkit's FatalError override renders the text failure and is not consulted under --format json", () => {
+  withDocuments({ 'broken.json': '{"name":' }, (cwd) => {
+    expect(invoke(main, ['paths', '-f', 'broken.json'], { cwd })).toEqual({
+      status: 65,
+      stderr: 'The document is not valid JSON. Correct its syntax, or supply another document.\n',
+      stdout: '',
+    });
+  });
+});
+
+// The jsonl() view is a whole view, so core collects the rows and a stopped sequence writes none.
+test('jsonkit paths --format jsonl with a refused key writes the fatal line alone, with no incomplete-result line', () => {
+  withDocuments({ 'doc.json': refused }, (cwd) => {
+    expect(invoke(main, ['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 1,
+      stderr:
+        '{"error":{"code":"fatal","exitCode":1,"message":"Cannot walk boom. Remove the \\"boom\\" key from the document.","hints":[]}}\n',
+      stdout: '',
+    });
+  });
+});
+
+test('an unknown command under --format json writes its text, because routing reached no result', () => {
+  withDocuments({ 'doc.json': walked }, (cwd) => {
+    const result = invoke(main, ['typo', '--format', 'json', '-f', 'doc.json'], { cwd });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toMatch(/^jsonkit: Unknown command "typo"\./u);
+    expect(result.stdout).toBe('');
+  });
+});

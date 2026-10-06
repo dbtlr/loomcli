@@ -20,9 +20,11 @@ function resolveSegment(current: unknown, segment: string): { value: unknown } |
  * A path the document does not hold. The document was read, so its data holds no value there,
  * which `EX_DATAERR` reports and `EX_NOINPUT` would misreport as a missing input file. The path is
  * quoted, so a trailing dot stays inside the quotes, with its control characters escaped; the
- * application's `FatalError` view escapes its markup.
+ * application's `FatalError` view escapes its markup. A machine reader branches on its failure
+ * code, `path-not-found`, which the manifest lists.
  */
 export class PathNotFoundError extends FatalError {
+  static override readonly code = 'path-not-found';
   static override readonly exitCode = EX_DATAERR;
 
   constructor(path: string) {

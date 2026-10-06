@@ -4,7 +4,7 @@ title: ADR-0032 - Environment and configuration map into options through one cor
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
 status: accepted
 created: 2026-09-24
-modified: 2026-10-03
+modified: 2026-10-06
 ---
 
 # ADR-0032 - Environment and configuration map into options through one core input-source stage
@@ -55,3 +55,4 @@ Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean
 - 2026-09-27: [ADR-0045](0045-a-failure-class-declares-its-exit-code.md), proposed, widens the ADR-0038 carve-out to any `LoomError`. This binds when ADR-0045 is accepted.
 - 2026-09-27: [ADR-0045](0045-a-failure-class-declares-its-exit-code.md) is accepted, so the entry above binds.
 - 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, widens the One stage clause from what local parsing held to what was held. The stage fills the global options whatever fault is held, a structural fault on a global option included, and an occurrence that faulted supplies nothing, so the stage may fill its option. Only an unknown command ends the run before the stage, and the global options then validate whatever was held. The precedence of argv, environment, configuration, and default, and every source rule, stand. It binds when that record is accepted.
+- 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, narrows the held-fault clause that a plugin fault or a failure from the source stops the stage and takes the place of every problem collected. The stage still stops and the source's fault is still the one raised, but core then validates each of a plugin's own options whose tokens parsed, for that plugin's middleware's `ownOptions` alone, so `textstat --format json -c missing.json one.txt` writes the configuration failure as the formatter's JSON line. The precedence of argv, environment, configuration, and default, and every other source rule, stand. It binds when ADR-0064 is accepted.

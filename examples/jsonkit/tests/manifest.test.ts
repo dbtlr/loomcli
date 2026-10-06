@@ -67,15 +67,15 @@ test('jsonkit fetch --manifest carries the deprecation, and debug --manifest pri
 /** The routed entry's declared failures, parsed at the boundary. */
 const declared = z.object({
   command: z.object({
-    failures: z.array(z.object({ exitCode: z.number(), meaning: z.string(), name: z.string() })),
+    failures: z.array(z.object({ code: z.string(), exitCode: z.number(), meaning: z.string() })),
   }),
 });
 
 test('the hidden Commands that read a document declare invalid-json, and the table names it once', () => {
   const invalidJson = {
+    code: 'invalid-json',
     exitCode: 65,
     meaning: 'The document is not valid JSON.',
-    name: 'invalid-json',
   };
   for (const name of ['debug', 'paths']) {
     const printed = JSON.parse(invoke(main, [name, '--manifest']).stdout);
@@ -95,7 +95,7 @@ test.each([
   const printed = JSON.parse(invoke(main, [...route, '--manifest']).stdout);
   const declaredCode = declared
     .parse(printed)
-    .command.failures.find((failure) => failure.name === 'invalid-json')?.exitCode;
+    .command.failures.find((failure) => failure.code === 'invalid-json')?.exitCode;
   expect(declaredCode).toBe(65);
   withDocuments({ 'malformed.json': '{"name":' }, (cwd) => {
     expect(invoke(main, args, { cwd }).status).toBe(declaredCode);

@@ -48,6 +48,7 @@ export { override, view } from './view.js';
 export { plugin } from './plugin.js';
 export { checkPluginSettings, checkShortSetting } from './plugin-settings.js';
 export { translate } from './translators.js';
+export { encodeFailure } from './encoders.js';
 export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';
 export type { ViewContext } from './types.js';
@@ -59,6 +60,8 @@ export type { ApplicationMethod, ApplicationOptions, Packet } from './applicatio
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
 export type { InputProblem, ResultFault } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
+export type { FailureEncoder, FailureEncoding } from './encoders.js';
+export type { FailureForm } from './form.js';
 export type { FailureHook, FailureHookContext } from './hints.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';

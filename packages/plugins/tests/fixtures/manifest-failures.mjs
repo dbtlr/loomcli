@@ -16,10 +16,12 @@ const dispatch = ({ out }) => out.print('dispatched');
 const packet =
   process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
 
-// The manifest reads each class's static alone, so no fixture constructs one.
+// The manifest reads each class's statics alone, so no fixture constructs one.
 
 /** A data failure, 65. */
 class BadDataError extends FatalError {
+  static code = 'bad-data';
+
   static exitCode = EX_DATAERR;
 
   constructor() {
@@ -28,8 +30,30 @@ class BadDataError extends FatalError {
   }
 }
 
+/** A data failure inside the group, which inherits 65 and declares its own code. */
+class InnerBadError extends BadDataError {
+  static code = 'inner-bad';
+
+  constructor() {
+    super();
+    this.name = 'InnerBadError';
+  }
+}
+
+/** A data failure `write` raises, which inherits 65 and declares its own code. */
+class WriteBadError extends BadDataError {
+  static code = 'write-bad';
+
+  constructor() {
+    super();
+    this.name = 'WriteBadError';
+  }
+}
+
 /** An unavailable service, 69. */
 class UnavailableError extends FatalError {
+  static code = 'unavailable';
+
   static exitCode = EX_UNAVAILABLE;
 
   constructor() {
@@ -40,6 +64,8 @@ class UnavailableError extends FatalError {
 
 /** A software fault, 70, raised by a hidden Command alone. */
 class SoftwareError extends FatalError {
+  static code = 'software-fault';
+
   static exitCode = EX_SOFTWARE;
 
   constructor() {
@@ -48,7 +74,7 @@ class SoftwareError extends FatalError {
   }
 }
 
-/** A class that declares no code, so it inherits 1. */
+/** A class that declares neither code, so it inherits 1 and `fatal`. */
 class PlainError extends FatalError {
   constructor() {
     super('Something plain failed.');
@@ -58,6 +84,8 @@ class PlainError extends FatalError {
 
 /** A class that declares 2, whose row core's own row already explains. */
 class RefusedError extends FatalError {
+  static code = 'refused';
+
   static exitCode = 2;
 
   constructor() {
@@ -66,7 +94,29 @@ class RefusedError extends FatalError {
   }
 }
 
-const badData = { failure: BadDataError, meaning: 'The data is bad.', name: 'bad-data' };
+/** A document failure, 65. */
+class InvalidJsonError extends FatalError {
+  static code = 'invalid-json';
+
+  static exitCode = EX_DATAERR;
+
+  constructor() {
+    super('The document is not valid JSON.');
+    this.name = 'InvalidJsonError';
+  }
+}
+
+/** A second class under the same failure code that declares no exit code, so it exits 1. */
+class LooseJsonError extends FatalError {
+  static code = 'invalid-json';
+
+  constructor() {
+    super('The document is not valid JSON.');
+    this.name = 'LooseJsonError';
+  }
+}
+
+const badData = { failure: BadDataError, meaning: 'The data is bad.' };
 
 /** A plugin that supplies an entry identical to the author's, and one of its own, on `read`. */
 const supplier = plugin('@fixture/supplier', {
@@ -74,10 +124,7 @@ const supplier = plugin('@fixture/supplier', {
     command.name === 'read'
       ? command.extend(
           manifestCommand({
-            failures: [
-              badData,
-              { failure: UnavailableError, meaning: 'The service is down.', name: 'unavailable' },
-            ],
+            failures: [badData, { failure: UnavailableError, meaning: 'The service is down.' }],
           }),
         )
       : command,
@@ -85,7 +132,8 @@ const supplier = plugin('@fixture/supplier', {
 
 /**
  * Every declared-failure rule, spread over a small application. `inner` sits under `group` ahead
- * of `write`, so its name is met before `write`'s only in a depth-first walk.
+ * of `write`, so its code is met before `write`'s only in a depth-first walk. `plain` keeps a stale
+ * hand-written `name`, which the schema drops.
  */
 function application() {
   const read = new Command('read', {
@@ -96,7 +144,7 @@ function application() {
     description: 'The inner command.',
     extensions: [
       manifestCommand({
-        failures: [{ failure: BadDataError, meaning: 'The inner data is bad.', name: 'inner-bad' }],
+        failures: [{ failure: InnerBadError, meaning: 'The inner data is bad.' }],
       }),
     ],
   }).action(dispatch);
@@ -107,31 +155,22 @@ function application() {
     description: 'The write command.',
     extensions: [
       manifestCommand({
-        failures: [
-          { failure: BadDataError, meaning: 'The written data is bad.', name: 'write-bad' },
-          badData,
-        ],
+        failures: [{ failure: WriteBadError, meaning: 'The written data is bad.' }, badData],
       }),
     ],
   }).action(dispatch);
+  const stale = { failure: PlainError, meaning: 'Something plain failed.', name: 'plain-failure' };
   const plain = new Command('plain', {
     description: 'The plain command.',
     extensions: [
       manifestCommand({
-        failures: [
-          { failure: PlainError, meaning: 'Something plain failed.', name: 'plain-failure' },
-          { failure: RefusedError, meaning: 'The request was refused.', name: 'refused' },
-        ],
+        failures: [stale, { failure: RefusedError, meaning: 'The request was refused.' }],
       }),
     ],
   }).action(dispatch);
   const secret = new Command('secret', {
     description: 'The secret command.',
-    extensions: [
-      manifestCommand({
-        failures: [{ failure: SoftwareError, meaning: 'A bug.', name: 'software-fault' }],
-      }),
-    ],
+    extensions: [manifestCommand({ failures: [{ failure: SoftwareError, meaning: 'A bug.' }] })],
     hidden: true,
   }).action(dispatch);
   const none = new Command('none', {
@@ -156,19 +195,13 @@ function conflicting(second) {
     description: 'The get command.',
     extensions: [
       manifestCommand({
-        failures: [
-          {
-            failure: BadDataError,
-            meaning: 'The document is not valid JSON.',
-            name: 'invalid-json',
-          },
-        ],
+        failures: [{ failure: InvalidJsonError, meaning: 'The document is not valid JSON.' }],
       }),
     ],
   }).action(dispatch);
   const select = new Command('select', {
     description: 'The select command.',
-    extensions: [manifestCommand({ failures: [{ ...second, name: 'invalid-json' }] })],
+    extensions: [manifestCommand({ failures: [second] })],
   }).action(dispatch);
   return new Application('app', {
     description: 'The app application.',
@@ -185,16 +218,10 @@ function conflicting(second) {
  * author's value and once in a plugin's value supplied at attach.
  */
 function conflictingOnOneCommand(second) {
-  const invalidJson = {
-    failure: BadDataError,
-    meaning: 'The document is not valid JSON.',
-    name: 'invalid-json',
-  };
+  const invalidJson = { failure: InvalidJsonError, meaning: 'The document is not valid JSON.' };
   const again = plugin('@fixture/again', {
     onCommandAttach: (command) =>
-      command.name === 'get'
-        ? command.extend(manifestCommand({ failures: [{ ...second, name: 'invalid-json' }] }))
-        : command,
+      command.name === 'get' ? command.extend(manifestCommand({ failures: [second] })) : command,
   });
   const get = new Command('get', {
     description: 'The get command.',
@@ -212,15 +239,21 @@ function conflictingOnOneCommand(second) {
 const scenarios = {
   app: application,
   'code-conflict': () =>
-    conflicting({ failure: PlainError, meaning: 'The document is not valid JSON.' }),
+    conflicting({ failure: LooseJsonError, meaning: 'The document is not valid JSON.' }),
   'meaning-conflict': () =>
-    conflicting({ failure: BadDataError, meaning: 'The document cannot be parsed.' }),
+    conflicting({ failure: InvalidJsonError, meaning: 'The document cannot be parsed.' }),
   'meaning-conflict-controls': () =>
-    conflicting({ failure: BadDataError, meaning: 'Bad \u202Eevil\u009B" on "x' }),
+    conflicting({ failure: InvalidJsonError, meaning: 'Bad \u202Eevil\u009B" on "x' }),
   'same-command-code-conflict': () =>
-    conflictingOnOneCommand({ failure: PlainError, meaning: 'The document is not valid JSON.' }),
+    conflictingOnOneCommand({
+      failure: LooseJsonError,
+      meaning: 'The document is not valid JSON.',
+    }),
   'same-command-meaning-conflict': () =>
-    conflictingOnOneCommand({ failure: BadDataError, meaning: 'The document cannot be parsed.' }),
+    conflictingOnOneCommand({
+      failure: InvalidJsonError,
+      meaning: 'The document cannot be parsed.',
+    }),
 };
 
 const [scenario, ...argv] = process.argv.slice(2);

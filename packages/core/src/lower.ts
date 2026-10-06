@@ -304,6 +304,8 @@ function lowerInvocation(
     args,
     command,
     fault: read.fault,
+    // A value no token spells is an input problem, never a faulted occurrence.
+    faulted: new Set(),
     globalFault: false,
     passthrough: [...call.passthrough],
     path,

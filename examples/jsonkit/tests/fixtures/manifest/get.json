@@ -120,12 +120,12 @@
     "result": null,
     "failures": [
       {
-        "name": "path-not-found",
+        "code": "path-not-found",
         "exitCode": 65,
         "meaning": "The path names no value in the document."
       },
       {
-        "name": "invalid-json",
+        "code": "invalid-json",
         "exitCode": 65,
         "meaning": "The document is not valid JSON."
       }

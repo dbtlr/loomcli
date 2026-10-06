@@ -6,6 +6,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import type { ExtensionValue } from './extension.js';
+import type { FailureForm } from './form.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
@@ -624,6 +625,8 @@ export interface InvokeOptions<Mapped = LoomError> {
       readonly application: string;
       readonly path: readonly string[];
       readonly exitCode: FailureExitCode;
+      /** The failure's form, the same object the failed outcome carries. */
+      readonly form: FailureForm;
     },
   ) => Mapped;
   /** Composed with the parent run's signal when an action calls `invoke`. */
@@ -639,6 +642,8 @@ export type InvocationOutcome<Mapped = LoomError> =
   | {
       readonly status: 'failed';
       readonly failure: Mapped;
+      /** The form of the failure the handler received. */
+      readonly form: FailureForm;
       readonly exitCode: FailureExitCode;
       readonly output: string;
       readonly messages: string;

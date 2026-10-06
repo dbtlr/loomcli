@@ -22,11 +22,11 @@ const configFilePattern = diagnosticRule(`${Package.name}/config/file-pattern`, 
   headline: 'Invalid configuration file pattern',
 });
 
-/** One failure name declared with two exit codes or two meanings. */
-const failureNameConflict = diagnosticRule(`${Package.name}/manifest/failure-name-conflict`, {
+/** One failure code declared with two exit codes or two meanings. */
+const failureCodeConflict = diagnosticRule(`${Package.name}/manifest/failure-code-conflict`, {
   explanation:
-    'The manifest lists each failure name once for the whole application, with one exit code and one meaning, so a consumer reads one contract for each name. Two declarations of one name that disagree leave it no single entry to list.',
-  headline: 'Failure name conflict',
+    'The manifest lists each failure code once for the whole application, with one exit code and one meaning, so a consumer reads one contract for each code. Two declarations of one code that disagree leave it no single entry to list.',
+  headline: 'Failure code conflict',
 });
 
 /** A version plugin `postfix` setting that is not one line of prose. */
@@ -36,4 +36,4 @@ const versionPostfix = diagnosticRule(`${Package.name}/version/postfix`, {
   headline: 'Invalid version postfix',
 });
 
-export { configFilePath, configFilePattern, failureNameConflict, versionPostfix };
+export { configFilePath, configFilePattern, failureCodeConflict, versionPostfix };

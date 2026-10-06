@@ -5,7 +5,7 @@ import { FatalError, notTextReason, ResultError } from './errors.js';
 import type { ResultFault } from './errors.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
-import { capabilities } from './rendering.js';
+import { capabilities, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
@@ -28,7 +28,7 @@ import type { ViewRegistry } from './view.js';
 
 function stringValue(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new Error(notTextReason(value));
+    throw new Error(notTextReason('view', value));
   }
   return value;
 }
@@ -162,7 +162,7 @@ const bare: ViewRegistry = [];
 function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
   try {
     const text: unknown = produce();
-    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason(text)) };
+    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason('view', text)) };
   } catch (error) {
     return { failed: error };
   }
@@ -226,6 +226,8 @@ export class Output {
 
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
+  // The incomplete-result lines held until the run settles, which a failure an encoder wrote drops.
+  private readonly heldIncomplete: IncompleteResult[] = [];
   // The contributors this invocation resolves a declared view through, published once they build.
   private registry: ViewRegistry = [];
   style = createStyle();
@@ -355,6 +357,16 @@ export class Output {
     this.style = createStyle(new Set([...tokens, ...palette.keys()]));
   }
 
+  /**
+   * Marked text resolved as plain text for stderr, as an invocation by name resolves its captured
+   * text: no color, modifier, or hyperlink, whatever the policy or `FORCE_COLOR` says, and the
+   * policy's own terminal controls. A failure form reads its message and hints through it.
+   */
+  plain(text: string): string {
+    const policy = plainPolicy(this.policy);
+    return resolveText(text, this.palette, capabilities(this.host, 'stderr', policy));
+  }
+
   context(destination: Stream): ViewContext {
     const caps = capabilities(this.host, destination, this.policy);
     return Object.freeze({
@@ -385,6 +397,46 @@ export class Output {
    */
   report(text: string): Promise<void> {
     return this.rendered(() => text, 'stderr');
+  }
+
+  /**
+   * A failure encoder's text, queued on stderr as it is: no markup resolves and nothing is escaped,
+   * because the encoder owns its bytes, its trailing newline included.
+   */
+  encoded(text: string): Promise<void> {
+    return this.write(this.host.stderr, text);
+  }
+
+  /**
+   * Writes each incomplete-result line this run holds, in the order its sequences stopped, ahead of
+   * whatever the run reports next. Each resolves through the registry like any other rendered
+   * output, so an override that returns the empty string silences it and one that throws is a view
+   * fault. A stderr that has failed already takes the plain fallback path and no further. It answers
+   * the view fault these lines raised when the run had raised none before, which the run reports
+   * only when nothing else failed.
+   */
+  async writeIncomplete(): Promise<{ cause: unknown } | undefined> {
+    const earlier = this.renderFault;
+    for (const facts of this.heldIncomplete.splice(0)) {
+      const context = this.context('stderr');
+      const failed = this.destinations.get(this.host.stderr)?.state.kind === 'failed';
+      await (failed
+        ? reportPlainly(this.host.stderr, incompleteResult.render(facts, context))
+        : this.rendered(
+            () => resolveView(this.registry, incompleteResult)(facts, context),
+            'stderr',
+          ).catch(() => undefined));
+    }
+    return earlier === undefined ? this.renderFault : undefined;
+  }
+
+  /**
+   * Drops each incomplete-result line this run holds, because a failure encoder wrote the run's
+   * failure: the encoded line is the only failure text on stderr, and it tells a reader the result
+   * is incomplete.
+   */
+  dropIncomplete(): void {
+    this.heldIncomplete.length = 0;
   }
 
   /**
@@ -455,21 +507,12 @@ export class Output {
   }
 
   /**
-   * The line one incomplete sequence writes on stderr, ahead of the fault's own report. It resolves
-   * through the registry like any other rendered output, so an override that returns the empty
-   * string silences it and one that throws is a view fault. A stderr that has failed already takes
-   * the plain fallback path and no further.
+   * Holds the line one incomplete sequence owes until the run settles. The run writes it ahead of
+   * the fault's own report, or at its end when it reports none, unless a failure encoder writes the
+   * run's failure.
    */
   private incomplete(facts: IncompleteResult): void {
-    const context = this.context('stderr');
-    if (this.destinations.get(this.host.stderr)?.state.kind === 'failed') {
-      void reportPlainly(this.host.stderr, incompleteResult.render(facts, context));
-      return;
-    }
-    void this.rendered(
-      () => resolveView(this.registry, incompleteResult)(facts, context),
-      'stderr',
-    ).catch(() => undefined);
+    this.heldIncomplete.push(facts);
   }
 
   /**

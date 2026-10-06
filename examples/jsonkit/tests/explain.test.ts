@@ -13,14 +13,14 @@ const manifest = z
 
 /** The two failures jsonkit declares, as the manifest's extension stores them. */
 const invalidJson = {
+  code: 'invalid-json',
   exitCode: 65,
   meaning: 'The document is not valid JSON.',
-  name: 'invalid-json',
 };
 const pathNotFound = {
+  code: 'path-not-found',
   exitCode: 65,
   meaning: 'The path names no value in the document.',
-  name: 'path-not-found',
 };
 
 const command = [

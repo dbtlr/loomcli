@@ -9,6 +9,7 @@ interface Outcome {
   status: 'cancelled' | 'completed' | 'failed';
   exitCode?: number;
   failure?: Record<string, unknown>;
+  form?: Record<string, unknown>;
   messages?: string;
   output?: string;
 }
@@ -206,12 +207,18 @@ test('the handler receives the translated failure, never the foreign throw, and 
   expect(foreign).toEqual({
     exitCode: 1,
     failure: { mapped: 'The foreign call failed.' },
+    form: { code: 'fatal', exitCode: 1, hints: [], message: 'The foreign call failed.' },
     messages: 'The foreign call failed.\n',
     output: '',
     status: 'failed',
   });
   expect(received[1]).toEqual({
-    context: { application: 'probe', exitCode: 1, path: ['foreign'] },
+    context: {
+      application: 'probe',
+      exitCode: 1,
+      form: { code: 'fatal', exitCode: 1, hints: [], message: 'The foreign call failed.' },
+      path: ['foreign'],
+    },
     name: 'TranslatedError',
   });
 });
@@ -230,6 +237,7 @@ test('a fault reported after a primary outcome that succeeded is the failure the
   expect(lateFault).toEqual({
     exitCode: 1,
     failure: '@loomcli/core/next-misuse',
+    form: genericForm,
     messages: 'probe: Something went wrong.\n',
     output: '',
     status: 'failed',
@@ -433,10 +441,14 @@ interface HandledShapes {
 }
 
 /** A failed outcome whose failure the fixture's handler mapped to the defect's sentence. */
+/** The form of a defect in a distributed build, which names no reason. */
+const genericForm = { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' };
+
 function mapped(sentence: string): Outcome {
   return {
     exitCode: 1,
     failure: { mapped: sentence },
+    form: genericForm,
     messages: 'probe: Something went wrong.\n',
     output: '',
     status: 'failed',
@@ -451,7 +463,7 @@ test("a malformed slot's invoke-options defect reaches the caller's failure hand
   expect(JSON.parse(handled.action.output ?? '')).toEqual(
     mapped('invoke() received options that are not an object.'),
   );
-  const context = { application: 'probe', exitCode: 1, path: [] };
+  const context = { application: 'probe', exitCode: 1, form: genericForm, path: [] };
   expect(handled.received).toEqual(
     Array.from({ length: 4 }, () => ({ context, identity: '@loomcli/core/invoke-options' })),
   );

@@ -3,9 +3,10 @@ import { EX_DATAERR, FatalError, translate } from '@loomcli/core';
 /**
  * A document that is not valid JSON. The data was read, and its syntax is wrong, so it exits with
  * `EX_DATAERR`. The translator sees only the `SyntaxError`, so the sentence names no source and
- * quotes no engine text.
+ * quotes no engine text. A machine reader branches on its failure code, `invalid-json`.
  */
 export class InvalidJsonError extends FatalError {
+  static override readonly code = 'invalid-json';
   static override readonly exitCode = EX_DATAERR;
 
   constructor(options?: ErrorOptions) {

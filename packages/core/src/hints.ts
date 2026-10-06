@@ -1,9 +1,20 @@
 import type { Writable } from 'node:stream';
 
+import type { FailureSelection } from './chain.js';
 import { developerPlainText, developerText } from './developer.js';
 import type { DeveloperScene } from './developer.js';
-import { genericDefectText, InternalError, isAuthorFault, reasonOf } from './errors.js';
-import type { InvokedBy, LoomError } from './errors.js';
+import { callEncoder, encoderDefect } from './encoders.js';
+import type { EncoderAnswer, EncoderRegistry, InstalledEncoder } from './encoders.js';
+import {
+  defaultText,
+  genericDefectText,
+  InternalError,
+  isAuthorFault,
+  reasonOf,
+} from './errors.js';
+import type { DeclarationError, InvokedBy, LoomError } from './errors.js';
+import { failureForm } from './form.js';
+import type { FailureForm } from './form.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { reportPlainly } from './output.js';
@@ -22,8 +33,8 @@ import { describeFailure } from './view.js';
 import type { FailureReport, FailureViewContext, ViewRegistry } from './view.js';
 
 /**
- * What one `onFailure` hook reads beside the failure. `application`, `path`, and `invokedBy` are the
- * values the failure view reads, so a hook that points at a command line returns no hint for an
+ * What one `onFailure` hook reads beside the failure. `application`, `path`, `invokedBy`, `view`,
+ * and `mediaType` are the values the failure view reads, so a hook that points at a command line returns no hint for an
  * invocation by name, and `style` is the contextual style for stderr, so a hook escapes text the
  * operator typed. `graph` is the frozen graph `inspect()` returns for the run, and `command` is the
  * node at `path` inside it; reading either builds the run's graph once.
@@ -32,6 +43,10 @@ interface FailureHookContext {
   readonly application: string;
   readonly path: readonly string[];
   readonly invokedBy: InvokedBy;
+  /** The view the result would render through when the run failed, as the failure view reads it. */
+  readonly view: string | undefined;
+  /** The media type that view declares. */
+  readonly mediaType: string | undefined;
   readonly style: ContextualStyle;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -57,13 +72,15 @@ interface BuiltRun {
 /**
  * Where one failure happened, filled where `run()` or `invoke()` catches it. `built` is absent for
  * a failure raised at or before graph build, which no hook runs for, because no valid graph exists.
- * `invokedBy` says how the run received its inputs.
+ * `invokedBy` says how the run received its inputs, and `selection` is the run's selection when it
+ * failed.
  */
 interface FailureScene {
   application: string;
   path: readonly string[];
   invokedBy: InvokedBy;
   built: BuiltRun | undefined;
+  selection: FailureSelection;
 }
 
 /**
@@ -89,12 +106,16 @@ function genericOnce(build: BuildReports, application: string): string {
   return genericDefectText(application);
 }
 
-/** Where one failure report is written, the registry its view resolves through, and the build. */
+/**
+ * Where one failure report is written, the registry its view resolves through, the build, and the
+ * failure encoders a `run()` writes through, which an invocation by name never has.
+ */
 interface FailureSink {
   output: Output;
   registry: ViewRegistry;
   stderr: Writable;
   build: BuildReports;
+  encoders: EncoderRegistry | undefined;
 }
 
 /** What one hook answered: its hints, or why it broke and what it threw. */
@@ -189,7 +210,7 @@ function hookContext(
   scene: FailureScene & { built: BuiltRun },
   style: ContextualStyle,
 ): FailureHookContext {
-  const { application, built, invokedBy, path } = scene;
+  const { application, built, invokedBy, path, selection } = scene;
   let command: CommandNode | undefined = undefined;
   return Object.freeze({
     application,
@@ -201,8 +222,10 @@ function hookContext(
       return built.inspected();
     },
     invokedBy,
+    mediaType: selection.mediaType,
     path,
     style,
+    view: selection.view,
   });
 }
 
@@ -269,53 +292,74 @@ function brokenContract(defect: InternalError, build: BuildReports, scene: Devel
 }
 
 /**
- * What the plain fallback path writes after one failure's diagnostic: core's default text when the
- * view broke, then what each broken contract reports, the view first and each hook in installation
- * order. Nothing here resolves markup or runs a plugin's code.
+ * What the plain fallback path writes after one failure's diagnostic when its view broke: core's
+ * default text, then the broken view's own report. Nothing here resolves markup or runs a plugin's
+ * code.
  */
-function plainLines(
-  report: FailureReport,
-  broken: readonly BrokenHook[],
+function brokenViewLines(
+  report: FailureReport & { kind: 'unrendered' },
   reporting: { build: BuildReports; failure: LoomError; scene: DeveloperScene },
 ): string {
   const { build, failure, scene } = reporting;
-  if (report.kind === 'rendered') {
-    return broken.map((hook) => brokenContract(hookDefect(hook), build, scene)).join('');
-  }
   // `report.text` is core's default text, which already ends in `\n`; for a defect it is generic.
   const own = isAuthorFault(failure) ? genericOnce(build, scene.application) : report.text;
-  return [viewDefect(report), ...broken.map(hookDefect)].reduce(
-    (text, defect) => `${text}${brokenContract(defect, build, scene)}`,
-    own,
-  );
+  return `${own}${brokenContract(viewDefect(report), build, scene)}`;
+}
+
+/**
+ * Writes a fault only the author can fix as its Developer Diagnostic, with the hints under it, ahead
+ * of every override and every encoder. After an earlier report of the run it opens with one blank
+ * line.
+ */
+async function writeDiagnostic(
+  sink: FailureSink,
+  failure: DeclarationError | InternalError,
+  scene: { developer: DeveloperScene; hints: readonly string[] },
+): Promise<void> {
+  const { style } = sink.output.context('stderr');
+  const text = developerText(failure, { ...scene.developer, hints: scene.hints, style });
+  await sink.output.report(sink.build.reported ? `\n${text}` : text);
+}
+
+/**
+ * What one failure's own report left the plain fallback path, and whether the view or the encoder
+ * that answered it broke.
+ */
+interface OwnReport {
+  broken: boolean;
+  plain: string;
 }
 
 /**
  * Renders one failure as the run's build decides. A development build renders a fault only the
- * author can fix as its Developer Diagnostic, ahead of every override, with the hints under it,
- * and after an earlier report of the run it opens with one blank line. Every other failure, and
- * every failure in a distributed build, resolves through the view registry. Core's default text
- * for a defect is the generic message, which the run writes at most once, so a later defect that
- * core's own view renders writes nothing.
+ * author can fix as its Developer Diagnostic. Every other failure, and every failure in a
+ * distributed build, resolves through the view registry. Core's default text for a defect is the
+ * generic message, which the run writes at most once, so a later defect that core's own view
+ * renders writes nothing. A view that breaks leaves core's default text without hints, and its own
+ * report, to the plain fallback path.
  */
 async function renderFailure(
   sink: FailureSink,
   failure: LoomError,
   scene: FailureContextScene,
-): Promise<FailureReport> {
+): Promise<OwnReport> {
   const { build } = sink;
   if (build.development && isAuthorFault(failure)) {
-    const { style } = sink.output.context('stderr');
-    const text = developerText(failure, { ...scene.developer, hints: scene.hints, style });
-    await sink.output.report(build.reported ? `\n${text}` : text);
-    return { core: false, kind: 'rendered', text: '' };
+    await writeDiagnostic(sink, failure, scene);
+    return { broken: false, plain: '' };
   }
   const report = describeFailure(sink.registry, failure, failureContext(sink.output, scene));
-  if (report.kind === 'rendered' && !repeatsGeneric(build, report, failure)) {
+  if (report.kind === 'unrendered') {
+    return {
+      broken: true,
+      plain: brokenViewLines(report, { build, failure, scene: scene.developer }),
+    };
+  }
+  if (!repeatsGeneric(build, report, failure)) {
     // The view owns the trailing newline; output resolves its marked text.
     await sink.output.report(report.text);
   }
-  return report;
+  return { broken: false, plain: '' };
 }
 
 /**
@@ -338,6 +382,7 @@ interface FailureContextScene {
   hints: readonly string[];
   invokedBy: InvokedBy;
   path: readonly string[];
+  selection: FailureSelection;
 }
 
 /** The context a failure view reads: the stderr view context, where the run was, and the hints. */
@@ -347,35 +392,141 @@ function failureContext(output: Output, scene: FailureContextScene): FailureView
     application: scene.developer.application,
     hints: scene.hints,
     invokedBy: scene.invokedBy,
+    mediaType: scene.selection.mediaType,
     path: scene.path,
+    view: scene.selection.view,
   });
 }
 
 /**
- * Reports one failure. The hooks run first, so the diagnostic or the view receives their hints. A
- * view that breaks leaves core's default text without hints on the plain fallback path, and each
- * broken contract's report follows that whole diagnostic. It answers whether a view or a hook
- * broke, which forces the run's code to 1 outside a cancelled run.
+ * What the plain fallback path writes for a broken encoder: core's default text for the failure,
+ * without hints, unless a diagnosed fault already wrote its diagnostic, then the broken encoder's
+ * own report.
+ */
+function brokenEncoderLines(
+  failure: LoomError,
+  broken: {
+    answer: EncoderAnswer & { kind: 'broken' };
+    diagnosed: boolean;
+    installed: InstalledEncoder;
+  },
+  reporting: { build: BuildReports; scene: DeveloperScene },
+): string {
+  const { answer, diagnosed, installed } = broken;
+  const { build, scene } = reporting;
+  let own = '';
+  if (!diagnosed) {
+    own = isAuthorFault(failure)
+      ? genericOnce(build, scene.application)
+      : defaultText(failure, scene.application);
+  }
+  return `${own}${brokenContract(encoderDefect(installed, answer), build, scene)}`;
+}
+
+/**
+ * The failure-encoding stage, which takes the place of the failure view for a failure whose
+ * selection declares a media type an installed plugin encodes. The encoder's text is the only
+ * failure text the report writes, as it is. A development build writes a fault only the author
+ * can fix as its Developer Diagnostic with the hints under it first, and the encoded line after one
+ * blank line. A broken encoder leaves core's default text for the failure, without hints, and the
+ * broken encoder's own report, to the plain fallback path. The run's held incomplete-result lines
+ * are dropped when the encoder writes the failure, and written ahead of everything when it breaks.
+ */
+async function encodeFailureReport(
+  sink: FailureSink,
+  failure: LoomError,
+  encoding: FailureContextScene & { form: FailureForm; installed: InstalledEncoder },
+): Promise<OwnReport> {
+  const { developer, form, installed } = encoding;
+  const diagnosed = sink.build.development && isAuthorFault(failure);
+  // The encoder answers first, because whether it wrote the failure decides the held lines.
+  const answer = callEncoder(installed, form);
+  await settleIncomplete(sink.output, answer);
+  if (diagnosed) {
+    await writeDiagnostic(sink, failure, encoding);
+  }
+  if (answer.kind === 'encoded') {
+    await sink.output.encoded(diagnosed ? `\n${answer.text}` : answer.text);
+    return { broken: false, plain: '' };
+  }
+  return {
+    broken: true,
+    plain: brokenEncoderLines(
+      failure,
+      { answer, diagnosed, installed },
+      { build: sink.build, scene: developer },
+    ),
+  };
+}
+
+/**
+ * The run's held incomplete-result lines once an encoder answered: dropped when it wrote the
+ * failure, whose line is then the only failure text, and written when it broke.
+ */
+async function settleIncomplete(output: Output, answer: EncoderAnswer): Promise<void> {
+  if (answer.kind === 'encoded') {
+    output.dropIncomplete();
+    return;
+  }
+  await output.writeIncomplete();
+}
+
+/**
+ * Reports one failure. The hooks run first, so the diagnostic, the view, or the encoder receives
+ * their hints and their form. A failure whose selection an installed plugin encodes passes through
+ * the encoding stage in place of its view. What a broken view or encoder leaves the plain fallback
+ * path comes first there, and each broken hook's report follows that whole diagnostic. It answers
+ * whether a view, an encoder, or a hook broke, which forces the run's code to 1 outside a cancelled
+ * run, and the failure's form.
  */
 async function reportFailure(
   sink: FailureSink,
   failure: LoomError,
   scene: FailureScene & { host: DeveloperScene['host'] },
-): Promise<boolean> {
+): Promise<FailureReported> {
   const { broken, hints } = collectHints(scene, failure, sink.output.context('stderr').style);
-  const developer: DeveloperScene = { application: scene.application, host: scene.host };
-  const report = await renderFailure(sink, failure, {
-    developer,
+  const form = failureForm(failure, {
+    development: sink.build.development,
     hints,
-    invokedBy: scene.invokedBy,
-    path: scene.path,
+    plain: (text) => sink.output.plain(text),
   });
-  const plain = plainLines(report, broken, { build: sink.build, failure, scene: developer });
+  const developer: DeveloperScene = { application: scene.application, host: scene.host };
+  const own = await reportOwn(sink, failure, { ...scene, developer, form, hints });
+  const hooks = broken.map((hook) => brokenContract(hookDefect(hook), sink.build, developer));
+  const plain = `${own.plain}${hooks.join('')}`;
   if (plain !== '') {
     await reportPlainly(sink.stderr, plain);
   }
   sink.build.reported = true;
-  return report.kind !== 'rendered' || broken.length > 0;
+  return { broken: own.broken || broken.length > 0, form };
+}
+
+/**
+ * One failure's own report: the encoding stage when an installed plugin encodes the media type the
+ * run selected, and the failure's view otherwise, after the run's held incomplete-result lines.
+ */
+async function reportOwn(
+  sink: FailureSink,
+  failure: LoomError,
+  scene: FailureContextScene & { form: FailureForm },
+): Promise<OwnReport> {
+  const { mediaType } = scene.selection;
+  const installed = mediaType === undefined ? undefined : sink.encoders?.get(mediaType);
+  if (installed) {
+    return encodeFailureReport(sink, failure, { ...scene, installed });
+  }
+  await sink.output.writeIncomplete();
+  return renderFailure(sink, failure, scene);
+}
+
+/**
+ * What reporting one failure answered: whether a view, an encoder, or a hook broke, which forces
+ * the run's code to 1 outside a cancelled run, and the failure's form, which holds the hints its
+ * hooks returned.
+ */
+interface FailureReported {
+  broken: boolean;
+  form: FailureForm;
 }
 
 /**

@@ -65,7 +65,7 @@ test('the table joins each declared code to core rows, in ascending order, namin
 test('every slice carries the whole application table, a hidden Command included', () => {
   expect(documentOf(['none', '--manifest']).document.exitCodes).toEqual(exitCodes);
   expect(documentOf(['secret', '--manifest']).document.command.failures).toEqual([
-    { exitCode: 70, meaning: 'A bug.', name: 'software-fault' },
+    { code: 'software-fault', exitCode: 70, meaning: 'A bug.' },
   ]);
 });
 
@@ -76,27 +76,27 @@ test('a Command with no declared failures reads an empty list', () => {
 
 test('an author value and a plugin value concatenate in collection order, and an identical entry prints once', () => {
   expect(failuresOf('read')).toEqual([
-    { exitCode: 65, meaning: 'The data is bad.', name: 'bad-data' },
-    { exitCode: 69, meaning: 'The service is down.', name: 'unavailable' },
+    { code: 'bad-data', exitCode: 65, meaning: 'The data is bad.' },
+    { code: 'unavailable', exitCode: 69, meaning: 'The service is down.' },
   ]);
 });
 
-test('an entry lists its name, code, and meaning in that key order', () => {
+test('an entry lists its failure code, exit code, and meaning in that key order', () => {
   const [entry] = failuresOf('read');
-  expect(Object.keys(Object(entry))).toEqual(['name', 'exitCode', 'meaning']);
+  expect(Object.keys(Object(entry))).toEqual(['code', 'exitCode', 'meaning']);
 });
 
-test('one name on two Commands with one code and meaning is listed on both', () => {
+test('one failure code on two Commands with one exit code and meaning is listed on both', () => {
   expect(failuresOf('write')).toEqual([
-    { exitCode: 65, meaning: 'The written data is bad.', name: 'write-bad' },
-    { exitCode: 65, meaning: 'The data is bad.', name: 'bad-data' },
+    { code: 'write-bad', exitCode: 65, meaning: 'The written data is bad.' },
+    { code: 'bad-data', exitCode: 65, meaning: 'The data is bad.' },
   ]);
 });
 
-test('a class that declares no code lists 1, a class that declares 2 lists 2, and neither adds a row', () => {
+test('a class that declares neither code lists 1 and fatal, a class that declares 2 lists 2, neither adds a row, and a stale name is dropped', () => {
   expect(failuresOf('plain')).toEqual([
-    { exitCode: 1, meaning: 'Something plain failed.', name: 'plain-failure' },
-    { exitCode: 2, meaning: 'The request was refused.', name: 'refused' },
+    { code: 'fatal', exitCode: 1, meaning: 'Something plain failed.' },
+    { code: 'refused', exitCode: 2, meaning: 'The request was refused.' },
   ]);
   const table = documentOf(['--manifest']).document.exitCodes;
   expect(table['1']).toBe('Expected action failure, internal failure, or invalid declarations');
@@ -111,17 +111,17 @@ function reports(argv: string[]) {
   };
 }
 
-/** The banner of the failure-name conflict, 80 columns wide. */
-const banner = `-- FAILURE NAME CONFLICT ${'-'.repeat(7)} @loomcli/plugins/manifest/failure-name-conflict`;
+/** The banner of the failure-code conflict, 80 columns wide. */
+const banner = `-- FAILURE CODE CONFLICT ${'-'.repeat(7)} @loomcli/plugins/manifest/failure-code-conflict`;
 
 /** The rule's explanation as an 80-column diagnostic wraps it. */
 const explanation = [
-  'The manifest lists each failure name once for the whole application, with one',
-  'exit code and one meaning, so a consumer reads one contract for each name. Two',
-  'declarations of one name that disagree leave it no single entry to list.',
+  'The manifest lists each failure code once for the whole application, with one',
+  'exit code and one meaning, so a consumer reads one contract for each code. Two',
+  'declarations of one code that disagree leave it no single entry to list.',
 ].join('\n');
 
-/** One declared failure as the graph holds it: its name, its exit code, and its meaning. */
+/** One declared failure as the graph holds it: its exit code and its meaning. */
 interface Declared {
   readonly exitCode: number;
   readonly meaning: string;
@@ -134,13 +134,13 @@ interface Declared {
  */
 function finding({ exitCode, meaning, on }: Declared, key: 'exitCode' | 'meaning'): string {
   const value = key === 'exitCode' ? `exitCode: ${String(exitCode)}` : `meaning: '${meaning}'`;
-  const line = `    manifestCommand({ failures: [{ name: 'invalid-json', exitCode: ${String(exitCode)}, meaning: '${meaning}' }] })`;
+  const line = `    manifestCommand({ failures: [{ code: 'invalid-json', exitCode: ${String(exitCode)}, meaning: '${meaning}' }] })`;
   const start = line.indexOf(value);
   return `${line}\n${' '.repeat(start)}${'^'.repeat(value.length)} on ${on}`;
 }
 
 /**
- * The report one failure-name conflict produces in each build, whichever Command was routed: a
+ * The report one failure-code conflict produces in each build, whichever Command was routed: a
  * development build writes the rule's Developer Diagnostic, with a finding for each declaration,
  * and a distributed build writes the generic message.
  */
@@ -152,7 +152,7 @@ function conflict(sentence: string, first: Declared, second: Declared) {
     finding(first, key),
     finding(second, key),
     explanation,
-    'Declare one code and one meaning for each failure name.',
+    'Declare one exit code and one meaning for each failure code.',
   ];
   return {
     development: { status: 1, stderr: `${sections.join('\n\n')}\n`, stdout: '' },
@@ -162,7 +162,7 @@ function conflict(sentence: string, first: Declared, second: Declared) {
 
 const notJson = 'The document is not valid JSON.';
 
-test('one name with two codes is a declaration error naming the name and both Commands', () => {
+test('one failure code with two exit codes is a declaration error naming the code and both Commands', () => {
   const report = conflict(
     'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select".',
     { exitCode: 65, meaning: notJson, on: 'Command "get"' },
@@ -172,7 +172,7 @@ test('one name with two codes is a declaration error naming the name and both Co
   expect(reports(['code-conflict', 'get', '--manifest'])).toEqual(report);
 });
 
-test('one name with two meanings is a declaration error naming the name and both Commands', () => {
+test('one failure code with two meanings is a declaration error naming the code and both Commands', () => {
   expect(reports(['meaning-conflict', 'select', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "select".',
@@ -192,7 +192,7 @@ test('a conflicting meaning is quoted with its control characters escaped', () =
   );
 });
 
-test('one name with two codes on one Command is a declaration error naming that Command twice', () => {
+test('one failure code with two exit codes on one Command is a declaration error naming that Command twice', () => {
   expect(reports(['same-command-code-conflict', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "get".',
@@ -202,7 +202,7 @@ test('one name with two codes on one Command is a declaration error naming that 
   );
 });
 
-test('one name with two meanings on one Command is a declaration error naming that Command twice', () => {
+test('one failure code with two meanings on one Command is a declaration error naming that Command twice', () => {
   expect(reports(['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "get".',
@@ -235,15 +235,13 @@ function invalid(message: string) {
   };
 }
 
-test('a declared failure is rejected at the call unless it holds a failure class, a kebab-case name, and one line', () => {
+test('a declared failure is rejected at the call unless it holds a failure class and one line', () => {
   const notClass = 'Supply a failure class, a class that extends LoomError.';
   expect(rule('failure-valid')).toEqual({ fault: null });
+  expect(rule('failure-stale-name')).toEqual({ fault: null });
   expect(rule('failure-function')).toEqual(invalid(notClass));
   expect(rule('failure-foreign-class')).toEqual(invalid(notClass));
   expect(rule('failure-missing')).toEqual(invalid(notClass));
-  expect(rule('failure-name-uppercase')).toEqual(
-    invalid('Supply a kebab-case name: lowercase letters and digits in words joined by hyphens.'),
-  );
   expect(rule('failure-meaning-on-two-lines')).toEqual(
     invalid('Supply one line that holds a character other than whitespace.'),
   );
@@ -290,8 +288,30 @@ test('the manifest rejects an undeclarable class with the sentence core throws w
   expect(rule('failure-code-200')).toEqual(invalid(core.message));
 });
 
-test('the extension stores a declared failure as its name, code, and meaning, in that key order', () => {
+test("the extension stores a declared failure as its class's failure code, exit code, and meaning, in that key order", () => {
   const stored = rule('failure-valid', ['--stored']);
-  expect(stored).toEqual({ exitCode: 65, meaning: 'The data is bad.', name: 'bad-data' });
-  expect(Object.keys(Object(stored))).toEqual(['name', 'exitCode', 'meaning']);
+  expect(stored).toEqual({ code: 'bad-data', exitCode: 65, meaning: 'The data is bad.' });
+  expect(Object.keys(Object(stored))).toEqual(['code', 'exitCode', 'meaning']);
+  expect(rule('failure-inherited-code', ['--stored'])).toEqual({
+    code: 'fatal',
+    exitCode: 1,
+    meaning: 'The data is bad.',
+  });
+  // A stale hand-written name is dropped like any key the schema does not name.
+  expect(rule('failure-stale-name', ['--stored'])).toEqual(stored);
+});
+
+test("a failure class whose failure code is outside the grammar is rejected at the call with core's sentence", () => {
+  const core = z.object({ message: z.string() }).parse(rule('core-bad-code'));
+  expect(rule('failure-bad-code')).toEqual(
+    invalid(
+      'Failure class "BadCodeError" declares failure code "Bad_Code". Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
+    ),
+  );
+  expect(rule('failure-bad-code')).toEqual(invalid(core.message));
+  expect(rule('failure-failure-code-getter-throws')).toEqual(
+    invalid(
+      'Failure class "ThrowingCodeError" declares a failure code that is not a string. Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
+    ),
+  );
 });

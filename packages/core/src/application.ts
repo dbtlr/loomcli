@@ -1,8 +1,8 @@
 import type { Writable } from 'node:stream';
 
 import { captureDeclaration, unreadableArgument } from './capture.js';
-import { runInvocation } from './chain.js';
-import type { Invocation, StartingView } from './chain.js';
+import { noSelection, runInvocation } from './chain.js';
+import type { FailureSelection, Invocation, StartingView } from './chain.js';
 import { portableName } from './command-rules.js';
 import {
   attachToRoot,
@@ -40,6 +40,8 @@ import type {
 } from './command.js';
 import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
+import { encoderRegistry } from './encoders.js';
+import type { EncoderRegistry } from './encoders.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
 import {
   DeclarationError,
@@ -61,6 +63,8 @@ import {
   slotSite,
 } from './facts.js';
 import type { FactSite } from './facts.js';
+import { failureForm } from './form.js';
+import type { FailureForm } from './form.js';
 import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
@@ -75,7 +79,6 @@ import {
   fieldsOf,
   invocationHost,
   mappedFailure,
-  plainPolicy,
   processFields,
   readCall,
 } from './invoke.js';
@@ -89,7 +92,7 @@ import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
-import { renderingPolicy } from './rendering.js';
+import { plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
@@ -163,6 +166,20 @@ function silenced(
   cancelled: CancellationCode | undefined,
 ): boolean {
   return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
+}
+
+/** The failure a view that broke while the run wrote its output is, once nothing else failed. */
+function brokenOutput(cause: unknown): InternalError {
+  return new InternalError(brokenOutputView, {
+    cause,
+    correction: viewCorrection,
+    sentence: `Rendering output failed: ${reasonOf(cause)}`,
+  });
+}
+
+/** The selection of a run whose chain never ran, which reaches no Command's result. */
+function unselected(): FailureSelection {
+  return noSelection;
 }
 
 /**
@@ -633,14 +650,15 @@ class ApplicationBuilder<
     if (end.kind === 'completed') {
       return { messages, output, status: 'completed' };
     }
-    const { exitCode, path } = end;
+    const { exitCode, form, path } = end;
     const handler = 'call' in read ? read.call.failure : read.failure;
     const failure = mappedFailure(end.failure, handler, {
       application: this.#name,
       exitCode,
+      form,
       path,
     });
-    return { exitCode, failure, messages, output, status: 'failed' };
+    return { exitCode, failure, form, messages, output, status: 'failed' };
   }
 
   /**
@@ -661,11 +679,17 @@ class ApplicationBuilder<
     let primary: unknown = noPrimary;
     // The failure that set this run's failure code, which an invocation by name hands its caller.
     let decisive: LoomError | undefined = undefined;
+    // The form of each failure this run reported, which holds the hints its hooks returned.
+    const forms = new Map<LoomError, FailureForm>();
     // Each failure a translator answered, keyed to the foreign throw it replaced.
     const translatedFrom = new Map<unknown, unknown>();
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
+    // The run's selection when it failed, published once the chain is about to run.
+    let selected: () => FailureSelection = unselected;
+    // The failure encoders a `run()` writes through, once the plugins are installed for the build.
+    let encoders: EncoderRegistry | undefined = undefined;
     // The host a failure's report reads, once it is captured; before that, the door's fallback.
     let reportHost: Host | undefined = undefined;
     const scene = (): FailureScene & { host: Host } => ({
@@ -674,6 +698,7 @@ class ApplicationBuilder<
       host: (reportHost ??= door.fallback(stderr)),
       invokedBy: door.invokedBy,
       path: walked,
+      selection: selected(),
     });
     // What this run's build decides about its reports, shared by every report the run writes.
     const build: BuildReports = {
@@ -748,6 +773,9 @@ class ApplicationBuilder<
         );
         const { graph, inspected } = built;
         reached = { inspected, plugins: built.plugins };
+        if (door.encodes) {
+          encoders = encoderRegistry(built.plugins);
+        }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = bound?.places ?? inputPlaces(graph);
         const declaredValues =
@@ -785,6 +813,9 @@ class ApplicationBuilder<
               walked = path;
               invocationOutput.useRoute(path);
             },
+            select: (read) => {
+              selected = read;
+            },
             signal: controller.signal,
             sourceOut: output.sourceOut,
             start: entered.start,
@@ -797,11 +828,7 @@ class ApplicationBuilder<
         const fault = output.fault;
         if (fault) {
           // The action returned, so the view failure is this invocation's own failure.
-          throw new InternalError(brokenOutputView, {
-            cause: fault.cause,
-            correction: viewCorrection,
-            sentence: `Rendering output failed: ${reasonOf(fault.cause)}`,
-          });
+          throw brokenOutput(fault.cause);
         }
       } catch (error) {
         primary = error;
@@ -813,8 +840,10 @@ class ApplicationBuilder<
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
-            const sink = { build, output, registry: registry ?? noViews, stderr };
-            if (await reportFailure(sink, failure, scene())) {
+            const sink = { build, encoders, output, registry: registry ?? noViews, stderr };
+            const reported = await reportFailure(sink, failure, scene());
+            forms.set(failure, reported.form);
+            if (reported.broken) {
               code = 1;
             }
           }
@@ -849,15 +878,25 @@ class ApplicationBuilder<
       // A deferred fault a translator answered turns it into that failure's own code instead.
       // The primary outcome keeps its code, the way a view failure leaves it alone.
       // It is reported the way the primary failure is, so an override answers its class.
-      for (const fault of faults) {
+      const reportFault = async (fault: LoomError): Promise<void> => {
         if (!silenced(fault, controller.signal, cancellation())) {
           const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
           // The first fault that sets the code after a primary outcome that succeeded decides it.
           decisive = code === 0 ? fault : decisive;
           code = code === 0 ? own : code;
           try {
-            const sink = output && { build, output, registry: registry ?? noViews, stderr };
-            if (sink && (await reportFailure(sink, fault, scene()))) {
+            const sink = output && {
+              build,
+              encoders,
+              output,
+              registry: registry ?? noViews,
+              stderr,
+            };
+            const reported = sink && (await reportFailure(sink, fault, scene()));
+            if (reported) {
+              forms.set(fault, reported.form);
+            }
+            if (reported?.broken === true) {
               code = 1;
             }
           } catch (reportError) {
@@ -865,6 +904,18 @@ class ApplicationBuilder<
             reportingCause ??= reportError;
           }
         }
+      };
+      for (const fault of faults) {
+        await reportFault(fault);
+      }
+      /**
+       * A report writes the held incomplete-result lines ahead of its failure, or drops them when an
+       * encoder wrote the failure. A run no report reached, such as a cancelled one or one whose
+       * stdout failed, writes them now, and a line whose view broke is then the run's view fault.
+       */
+      const lineFault = await output?.writeIncomplete();
+      if (lineFault !== undefined && decisive === undefined) {
+        await reportFault(brokenOutput(lineFault.cause));
       }
       if (output) {
         const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
@@ -899,7 +950,15 @@ class ApplicationBuilder<
       }
       // A run whose destination alone failed reports that defect, which is its failure.
       const failure = decisive ?? destinationDefect(reportingCause);
-      return { exitCode: code, failure, kind: 'failed', path: walked };
+      // A failure no report reached, such as one whose stderr had failed, ran no hook, so it holds no hint.
+      const form =
+        forms.get(failure) ??
+        failureForm(failure, {
+          development: build.development,
+          hints: [],
+          plain: (text) => output?.plain(text) ?? text,
+        });
+      return { exitCode: code, failure, form, kind: 'failed', path: walked };
     } finally {
       signals?.finish();
     }
@@ -910,7 +969,13 @@ class ApplicationBuilder<
 type RunEnd =
   | { kind: 'cancelled'; exitCode: CancellationCode }
   | { kind: 'completed'; exitCode: 0 }
-  | { kind: 'failed'; exitCode: FailureExitCode; failure: LoomError; path: readonly string[] };
+  | {
+      kind: 'failed';
+      exitCode: FailureExitCode;
+      failure: LoomError;
+      form: FailureForm;
+      path: readonly string[];
+    };
 
 /**
  * The graph an action's run built and validated, which a call the action makes reuses: no lifecycle
@@ -952,6 +1017,8 @@ interface RunEntry {
  */
 interface RunDoor {
   readonly invokedBy: InvokedBy;
+  /** Whether a failure the run reports passes through the failure-encoding stage: `run()` alone. */
+  readonly encodes: boolean;
   /** The stream a report reaches until the run's host names its own. */
   readonly stderr: Writable;
   /** Reads what the caller passed, at run entry. */
@@ -972,6 +1039,7 @@ interface RunDoor {
 function argvDoor(options: RunOptions | undefined): RunDoor {
   return {
     bound: undefined,
+    encodes: true,
     enter: () => {
       const overrides = options?.host;
       return {
@@ -1014,6 +1082,7 @@ function nameDoor<Mapped>(
   const host = () => invocationHost(setup.fields(), streams);
   return {
     bound: action?.bound,
+    encodes: false,
     enter: () => {
       if ('fault' in read) {
         throw read.fault;

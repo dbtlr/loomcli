@@ -28,7 +28,7 @@ const identityGrammar = new RegExp(`^${packageName}(?:${kebabSegment})*$`, 'u');
 
 /**
  * An identity, then a mandatory kebab-case rule name: `@loomcli/core/spelling-taken` or
- * `@loomcli/plugins/manifest/failure-name-conflict`. It is the grammar of a diagnostic rule's
+ * `@loomcli/plugins/manifest/failure-code-conflict`. It is the grammar of a diagnostic rule's
  * identity and of a validator package's issue codes.
  */
 const ruleGrammar = new RegExp(`^${packageName}(?:${kebabSegment})+$`, 'u');

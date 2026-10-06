@@ -110,3 +110,54 @@ test('textstat --format with no value is the missing-value error', () => {
     expect(result.stderr).toContain('--format');
   });
 });
+
+/** Help's hint for the root, which every usage failure carries. */
+const usage = String.raw`"hints":["Run \"textstat --help\" to see the usage."]`;
+
+test.each(['json', 'jsonl'])(
+  'textstat --format %s with an invalid metric writes the invalid-input line alone and exits 2',
+  (selected) => {
+    withOneFile((cwd) => {
+      expect(invoke(main, ['--format', selected, '--metric', 'nope', 'one.txt'], { cwd })).toEqual({
+        status: 2,
+        stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \\"--metric\\": Expected one of: bytes, words, lines.",${usage}}}\n`,
+        stdout: '',
+      });
+    });
+  },
+);
+
+test('textstat --format json --bogus writes the unknown-option line, because core validates --format under the held fault', () => {
+  withOneFile((cwd) => {
+    const result = invoke(main, ['--format', 'json', '--bogus', 'one.txt'], { cwd });
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    const line: { error: { code: string; exitCode: number } } = JSON.parse(result.stderr);
+    expect(line.error).toMatchObject({ code: 'unknown-option', exitCode: 2 });
+  });
+});
+
+test('textstat --format json -c with a missing file writes the configuration failure as the JSON line, because core validates --format under the held input-source fault', () => {
+  withOneFile((cwd) => {
+    expect(invoke(main, ['--format', 'json', '-c', 'missing.json', 'one.txt'], { cwd })).toEqual({
+      status: 2,
+      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \\"--config\\": File \\"missing.json\\" does not exist. Supply the path of an existing file.",${usage}}}\n`,
+      stdout: '',
+    });
+  });
+});
+
+test('textstat writes its text diagnostic when no --format selects an encoded view, or a rejected one selects nothing', () => {
+  withOneFile((cwd) => {
+    const metric = invoke(main, ['--metric', 'nope', 'one.txt'], { cwd });
+    expect(metric.status).toBe(2);
+    expect(metric.stderr).toMatch(
+      /^textstat: Option "--metric": Expected one of: bytes, words, lines\.\n/u,
+    );
+    const rejected = invoke(main, ['--format', 'yaml', 'one.txt'], { cwd });
+    expect(rejected.status).toBe(2);
+    expect(rejected.stderr).toMatch(
+      /^textstat: Option "--format": Supply one of table, json, jsonl\.\n/u,
+    );
+  });
+});

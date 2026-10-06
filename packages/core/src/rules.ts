@@ -152,6 +152,20 @@ const failureExitCode = registerRule('@loomcli/core/failure-exit-code', {
   headline: 'Undeclarable exit code',
 });
 
+/** A failure class whose failure code is outside the kebab-case grammar. */
+const failureCode = registerRule('@loomcli/core/failure-code', {
+  explanation:
+    "A failure's code tells a script or an agent which failure ended the run, where many failures share one exit code. A machine reader branches on the code, so it follows one grammar: words of lowercase letters and digits joined by single hyphens. A code outside it is rejected where the class is first constructed.",
+  headline: 'Invalid failure code',
+});
+
+/** A failure encoder that threw or returned a value that is not a string. */
+const brokenFailureEncoder = registerRule('@loomcli/core/broken-failure-encoder', {
+  explanation:
+    "A failure encoder turns a failure's form into the text a machine reader parses, synchronously and without throwing. Core wrote its own text for the failure in the encoder's place.",
+  headline: 'Broken failure encoder',
+});
+
 /** A diagnostic rule identity outside the `<package>[/<subpath>...]/<kebab-case-rule>` grammar. */
 const ruleIdentity = registerRule('@loomcli/core/rule-identity', {
   explanation:
@@ -175,11 +189,13 @@ const ruleDocs = registerRule('@loomcli/core/rule-docs', {
 
 export {
   brokenDestination,
+  brokenFailureEncoder,
   brokenFailureHook,
   brokenFailureView,
   brokenOutputView,
   brokenTranslator,
   brokenTranslatorCorrection,
+  failureCode,
   failureExitCode,
   foreignGraph,
   foreignGraphCorrection,

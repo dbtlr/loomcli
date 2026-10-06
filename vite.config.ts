@@ -135,6 +135,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/form.ts'],
+        rules: {
+          // The failure form's key order is part of its contract: code, exitCode, message, hints.
+          'eslint/sort-keys': 'off',
+        },
+      },
+      {
         files: ['packages/plugins/src/manifest/document.ts'],
         rules: {
           // An absent scalar reads `null` in the document, as the contract states for every field.
