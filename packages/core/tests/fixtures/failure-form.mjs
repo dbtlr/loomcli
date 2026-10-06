@@ -27,7 +27,11 @@ function hinting(identity, answer) {
 
 /** An application whose action throws what `raise` returns. */
 function raising(raise, plugins = []) {
-  return new Application('forms', { ...packet, plugins }).action(() => {
+  return new Application('forms', {
+    ...packet,
+    description: 'The forms application.',
+    plugins,
+  }).action(() => {
     throw raise();
   });
 }
@@ -38,9 +42,11 @@ const scenarios = {
     const breaking = hinting('@fixture/breaking', () => {
       throw new Error('Broken.');
     });
-    const app = new Application('forms', { ...packet, plugins: [breaking] }).command(
-      new Command('get').action(() => undefined),
-    );
+    const app = new Application('forms', {
+      ...packet,
+      description: 'The forms application.',
+      plugins: [breaking],
+    }).command(new Command('get', { description: 'The get command.' }).action(() => undefined));
     const outcome = await app.invoke(['nope'], {});
     print({ exitCode: outcome.exitCode, form: outcome.form });
   },
@@ -115,9 +121,9 @@ const scenarios = {
   },
   /** An input error that reports two problems holds both lines. */
   'two-problems': async () => {
-    const app = new Application('forms', packet)
-      .option('limit', { type: 'string', validate: digits })
-      .argument('path', { required: true })
+    const app = new Application('forms', { ...packet, description: 'The forms application.' })
+      .option('limit', { description: 'The limit.', type: 'string', validate: digits })
+      .argument('path', { description: 'The path.', required: true })
       .action(() => undefined);
     const outcome = await app.invoke([], { options: { limit: 'x' } });
     print(outcome.form);

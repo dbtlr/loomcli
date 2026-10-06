@@ -125,9 +125,11 @@ async function formOf(app, path = [], values = {}) {
 
 /** An application whose action throws what `raise` returns. */
 function raising(raise) {
-  return new Application('codes', packet).action(() => {
-    throw raise();
-  });
+  return new Application('codes', { ...packet, description: 'The codes application.' }).action(
+    () => {
+      throw raise();
+    },
+  );
 }
 
 const scenarios = {
@@ -135,13 +137,19 @@ const scenarios = {
   'author-faults': async () => {
     const forms = {
       build: await formOf(
-        new Application('codes', { ...packet, plugins: [judging] }).action(() => undefined),
+        new Application('codes', {
+          ...packet,
+          description: 'The codes application.',
+          plugins: [judging],
+        }).action(() => undefined),
       ),
       internal: await formOf(raising(() => new OopsError())),
       result: await formOf(
-        new Application('codes', packet).result().action(() => {
-          // The action returns without emitting the result it declared.
-        }),
+        new Application('codes', { ...packet, description: 'The codes application.' })
+          .result()
+          .action(() => {
+            // The action returns without emitting the result it declared.
+          }),
       ),
       'type-error': await formOf(raising(() => new TypeError('Cannot read the value.'))),
       unconstructed: await formOf(raising(() => Object.create(FatalError.prototype))),
@@ -161,17 +169,23 @@ const scenarios = {
   },
   /** A failure core raises by name for each class reaches the form with the class's code. */
   'core-forms': async () => {
-    const app = new Application('codes', packet)
-      .command(new Command('group').command(new Command('leaf').action(() => undefined)))
+    const app = new Application('codes', { ...packet, description: 'The codes application.' })
       .command(
-        new Command('get').argument('path', { required: true }).action(({ args }) => {
-          if (args.path === 'fatal') {
-            throw new FatalError('Fatal.');
-          }
-          if (args.path === 'declaration') {
-            throw new DeclarationError('A declaration fault.');
-          }
-        }),
+        new Command('group', { description: 'The group command.' }).command(
+          new Command('leaf', { description: 'The leaf command.' }).action(() => undefined),
+        ),
+      )
+      .command(
+        new Command('get', { description: 'The get command.' })
+          .argument('path', { description: 'The path.', required: true })
+          .action(({ args }) => {
+            if (args.path === 'fatal') {
+              throw new FatalError('Fatal.');
+            }
+            if (args.path === 'declaration') {
+              throw new DeclarationError('A declaration fault.');
+            }
+          }),
       );
     const calls = {
       declaration: [['get'], { args: { path: 'declaration' } }],
@@ -194,10 +208,10 @@ const scenarios = {
     for (const Class of Object.values(coreClasses)) {
       Object.defineProperty(Class, 'code', { value: 'x' });
     }
-    const app = new Application('codes', packet)
-      .command(new Command('get').action(() => undefined))
+    const app = new Application('codes', { ...packet, description: 'The codes application.' })
+      .command(new Command('get', { description: 'The get command.' }).action(() => undefined))
       .command(
-        new Command('fail').action(() => {
+        new Command('fail', { description: 'The fail command.' }).action(() => {
           throw new BareError('Bare.');
         }),
       );

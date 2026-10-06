@@ -73,7 +73,9 @@ const encoding = plugin('@fixture/encoding', {
     }),
   },
   onFailure: () => 'Run "enc --help" to see the usage.',
-  options: { pick: { type: 'string', validate: oneOf(['table', 'json']) } },
+  options: {
+    pick: { description: 'The view to pick.', type: 'string', validate: oneOf(['table', 'json']) },
+  },
 });
 
 /** The caller's own controller, which the `cancel` case aborts from inside the action. */
@@ -99,9 +101,9 @@ async function* refusedRows() {
 }
 
 /** A Command whose rows render as they arrive and whose source throws after its first row. */
-const list = new Command('list')
-  .option('depth', { type: 'string', validate: digits })
-  .option('how', { type: 'string' })
+const list = new Command('list', { description: 'The list command.' })
+  .option('depth', { description: 'The depth.', type: 'string', validate: digits })
+  .option('how', { description: 'How the Command fails.', type: 'string' })
   .rows({ views: { json: { mediaType: 'application/json', row }, table: { row } } })
   .views({}, { default: 'table' })
   .action(async ({ options, out }) => {
@@ -116,7 +118,7 @@ const list = new Command('list')
   });
 
 /** A Command whose default view declares the encoded media type. */
-const wire = new Command('wire')
+const wire = new Command('wire', { description: 'The wire command.' })
   .result({ views: { json: { mediaType: 'application/json', render }, text: { render } } })
   .views({}, { default: 'json' })
   .action(() => {
@@ -124,15 +126,19 @@ const wire = new Command('wire')
   });
 
 /** A Command with a result and a child, for the structural faults core raises from argv words alone. */
-const flags = new Command('flags')
-  .option('count', { type: 'boolean' })
-  .option('tag', { type: 'string' })
+const flags = new Command('flags', { description: 'The flags command.' })
+  .option('count', { description: 'The count.', type: 'boolean' })
+  .option('tag', { description: 'The tag.', type: 'string' })
   .result({ views: { json: { mediaType: 'application/json', render } } })
-  .command(new Command('inner').option('deep', { type: 'string' }).action(() => undefined))
+  .command(
+    new Command('inner', { description: 'The inner command.' })
+      .option('deep', { description: 'The depth.', type: 'string' })
+      .action(() => undefined),
+  )
   .action(({ out }) => out.results({}));
 
 /** A Command with a result and no argument. */
-const extra = new Command('extra')
+const extra = new Command('extra', { description: 'The extra command.' })
   .result({ views: { json: { mediaType: 'application/json', render } } })
   .action(({ out }) => out.results({}));
 
@@ -147,7 +153,12 @@ const judging = plugin('@fixture/judging', {
 const branded = override(FatalError, { render: (failure) => `branded: ${failure.message}\n` });
 
 function application(plugins = [encoding]) {
-  return new Application('enc', { ...packet, plugins, views: [branded] })
+  return new Application('enc', {
+    ...packet,
+    description: 'The enc application.',
+    plugins,
+    views: [branded],
+  })
     .command(list)
     .command(wire)
     .command(flags)

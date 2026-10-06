@@ -2784,7 +2784,6 @@ interface Preparation {
   routed: ParsedInvocation;
 }
 
-/** The passthrough tail a validator reads: the routed Command's, or none while a fault is held. */
 /**
  * The routed Command's own parsed inputs a validation pass reads: its arguments, its local option
  * values, and its passthrough tail. A pass whose locals were held reads none.
