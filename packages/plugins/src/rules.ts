@@ -29,4 +29,11 @@ const failureNameConflict = diagnosticRule(`${Package.name}/manifest/failure-nam
   headline: 'Failure name conflict',
 });
 
-export { configFilePath, configFilePattern, failureNameConflict };
+/** A version plugin `postfix` setting that is not one line of prose. */
+const versionPostfix = diagnosticRule(`${Package.name}/version/postfix`, {
+  explanation:
+    'The version plugin prints the postfix after the version on its one line, so the postfix holds a character other than whitespace and no line terminator.',
+  headline: 'Invalid version postfix',
+});
+
+export { configFilePath, configFilePattern, failureNameConflict, versionPostfix };

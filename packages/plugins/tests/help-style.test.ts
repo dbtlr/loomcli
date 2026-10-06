@@ -14,6 +14,37 @@ test('the version uses a bold highlighted name and primary version with an unsty
   });
 });
 
+test.each([
+  [{}, '\u001b[33;1mapp\u001b[39;22m v1.2.3 \u001b[90m(Report schema v1)\u001b[39m\n'],
+  [
+    { theme: 'custom' },
+    '\u001b[36;1mapp\u001b[39;22m \u001b[32mv1.2.3\u001b[39m \u001b[35m(Report schema v1)\u001b[39m\n',
+  ],
+])('a postfix is dim after one unstyled space: %j', (options, stdout) => {
+  expect(
+    run({
+      postfix: '(Report schema v1)',
+      rendering: { color: 'always', modifiers: 'always' },
+      version: 'v1.2.3',
+      ...options,
+    }),
+  ).toEqual({ status: 0, stderr: '', stdout });
+});
+
+test('a postfix holding marker characters prints them literally', () => {
+  expect(
+    run({
+      postfix: '(schema \uE001v1\uE002)',
+      rendering: { color: 'always', modifiers: 'always' },
+      version: 'v1.2.3',
+    }),
+  ).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '\u001b[33;1mapp\u001b[39;22m v1.2.3 \u001b[90m(schema \uE001v1\uE002)\u001b[39m\n',
+  });
+});
+
 test('help styles each semantic fragment, including deprecation punctuation and opaque examples', () => {
   expect(run({ argv: ['--help'], rendering: { color: 'always', modifiers: 'always' } })).toEqual({
     status: 0,

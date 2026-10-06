@@ -16,6 +16,10 @@ const explanations = {
     'glob syntax only as the whole extension of its name: * for any format the plugin',
     'reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.',
   ],
+  'version/postfix': [
+    'The version plugin prints the postfix after the version on its one line, so the',
+    'postfix holds a character other than whitespace and no line terminator.',
+  ],
 };
 
 type Rule = keyof typeof explanations;
@@ -55,7 +59,19 @@ function marked(call: string, target: string): string[] {
   return [line, `${' '.repeat(start)}${'^'.repeat(target.length)}`];
 }
 
-/** Each configuration settings fault, which a JavaScript author alone reaches, by scenario. */
+/** One postfix fault: the call that declares it, and what the finding marks. */
+function postfixFault(call: string, target: string): Expected {
+  return {
+    correction: 'Supply one line, such as "(Report schema v1)", or omit the postfix.',
+    finding: marked(call, target),
+    headline: 'INVALID VERSION POSTFIX',
+    rule: 'version/postfix',
+    sentence:
+      'Plugin "@loomcli/plugins/version" postfix must be a string that holds a character other than whitespace and no line terminator.',
+  };
+}
+
+/** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
   'config-glob': {
     correction:
@@ -81,6 +97,12 @@ const settingsCases: Record<string, Expected> = {
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
+  'version-blank': postfixFault("version({ postfix: ' ' })", "postfix: ' '"),
+  'version-lines': postfixFault(
+    String.raw`version({ postfix: 'schema\u000av1' })`,
+    String.raw`postfix: 'schema\u000av1'`,
+  ),
+  'version-number': postfixFault('version({ postfix: 1 })', 'postfix: 1'),
 };
 
 test.each(Object.entries(settingsCases))(

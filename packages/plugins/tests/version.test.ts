@@ -52,3 +52,46 @@ test('the routed Command does not change the line, because the version is the Ap
     stdout: 'app v1.2.0\n',
   });
 });
+
+test('a postfix follows the standard line after one space', () => {
+  expect(run('version-postfix', ['--version'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'app v1.2.0 (Report schema v1)\n',
+  });
+});
+
+/** What one `version()` call returns or throws under `settings`. */
+function settingsOutcome(settings: unknown): unknown {
+  const settingsFixture = new URL('fixtures/version-settings.mjs', import.meta.url);
+  const result = invoke(settingsFixture, [JSON.stringify(settings)]);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return JSON.parse(result.stdout);
+}
+
+test.each([['schema v1'], [5], [null], [['schema v1']]])(
+  'version(%j) rejects settings that are not an object at the factory call',
+  (settings) => {
+    expect(settingsOutcome(settings)).toEqual({
+      correction: 'Supply a settings object, or omit the settings.',
+      findings: [
+        { call: 'version', mark: '0', note: 'declared by plugin "@loomcli/plugins/version"' },
+      ],
+      rule: '@loomcli/core/not-an-object',
+      sentence: 'Plugin "@loomcli/plugins/version" declares settings that are not an object.',
+    });
+  },
+);
+
+test('version() with empty settings prints the standard line', () => {
+  expect(settingsOutcome({})).toBe('returned');
+  expect(run('version-empty', ['--version'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'app v1.2.0\n',
+  });
+});
+
+test('version() judges no short setting, because its short spelling is fixed', () => {
+  expect(settingsOutcome({ short: 'ab' })).toBe('returned');
+});
