@@ -463,7 +463,7 @@ The projection a shell reads while the operator types: a printed script that cal
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **MCP tool**:
-One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that joins the application name and the Command's path with `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
+One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that is the Command's path joined with `_`, or the application name for the root, with each `-` written as `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
 _Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted in)
 
 **Formatter**:
