@@ -113,13 +113,22 @@ function open(scenario = 'default') {
     return finish();
   };
 
+  /**
+   * Stops reading stdout, as a client that exits does, then ends stdin and waits for the process
+   * to exit. A write the server makes after this fails with a broken pipe.
+   */
+  const hangUp = async (): Promise<Ending> => {
+    child.stdout.destroy();
+    return close();
+  };
+
   /** Waits for the process to exit on its own, with stdin left open. */
   const finish = async (): Promise<Ending> => {
     const status = await exit;
     return { lines: lines(), messages: lines().map(parse), status, stderr };
   };
 
-  return { close, finish, next, observed, send };
+  return { close, finish, hangUp, next, observed, send };
 }
 
 export { meta, open, request, serverInfo };

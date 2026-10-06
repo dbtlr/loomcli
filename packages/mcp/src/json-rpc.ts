@@ -104,28 +104,33 @@ function classify(line: string): Incoming {
     : { kind: 'invalid', id: null, error: notRequest };
 }
 
+/** Whether a line holds nothing but JSON whitespace, which carries no message. */
+function isBlank(line: string) {
+  return /^[\t\r ]*$/u.test(line);
+}
+
 /**
- * Splits a stream of chunks into lines. A message split across two reads joins into one line, and
- * a multibyte character split across two chunks decodes once.
+ * Splits a stream of chunks into lines. A message split across two reads joins into one line, a
+ * multibyte character split across two chunks decodes once, and a blank line is dropped.
  */
 class LineSplitter {
   #pending = '';
   readonly #decoder = new TextDecoder();
 
-  /** The complete lines a chunk finishes, in order. */
+  /** The complete lines a chunk finishes, in order, blank ones left out. */
   push(chunk: string | Uint8Array): string[] {
     this.#pending +=
       typeof chunk === 'string' ? chunk : this.#decoder.decode(chunk, { stream: true });
     const lines = this.#pending.split('\n');
     this.#pending = lines.pop() ?? '';
-    return lines;
+    return lines.filter((line) => !isBlank(line));
   }
 
-  /** The last line, when the input ended without a line feed after it. */
+  /** The last line, when the input ended without a line feed after it and it is not blank. */
   end(): string[] {
     const rest = this.#pending + this.#decoder.decode();
     this.#pending = '';
-    return rest === '' ? [] : [rest];
+    return isBlank(rest) ? [] : [rest];
   }
 }
 

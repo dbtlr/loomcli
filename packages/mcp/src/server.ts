@@ -35,9 +35,14 @@ interface ServerInput {
   destroy(): unknown;
 }
 
-/** The stream a server writes, such as a process's stdout. */
+/**
+ * The stream a server writes, such as a process's stdout: the members of a Node.js writable stream
+ * the server uses.
+ */
 interface ServerOutput {
   write(chunk: string, callback: (error?: Error | null) => void): unknown;
+  on(event: 'error', listener: (error: Error) => void): unknown;
+  off(event: 'error', listener: (error: Error) => void): unknown;
 }
 
 /** How a run ends early: when `signal` aborts, every call aborts and the server writes nothing more. */
@@ -118,6 +123,11 @@ function requestFault(method: string, params: unknown): ProtocolError | undefine
   return envelopeFault(params);
 }
 
+/** Listens for the output's error event. A write the client cannot read has no one to report to. */
+function dropWriteError() {
+  // The write's own callback has already settled it.
+}
+
 /**
  * Hands each chunk of the input to `read` until the input ends or the signal aborts. An abort
  * stops reading by destroying the input, since a run that ends on its signal reads nothing more,
@@ -160,6 +170,15 @@ function readChunks(
 }
 
 /**
+ * A request in flight: the controller that aborts it, and whether it is a `tools/call`, the only
+ * request whose handler sees that signal.
+ */
+interface Pending {
+  readonly controller: AbortController;
+  readonly call: boolean;
+}
+
+/**
  * One run of a server over one pair of streams: the requests in flight, the open subscriptions,
  * and the writes not yet flushed.
  */
@@ -167,7 +186,7 @@ class Session {
   readonly #options: McpServerOptions;
   readonly #output: ServerOutput;
   /** Each request in flight by id. A cancelled request leaves the map, so its answer is dropped. */
-  readonly #inFlight = new Map<RequestId, AbortController>();
+  readonly #inFlight = new Map<RequestId, Pending>();
   readonly #settling = new Set<Promise<void>>();
   readonly #subscriptions = new Set<RequestId>();
   readonly #writes = new Set<Promise<void>>();
@@ -177,6 +196,9 @@ class Session {
   constructor(options: McpServerOptions, output: ServerOutput) {
     this.#options = options;
     this.#output = output;
+    // A failed write, such as a broken pipe after the client exits, also emits "error" on the stream.
+    // With no listener that ends the process, so the session listens until it ends.
+    output.on('error', dropWriteError);
   }
 
   /** Handles each line a chunk of the input finishes. */
@@ -188,9 +210,9 @@ class Session {
 
   /**
    * Ends the run once the input has ended: a last line with no line feed is handled, every call
-   * aborts, and once each has settled, each open subscription is cancelled and answered with its
-   * closing result. Resolves when every message has been handed to the output. After the caller's
-   * signal, nothing is written.
+   * aborts and answers nothing, and once each has settled, each open subscription is cancelled and
+   * answered with its closing result. Resolves when every message has been handed to the output,
+   * and stops listening for the output's errors. After the caller's signal, nothing is written.
    */
   async end() {
     for (const line of this.#splitter.end()) {
@@ -201,12 +223,18 @@ class Session {
     for (const settling of this.#settling) {
       await settling;
     }
+    this.#closeSubscriptions();
+    await Promise.all(this.#writes);
+    this.#output.off('error', dropWriteError);
+  }
+
+  /** Cancels each open subscription and answers it with its closing result. */
+  #closeSubscriptions() {
     for (const id of this.#subscriptions) {
       this.#send(notificationMessage('notifications/cancelled', { requestId: id }));
       this.#send(resultMessage(id, this.#stamp({}, id)));
     }
     this.#subscriptions.clear();
-    await Promise.all(this.#writes);
   }
 
   /** Handles one line the client wrote. */
@@ -235,7 +263,7 @@ class Session {
   }
 
   #abortAll() {
-    for (const controller of this.#inFlight.values()) {
+    for (const { controller } of this.#inFlight.values()) {
       controller.abort();
     }
   }
@@ -246,13 +274,13 @@ class Session {
     if (!isRequestId(id) || this.#subscriptions.delete(id)) {
       return;
     }
-    const controller = this.#inFlight.get(id);
+    const pending = this.#inFlight.get(id);
     this.#inFlight.delete(id);
-    controller?.abort();
+    pending?.controller.abort();
   }
 
   #request(id: RequestId, method: string, params: unknown) {
-    const fault = requestFault(method, params);
+    const fault = this.#idInUse(id) ?? requestFault(method, params);
     if (fault !== undefined) {
       this.#send(errorMessage(id, fault));
     } else if (method === 'subscriptions/listen') {
@@ -260,6 +288,19 @@ class Session {
     } else {
       this.#start(id, method, isRecord(params) ? params : {});
     }
+  }
+
+  /**
+   * The answer to a request whose id a call or subscription still in flight holds. The request in
+   * flight keeps its id and runs untouched, so its answer stays the only one under that id.
+   */
+  #idInUse(id: RequestId): ProtocolError | undefined {
+    return this.#inFlight.has(id) || this.#subscriptions.has(id)
+      ? new ProtocolError(
+          errorCodes.invalidRequest,
+          `The request id ${JSON.stringify(id)} is in use by a request still in flight. Send each request with an id no request in flight holds.`,
+        )
+      : undefined;
   }
 
   /** Opens a subscription. The server offers no notification type, so it sends nothing more on it. */
@@ -274,20 +315,28 @@ class Session {
   }
 
   #start(id: RequestId, method: string, params: Record<string, unknown>) {
-    const controller = new AbortController();
-    this.#inFlight.set(id, controller);
-    const settling = this.#answer(id, controller, this.#outcome(method, params, controller.signal));
+    const pending = { call: method === 'tools/call', controller: new AbortController() };
+    this.#inFlight.set(id, pending);
+    const outcome = this.#outcome(method, params, pending.controller.signal);
+    const settling = this.#answer(id, pending, outcome);
     this.#settling.add(settling);
     void settling.finally(() => this.#settling.delete(settling));
   }
 
-  /** Writes a request's answer once it settles, unless the request was cancelled meanwhile. */
-  async #answer(id: RequestId, controller: AbortController, outcome: Promise<object>) {
+  /**
+   * Writes a request's answer once it settles, unless the client cancelled it meanwhile. A call
+   * whose signal aborted, which only shutdown or the run's signal does to a call still in the map,
+   * answers nothing either.
+   */
+  async #answer(id: RequestId, pending: Pending, outcome: Promise<object>) {
     const settled = await outcome;
-    if (this.#inFlight.get(id) !== controller) {
+    if (this.#inFlight.get(id) !== pending) {
       return;
     }
     this.#inFlight.delete(id);
+    if (pending.call && pending.controller.signal.aborted) {
+      return;
+    }
     this.#send(
       settled instanceof ProtocolError ? errorMessage(id, settled) : resultMessage(id, settled),
     );
@@ -361,7 +410,8 @@ class Session {
     if (this.#silenced) {
       return;
     }
-    // A write the client can no longer read has no one to report to, so its error is dropped.
+    // A write the client can no longer read has no one to report to, so its callback drops the error.
+    // The session's error listener drops the stream's error event the same way.
     const written = new Promise<void>((resolve) => {
       this.#output.write(frame(message), () => resolve());
     });
@@ -384,9 +434,9 @@ class McpServer {
 
   /**
    * Serves one client until the input ends or `signal` aborts. When the input ends, the server
-   * aborts every call in flight, waits for each to settle, closes each open subscription, and
-   * resolves. When `signal` aborts, before or after the input ends, it stops reading, aborts
-   * every call, writes nothing more, and resolves once every call has settled.
+   * aborts every call in flight, answers none of them, waits for each to settle, closes each open
+   * subscription, and resolves. When `signal` aborts, before or after the input ends, it stops
+   * reading, aborts every call, writes nothing more, and resolves once every call has settled.
    */
   async run(input: ServerInput, output: ServerOutput, options: RunOptions = {}): Promise<void> {
     const { signal } = options;

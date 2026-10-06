@@ -45,13 +45,14 @@ describe('stdio framing', () => {
     await session.close();
   });
 
-  it('answers a blank line with -32700, since it is not JSON', async () => {
+  it('ignores a blank line', async () => {
     const session = open();
     session.send('\n');
-    session.send('  \n');
-    await expect(session.next()).resolves.toEqual(error(null, -32_700));
-    await expect(session.next()).resolves.toEqual(error(null, -32_700));
-    await session.close();
+    session.send(' \t\r\n');
+    session.send(request(1, 'server/discover'));
+    await expect(session.next()).resolves.toMatchObject({ id: 1 });
+    const { messages } = await session.close();
+    expect(messages).toHaveLength(1);
   });
 
   it('answers a batch with -32600', async () => {

@@ -34,9 +34,9 @@ describe('notifications/cancelled', () => {
     session.send(request(3, 'tools/call', { name: 'echo' }));
     await expect(session.next()).resolves.toMatchObject({ id: 3 });
     const { messages, stderr } = await session.close();
-    // Closing stdin aborts the call still in flight, which then answers.
+    // Closing stdin aborts the call still in flight, which answers nothing.
     expect(stderr).toContain('aborted two\n');
-    expect(messages.map((message) => message.id)).toEqual([3, 2]);
+    expect(messages.map((message) => message.id)).toEqual([3]);
   });
 
   it('changes nothing for an unknown or settled id', async () => {
@@ -61,8 +61,8 @@ describe('notifications/cancelled', () => {
     session.send(request(2, 'server/discover'));
     await expect(session.next()).resolves.toMatchObject({ id: 2 });
     const { messages, stderr } = await session.close();
-    // The call ran until shutdown aborted it, so it answered.
+    // The call ran until shutdown aborted it, and a call shutdown aborts answers nothing.
     expect(stderr.indexOf('aborted number')).toBeGreaterThan(-1);
-    expect(messages.map((message) => message.id)).toEqual([2, 1]);
+    expect(messages.map((message) => message.id)).toEqual([2]);
   });
 });
