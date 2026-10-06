@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0063 - The MCP plugin serves opted-in Commands as tools
 description: '@loomcli/plugins/mcp installs a plugin Command, app mcp, whose action serves every Command that carries an mcpCommand value as one MCP tool over stdio, each call run through invoke. Tool names flatten the path, annotations are hints the author owns and Loom never infers, and the protocol is written in a private workspace package pinned to revision 2026-07-28 and compiled into the plugin pack.'
-status: proposed
+status: accepted
 created: 2026-10-05
 modified: 2026-10-06
 ---
@@ -48,7 +48,7 @@ The failed-call structure depends on a stable failure identity defined by its ow
 
 ## Status
 
-Proposed 2026-10-05 with the contract in [MCP](../core.md#mcp). It moves to accepted inside the release PR of the release that ships the implementation: jsonkit serving its opted-in Commands in real MCP sessions over stdio under Node and Bun, the protocol package's conformance tests passing, and `check:packed` serving a session from the packed pack.
+Accepted in 0.9.0.
 
 ## Changelog
 

@@ -6,6 +6,188 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.9.0 - 2026-10-06
+
+0.9.0 lets an agent drive a Loom application without its command line. `invoke` runs a Command by name with named values, as `run()` runs the argv that spells them, and returns a structured outcome with no process effects. The MCP plugin, `mcp()`, serves every Command that opts in as one Model Context Protocol tool over stdio, each call run through `invoke`. Every failure now carries a stable code and a plain-data form, `{ code, exitCode, message, hints }`, which a tool error, an `invoke` outcome, and the formatter's one-line JSON failure output under `--format json` all report.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.9.0`.
+
+The three migrations below are independent. The version line's view receives the postfix beside the graph. A development build fails on a Command or input with no description, because agents, MCP tools, help, and the manifest describe a Command by its descriptions. And a manifest failure entry reads its code from the failure class instead of a hand-written name, so a failure has one identity everywhere it is reported.
+
+### Breaking Changes
+
+- Add `postfix` to the version plugin's settings, so `version({ postfix: '(Report schema v1)' })` prints `app v1.2.0 (Report schema v1)`: the standard line, one space, and the postfix, dim and escaped. A postfix that is not one line of prose throws `@loomcli/plugins/version/postfix` from `version()`. See [Version](docs/core.md#version).
+- Change the data `versionLine` renders from the `CommandGraph` to `VersionLine`, `{ graph, postfix }`, so an override reads the postfix beside the graph. `VersionSettings` and `VersionLine` are exported.
+- Add `isProseLine` to `@loomcli/core`, the one-line rule every core fact string follows, so a plugin judges a setting printed inside one line against core's rule. See [Plugin settings](docs/core.md#plugin-settings).
+- Add `checkPluginSettings` to `@loomcli/core`, which judges a plugin factory's settings object alone, so a factory with no `short` setting applies core's not-an-object rule without judging a `short` key. `checkShortSetting` applies it first and behaves as before.
+
+### Migration
+
+**Affected surface.** Applications that override `versionLine` from `@loomcli/plugins/version/views`.
+
+**Why.** The version line now carries the postfix the application gave `version()`, so its view receives the graph and the postfix together, as the help page receives the graph, the routed Command, and the variant.
+
+**Before and after.**
+
+Before:
+
+```ts
+override(versionLine, {
+  render: (graph, context) => `${graph.name} ${graph.version}\n`,
+});
+```
+
+After:
+
+```ts
+override(versionLine, {
+  render: ({ graph }, context) => `${graph.name} ${graph.version}\n`,
+});
+```
+
+An override that calls the default passes the data through unchanged, so only the parameter's name reads differently:
+
+```ts
+override(versionLine, {
+  render: (line, context) => `build\n${versionLine.render(line, context)}`,
+});
+```
+
+**Steps.**
+
+1. Find each `override(versionLine, ...)` in the application.
+2. Read the graph from the data's `graph` field, and the postfix from its `postfix` field when the override prints it.
+
+**Validation.** Run the application's type check, which rejects a replacement that still reads the graph as its data, and run `<app> --version` to confirm the line.
+
+- Change a development build to fail every `run()` and every `app.invoke()` whose graph holds a Command, the root included, a global or local option, or an argument without a description. The run exits 1 with one Developer Diagnostic under `@loomcli/core/undescribed`, which lists each gap with the call that declared it, hidden and deprecated members and what a plugin or its `onCommandAttach` hook declares included. The check runs before routing, so `--help` and a completion request fail too. `inspect()`, an action's `invoke`, and a distributed build run no such check. See [Undescribed declarations](docs/core.md#undescribed-declarations).
+
+### Migration
+
+**Affected surface.** Applications whose `loom.packet.json` reads `development`, run from source or from a bundle built without `packet()`, that leave out `description` on the Application, on a `Command`, on a `globalOption()`, `option()`, or `argument()` call, or on a plugin's `options` entry. A distributed build is unaffected.
+
+**Why.** Agents, MCP tools, help, and the manifest describe a Command and its inputs by their descriptions, so the author meets a gap in development before an operator or an agent meets it in a shipped application.
+
+**Before and after.**
+
+Before, a development run of `store get name` printed the value:
+
+```ts
+export const store = new Application('store', { packet })
+  .globalOption('verbose', { type: 'boolean' })
+  .command(
+    new Command('get')
+      .argument('path', { required: true })
+      .action(({ args, out }) => out.print(args.path)),
+  );
+```
+
+After, the same run exits 1 with `4 declarations have no description.` and a finding for each gap. Describe each member:
+
+```ts
+export const store = new Application('store', { description: 'Read stored values.', packet })
+  .globalOption('verbose', { description: 'Print more detail.', type: 'boolean' })
+  .command(
+    new Command('get', { description: 'Read one value at a path.' })
+      .argument('path', { description: 'The path to read.', required: true })
+      .action(({ args, out }) => out.print(args.path)),
+  );
+```
+
+**Steps.**
+
+1. Run the application from source in a development build, such as `bun src/main.ts --help`.
+2. For each finding the diagnostic lists, add a one-line `description` to the call it marks: the Application's options for the root, the `Command` constructor's options for a Command, and the config of each option and argument.
+3. For a finding noted `declared by plugin "<identity>"`, or one that marks a plugin's `options` entry or `commands` entry, describe the member in the plugin, or report the gap to the plugin's author.
+
+**Validation.** Run the application from source with no arguments and with `--help`, and confirm that neither prints a diagnostic under `@loomcli/core/undescribed`. Run the application's own tests in a development build.
+
+- Change a `manifestCommand` failure entry to read its failure code from the class: an entry is `{ failure, meaning }`, and the manifest document lists `{ code, exitCode, meaning }` in place of `{ name, exitCode, meaning }`. A stale `name` key is dropped, not rejected, and `exitCodes` rows name failure codes. A class whose code is outside the grammar is rejected at the call with core's own sentence. See [Manifest failures](docs/core.md#manifest-failures).
+- Rename the manifest's conflict rule to `@loomcli/plugins/manifest/failure-code-conflict`, keyed on the failure code. Its sentence reads `Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select".` with the correction `Declare one exit code and one meaning for each failure code.`
+- Reject a failure class whose static `code` is not a kebab-case string at its first construction, under `@loomcli/core/failure-code`, such as `Failure class "RegistryDownError" declares failure code "Registry_Down".` A class that used `static code` for another purpose now declares a failure code.
+
+### Migration
+
+**Affected surface.** Applications and plugins that pass `failures` to `manifestCommand()` from `@loomcli/plugins/manifest/extension`, consumers that read `name` on the manifest document's failure entries or key on `@loomcli/plugins/manifest/failure-name-conflict`, and failure classes that declare a static `code` outside the kebab-case grammar.
+
+**Why.** A failure's identity now lives on its class as a static `code`, which survives a minifying build and which `invoke()`'s outcome, a failure encoder, and the manifest all report, so a hand-written name would be a second spelling of it.
+
+**Before and after.**
+
+Before:
+
+```ts
+export class PathNotFoundError extends FatalError {
+  static override readonly exitCode = EX_DATAERR;
+  // ...
+}
+
+manifestCommand({
+  failures: [
+    { failure: PathNotFoundError, meaning: 'The path names no value in the document.', name: 'path-not-found' },
+  ],
+});
+```
+
+After:
+
+```ts
+export class PathNotFoundError extends FatalError {
+  static override readonly code = 'path-not-found';
+  static override readonly exitCode = EX_DATAERR;
+  // ...
+}
+
+manifestCommand({
+  failures: [{ failure: PathNotFoundError, meaning: 'The path names no value in the document.' }],
+});
+```
+
+**Steps.**
+
+1. For each `manifestCommand()` failure entry, move its `name` to the class it names as `static override readonly code`, and remove `name` from the entry.
+2. Give two classes that shared an inherited code, such as two `FatalError` subclasses with different exit codes or meanings, codes of their own, or `--manifest` reports `@loomcli/plugins/manifest/failure-code-conflict`.
+3. Rename a static `code` that is not lowercase letters and digits joined by single hyphens, such as `ENOENT` or a number, so it follows the grammar, or move the value to another static name.
+4. Read `code` in place of `name` on each manifest failure entry, and key on `@loomcli/plugins/manifest/failure-code-conflict` in place of `@loomcli/plugins/manifest/failure-name-conflict`.
+
+**Validation.** Run the application's type check and tests, then run `<app> --manifest` and confirm that each Command's `failures` entries list the codes the classes declare and that the run exits 0.
+
+### Changes
+
+- Add `invoke(path, values, options?)`, which runs one Command by its path with named values in place of argv, captures what the run writes, and resolves a structured outcome: `completed` with `output` and `messages`, `failed` with the failure, its `exitCode`, and the captured text, or `cancelled` with `130` or `143`. An embedding host calls `app.invoke`, which builds the graph for each call and reads `env`, `cwd`, `platform`, and `readSource` from the process unless `host` replaces one. An action calls `invoke` on its context, which reuses the graph its run built and derives its signal from the run's. An invocation by name behaves as `run()` does on the argv that spells the same path and values, and it touches no process: it installs no signal listener, sets no `process.exitCode`, writes to no real stream, and reads an empty stdin on a host with no terminal. See [Invocation by name](docs/core.md#invocation-by-name).
+  - Each value lowers to the tokens argv would give: a string or a finite number is one token, a Boolean a spelling or its absence, a whole number on a counted option that many occurrences, `true` on an option with an implied value the bare spelling, and an array one occurrence per element. Arguments bind by name. A value no token spells is an input problem with exit code 2, such as `Option "file": Use a string or a number.`
+  - Every problem names an input by its declared name, the key the caller wrote, so `Unknown option "verbos". Supply the name of a declared option.` and `Command "get" declares no argument "pth". Supply the name of a declared argument.` replace the spelled sentences.
+  - `view` selects the starting view, and a name the routed Command's result does not hold is the `@loomcli/core/view-selection` defect named for `invoke()`, such as `invoke() selected view "yaml", which Command "count" does not name.`
+  - A `failure` handler maps the translated failure into the outcome after the failure's report is written to `messages`. A malformed call is a defect under the new rule `@loomcli/core/invoke-options`, such as `invoke() received a signal that is not an AbortSignal.`
+- Export the types `InvocationValues`, `InvokeOptions`, and `InvocationOutcome`, and add `invoke` to `ActionContext`.
+- Add `invokedBy`, `'argv'` or `'name'`, to `FailureViewContext`, `FailureHookContext`, and `SourceContext`, so a failure view, a hint, or a configuration source can tell a run `invoke()` started from one a command line started.
+
+- Change help's failure hint to add no line for an invocation by name, where no command line exists to rerun with `--help`. See [Help's failure hint](docs/core.md#helps-failure-hint).
+- Change the suggestions plugin to offer the declared names of the visible options for an unknown option in an invocation by name, printed as names, such as `Did you mean "verbose"?`. See [Suggestions](docs/core.md#suggestions).
+- Change the configuration plugin to name an option by its declared name in an invocation by name, as core does there, such as `Option "min-bytes" (from minBytes in .textstat.toml): Use a string or a number.` and `Option "config": File "missing.json" does not exist. Supply the path of an existing file.`
+
+- Add `onGraphBuilt` to a plugin definition, typed by the exported `GraphBuiltHook`. Core calls it once per graph build, after every `onCommandAttach` hook, with the frozen graph `inspect()` returns, on every `run()`, `inspect()`, and `app.invoke()` and never again for an action's `invoke`. A hook rejects the graph by throwing a `DeclarationError`, which reports as itself with exit 1. Any other throw, and any returned value, a promise included, is the build fault `@loomcli/core/broken-graph-hook`, and an `onGraphBuilt` that is not a function is rejected by `plugin()`. See [Judging the built graph](docs/core.md#judging-the-built-graph).
+- Add `mediaType` to every view shape, `View` and `RowView`, bare or declared through `view()`, and add `mediaTypes` to `ResultNode`: each view's declared media type by view name, or `null` where a view declares none. The call that stores a view reads its media type once, and core never checks the string against the text the view writes. A media type that is not a string throws `@loomcli/core/media-type`, such as `Command "count" names view "csv" with a media type that is not a string.` See [Media types](docs/core.md#media-types).
+- Add `control` to every option config, a local option, a global option, a plugin's option, and an option a lifecycle hook declares, and to every `OptionNode` that `inspect()` returns. It marks an option that controls the invocation rather than feeding the Command's work, reads `false` when omitted, and changes nothing at run time. A value that is not a Boolean throws `@loomcli/core/flag-not-boolean`, and `control` on an argument throws `@loomcli/core/misplaced-listing-fact`. See [Control options](docs/core.md#control-options).
+- Change the formatter's `json()` and `jsonl()` to declare `application/json` and `application/jsonl` under every `map`, and mark `--format`, `--help`, `--version`, `--manifest`, and `--config` as control options.
+- Change the manifest to carry `control` on every option entry and `mediaTypes` on every result. Its `encodings` statements now apply to the views whose media types they name, never to a view name.
+- Fix a development build's converter failure to report as the other build faults do: no `onFailure` hook runs for it, so no hint prints under its Developer Diagnostic.
+
+- Add a failure code to every failure class: a static, kebab-case `code`, read like `exitCode` from the nearest class that declares one and captured at the class's first construction. Core's classes carry fixed codes, such as `unknown-command`, `unknown-option`, `invalid-input`, and `fatal`, an author's class inherits its parent's, and `DeclarationError`, `InternalError`, and `ResultError` read `internal`. See [Failure codes](docs/core.md#failure-codes).
+- Add the failure form, `{ code, exitCode, message, hints }`, typed by the exported `FailureForm`: one failure as frozen plain data, with its message and hints as plain text and a defect reading `Something went wrong.` in a distributed build. `invoke()`'s failed outcome and its caller's `failure` handler context carry it as `form`. See [The failure form](docs/core.md#the-failure-form).
+- Add `view` and `mediaType` to `FailureViewContext` and `FailureHookContext`: the view the result would render through when the run failed, a middleware's assignment, else the view `invoke()` started with, else the routed Command's default view, and the media type that view declares. Both read `undefined` for a build fault, an unknown command, a Command with no result, and a selected name the result does not hold. See [Failure view context](docs/core.md#failure-view-context).
+- Add `ownOptions` to the middleware context: the validated value of each option the plugin declared, its global options and the local options its `onCommandAttach` hook declared on the routed Command, whatever fault core holds for another input. Under any held fault, such as an unknown option or a configuration file that cannot be read, core still validates a plugin's own options whose tokens parsed, for `ownOptions` alone, and the held fault stays the one reported. A validator runs at most once per run, so an option whose validator threw is absent and is not validated again. See [Middleware](docs/core.md#middleware).
+- Add failure encoders: `encodeFailure(mediaType, encoder)`, typed by the exported `FailureEncoder` and `FailureEncoding`, listed under a plugin's new `failureEncoders`. When a failed `run()` selected a view whose media type an installed plugin encodes, core writes the encoder's text for the failure's form to stderr in place of the failure view and writes no incomplete-result line. A run whose failure no encoder writes, such as a stream cancelled mid-sequence, a stdout that fails, or a broken encoder, still writes that line. A development build writes a defect's Developer Diagnostic first. Two encoders for one media type throw `@loomcli/core/failure-encoder-taken`, and an encoder that throws or returns a value that is not a string reports `@loomcli/core/broken-failure-encoder` with exit 1. `invoke()` calls no encoder. See [Failure encoders](docs/core.md#failure-encoders).
+- Change the formatter to register encoders for `application/json` and `application/jsonl`, so a failed run under `--format json` or `--format jsonl`, or a Command whose default view is `json()`, writes one line to stderr, such as `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--metric\": Expected one of: bytes, words, lines.","hints":["Run \"textstat --help\" to see the usage."]}}`. Its middleware reads `--format` from `ownOptions`, so the selection holds under a held fault, `textstat --format json --bogus one.txt` and `textstat --format json -c missing.json one.txt` included. See [Formatter](docs/core.md#formatter).
+
+- Add `WorkingDirectoryError`, the failure a run reports when the process's working directory cannot be read, such as one another process removed. Its failure code is `working-directory-unreadable` and it exits 1. `run()` from a removed directory now writes `<app>: The current working directory cannot be read. Change to a directory that exists and run the command again.` to stderr and resolves 1 instead of rejecting with the platform's error, and `app.invoke` resolves `failed` instead of rejecting. A `host.cwd` override and an action's `invoke` read no working directory from the process, so they never meet it. See [An unreadable working directory](docs/core.md#an-unreadable-working-directory).
+
+- Add the MCP plugin, `mcp()` from `@loomcli/plugins/mcp`. It attaches the visible Command `mcp`, which serves every Command that carries an `mcpCommand` value as one tool of a Model Context Protocol server over stdin and stdout, pinned to revision `2026-07-28`, until stdin ends or the run's signal aborts. Each tool call runs the Command through `invoke`, so a call meets the Command's own validation, failures, and exit codes. See [MCP](docs/core.md#mcp).
+  - A tool's name is the Command's path joined by `_`, each `-` written as `_`, with no application-name prefix, so `scratch create` serves `scratch_create`, and the root's tool is the application name, so jsonkit serves `jsonkit`, `get`, `keys`, and `select`. Its input schema lists the Command's arguments, its local options, and every global option by declared name, minus hidden and control options, each with its published input schema or one derived from its kind.
+  - A completed call answers the output and the messages as text, and the output of the first `application/json` view as `structuredContent`. A failed call answers `isError: true`, the failure's report as text, and `structuredContent` `{ exitCode, failure }`, where `failure` is the failure form. A key outside the input schema answers a tool execution error, and an unknown tool or `arguments` that are not an object answer the JSON-RPC error `-32602`.
+- Add `mcpCommand`, `mcpInput`, and `mcpArgument` from `@loomcli/plugins/mcp/extension`. `mcpCommand` opts a Command in as a tool, with an optional description for an agent and the effect hints `readOnly`, `destructive`, `idempotent`, and `openWorld`, which the listing projects as the protocol's tool annotations. `mcpInput` and `mcpArgument` give an option or an argument its description for an agent.
+- Add three build faults the MCP plugin reports on every build: two opted-in Commands that serve one tool name, `@loomcli/plugins/mcp/tool-name-taken`; `mcpCommand` on a Command with no action, `@loomcli/plugins/mcp/tool-without-action`; and an argument and an option that one tool would list under one name, `@loomcli/plugins/mcp/property-name-taken`, such as `Command "get" declares argument "path" and option "path", which one MCP tool lists under one name.`
+
 ## v0.8.0 - 2026-10-05
 
 0.8.0 gives every option one system. A plugin's options are ordinary global options, validated with the application's and typed in every action, and an invocation parses in one pass: routing reads the global options, then the routed Command's words are read against one table of its own options and every global option. Options also gain unadvertised aliases, counted options such as `-vvv`, implied values for a bare `--backup`, and ordered help sections.

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0064 - A failure class declares a failure code, and a plugin encodes the failure form by media type
 description: Every failure class declares a static kebab-case code, read like its exit code, and core's defects read internal in both builds. Core builds one plain-data failure form, { code, exitCode, message, hints }, which invoke's outcome and handler carry and a failure encoder writes. A plugin registers one encoder per media type, and a failed run() whose selected view declares that media type writes the encoder's line to stderr in place of the failure view. The formatter registers application/json and application/jsonl. The manifest's failure entry reads the class's code in place of a hand-written name.
-status: proposed
+status: accepted
 created: 2026-10-06
 modified: 2026-10-06
 ---
@@ -52,7 +52,7 @@ The manifest document's failure entries change shape, and an author's `manifestC
 
 ## Status
 
-Proposed 2026-10-06 with the contract in [Failure codes](../core.md#failure-codes), [The failure form](../core.md#the-failure-form), and [Failure encoders](../core.md#failure-encoders). It moves to accepted inside the release PR of the release that ships the implementation: a code on every core class, the form on `invoke`'s outcome and handler, `view` and `mediaType` on both failure contexts, `ownOptions` on the middleware context, the formatter's two encoders, the manifest reading the code, and the acceptance in those sections, under Node and Bun.
+Accepted in 0.9.0.
 
 ## Changelog
 

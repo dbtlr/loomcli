@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0059 - A Command runs by name through invoke
 description: Core gains invoke(path, values, options?), on the action context and on Application, which runs one Command of a built graph with named values lowered to the tokens argv would give, captures what the selected view and the lanes write, renders a failure's view into the captured messages and lets the caller's handler add structure, reports inputs by declared name, marks the failure and source contexts with invokedBy, and touches no process. run() is unchanged.
-status: proposed
+status: accepted
 created: 2026-10-05
 modified: 2026-10-06
 ---
@@ -58,7 +58,7 @@ The action context gains a member, so the implementation measures editor latency
 
 ## Status
 
-Proposed 2026-10-05 with the contract in [Invocation by name](../core.md#invocation-by-name). It moves to accepted inside the release PR of the release that ships the implementation: `invoke` on the action context and on Application, the equivalence wedge passing for jsonkit's pinned invocations, process isolation proven with a sentinel host, and the acceptance in that section, under Node and Bun.
+Accepted in 0.9.0.
 
 ## Changelog
 
