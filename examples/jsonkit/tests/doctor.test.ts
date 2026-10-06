@@ -53,6 +53,7 @@ test('inspect() lists the plugin Command as the root first child, with nothing m
   expect(graph.root.children.map((child) => child.name)).toEqual([
     'doctor',
     'completion',
+    'mcp',
     'get',
     'keys',
     'select',

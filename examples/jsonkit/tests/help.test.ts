@@ -60,6 +60,7 @@ const root = page(
   'COMMANDS',
   '  doctor                Check the host this application runs on.',
   '  completion <command>  Print a shell completion script.',
+  "  mcp                   Serve this application's tools to an MCP client over stdin and stdout.",
   '',
   'OPTIONS',
   '  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.',
@@ -124,7 +125,7 @@ test('jsonkit holds a fault on a global option, so help after it renders the pag
   expect(invoke(main, ['nope', '--help'])).toEqual({
     status: 2,
     stderr:
-      'jsonkit: Unknown command "nope". Use one of: doctor, completion, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
+      'jsonkit: Unknown command "nope". Use one of: doctor, completion, mcp, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -149,6 +150,7 @@ test('jsonkit -h prints the compact root page, the child hint ahead of the point
       'COMMANDS',
       '  doctor                Check the host this application runs on.',
       '  completion <command>  Print a shell completion script.',
+      "  mcp                   Serve this application's tools to an MCP client over stdin and stdout.",
       '',
       'OPTIONS',
       '  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.',

@@ -1,6 +1,7 @@
 import { Command } from '@loomcli/core';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 import { text } from '@loomcli/validators';
 
 import { selectFields } from '../actions/select-fields.js';
@@ -11,6 +12,7 @@ export const select = new Command('select', {
   extensions: [
     manifestCommand({ failures: readFailures }),
     helpCommand({ section: ['Document commands', 'Reshape'] }),
+    mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
 })
   .option('field', {

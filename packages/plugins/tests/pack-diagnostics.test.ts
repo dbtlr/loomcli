@@ -113,8 +113,16 @@ test.each(Object.entries(settingsCases))(
   },
 );
 
-/** The pack's rule that `--manifest` raises, which the manifest failures test pins. */
-const pinnedElsewhere = ['manifest/failure-code-conflict'];
+/**
+ * The pack's rules a build raises rather than a factory call: the one `--manifest` raises, which
+ * the manifest failures test pins, and the MCP plugin's build faults, which the MCP test pins.
+ */
+const pinnedElsewhere = [
+  'manifest/failure-code-conflict',
+  'mcp/property-name-taken',
+  'mcp/tool-name-taken',
+  'mcp/tool-without-action',
+];
 
 test('every rule the pack declares has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(settingsCases).map((expected) => expected.rule));

@@ -128,6 +128,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
         examples: [{ command: '-f doc.json' }, { command: 'get user.name -f doc.json' }],
       },
     ],
+    '@loomcli/plugins/mcp/command': { annotations: { openWorld: false, readOnly: true } },
   });
   const get = graph.root.children.find((child) => child.name === 'get');
   expect(get?.extensions).toEqual({
@@ -157,6 +158,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
         ],
       },
     ],
+    '@loomcli/plugins/mcp/command': { annotations: { openWorld: false, readOnly: true } },
   });
 });
 

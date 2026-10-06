@@ -462,6 +462,10 @@ _Avoid_: Long help, full help, man page
 The projection a shell reads while the operator types: a printed script that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
+**MCP tool**:
+One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that is the Command's path joined with `_`, or the application name for the root, with each `-` written as `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
+_Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted in)
+
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode

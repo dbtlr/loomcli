@@ -1,3 +1,5 @@
+import { isRecord } from '../plain-data.js';
+
 /** The clause that says why a file cannot be used, after its name in a warning or a failure. */
 export type Clause =
   | 'does not exist.'
@@ -13,13 +15,9 @@ export type Reading =
   | { kind: 'usable'; object: Record<string, unknown> }
   | { kind: 'unusable'; clause: Clause };
 
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** The reading of a parsed value: usable when it is an object, and otherwise the clause given. */
 export function readingOf(value: unknown, notObject: Clause): Reading {
-  return isPlainObject(value)
+  return isRecord(value)
     ? { kind: 'usable', object: value }
     : { clause: notObject, kind: 'unusable' };
 }

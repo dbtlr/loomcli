@@ -9,6 +9,8 @@ import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+import { mcp } from '@loomcli/plugins/mcp';
+import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
 import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
@@ -47,6 +49,7 @@ const configured = new Application('jsonkit', {
     }),
     // The root action summarizes the document, so it reads one.
     manifestCommand({ failures: readFailures }),
+    mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
   // The source tree reads development; the build writes distributed into the bundle.
   packet,
@@ -60,6 +63,7 @@ const configured = new Application('jsonkit', {
     explain(),
     doctor(),
     completion(),
+    mcp(),
   ],
   translators: [invalidJson],
   version: Package.version,

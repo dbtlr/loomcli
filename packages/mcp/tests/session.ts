@@ -47,11 +47,24 @@ interface Ending {
 }
 
 /**
- * One server process driven over stdio. `send` writes a message or a raw line, `next` reads the
- * next message the server wrote, and `close` ends stdin and waits for the process to exit.
+ * Where a server process runs, what it inherits, and the runtime that runs it, for a server that is
+ * not the fixture. The runtime defaults to the one the test run names.
  */
-function open(scenario = 'default') {
-  const child = spawn(process.env.LOOM_TEST_RUNTIME ?? 'node', [fileURLToPath(fixture), scenario], {
+interface LaunchOptions {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly runtime?: string;
+}
+
+/**
+ * One server process driven over stdio: the file, run under the runtime the test run names, with
+ * its arguments. `send` writes a message or a raw line, `next` reads the next message the server
+ * wrote, and `close` ends stdin and waits for the process to exit.
+ */
+function launch(file: URL, args: readonly string[] = [], options: LaunchOptions = {}) {
+  const { runtime = process.env.LOOM_TEST_RUNTIME ?? 'node', ...spawned } = options;
+  const child = spawn(runtime, [fileURLToPath(file), ...args], {
+    ...spawned,
     killSignal: 'SIGKILL',
     stdio: ['pipe', 'pipe', 'pipe'],
     timeout: deadline,
@@ -128,8 +141,18 @@ function open(scenario = 'default') {
     return { lines: lines(), messages: lines().map(parse), status, stderr };
   };
 
-  return { close, finish, hangUp, next, observed, send };
+  /** Sends the process a signal, as a supervisor does. */
+  const kill = (signal: NodeJS.Signals) => {
+    child.kill(signal);
+  };
+
+  return { close, finish, hangUp, kill, next, observed, send };
 }
 
-export { meta, open, request, serverInfo };
-export type { Ending, Message };
+/** The conformance fixture server, under the scenario that names its listing's behavior. */
+function open(scenario = 'default') {
+  return launch(fixture, [scenario]);
+}
+
+export { launch, meta, open, request, serverInfo };
+export type { Ending, LaunchOptions, Message };
