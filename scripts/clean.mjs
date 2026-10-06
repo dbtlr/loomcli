@@ -4,6 +4,7 @@ await Promise.all(
   [
     'packages/core/dist',
     'packages/loom/dist',
+    'packages/mcp/dist',
     'packages/plugins/dist',
     'packages/validators/dist',
     'examples/doctor/dist',

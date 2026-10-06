@@ -125,6 +125,16 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/mcp/src/**'],
+        rules: {
+          // A message keeps the protocol's own member order, `jsonrpc` first and `_meta` last.
+          // JSON-RPC answers `null` for an id it could not read, and the protocol names `_meta`.
+          'eslint/no-underscore-dangle': ['error', { allow: ['_meta'] }],
+          'eslint/sort-keys': 'off',
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/plugins/src/manifest/document.ts'],
         rules: {
           // An absent scalar reads `null` in the document, as the contract states for every field.
