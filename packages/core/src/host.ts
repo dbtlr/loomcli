@@ -2,6 +2,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, sep } from 'node:path';
 import type { Writable } from 'node:stream';
 
+import { WorkingDirectoryError } from './errors.js';
 import type { Host, RunOptions } from './types.js';
 
 // Process stream declarations assume a terminal, but pipes omit isTTY at runtime.
@@ -53,35 +54,80 @@ export function sourceRoots(cwd: string): readonly string[] {
   }
 }
 
-export function captureHost(overrides: RunOptions['host'], stderr: Writable): Host {
+/** The working directory one capture read, or the failure its read raised in its place. */
+export type WorkingDirectory =
+  | { readonly cwd: string }
+  | { readonly failure: WorkingDirectoryError };
+
+/**
+ * The one step `run()` and `app.invoke` read the working directory through, once per run. An
+ * override replaces the read. A read that throws, as `process.cwd()` does once another process
+ * removed the directory, answers the failure in its place, whose `cause` is the thrown value.
+ */
+export function captureWorkingDirectory(override: string | undefined): WorkingDirectory {
+  if (override !== undefined) {
+    return { cwd: override };
+  }
+  try {
+    return { cwd: process.cwd() };
+  } catch (error) {
+    return { failure: new WorkingDirectoryError({ cause: error }) };
+  }
+}
+
+/** The facts a failure's report writes through: a host whose working directory may be unread. */
+export type ReportHost = Omit<Host, 'cwd'> & { readonly cwd: string | undefined };
+
+/**
+ * One host capture: the run's host, or the failure its working directory raised. Either way it
+ * holds the facts a report writes through, so the failure path never captures the host again.
+ */
+export type HostCapture =
+  | { readonly host: Host; readonly report: Host }
+  | { readonly failure: WorkingDirectoryError; readonly report: ReportHost };
+
+/** The capture one set of host facts makes around the working directory read beside them. */
+export function capturedHost(facts: Omit<Host, 'cwd'>, directory: WorkingDirectory): HostCapture {
+  if ('failure' in directory) {
+    return { failure: directory.failure, report: { ...facts, cwd: undefined } };
+  }
+  const host: Host = { ...facts, cwd: directory.cwd };
+  return { host, report: host };
+}
+
+/** The host `run()` captures from the process at entry, each override replacing its whole field. */
+export function captureHost(overrides: RunOptions['host'], stderr: Writable): HostCapture {
   const { argv, cwd, env, platform, readSource, stdin, stdout, terminal } = overrides ?? {};
-  return {
-    argv: [...(argv ?? process.argv.slice(2))],
-    cwd: cwd ?? process.cwd(),
-    env: { ...(env ?? process.env) },
-    platform: platform ?? process.platform,
-    readSource: readSource ?? readSourceFile,
-    stderr,
-    stdin: stdin ?? process.stdin,
-    stdout: stdout ?? process.stdout,
-    terminal: terminal
-      ? {
-          stderr: { ...terminal.stderr },
-          stdin: { ...terminal.stdin },
-          stdout: { ...terminal.stdout },
-        }
-      : {
-          stderr: {
-            columns: dimension(process.stderr.columns),
-            isTTY: isTerminal(process.stderr),
-            rows: dimension(process.stderr.rows),
+  const directory = captureWorkingDirectory(cwd);
+  return capturedHost(
+    {
+      argv: [...(argv ?? process.argv.slice(2))],
+      env: { ...(env ?? process.env) },
+      platform: platform ?? process.platform,
+      readSource: readSource ?? readSourceFile,
+      stderr,
+      stdin: stdin ?? process.stdin,
+      stdout: stdout ?? process.stdout,
+      terminal: terminal
+        ? {
+            stderr: { ...terminal.stderr },
+            stdin: { ...terminal.stdin },
+            stdout: { ...terminal.stdout },
+          }
+        : {
+            stderr: {
+              columns: dimension(process.stderr.columns),
+              isTTY: isTerminal(process.stderr),
+              rows: dimension(process.stderr.rows),
+            },
+            stdin: { isTTY: isTerminal(process.stdin) },
+            stdout: {
+              columns: dimension(process.stdout.columns),
+              isTTY: isTerminal(process.stdout),
+              rows: dimension(process.stdout.rows),
+            },
           },
-          stdin: { isTTY: isTerminal(process.stdin) },
-          stdout: {
-            columns: dimension(process.stdout.columns),
-            isTTY: isTerminal(process.stdout),
-            rows: dimension(process.stdout.rows),
-          },
-        },
-  };
+    },
+    directory,
+  );
 }

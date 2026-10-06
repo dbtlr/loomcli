@@ -229,7 +229,7 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, and terminal facts. Core copies the facts, retains the streams, and lets a caller override fields.
+The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, and terminal facts. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Packet**:
@@ -378,7 +378,7 @@ A failure only the author can fix: an unexpected exception no translator answere
 _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
-The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints. A defect or declaration fault writes the generic defect message or a Developer Diagnostic instead, by build.
+The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure and on a `WorkingDirectoryError`'s line, and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints. A defect or declaration fault writes the generic defect message or a Developer Diagnostic instead, by build.
 _Avoid_: Error message (when the class is meant), log line
 
 **Developer Diagnostic**:

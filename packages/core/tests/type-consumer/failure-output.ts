@@ -1,4 +1,12 @@
-import { Application, Command, encodeFailure, EX_DATAERR, FatalError, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  encodeFailure,
+  EX_DATAERR,
+  FatalError,
+  plugin,
+  WorkingDirectoryError,
+} from '@loomcli/core';
 import type {
   FailureEncoder,
   FailureEncoding,
@@ -72,6 +80,20 @@ async function outcome(): Promise<string> {
   return '';
 }
 
+// An unreadable working directory narrows by its class, whose code and exit code read without an instance.
+async function unreadable(): Promise<string> {
+  const app = new Application('probe').command(new Command('get').action(() => undefined));
+  const result = await app.invoke(['get'], {});
+  if (result.status === 'failed' && result.failure instanceof WorkingDirectoryError) {
+    const cause: unknown = result.failure.cause;
+    return `${WorkingDirectoryError.code} ${String(WorkingDirectoryError.exitCode)} ${String(cause)}`;
+  }
+  return '';
+}
+const directoryFailure = new WorkingDirectoryError({ cause: new Error('uv_cwd') });
+// @ts-expect-error TS2559: The message is fixed, so the constructor takes the platform's options alone.
+const sentenced = new WorkingDirectoryError('The directory is gone.');
+
 // A failure view and a hook read the run's selection.
 const selected = (context: FailureViewContext): string =>
   `${context.view ?? ''} ${context.mediaType ?? ''}`;
@@ -102,6 +124,9 @@ const middleware: Middleware<typeof json> = async ({ next, ownOptions }) => {
 void literal;
 void inherited;
 void outcome;
+void unreadable;
+void directoryFailure;
+void sentenced;
 void selected;
 void hinted;
 void middleware;

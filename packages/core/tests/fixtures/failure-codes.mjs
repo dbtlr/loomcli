@@ -18,6 +18,7 @@ import {
   UnknownOptionError,
   plugin,
   UsageError,
+  WorkingDirectoryError,
 } from '@loomcli/core';
 
 const [scenario, build = 'distributed'] = process.argv.slice(2);
@@ -42,6 +43,7 @@ const coreClasses = {
   UnknownCommandError,
   UnknownOptionError,
   UsageError,
+  WorkingDirectoryError,
 };
 
 /** Jsonkit's failure, as the contract's example declares it. */
