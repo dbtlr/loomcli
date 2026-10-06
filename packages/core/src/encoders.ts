@@ -1,5 +1,5 @@
 import { viewMediaType } from './command-rules.js';
-import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
+import { DeclarationError, InternalError, notTextReason, quoted, reasonOf } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import type { FailureForm } from './form.js';
@@ -7,7 +7,6 @@ import { failureEncoderTaken, foreignValue, notAFunction, notAList } from './plu
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
 import { brokenFailureEncoder } from './rules.js';
-import { ignoreRejection, isThenable } from './thenable.js';
 
 /** Phantom key. It brands a failure encoding and holds no runtime value. */
 declare const failureEncoding: unique symbol;
@@ -163,17 +162,9 @@ function callEncoder(installed: InstalledEncoder, form: FailureForm): EncoderAns
   } catch (error) {
     return { cause: error, kind: 'broken', reason: reasonOf(error) };
   }
-  if (typeof encoded === 'string') {
-    return { kind: 'encoded', text: encoded };
-  }
-  if (isThenable(encoded)) {
-    ignoreRejection(encoded);
-  }
-  return {
-    cause: undefined,
-    kind: 'broken',
-    reason: `The encoder returned ${typeof encoded} instead of a string.`,
-  };
+  return typeof encoded === 'string'
+    ? { kind: 'encoded', text: encoded }
+    : { cause: undefined, kind: 'broken', reason: notTextReason('encoder', encoded) };
 }
 
 /** The defect one broken encoder reports in a development build. */

@@ -348,7 +348,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
  * The routed Command's slice: its entry, plus the Application facts and the fixed statements an
  * agent needs to read it with no second document. A hidden Command routed to directly is the
  * slice's own entry, as its help page is. The exit-code table reads the whole application, so every
- * slice carries the same table and a conflicting failure name fails every slice.
+ * slice carries the same table and a conflicting failure code fails every slice.
  */
 function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDocument {
   return {

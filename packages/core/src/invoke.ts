@@ -5,7 +5,6 @@ import type { LoomError } from './errors.js';
 import { readSourceFile } from './host.js';
 import type { NamedCall } from './lower.js';
 import { isPlainObject } from './plain.js';
-import type { RenderingPolicy } from './rendering.js';
 import { invokeOptions } from './rules.js';
 import type { Host, InvokeOptions } from './types.js';
 
@@ -251,18 +250,6 @@ function invocationHost(
 }
 
 /**
- * The policy an invocation by name resolves its output by: plain, as for a destination that
- * supports no color, modifier, or hyperlink, whatever the declared policy or `FORCE_COLOR` says,
- * with the Application's own `terminalControls`.
- */
-function plainPolicy(declared: RenderingPolicy): RenderingPolicy {
-  const plain: RenderingPolicy = { color: 'never', hyperlinks: 'never', modifiers: 'never' };
-  return declared.terminalControls === undefined
-    ? plain
-    : { ...plain, terminalControls: declared.terminalControls };
-}
-
-/**
  * The failure a failed outcome holds: what the caller's handler returned, or the failure itself
  * when the caller passed none.
  */
@@ -283,12 +270,4 @@ function mappedFailure<Mapped>(
 }
 
 export type { InvocationFields, InvokeCall, ReadCall };
-export {
-  captureSink,
-  fieldsOf,
-  invocationHost,
-  mappedFailure,
-  plainPolicy,
-  processFields,
-  readCall,
-};
+export { captureSink, fieldsOf, invocationHost, mappedFailure, processFields, readCall };

@@ -28,6 +28,14 @@ interface FormScene {
   readonly plain: (marked: string) => string;
 }
 
+/**
+ * One failure's sentence as core's default text marks it: escaped, unless it is the authored marked
+ * message of a `FatalError`. Core's default failure text and a failure form's message both read it.
+ */
+function markedSentence(failure: LoomError, text: string): string {
+  return failure instanceof FatalError ? text : escapeText(text);
+}
+
 /** The message a defect reads in a distributed build, which names no reason. */
 const genericMessage = 'Something went wrong.';
 
@@ -43,7 +51,7 @@ function failureForm(failure: LoomError, scene: FormScene): FailureForm {
   const author = isAuthorFault(failure);
   let message = genericMessage;
   if (!author) {
-    message = plain(failure instanceof FatalError ? failure.message : escapeText(failure.message));
+    message = plain(markedSentence(failure, failure.message));
   } else if (development) {
     message = plain(escapeText(failure.sentence));
   }
@@ -56,4 +64,4 @@ function failureForm(failure: LoomError, scene: FormScene): FailureForm {
 }
 
 export type { FailureForm, FormScene };
-export { failureForm };
+export { failureForm, markedSentence };

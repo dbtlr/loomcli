@@ -5,7 +5,7 @@ import { FatalError, notTextReason, ResultError } from './errors.js';
 import type { ResultFault } from './errors.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
-import { capabilities } from './rendering.js';
+import { capabilities, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
@@ -28,7 +28,7 @@ import type { ViewRegistry } from './view.js';
 
 function stringValue(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new Error(notTextReason(value));
+    throw new Error(notTextReason('view', value));
   }
   return value;
 }
@@ -162,7 +162,7 @@ const bare: ViewRegistry = [];
 function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
   try {
     const text: unknown = produce();
-    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason(text)) };
+    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason('view', text)) };
   } catch (error) {
     return { failed: error };
   }
@@ -363,12 +363,7 @@ export class Output {
    * policy's own terminal controls. A failure form reads its message and hints through it.
    */
   plain(text: string): string {
-    const policy: RenderingPolicy = {
-      ...this.policy,
-      color: 'never',
-      hyperlinks: 'never',
-      modifiers: 'never',
-    };
+    const policy = plainPolicy(this.policy);
     return resolveText(text, this.palette, capabilities(this.host, 'stderr', policy));
   }
 

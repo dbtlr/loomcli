@@ -212,10 +212,10 @@ const failureCodeStatic: ClassStatic<string> = {
 };
 
 /** Each constructed failure's exit code, which its `exitCode` reports and `run()` resolves. */
-const failureCodes = new WeakMap<LoomError, FailureExitCode>();
+const exitCodes = new WeakMap<LoomError, FailureExitCode>();
 
 /** Each constructed failure's failure code, which its failure form reports. */
-const failureNames = new WeakMap<LoomError, string>();
+const failureCodes = new WeakMap<LoomError, string>();
 
 /**
  * The value one class declares for a static: the value captured for it, or else its own static when
@@ -248,7 +248,7 @@ function classStatic<Value>(
  * constructed holds none, and `toFailure` reports it as an internal error, so it reads 1.
  */
 export function exitCodeOf(failure: LoomError): FailureExitCode {
-  return failureCodes.get(failure) ?? 1;
+  return exitCodes.get(failure) ?? 1;
 }
 
 /**
@@ -257,7 +257,7 @@ export function exitCodeOf(failure: LoomError): FailureExitCode {
  * `internal`.
  */
 export function failureCodeOf(failure: LoomError): string {
-  return failureNames.get(failure) ?? 'internal';
+  return failureCodes.get(failure) ?? 'internal';
 }
 
 /**
@@ -285,8 +285,8 @@ export abstract class LoomError extends Error {
     const exitCode = classStatic(new.target, new.target, exitCodeStatic);
     const code = classStatic(new.target, new.target, failureCodeStatic);
     super(message, options);
-    failureCodes.set(this, exitCode);
-    failureNames.set(this, code);
+    exitCodes.set(this, exitCode);
+    failureCodes.set(this, code);
     this.name = 'LoomError';
   }
 
@@ -714,14 +714,15 @@ function rawReasonOf(thrown: unknown): string {
 }
 
 /**
- * Why a returned value is not the text a view owes. A view is synchronous, so a returned promise is
- * a non-string return like any other: it receives a rejection handler and is otherwise ignored.
+ * Why a returned value is not the text a view or a failure encoder owes. Each is synchronous, so a
+ * returned promise is a non-string return like any other: it receives a rejection handler and is
+ * otherwise ignored.
  */
-export function notTextReason(value: unknown): string {
+export function notTextReason(subject: 'encoder' | 'view', value: unknown): string {
   if (isThenable(value)) {
     ignoreRejection(value);
   }
-  return `The view returned ${typeof value} instead of a string.`;
+  return `The ${subject} returned ${typeof value} instead of a string.`;
 }
 
 /**
@@ -745,7 +746,7 @@ export function toFailure(thrown: unknown): LoomError {
   if (!isLoomError(thrown)) {
     return foreignFailure(thrown);
   }
-  return failureCodes.has(thrown)
+  return exitCodes.has(thrown)
     ? thrown
     : new InternalError(unconstructedFailure, {
         cause: thrown,

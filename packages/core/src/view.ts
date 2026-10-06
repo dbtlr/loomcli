@@ -1,17 +1,11 @@
 import { viewMediaType, viewShape } from './command-rules.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
-import {
-  DeclarationError,
-  defaultText,
-  FatalError,
-  notTextReason,
-  quoted,
-  reasonOf,
-} from './errors.js';
+import { DeclarationError, defaultText, notTextReason, quoted, reasonOf } from './errors.js';
 import type { LoomError } from './errors.js';
 import { partFinding, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
+import { markedSentence } from './form.js';
 import { checkIdentity } from './identity.js';
 import {
   foreignValue,
@@ -21,7 +15,6 @@ import {
   twoPackageCopies,
 } from './plugin-rules.js';
 import { prototypeChain } from './prototypes.js';
-import { escapeText } from './style.js';
 import type { RowView, View, ViewContext } from './types.js';
 
 /** Phantom key. It brands a declared view and holds no runtime value. */
@@ -685,8 +678,7 @@ type FailureReport =
  * `FatalError`, with each hint on its own line under it as marked text it does not escape.
  */
 function coreText(failure: LoomError, text: string, hints: readonly string[]): string {
-  const sentence = failure instanceof FatalError ? text : escapeText(text);
-  return `${sentence}${hints.map((hint) => `${hint}\n`).join('')}`;
+  return `${markedSentence(failure, text)}${hints.map((hint) => `${hint}\n`).join('')}`;
 }
 
 /**
@@ -711,7 +703,7 @@ function describeFailure(
     const rendered = callView(replacement, failure.name)(failure, context);
     return typeof rendered === 'string'
       ? { core: false, kind: 'rendered', text: rendered }
-      : { cause: undefined, kind: 'unrendered', reason: notTextReason(rendered), text };
+      : { cause: undefined, kind: 'unrendered', reason: notTextReason('view', rendered), text };
   } catch (error) {
     return { cause: error, kind: 'unrendered', reason: reasonOf(error), text };
   }

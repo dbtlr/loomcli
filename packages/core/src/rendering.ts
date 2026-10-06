@@ -119,5 +119,17 @@ function capabilities(
   };
 }
 
+/**
+ * The plain form of a declared policy: as for a destination that supports no color, modifier, or
+ * hyperlink, whatever the declared policy or `FORCE_COLOR` says, with the declared
+ * `terminalControls`. An invocation by name resolves its output by it, and a failure form its text.
+ */
+function plainPolicy(declared: RenderingPolicy): RenderingPolicy {
+  const plain: RenderingPolicy = { color: 'never', hyperlinks: 'never', modifiers: 'never' };
+  return declared.terminalControls === undefined
+    ? plain
+    : { ...plain, terminalControls: declared.terminalControls };
+}
+
 export type { Capabilities, RenderingPolicy };
-export { capabilities, renderingPolicy };
+export { capabilities, plainPolicy, renderingPolicy };

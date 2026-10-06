@@ -2785,8 +2785,14 @@ interface Preparation {
 }
 
 /** The passthrough tail a validator reads: the routed Command's, or none while a fault is held. */
-function tailOf(local: LocalPhase): readonly string[] {
-  return local.kind === 'parsed' ? local.passthrough : [];
+/**
+ * The routed Command's own parsed inputs a validation pass reads: its arguments, its local option
+ * values, and its passthrough tail. A pass whose locals were held reads none.
+ */
+interface LocalScope {
+  readonly args: ReadonlyMap<InputDeclaration, string | string[]>;
+  readonly options: OptionValues;
+  readonly passthrough: readonly string[];
 }
 
 /**
@@ -2799,10 +2805,14 @@ function tailOf(local: LocalPhase): readonly string[] {
 async function fillScope(
   preparation: Preparation,
   local: LocalPhase,
-): Promise<{ globals: OptionValues; locals: OptionValues; sources: SourceOutcome }> {
+): Promise<{ globals: OptionValues; scope: LocalScope | undefined; sources: SourceOutcome }> {
   const { graph, invocation, routed } = preparation;
   const globals = copyValues(routed.values.globals);
   const locals = copyValues(local.kind === 'parsed' ? local.options : emptyValues());
+  const scope =
+    local.kind === 'parsed'
+      ? { args: local.args, options: locals, passthrough: local.passthrough }
+      : undefined;
   const sources = await fillInputs({
     extensions: graph.extensions,
     globals: { global: true, inputs: graph.globals.inputs, values: globals },
@@ -2822,49 +2832,47 @@ async function fillScope(
     style: invocation.style,
     validate: (inputs, provenance) =>
       validateInvocation(preparation, {
-        local,
-        locals,
+        local: scope,
         only: new Set(inputs),
         sources: provenance,
         values: globals,
       }),
   });
-  return { globals, locals, sources };
+  return { globals, scope, sources };
 }
 
 /**
  * A validation pass over the values the input-source stage has filled: every global option
- * whatever was held, and the routed Command's own declarations only when nothing is held and the
- * Command is not a group. `only` narrows the declarations a pass validates, as the pass over a
- * configuration source's own options does ahead of its call, while every validator reads the same
- * context. The run's one pass reads that earlier pass's values and problems rather than validating
- * them again.
+ * whatever was held, and the routed Command's own declarations only when the pass reads its local
+ * scope, which the run's one pass does when nothing is held and the Command is not a group. `only`
+ * narrows the declarations a pass validates, as the pass over a configuration source's own options
+ * does ahead of its call and the pass over hook-declared options under a held structural fault
+ * does, while every validator reads the same context. The run's one pass reads the source pass's
+ * values and problems rather than validating them again.
  */
 function validateInvocation(
   { graph, invocation, routed }: Preparation,
   filled: {
-    local: LocalPhase;
-    locals: OptionValues;
+    local: LocalScope | undefined;
     only?: ReadonlySet<InputDeclaration>;
     sources: Provenance & { validated?: Validation | undefined };
     values: OptionValues;
   },
 ): Promise<Validation> {
   const { local, only, sources } = filled;
-  const parsed = local.kind === 'parsed';
   return validateValues({
     command: routed.path,
     declaredValues: invocation.declaredValues,
     host: invocation.host,
-    inputs: { globals: graph.globals.inputs, locals: parsed ? routed.command.inputs : [] },
+    inputs: { globals: graph.globals.inputs, locals: local ? routed.command.inputs : [] },
     named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
-    passthrough: tailOf(local),
+    passthrough: local?.passthrough ?? [],
     places: invocation.places,
     signal: invocation.signal,
     sources,
     supplied: {
-      args: parsed ? local.args : new Map(),
-      options: parsed ? mergeValues(filled.values, filled.locals) : filled.values,
+      args: local?.args ?? new Map(),
+      options: local ? mergeValues(filled.values, local.options) : filled.values,
     },
     table: routed.command.table,
     ...(only ? { only } : {}),
@@ -2900,30 +2908,20 @@ function attachedUnderFault(routed: ParsedInvocation): ReadonlySet<InputDeclarat
  * rejection, and a validator that throws, leave the option absent and report nothing.
  */
 async function validateAttached(
-  { graph, invocation, routed }: Preparation,
+  preparation: Preparation,
   globals: OptionValues,
 ): Promise<ValidatedInputs | undefined> {
+  const { routed } = preparation;
   const only = attachedUnderFault(routed);
   if (only.size === 0) {
     return undefined;
   }
   try {
-    const validation = await validateValues({
-      command: routed.path,
-      declaredValues: invocation.declaredValues,
-      host: invocation.host,
-      inputs: { globals: graph.globals.inputs, locals: routed.command.inputs },
-      named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
+    const validation = await validateInvocation(preparation, {
+      local: { args: routed.args, options: copyValues(routed.values.locals), passthrough: [] },
       only,
-      passthrough: [],
-      places: invocation.places,
-      signal: invocation.signal,
       sources: { labels: new Map(), rejected: new Map() },
-      supplied: {
-        args: routed.args,
-        options: mergeValues(globals, copyValues(routed.values.locals)),
-      },
-      table: routed.command.table,
+      values: globals,
     });
     return validation.values;
   } catch {
@@ -3021,7 +3019,7 @@ export async function prepareDispatch(
   const result = routed.command.result;
   const local = parseLocal(routed);
   const preparation = { graph, invocation, routed };
-  const { globals, locals, sources } = await fillScope(preparation, local);
+  const { globals, scope, sources } = await fillScope(preparation, local);
   // A configuration source's own options passed their validators ahead of its call.
   const prior = sources.validated ? [sources.validated.values] : [];
   const held = (
@@ -3041,8 +3039,7 @@ export async function prepareDispatch(
   }
   try {
     const validation = await validateInvocation(preparation, {
-      local,
-      locals,
+      local: scope,
       sources,
       values: globals,
     });

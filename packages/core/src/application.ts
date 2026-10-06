@@ -79,7 +79,6 @@ import {
   fieldsOf,
   invocationHost,
   mappedFailure,
-  plainPolicy,
   processFields,
   readCall,
 } from './invoke.js';
@@ -93,7 +92,7 @@ import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
-import { renderingPolicy } from './rendering.js';
+import { plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
