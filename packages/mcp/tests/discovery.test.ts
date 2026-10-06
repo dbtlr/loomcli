@@ -154,6 +154,13 @@ describe('methods the server does not serve', () => {
     },
   );
 
+  it('answers an unserved method with -32601 before the per-request checks', async () => {
+    const session = open();
+    session.send({ id: 1, jsonrpc: '2.0', method: 'ping' });
+    await expect(session.next()).resolves.toMatchObject({ error: { code: -32_601 }, id: 1 });
+    await session.close();
+  });
+
   it('ignores a notification other than a cancellation', async () => {
     const session = open();
     session.send({ jsonrpc: '2.0', method: 'notifications/initialized' });

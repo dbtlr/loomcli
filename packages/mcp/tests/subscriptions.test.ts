@@ -39,7 +39,7 @@ describe('subscriptions/listen', () => {
 });
 
 describe('shutdown when stdin ends', () => {
-  it('aborts calls in flight, closes each subscription with its id, and resolves', async () => {
+  it('aborts calls in flight, waits for each to settle, then closes each subscription with its id', async () => {
     const session = open();
     session.send(request(1, 'subscriptions/listen'));
     await expect(session.next()).resolves.toEqual(acknowledged(1));
@@ -48,6 +48,7 @@ describe('shutdown when stdin ends', () => {
     const { messages, status, stderr } = await session.close();
     expect(stderr).toBe('started two\naborted two\nresolved\n');
     expect(messages.slice(1)).toEqual([
+      expect.objectContaining({ id: 2, result: expect.objectContaining({ isError: true }) }),
       { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } },
       {
         id: 1,
@@ -60,7 +61,6 @@ describe('shutdown when stdin ends', () => {
           resultType: 'complete',
         },
       },
-      expect.objectContaining({ id: 2, result: expect.objectContaining({ isError: true }) }),
     ]);
     expect(status).toBe(0);
   });

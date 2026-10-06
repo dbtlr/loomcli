@@ -118,26 +118,23 @@ function requestFault(method: string, params: unknown): ProtocolError | undefine
   return envelopeFault(params);
 }
 
-/** Where `readChunks` hands what it reads, and what it calls when the caller's signal aborts. */
-interface Reader {
-  readonly read: (chunk: string | Uint8Array) => void;
-  readonly halt: () => void;
-}
-
 /**
- * Hands each chunk of the input to the reader until the input ends or the signal aborts. An abort
+ * Hands each chunk of the input to `read` until the input ends or the signal aborts. An abort
  * stops reading by destroying the input, since a run that ends on its signal reads nothing more,
  * and an open stdin would keep its process alive.
  */
-function readChunks(input: ServerInput, signal: AbortSignal | undefined, reader: Reader) {
+function readChunks(
+  input: ServerInput,
+  signal: AbortSignal | undefined,
+  read: (chunk: string | Uint8Array) => void,
+) {
   if (signal?.aborted === true) {
     input.destroy();
-    reader.halt();
     return Promise.resolve();
   }
   return new Promise<void>((resolve, reject) => {
     const detach = () => {
-      input.off('data', reader.read);
+      input.off('data', read);
       input.off('end', finish);
       input.off('error', fail);
       signal?.removeEventListener('abort', halt);
@@ -153,10 +150,9 @@ function readChunks(input: ServerInput, signal: AbortSignal | undefined, reader:
     function halt() {
       detach();
       input.destroy();
-      reader.halt();
       resolve();
     }
-    input.on('data', reader.read);
+    input.on('data', read);
     input.on('end', finish);
     input.on('error', fail);
     signal?.addEventListener('abort', halt, { once: true });
@@ -191,25 +187,31 @@ class Session {
   }
 
   /**
-   * Ends the run when the input ends: a last line with no line feed is handled, every call aborts,
-   * and each open subscription is cancelled and answered with its closing result. After the
-   * caller's signal, nothing is written.
+   * Ends the run once the input has ended: a last line with no line feed is handled, every call
+   * aborts, and once each has settled, each open subscription is cancelled and answered with its
+   * closing result. Resolves when every message has been handed to the output. After the caller's
+   * signal, nothing is written.
    */
-  end() {
+  async end() {
     for (const line of this.#splitter.end()) {
       this.#receive(line);
     }
     this.#abortAll();
+    // A Set visits an entry added while it is iterated, and skips one deleted once it settles.
+    for (const settling of this.#settling) {
+      await settling;
+    }
     for (const id of this.#subscriptions) {
       this.#send(notificationMessage('notifications/cancelled', { requestId: id }));
       this.#send(resultMessage(id, this.#stamp({}, id)));
     }
     this.#subscriptions.clear();
+    await Promise.all(this.#writes);
   }
 
-  /** Handles one line the client wrote. A blank line carries no message. */
+  /** Handles one line the client wrote. */
   #receive(line: string) {
-    if (this.#silenced || line.trim() === '') {
+    if (this.#silenced) {
       return;
     }
     const message = classify(line);
@@ -230,15 +232,6 @@ class Session {
     this.#silenced = true;
     this.#subscriptions.clear();
     this.#abortAll();
-  }
-
-  /** Waits until every call has settled and every message has been handed to the output. */
-  async settled() {
-    // A Set visits an entry added while it is iterated, and skips one deleted once it settles.
-    for (const settling of this.#settling) {
-      await settling;
-    }
-    await Promise.all(this.#writes);
   }
 
   #abortAll() {
@@ -391,20 +384,24 @@ class McpServer {
 
   /**
    * Serves one client until the input ends or `signal` aborts. When the input ends, the server
-   * aborts every call in flight, closes each open subscription, waits for every call to settle,
-   * and resolves. When `signal` aborts, it stops reading, aborts every call, writes nothing more,
-   * and resolves once every call has settled.
+   * aborts every call in flight, waits for each to settle, closes each open subscription, and
+   * resolves. When `signal` aborts, before or after the input ends, it stops reading, aborts
+   * every call, writes nothing more, and resolves once every call has settled.
    */
   async run(input: ServerInput, output: ServerOutput, options: RunOptions = {}): Promise<void> {
+    const { signal } = options;
     const session = new Session(this.#options, output);
+    // The signal is watched until the run resolves, so a call that settles after it aborts writes nothing.
+    const silence = () => session.silence();
+    if (signal?.aborted === true) {
+      silence();
+    }
+    signal?.addEventListener('abort', silence, { once: true });
     try {
-      await readChunks(input, options.signal, {
-        halt: () => session.silence(),
-        read: (chunk) => session.read(chunk),
-      });
+      await readChunks(input, signal, (chunk) => session.read(chunk));
     } finally {
-      session.end();
-      await session.settled();
+      await session.end();
+      signal?.removeEventListener('abort', silence);
     }
   }
 }
