@@ -398,7 +398,7 @@ A message that runs while the author develops the application, such as a declara
 _Avoid_: Developer error (for the message), debug message
 
 **Failure view**:
-The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment or else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment, else the view an invocation by name started with, else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Failure code**:
@@ -519,7 +519,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, the spellings of its own plugin's options and their validated values, which hold even while core holds a fault, a structural one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:
