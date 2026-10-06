@@ -292,6 +292,15 @@ const faults = {
       .command(flat)
       .command(new Command('plain', { description: 'Plain.' }).action(dispatch));
   },
+  'tool-name-taken-root': () =>
+    new Application('app', { ...faulty, extensions: [mcpCommand({})] })
+      .command(
+        new Command('app', {
+          description: 'Named like the application.',
+          extensions: [mcpCommand({})],
+        }).action(dispatch),
+      )
+      .action(dispatch),
   'tool-without-action': () => {
     const clear = new Command('clear', { description: 'Clear.' }).action(dispatch);
     const cache = new Command('cache', {

@@ -76,13 +76,13 @@ describe('the listing', () => {
     expect(result).not.toHaveProperty('nextCursor');
     expect(result.tools.map((tool: unknown) => Object(tool).name)).toEqual([
       'kit',
-      'kit_read',
-      'kit_kinds',
-      'kit_cache_clear_all',
-      'kit_secret',
-      'kit_old',
-      'kit_worded',
-      'kit_bare',
+      'read',
+      'kinds',
+      'cache_clear_all',
+      'secret',
+      'old',
+      'worded',
+      'bare',
     ]);
   });
 
@@ -103,7 +103,7 @@ describe('the listing', () => {
   });
 
   it('a tool lists arguments, then local options, then globals, with each published schema', async () => {
-    expect(toolNamed(await toolsOf('listing'), 'kit_read')).toEqual({
+    expect(toolNamed(await toolsOf('listing'), 'read')).toEqual({
       annotations: { openWorldHint: false, readOnlyHint: true },
       description: 'Read one value.',
       inputSchema: {
@@ -122,12 +122,12 @@ describe('the listing', () => {
         required: ['path'],
         type: 'object',
       },
-      name: 'kit_read',
+      name: 'read',
     });
   });
 
   it('the properties keep declaration order: arguments, local options, then globals', async () => {
-    const read = Object(toolNamed(await toolsOf('listing'), 'kit_read'));
+    const read = Object(toolNamed(await toolsOf('listing'), 'read'));
     expect(Object.keys(read.inputSchema.properties)).toEqual([
       'path',
       'depth',
@@ -139,7 +139,7 @@ describe('the listing', () => {
   });
 
   it('an input with no published schema reads one derived from its kind', async () => {
-    const kinds = Object(toolNamed(await toolsOf('listing'), 'kit_kinds'));
+    const kinds = Object(toolNamed(await toolsOf('listing'), 'kinds'));
     expect(kinds.annotations).toBeUndefined();
     expect(kinds.inputSchema).toEqual({
       additionalProperties: false,
@@ -170,8 +170,8 @@ describe('the listing', () => {
     });
   });
 
-  it('a tool name joins the application name and the path with underscores, each hyphen written as one', async () => {
-    expect(toolNamed(await toolsOf('listing'), 'kit_cache_clear_all')).toMatchObject({
+  it('a tool name joins the path with underscores, each hyphen written as one, and no application name', async () => {
+    expect(toolNamed(await toolsOf('listing'), 'cache_clear_all')).toMatchObject({
       annotations: { destructiveHint: true },
       description: 'Clear every entry.',
     });
@@ -179,22 +179,22 @@ describe('the listing', () => {
 
   it('a hidden Command that opts in is a tool, and an alias never is', async () => {
     const tools = await toolsOf('listing');
-    expect(toolNamed(tools, 'kit_secret')).toMatchObject({ description: 'A hidden tool.' });
-    expect(toolNamed(tools, 'kit_r')).toBeUndefined();
+    expect(toolNamed(tools, 'secret')).toMatchObject({ description: 'A hidden tool.' });
+    expect(toolNamed(tools, 'r')).toBeUndefined();
   });
 
   it("a deprecated tool's description opens with its migration message", async () => {
-    expect(toolNamed(await toolsOf('listing'), 'kit_old')).toMatchObject({
+    expect(toolNamed(await toolsOf('listing'), 'old')).toMatchObject({
       description: 'Deprecated: Use read instead.\nRead one value the old way.',
     });
   });
 
   it("the extension's description replaces the core one, and a tool with neither carries none", async () => {
     const tools = await toolsOf('listing');
-    expect(toolNamed(tools, 'kit_worded')).toMatchObject({
+    expect(toolNamed(tools, 'worded')).toMatchObject({
       description: 'An agent description.\nIt keeps its line break.',
     });
-    expect(toolNamed(tools, 'kit_bare')).not.toHaveProperty('description');
+    expect(toolNamed(tools, 'bare')).not.toHaveProperty('description');
   });
 });
 
@@ -221,7 +221,7 @@ async function resultOf(scenario: string, name: string, args?: unknown): Promise
 describe('a completed call', () => {
   it('runs the Command by name with arguments and options split, and answers its output as text', async () => {
     await expect(
-      resultOf('calls', 'calls_echo', { file: 'doc.json', loud: true, times: 3, word: 'hi' }),
+      resultOf('calls', 'echo', { file: 'doc.json', loud: true, times: 3, word: 'hi' }),
     ).resolves.toEqual({
       content: [
         {
@@ -234,7 +234,7 @@ describe('a completed call', () => {
   });
 
   it('answers the first application/json view as text and as structured content', async () => {
-    await expect(resultOf('calls', 'calls_members')).resolves.toEqual({
+    await expect(resultOf('calls', 'members')).resolves.toEqual({
       content: [{ text: '[\n  "a",\n  "b"\n]\n', type: 'text' }],
       isError: false,
       structuredContent: ['a', 'b'],
@@ -242,21 +242,21 @@ describe('a completed call', () => {
   });
 
   it('a jsonl view stays text', async () => {
-    await expect(resultOf('calls', 'calls_lines')).resolves.toEqual({
+    await expect(resultOf('calls', 'lines')).resolves.toEqual({
       content: [{ text: '1\n2\n', type: 'text' }],
       isError: false,
     });
   });
 
   it('a view whose application/json text does not parse answers the text alone', async () => {
-    await expect(resultOf('calls', 'calls_lies')).resolves.toEqual({
+    await expect(resultOf('calls', 'lies')).resolves.toEqual({
       content: [{ text: 'not json\n', type: 'text' }],
       isError: false,
     });
   });
 
   it('answers the output, then the messages, as two text items', async () => {
-    await expect(resultOf('calls', 'calls_warned')).resolves.toEqual({
+    await expect(resultOf('calls', 'warned')).resolves.toEqual({
       content: [
         { text: 'the value\n', type: 'text' },
         { text: '⚠ a warning\n', type: 'text' },
@@ -266,7 +266,7 @@ describe('a completed call', () => {
   });
 
   it('a run that writes nothing answers one empty text item', async () => {
-    await expect(resultOf('calls', 'calls_quiet')).resolves.toEqual({
+    await expect(resultOf('calls', 'quiet')).resolves.toEqual({
       content: [{ text: '', type: 'text' }],
       isError: false,
     });
@@ -275,7 +275,7 @@ describe('a completed call', () => {
 
 describe('a failed call', () => {
   it("answers the failure's report as text and its form as structured content", async () => {
-    await expect(resultOf('calls', 'calls_missing')).resolves.toEqual({
+    await expect(resultOf('calls', 'missing')).resolves.toEqual({
       content: [{ text: 'Nothing is at "x". Read another path.\n', type: 'text' }],
       isError: true,
       structuredContent: {
@@ -291,14 +291,14 @@ describe('a failed call', () => {
   });
 
   it('answers the messages, then any partial output', async () => {
-    expect(Object(await resultOf('calls', 'calls_partial')).content).toEqual([
+    expect(Object(await resultOf('calls', 'partial')).content).toEqual([
       { text: 'The rest is missing.\n', type: 'text' },
       { text: 'half\n', type: 'text' },
     ]);
   });
 
   it('a defect reads the generic defect message from a distributed build', async () => {
-    await expect(resultOf('calls', 'calls_crash')).resolves.toEqual({
+    await expect(resultOf('calls', 'crash')).resolves.toEqual({
       content: [{ text: 'calls: Something went wrong.\n', type: 'text' }],
       isError: true,
       structuredContent: {
@@ -309,7 +309,7 @@ describe('a failed call', () => {
   });
 
   it('a failure whose view renders nothing answers one empty text item', async () => {
-    await expect(resultOf('calls', 'calls_silent')).resolves.toEqual({
+    await expect(resultOf('calls', 'silent')).resolves.toEqual({
       content: [{ text: '', type: 'text' }],
       isError: true,
       structuredContent: {
@@ -320,7 +320,7 @@ describe('a failed call', () => {
   });
 
   it('a missing required argument reports by name, with an invalid-input form', async () => {
-    await expect(resultOf('calls', 'calls_echo', {})).resolves.toEqual({
+    await expect(resultOf('calls', 'echo', {})).resolves.toEqual({
       content: [
         {
           text: 'calls: Argument "word" requires a value. Supply a value for "word".\n',
@@ -341,9 +341,7 @@ describe('a failed call', () => {
   });
 
   it('a value of the wrong shape reaches invoke, which reports it by name', async () => {
-    await expect(
-      resultOf('calls', 'calls_echo', { word: { nested: true } }),
-    ).resolves.toMatchObject({
+    await expect(resultOf('calls', 'echo', { word: { nested: true } })).resolves.toMatchObject({
       content: [{ text: 'calls: Argument "word": Use a string or a number.\n', type: 'text' }],
       isError: true,
       structuredContent: { exitCode: 2, failure: { code: 'invalid-input' } },
@@ -351,10 +349,10 @@ describe('a failed call', () => {
   });
 
   it('a key outside the input schema is a tool execution error, and no run starts', async () => {
-    await expect(resultOf('calls', 'calls_echo', { extra: 1, word: 'hi' })).resolves.toEqual({
+    await expect(resultOf('calls', 'echo', { extra: 1, word: 'hi' })).resolves.toEqual({
       content: [
         {
-          text: 'Tool "calls_echo" takes no argument "extra". Use a property its input schema lists.',
+          text: 'Tool "echo" takes no argument "extra". Use a property its input schema lists.',
           type: 'text',
         },
       ],
@@ -364,10 +362,10 @@ describe('a failed call', () => {
 
   it("a hidden or control option's name is outside the input schema", async () => {
     for (const key of ['internal', 'style', 'trace', 'mode']) {
-      await expect(resultOf('listing', 'kit_read', { [key]: true, path: 'a' })).resolves.toEqual({
+      await expect(resultOf('listing', 'read', { [key]: true, path: 'a' })).resolves.toEqual({
         content: [
           {
-            text: `Tool "kit_read" takes no argument "${key}". Use a property its input schema lists.`,
+            text: `Tool "read" takes no argument "${key}". Use a property its input schema lists.`,
             type: 'text',
           },
         ],
@@ -379,19 +377,18 @@ describe('a failed call', () => {
 
 describe('protocol errors', () => {
   it('an unknown tool is invalid params', async () => {
-    const answer = await called('calls', 'calls_ehco');
+    const answer = await called('calls', 'ehco');
     expect(answer.error).toEqual({
       code: -32_602,
-      message: 'Unknown tool "calls_ehco". Call tools/list for the tool names.',
+      message: 'Unknown tool "ehco". Call tools/list for the tool names.',
     });
   });
 
   it.each([[['hi']], ['hi'], [null]])('arguments of %j are invalid params', async (args) => {
-    const answer = await called('calls', 'calls_echo', args);
+    const answer = await called('calls', 'echo', args);
     expect(answer.error).toEqual({
       code: -32_602,
-      message:
-        'Tool "calls_echo" arguments must be an object. Supply a JSON object of named inputs.',
+      message: 'Tool "echo" arguments must be an object. Supply a JSON object of named inputs.',
     });
   });
 
@@ -410,7 +407,7 @@ describe('protocol errors', () => {
 describe('cancellation and concurrency', () => {
   it('notifications/cancelled aborts a call, which answers nothing, while a second call answers', async () => {
     const session = serve('calls');
-    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'calls_wait' }));
+    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'wait' }));
     await session.observed('started one');
     session.send({
       jsonrpc: '2.0',
@@ -418,7 +415,7 @@ describe('cancellation and concurrency', () => {
       params: { _meta: meta, requestId: 1 },
     });
     await session.observed('aborted one');
-    session.send(request(2, 'tools/call', { arguments: { word: 'two' }, name: 'calls_echo' }));
+    session.send(request(2, 'tools/call', { arguments: { word: 'two' }, name: 'echo' }));
     await expect(session.next()).resolves.toMatchObject({ id: 2 });
     const ending = await session.close();
     expect(ending.messages.map((message) => message.id)).toEqual([2]);
@@ -427,8 +424,8 @@ describe('cancellation and concurrency', () => {
 
   it('two overlapping calls answer by their own ids', async () => {
     const session = serve('calls');
-    session.send(request('a', 'tools/call', { arguments: { word: 'one' }, name: 'calls_echo' }));
-    session.send(request('b', 'tools/call', { arguments: { word: 'two' }, name: 'calls_echo' }));
+    session.send(request('a', 'tools/call', { arguments: { word: 'one' }, name: 'echo' }));
+    session.send(request('b', 'tools/call', { arguments: { word: 'two' }, name: 'echo' }));
     const answers = [await session.next(), await session.next()];
     await session.close();
     const byId = new Map(answers.map((answer) => [answer.id, Object(answer.result).content]));
@@ -442,7 +439,7 @@ describe('cancellation and concurrency', () => {
 
   it('closing stdin aborts every call in flight, answers none of them, and exits 0', async () => {
     const session = serve('calls');
-    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'calls_wait' }));
+    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'wait' }));
     await session.observed('started one');
     const ending = await session.close();
     expect(ending).toEqual({
@@ -457,8 +454,8 @@ describe('cancellation and concurrency', () => {
     const session = launch(fixture, ['calls', 'mcp'], {
       env: childEnvironment({ FIXTURE_CALLER_SIGNAL: '1' }),
     });
-    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'calls_wait' }));
-    session.send(request(2, 'tools/call', { arguments: { label: 'two' }, name: 'calls_wait' }));
+    session.send(request(1, 'tools/call', { arguments: { label: 'one' }, name: 'wait' }));
+    session.send(request(2, 'tools/call', { arguments: { label: 'two' }, name: 'wait' }));
     await session.observed('started one');
     await session.observed('started two');
     session.kill('SIGUSR2');
@@ -494,9 +491,10 @@ const rules = {
   },
   'tool-name-taken': {
     explanation: [
-      'An MCP client calls a tool by its name, which joins the Command path with',
-      'underscores and writes each hyphen as one, so two Commands whose paths give one',
-      'name leave the client no way to call either one.',
+      'An MCP client calls a tool by its name: the Command path joined with',
+      'underscores, or the application name for the root, with each hyphen written as',
+      'an underscore. Two Commands that give one name leave the client no way to call',
+      'either one.',
     ],
     headline: 'MCP TOOL NAME TAKEN',
   },
@@ -524,7 +522,13 @@ describe('build faults', () => {
     [
       'tool-name-taken',
       'tool-name-taken',
-      'Commands "scratch create" and "scratch_create" both serve the MCP tool "app_scratch_create".',
+      'Commands "scratch create" and "scratch_create" both serve the MCP tool "scratch_create".',
+      'Rename one Command, or remove mcpCommand from one of them.',
+    ],
+    [
+      'tool-name-taken-root',
+      'tool-name-taken',
+      'The root Command and Command "app" both serve the MCP tool "app".',
       'Rename one Command, or remove mcpCommand from one of them.',
     ],
     [

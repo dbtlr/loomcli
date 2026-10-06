@@ -12,10 +12,14 @@ function opening(command: CommandNode): string {
 }
 
 /**
- * The pair of Commands in a name collision, the earlier in graph order first. The root's tool is the
- * application name alone and every other tool's name is longer, so the root is never one of them.
+ * The pair of Commands in a name collision, the earlier in graph order first. The root comes first
+ * in graph order, so only the earlier can be the root, when a child is named like the application.
  */
 function pair(earlier: CommandNode, later: CommandNode): string {
+  const [first] = earlier.path;
+  if (first === undefined) {
+    return `The root Command and Command "${later.path.join(' ')}"`;
+  }
   return `Commands "${earlier.path.join(' ')}" and "${later.path.join(' ')}"`;
 }
 

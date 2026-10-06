@@ -434,7 +434,7 @@ try {
       {
         id: 3,
         method: 'tools/call',
-        params: { arguments: { subject: 'world' }, name: 'packed_mcp_greet' },
+        params: { arguments: { subject: 'world' }, name: 'greet' },
       },
     ]);
     assert.deepEqual(
@@ -465,7 +465,7 @@ try {
             required: ['subject'],
             type: 'object',
           },
-          name: 'packed_mcp_greet',
+          name: 'greet',
         },
       ],
       `${name}: the packed MCP listing`,

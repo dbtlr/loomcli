@@ -46,12 +46,13 @@ function walk(command: CommandNode): readonly CommandNode[] {
 }
 
 /**
- * A tool's name: the application name and then the Command's path, joined by `_`, with each `-`
- * written as `_`, so the root serves the application name alone. A portable name holds nothing else
- * the protocol's tool names exclude.
+ * A tool's name: the Command's path joined by `_`, or the application name at the root, with each
+ * `-` written as `_`. A portable name holds nothing else the protocol's tool names exclude.
  */
 function toolName(graph: CommandGraph, command: CommandNode): string {
-  return [graph.name, ...command.path].join('_').replaceAll('-', '_');
+  const [first] = command.path;
+  const words = first === undefined ? [graph.name] : command.path;
+  return words.join('_').replaceAll('-', '_');
 }
 
 /** Every Command that carries an `mcpCommand` value, in graph order, under its tool name. */

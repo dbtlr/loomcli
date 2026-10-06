@@ -123,7 +123,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
             required: ['path'],
             type: 'object',
           },
-          name: 'jsonkit_get',
+          name: 'get',
         },
         {
           annotations,
@@ -136,7 +136,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
             },
             type: 'object',
           },
-          name: 'jsonkit_keys',
+          name: 'keys',
         },
         {
           annotations,
@@ -154,15 +154,15 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
             required: ['field'],
             type: 'object',
           },
-          name: 'jsonkit_select',
+          name: 'select',
         },
       ],
       ttlMs: 0,
     });
   });
 
-  it('jsonkit_get answers the value as text with no structured content', async () => {
-    await expect(call('jsonkit_get', { file: 'doc.json', path: 'user.name' })).resolves.toEqual({
+  it('get answers the value as text with no structured content', async () => {
+    await expect(call('get', { file: 'doc.json', path: 'user.name' })).resolves.toEqual({
       id: 1,
       jsonrpc: '2.0',
       result: result({ content: [{ text: '"Ada"\n', type: 'text' }], isError: false }),
@@ -187,15 +187,15 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
     );
   });
 
-  it('jsonkit_keys answers the keys as text', async () => {
-    await expect(resultOf('jsonkit_keys', { file: 'doc.json' })).resolves.toEqual(
+  it('keys answers the keys as text', async () => {
+    await expect(resultOf('keys', { file: 'doc.json' })).resolves.toEqual(
       result({ content: [{ text: 'name\nuser\ntags\n', type: 'text' }], isError: false }),
     );
   });
 
-  it('jsonkit_select with an absent field answers the fields, then the warning', async () => {
+  it('select with an absent field answers the fields, then the warning', async () => {
     await expect(
-      resultOf('jsonkit_select', { field: ['name', 'absent'], file: 'doc.json' }),
+      resultOf('select', { field: ['name', 'absent'], file: 'doc.json' }),
     ).resolves.toEqual(
       result({
         content: [
@@ -211,7 +211,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
   });
 
   it('a missing path answers the failure with its form', async () => {
-    await expect(resultOf('jsonkit_get', { file: 'doc.json', path: 'missing' })).resolves.toEqual(
+    await expect(resultOf('get', { file: 'doc.json', path: 'missing' })).resolves.toEqual(
       failed(
         'path-not-found',
         65,
@@ -221,7 +221,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
   });
 
   it('a malformed document answers 65 with the code invalid-json', async () => {
-    await expect(resultOf('jsonkit_get', { file: 'broken.json', path: 'name' })).resolves.toEqual(
+    await expect(resultOf('get', { file: 'broken.json', path: 'name' })).resolves.toEqual(
       failed(
         'invalid-json',
         65,
@@ -232,21 +232,21 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
 
   it('a missing required argument and a value of the wrong shape report by name, with no help hint', async () => {
     const missing = 'Argument "path" requires a value. Supply a value for "path".';
-    await expect(resultOf('jsonkit_get', { file: 'doc.json' })).resolves.toEqual(
+    await expect(resultOf('get', { file: 'doc.json' })).resolves.toEqual(
       failed('invalid-input', 2, missing, `jsonkit: ${missing}\n`),
     );
     const shape = 'Argument "path": Use a string or a number.';
-    await expect(resultOf('jsonkit_get', { file: 'doc.json', path: true })).resolves.toEqual(
+    await expect(resultOf('get', { file: 'doc.json', path: true })).resolves.toEqual(
       failed('invalid-input', 2, shape, `jsonkit: ${shape}\n`),
     );
   });
 
   it('a key outside the schema, a control option included, answers the tool execution error', async () => {
-    await expect(resultOf('jsonkit_get', { format: 'json', path: 'name' })).resolves.toEqual(
+    await expect(resultOf('get', { format: 'json', path: 'name' })).resolves.toEqual(
       result({
         content: [
           {
-            text: 'Tool "jsonkit_get" takes no argument "format". Use a property its input schema lists.',
+            text: 'Tool "get" takes no argument "format". Use a property its input schema lists.',
             type: 'text',
           },
         ],
@@ -256,18 +256,17 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
   });
 
   it('an unknown tool and arguments that are not an object answer -32602', async () => {
-    const unknown = await call('jsonkit_gte', {});
+    const unknown = await call('gte', {});
     expect(unknown.error).toEqual({
       code: -32_602,
-      message: 'Unknown tool "jsonkit_gte". Call tools/list for the tool names.',
+      message: 'Unknown tool "gte". Call tools/list for the tool names.',
     });
     const session = serve();
-    session.send(request(1, 'tools/call', { arguments: ['name'], name: 'jsonkit_get' }));
+    session.send(request(1, 'tools/call', { arguments: ['name'], name: 'get' }));
     const refused = await session.next();
     expect(refused.error).toEqual({
       code: -32_602,
-      message:
-        'Tool "jsonkit_get" arguments must be an object. Supply a JSON object of named inputs.',
+      message: 'Tool "get" arguments must be an object. Supply a JSON object of named inputs.',
     });
     await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
   });

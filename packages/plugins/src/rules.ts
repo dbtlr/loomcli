@@ -29,10 +29,10 @@ const failureCodeConflict = diagnosticRule(`${Package.name}/manifest/failure-cod
   headline: 'Failure code conflict',
 });
 
-/** Two opted-in Commands whose paths give one MCP tool name. */
+/** Two opted-in Commands that give one MCP tool name, the root included. */
 const mcpToolNameTaken = diagnosticRule(`${Package.name}/mcp/tool-name-taken`, {
   explanation:
-    'An MCP client calls a tool by its name, which joins the Command path with underscores and writes each hyphen as one, so two Commands whose paths give one name leave the client no way to call either one.',
+    'An MCP client calls a tool by its name: the Command path joined with underscores, or the application name for the root, with each hyphen written as an underscore. Two Commands that give one name leave the client no way to call either one.',
   headline: 'MCP tool name taken',
 });
 
