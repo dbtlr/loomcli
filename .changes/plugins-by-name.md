@@ -1,3 +1,0 @@
-- Change help's failure hint to add no line for an invocation by name, where no command line exists to rerun with `--help`. See [Help's failure hint](docs/core.md#helps-failure-hint).
-- Change the suggestions plugin to offer the declared names of the visible options for an unknown option in an invocation by name, printed as names, such as `Did you mean "verbose"?`. See [Suggestions](docs/core.md#suggestions).
-- Change the configuration plugin to name an option by its declared name in an invocation by name, as core does there, such as `Option "min-bytes" (from minBytes in .textstat.toml): Use a string or a number.` and `Option "config": File "missing.json" does not exist. Supply the path of an existing file.`

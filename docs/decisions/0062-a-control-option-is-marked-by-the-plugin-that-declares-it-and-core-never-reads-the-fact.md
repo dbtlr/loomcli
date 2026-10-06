@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0062 - A control option is marked by the plugin that declares it, and core never reads the fact
 description: An option config takes control, a Boolean core fact that marks an option as controlling the invocation rather than feeding the Command's work. Whoever declares the option sets it; help, version, the manifest, the formatter, and the configuration plugin set it on their options. inspect() and the manifest publish it, the MCP tool listing omits marked options, help is unchanged, and core behaves the same at run time.
-status: proposed
+status: accepted
 created: 2026-10-05
-modified: 2026-10-05
+modified: 2026-10-06
 ---
 
 # ADR-0062 - A control option is marked by the plugin that declares it, and core never reads the fact
@@ -35,7 +35,7 @@ The manifest document gains `control` on every option entry, an ordinary change 
 
 ## Status
 
-Proposed 2026-10-05 with the contract in [Control options](../core.md#control-options). It moves to accepted inside the release PR of the release that ships the implementation: the fact published on every option node, the five first-party options marked, help unchanged, and the acceptance in that section, under Node and Bun.
+Accepted in 0.9.0.
 
 ## Changelog
 

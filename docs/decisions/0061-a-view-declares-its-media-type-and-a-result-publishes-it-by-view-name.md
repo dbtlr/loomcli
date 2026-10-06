@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0061 - A view declares its media type, and a result publishes it by view name
 description: Every view shape takes an optional mediaType string, and ResultNode publishes mediaTypes keyed by view name, null where a view declares none. Core stores the string at the call that stores the view and never checks it. The formatter's json() and jsonl() declare application/json and application/jsonl, and the manifest reads the fact in place of the json and jsonl naming promise. This closes the deferral ADR-0023 recorded.
-status: proposed
+status: accepted
 created: 2026-10-05
 modified: 2026-10-06
 ---
@@ -35,7 +35,7 @@ A projection reads how to parse a view from the graph, with no plugin installed.
 
 ## Status
 
-Proposed 2026-10-05 with the contract in [Media types](../core.md#media-types). It moves to accepted inside the release PR of the release that ships the implementation: `mediaTypes` published on every result, the formatter's two views declaring their types, the manifest reading the fact, and the acceptance in that section, under Node and Bun.
+Accepted in 0.9.0.
 
 ## Changelog
 
