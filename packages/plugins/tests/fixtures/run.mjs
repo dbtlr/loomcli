@@ -436,6 +436,7 @@ const scenarios = {
       }),
     ]),
   version: () => versioned({ version: '1.2.0' }),
+  'version-empty': () => versioned({ version: '1.2.0' }, [help(), version({})]),
   'version-omitted': () => versioned({}),
   'version-postfix': () =>
     versioned({ version: '1.2.0' }, [help(), version({ postfix: '(Report schema v1)' })]),

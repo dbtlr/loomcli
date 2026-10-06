@@ -85,4 +85,9 @@ test.each([['schema v1'], [5], [null], [['schema v1']]])(
 
 test('version() with empty settings prints the standard line', () => {
   expect(settingsOutcome({})).toBe('returned');
+  expect(run('version-empty', ['--version'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'app v1.2.0\n',
+  });
 });
