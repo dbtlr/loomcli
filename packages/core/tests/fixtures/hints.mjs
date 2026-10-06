@@ -327,7 +327,7 @@ const scenarios = {
   'converter-fault': () =>
     new Application('store', {
       packet: { build: 'development' },
-      plugins: [hinting('fixture/one', () => 'never')],
+      plugins: [hinting('fixture/one', () => 'converter-fault hint')],
     })
       .option('mode', { type: 'string', validate: throwingConverter })
       .action(dispatch),

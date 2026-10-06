@@ -3,6 +3,7 @@ import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import type { CommandGraph } from './inspect.js';
 import { brokenGraphHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
+import { ignoreRejection, isThenable } from './thenable.js';
 import type { GraphBuiltHook } from './types.js';
 
 /** The finding for the hook one plugin declared, as `plugin(identity, { onGraphBuilt })`. */
@@ -35,7 +36,9 @@ function judgeOnce(graph: CommandGraph, hook: GraphBuiltHook, identity: string):
     );
   }
   if (returned !== undefined) {
-    void Promise.resolve(returned).catch(() => undefined);
+    if (isThenable(returned)) {
+      ignoreRejection(returned);
+    }
     throw new DeclarationError(brokenGraphHook, {
       correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
       findings: [hookFinding(identity, hook)],

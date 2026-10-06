@@ -63,7 +63,7 @@ test("a development build's converter failure is a build fault that calls no hoo
   const result = run('converter-fault');
   expect(result.stdout).toBe('resolved:1\n');
   expect(result.stderr).toContain(' @loomcli/core/schema-converter-failed\n');
-  expect(result.stderr).not.toContain('never');
+  expect(result.stderr).not.toContain('converter-fault hint');
 });
 
 test('a declared default its validator rejects calls the hook with an empty path at the root', () => {

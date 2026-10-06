@@ -198,7 +198,7 @@ const notOneLine = registerRule('@loomcli/core/not-one-line', {
 /** `hidden` or `deprecated` on the Application or on an argument, or `control` on an argument. */
 const misplacedListingFact = registerRule('@loomcli/core/misplaced-listing-fact', {
   explanation:
-    "hidden and deprecated keep a named Command or an option off a listing, or mark it retired, and control marks an option that controls the invocation rather than feeding the Command's work. The root is the entry point of every page, and an argument cannot leave the grammar it sits in and is always the Command's input, so neither carries them.",
+    "hidden and deprecated keep a named Command or an option off a listing, or mark it retired. The root is the entry point of every page, and an argument cannot leave the grammar it sits in, so neither carries them. control marks an option that controls the invocation rather than feeding the Command's work, and an argument is always the Command's input, so it carries no control mark.",
   headline: 'Listing fact out of place',
 });
 

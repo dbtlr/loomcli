@@ -86,6 +86,10 @@ test.each(['throws', 'returns', 'promise'])(
   },
 );
 
+test("a broken hook's fault keeps the value the hook threw as its cause", () => {
+  expect(JSON.parse(report('cause'))).toEqual({ cause: true });
+});
+
 test('the graph is frozen: a write throws, a caught write leaves the graph unchanged, and an uncaught one is a broken hook', () => {
   const frozen: { quiet: Ran; seen: string[]; unguarded: Ran } = JSON.parse(
     report('frozen', 'development'),

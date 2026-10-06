@@ -142,6 +142,24 @@ if (scenario === 'order') {
     results[kind] = await runCaptured(app, []);
   }
   print(results);
+} else if (scenario === 'cause') {
+  // The value a broken hook threw is the fault's cause.
+  const thrown = new TypeError('the hook broke');
+  const app = new Application('probe', {
+    plugins: [
+      plugin('@fixture/broken', {
+        onGraphBuilt: () => {
+          throw thrown;
+        },
+      }),
+    ],
+  }).action(() => undefined);
+  try {
+    app.inspect();
+    print('returned');
+  } catch (error) {
+    print({ cause: error instanceof DeclarationError && error.cause === thrown });
+  }
 } else if (scenario === 'frozen') {
   const seen = [];
   const writing = plugin('@fixture/writing', {
