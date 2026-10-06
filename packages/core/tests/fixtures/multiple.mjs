@@ -2,7 +2,7 @@ import { Application, Command, validationContext } from '@loomcli/core';
 import { z } from 'zod';
 
 // A development build, so a fault only the author can fix prints its Developer Diagnostic.
-const development = { packet: { build: 'development' } };
+const development = { description: 'Probe the inputs.', packet: { build: 'development' } };
 
 const [scenario, ...argv] = process.argv.slice(2);
 const report = ({ options, passthrough, out }) =>
@@ -28,8 +28,13 @@ let app = undefined;
 switch (scenario) {
   case 'plain': {
     app = new Application('multiple', development)
-      .option('field', { multiple: true, short: 'F', type: 'string' })
-      .option('total', { short: 't', type: 'boolean' })
+      .option('field', {
+        description: 'The field option.',
+        multiple: true,
+        short: 'F',
+        type: 'string',
+      })
+      .option('total', { description: 'The total option.', short: 't', type: 'boolean' })
       .action(report);
     break;
   }
@@ -37,6 +42,7 @@ switch (scenario) {
     app = new Application('multiple', development)
       .option('field', {
         default: ['a', 'b'],
+        description: 'The field option.',
         multiple: true,
         type: 'string',
         validate: z.string().transform((value) => value.toUpperCase()),
@@ -46,19 +52,31 @@ switch (scenario) {
   }
   case 'invalid-default': {
     app = new Application('multiple', development)
-      .option('field', { default: ['a', ''], multiple: true, type: 'string', validate: fieldName })
+      .option('field', {
+        default: ['a', ''],
+        description: 'The field option.',
+        multiple: true,
+        type: 'string',
+        validate: fieldName,
+      })
       .action(report);
     break;
   }
   case 'raw-default': {
     app = new Application('multiple', development)
-      .option('field', { default: ['a'], multiple: true, type: 'string' })
+      .option('field', {
+        default: ['a'],
+        description: 'The field option.',
+        multiple: true,
+        type: 'string',
+      })
       .action(report);
     break;
   }
   case 'schema': {
     app = new Application('multiple', development)
       .option('field', {
+        description: 'The field option.',
         multiple: true,
         short: 'F',
         type: 'string',
@@ -70,6 +88,7 @@ switch (scenario) {
   case 'counted': {
     app = new Application('multiple', development)
       .option('field', {
+        description: 'The field option.',
         multiple: true,
         type: 'string',
         validate: {
@@ -86,6 +105,7 @@ switch (scenario) {
   case 'pathed': {
     app = new Application('multiple', development)
       .option('field', {
+        description: 'The field option.',
         multiple: true,
         type: 'string',
         validate: {
@@ -104,7 +124,13 @@ switch (scenario) {
   }
   case 'required-schema': {
     app = new Application('multiple', development)
-      .option('field', { multiple: true, required: true, type: 'string', validate: fieldName })
+      .option('field', {
+        description: 'The field option.',
+        multiple: true,
+        required: true,
+        type: 'string',
+        validate: fieldName,
+      })
       .action(report);
     break;
   }
@@ -112,6 +138,7 @@ switch (scenario) {
     // The first value cancels the run, so no later value reaches the validator.
     app = new Application('multiple', development)
       .option('field', {
+        description: 'The field option.',
         multiple: true,
         type: 'string',
         validate: counting({
@@ -132,6 +159,7 @@ switch (scenario) {
     // Each call records what it saw, then writes to every array the context handed it.
     app = new Application('multiple', development)
       .option('field', {
+        description: 'The field option.',
         multiple: true,
         type: 'string',
         validate: {
@@ -157,14 +185,23 @@ switch (scenario) {
   }
   case 'required': {
     app = new Application('multiple', development)
-      .option('field', { multiple: true, required: true, short: 'F', type: 'string' })
+      .option('field', {
+        description: 'The field option.',
+        multiple: true,
+        required: true,
+        short: 'F',
+        type: 'string',
+      })
       .action(report);
     break;
   }
   case 'global': {
-    const show = new Command('show').option('local', { type: 'boolean' }).action(report);
+    const show = new Command('show', { description: 'The show command.' })
+      .option('local', { description: 'The local option.', type: 'boolean' })
+      .action(report);
     app = new Application('multiple', development)
       .globalOption('field', {
+        description: 'The field option.',
         multiple: true,
         short: 'F',
         type: 'string',
@@ -175,25 +212,36 @@ switch (scenario) {
   }
   case 'boolean-multiple': {
     app = new Application('multiple', development)
-      .option('verbose', { multiple: true, type: 'boolean' })
+      .option('verbose', { description: 'The verbose option.', multiple: true, type: 'boolean' })
       .action(report);
     break;
   }
   case 'nonboolean-multiple': {
     app = new Application('multiple', development)
-      .option('field', { multiple: 'yes', type: 'string' })
+      .option('field', { description: 'The field option.', multiple: 'yes', type: 'string' })
       .action(report);
     break;
   }
   case 'validated-string-default': {
     app = new Application('multiple', development)
-      .option('field', { default: 'a', multiple: true, type: 'string', validate: fieldName })
+      .option('field', {
+        default: 'a',
+        description: 'The field option.',
+        multiple: true,
+        type: 'string',
+        validate: fieldName,
+      })
       .action(report);
     break;
   }
   case 'string-default': {
     app = new Application('multiple', development)
-      .option('field', { default: 'a', multiple: true, type: 'string' })
+      .option('field', {
+        default: 'a',
+        description: 'The field option.',
+        multiple: true,
+        type: 'string',
+      })
       .action(report);
     break;
   }

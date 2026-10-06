@@ -1,7 +1,7 @@
 import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
 
 const act = () => undefined;
-const leaf = (name) => new Command(name).action(act);
+const leaf = (name) => new Command(name, { description: 'Probe.' }).action(act);
 
 /** A validator that accepts every value it receives. */
 const text = { '~standard': { validate: (value) => ({ value }), vendor: 'probe', version: 1 } };
@@ -75,8 +75,10 @@ const broken = {
 
 /** An application in one build whose `get` Command declares one option validated by `validate`. */
 const validated = (build, validate) =>
-  new Application('probe', { packet: { build } }).command(
-    new Command('get').option('limit', { type: 'string', validate }).action(act),
+  new Application('probe', { description: 'Probe.', packet: { build } }).command(
+    new Command('get', { description: 'Probe.' })
+      .option('limit', { description: 'Limit.', type: 'string', validate })
+      .action(act),
   );
 
 /** A plugin that declares the options given, and nothing else. */
@@ -259,60 +261,84 @@ const reported = {
   'converter-getter': () => validated('development', getterThrowing),
   'converter-getter-distributed': () => validated('distributed', getterThrowing),
   'converter-list': () =>
-    new Application('probe', { packet: { build: 'development' } }).command(
-      new Command('get').option('limit', { type: 'string', validate: listing }).action(act),
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .option('limit', { description: 'Limit.', type: 'string', validate: listing })
+        .action(act),
     ),
   'converter-throws': () =>
-    new Application('probe', { packet: { build: 'development' } }).command(
-      new Command('get').argument('path', { validate: throwing }).action(act),
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .argument('path', { description: 'Path.', validate: throwing })
+        .action(act),
     ),
   'converter-throws-distributed': () =>
-    new Application('probe', { packet: { build: 'distributed' } }).command(
-      new Command('get').argument('path', { validate: throwing }).action(act),
+    new Application('probe', { description: 'Probe.', packet: { build: 'distributed' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .argument('path', { description: 'Path.', validate: throwing })
+        .action(act),
     ),
   'global-validator-throws': () =>
-    new Application('probe', { packet: { build: 'development' } })
-      .globalOption('limit', { type: 'string', validate: broken })
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } })
+      .globalOption('limit', { description: 'Limit.', type: 'string', validate: broken })
       .command(leaf('get')),
   'invalid-default': () =>
-    new Application('probe', { packet: { build: 'development' } }).command(
-      new Command('get')
-        .option('limit', { default: 'x', type: 'string', validate: digits })
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .option('limit', { default: 'x', description: 'Limit.', type: 'string', validate: digits })
         .action(act),
     ),
   'invalid-implied': () =>
-    new Application('probe', { packet: { build: 'development' } }).command(
-      new Command('get')
-        .option('backup', { implied: 'x', type: 'string', validate: controls })
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .option('backup', {
+          description: 'Backup.',
+          implied: 'x',
+          type: 'string',
+          validate: controls,
+        })
         .action(act),
     ),
   // A plugin's option is a global option, so its default and its validator meet the same rules.
   'plugin-invalid-default': () =>
     new Application('probe', {
+      description: 'Probe.',
       packet: { build: 'development' },
       plugins: [
         plugin('@acme/log', {
-          options: { level: { default: 'x', type: 'string', validate: digits } },
+          options: {
+            level: { default: 'x', description: 'Level.', type: 'string', validate: digits },
+          },
         }),
       ],
     }).command(leaf('get')),
   'plugin-invalid-implied': () =>
     new Application('probe', {
+      description: 'Probe.',
       packet: { build: 'development' },
       plugins: [
         plugin('@acme/copy', {
-          options: { backup: { implied: 'x', type: 'string', validate: controls } },
+          options: {
+            backup: { description: 'Backup.', implied: 'x', type: 'string', validate: controls },
+          },
         }),
       ],
     }).command(leaf('get')),
   'plugin-validator-throws': () =>
     new Application('probe', {
+      description: 'Probe.',
       packet: { build: 'development' },
-      plugins: [plugin('@acme/log', { options: { level: { type: 'string', validate: broken } } })],
+      plugins: [
+        plugin('@acme/log', {
+          options: { level: { description: 'Level.', type: 'string', validate: broken } },
+        }),
+      ],
     }).command(leaf('get')),
   'validator-throws': () =>
-    new Application('probe', { packet: { build: 'development' } }).command(
-      new Command('get').option('limit', { type: 'string', validate: broken }).action(act),
+    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+      new Command('get', { description: 'Probe.' })
+        .option('limit', { description: 'Limit.', type: 'string', validate: broken })
+        .action(act),
     ),
 };
 

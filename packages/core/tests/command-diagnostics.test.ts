@@ -122,6 +122,12 @@ const explanations = {
     'Every canonical name and alias under one parent routes one token to one child,',
     'so a name that two siblings share cannot route.',
   ],
+  undescribed: [
+    'Agents, MCP tools, help, and the manifest read each Command, option, and',
+    'argument by its description, so a development build fails a run whose graph',
+    'leaves one out, and the author meets the gap before an operator or an agent',
+    'does. A distributed build skips the check.',
+  ],
   'unknown-default-view': [
     'The default view renders a result when nothing selects another, so it names one',
     'of the views the result declares.',
@@ -1144,7 +1150,8 @@ test.each(Object.entries(cases))(
 );
 
 test('every rule of the family has a pinned diagnostic', () => {
-  const pinned = new Set(Object.values(cases).map((expected) => expected.rule));
+  // A gap in descriptions waits for a development run, so its pinned diagnostic is reported below.
+  const pinned = new Set([...Object.values(cases).map((expected) => expected.rule), 'undescribed']);
   expect([...pinned].toSorted()).toEqual(
     [...Object.keys(explanations), ...Object.keys(shared)].toSorted(),
   );
@@ -1215,6 +1222,22 @@ test('a root fault reported from run() opens its findings with the application n
       headline: 'OPTION ON A GROUP',
       rule: 'group-option',
       sentence: 'The root Command declares option "verbose" but registers no action to receive it.',
+    }),
+    stdout: '',
+  });
+});
+
+test('an undescribed root reported from run() marks the name its constructor received', () => {
+  expect(reported('root-undescribed')).toEqual({
+    status: 1,
+    stderr: diagnostic({
+      correction: 'Give each one a description of one line.',
+      findings: [
+        ["    new Application('probe', { … })", '                    ^^^^^^^ no description'],
+      ],
+      headline: 'MISSING DESCRIPTION',
+      rule: 'undescribed',
+      sentence: '1 declaration has no description.',
     }),
     stdout: '',
   });

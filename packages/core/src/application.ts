@@ -121,6 +121,7 @@ import type {
   RunOptions,
   ValidateOmittedConstraint,
 } from './types.js';
+import { checkDescribed } from './undescribed.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
 import { checkDeclarations, prepareDeclaredValues } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
@@ -524,11 +525,13 @@ class ApplicationBuilder<
    * of the frozen graph. The application's own overrides are published first, so a build fault
    * reports through them. The merged registry is published once the build has succeeded, so a
    * build fault never resolves through a plugin's overrides. `inspected` is the frozen graph
-   * `inspect()` returns, built at most once, whoever reads it first.
+   * `inspect()` returns, built at most once, whoever reads it first. `run` is the run the build
+   * starts, with the graph an action's call reuses, or nothing for `inspect()`, which starts none
+   * and so runs no description check.
    */
   private prepare(
     stage: PrepareStage,
-    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
+    run?: { reuse: Pick<BoundGraph, 'graph' | 'inspected'> | undefined },
   ): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
@@ -540,6 +543,7 @@ class ApplicationBuilder<
     stage.rendering(rendering);
     stage.plugins(plugins);
     // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
+    const reuse = run?.reuse;
     if (reuse) {
       stage.views([views, ...contributors]);
       return { facts, graph: reuse.graph, inspected: reuse.inspected, plugins };
@@ -550,6 +554,10 @@ class ApplicationBuilder<
     if (development) {
       // A development build asks every converter at build, so its check runs on every run.
       inspected();
+    }
+    if (development && run !== undefined) {
+      // A development run fails on an undescribed member, after the converters and before a judge.
+      checkDescribed(graph, { description: facts.description, name: this.#name });
     }
     if (judgesGraph(plugins)) {
       judgeGraph(inspected(), plugins);
@@ -736,7 +744,7 @@ class ApplicationBuilder<
               invocationOutput.useViews(value);
             },
           },
-          bound,
+          { reuse: bound },
         );
         const { graph, inspected } = built;
         reached = { inspected, plugins: built.plugins };

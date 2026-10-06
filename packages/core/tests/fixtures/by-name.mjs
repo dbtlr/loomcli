@@ -5,8 +5,11 @@ import { Application, Command, FatalError, override, plugin, translate } from '@
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
 
-/** The packet each scenario's Application reads, so a defect renders by the build a test names. */
-const packet = { packet: { build } };
+/**
+ * The options each scenario's Application declares: its description, and the packet that renders a
+ * defect by the build a test names.
+ */
+const probe = { description: 'Probe a call by name.', packet: { build } };
 
 /** A foreign error the application's translator answers. */
 class ForeignError extends Error {
@@ -58,17 +61,22 @@ const wholeNumber = {
 /** A Command whose action prints every value it received, as one JSON document on stdout. */
 function echo(name) {
   return new Command(name)
-    .argument('target', { required: true })
-    .argument('files', { variadic: true })
-    .option('name', { type: 'string' })
-    .option('ratio', { type: 'string' })
-    .option('flag', { env: 'PROBE_FLAG', type: 'boolean' })
-    .option('color', { polarity: 'both', type: 'boolean' })
-    .option('keep', { polarity: 'negative', type: 'boolean' })
-    .option('backup', { implied: 'simple', type: 'string' })
-    .option('verbose', { short: 'v', type: 'count' })
-    .option('tag', { multiple: true, type: 'string' })
-    .option('versions', { implied: 'latest', multiple: true, type: 'string' })
+    .argument('target', { description: 'The target argument.', required: true })
+    .argument('files', { description: 'The files argument.', variadic: true })
+    .option('name', { description: 'The name option.', type: 'string' })
+    .option('ratio', { description: 'The ratio option.', type: 'string' })
+    .option('flag', { description: 'The flag option.', env: 'PROBE_FLAG', type: 'boolean' })
+    .option('color', { description: 'The color option.', polarity: 'both', type: 'boolean' })
+    .option('keep', { description: 'The keep option.', polarity: 'negative', type: 'boolean' })
+    .option('backup', { description: 'The backup option.', implied: 'simple', type: 'string' })
+    .option('verbose', { description: 'The verbose option.', short: 'v', type: 'count' })
+    .option('tag', { description: 'The tag option.', multiple: true, type: 'string' })
+    .option('versions', {
+      description: 'The versions option.',
+      implied: 'latest',
+      multiple: true,
+      type: 'string',
+    })
     .action(async ({ args, options, out }) => {
       await out.print(JSON.stringify({ args, options }));
     });
@@ -76,13 +84,16 @@ function echo(name) {
 
 /** The lowering table's Application: one Command that reads every kind of input. */
 function lowering() {
-  return new Application('probe', packet)
-    .command(echo('echo'))
-    .command(
-      new Command('need')
-        .option('item', { multiple: true, required: true, type: 'string' })
-        .action(() => undefined),
-    );
+  return new Application('probe', probe).command(echo('echo')).command(
+    new Command('need', { description: 'The need command.' })
+      .option('item', {
+        description: 'The item option.',
+        multiple: true,
+        required: true,
+        type: 'string',
+      })
+      .action(() => undefined),
+  );
 }
 
 if (scenario === 'lowering') {
@@ -137,20 +148,46 @@ if (scenario === 'lowering') {
   print(outcomes);
 } else if (scenario === 'names') {
   const seen = [];
-  const app = new Application('probe', packet)
-    .globalOption('min-bytes', { env: 'PROBE_MIN_BYTES', type: 'string', validate: wholeNumber })
+  const app = new Application('probe', probe)
+    .globalOption('min-bytes', {
+      description: 'The min-bytes option.',
+      env: 'PROBE_MIN_BYTES',
+      type: 'string',
+      validate: wholeNumber,
+    })
     .command(
-      new Command('pair')
-        .argument('first', { required: true })
-        .argument('second', { required: true, validate: recording(seen) })
-        .option('depth', { required: true, short: 'd', type: 'string' })
+      new Command('pair', { description: 'The pair command.' })
+        .argument('first', { description: 'The first argument.', required: true })
+        .argument('second', {
+          description: 'The second argument.',
+          required: true,
+          validate: recording(seen),
+        })
+        .option('depth', {
+          description: 'The depth option.',
+          required: true,
+          short: 'd',
+          type: 'string',
+        })
         .action(() => undefined),
     )
-    .command(new Command('get').argument('path', {}).action(() => undefined))
     .command(
-      new Command('cache')
-        .command(new Command('clear').action(({ out }) => out.print('cleared')))
-        .command(new Command('purge', { hidden: true }).action(({ out }) => out.print('purged'))),
+      new Command('get', { description: 'The get command.' })
+        .argument('path', { description: 'The path argument.' })
+        .action(() => undefined),
+    )
+    .command(
+      new Command('cache', { description: 'The cache command.' })
+        .command(
+          new Command('clear', {
+            description: 'The clear command.',
+          }).action(({ out }) => out.print('cleared')),
+        )
+        .command(
+          new Command('purge', { description: 'The purge command.', hidden: true }).action(
+            ({ out }) => out.print('purged'),
+          ),
+        ),
     );
   const env = { PROBE_MIN_BYTES: 'many' };
   print({
@@ -169,9 +206,14 @@ if (scenario === 'lowering') {
   });
   process.exitCode = 0;
 } else if (scenario === 'capture') {
-  const app = new Application('probe', { ...packet, rendering: { color: 'always' } })
+  const app = new Application('probe', {
+    ...probe,
+    rendering: { color: 'always' },
+  })
     .command(
-      new Command('report')
+      new Command('report', {
+        description: 'The report command.',
+      })
         .result({
           views: { text: { render: (value, { style }) => `${style.bold(String(value.count))}\n` } },
         })
@@ -189,7 +231,9 @@ if (scenario === 'lowering') {
         }),
     )
     .command(
-      new Command('plain').action(async ({ out, style }) => {
+      new Command('plain', {
+        description: 'The plain command.',
+      }).action(async ({ out, style }) => {
         await out.print(style.red('print'));
         await out.render('rendered', {
           render: (text, context) => `${context.style.bold(text)}\n`,
@@ -213,10 +257,10 @@ if (scenario === 'lowering') {
           },
         }),
     },
-    options: { twice: { type: 'boolean' } },
+    options: { twice: { description: 'Twice.', type: 'boolean' } },
   });
   const app = new Application('probe', {
-    ...packet,
+    ...probe,
     plugins: [twice],
     translators: [
       translate(
@@ -235,16 +279,24 @@ if (scenario === 'lowering') {
       : [],
   })
     .command(
-      new Command('foreign').action(() => {
+      new Command('foreign', {
+        description: 'The foreign command.',
+      }).action(() => {
         throw new ForeignError('raw');
       }),
     )
     .command(
-      new Command('defect').action(() => {
+      new Command('defect', {
+        description: 'The defect command.',
+      }).action(() => {
         throw new TypeError('the action broke');
       }),
     )
-    .command(new Command('quiet').action(() => undefined));
+    .command(
+      new Command('quiet', {
+        description: 'The quiet command.',
+      }).action(() => undefined),
+    );
   const received = [];
   const handler = (failure, context) => {
     received.push({ context, name: failure.constructor.name });
@@ -294,19 +346,28 @@ if (scenario === 'lowering') {
           },
         }),
     },
-    options: { later: { type: 'boolean' } },
+    options: { later: { description: 'Later.', type: 'boolean' } },
   });
   const views = {
     json: { render: (value) => `${JSON.stringify(value)}\n` },
     text: { render: (value) => `count ${value.count}\n` },
   };
-  const app = new Application('probe', { ...packet, plugins: [later] })
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [later],
+  })
     .command(
-      new Command('count').result({ views }).action(async ({ out }) => {
-        await out.results({ count: 2 });
-      }),
+      new Command('count', { description: 'The count command.' })
+        .result({ views })
+        .action(async ({ out }) => {
+          await out.results({ count: 2 });
+        }),
     )
-    .command(new Command('get').action(() => undefined));
+    .command(
+      new Command('get', {
+        description: 'The get command.',
+      }).action(() => undefined),
+    );
   print({
     assigned: await app.invoke(['count'], { options: { later: true } }, { view: 'json' }),
     json: await app.invoke(['count'], {}, { view: 'json' }),
@@ -315,7 +376,7 @@ if (scenario === 'lowering') {
     unknown: await app.invoke(['count'], {}, { view: 'yaml' }),
   });
 } else if (scenario === 'shape') {
-  const app = new Application('probe', packet).action(() => undefined);
+  const app = new Application('probe', probe).action(() => undefined);
   const malformed = {
     args: [[], { args: [] }],
     failure: [[], {}, { failure: 'not a function' }],
@@ -339,8 +400,10 @@ if (scenario === 'lowering') {
     return { mapped: failure.message };
   };
   const thrown = new Error('the handler broke');
-  const app = new Application('probe', packet).command(
-    new Command('nested').action(async ({ invoke, out }) => {
+  const app = new Application('probe', probe).command(
+    new Command('nested', {
+      description: 'The nested command.',
+    }).action(async ({ invoke, out }) => {
       const nested = await invoke(['x'], { options: null }, { failure: handler });
       await out.print(JSON.stringify(nested));
     }),
@@ -374,16 +437,23 @@ if (scenario === 'isolation') {
   const stderr = sink();
   const owner = plugin('@fixture/owner', { signals: ['SIGINT', 'SIGTERM'] });
   const real = { stderr: 0, stdout: 0 };
-  const app = new Application('probe', { ...packet, plugins: [owner] })
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [owner],
+  })
     .command(
-      new Command('child').action(async ({ host, out }) => {
+      new Command('child', {
+        description: 'The child command.',
+      }).action(async ({ host, out }) => {
         await out.print('child output');
         await out.warn('child message');
         await out.print(JSON.stringify({ argv: host.argv, counts: counts(), cwd: host.cwd }));
       }),
     )
     .command(
-      new Command('parent').action(async ({ invoke, out }) => {
+      new Command('parent', {
+        description: 'The parent command.',
+      }).action(async ({ invoke, out }) => {
         const before = { counts: counts(), exitCode: process.exitCode ?? null };
         // Every write to the real streams while the call runs is counted, and none may happen.
         const restore = [
@@ -404,7 +474,7 @@ if (scenario === 'isolation') {
   print({ code, stderr: stderr.text(), stdout: stdout.text() });
   process.exitCode = 0;
 } else if (scenario === 'host') {
-  const app = new Application('probe', packet).action(async ({ host, out }) => {
+  const app = new Application('probe', probe).action(async ({ host, out }) => {
     await out.print(
       JSON.stringify({
         argv: host.argv,
@@ -425,17 +495,21 @@ if (scenario === 'isolation') {
     ),
   );
 } else if (scenario === 'nesting') {
-  const app = new Application('probe', packet)
+  const app = new Application('probe', probe)
     .command(chatty('left'))
     .command(chatty('right'))
     .command(
-      new Command('inner').action(async ({ invoke, out }) => {
+      new Command('inner', {
+        description: 'The inner command.',
+      }).action(async ({ invoke, out }) => {
         const nested = await invoke(['left'], {});
         await out.print(JSON.stringify(nested));
       }),
     )
     .command(
-      new Command('both').action(async ({ invoke, out }) => {
+      new Command('both', {
+        description: 'The both command.',
+      }).action(async ({ invoke, out }) => {
         const [left, right] = await Promise.all([invoke(['left'], {}), invoke(['right'], {})]);
         await out.print(JSON.stringify({ left, right }));
       }),
@@ -453,10 +527,19 @@ if (scenario === 'isolation') {
       return undefined;
     },
   });
-  const app = new Application('probe', { ...packet, plugins: [counting] })
-    .command(new Command('leaf').action(() => undefined))
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [counting],
+  })
     .command(
-      new Command('caller').action(async ({ invoke, out }) => {
+      new Command('leaf', {
+        description: 'The leaf command.',
+      }).action(() => undefined),
+    )
+    .command(
+      new Command('caller', {
+        description: 'The caller command.',
+      }).action(async ({ invoke, out }) => {
         const before = { ...calls };
         await invoke(['leaf'], {});
         await invoke(['leaf'], {});
@@ -471,7 +554,10 @@ if (scenario === 'isolation') {
       throw new Error('the hook broke');
     },
   });
-  const broken = await new Application('probe', { ...packet, plugins: [failing] })
+  const broken = await new Application('probe', {
+    ...probe,
+    plugins: [failing],
+  })
     .action(() => undefined)
     .invoke([], {});
   print({
@@ -489,7 +575,7 @@ if (scenario === 'isolation') {
     },
   });
   const app = new Application('probe', {
-    ...packet,
+    ...probe,
     plugins: [watching],
     views: [
       override(FatalError, {
@@ -524,9 +610,14 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
     handled.push(value.name);
     return value;
   };
-  const app = new Application('probe', { ...packet, plugins: [owner] })
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [owner],
+  })
     .command(
-      new Command('slow').action(async ({ signal }) => {
+      new Command('slow', {
+        description: 'The slow command.',
+      }).action(async ({ signal }) => {
         marks.push('action');
         // The harness waits for this line on the real stdout before it signals the process.
         process.stdout.write('ready\n');
@@ -540,7 +631,9 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
       }),
     )
     .command(
-      new Command('parent').action(async ({ invoke }) => {
+      new Command('parent', {
+        description: 'The parent command.',
+      }).action(async ({ invoke }) => {
         const outcome = await invoke(['slow'], {}, { failure });
         print({ handled, outcome });
       }),
@@ -576,12 +669,15 @@ if (scenario === 'spellings') {
         }),
     },
     options: {
-      loud: { short: 'l', type: 'boolean' },
-      quiet: { polarity: 'negative', type: 'boolean' },
-      tiny: { short: 't', shortOnly: true, type: 'boolean' },
+      loud: { description: 'Loud.', short: 'l', type: 'boolean' },
+      quiet: { description: 'Quiet.', polarity: 'negative', type: 'boolean' },
+      tiny: { description: 'Tiny.', short: 't', shortOnly: true, type: 'boolean' },
     },
   });
-  const app = new Application('probe', { ...packet, plugins: [spelling] }).action(() => undefined);
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [spelling],
+  }).action(() => undefined);
   print(await app.invoke([], { options: { loud: true, quiet: false, tiny: true } }));
 }
 

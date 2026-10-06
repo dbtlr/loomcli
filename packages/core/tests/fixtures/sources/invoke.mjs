@@ -75,6 +75,7 @@ const config = () =>
     options: {
       config: {
         default: 'fixture.json',
+        description: 'The configuration file.',
         env: 'FIXTURE_CONFIG_FILE',
         type: 'string',
         validate: configFile ?? jsonFile,
@@ -96,8 +97,13 @@ const log = () =>
       }),
     },
     options: {
-      level: { env: 'FIXTURE_LEVEL', extensions: [configKey('log.level')], type: 'string' },
-      verbose: { env: 'FIXTURE_VERBOSE', type: 'boolean' },
+      level: {
+        description: 'The log level.',
+        env: 'FIXTURE_LEVEL',
+        extensions: [configKey('log.level')],
+        type: 'string',
+      },
+      verbose: { description: 'Print more.', env: 'FIXTURE_VERBOSE', type: 'boolean' },
     },
   });
 
@@ -108,7 +114,7 @@ const help = () =>
       activate: ['help'],
       load: async () => ({ default: ({ out }) => out.print('help') }),
     },
-    options: { help: { short: 'h', type: 'boolean' } },
+    options: { help: { description: 'Print help.', short: 'h', type: 'boolean' } },
   });
 
 const installed = {
@@ -144,38 +150,80 @@ const print =
     out.print(`${label}:${JSON.stringify(options)}`);
 
 function application() {
-  const count = new Command('count')
-    .option('max', { env: 'FIXTURE_MAX', required: true, type: 'string', validate: digits })
+  const count = new Command('count', {
+    description: 'The count command.',
+  })
+    .option('max', {
+      description: 'The max option.',
+      env: 'FIXTURE_MAX',
+      required: true,
+      type: 'string',
+      validate: digits,
+    })
     .option('file', {
+      description: 'The file option.',
       env: 'FIXTURE_FILE',
       type: 'string',
       validate: recording,
       validateOmitted: true,
     })
-    .option('total', { env: 'FIXTURE_TOTAL', extensions: [configKey('total')], type: 'boolean' })
-    .option('quiet', { env: 'FIXTURE_QUIET', polarity: 'negative', type: 'boolean' })
-    .option('color', { env: 'FIXTURE_COLOR', polarity: 'both', type: 'boolean' })
+    .option('total', {
+      description: 'The total option.',
+      env: 'FIXTURE_TOTAL',
+      extensions: [configKey('total')],
+      type: 'boolean',
+    })
+    .option('quiet', {
+      description: 'The quiet option.',
+      env: 'FIXTURE_QUIET',
+      polarity: 'negative',
+      type: 'boolean',
+    })
+    .option('color', {
+      description: 'The color option.',
+      env: 'FIXTURE_COLOR',
+      polarity: 'both',
+      type: 'boolean',
+    })
     .action(print('count'));
-  const select = new Command('select')
+  const select = new Command('select', {
+    description: 'The select command.',
+  })
     .option('fields', {
+      description: 'The fields option.',
       extensions: [configKey('fields')],
       multiple: true,
       required: true,
       type: 'string',
       validate: z.string().min(1, 'Supply a field name.'),
     })
-    .option('title', { extensions: [configKey('title')], type: 'string' })
+    .option('title', {
+      description: 'The title option.',
+      extensions: [configKey('title')],
+      type: 'string',
+    })
     .action(print('select'));
-  const paint = new Command('paint')
-    .option('plain', { env: 'NO_COLOR', type: 'boolean' })
+  const paint = new Command('paint', {
+    description: 'The paint command.',
+  })
+    .option('plain', { description: 'The plain option.', env: 'NO_COLOR', type: 'boolean' })
     .action(({ options, out, style }) => out.print(`paint:${options.plain}:${style.red('X')}`));
-  const cache = new Command('cache').command(new Command('clear').action(print('clear')));
+  const cache = new Command('cache', {
+    description: 'The cache command.',
+  }).command(
+    new Command('clear', {
+      description: 'The clear command.',
+    }).action(print('clear')),
+  );
   // Variables named after Object.prototype members, which a plain-object env does not set.
-  const inherited = new Command('inherited')
-    .option('name', { env: 'constructor', type: 'string' })
-    .option('flag', { env: 'toString', type: 'boolean' })
+  const inherited = new Command('inherited', {
+    description: 'The inherited command.',
+  })
+    .option('name', { description: 'The name option.', env: 'constructor', type: 'string' })
+    .option('flag', { description: 'The flag option.', env: 'toString', type: 'boolean' })
     .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
   return new Application('app', {
+    description: 'The app application.',
     // A test that reads a defect's own sentence runs the fixture as a development build.
     ...(process.env.FIXTURE_BUILD === undefined
       ? {}
@@ -185,6 +233,7 @@ function application() {
   })
     .globalOption('limit', {
       default: '10',
+      description: 'The limit option.',
       env: 'FIXTURE_LIMIT',
       extensions: [configKey('limits.bytes')],
       type: 'string',

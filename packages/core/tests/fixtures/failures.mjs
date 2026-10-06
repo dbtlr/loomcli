@@ -102,22 +102,42 @@ const dispatch = ({ out }) => out.print('dispatched');
 
 /** A routed graph, so every token and validation fault of one invocation has a declaration. */
 function routed(views) {
-  const get = new Command('get')
-    .argument('path', { required: true })
-    .option('depth', { short: 'd', type: 'string', validate: digits })
-    .option('mode', { short: 'm', shortOnly: true, type: 'string', validate: speed })
-    .option('key', { type: 'string', validate: keyed })
+  const get = new Command('get', {
+    description: 'The get command.',
+  })
+    .argument('path', { description: 'The path argument.', required: true })
+    .option('depth', {
+      description: 'The depth option.',
+      short: 'd',
+      type: 'string',
+      validate: digits,
+    })
+    .option('mode', {
+      description: 'The mode option.',
+      short: 'm',
+      shortOnly: true,
+      type: 'string',
+      validate: speed,
+    })
+    .option('key', { description: 'The key option.', type: 'string', validate: keyed })
     .option('field', {
+      description: 'The field option.',
       multiple: true,
       short: 'F',
       type: 'string',
       validate: z.string().min(1, 'Supply a field name.'),
     })
     .action(dispatch);
-  const cache = new Command('cache').command(new Command('keys').action(dispatch));
-  return new Application('failures', { views })
-    .globalOption('file', { short: 'f', type: 'string' })
-    .globalOption('quiet', { short: 'q', type: 'boolean' })
+  const cache = new Command('cache', {
+    description: 'The cache command.',
+  }).command(
+    new Command('keys', {
+      description: 'The keys command.',
+    }).action(dispatch),
+  );
+  return new Application('failures', { description: 'The failures application.', views })
+    .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
+    .globalOption('quiet', { description: 'The quiet option.', short: 'q', type: 'boolean' })
     .command(get)
     .command(cache)
     .action(dispatch);
@@ -128,7 +148,11 @@ const packet =
   process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
 
 function ending(views, action) {
-  return new Application('failures', { ...packet, views }).action(action);
+  return new Application('failures', {
+    description: 'The failures application.',
+    ...packet,
+    views,
+  }).action(action);
 }
 
 function build() {
@@ -143,11 +167,21 @@ function build() {
     // A required local option and a required argument on one Command omitted together.
     // A global option declares no presence rule, so the aggregation reads local inputs.
     case 'required': {
-      const get = new Command('get')
-        .argument('path', { required: true })
-        .option('depth', { required: true, short: 'd', type: 'string' })
+      const get = new Command('get', {
+        description: 'The get command.',
+      })
+        .argument('path', { description: 'The path argument.', required: true })
+        .option('depth', {
+          description: 'The depth option.',
+          required: true,
+          short: 'd',
+          type: 'string',
+        })
         .action(dispatch);
-      return new Application('failures', { views: [override(UsageError, facts)] })
+      return new Application('failures', {
+        description: 'The failures application.',
+        views: [override(UsageError, facts)],
+      })
         .command(get)
         .action(dispatch);
     }
@@ -191,14 +225,16 @@ function build() {
     // A root with neither children nor an action is final only at build, so run() reports it.
     case 'declaration': {
       return new Application('failures', {
+        description: 'The failures application.',
         views: [override(DeclarationError, brand('declaration'))],
       });
     }
     case 'empty-issues': {
       return new Application('failures', {
+        description: 'The failures application.',
         views: [override(InputError, issueMessages)],
       })
-        .option('tag', { type: 'string', validate: silent })
+        .option('tag', { description: 'The tag option.', type: 'string', validate: silent })
         .action(dispatch);
     }
     case 'broken':

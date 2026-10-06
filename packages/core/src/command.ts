@@ -200,6 +200,8 @@ export interface BuiltCommand {
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   children: ReadonlyMap<string, BuiltCommand>;
+  /** The plugin whose lifecycle hook declared each input a hook declared, by its identity. */
+  declarers: ReadonlyMap<InputDeclaration, string>;
   deprecated: string | undefined;
   description: string | undefined;
   dispatch: ((input: DispatchInput) => unknown) | undefined;
@@ -207,6 +209,11 @@ export interface BuiltCommand {
   hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
+  /**
+   * The call that attached this Command, opening with the whole path to its parent, or nothing for
+   * the root, which no call attaches.
+   */
+  placement: Finding | undefined;
   /**
    * The one table the parser reads this Command's words against, built after every lifecycle hook
    * ran: its own options, hook-declared ones included, and every global option. Each entry names
@@ -293,6 +300,8 @@ interface BuildContext {
   globals: BuiltGlobals;
   /** The route from the root to the Command being built, which a lifecycle hook reads. */
   path: readonly string[];
+  /** The call that attached the Command being built, or nothing for the root. */
+  placement: Finding | undefined;
   /** The installed plugins in installation order, whose hooks run over every Command. */
   plugins: readonly BuiltPlugin[];
 }
@@ -626,7 +635,11 @@ function inputSite(
 }
 
 /** The finding for the `argument()` or `option()` call that declared one input, marking its name. */
-function inputFinding(path: readonly string[], input: InputDeclaration, note?: string): Finding {
+export function inputFinding(
+  path: readonly string[],
+  input: InputDeclaration,
+  note?: string,
+): Finding {
   const site = declaringSite(input, inputPlace(input, path));
   return siteFinding(site, site.named, note);
 }
@@ -1070,6 +1083,15 @@ function childPath(parent: CommandPlace, child: string): readonly string[] {
   return [...parent.path, child];
 }
 
+/**
+ * The call that attached one child, opening with the whole path to its parent. The root's attach
+ * knew that whole path, so a root child keeps its call, a plugin's `commands` entry included. A
+ * named parent's `command()` call knew its own name alone, so the walk rebuilds it under the root.
+ */
+function rootedPlacement(parent: CommandPlace, child: AttachedChild): Finding {
+  return parent.name === null ? child.placement : commandPlacement(parent.path, child.name);
+}
+
 /** The call that attached one child, noted with the child's name. */
 function childFinding(entry: AttachedChild): Finding {
   return { ...entry.placement, note: `child "${entry.name}"` };
@@ -1291,8 +1313,7 @@ function joinSubtree(
   const path = childPath(parent, name);
   checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));
   for (const entry of node.declared.children) {
-    // A nested child's own placement knew its parent alone, so the walk places it under the root.
-    const rooted = { ...entry, placement: commandPlacement(path, entry.name) };
+    const rooted = { ...entry, placement: rootedPlacement({ name, path }, entry) };
     joinSubtree(scope, rooted, { level: level + 1, parent: { name, path } });
   }
 }
@@ -2341,7 +2362,11 @@ export function buildCommand<Args, Options, Globals>(
   const routes = new Map<string, RoutedChild>();
   for (const child of state.children) {
     const routed: RoutedChild = {
-      command: child.node.build({ ...context, path: [...context.path, child.name] }),
+      command: child.node.build({
+        ...context,
+        path: [...context.path, child.name],
+        placement: rootedPlacement(place, child),
+      }),
       name: child.name,
     };
     children.set(routed.name, routed.command);
@@ -2354,6 +2379,7 @@ export function buildCommand<Args, Options, Globals>(
     aliases: state.aliases,
     arguments: slots,
     children,
+    declarers: new Map(hookInputs.map(({ identity, input }) => [input, identity])),
     deprecated: facts.deprecated,
     description: facts.description,
     dispatch: action ? bindDispatch(hooked, action, globals) : undefined,
@@ -2361,6 +2387,7 @@ export function buildCommand<Args, Options, Globals>(
     hidden: facts.hidden,
     inputs: hooked.inputs,
     name,
+    placement: context.placement,
     result,
     routes,
     table,
@@ -2392,6 +2419,7 @@ export function buildGraph<Args, Options, Globals>(
     extensions,
     globals: buildGlobals(globals, plugins),
     path: [],
+    placement: undefined,
     plugins,
   };
   return { extensions, globals: context.globals, root: buildCommand(root, context) };

@@ -5,8 +5,11 @@ import { Application, Command, DeclarationError, diagnosticRule, plugin } from '
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
 
-/** The packet each Application reads, so a build fault renders by the build a test names. */
-const packet = { packet: { build } };
+/**
+ * The options each Application declares: its description, and the packet that renders a build
+ * fault by the build a test names.
+ */
+const probe = { description: 'Probe the graph.', packet: { build } };
 
 /** Prints one line of JSON to stdout, the fixture's report. */
 function print(value) {
@@ -112,7 +115,7 @@ if (scenario === 'order') {
       return undefined;
     },
   });
-  const app = new Application('probe', { ...packet, plugins: [judge, later] }).action(() =>
+  const app = new Application('probe', { ...probe, plugins: [judge, later] }).action(() =>
     seen.push('action'),
   );
   const ran = await runCaptured(app, []);
@@ -136,7 +139,7 @@ if (scenario === 'order') {
   const results = {};
   for (const [kind, onGraphBuilt] of Object.entries(hooks)) {
     const app = new Application('probe', {
-      ...packet,
+      ...probe,
       plugins: [plugin('@fixture/broken', { onGraphBuilt })],
     }).action(() => undefined);
     results[kind] = await runCaptured(app, []);
@@ -178,7 +181,7 @@ if (scenario === 'order') {
     .action(({ graph, out }) => out.print(String(graph.root.children.length)));
   const quiet = await runCaptured(app, []);
   const unguarded = new Application('probe', {
-    ...packet,
+    ...probe,
     plugins: [
       plugin('@fixture/unguarded', {
         onGraphBuilt: (graph) => {

@@ -92,7 +92,11 @@ async function* undefinedRows() {
 
 /** A rows Command whose action hands `source` to out.results() the way `emit` does. */
 function sequencing(emit, source, translators = [answering(SyntaxError, 'application')]) {
-  return new Application('translators', { ...packet, translators })
+  return new Application('translators', {
+    description: 'The translators application.',
+    ...packet,
+    translators,
+  })
     .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
     .action(({ out }) => emit(out.results(source())));
 }
@@ -119,11 +123,16 @@ function sourcing(resolver, options = {}) {
     source: { binding: sourceKey, load: async () => ({ default: resolver }) },
   });
   return new Application('translators', {
+    description: 'The translators application.',
     ...packet,
     ...options,
     plugins: [source, ...(options.plugins ?? [])],
   })
-    .globalOption('limit', { extensions: [sourceKey('limit')], type: 'string' })
+    .globalOption('limit', {
+      description: 'The limit option.',
+      extensions: [sourceKey('limit')],
+      type: 'string',
+    })
     .action(dispatch);
 }
 
@@ -131,7 +140,11 @@ function sourcing(resolver, options = {}) {
 const catchAll = answering(Object, 'catch-all');
 
 function ending(action, options = {}) {
-  return new Application('translators', { ...packet, ...options }).action(action);
+  return new Application('translators', {
+    description: 'The translators application.',
+    ...packet,
+    ...options,
+  }).action(action);
 }
 
 /** Each broken translator, keyed by the scenario that registers it. */
@@ -317,8 +330,13 @@ const unreached = {
       translators: [catchAll],
     }),
   validator: () =>
-    new Application('translators', { ...packet, translators: [catchAll] })
+    new Application('translators', {
+      description: 'The translators application.',
+      ...packet,
+      translators: [catchAll],
+    })
       .option('level', {
+        description: 'The level option.',
         type: 'string',
         validate: {
           '~standard': {
@@ -332,8 +350,13 @@ const unreached = {
       })
       .action(dispatch),
   'validator-output': () =>
-    new Application('translators', { ...packet, translators: [catchAll] })
+    new Application('translators', {
+      description: 'The translators application.',
+      ...packet,
+      translators: [catchAll],
+    })
       .option('doc', {
+        description: 'The doc option.',
         type: 'string',
         validate: {
           '~standard': {
@@ -569,6 +592,7 @@ function build() {
     }
     case 'sequence': {
       return new Application('translators', {
+        description: 'The translators application.',
         ...packet,
         translators: [answering(SyntaxError, 'application')],
       })
@@ -676,9 +700,21 @@ ChainKeyError.prototype = new Proxy(Object.create(Error.prototype), {
 
 /** Each declaration fault, which a case constructs outside a run. */
 const faults = {
-  'fault-application': () => new Application('translators', { translators: ['text'] }),
-  'fault-application-hole': () => new Application('translators', { translators: holey([], []) }),
-  'fault-application-list': () => new Application('translators', { translators: 'text' }),
+  'fault-application': () =>
+    new Application('translators', {
+      description: 'The translators application.',
+      translators: ['text'],
+    }),
+  'fault-application-hole': () =>
+    new Application('translators', {
+      description: 'The translators application.',
+      translators: holey([], []),
+    }),
+  'fault-application-list': () =>
+    new Application('translators', {
+      description: 'The translators application.',
+      translators: 'text',
+    }),
   'fault-key': () =>
     translate(
       () => undefined,

@@ -62,6 +62,7 @@ const causeView = override(InternalError, {
 });
 
 const app = new Application('format-views', {
+  description: 'The format-views application.',
   // A test that reads a defect's own sentence runs the fixture as a development build.
   ...(process.env.FIXTURE_BUILD === undefined
     ? {}

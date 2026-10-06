@@ -101,19 +101,35 @@ const unreadable = {
  * options of each listing kind on the root and on the child, so a hook's candidates are visible.
  */
 function routed(options = {}) {
-  const clear = new Command('clear')
-    .option('keep', { short: 'k', type: 'boolean' })
-    .option('secret', { hidden: true, type: 'boolean' })
-    .option('old', { deprecated: 'Use --keep instead.', type: 'boolean' })
+  const clear = new Command('clear', {
+    description: 'The clear command.',
+  })
+    .option('keep', { description: 'The keep option.', short: 'k', type: 'boolean' })
+    .option('secret', { description: 'The secret option.', hidden: true, type: 'boolean' })
+    .option('old', {
+      deprecated: 'Use --keep instead.',
+      description: 'The old option.',
+      type: 'boolean',
+    })
     .action(dispatch);
-  const cache = new Command('cache')
+  const cache = new Command('cache', {
+    description: 'The cache command.',
+  })
     .command(clear)
-    .command(new Command('purge', { hidden: true }).action(dispatch))
-    .command(new Command('list').alias('ls').action(dispatch));
-  return new Application('store', options)
-    .globalOption('file', { short: 'f', type: 'string' })
-    .globalOption('trace', { hidden: true, type: 'boolean' })
-    .globalOption('legacy', { deprecated: 'Use --file instead.', type: 'boolean' })
+    .command(
+      new Command('purge', { description: 'The purge command.', hidden: true }).action(dispatch),
+    )
+    .command(
+      new Command('list', { description: 'The list command.' }).alias('ls').action(dispatch),
+    );
+  return new Application('store', { description: 'Store values.', ...options })
+    .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
+    .globalOption('trace', { description: 'The trace option.', hidden: true, type: 'boolean' })
+    .globalOption('legacy', {
+      deprecated: 'Use --file instead.',
+      description: 'The legacy option.',
+      type: 'boolean',
+    })
     .command(cache);
 }
 
@@ -222,6 +238,7 @@ const scenarios = {
   // The action fails, then a plugin's misused next() is reported after it.
   'after-primary': () =>
     new Application('store', {
+      description: 'The store application.',
       plugins: [twice, hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
     }).action(({ out }) => out.fatal('The action failed.')),
   // A JavaScript hook steps outside the contract and assigns the code, which core already read.
@@ -297,12 +314,14 @@ const scenarios = {
     }).action(dispatch),
   'build-fault': () =>
     new Application('store', {
+      description: 'The store application.',
       plugins: [hinting('fixture/one', () => 'never')],
       views: [override(LoomError, where)],
     }),
   // The caller cancels, then the action fails with its own failure, which still renders.
   'cancelled-broken': () =>
     new Application('store', {
+      description: 'The store application.',
       plugins: [
         hinting('fixture/broken', () => {
           throw new Error('Cannot suggest.');
@@ -316,6 +335,7 @@ const scenarios = {
   // The caller cancels and the action rejects with the signal's reason, which reports nothing.
   'cancelled-silent': () =>
     new Application('store', {
+      description: 'The store application.',
       plugins: [hinting('fixture/one', () => 'never')],
     }).action(({ signal }) => {
       controller.abort(new Error('the caller stopped the run'));
@@ -326,27 +346,54 @@ const scenarios = {
   // A development build asks every converter at build, so a converter that throws is a build fault.
   'converter-fault': () =>
     new Application('store', {
+      description: 'The store application.',
       packet: { build: 'development' },
       plugins: [hinting('fixture/one', () => 'converter-fault hint')],
     })
-      .option('mode', { type: 'string', validate: throwingConverter })
+      .option('mode', {
+        description: 'The mode option.',
+        type: 'string',
+        validate: throwingConverter,
+      })
       .action(dispatch),
   'default-rejected': () =>
     new Application('store', {
+      description: 'The store application.',
       plugins: [
         hinting('fixture/one', (_failure, { command }) => `command at [${command.path.join(',')}]`),
       ],
     })
-      .option('level', { default: 'loud', type: 'string', validate: refuses })
+      .option('level', {
+        default: 'loud',
+        description: 'The level option.',
+        type: 'string',
+        validate: refuses,
+      })
       .action(dispatch),
   'issue-fields': () =>
-    new Application('store', { views: [override(InputError, issues)] })
+    new Application('store', {
+      description: 'The store application.',
+      views: [override(InputError, issues)],
+    })
       .command(
-        new Command('tag').argument('names', { validate: coded, variadic: true }).action(dispatch),
+        new Command('tag', { description: 'The tag command.' })
+          .argument('names', {
+            description: 'The names argument.',
+            validate: coded,
+            variadic: true,
+          })
+          .action(dispatch),
       )
       .command(
-        new Command('label')
-          .option('name', { multiple: true, type: 'string', validate: coded })
+        new Command('label', {
+          description: 'The label command.',
+        })
+          .option('name', {
+            description: 'The name option.',
+            multiple: true,
+            type: 'string',
+            validate: coded,
+          })
           .action(dispatch),
       ),
   'lying-filter': () => broken(() => Lying.of('held')),
@@ -382,6 +429,7 @@ const scenarios = {
       },
     });
     return new Application('store', {
+      description: 'The store application.',
       plugins: [
         reader,
         hinting('fixture/one', (_failure, { graph }) => `same graph: ${String(graph === seen)}`),
@@ -421,9 +469,12 @@ const scenarios = {
     }).action(dispatch),
   // Two rejected options, so one input failure writes two problem lines above the hints.
   'two-problems': () =>
-    new Application('store', { plugins: [hinting('fixture/one', () => ['first', 'second'])] })
-      .option('left', { type: 'string', validate: refuses })
-      .option('right', { type: 'string', validate: refuses })
+    new Application('store', {
+      description: 'The store application.',
+      plugins: [hinting('fixture/one', () => ['first', 'second'])],
+    })
+      .option('left', { description: 'The left option.', type: 'string', validate: refuses })
+      .option('right', { description: 'The right option.', type: 'string', validate: refuses })
       .action(dispatch),
 };
 

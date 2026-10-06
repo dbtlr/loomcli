@@ -219,26 +219,41 @@ const installed = {
 
 /** One graph every scenario shares, so an invocation reads the same declarations throughout. */
 function application() {
-  const get = new Command('get')
-    .argument('path', { required: true, validate: schemas[scenario] })
-    .option('depth', { type: 'string', validate: digits })
-    .option('raw', { type: 'boolean' })
+  const get = new Command('get', {
+    description: 'The get command.',
+  })
+    .argument('path', {
+      description: 'The path argument.',
+      required: true,
+      validate: schemas[scenario],
+    })
+    .option('depth', { description: 'The depth option.', type: 'string', validate: digits })
+    .option('raw', { description: 'The raw option.', type: 'boolean' })
     .action(({ args, options, out, passthrough }) =>
       out.print(`get:${JSON.stringify({ args, options, passthrough })}`),
     );
-  const edit = new Command('edit')
-    .option('tag', { multiple: true, type: 'string' })
-    .option('meta', { type: 'string', validate: noted })
+  const edit = new Command('edit', {
+    description: 'The edit command.',
+  })
+    .option('tag', { description: 'The tag option.', multiple: true, type: 'string' })
+    .option('meta', { description: 'The meta option.', type: 'string', validate: noted })
     .action(({ options, out }) =>
       out.print(`edit:${JSON.stringify({ frozen: Object.isFrozen(options.tag), options })}`),
     );
-  const count = new Command('count')
+  const count = new Command('count', {
+    description: 'The count command.',
+  })
     .rows({ views: { list, total, wide } })
     .action(({ out }) => out.results(rows));
-  const cache = new Command('cache').command(
-    new Command('clear').action(({ out }) => out.print('cleared')),
+  const cache = new Command('cache', {
+    description: 'The cache command.',
+  }).command(
+    new Command('clear', {
+      description: 'The clear command.',
+    }).action(({ out }) => out.print('cleared')),
   );
   return new Application('app', {
+    description: 'The app application.',
     // A test that reads a defect's own sentence runs the fixture as a development build.
     ...(process.env.FIXTURE_BUILD === undefined
       ? {}
@@ -246,7 +261,7 @@ function application() {
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
   })
-    .globalOption('file', { short: 'f', type: 'string' })
+    .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
     .command(get)
     .command(edit)
     .command(count)

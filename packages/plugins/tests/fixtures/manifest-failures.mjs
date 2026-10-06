@@ -89,17 +89,22 @@ const supplier = plugin('@fixture/supplier', {
  */
 function application() {
   const read = new Command('read', {
+    description: 'The read command.',
     extensions: [manifestCommand({ failures: [badData] })],
   }).action(dispatch);
   const inner = new Command('inner', {
+    description: 'The inner command.',
     extensions: [
       manifestCommand({
         failures: [{ failure: BadDataError, meaning: 'The inner data is bad.', name: 'inner-bad' }],
       }),
     ],
   }).action(dispatch);
-  const group = new Command('group').command(inner);
+  const group = new Command('group', {
+    description: 'The group command.',
+  }).command(inner);
   const write = new Command('write', {
+    description: 'The write command.',
     extensions: [
       manifestCommand({
         failures: [
@@ -110,6 +115,7 @@ function application() {
     ],
   }).action(dispatch);
   const plain = new Command('plain', {
+    description: 'The plain command.',
     extensions: [
       manifestCommand({
         failures: [
@@ -120,6 +126,7 @@ function application() {
     ],
   }).action(dispatch);
   const secret = new Command('secret', {
+    description: 'The secret command.',
     extensions: [
       manifestCommand({
         failures: [{ failure: SoftwareError, meaning: 'A bug.', name: 'software-fault' }],
@@ -127,8 +134,13 @@ function application() {
     ],
     hidden: true,
   }).action(dispatch);
-  const none = new Command('none').action(dispatch);
-  return new Application('app', { plugins: [manifest(), supplier] })
+  const none = new Command('none', {
+    description: 'The none command.',
+  }).action(dispatch);
+  return new Application('app', {
+    description: 'The app application.',
+    plugins: [manifest(), supplier],
+  })
     .command(read)
     .command(group)
     .command(write)
@@ -141,6 +153,7 @@ function application() {
 /** An application where `invalid-json` is declared on two Commands with two different entries. */
 function conflicting(second) {
   const get = new Command('get', {
+    description: 'The get command.',
     extensions: [
       manifestCommand({
         failures: [
@@ -154,9 +167,14 @@ function conflicting(second) {
     ],
   }).action(dispatch);
   const select = new Command('select', {
+    description: 'The select command.',
     extensions: [manifestCommand({ failures: [{ ...second, name: 'invalid-json' }] })],
   }).action(dispatch);
-  return new Application('app', { ...packet, plugins: [manifest()] })
+  return new Application('app', {
+    description: 'The app application.',
+    ...packet,
+    plugins: [manifest()],
+  })
     .command(get)
     .command(select)
     .action(dispatch);
@@ -179,9 +197,14 @@ function conflictingOnOneCommand(second) {
         : command,
   });
   const get = new Command('get', {
+    description: 'The get command.',
     extensions: [manifestCommand({ failures: [invalidJson] })],
   }).action(dispatch);
-  return new Application('app', { ...packet, plugins: [manifest(), again] })
+  return new Application('app', {
+    description: 'The app application.',
+    ...packet,
+    plugins: [manifest(), again],
+  })
     .command(get)
     .action(dispatch);
 }
