@@ -4,7 +4,7 @@ title: ADR-0021 - Every rendered byte passes through one registry of replaceable
 description: Core keeps one registry of declared views named by reference, where a view is an identity, the data shape it presents, and its default view function. Core and plugins declare views, applications join with the results lane, and one Application option replaces the function of any view by declared view or by failure class, retiring the separate failures option.
 status: accepted
 created: 2026-09-11
-modified: 2026-09-29
+modified: 2026-10-06
 ---
 
 # ADR-0021 - Every rendered byte passes through one registry of replaceable views
@@ -44,3 +44,4 @@ Accepted. The registry replaces `failures`, and the example applications prove i
 - 2026-09-27: [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md), proposed, gives a failure view its own context. `FailureViewContext` extends `ViewContext` with `application`, the application name, `path`, the Command names routing walked, and `hints`, the lines plugins added through `onFailure`. `override(FailureClass, view)` types its replacement as a `FailureView` over that context, and a replacement written against `ViewContext` stays valid. Lane views, the help page, the version line, and result views keep `ViewContext`. The one override surface and the one resolution stand unchanged. It binds when that record is accepted.
 - 2026-09-27: ADR-0046 is accepted. The entry above binds as written.
 - 2026-09-29: [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, renders a Developer Diagnostic outside the override walk: in a development build, a defect or a `DeclarationError` that `run()` reports shows its diagnostic before any override is consulted, so no override can hide a fault from the author. The diagnostic is not a view and has no identity. In a distributed build both classes resolve through the registry as before. [ADR-0049](0049-a-translator-turns-a-foreign-throw-into-a-failure-class.md), proposed, resolves translators in the order this record resolves overrides. Both bind when accepted.
+- 2026-10-06: The version plugin's `postfix` setting gives `versionLine` the data `VersionLine`, `{ graph, postfix }`, where the 2026-09-14 entries say it renders over the graph. The view keeps its identity and its override surface, and the decision stands unchanged; [Version](../core.md#version) states the line.

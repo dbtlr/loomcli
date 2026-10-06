@@ -104,7 +104,7 @@ A declaration fault throws `DeclarationError` at the earliest of three moments t
 
 ### At the call
 
-The call that receives a bad value throws, and so does a call that the receiver's own earlier calls make wrong. The calls are `new Command()`, `new Application()`, `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `result()`, `rows()`, `views()`, `action()`, `extend()`, `extension()`, `view()`, `plugin()`, `translate()`, `diagnosticRule()`, and `checkPluginSettings()` and `checkShortSetting()`, which a plugin factory calls on its settings.
+The call that receives a bad value throws, and so does a call that the receiver's own earlier calls make wrong. The calls are `new Command()`, `new Application()`, `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `result()`, `rows()`, `views()`, `action()`, `extend()`, `extension()`, `view()`, `plugin()`, `translate()`, `diagnosticRule()`, and the settings checks `checkPluginSettings()` and `checkShortSetting()`, which a plugin factory calls on its settings.
 
 - **Names.** An invalid application name, from `new Application()`; an invalid Command name, from `new Command()`; an invalid argument, option, alias, or short spelling, from the call that declares it; an `alias()` call with no names; and a view name that is not a bare token or is integer-like, from `result()`, `rows()`, or `views()`.
 - **Identities.** An identity outside the [identity grammar](#identity-and-installation), from `plugin()`, `extension()`, or `view()`, before any other rule on the call.
