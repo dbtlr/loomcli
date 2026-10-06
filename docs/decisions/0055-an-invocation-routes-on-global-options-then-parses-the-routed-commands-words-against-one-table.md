@@ -4,7 +4,7 @@ title: ADR-0055 - An invocation routes on global options, then parses the routed
 description: A plugin's options are global options with no difference from the application's, validated with them and typed in every action. An invocation parses in three layers - routing reads the global options and the own options of each Command with an action and children, the routed Command's words are read against one table of its local options and every global option, and each owner reads its values - with short groups under the getopt rule and every fault held except an unknown command. This supersedes the pre-scan, the first-hyphen commit, the mixed-scope fault, and the rejected per-Command table that ADR-0026 carries from ADR-0003, and ADR-0017's plugin option class.
 status: accepted
 created: 2026-10-03
-modified: 2026-10-05
+modified: 2026-10-06
 ---
 
 # ADR-0055 - An invocation routes on global options, then parses the routed Command's words against one table
@@ -71,3 +71,4 @@ Accepted in 0.8.0.
 ## Changelog
 
 - 2026-10-03: Proposed with the contract.
+- 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, widens the validation pass for one reader. Under a held structural fault the routed Command's own declarations still go unvalidated, except each local option a plugin's hook declared whose tokens parsed, which core validates for that plugin's middleware's `ownOptions` alone. The structural fault stays the held fault, whatever that validator answers, and this record's precedence is unchanged. So the formatter keeps `--format json` under `textstat --format json --bogus one.txt`, and the failure writes as JSON. It binds when ADR-0064 is accepted.
