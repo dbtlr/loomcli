@@ -58,6 +58,14 @@ test('a held fault under an encoded selection writes the encoded line alone, and
   );
 });
 
+test("a validator that throws on another input still writes the encoded line, because the selection's own option validated before it", () => {
+  expect(run(['list', '--pick', 'json', '--depth', 'throw'])).toEqual({
+    status: 1,
+    stderr: line({ code: 'internal', exitCode: 1, message: 'Something went wrong.' }),
+    stdout: 'exit:1\n',
+  });
+});
+
 test('an action failure after rows writes the rows on stdout and the line alone on stderr', () => {
   expect(run(['list', '--pick', 'json'])).toEqual({
     status: 1,

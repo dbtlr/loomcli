@@ -2,18 +2,23 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-/** The record the fixture plugin's middleware read, the run's exit code, and its stderr. */
+/**
+ * The record the fixture plugin's middleware read, the run's exit code, its stderr, and how many
+ * times the word validator was called with each value.
+ */
 function owned(words: string[], env: Record<string, string> = {}) {
   const { stderr, stdout } = invoke(new URL('fixtures/own-options.mjs', import.meta.url), words, {
     env,
   });
-  const [record = '{}', exit = ''] = stdout.split('\n');
+  const [record = '{}', exit = '', counted = '{}'] = stdout.split('\n');
   const { frozen, own }: { frozen: boolean; own: unknown } = JSON.parse(record);
-  return { exit, frozen, own, stderr };
+  const calls: unknown = JSON.parse(counted);
+  return { calls, exit, frozen, own, stderr };
 }
 
 test("a middleware reads its plugin's own validated options, global and hook-declared, and no one else's", () => {
   expect(owned(['get', '--mine', 'abc', '--local', 'xyz', '--app', 'q', '--theirs', 't'])).toEqual({
+    calls: { abc: 1, xyz: 1 },
     exit: 'exit:0',
     frozen: true,
     own: { local: 'XYZ', mine: 'ABC', spare: '<undefined>' },
@@ -78,12 +83,14 @@ test('under an input-source fault core still validates its own options whose tok
   // An option the invocation omitted has no tokens, so no pass validates it and it is absent.
   const failing = { FIXTURE_SOURCE: 'fails' };
   expect(owned(['get', '--mine', 'abc', '--local', 'xyz'], failing)).toEqual({
+    calls: { abc: 1, xyz: 1 },
     exit: 'exit:2',
     frozen: true,
     own: { local: 'XYZ', mine: 'ABC' },
     stderr: 'owns: The settings file cannot be read.\n',
   });
   expect(owned(['get', '--mine', 'bad', '--local', 'throw'], failing)).toEqual({
+    calls: { bad: 1, throw: 1 },
     exit: 'exit:2',
     frozen: true,
     own: {},
@@ -91,12 +98,25 @@ test('under an input-source fault core still validates its own options whose tok
   });
 });
 
-test('under a validator that throws on another input core still validates its own options, and the developer error stays held', () => {
+test('under a validator that throws on another input core keeps the values validated before it and validates the rest once, and the developer error stays held', () => {
+  // The main pass validated `--mine` and `--spare` before `--depth` threw, and never reached `--local`.
   const broken = owned(['get', '--depth', 'throw', '--mine', 'abc', '--local', 'xyz']);
   expect(broken).toEqual({
+    calls: { abc: 1, xyz: 1 },
     exit: 'exit:1',
     frozen: true,
-    own: { local: 'XYZ', mine: 'ABC' },
+    own: { local: 'XYZ', mine: 'ABC', spare: '<undefined>' },
+    stderr: 'owns: Something went wrong.\n',
+  });
+});
+
+test("a validator of the plugin's own option that throws runs once, its option is absent, and the options after it validate once", () => {
+  // The main pass stopped at `--mine`, so `--spare`, omitted, is never validated and is absent.
+  expect(owned(['get', '--mine', 'throw', '--local', 'xyz'])).toEqual({
+    calls: { throw: 1, xyz: 1 },
+    exit: 'exit:1',
+    frozen: true,
+    own: { local: 'XYZ' },
     stderr: 'owns: Something went wrong.\n',
   });
 });

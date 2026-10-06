@@ -143,6 +143,7 @@ import {
   inputPlace,
   rejectsGlobal,
   validateValues,
+  ValidationLedger,
 } from './validation.js';
 import type {
   ArgumentInput,
@@ -2777,10 +2778,14 @@ function requestNode(
   return node;
 }
 
-/** The one invocation every phase ahead of the chain reads: the graph, the route, and the run. */
+/**
+ * The one invocation every phase ahead of the chain reads: the graph, the route, the run, and what
+ * the run's validation passes settled, which each later pass reads so a validator runs at most once.
+ */
 interface Preparation {
   graph: BuiltGraph;
   invocation: DispatchInvocation;
+  ledger: ValidationLedger;
   routed: ParsedInvocation;
 }
 
@@ -2846,15 +2851,15 @@ async function fillScope(
  * scope, which the run's one pass does when nothing is held and the Command is not a group. `only`
  * narrows the declarations a pass validates, as the pass over a configuration source's own options
  * does ahead of its call and the pass over the plugins' own options under a held fault does,
- * while every validator reads the same context. The run's one pass reads the source pass's
- * values and problems rather than validating them again.
+ * while every validator reads the same context. Each pass reads what an earlier pass of the run
+ * settled through the ledger rather than validating it again.
  */
 function validateInvocation(
-  { graph, invocation, routed }: Preparation,
+  { graph, invocation, ledger, routed }: Preparation,
   filled: {
     local: LocalScope | undefined;
     only?: ReadonlySet<InputDeclaration>;
-    sources: Provenance & { validated?: Validation | undefined };
+    sources: Provenance;
     values: OptionValues;
   },
 ): Promise<Validation> {
@@ -2864,6 +2869,7 @@ function validateInvocation(
     declaredValues: invocation.declaredValues,
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: local ? routed.command.inputs : [] },
+    ledger,
     named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
     passthrough: local?.passthrough ?? [],
     places: invocation.places,
@@ -2875,7 +2881,6 @@ function validateInvocation(
     },
     table: routed.command.table,
     ...(only ? { only } : {}),
-    ...(sources.validated ? { prior: sources.validated } : {}),
   });
 }
 
@@ -2883,19 +2888,15 @@ function validateInvocation(
  * The options of the plugins that a held fault left unvalidated and that core still validates for
  * `ownOptions`: each plugin's global options, and each local option a hook declared on the routed
  * Command, whose tokens parsed, none of whose occurrences faulted, and that no earlier pass
- * validated. A group validates no local option. Under a validation problem the run's own pass
+ * reached. A group validates no local option. Under a validation problem the run's own pass
  * validated every one of them, so only a structural fault, an input-source fault, or a validator
- * that threw leaves any to add.
+ * that threw leaves any to add. An option whose validator threw was reached, so it is never
+ * validated again.
  */
-function ownUnderFault(
-  { graph, routed }: Preparation,
-  passes: readonly ValidatedInputs[],
-): ReadonlySet<InputDeclaration> {
+function ownUnderFault({ graph, ledger, routed }: Preparation): ReadonlySet<InputDeclaration> {
   const { command, faulted, values } = routed;
   const parsed = (input: OptionInput, supplied: OptionValues) =>
-    isSupplied(supplied, input.name) &&
-    !faulted.has(input.name) &&
-    !passes.some((pass) => pass.has(input));
+    isSupplied(supplied, input.name) && !faulted.has(input.name) && !ledger.reached(input);
   const globals = graph.globals.plugins
     .flatMap(({ inputs }) => inputs)
     .filter((input) => parsed(input, values.globals));
@@ -2914,20 +2915,17 @@ function ownUnderFault(
 /**
  * The pass over the plugins' options a held fault left unvalidated, for `ownOptions` alone: the
  * held fault stays the one raised whatever the validators answer, so a rejection, and a validator
- * that throws, leave the option absent and report nothing.
+ * that throws, leave the option absent and report nothing. The ledger keeps what this pass
+ * settled before a throw, so the options validated ahead of it stand.
  */
-async function validateOwn(
-  preparation: Preparation,
-  globals: OptionValues,
-  passes: readonly ValidatedInputs[],
-): Promise<readonly ValidatedInputs[]> {
+async function validateOwn(preparation: Preparation, globals: OptionValues): Promise<void> {
   const { routed } = preparation;
-  const only = ownUnderFault(preparation, passes);
+  const only = ownUnderFault(preparation);
   if (only.size === 0) {
-    return passes;
+    return;
   }
   try {
-    const validation = await validateInvocation(preparation, {
+    await validateInvocation(preparation, {
       local:
         routed.command.dispatch === undefined
           ? undefined
@@ -2936,20 +2934,18 @@ async function validateOwn(
       sources: { labels: new Map(), rejected: new Map() },
       values: globals,
     });
-    return [...passes, validation.values];
   } catch {
     // The held fault is the one raised, so a broken validator here reports nothing.
-    return passes;
   }
 }
 
 /**
  * The record one plugin's middleware reads under `ownOptions`: each of the plugin's own global
- * options, and each local option its hook declared on the routed Command, that a pass validated,
- * keyed by declared name. An option with an occurrence that faulted is absent, and so is one no
- * pass validated. Each value is a copy frozen to every depth, as under `options`.
+ * options, and each local option its hook declared on the routed Command, that a pass of the run
+ * validated, keyed by declared name. An option with an occurrence that faulted is absent, and so
+ * is one no pass validated. Each value is a copy frozen to every depth, as under `options`.
  */
-function ownRecord(routed: ParsedInvocation, passes: readonly ValidatedInputs[]): Prepared['own'] {
+function ownRecord(routed: ParsedInvocation, validated: ValidatedInputs): Prepared['own'] {
   return (identity, inputs) => {
     const { command, faulted } = routed;
     const attached = command.inputs.filter(
@@ -2957,9 +2953,8 @@ function ownRecord(routed: ParsedInvocation, passes: readonly ValidatedInputs[])
     );
     const record: Record<string, unknown> = {};
     for (const input of [...inputs, ...attached]) {
-      const pass = passes.find((values) => values.has(input));
-      if (pass !== undefined && !faulted.has(input.name)) {
-        record[input.name] = snapshot(pass.read(input));
+      if (validated.has(input) && !faulted.has(input.name)) {
+        record[input.name] = snapshot(validated.read(input));
       }
     }
     return Object.freeze(record);
@@ -3031,24 +3026,23 @@ export async function prepareDispatch(
 ): Promise<Prepared> {
   const result = routed.command.result;
   const local = parseLocal(routed);
-  const preparation = { graph, invocation, routed };
+  const ledger = new ValidationLedger();
+  const preparation = { graph, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
-  // A configuration source's own options passed their validators ahead of its call.
-  const prior = sources.validated ? [sources.validated.values] : [];
-  const held = async (
-    fault: unknown,
-    read: { options: Prepared['options']; passes: readonly ValidatedInputs[] },
-  ): Promise<Prepared> => ({
-    fault: local.kind === 'held' ? local.fault : fault,
-    globals,
-    kind: 'held',
-    options: read.options,
-    own: ownRecord(routed, await validateOwn(preparation, globals, read.passes)),
-    request: null,
-    result,
-  });
+  const held = async (fault: unknown, options: Prepared['options']): Promise<Prepared> => {
+    await validateOwn(preparation, globals);
+    return {
+      fault: local.kind === 'held' ? local.fault : fault,
+      globals,
+      kind: 'held',
+      options,
+      own: ownRecord(routed, ledger.values),
+      request: null,
+      result,
+    };
+  };
   if (sources.fault) {
-    return held(sources.fault, { options: null, passes: prior });
+    return held(sources.fault, null);
   }
   try {
     const validation = await validateInvocation(preparation, {
@@ -3061,7 +3055,7 @@ export async function prepareDispatch(
         ? null
         : frozenValues(graph.globals.inputs, validation.values);
     if (local.kind === 'held' || validation.failure) {
-      return await held(validation.failure, { options, passes: [validation.values] });
+      return await held(validation.failure, options);
     }
     const ready = readyDispatch(preparation, local, validation.values);
     return {
@@ -3069,11 +3063,11 @@ export async function prepareDispatch(
       globals,
       kind: 'ready',
       options,
-      own: ownRecord(routed, [validation.values]),
+      own: ownRecord(routed, ledger.values),
       result,
     };
   } catch (error) {
     // The fault is held as a failure, so a throw from reading a validator's output is never offered.
-    return await held(toFailure(error), { options: null, passes: prior });
+    return await held(toFailure(error), null);
   }
 }

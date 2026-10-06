@@ -1,14 +1,19 @@
 import { Application, Command, extension, InputError, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
-// Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code.
+// Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code,
+// Then how many times the word validator was called with each value.
 // FIXTURE_SOURCE=fails installs a configuration source that cannot read its settings.
 const words = process.argv.slice(2);
+
+/** How many times the word validator was called with each value, its one side effect. */
+const calls = {};
 
 /** A validator that accepts lowercase words, rejects `bad`, and throws for `throw`. */
 const word = {
   '~standard': {
     validate: (value) => {
+      calls[value] = (calls[value] ?? 0) + 1;
       if (value === 'throw') {
         throw new Error('The validator broke.');
       }
@@ -97,4 +102,4 @@ const app = new Application('owns', { plugins })
   );
 
 const code = await app.run({ host: { argv: words } });
-process.stdout.write(`exit:${String(code)}\n`);
+process.stdout.write(`exit:${String(code)}\n${JSON.stringify(calls)}\n`);

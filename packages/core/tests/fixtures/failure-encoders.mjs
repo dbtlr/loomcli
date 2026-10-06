@@ -33,11 +33,15 @@ function oneOf(names) {
   };
 }
 
-/** A validator that accepts decimal digits alone. */
+/** A validator that accepts decimal digits alone, and throws for `throw`. */
 const digits = {
   '~standard': {
-    validate: (value) =>
-      /^\d+$/u.test(value) ? { value } : { issues: [{ message: 'Use decimal digits.' }] },
+    validate: (value) => {
+      if (value === 'throw') {
+        throw new Error('The depth validator broke.');
+      }
+      return /^\d+$/u.test(value) ? { value } : { issues: [{ message: 'Use decimal digits.' }] };
+    },
     vendor: 'fixture',
     version: 1,
   },

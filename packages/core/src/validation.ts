@@ -127,11 +127,11 @@ export interface Invocation {
   /** Where each declaration was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
   /**
-   * An earlier pass of this invocation, such as the one over a configuration source's own options.
-   * This pass reads each value it accepted and each problem it reported, in this pass's own order,
-   * and never sends those values to their validators a second time.
+   * What the run's earlier passes settled, such as the one over a configuration source's own
+   * options, which this pass reads and adds to. This pass reads each value an earlier pass accepted
+   * and each problem it reported, in this pass's own order, and calls no validator a second time.
    */
-  prior?: Validation;
+  ledger: ValidationLedger;
   /** The run's cancellation signal, which stops this phase between two validator calls. */
   signal: AbortSignal;
   sources: Provenance;
@@ -153,9 +153,9 @@ function identityOf({ global, input }: ScopedInput): InputIdentity {
 }
 
 /**
- * The validated values of one invocation, keyed by declaration. Only `validateValues` constructs
- * one, and its two readers are the only places where a validated value takes its declared type, so
- * every binder reads through them and none asserts on its own.
+ * The validated values of one invocation, keyed by declaration. Only `validateValues` and the
+ * validation ledger construct one, and its two readers are the only places where a validated value
+ * takes its declared type, so every binder reads through them and none asserts on its own.
  */
 class ValidatedInputs {
   readonly #values: ReadonlyMap<InputDeclaration, unknown>;
@@ -202,6 +202,58 @@ class ValidatedInputs {
   }
 }
 export type { ValidatedInputs };
+
+/**
+ * Every outcome one run's validation passes settled, which each later pass of the run reads, so a
+ * validator runs at most once per run: each value a pass accepted, each input's report, and each
+ * input whose validator threw. A pass records its outcomes even when a validator throws, so every
+ * value it accepted before the throw stays readable and the input that threw is never validated
+ * again.
+ */
+export class ValidationLedger {
+  readonly #reports = new Map<InputDeclaration, Report>();
+  readonly #threw = new Set<InputDeclaration>();
+  readonly #values = new Map<InputDeclaration, unknown>();
+
+  /** Every value a pass of the run accepted, read as one pass's are. */
+  get values(): ValidatedInputs {
+    return new ValidatedInputs(this.#values);
+  }
+
+  /** Whether a pass of the run reached the declaration: accepted it, reported it, or threw on it. */
+  reached(input: InputDeclaration): boolean {
+    return this.#values.has(input) || this.#reports.has(input) || this.#threw.has(input);
+  }
+
+  /** The report a pass of the run made for the declaration, or `undefined`. */
+  report(input: InputDeclaration): Report | undefined {
+    return this.#reports.get(input);
+  }
+
+  /** Whether the declaration's validator threw in a pass of the run. */
+  threw(input: InputDeclaration): boolean {
+    return this.#threw.has(input);
+  }
+
+  /** One pass's outcomes, and the declaration whose validator threw when the pass stopped on one. */
+  record(
+    pass: {
+      reports: ReadonlyMap<InputDeclaration, Report>;
+      values: ReadonlyMap<InputDeclaration, unknown>;
+    },
+    threw: InputDeclaration | undefined,
+  ): void {
+    for (const [input, value] of pass.values) {
+      this.#values.set(input, value);
+    }
+    for (const [input, report] of pass.reports) {
+      this.#reports.set(input, report);
+    }
+    if (threw !== undefined) {
+      this.#threw.add(threw);
+    }
+  }
+}
 
 /** The faults a config's capture raises: those of every capture, and a default nested too deep. */
 export interface ConfigFaults extends CaptureFaults {
@@ -952,7 +1004,7 @@ export function rejectsGlobal(validation: Validation): boolean {
  * plugin's, and then the routed Command's own declarations, each in authoring order.
  */
 export async function validateValues(invocation: Invocation): Promise<Validation> {
-  const { declaredValues, prior, sources, supplied } = invocation;
+  const { declaredValues, ledger, sources, supplied } = invocation;
   const { defaults } = declaredValues;
   const declarations = scoped(invocation.inputs);
   /** Where a filled option's value came from, which its diagnostic names; argv names none. */
@@ -1043,27 +1095,20 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       suppliedName(entry.input, spelling, originOf(entry.input)),
     );
   };
-  const { only } = invocation;
-  const validated = only ? declarations.filter(({ input }) => only.has(input)) : declarations;
-  for (const entry of validated) {
-    if (invocation.signal.aborted) {
-      /**
-       * A cancelled run starts no further validator call. The one already in flight was awaited
-       * above, and whatever this phase collected is never raised, because the run resolves its
-       * cancellation code instead.
-       */
-      break;
-    }
+  /** One declaration's outcome: what an earlier pass settled, or this pass's own. */
+  const settle = async (entry: ScopedInput) => {
     const { input } = entry;
     const variable = sources.rejected.get(input.name);
-    const earlier = prior?.reports.get(input);
+    const earlier = ledger.report(input);
     const unlowered = invocation.named?.unlowered.get(input);
-    if (prior?.values.has(input) === true) {
+    if (ledger.values.has(input)) {
       // An earlier pass validated this value once, and one value meets its validator once.
-      values.set(input, prior.values.read(input));
+      values.set(input, ledger.values.read(input));
     } else if (earlier !== undefined) {
       // The earlier pass's problem reports here, in this pass's order.
       reports.set(input, earlier);
+    } else if (ledger.threw(input)) {
+      // Its validator threw in an earlier pass, so it settles nothing and is never called again.
     } else if (unlowered !== undefined) {
       // A value no token spells supplied nothing, and the caller's value is the input's problem.
       reject(entry, [{ message: unlowered }], suppliedName(input, input.name));
@@ -1113,7 +1158,28 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         await accept(entry, raw, spelling);
       }
     }
+  };
+  const { only } = invocation;
+  const validated = only ? declarations.filter(({ input }) => only.has(input)) : declarations;
+  for (const entry of validated) {
+    if (invocation.signal.aborted) {
+      /**
+       * A cancelled run starts no further validator call. The one already in flight was awaited
+       * above, and whatever this phase collected is never raised, because the run resolves its
+       * cancellation code instead.
+       */
+      break;
+    }
+    try {
+      await settle(entry);
+    } catch (error) {
+      // What this pass settled before the throw stays the run's.
+      // The input whose validator threw is never validated again.
+      ledger.record({ reports, values }, entry.input);
+      throw error;
+    }
   }
+  ledger.record({ reports, values }, undefined);
   const found = [...reports.values()];
   return {
     failure:
