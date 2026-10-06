@@ -7,7 +7,11 @@ import { manifestCommand } from './extension.js';
 const identity = `${Package.name}/manifest`;
 
 const options = {
-  manifest: { description: "Print this command's manifest as JSON.", type: 'boolean' },
+  manifest: {
+    control: true,
+    description: "Print this command's manifest as JSON.",
+    type: 'boolean',
+  },
 } satisfies PluginOptions;
 
 export type ManifestOptions = typeof options;

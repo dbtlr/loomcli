@@ -24,6 +24,12 @@ const explanations = {
     'the Command the hook returns, so a throw or any other value leaves it nothing to',
     'build.',
   ],
+  'broken-graph-hook': [
+    'onGraphBuilt receives the frozen graph once per build and judges it: it returns',
+    'nothing, and it rejects the graph only by throwing a DeclarationError. Core',
+    'reads no answer from the hook, so a returned value or any other throw is a',
+    'defect in the hook.',
+  ],
   'extension-output': [
     "Every projection, the manifest included, reads an extension's output as frozen",
     'plain data: strings, finite numbers, Booleans, null, arrays, and plain objects.',
@@ -77,9 +83,9 @@ const explanations = {
   ],
   'not-a-function': [
     'Core calls each of these values at a point of its own: load when a run first',
-    'reaches a middleware or a source, onCommandAttach at graph build, onFailure when',
-    'a failure renders, and a translator when a foreign throw reaches it. A value',
-    'core cannot call leaves it nothing to run.',
+    'reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph',
+    'build, onFailure when a failure renders, and a translator when a foreign throw',
+    'reaches it. A value core cannot call leaves it nothing to run.',
   ],
   'not-a-list': [
     'Core reads plugins, commands, extensions, views, translators, signals, and',
@@ -184,14 +190,20 @@ const explanations = {
 /** The rules of other families this family raises too. */
 const shared = {
   'flag-not-boolean': [
-    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
-    "extension's collect each answer one yes-or-no question about a declaration, so",
-    'each holds true or false. A value such as the string "false" would read as true.',
+    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and',
+    "an extension's collect each answer one yes-or-no question about a declaration,",
+    'so each holds true or false. A value such as the string "false" would read as',
+    'true.',
   ],
   'global-presence-rule': [
     'A global option is validated on every Command, the Commands of plugins included,',
     'so a rule that its value must exist would fail a Command that never reads it. An',
     'omitted global option is absent.',
+  ],
+  'media-type': [
+    "A view's media type tells a reader how to parse the text the view writes, such",
+    'as application/json, so it is a string. Core stores it as declared and never',
+    'checks it against the text.',
   ],
   'not-a-command': [
     'A Command value carries the declaration that routing, parsing, and help read.',
@@ -555,6 +567,35 @@ const cases: Record<string, Expected> = {
     headline: 'UNDECLARABLE EXIT CODE',
     rule: 'failure-exit-code',
     sentence: 'Failure class "OffScaleError" declares exit code 200.',
+  },
+  'graph-hook-not-function': {
+    correction: 'Supply a function of the built graph.',
+    findings: [bare("plugin('@acme/mcp', { onGraphBuilt: 'judge' })", "onGraphBuilt: 'judge'")],
+    headline: 'NOT A FUNCTION',
+    rule: 'not-a-function',
+    sentence: 'Plugin "@acme/mcp" declares onGraphBuilt that is not a function.',
+  },
+  'graph-hook-promise': {
+    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
+    findings: [bare("plugin('@acme/mcp', { onGraphBuilt: … })", 'onGraphBuilt: …')],
+    headline: 'BROKEN GRAPH HOOK',
+    rule: 'broken-graph-hook',
+    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
+  },
+  'graph-hook-returns': {
+    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
+    findings: [bare("plugin('@acme/mcp', { onGraphBuilt: … })", 'onGraphBuilt: …')],
+    headline: 'BROKEN GRAPH HOOK',
+    rule: 'broken-graph-hook',
+    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
+  },
+  'graph-hook-throws': {
+    correction:
+      'Return nothing from the hook, and throw only a DeclarationError to reject the graph.',
+    findings: [bare("plugin('@acme/mcp', { onGraphBuilt: … })", 'onGraphBuilt: …')],
+    headline: 'BROKEN GRAPH HOOK',
+    rule: 'broken-graph-hook',
+    sentence: String.raw`Plugin "@acme/mcp" failed in onGraphBuilt: Two tools share\u000athe name "scratch_create".`,
   },
   'hook-alias-spelling': {
     correction: 'Change one of the two spellings or omit the plugin.',
@@ -1039,6 +1080,13 @@ const cases: Record<string, Expected> = {
   },
   'view-identity': identityCase('A view', "view('@acme', …)", "'@acme'", '"@acme"'),
   'view-identity-kind': identityCase('A view', 'view(null, …)', 'null', 'null'),
+  'view-media-type': {
+    correction: 'Supply a media type such as "text/plain", or omit mediaType.',
+    findings: [bare("view('@acme/notes/page', { mediaType: 5, render: … })", 'mediaType: 5')],
+    headline: 'INVALID MEDIA TYPE',
+    rule: 'media-type',
+    sentence: 'View "@acme/notes/page" declares a media type that is not a string.',
+  },
   'view-neither': {
     correction: 'Supply a view with render or a row view with row.',
     findings: [bare("view('@acme/page', {})", '{}')],

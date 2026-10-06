@@ -8,7 +8,7 @@ import { helpHint } from './hint.js';
 import { helpPage } from './views.js';
 
 const options = {
-  help: { description: 'Show this help.', short: 'h', type: 'boolean' },
+  help: { control: true, description: 'Show this help.', short: 'h', type: 'boolean' },
 } satisfies PluginOptions;
 
 export type HelpOptions = typeof options;

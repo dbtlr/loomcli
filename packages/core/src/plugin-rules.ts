@@ -72,7 +72,7 @@ const middlewareActivation = registerRule('@loomcli/core/middleware-activation',
 /** A loader, a hook, or a translator that core cannot call. */
 const notAFunction = registerRule('@loomcli/core/not-a-function', {
   explanation:
-    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach at graph build, onFailure when a failure renders, and a translator when a foreign throw reaches it. A value core cannot call leaves it nothing to run.',
+    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph build, onFailure when a failure renders, and a translator when a foreign throw reaches it. A value core cannot call leaves it nothing to run.',
   headline: 'Not a function',
 });
 
@@ -181,6 +181,13 @@ const brokenAttachHook = registerRule('@loomcli/core/broken-attach-hook', {
   headline: 'Broken attach hook',
 });
 
+/** An `onGraphBuilt` hook that threw something other than a `DeclarationError`, or returned a value. */
+const brokenGraphHook = registerRule('@loomcli/core/broken-graph-hook', {
+  explanation:
+    'onGraphBuilt receives the frozen graph once per build and judges it: it returns nothing, and it rejects the graph only by throwing a DeclarationError. Core reads no answer from the hook, so a returned value or any other throw is a defect in the hook.',
+  headline: 'Broken graph hook',
+});
+
 /** The retired `globals` or `failures` Application option. */
 const retiredApplicationOption = registerRule('@loomcli/core/retired-application-option', {
   explanation:
@@ -219,6 +226,7 @@ const themeNameTaken = registerRule('@loomcli/core/theme-name-taken', {
 export {
   asyncExtensionSchema,
   brokenAttachHook,
+  brokenGraphHook,
   extensionOutput,
   extensionTarget,
   extensionValueTwice,

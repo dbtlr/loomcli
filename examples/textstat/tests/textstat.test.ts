@@ -488,7 +488,30 @@ test('the inspected graph reports the declared table and the formatter views on 
   expect(graph.root.result).toEqual({
     default: 'table',
     kind: 'rows',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', table: null },
     views: ['table', 'json', 'jsonl'],
+  });
+});
+
+test('the inspected graph marks --config, --help, --version, --manifest, and --format as control options', () => {
+  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(inspected.status).toBe(0);
+  const graph: {
+    globals: { name: string; control: boolean }[];
+    root: { options: { name: string; control: boolean }[] };
+  } = JSON.parse(inspected.stdout);
+  const marks = Object.fromEntries(
+    [...graph.globals, ...graph.root.options].map((option) => [option.name, option.control]),
+  );
+  expect(marks).toMatchObject({
+    config: true,
+    explain: true,
+    format: true,
+    help: true,
+    manifest: true,
+    metric: false,
+    timing: false,
+    version: true,
   });
 });
 

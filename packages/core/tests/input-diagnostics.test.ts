@@ -64,9 +64,10 @@ const explanations = {
     'list.',
   ],
   'flag-not-boolean': [
-    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
-    "extension's collect each answer one yes-or-no question about a declaration, so",
-    'each holds true or false. A value such as the string "false" would read as true.',
+    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and',
+    "an extension's collect each answer one yes-or-no question about a declaration,",
+    'so each holds true or false. A value such as the string "false" would read as',
+    'true.',
   ],
   'global-option-after-command': [
     'A Command attached with command() and the root action read their types from the',

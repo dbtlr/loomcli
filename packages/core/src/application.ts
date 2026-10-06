@@ -63,6 +63,7 @@ import {
 import type { FactSite } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
+import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
@@ -519,26 +520,42 @@ class ApplicationBuilder<
 
   /**
    * The graph build, which applies the rules no earlier moment could know: the root's
-   * finished-Command rules and every lifecycle hook's contribution. The application's own overrides
-   * are published first, so a build fault reports through them. The merged registry is published
-   * once the build has succeeded, so a build fault never resolves through a plugin's overrides.
+   * finished-Command rules, every lifecycle hook's contribution, and every `onGraphBuilt` judgment
+   * of the frozen graph. The application's own overrides are published first, so a build fault
+   * reports through them. The merged registry is published once the build has succeeded, so a
+   * build fault never resolves through a plugin's overrides. `inspected` is the frozen graph
+   * `inspect()` returns, built at most once, whoever reads it first.
    */
   private prepare(
     stage: PrepareStage,
-    reuse?: BuiltGraph,
+    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
   ): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
+    inspected: () => CommandGraph;
     plugins: readonly BuiltPlugin[];
   } {
-    const { contributors, facts, plugins, rendering, views } = this.#config;
+    const { contributors, development, facts, plugins, rendering, views } = this.#config;
     stage.views([views]);
     stage.rendering(rendering);
     stage.plugins(plugins);
-    // An action's call reuses the graph its run built, so no lifecycle hook runs again.
-    const graph = reuse ?? buildGraph(this.#root, this.#globals, plugins);
+    // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
+    if (reuse) {
+      stage.views([views, ...contributors]);
+      return { facts, graph: reuse.graph, inspected: reuse.inspected, plugins };
+    }
+    const graph = buildGraph(this.#root, this.#globals, plugins);
+    let frozen: CommandGraph | undefined = undefined;
+    const inspected = () => (frozen ??= inspectGraph(this.#name, graph, { ...facts, development }));
+    if (development) {
+      // A development build asks every converter at build, so its check runs on every run.
+      inspected();
+    }
+    if (judgesGraph(plugins)) {
+      judgeGraph(inspected(), plugins);
+    }
     stage.views([views, ...contributors]);
-    return { facts, graph, plugins };
+    return { facts, graph, inspected, plugins };
   }
 
   /**
@@ -553,10 +570,7 @@ class ApplicationBuilder<
       rendering: () => undefined,
       views: () => undefined,
     });
-    return inspectGraph(this.#name, built.graph, {
-      ...built.facts,
-      development: this.#config.development,
-    });
+    return built.inspected();
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -722,21 +736,10 @@ class ApplicationBuilder<
               invocationOutput.useViews(value);
             },
           },
-          bound?.graph,
+          bound,
         );
-        const { graph } = built;
-        // The graph `inspect()` returns, built at most once for the run, whoever reads it first.
-        let inspectedGraph: CommandGraph | undefined = undefined;
-        const { development } = this.#config;
-        const inspected =
-          bound?.inspected ??
-          (() =>
-            (inspectedGraph ??= inspectGraph(this.#name, graph, { ...built.facts, development })));
+        const { graph, inspected } = built;
         reached = { inspected, plugins: built.plugins };
-        if (development) {
-          // A development build asks every converter at build, so its check runs on every run.
-          inspected();
-        }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = bound?.places ?? inputPlaces(graph);
         const declaredValues =

@@ -179,6 +179,21 @@ export function checkHidden(site: FactSite, value: unknown): boolean {
 }
 
 /**
+ * The `control` core fact: whether an option controls the invocation rather than feeding the
+ * Command's work. It is a Boolean, because a projection that lists what a Command needs asks one
+ * question of it, and an omitted declaration reads `false`. Core never reads it at run time.
+ */
+export function checkControl(site: FactSite, value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  if (typeof value !== 'boolean') {
+    throw flagFault(site, 'control');
+  }
+  return value;
+}
+
+/**
  * The `deprecated` core fact: the one-line migration message a listing shows beside the member.
  * It answers the rule a description answers, because both are one line of prose a projection
  * prints. A bare `true` is rejected with every other value that is not prose: a deprecation with
@@ -213,6 +228,21 @@ export function checkNoListingFacts(site: FactSite, declared: object): void {
         sentence: `${site.subject} declares ${fact}, which applies to named Commands and options alone.`,
       });
     }
+  }
+}
+
+/**
+ * An argument carries no `control` mark, because it is always the Command's input. The type
+ * removes the key, and a JavaScript author, or one whose argument config is held in a variable,
+ * reaches this rule instead.
+ */
+export function checkNoControl(site: FactSite, declared: object): void {
+  if ('control' in declared) {
+    throw factFault(misplacedListingFact, site, {
+      correction: 'Remove it.',
+      fact: 'control',
+      sentence: `${site.subject} declares control, which applies to options alone.`,
+    });
   }
 }
 

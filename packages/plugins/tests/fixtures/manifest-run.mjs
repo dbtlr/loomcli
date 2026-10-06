@@ -1,5 +1,6 @@
 import { Application, Command } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
+import { json } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
@@ -123,6 +124,15 @@ function placed(where, value) {
   return app.command(new Command('child').option('odd', odd).action(dispatch)).action(dispatch);
 }
 
+/**
+ * An application whose `json` key holds a view that declares no media type and whose `wire` key
+ * holds a mapped `json()`, so the document reads each encoding from the result, not from a name.
+ */
+const wired = () =>
+  new Application('app', { ...packet, plugins: [format(), manifest()] })
+    .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
+    .action(({ out }) => out.results('wired'));
+
 const scenarios = {
   app: application,
   'argument-nan': () => placed('argument', Number.NaN),
@@ -141,6 +151,7 @@ const scenarios = {
   schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
   'schema-cycle': published(looped),
   short: () => application({ short: 'M' }),
+  wired,
 };
 
 const [scenario, ...argv] = process.argv.slice(2);

@@ -41,23 +41,27 @@ export interface EncodingConfig<Data> {
 
 /**
  * A whole view over one JSON document: the mapped data, indented two spaces, with one trailing
- * newline. A bare pack view, so two calls with one configuration are two distinct views.
+ * newline, declared `application/json` under every `map`. A bare pack view, so two calls with one
+ * configuration are two distinct views.
  */
 export function json<Data>(config: EncodingConfig<Data> = {}): View<Data> {
   const map = config.map ?? identity<Data>;
   return {
+    mediaType: 'application/json',
     render: (data, context) => encodeText(`${stringify(map(data), jsonIndentSpaces)}\n`, context),
   };
 }
 
 /**
  * A whole view over JSON Lines: one compact `JSON.stringify` line per element when the mapped data
- * is an array, and one such line otherwise. An empty array prints nothing. A bare pack view, so two
- * calls with one configuration are two distinct views.
+ * is an array, and one such line otherwise. An empty array prints nothing. It is declared
+ * `application/jsonl` under every `map`. A bare pack view, so two calls with one configuration are
+ * two distinct views.
  */
 export function jsonl<Data>(config: EncodingConfig<Data> = {}): View<Data> {
   const map = config.map ?? identity<Data>;
   return {
+    mediaType: 'application/jsonl',
     render: (data, context) => {
       const mapped = map(data);
       if (Array.isArray(mapped)) {

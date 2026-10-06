@@ -153,6 +153,13 @@ const rowViewOnValue = registerRule('@loomcli/core/row-view-on-value', {
   headline: 'Row view on a value result',
 });
 
+/** A view's `mediaType` that is not a string, on a result view or on a declared view. */
+const viewMediaType = registerRule('@loomcli/core/media-type', {
+  explanation:
+    "A view's media type tells a reader how to parse the text the view writes, such as application/json, so it is a string. Core stores it as declared and never checks it against the text.",
+  headline: 'Invalid media type',
+});
+
 /** A view name outside the declared-name rule, or one that is integer-like. */
 const viewName = registerRule('@loomcli/core/view-name', {
   explanation:
@@ -188,10 +195,10 @@ const notOneLine = registerRule('@loomcli/core/not-one-line', {
   headline: 'Text not one line',
 });
 
-/** `hidden` or `deprecated` on the Application or on an argument. */
+/** `hidden` or `deprecated` on the Application or on an argument, or `control` on an argument. */
 const misplacedListingFact = registerRule('@loomcli/core/misplaced-listing-fact', {
   explanation:
-    'hidden and deprecated keep a named Command or an option off a listing, or mark it retired. The root is the entry point of every page, and an argument cannot leave the grammar it sits in, so neither carries them.',
+    "hidden and deprecated keep a named Command or an option off a listing, or mark it retired, and control marks an option that controls the invocation rather than feeding the Command's work. The root is the entry point of every page, and an argument cannot leave the grammar it sits in and is always the Command's input, so neither carries them.",
   headline: 'Listing fact out of place',
 });
 
@@ -220,6 +227,7 @@ export {
   siblingNameTaken,
   unknownDefaultView,
   variadicArgumentLast,
+  viewMediaType,
   viewName,
   viewShape,
   viewsWithoutResult,

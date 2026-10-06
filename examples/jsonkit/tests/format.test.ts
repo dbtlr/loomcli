@@ -72,12 +72,14 @@ test('jsonkit inspect reports formatter views on the root records and paths resu
   expect(graph.root.result).toEqual({
     default: 'records',
     kind: 'rows',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', records: null },
     views: ['records', 'json', 'jsonl'],
   });
   const found = graph.root.children.find((child) => child.name === 'paths');
   expect(found?.result).toEqual({
     default: 'list',
     kind: 'rows',
+    mediaTypes: { json: 'application/json', jsonl: 'application/jsonl', list: null, table: null },
     views: ['list', 'table', 'json', 'jsonl'],
   });
 });

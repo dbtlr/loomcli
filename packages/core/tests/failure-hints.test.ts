@@ -59,6 +59,13 @@ test('a build fault reads the application name, an empty path, and no hints, and
   });
 });
 
+test("a development build's converter failure is a build fault that calls no hook", () => {
+  const result = run('converter-fault');
+  expect(result.stdout).toBe('resolved:1\n');
+  expect(result.stderr).toContain(' @loomcli/core/schema-converter-failed\n');
+  expect(result.stderr).not.toContain('never');
+});
+
 test('a declared default its validator rejects calls the hook with an empty path at the root', () => {
   const result = run('default-rejected');
   expect(result.stdout).toBe('hook:fixture/one:DeclarationError:[]\nresolved:1\n');

@@ -132,18 +132,18 @@ override(Error, anyFailure);
 override(UnknownCommandError, problems);
 // @ts-expect-error TS2345: A view for one subclass names its type against FailureView<UsageError>.
 override(UsageError, problems);
-// @ts-expect-error TS2345: A replacement that requires data the key does not carry names View<string>.
+// @ts-expect-error TS2379: A replacement that requires data the key does not carry names View<string>.
 override(lanes.warn, table);
-// @ts-expect-error TS2345: A replacement for another data type names View<readonly Row[]>.
+// @ts-expect-error TS2379: A replacement for another data type names View<readonly Row[]>.
 override(summary, counts);
-// @ts-expect-error TS2345: A declared row view names RowView<Row> as the replacement it takes.
+// @ts-expect-error TS2379: A declared row view names RowView<Row> as the replacement it takes.
 override(paths, table);
 override(summary, {
   // @ts-expect-error TS2322: An inline replacement's function names the data the key carries.
   render: (count: number) => String(count),
 });
 
-// @ts-expect-error TS2345: The exported derivation answers a forwarded key as override answers it.
+// @ts-expect-error TS2379: The exported derivation answers a forwarded key as override answers it.
 forward(summary, counts);
 
 const usageFailure: View<UsageError> = {
@@ -185,7 +185,7 @@ export const jsonkit = new Application('jsonkit', configured)
   .option('pretty', { type: 'boolean' })
   .action(({ options, out }) => out.print(`${options.file}:${String(options.pretty)}`));
 
-// @ts-expect-error TS2322: A declared view is invariant, so it names one data type alone.
+// @ts-expect-error TS2375: A declared view is invariant, so it names one data type alone.
 export const reassigned: DeclaredView<number> = summary;
 
 /** A helper generic over a declared view's data forwards its key and replacement unchanged. */

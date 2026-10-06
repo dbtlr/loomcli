@@ -101,3 +101,14 @@ test.each(['never', 'always'] as const)(
     expect(run('jsonl-controls', color)).toEqual(rendered('"a\\u001bb\\u009bc\\u007fd"\n'));
   },
 );
+
+test('json() and jsonl() declare their media types under every map', () => {
+  const result = invoke(new URL('fixtures/format-media-types.mjs', import.meta.url));
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toEqual({
+    json: 'application/json',
+    jsonl: 'application/jsonl',
+    mappedJson: 'application/json',
+    mappedJsonl: 'application/jsonl',
+  });
+});

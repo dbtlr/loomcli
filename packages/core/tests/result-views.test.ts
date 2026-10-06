@@ -27,6 +27,7 @@ test('a replaced key keeps the position the declaration gave it', () => {
   expect(fact('replace')).toEqual({
     default: 'list',
     kind: 'rows',
+    mediaTypes: { list: null, table: null },
     views: ['list', 'table'],
   });
   expect(written('replace')).toBe('- one.txt\n- two words.txt\n');
@@ -36,6 +37,7 @@ test('a key the declaration does not hold is appended, and the default stays the
   expect(fact('append')).toEqual({
     default: 'list',
     kind: 'rows',
+    mediaTypes: { list: null, table: null, wide: null },
     views: ['list', 'table', 'wide'],
   });
   expect(written('append')).toBe(sequence);
@@ -45,6 +47,7 @@ test('default names the view a run renders, appended in the same call', () => {
   expect(fact('move-default')).toEqual({
     default: 'wide',
     kind: 'rows',
+    mediaTypes: { list: null, table: null, wide: null },
     views: ['list', 'table', 'wide'],
   });
   expect(written('move-default')).toBe('wide 2\n');
@@ -54,6 +57,7 @@ test('a default once named persists through a later call that names none', () =>
   expect(fact('persist-default')).toEqual({
     default: 'wide',
     kind: 'rows',
+    mediaTypes: { list: null, narrow: null, table: null, wide: null },
     views: ['list', 'table', 'wide', 'narrow'],
   });
   expect(written('persist-default')).toBe('wide 2\n');
@@ -63,6 +67,7 @@ test('the same call reads on the Application, which declares the root result', (
   expect(fact('root')).toEqual({
     default: 'wide',
     kind: 'rows',
+    mediaTypes: { list: null, table: null, wide: null },
     views: ['list', 'table', 'wide'],
   });
   expect(written('root')).toBe('wide 2\n');
@@ -72,6 +77,7 @@ test('the call is published before the action too, and merges the same way', () 
   expect(fact('before-action')).toEqual({
     default: 'list',
     kind: 'rows',
+    mediaTypes: { list: null, table: null, wide: null },
     views: ['list', 'table', 'wide'],
   });
   expect(written('before-action')).toBe(sequence);

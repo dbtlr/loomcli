@@ -54,10 +54,17 @@ const explanations = {
     'children. A local option is never inherited, so no action reads an option a',
     'group declares.',
   ],
+  'media-type': [
+    "A view's media type tells a reader how to parse the text the view writes, such",
+    'as application/json, so it is a string. Core stores it as declared and never',
+    'checks it against the text.',
+  ],
   'misplaced-listing-fact': [
     'hidden and deprecated keep a named Command or an option off a listing, or mark',
-    'it retired. The root is the entry point of every page, and an argument cannot',
-    'leave the grammar it sits in, so neither carries them.',
+    'it retired, and control marks an option that controls the invocation rather than',
+    "feeding the Command's work. The root is the entry point of every page, and an",
+    "argument cannot leave the grammar it sits in and is always the Command's input,",
+    'so neither carries them.',
   ],
   'multiple-actions': [
     'Routing runs one handler for the Command it selects, so a second action would',
@@ -142,9 +149,10 @@ const explanations = {
 /** The rules of other families this family raises too. */
 const shared = {
   'flag-not-boolean': [
-    'hidden, shortOnly, multiple, required, variadic, validateOmitted, and an',
-    "extension's collect each answer one yes-or-no question about a declaration, so",
-    'each holds true or false. A value such as the string "false" would read as true.',
+    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and',
+    "an extension's collect each answer one yes-or-no question about a declaration,",
+    'so each holds true or false. A value such as the string "false" would read as',
+    'true.',
   ],
   'not-an-object': [
     "Core reads the options of a Command and of the Application, a plugin's",
@@ -705,6 +713,20 @@ const cases: Record<string, Expected> = {
     slot: 'default',
     subject: 'Option "format"',
   }),
+  'media-type': {
+    correction: 'Supply a media type such as "text/csv", or omit mediaType.',
+    findings: [
+      [
+        '    // count',
+        "    new Command('count')",
+        '      .rows({ views: { csv: { mediaType: 5, render: … } } })',
+        '                              ^^^^^^^^^^^^',
+      ],
+    ],
+    headline: 'INVALID MEDIA TYPE',
+    rule: 'media-type',
+    sentence: 'Command "count" names view "csv" with a media type that is not a string.',
+  },
   'multiple-actions': {
     correction: 'Register one action.',
     findings: [

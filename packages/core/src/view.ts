@@ -1,4 +1,4 @@
-import { viewShape } from './command-rules.js';
+import { viewMediaType, viewShape } from './command-rules.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import {
@@ -127,10 +127,14 @@ class ViewDeclaration<Data> implements DeclaredView<Data> {
   declare readonly [invariant]: (data: Data) => Data;
   readonly identity: string;
   readonly render: (data: Readonly<Data>, context: ViewContext) => string;
+  readonly mediaType?: string;
 
-  constructor(identity: string, definition: View<Data>) {
+  constructor(identity: string, definition: View<Data>, mediaType: string | undefined) {
     this.identity = identity;
     this.render = definition.render;
+    if (mediaType !== undefined) {
+      this.mediaType = mediaType;
+    }
     declarations.set(this, this);
     Object.freeze(this);
   }
@@ -144,8 +148,9 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
   readonly row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
   readonly head?: (context: ViewContext) => string;
   readonly tail?: (count: number, context: ViewContext) => string;
+  readonly mediaType?: string;
 
-  constructor(identity: string, definition: RowView<Row>) {
+  constructor(identity: string, definition: RowView<Row>, mediaType: string | undefined) {
     this.identity = identity;
     this.row = definition.row;
     if (definition.head) {
@@ -153,6 +158,9 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
     }
     if (definition.tail) {
       this.tail = definition.tail;
+    }
+    if (mediaType !== undefined) {
+      this.mediaType = mediaType;
     }
     declarations.set(this, this);
     Object.freeze(this);
@@ -176,6 +184,26 @@ function shapeOf(value: { render?: unknown; row?: unknown } | null | undefined):
     return 'row';
   }
   return render ? 'render' : 'neither';
+}
+
+/**
+ * The media type one declared view states, read once, so a later write to the definition changes
+ * nothing the declaration holds. Core holds no grammar of media types, so the one rule is that the
+ * value is a string.
+ */
+function declaredMediaType(
+  identity: string,
+  definition: View<never> | RowView<never>,
+): string | undefined {
+  const mediaType: unknown = definition.mediaType;
+  if (mediaType !== undefined && typeof mediaType !== 'string') {
+    throw new DeclarationError(viewMediaType, {
+      correction: 'Supply a media type such as "text/plain", or omit mediaType.',
+      findings: [{ arguments: [identity, definition], call: 'view', mark: '1.mediaType' }],
+      sentence: `View ${quoted(identity)} declares a media type that is not a string.`,
+    });
+  }
+  return mediaType;
 }
 
 /**
@@ -205,9 +233,10 @@ function view(identity: string, definition: View<never> | RowView<never>): AnyDe
       sentence: `View ${quoted(identity)} carries neither render nor row.`,
     });
   }
+  const mediaType = declaredMediaType(identity, definition);
   return typeof definition.row === 'function'
-    ? new RowViewDeclaration<never>(identity, definition)
-    : new ViewDeclaration<never>(identity, definition);
+    ? new RowViewDeclaration<never>(identity, definition, mediaType)
+    : new ViewDeclaration<never>(identity, definition, mediaType);
 }
 
 /**

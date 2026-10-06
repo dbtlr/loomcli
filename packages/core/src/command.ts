@@ -23,6 +23,7 @@ import {
   siblingNameTaken,
   unknownDefaultView,
   variadicArgumentLast,
+  viewMediaType,
   viewName,
   viewShape,
   viewsWithoutResult,
@@ -61,7 +62,9 @@ import type {
 import {
   checkDeprecated,
   checkDescription,
+  checkControl,
   checkHidden,
+  checkNoControl,
   checkNoListingFacts,
   declarerNote,
   siteFinding,
@@ -442,10 +445,20 @@ function aliasFinding(
  * from. A `result()` or `rows()` call declares the unit, and a `views()` call reshapes the views of
  * whichever declaration it follows.
  */
-export type ResultCall = { arguments: readonly unknown[] } & (
-  | { kind: 'value' | 'rows'; views: unknown }
-  | { default: unknown; kind: 'views'; views: unknown }
+export type ResultCall = { arguments: readonly unknown[]; entries: readonly ViewEntry[] } & (
+  | { kind: 'value' | 'rows' }
+  | { default: unknown; kind: 'views' }
 );
+
+/**
+ * One entry of a call's `views` record as the call read it, once: the view name, the value, and
+ * the media type the value declared, so a later write to the view object changes no fact.
+ */
+interface ViewEntry {
+  key: string;
+  entry: unknown;
+  mediaType: unknown;
+}
 
 /** The core facts a named Command declares, which its constructor checked. The root carries none. */
 export interface CommandFacts {
@@ -706,6 +719,7 @@ function checkArgument(state: Declared, input: ArgumentInput): void {
   const site = inputSite(name, path, input);
   checkDescription(site, input.config.description);
   checkNoListingFacts(site, input.config);
+  checkNoControl(site, input.config);
   checkNoArgumentBinding(site, input.config);
   checkDeclarations([{ input, site }]);
 }
@@ -814,6 +828,7 @@ export function declareOption<
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
+  checkControl(site, input.config.control);
   checkEnvBinding(site, input.config);
   const recorded = recordInput(state, input);
   checkLocalOptions(
@@ -965,8 +980,8 @@ export function declareResult<Args, Options, Globals>(
 ): CommandState<Args, Options, Globals> {
   const call: ResultCall = {
     arguments: callArguments(declaration),
+    entries: viewEntries(recordOf(declaration, 'views')),
     kind,
-    views: recordOf(declaration, 'views'),
   };
   checkOpen(state, {
     arguments: call.arguments,
@@ -995,8 +1010,8 @@ function viewsCall(replacements: unknown, options: unknown): ResultCall {
   return {
     arguments: callArguments(replacements, options),
     default: recordOf(options, 'default'),
+    entries: viewEntries(replacements),
     kind: 'views',
-    views: replacements,
   };
 }
 
@@ -1413,9 +1428,21 @@ function selectedKey(value: unknown): string | undefined {
   return typeof value === 'string' ? value : (JSON.stringify(value) ?? 'undefined');
 }
 
-/** The entries one authored `views` record holds, in record order; anything else holds none. */
-function recordEntries(record: unknown): [string, unknown][] {
-  return isPlainObject(record) ? Object.entries(record) : [];
+/**
+ * The entries one authored `views` record holds, in record order, each with the media type its
+ * value declares; anything else holds none. The rules judge the media type where they judge the
+ * entry, so a value that is no view reports its shape first.
+ */
+function viewEntries(record: unknown): readonly ViewEntry[] {
+  const entries = isPlainObject(record) ? Object.entries(record) : [];
+  return entries.map(([key, entry]) => ({
+    entry,
+    key,
+    mediaType:
+      typeof entry === 'object' && entry !== null && 'mediaType' in entry
+        ? entry.mediaType
+        : undefined,
+  }));
 }
 
 /** Where one views entry was declared: the Command's sentence and path, the call, and the key. */
@@ -1463,14 +1490,35 @@ function resultView(kind: 'value' | 'rows', site: EntrySite, entry: unknown): Re
 }
 
 /**
- * The results lane's calls read as one declaration: its unit, its views, and its selected key, with
- * the call that declared the unit and the one that selected the key, which a finding marks.
+ * The media type one entry declared: the string as declared, or `null` for none. Core holds no
+ * grammar of media types, so the one rule is that the value is a string.
+ */
+function entryMediaType(site: EntrySite, mediaType: unknown): string | null {
+  if (mediaType === undefined) {
+    return null;
+  }
+  if (typeof mediaType !== 'string') {
+    const { call, key, path, sentence } = site;
+    throw new DeclarationError(viewMediaType, {
+      correction: 'Supply a media type such as "text/csv", or omit mediaType.',
+      findings: [resultFinding(path, call, { at: `${entryMark(call, key)}.mediaType` })],
+      sentence: `${sentence} names view ${quoted(key)} with a media type that is not a string.`,
+    });
+  }
+  return mediaType;
+}
+
+/**
+ * The results lane's calls read as one declaration: its unit, its views with their media types,
+ * and its selected key, with the call that declared the unit and the one that selected the key,
+ * which a finding marks.
  */
 interface MergedResult {
   declaration: ResultCall;
   kind: 'value' | 'rows';
   selected: { key: string; call: ResultCall } | undefined;
   views: Map<string, ResultView>;
+  mediaTypes: Map<string, string | null>;
 }
 
 /**
@@ -1511,10 +1559,12 @@ function mergeResult(
     return undefined;
   }
   const views = new Map<string, ResultView>();
+  const mediaTypes = new Map<string, string | null>();
   let selected: MergedResult['selected'] = undefined;
   for (const call of results) {
-    for (const [key, entry] of recordEntries(call.views)) {
-      const view = resultView(declaration.kind, { call, key, path, sentence }, entry);
+    for (const { entry, key, mediaType } of call.entries) {
+      const site = { call, key, path, sentence };
+      const view = resultView(declaration.kind, site, entry);
       if (!isViewName(key)) {
         throw new DeclarationError(viewName, {
           correction:
@@ -1524,13 +1574,14 @@ function mergeResult(
         });
       }
       views.set(key, view);
+      mediaTypes.set(key, entryMediaType(site, mediaType));
     }
     const key = call.kind === 'views' ? selectedKey(call.default) : undefined;
     if (key !== undefined) {
       selected = { call, key };
     }
   }
-  return { declaration, kind: declaration.kind, selected, views };
+  return { declaration, kind: declaration.kind, mediaTypes, selected, views };
 }
 
 /**
@@ -1547,7 +1598,7 @@ function buildResult(
     return undefined;
   }
   const sentence = commandSentence(declared.name);
-  const { declaration, selected, views } = merged;
+  const { declaration, mediaTypes, selected, views } = merged;
   if (!hasAction) {
     throw new DeclarationError(resultWithoutAction, {
       correction: 'Register an action or remove the result.',
@@ -1570,7 +1621,7 @@ function buildResult(
       sentence: `${sentence} selects default view ${quoted(selected.key)}, which it does not name.`,
     });
   }
-  return { default: selected?.key ?? first.value, kind: merged.kind, views };
+  return { default: selected?.key ?? first.value, kind: merged.kind, mediaTypes, views };
 }
 
 /** One call a hook made, in the order it made it, which the declaration reads back afterwards. */
@@ -2193,10 +2244,12 @@ function checkInputFacts(
     checkDescription(site, input.config.description);
     if (input.kind === 'argument') {
       checkNoListingFacts(site, input.config);
+      checkNoControl(site, input.config);
       checkNoArgumentBinding(site, input.config);
     } else {
       checkHidden(site, input.config.hidden);
       checkDeprecated(site, input.config.deprecated);
+      checkControl(site, input.config.control);
       checkEnvBinding(site, input.config);
     }
     context.extensions.set(

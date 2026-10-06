@@ -53,6 +53,21 @@ const breaks = {
 
 const dispatch = ({ out }) => out.print('dispatched');
 
+/** A validator whose converter throws when build asks it for the input's schema. */
+const throwingConverter = {
+  '~standard': {
+    jsonSchema: {
+      input: () => {
+        throw new Error('This shape has no JSON Schema.');
+      },
+      output: () => ({}),
+    },
+    validate: (value) => ({ value }),
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
 /** An error whose message cannot be read as a string, in each way a JavaScript author can write. */
 const unreadable = {
   getter: () =>
@@ -308,6 +323,14 @@ const scenarios = {
     }),
   candidates: () => routed({ plugins: [hinting('fixture/suggest', suggest)] }).action(dispatch),
   context: () => routed({ views: [override(LoomError, where)] }).action(dispatch),
+  // A development build asks every converter at build, so a converter that throws is a build fault.
+  'converter-fault': () =>
+    new Application('store', {
+      packet: { build: 'development' },
+      plugins: [hinting('fixture/one', () => 'never')],
+    })
+      .option('mode', { type: 'string', validate: throwingConverter })
+      .action(dispatch),
   'default-rejected': () =>
     new Application('store', {
       plugins: [

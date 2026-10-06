@@ -43,7 +43,9 @@ interface ArgumentNode {
  * names a plugin.
  * `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared
  * migration message or `undefined`. A listing projection omits a hidden node and marks a
- * deprecated one; parsing binds without reading either.
+ * deprecated one; parsing binds without reading either. `control` is `true` when the declaration
+ * marks the option as controlling the invocation rather than feeding the Command's work, which a
+ * projection that lists what a Command needs reads, and core reads nowhere.
  * `schema` is the input schema the validator publishes. A Boolean option and a counted option
  * validate nothing, so their variants carry the field at `null`, and every projection built on the
  * node holds if a later contract lets a Boolean option validate. A counted option has no negative
@@ -61,6 +63,7 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
@@ -80,6 +83,7 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
@@ -95,6 +99,7 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
+      readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
@@ -126,13 +131,15 @@ interface CommandNode {
 }
 
 /**
- * The result one Command declares: the unit its action emits, the view names in record order, and
- * the name of the view core renders when nothing selects another.
+ * The result one Command declares: the unit its action emits, the view names in record order, the
+ * name of the view core renders when nothing selects another, and the media type each view
+ * declares, by view name, `null` where a view declares none.
  */
 interface ResultNode {
   readonly kind: 'value' | 'rows';
   readonly views: readonly string[];
   readonly default: string;
+  readonly mediaTypes: Readonly<Record<string, string | null>>;
 }
 
 /**
@@ -286,6 +293,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { long, negative, short } = spellingsOf(table, name);
   const shared = {
     aliases: Object.freeze([...(config.aliases ?? [])]),
+    control: config.control === true,
     deprecated: config.deprecated,
     description: config.description,
     env: config.env ?? null,
@@ -406,6 +414,7 @@ function resultNode(result: DeclaredResult | undefined): ResultNode | null {
   return Object.freeze({
     default: result.default,
     kind: result.kind,
+    mediaTypes: Object.freeze(Object.fromEntries(result.mediaTypes)),
     views: Object.freeze([...result.views.keys()]),
   });
 }
