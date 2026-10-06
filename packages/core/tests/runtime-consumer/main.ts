@@ -35,7 +35,7 @@ const greeter = new Application('greeter', {
       render: (page, context) => `${header(page.variant)}\n${helpPage.render(page, context)}`,
     }),
     override(versionLine, {
-      render: (graph, context) => `greeter build\n${versionLine.render(graph, context)}`,
+      render: (line, context) => `greeter build\n${versionLine.render(line, context)}`,
     }),
   ],
 })

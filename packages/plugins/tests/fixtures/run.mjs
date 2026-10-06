@@ -14,11 +14,11 @@ const dispatch = ({ out }) => out.print('dispatched');
 const plugins = [help(), version()];
 
 /** The same pack under the view overrides one scenario lists, so the plugins stay installed. */
-function branded(views, declared = {}) {
+function branded(views, declared = {}, installed = plugins) {
   const child = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
-    plugins,
+    plugins: installed,
     version: '1.2.0',
     views,
     ...declared,
@@ -35,11 +35,11 @@ const breaks = {
 };
 
 /** One application whose declared version is the scenario, so the printed line is the only rule. */
-function versioned(declared) {
+function versioned(declared, installed = plugins) {
   const child = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
-    plugins,
+    plugins: installed,
     ...declared,
   })
     .command(child)
@@ -395,13 +395,25 @@ function unencodable() {
 
 const scenarios = {
   'branded-line': () =>
-    branded([override(versionLine, { render: (graph) => `<${graph.name}@${graph.version}>\n` })]),
+    branded([
+      override(versionLine, { render: ({ graph }) => `<${graph.name}@${graph.version}>\n` }),
+    ]),
   'branded-page': () =>
     branded([
       override(helpPage, {
         render: ({ command, graph }) => `${graph.name}:${command.name ?? 'root'}\n`,
       }),
     ]),
+  'branded-postfix': () =>
+    branded(
+      [
+        override(versionLine, {
+          render: ({ graph, postfix }) => `<${graph.name}@${graph.version} ${postfix}>\n`,
+        }),
+      ],
+      {},
+      [help(), version({ postfix: 'schema v1' })],
+    ),
   'broken-page': () => branded([override(helpPage, breaks)]),
   cells,
   children,
@@ -425,6 +437,8 @@ const scenarios = {
     ]),
   version: () => versioned({ version: '1.2.0' }),
   'version-omitted': () => versioned({}),
+  'version-postfix': () =>
+    versioned({ version: '1.2.0' }, [help(), version({ postfix: '(Report schema v1)' })]),
   'version-prefixed': () => versioned({ version: 'v0.2.0' }),
   'version-upper': () => versioned({ version: 'V0.2.0' }),
 };

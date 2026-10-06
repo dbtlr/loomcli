@@ -32,6 +32,14 @@ test('an override of the version line changes the line while the plugin stays in
   });
 });
 
+test('a version line override reads the postfix the application gave version()', () => {
+  expect(run('branded-postfix', ['--version'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '<app@1.2.0 schema v1>\n',
+  });
+});
+
 test('a broken help page override reports one diagnostic and returns 1', () => {
   expect(run('broken-page', ['--help'])).toEqual({
     status: 1,

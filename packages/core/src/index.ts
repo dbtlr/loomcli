@@ -4,6 +4,7 @@ export { escapeControlCharacters } from './controls.js';
 export { validationContext, validationContextKey } from './context.js';
 export { diagnosticRule } from './diagnostic.js';
 export { isRuleIdentity } from './identity.js';
+export { isProseLine } from './facts.js';
 export type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 export {
   DeclarationError,

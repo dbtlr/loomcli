@@ -5,7 +5,10 @@ import { loomTheme, theme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
 const input = JSON.parse(process.argv[2]);
-const plugins = [help(), version()];
+const plugins = [
+  help(),
+  version(input.postfix === undefined ? undefined : { postfix: input.postfix }),
+];
 if (input.theme !== 'absent') {
   plugins.push(
     input.theme === 'custom'

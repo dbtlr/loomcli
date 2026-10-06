@@ -2049,7 +2049,7 @@ A Developer Diagnostic teaches the author what broke, where, why the rule exists
   | `@loomcli/core/foreign-graph`           | A graph `inspect()` did not return, or whose nodes disagree with its build, reached core     |
   | `@loomcli/core/broken-destination`      | A host stream failed a write the run owed it                                                 |
 
-  A validator that throws, rejects, or returns a malformed result is a declaration fault under `@loomcli/core/validator-failed`, as [Issues and validator failures](#issues-and-validator-failures) states. Every declaration fault in core, `@loomcli/plugins`, and `@loomcli/validators` carries a rule too. The Rule columns of [Command declaration errors](#command-declaration-errors), [Input declaration errors](#input-declaration-errors), [Input source declaration errors](#input-source-declaration-errors), [Result declaration errors](#result-declaration-errors), and [Plugin declaration errors](#plugin-declaration-errors) name core's. The pack declares its own through `diagnosticRule()`, as a third-party plugin does: `@loomcli/plugins/config/file-path` and `@loomcli/plugins/config/file-pattern` under [Configuration](#configuration), and `@loomcli/plugins/manifest/failure-name-conflict` under [Manifest failures](#manifest-failures). The catalog's are listed under [Faults at the call](validators.md#shared-rules).
+  A validator that throws, rejects, or returns a malformed result is a declaration fault under `@loomcli/core/validator-failed`, as [Issues and validator failures](#issues-and-validator-failures) states. Every declaration fault in core, `@loomcli/plugins`, and `@loomcli/validators` carries a rule too. The Rule columns of [Command declaration errors](#command-declaration-errors), [Input declaration errors](#input-declaration-errors), [Input source declaration errors](#input-source-declaration-errors), [Result declaration errors](#result-declaration-errors), and [Plugin declaration errors](#plugin-declaration-errors) name core's. The pack declares its own through `diagnosticRule()`, as a third-party plugin does: `@loomcli/plugins/config/file-path` and `@loomcli/plugins/config/file-pattern` under [Configuration](#configuration), `@loomcli/plugins/manifest/failure-name-conflict` under [Manifest failures](#manifest-failures), and `@loomcli/plugins/version/postfix` under [Version](#version). The catalog's are listed under [Faults at the call](validators.md#shared-rules).
 - **Names.** `diagnosticRule`, `isRuleIdentity`, `DiagnosticRule`, `Finding`, and `DiagnosticParts` are exported from `@loomcli/core`.
 - **The rule grammar.** `isRuleIdentity(value)` answers whether a value is a string in the rule-identity grammar, the check `diagnosticRule()` runs, so a package that keys its own values on that grammar, as `@loomcli/validators` keys [issue codes](validators.md#issue-codes), checks them against core's grammar instead of a copy.
 
@@ -2464,9 +2464,13 @@ function checkShortSetting(
   settings: unknown,
   declarer: { readonly plugin: string; readonly call: string; readonly option: string },
 ): void;
+
+function isProseLine(value: unknown): value is string;
 ```
 
-`checkShortSetting(settings, declarer)` judges such settings at the factory's call, under core's rules, so a plugin applies core's check instead of a copy and the fault throws where the author wrote the call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Undefined settings pass. Settings that are not a plain object throw `@loomcli/core/not-an-object`: `Plugin "@loomcli/plugins/format" declares settings that are not an object. Supply a settings object, or omit the settings.` A `short` that is not one ASCII letter throws `@loomcli/core/short-alias` in the sentence every option's short spelling uses: `Option "format" declares a short alias that is not one ASCII letter. Supply one ASCII letter.` Each finding quotes the factory's call, `format({ short: 'fo' })`, marks the settings or their `short`, and carries the note `declared by plugin "@loomcli/plugins/format"`. `checkShortSetting` judges the settings alone. The ordinary option declarations judge spelling ownership at the earliest point that knows both owners: construction or an option or Command attachment for globals, and graph build for a hook-declared option. `checkShortSetting` is exported from `@loomcli/core`.
+`checkShortSetting(settings, declarer)` judges such settings at the factory's call, under core's rules, so a plugin applies core's check instead of a copy and the fault throws where the author wrote the call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Undefined settings pass. Settings that are not a plain object throw `@loomcli/core/not-an-object`: `Plugin "@loomcli/plugins/format" declares settings that are not an object. Supply a settings object, or omit the settings.` A `short` that is not one ASCII letter throws `@loomcli/core/short-alias` in the sentence every option's short spelling uses: `Option "format" declares a short alias that is not one ASCII letter. Supply one ASCII letter.` Each finding quotes the factory's call, `format({ short: 'fo' })`, marks the settings or their `short`, and carries the note `declared by plugin "@loomcli/plugins/format"`. `checkShortSetting` judges the settings alone. The ordinary option declarations judge spelling ownership at the earliest point that knows both owners: construction or an option or Command attachment for globals, and graph build for a hook-declared option. `checkShortSetting` is exported from `@loomcli/core`. A factory whose settings hold no `short`, such as `version()`, calls it for the settings object alone.
+
+`isProseLine(value)` answers whether a value is one line of prose: a string that holds a character other than whitespace and no line terminator, the rule every core fact string follows. A plugin whose setting prints inside one line judges it against core's rule instead of a copy, as `version()` judges its postfix, and throws its own rule's `DeclarationError`. `isProseLine` is exported from `@loomcli/core`.
 
 #### First-party and example short spellings
 
@@ -3074,27 +3078,41 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-The help and version factories take no parameters, so an application installs each as it is. A spelling a plugin reserves is a declaration error for an application option that uses it, under [Global options from plugins](#global-options-from-plugins), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help's page and the version line each read the graph and their plugin's own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. Help's hook restates help's own facts under the manifest's collecting extension, as [Help in the manifest](#help-in-the-manifest) states, so it adds no fact the graph did not already hold. The formatter is not one: its hook adds an option and two views to the graph, and its middleware reads the request, as [Formatter](#formatter) states.
+The help factory takes no parameters, and the version factory takes an optional `postfix` under [Version](#version), so an application installs each as it is. A spelling a plugin reserves is a declaration error for an application option that uses it, under [Global options from plugins](#global-options-from-plugins), and the application renames its own option. No first-party plugin claims the signals slot; the theme factory claims the theme slot, which is its whole contribution. Help needs no slot of its own, because being the only help plugin is not an invariant core has to hold: the same plugin installed twice fails on its identity, a second help plugin that shares a spelling fails on the option table, and a second one with its own spellings installs beside it and takes its turn in installation order. Replacing help means omitting `help()` and installing the other plugin; restyling its page means overriding `helpPage` under [Views](#views) while `help()` stays installed. Help's page and the version line each read the graph and their plugin's own option alone, so each is a projection in the sense [Graph inspection](#graph-inspection) gives the word: it adds nothing the graph does not hold. Help's hook restates help's own facts under the manifest's collecting extension, as [Help in the manifest](#help-in-the-manifest) states, so it adds no fact the graph did not already hold. The formatter is not one: its hook adds an option and two views to the graph, and its middleware reads the request, as [Formatter](#formatter) states.
 
 ### Version
 
 ```ts
+// @loomcli/plugins/version
+export interface VersionSettings {
+  readonly postfix?: string;
+}
+
+export declare function version(settings?: VersionSettings): Plugin<VersionOptions>;
+
 // @loomcli/plugins/version/views
 import type { CommandGraph, DeclaredView } from '@loomcli/core';
 
-export declare const versionLine: DeclaredView<CommandGraph>;
+export interface VersionLine {
+  readonly graph: CommandGraph;
+  readonly postfix: string | undefined;
+}
+
+export declare const versionLine: DeclaredView<VersionLine>;
 ```
 
-For an Application that declares `version: '0.2.0'`:
+For an Application that declares `version: '0.2.0'`, `version()` prints the first line and `version({ postfix: '(Report schema v1)' })` the second:
 
 ```text
 jsonkit v0.2.0
+jsonkit v0.2.0 (Report schema v1)
 ```
 
-- **Style.** The application name uses `style.highlight.bold`, and the version, including its `v`, uses `style.primary`. One unstyled space separates them. Each graph string is escaped before styling. The line ends with exactly one newline and adds no logo, branding glyph, or label.
+- **Style.** The application name uses `style.highlight.bold`, and the version, including its `v`, uses `style.primary`. One unstyled space separates them. A postfix follows the version after one more unstyled space and uses `style.dim`. Each graph string and the postfix are escaped before styling. The line ends with exactly one newline and adds no logo, branding glyph, or label.
+- **Postfix.** `postfix` is text the application prints after the version, such as the schema a binary speaks. It is one line of prose under the rule every core fact string follows, judged at the `version()` call: a value that is not a string, is blank, or holds a line terminator throws a `DeclarationError` from `version()` under `@loomcli/plugins/version/postfix`, headlined `Invalid version postfix`: `Plugin "@loomcli/plugins/version" postfix must be a string that holds a character other than whitespace and no line terminator. Supply one line, such as "(Report schema v1)", or omit the postfix.` The finding rebuilds the `version()` call and marks `postfix`. Settings that are not an object are the `@loomcli/core/not-an-object` fault, judged first through core's [`checkShortSetting`](#plugin-settings). The postfix is a setting of the plugin, not a graph fact, so `graph.version`, the manifest, and every other projection are unchanged by it.
 - **Policy.** Core resolves these semantic styles under the existing [rendering policy](#styles-and-rendering-policy). Installing `loomTheme()` supplies copper for highlight. The version plugin requires no theme, chooses no color, and reads no host capability.
 
-`version()` declares one Boolean option, `version`, with the short spelling `V`, the description `Print the version.`, and `control: true`, because it asks for the version and feeds no Command's work under [Control options](#control-options), so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<CommandGraph>` exported from `@loomcli/plugins/version/views` and listed in the plugin's `views`. Its default function returns the text `<name> v<version>\n` from `graph.name` and `graph.version`, with the styling above, and the middleware calls `out.render(graph, versionLine)` and returns without calling `next()`, so the exit code is 0, nothing later in the chain runs, the action never dispatches, and a fault core held from parsing or validation is never raised. An application overrides `versionLine` to restyle the line while `version()` stays installed. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is rendering alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
+`version()` declares one Boolean option, `version`, with the short spelling `V`, the description `Print the version.`, and `control: true`, because it asks for the version and feeds no Command's work under [Control options](#control-options), so an invocation spells it `-V` or `--version`, and a middleware activated by it. The middleware renders one line to stdout through the plugin's declared view, `versionLine`, a `DeclaredView<VersionLine>` exported from `@loomcli/plugins/version/views` and listed in the plugin's `views`. Its data is the graph and the postfix the `version()` call took, `undefined` when it took none. Its default function returns the text `<name> v<version>\n` from `graph.name` and `graph.version`, or `<name> v<version> <postfix>\n` with a postfix, with the styling above, and the middleware calls `out.render({ graph, postfix }, versionLine)` and returns without calling `next()`, so the exit code is 0, nothing later in the chain runs, the action never dispatches, and a fault core held from parsing or validation is never raised. An application overrides `versionLine` to restyle the line while `version()` stays installed; the replacement reads `graph` and `postfix`, and it can call `versionLine.render(line, context)` to build on the default line. An application whose manifest reads `0.2.0` prints `jsonkit v0.2.0`. When the declared version already starts with a lowercase `v`, the line carries that `v` once, so a declared `v0.2.0` prints `jsonkit v0.2.0` too; an uppercase `V` or any other first character is printed after the added `v` as declared. The rule is rendering alone, and `graph.version` holds the declared string. The middleware reads no host fact, no extension, and no option beyond its own, and the routed Command does not change the line: `jsonkit get --version` prints the same line, because the version is a fact of the Application.
 
 `version` is never absent on the graph. An Application that omits it declares `0.0.0`, which means unversioned, so `CommandGraph.version` is a `string` and no projection branches on its absence. An explicit `0.0.0` reads the same, and core keeps no record of which one the author wrote. A declared version follows the one-line rule every core fact string follows, so the line the plugin prints is one line; core otherwise neither validates nor normalizes it.
 
@@ -3587,13 +3605,15 @@ Accepted values are proven when public APIs alone produce these results under No
 #### Help and version restyle
 
 ```ts
-// The restyle left both view inputs unchanged; help variants add variant to HelpPage.
-import type { CommandGraph, DeclaredView } from '@loomcli/core';
+// The restyle left both view inputs unchanged; help variants add variant to HelpPage, and the
+// version postfix gives the version line VersionLine.
+import type { DeclaredView } from '@loomcli/core';
 import type { HelpPage } from '@loomcli/plugins/help/views';
+import type { VersionLine } from '@loomcli/plugins/version/views';
 
 // Exported from @loomcli/plugins/help/views and @loomcli/plugins/version/views.
 declare const helpPage: DeclaredView<HelpPage>;
-declare const versionLine: DeclaredView<CommandGraph>;
+declare const versionLine: DeclaredView<VersionLine>;
 ```
 
 ```text
