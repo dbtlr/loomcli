@@ -6,6 +6,7 @@ import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text
 import { isFailureExitCode } from './exit-codes.js';
 import type { FailureExitCode } from './exit-codes.js';
 import {
+  failureCode,
   failureExitCode,
   foreignThrow,
   foreignThrowCorrection,
@@ -148,38 +149,97 @@ export function commandSentence(name: string | null): string {
 }
 
 /**
- * Each failure class's code, captured at the first construction of the class or of a subclass that
- * declares none, so a static changed afterward cannot give one class a second code. Core's own
- * classes are captured when this module loads, so no write to their statics reaches a failure.
+ * The sentence for a class whose declared failure code is outside the grammar. The class is named
+ * by its constructor, as the exit code's sentence names it.
  */
-const classCodes = new WeakMap<object, FailureExitCode>();
-
-/** Each constructed failure's code, which its `exitCode` reports and `run()` resolves. */
-const failureCodes = new WeakMap<LoomError, FailureExitCode>();
+function invalidCodeSentence(className: string, declared: unknown): string {
+  const clause =
+    typeof declared === 'string'
+      ? `declares failure code ${quoted(declared)}.`
+      : 'declares a failure code that is not a string.';
+  return `Failure class ${quoted(className)} ${clause}`;
+}
 
 /**
- * The code one class exits with: the code captured for it, or else its own static when it declares
- * one, or else its parent's. `constructed` names the class the diagnostic reports, the one the
- * failing construction named.
+ * The grammar of a failure code: one or more words of lowercase ASCII letters and digits joined by
+ * single hyphens, the grammar of the rule name that ends a rule identity.
  */
-function classCode(target: object, constructed: { readonly name: string }): FailureExitCode {
-  const captured = classCodes.get(target);
+const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/** Whether one declared value is a failure code: a string in the grammar. */
+function isFailureCode(value: unknown): value is string {
+  return typeof value === 'string' && failureCodeGrammar.test(value);
+}
+
+/**
+ * One static a failure class declares, read as `run()` reads it: captured at the first construction
+ * of the class or of a subclass that declares none, so a static changed afterward cannot give one
+ * class a second value. Core's own classes are captured when this module loads, so no write to
+ * their statics reaches a failure.
+ */
+interface ClassStatic<Value> {
+  readonly key: 'code' | 'exitCode';
+  readonly captured: WeakMap<object, Value>;
+  readonly accepts: (value: unknown) => value is Value;
+  /** The declaration fault a value outside the static's rule throws, naming the constructed class. */
+  readonly fault: (className: string, declared: unknown) => DeclarationError;
+}
+
+/** Each failure class's exit code. */
+const exitCodeStatic: ClassStatic<FailureExitCode> = {
+  accepts: isFailureExitCode,
+  captured: new WeakMap(),
+  // A class declaration is no call, so no finding stands for it.
+  fault: (className, declared) =>
+    new DeclarationError(failureExitCode, {
+      correction: 'Declare a whole number from 1 through 125.',
+      sentence: undeclarableSentence(className, declared),
+    }),
+  key: 'exitCode',
+};
+
+/** Each failure class's failure code. */
+const failureCodeStatic: ClassStatic<string> = {
+  accepts: isFailureCode,
+  captured: new WeakMap(),
+  fault: (className, declared) =>
+    new DeclarationError(failureCode, {
+      correction:
+        'Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
+      sentence: invalidCodeSentence(className, declared),
+    }),
+  key: 'code',
+};
+
+/** Each constructed failure's exit code, which its `exitCode` reports and `run()` resolves. */
+const failureCodes = new WeakMap<LoomError, FailureExitCode>();
+
+/** Each constructed failure's failure code, which its failure form reports. */
+const failureNames = new WeakMap<LoomError, string>();
+
+/**
+ * The value one class declares for a static: the value captured for it, or else its own static when
+ * it declares one, or else its parent's. `constructed` names the class the diagnostic reports, the
+ * one the failing construction named.
+ */
+function classStatic<Value>(
+  target: object,
+  constructed: { readonly name: string },
+  read: ClassStatic<Value>,
+): Value {
+  const captured = read.captured.get(target);
   if (captured !== undefined) {
     return captured;
   }
   const parent = Reflect.getPrototypeOf(target);
   const declared: unknown =
-    Object.hasOwn(target, 'exitCode') || parent === null
-      ? Reflect.get(target, 'exitCode')
-      : classCode(parent, constructed);
-  if (!isFailureExitCode(declared)) {
-    // A class declaration is no call, so no finding stands for it.
-    throw new DeclarationError(failureExitCode, {
-      correction: 'Declare a whole number from 1 through 125.',
-      sentence: undeclarableSentence(constructed.name, declared),
-    });
+    Object.hasOwn(target, read.key) || parent === null
+      ? Reflect.get(target, read.key)
+      : classStatic(parent, constructed, read);
+  if (!read.accepts(declared)) {
+    throw read.fault(constructed.name, declared);
   }
-  classCodes.set(target, declared);
+  read.captured.set(target, declared);
   return declared;
 }
 
@@ -192,27 +252,41 @@ export function exitCodeOf(failure: LoomError): FailureExitCode {
 }
 
 /**
+ * The failure code a failure reports. A value that inherits from a failure class without having
+ * been constructed holds none, and `toFailure` reports it as an internal error, so it reads
+ * `internal`.
+ */
+export function failureCodeOf(failure: LoomError): string {
+  return failureNames.get(failure) ?? 'internal';
+}
+
+/**
  * Every failure `run()` reports is an instance of a public class. Each class carries the facts its
  * sentence interpolates, so a view reads them instead of parsing prose. The exit code is a static
  * field the class declares, read from the nearest ancestor that declares one and captured at the
  * class's first construction, so one class exits with one code and a projection reads it without
  * an instance. The instance reports the same value through a read-only accessor, and no subclass
- * property or assignment changes the code `run()` resolves. `message` never carries a category
- * prefix; the default views add it.
+ * property or assignment changes the code `run()` resolves. The failure code is a static read the
+ * same way, a kebab-case word a machine reader branches on, and it stays on the class: an instance
+ * carries no `code` of core's. `message` never carries a category prefix; the default views add it.
  */
 export abstract class LoomError extends Error {
+  static readonly code: string = 'failure';
   static readonly exitCode: FailureExitCode = 1;
 
   /**
-   * Reads the constructed class's code, captured at its first construction. A code outside 1
-   * through 125 throws a `DeclarationError` in place of the failure and captures nothing, because
-   * core never clamps or replaces a code. `options` is the platform's own, so a failure that
+   * Reads the constructed class's exit code and then its failure code, each captured at its first
+   * construction. An exit code outside 1 through 125, or a failure code outside its grammar, throws
+   * a `DeclarationError` in place of the failure and captures nothing, because core never clamps or
+   * replaces a code. `options` is the platform's own, so a failure that
    * replaces another error keeps it as `cause` only when its author passes one.
    */
   constructor(message: string, options?: ErrorOptions) {
-    const code = classCode(new.target, new.target);
+    const exitCode = classStatic(new.target, new.target, exitCodeStatic);
+    const code = classStatic(new.target, new.target, failureCodeStatic);
     super(message, options);
-    failureCodes.set(this, code);
+    failureCodes.set(this, exitCode);
+    failureNames.set(this, code);
     this.name = 'LoomError';
   }
 
@@ -228,6 +302,7 @@ export abstract class LoomError extends Error {
 
 /** Exit 2: the invocation, not the application, is wrong. */
 export abstract class UsageError extends LoomError {
+  static override readonly code: string = 'usage';
   static override readonly exitCode: FailureExitCode = 2;
 
   constructor(message: string, options?: ErrorOptions) {
@@ -248,6 +323,8 @@ export type InputProblem =
 
 /** The whole validation phase in authoring order, so one failure reports every rejected input. */
 export class InputError extends UsageError {
+  static override readonly code: string = 'invalid-input';
+
   readonly problems: readonly InputProblem[];
 
   constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions) {
@@ -258,6 +335,8 @@ export class InputError extends UsageError {
 }
 
 export class UnknownCommandError extends UsageError {
+  static override readonly code: string = 'unknown-command';
+
   readonly token: string;
   readonly candidates: readonly string[];
 
@@ -271,6 +350,8 @@ export class UnknownCommandError extends UsageError {
 
 /** A group answers no invocation of its own, so the routed path names no callable Command. */
 export class NonCallableCommandError extends UsageError {
+  static override readonly code: string = 'missing-subcommand';
+
   readonly command: readonly string[];
   readonly candidates: readonly string[];
 
@@ -289,6 +370,8 @@ export class NonCallableCommandError extends UsageError {
 export type InvokedBy = 'argv' | 'name';
 
 export class UnexpectedArgumentError extends UsageError {
+  static override readonly code: string = 'unexpected-argument';
+
   readonly command: readonly string[];
   readonly accepted: number;
   readonly extra: readonly string[];
@@ -307,6 +390,8 @@ export class UnexpectedArgumentError extends UsageError {
 }
 
 export class UnknownOptionError extends UsageError {
+  static override readonly code: string = 'unknown-option';
+
   readonly spelling: string;
 
   constructor(spelling: string) {
@@ -349,6 +434,8 @@ export function undeclaredArgument(
 type MissingValueForm = 'attached' | 'separate';
 
 export class MissingValueError extends UsageError {
+  static override readonly code: string = 'missing-value';
+
   readonly spelling: string;
 
   constructor(spelling: string, form: MissingValueForm = 'separate') {
@@ -368,6 +455,8 @@ export class MissingValueError extends UsageError {
  * chooses the sentence alone.
  */
 export class UnexpectedValueError extends UsageError {
+  static override readonly code: string = 'unexpected-value';
+
   readonly spelling: string;
   readonly value: string;
 
@@ -384,6 +473,8 @@ export class UnexpectedValueError extends UsageError {
 }
 
 export class RepeatedOptionError extends UsageError {
+  static override readonly code: string = 'repeated-option';
+
   readonly spelling: string;
 
   constructor(spelling: string) {
@@ -400,6 +491,8 @@ export class RepeatedOptionError extends UsageError {
  * root, in authoring order.
  */
 export class MisplacedOptionError extends UsageError {
+  static override readonly code: string = 'misplaced-option';
+
   readonly spelling: string;
   readonly commands: readonly (readonly string[])[];
 
@@ -486,6 +579,8 @@ function faultParts(first: unknown, second: unknown, third: unknown): FaultParts
  * it through the runtime's own uncaught-error output, and `sentence` holds the sentence alone.
  */
 export class DeclarationError extends LoomError {
+  static override readonly code: string = 'internal';
+
   readonly rule: DiagnosticRule | undefined;
   readonly sentence: string;
   readonly findings: readonly Finding[];
@@ -516,6 +611,8 @@ export class DeclarationError extends LoomError {
  * subclass may declare its own exit code.
  */
 export class FatalError extends LoomError {
+  static override readonly code: string = 'fatal';
+
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = 'FatalError';
@@ -529,6 +626,8 @@ export class FatalError extends LoomError {
  * development build renders its Developer Diagnostic from the parts.
  */
 export class InternalError extends LoomError {
+  static override readonly code: string = 'internal';
+
   readonly cause: unknown;
   readonly rule: DiagnosticRule | undefined;
   readonly sentence: string;
@@ -685,5 +784,6 @@ for (const Class of [
   InternalError,
   ResultError,
 ]) {
-  classCodes.set(Class, Class.exitCode);
+  exitCodeStatic.captured.set(Class, Class.exitCode);
+  failureCodeStatic.captured.set(Class, Class.code);
 }

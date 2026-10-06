@@ -1,4 +1,4 @@
-import { LoomError } from '@loomcli/core';
+import { escapeControlCharacters, LoomError } from '@loomcli/core';
 import { z } from 'zod';
 
 /** The lowest code a failure class may declare, since 0 is success. */
@@ -48,11 +48,34 @@ function undeclarableMessage(className: string, declared: unknown): string {
 }
 
 /**
+ * The grammar of a failure code: words of lowercase ASCII letters and digits joined by single
+ * hyphens. It mirrors core's own check under Failure codes, which core does not export.
+ */
+const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/** Whether a declared static is a failure code: a string in the grammar. */
+function isFailureCode(value: unknown): value is string {
+  return typeof value === 'string' && failureCodeGrammar.test(value);
+}
+
+/**
+ * Core's sentence for a class whose declared failure code is outside the grammar.
+ * It mirrors, word for word, the sentence core throws when such a class is constructed.
+ */
+function invalidCodeMessage(className: string, declared: unknown): string {
+  const clause =
+    typeof declared === 'string'
+      ? `declares failure code "${escapeControlCharacters(declared)}".`
+      : 'declares a failure code that is not a string.';
+  return `Failure class "${className}" ${clause} Declare a kebab-case code of lowercase letters and digits, such as "registry-down".`;
+}
+
+/**
  * One static of a failure class, walking to the nearest ancestor that declares it. A static getter
  * that throws answers `undefined`: a throw inside a zod transform makes zod retry the parse
  * asynchronously, which core rejects with the wrong fault and whose rejected retry nothing handles.
  */
-function readStatic(failureClass: object, key: 'exitCode'): unknown {
+function readStatic(failureClass: object, key: 'code' | 'exitCode'): unknown {
   try {
     return Reflect.get(failureClass, key);
   } catch {
@@ -74,37 +97,40 @@ function classNameOf(failureClass: object): string {
 }
 
 /**
- * A failure class, output as the exit code it declares. The class's static is read when the value
- * is made, so no failure is constructed and the class itself never reaches the graph. Every read of
- * the class is guarded, so the author's throw never escapes into zod. Its input type is `unknown`,
- * because no typed path names a class without an assertion, so a value that is not a failure class
- * is rejected at run time alone.
+ * The failure code and exit code one class declares, or the sentence that rejects it: a value that
+ * is not a failure class, then an undeclarable exit code, then a failure code outside the grammar,
+ * the order core checks them in.
  */
-const failure = z.unknown().transform((value, context) => {
+function readFailure(value: unknown): { code: string; exitCode: number } | { issue: string } {
   if (!isFailureClass(value)) {
-    context.addIssue({
-      code: 'custom',
-      message: 'Supply a failure class, a class that extends LoomError.',
-    });
-    return z.NEVER;
+    return { issue: 'Supply a failure class, a class that extends LoomError.' };
   }
-  const declared = readStatic(value, 'exitCode');
-  if (!isDeclarableCode(declared)) {
-    context.addIssue({
-      code: 'custom',
-      message: undeclarableMessage(classNameOf(value), declared),
-    });
-    return z.NEVER;
+  const exitCode = readStatic(value, 'exitCode');
+  if (!isDeclarableCode(exitCode)) {
+    return { issue: undeclarableMessage(classNameOf(value), exitCode) };
   }
-  return declared;
-});
+  const code = readStatic(value, 'code');
+  if (!isFailureCode(code)) {
+    return { issue: invalidCodeMessage(classNameOf(value), code) };
+  }
+  return { code, exitCode };
+}
 
 /**
- * A failure's name, written by the author because a class name does not survive a minifying build:
- * lowercase words of letters and digits, joined by single hyphens.
+ * A failure class, output as the failure code and the exit code it declares. The class's statics
+ * are read when the value is made, the exit code first as core reads them, so no failure is
+ * constructed and the class itself never reaches the graph. Every read of the class is guarded, so
+ * the author's throw never escapes into zod. Its input type is `unknown`, because no typed path
+ * names a class without an assertion, so a value that is not a failure class is rejected at run
+ * time alone.
  */
-const failureName = z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, {
-  message: 'Supply a kebab-case name: lowercase letters and digits in words joined by hyphens.',
+const failure = z.unknown().transform((value, context) => {
+  const read = readFailure(value);
+  if ('issue' in read) {
+    context.addIssue({ code: 'custom', message: read.issue });
+    return z.NEVER;
+  }
+  return read;
 });
 
-export { failure, failureName };
+export { failure };

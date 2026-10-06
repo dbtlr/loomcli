@@ -325,13 +325,15 @@ interface AwaitingValue {
  * The state one reading carries from word to word, through routing and the routed Command's words
  * alike. `read` counts every occurrence and positional read so far, and `at` is the order of the one
  * being applied. `supplied` holds each option name with the order in which it was first supplied.
- * `globalFault` says a global option faulted, whether or not that fault is the one held.
+ * `globalFault` says a global option faulted, whether or not that fault is the one held, and
+ * `faulted` names every option with an occurrence that faulted, held or not.
  */
 interface ReadState {
   at: number;
   awaiting: AwaitingValue | undefined;
   command: BuiltCommand;
   fault: HeldFault | undefined;
+  faulted: Set<string>;
   globalFault: boolean;
   path: string[];
   pending: PendingOccurrence[];
@@ -492,6 +494,7 @@ function applyOccurrence(state: ReadState, occurrence: Occurrence): boolean {
     state.awaiting = { global: option.global, name: option.name, spelling };
     return false;
   }
+  state.faulted.add(option.name);
   return hold(state, optionFault(occurrence), option.global);
 }
 
@@ -736,6 +739,7 @@ interface WordsRead {
   committed: boolean;
   delimited: boolean;
   fault: HeldFault | undefined;
+  faulted: ReadonlySet<string>;
   globalFault: boolean;
   passthrough: string[];
   path: string[];
@@ -795,6 +799,7 @@ function readWords(
     awaiting: undefined,
     command: graph.root,
     fault: undefined,
+    faulted: new Set(),
     globalFault: false,
     path: [],
     pending: [],
@@ -833,6 +838,11 @@ interface ParsedInvocation {
   command: BuiltCommand;
   /** The first structural fault in word order, which core holds to the dispatch boundary. */
   fault: LoomError | undefined;
+  /**
+   * Every option, global or local, with an occurrence that faulted, whether or not its fault is the
+   * one held. Such an option is absent from a middleware's `ownOptions`.
+   */
+  faulted: ReadonlySet<string>;
   /** Whether a global option faulted, which leaves every middleware's `options` `null`. */
   globalFault: boolean;
   passthrough: string[];
@@ -907,6 +917,7 @@ function parseInvocation(
     args: bindArguments(command, positionals),
     command,
     fault: fault && heldFailure(read, fault),
+    faulted: awaiting ? new Set([...read.faulted, awaiting.name]) : read.faulted,
     globalFault: read.globalFault || awaiting?.global === true,
     passthrough,
     path,

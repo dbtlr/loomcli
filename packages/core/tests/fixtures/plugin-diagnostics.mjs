@@ -3,6 +3,7 @@ import {
   Command,
   DeclarationError,
   diagnosticRule,
+  encodeFailure,
   extension,
   FatalError,
   InputError,
@@ -19,6 +20,7 @@ const leaf = (name) => new Command(name).action(act);
 const load = () => Promise.resolve({ default: act });
 const render = () => '';
 const row = () => '';
+const line = (form) => `${JSON.stringify({ error: form })}\n`;
 
 /** The value an unreadable config throws, so a test reads that the fault keeps it as its cause. */
 const boom = new Error('boom');
@@ -93,6 +95,20 @@ const scenarios = {
       get views() {
         throw boom;
       },
+    }),
+  'encoder-taken': () =>
+    plugin('@acme/json', {
+      failureEncoders: [
+        encodeFailure('application/json', line),
+        encodeFailure('application/json', line),
+      ],
+    }),
+  'encoder-taken-across': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/json', { failureEncoders: [encodeFailure('application/json', line)] }),
+        plugin('@acme/wire', { failureEncoders: [encodeFailure('application/json', line)] }),
+      ],
     }),
   'extension-async': () =>
     new Command('get', {
@@ -178,6 +194,17 @@ const scenarios = {
   'extension-twice': () => new Command('get').extend(note('a'), note('b')),
   'extension-unscoped': () => extension('notes', { schema: accepting, target: 'command' }),
   'extension-value': () => new Command('get').extend({ identity: '@acme/notes/command' }),
+  'failure-code': () => {
+    class RegistryDownError extends FatalError {
+      static code = 'Registry_Down';
+
+      constructor(message) {
+        super(message);
+        this.name = 'RegistryDownError';
+      }
+    }
+    return new RegistryDownError('The registry is down.');
+  },
   'failure-exit-code': () => {
     class OffScaleError extends FatalError {
       static exitCode = 200;

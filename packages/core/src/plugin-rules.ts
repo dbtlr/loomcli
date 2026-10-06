@@ -9,7 +9,7 @@ import { registerRule } from './diagnostic-text.js';
 /** A slot that holds a list, such as `plugins` or `commands`, holding a value of another kind. */
 const notAList = registerRule('@loomcli/core/not-a-list', {
   explanation:
-    'Core reads plugins, commands, extensions, views, translators, signals, and aliases each as a list, in order. A value of any other kind has no entries to read.',
+    'Core reads plugins, commands, extensions, views, translators, failure encoders, signals, and aliases each as a list, in order. A value of any other kind has no entries to read.',
   headline: 'Not a list',
 });
 
@@ -37,7 +37,7 @@ const unreadableDeclaration = registerRule('@loomcli/core/unreadable-declaration
 /** A list entry that its factory did not build, such as a hand-made plugin or translation. */
 const foreignValue = registerRule('@loomcli/core/foreign-value', {
   explanation:
-    'Core reads a plugin, an extension, an extension value, a declared view, a view override, and a translation through facts its factory recorded when it built the value. Any other value carries none, even one of the same shape.',
+    'Core reads a plugin, an extension, an extension value, a declared view, a view override, a translation, and a failure encoding through facts its factory recorded when it built the value. Any other value carries none, even one of the same shape.',
   headline: 'Value not from its factory',
 });
 
@@ -72,8 +72,15 @@ const middlewareActivation = registerRule('@loomcli/core/middleware-activation',
 /** A loader, a hook, or a translator that core cannot call. */
 const notAFunction = registerRule('@loomcli/core/not-a-function', {
   explanation:
-    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph build, onFailure when a failure renders, and a translator when a foreign throw reaches it. A value core cannot call leaves it nothing to run.',
+    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph build, onFailure when a failure renders, a translator when a foreign throw reaches it, and a failure encoder when a failed run selected its media type. A value core cannot call leaves it nothing to run.',
   headline: 'Not a function',
+});
+
+/** Two failure encoders for one media type, in one plugin or across two installed plugins. */
+const failureEncoderTaken = registerRule('@loomcli/core/failure-encoder-taken', {
+  explanation:
+    'A failed run writes its failure through the one encoder registered for the media type its selected view declares. Two encoders for one media type leave core no way to choose between them.',
+  headline: 'Failure encoder taken',
 });
 
 /** A claimed signal outside SIGINT and SIGTERM. */
@@ -231,6 +238,7 @@ export {
   extensionTarget,
   extensionValueTwice,
   extensionWithoutSchema,
+  failureEncoderTaken,
   foreignValue,
   invalidExtensionValue,
   invalidIdentity,

@@ -75,12 +75,19 @@ type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) =
  * failure, so no failure class carries these facts. `path` holds the canonical names routing
  * walked, `[]` before routing, and `hints` is `[]` when no hook contributed. `invokedBy` reads
  * `'name'` for a run `invoke()` started, where no command line exists, and `'argv'` otherwise.
+ * `view` and `mediaType` are the run's selection when it failed: a middleware's assignment, else the
+ * view `invoke()` started with, else the routed Command's default view, and the media type that
+ * view declares. Neither is the graph.
  */
 interface FailureViewContext extends ViewContext {
   readonly application: string;
   readonly path: readonly string[];
   readonly hints: readonly string[];
   readonly invokedBy: 'argv' | 'name';
+  /** The view the result would render through when the run failed, or `undefined` for none. */
+  readonly view: string | undefined;
+  /** The media type that view declares, or `undefined` when it declares none. */
+  readonly mediaType: string | undefined;
 }
 
 /**

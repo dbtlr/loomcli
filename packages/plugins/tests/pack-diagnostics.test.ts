@@ -114,7 +114,7 @@ test.each(Object.entries(settingsCases))(
 );
 
 /** The pack's rule that `--manifest` raises, which the manifest failures test pins. */
-const pinnedElsewhere = ['manifest/failure-name-conflict'];
+const pinnedElsewhere = ['manifest/failure-code-conflict'];
 
 test('every rule the pack declares has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(settingsCases).map((expected) => expected.rule));

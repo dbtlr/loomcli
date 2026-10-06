@@ -45,7 +45,12 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * options are typed from its declaration and every other key reads `unknown`, because a plugin
  * compiles without the Application that installs it. It is `null` when a global option has a
  * structural fault or was rejected, so a middleware never reads a global value no validator
- * accepted, and a fault on a local option alone leaves it set. `spellings` holds the spelling that
+ * accepted, and a fault on a local option alone leaves it set. `ownOptions` holds the validated
+ * value of each option the middleware's own plugin declared, its global options and each local
+ * option its hook declared on the routed Command, whatever fault core holds for another input: an
+ * option a validator rejected, one whose occurrence faulted, and one no validation reached are
+ * absent. Under a held structural fault core still validates the plugin's hook-declared options
+ * whose tokens parsed, for this record alone. `spellings` holds the spelling that
  * supplied each of the plugin's own options as a token, which a filled or defaulted option never
  * has. `request` is the routed Command's invocation, parsed and validated ahead of the chain, and
  * `null` while core holds a fault and on a group. `view` names the view the result renders
@@ -55,6 +60,7 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
+  readonly ownOptions: Partial<PluginOptionValues<Options>> & Readonly<Record<string, unknown>>;
   readonly spellings: PluginOptionSpellings<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -77,6 +83,20 @@ interface ViewAssignment {
   subject: string;
   name: unknown;
 }
+
+/**
+ * The run's selection when it failed, which a failure view, an `onFailure` hook, and a failure
+ * encoder read: the view the result would render through, and the media type that view declares.
+ * Both are `undefined` where no view would render: on a Command with no result, and for a name the
+ * result does not hold or one that is not a string.
+ */
+interface FailureSelection {
+  readonly view: string | undefined;
+  readonly mediaType: string | undefined;
+}
+
+/** The selection of a run that reached no Command's result. */
+const noSelection: FailureSelection = Object.freeze({ mediaType: undefined, view: undefined });
 
 /** The view an invocation by name starts from, kept as the caller passed it. */
 interface StartingView {
@@ -119,6 +139,23 @@ class ViewSelection {
       return assigned.name;
     }
     return this.#result.default;
+  }
+
+  /**
+   * The selection a failure reads: the last assignment, else the starting view, else the default,
+   * the rule the boundary applies, read the same before and after dispatch. A name the boundary
+   * would reject selects nothing.
+   */
+  atFailure(): FailureSelection {
+    const result = this.#result;
+    if (!result) {
+      return noSelection;
+    }
+    const name = this.#assigned === undefined ? result.default : this.#assigned.name;
+    if (typeof name !== 'string' || !result.views.has(name)) {
+      return noSelection;
+    }
+    return Object.freeze({ mediaType: result.mediaTypes.get(name) ?? undefined, view: name });
   }
 
   /** The last assignment before the boundary wins; one made after it changes nothing. */
@@ -182,6 +219,8 @@ function isMiddlewareExport(value: unknown): value is (context: MiddlewareContex
 /** One activated plugin in the chain, with the spellings of its own options its middleware reads. */
 interface ChainEntry {
   identity: string;
+  /** The plugin's own global options, which its middleware reads under `ownOptions`. */
+  inputs: BuiltPlugin['inputs'];
   load: () => unknown;
   spellings: Readonly<Record<string, string>>;
 }
@@ -210,6 +249,7 @@ function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues)
     .filter((installed) => activates(installed, values))
     .map((installed) => ({
       identity: installed.identity,
+      inputs: installed.inputs,
       // Activation proved the middleware exists, so the empty loader is never the one core calls.
       load: installed.middleware?.load ?? (() => undefined),
       spellings: pluginSpellings(installed.inputs, values),
@@ -287,6 +327,11 @@ interface Invocation {
   read: (graph: BuiltGraph, walked: (path: readonly string[]) => void) => ParsedInvocation;
   /** The view an invocation by name starts from, or none. */
   start: StartingView | undefined;
+  /**
+   * Publishes the run's selection once the chain is about to run, which every failure reported
+   * after it reads. A failure raised before it, such as an unknown Command, reads none.
+   */
+  select: (read: () => FailureSelection) => void;
   /** Runs another Command of this run's graph by name, which the action receives. */
   invoke: DispatchInput['invoke'];
 }
@@ -457,6 +502,7 @@ async function runChain(
     raised: undefined,
   };
   const selection = new ViewSelection(prepared.result, invocation.start);
+  invocation.select(() => selection.atFailure());
   /**
    * The dispatch boundary: the point the chain reaches when its last middleware continues. Core
    * raises the held fault here, so it ranks ahead of a bad view assignment, or else reads the
@@ -494,6 +540,7 @@ async function runChain(
       next,
       options: prepared.options,
       out: invocation.out,
+      ownOptions: prepared.own(entry.identity, entry.inputs),
       request: prepared.request,
       signal: invocation.signal,
       spellings: entry.spellings,
@@ -554,5 +601,5 @@ async function runInvocation(invocation: Invocation): Promise<void> {
   }
 }
 
-export type { ChainOutcome, Invocation, MiddlewareContext, StartingView };
-export { runInvocation };
+export type { ChainOutcome, FailureSelection, Invocation, MiddlewareContext, StartingView };
+export { noSelection, runInvocation };

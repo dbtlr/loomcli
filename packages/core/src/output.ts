@@ -226,6 +226,8 @@ export class Output {
 
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
+  // Whether a failure encoder answers this run's selection, which silences the incomplete-result line.
+  private incompleteSilenced: () => boolean = () => false;
   // The contributors this invocation resolves a declared view through, published once they build.
   private registry: ViewRegistry = [];
   style = createStyle();
@@ -355,6 +357,21 @@ export class Output {
     this.style = createStyle(new Set([...tokens, ...palette.keys()]));
   }
 
+  /**
+   * Marked text resolved as plain text for stderr, as an invocation by name resolves its captured
+   * text: no color, modifier, or hyperlink, whatever the policy or `FORCE_COLOR` says, and the
+   * policy's own terminal controls. A failure form reads its message and hints through it.
+   */
+  plain(text: string): string {
+    const policy: RenderingPolicy = {
+      ...this.policy,
+      color: 'never',
+      hyperlinks: 'never',
+      modifiers: 'never',
+    };
+    return resolveText(text, this.palette, capabilities(this.host, 'stderr', policy));
+  }
+
   context(destination: Stream): ViewContext {
     const caps = capabilities(this.host, destination, this.policy);
     return Object.freeze({
@@ -385,6 +402,23 @@ export class Output {
    */
   report(text: string): Promise<void> {
     return this.rendered(() => text, 'stderr');
+  }
+
+  /**
+   * A failure encoder's text, queued on stderr as it is: no markup resolves and nothing is escaped,
+   * because the encoder owns its bytes, its trailing newline included.
+   */
+  encoded(text: string): Promise<void> {
+    return this.write(this.host.stderr, text);
+  }
+
+  /**
+   * Silences every incomplete-result line while `encodes` answers true: a run whose failure a
+   * failure encoder writes reports nothing on stderr but the encoded line, and the encoded line
+   * itself tells a reader the result is incomplete.
+   */
+  silenceIncomplete(encodes: () => boolean): void {
+    this.incompleteSilenced = encodes;
   }
 
   /**
@@ -461,6 +495,9 @@ export class Output {
    * the plain fallback path and no further.
    */
   private incomplete(facts: IncompleteResult): void {
+    if (this.incompleteSilenced()) {
+      return;
+    }
     const context = this.context('stderr');
     if (this.destinations.get(this.host.stderr)?.state.kind === 'failed') {
       void reportPlainly(this.host.stderr, incompleteResult.render(facts, context));

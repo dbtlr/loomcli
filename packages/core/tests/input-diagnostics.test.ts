@@ -195,9 +195,9 @@ const shared = {
     'splits the name where the parser reads it.',
   ],
   'not-a-list': [
-    'Core reads plugins, commands, extensions, views, translators, signals, and',
-    'aliases each as a list, in order. A value of any other kind has no entries to',
-    'read.',
+    'Core reads plugins, commands, extensions, views, translators, failure encoders,',
+    'signals, and aliases each as a list, in order. A value of any other kind has no',
+    'entries to read.',
   ],
   'repeated-alias': [
     'A Command or an option answers to its name and to each of its aliases, so an',

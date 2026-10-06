@@ -9,7 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { encodeText } from '../encode.js';
-import { failureNameConflict } from '../rules.js';
+import { failureCodeConflict } from '../rules.js';
 import { manifestCommand } from './extension.js';
 
 /**
@@ -43,7 +43,7 @@ interface ManifestCommand {
 }
 
 interface ManifestFailure {
-  readonly name: string;
+  readonly code: string;
   readonly exitCode: number;
   readonly meaning: string;
 }
@@ -192,10 +192,10 @@ function visible<Member extends { readonly hidden: boolean }>(members: readonly 
   return members.filter((member) => !member.hidden);
 }
 
-/** Whether two declared failures are the same entry: one name, one code, and one meaning. */
+/** Whether two declared failures are the same entry: one failure code, one exit code, one meaning. */
 function sameFailure(first: ManifestFailure, second: ManifestFailure): boolean {
   return (
-    first.name === second.name &&
+    first.code === second.code &&
     first.exitCode === second.exitCode &&
     first.meaning === second.meaning
   );
@@ -209,7 +209,7 @@ function failuresOf(node: CommandNode): ManifestFailure[] {
   const entries: ManifestFailure[] = [];
   for (const value of readExtension(node, manifestCommand)) {
     for (const declared of value.failures ?? []) {
-      const entry = { name: declared.name, exitCode: declared.exitCode, meaning: declared.meaning };
+      const entry = { code: declared.code, exitCode: declared.exitCode, meaning: declared.meaning };
       if (!entries.some((listed) => sameFailure(listed, entry))) {
         entries.push(entry);
       }
@@ -249,8 +249,9 @@ function declarationFinding({ command, failure }: Declaration, key: 'exitCode' |
 }
 
 /**
- * The fault for one failure name declared with two codes, or with one code and two meanings. It
- * names the name and both Commands, the first declaration first, with a finding for each.
+ * The fault for one failure code declared with two exit codes, or with one exit code and two
+ * meanings. It names the code and both Commands, the first declaration first, with a finding for
+ * each.
  */
 function conflictError(first: Declaration, second: Declaration): DeclarationError {
   const sameCode = first.failure.exitCode === second.failure.exitCode;
@@ -259,25 +260,25 @@ function conflictError(first: Declaration, second: Declaration): DeclarationErro
       ? `meaning "${escapeControlCharacters(failure.meaning)}"`
       : `exit code ${String(failure.exitCode)}`;
   const key = sameCode ? 'meaning' : 'exitCode';
-  return new DeclarationError(failureNameConflict, {
-    correction: 'Declare one code and one meaning for each failure name.',
+  return new DeclarationError(failureCodeConflict, {
+    correction: 'Declare one exit code and one meaning for each failure code.',
     findings: [declarationFinding(first, key), declarationFinding(second, key)],
-    sentence: `Failure "${first.failure.name}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}.`,
+    sentence: `Failure "${first.failure.code}" is declared with ${clause(first)} on ${commandSubject(first.command)} and ${clause(second)} on ${commandSubject(second.command)}.`,
   });
 }
 
 /**
- * Each failure the application declares, once per name, in the order a depth-first walk from the
- * root first meets it. A name means one failure across the application, so one declared with a
- * second code or meaning throws its `DeclarationError` here.
+ * Each failure the application declares, once per failure code, in the order a depth-first walk
+ * from the root first meets it. A code means one failure across the application, so one declared
+ * with a second exit code or meaning throws its `DeclarationError` here.
  */
 function applicationFailures(root: CommandNode): ManifestFailure[] {
   const first = new Map<string, Declaration>();
   for (const command of everyCommand(root)) {
     for (const failure of failuresOf(command)) {
-      const known = first.get(failure.name);
+      const known = first.get(failure.code);
       if (known === undefined) {
-        first.set(failure.name, { command, failure });
+        first.set(failure.code, { command, failure });
       } else if (!sameFailure(known.failure, failure)) {
         throw conflictError(known, { command, failure });
       }
@@ -287,21 +288,21 @@ function applicationFailures(root: CommandNode): ManifestFailure[] {
 }
 
 /**
- * The exit-code table: core's five rows, and a row for each other code a failure declared anywhere
- * in the application carries, naming its failures in the order the walk first meets them. A code
- * core's own row explains, 1 or 2, adds no row. JavaScript enumerates integer keys in ascending
- * order, so the rows print that way.
+ * The exit-code table: core's five rows, and a row for each other exit code a failure declared
+ * anywhere in the application carries, naming its failure codes in the order the walk first meets
+ * them. An exit code core's own row explains, 1 or 2, adds no row. JavaScript enumerates integer
+ * keys in ascending order, so the rows print that way.
  */
 function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
-  const names = new Map<string, string[]>();
+  const codes = new Map<string, string[]>();
   for (const failure of applicationFailures(root)) {
-    const code = String(failure.exitCode);
-    if (!Object.hasOwn(coreExitCodes, code)) {
-      names.set(code, [...(names.get(code) ?? []), failure.name]);
+    const exitCode = String(failure.exitCode);
+    if (!Object.hasOwn(coreExitCodes, exitCode)) {
+      codes.set(exitCode, [...(codes.get(exitCode) ?? []), failure.code]);
     }
   }
-  const rows = [...names].map(([code, carried]) => [
-    code,
+  const rows = [...codes].map(([exitCode, carried]) => [
+    exitCode,
     `Declared failures: ${carried.join(', ')}`,
   ]);
   return { ...coreExitCodes, ...Object.fromEntries(rows) };

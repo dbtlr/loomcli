@@ -3,18 +3,21 @@ import { z } from 'zod';
 
 import Package from '../../package.json' with { type: 'json' };
 import { line, prose } from '../lines.js';
-import { failure, failureName } from './failures.js';
+import { failure } from './failures.js';
 
 /** One example invocation: the tokens after the application name, and an optional note. */
 const example = z.object({ command: line, note: line.optional() });
 
 /**
- * One failure a Command can raise: its class, one line of meaning, and a kebab-case name. It
- * outputs the name, the code the class declares, and the meaning, as plain data.
+ * One failure a Command can raise: its class and one line of meaning. It outputs the failure code
+ * and the exit code the class declares, and the meaning, as plain data. A key the schema does not
+ * name, such as the retired hand-written `name`, is dropped.
  */
-const declaredFailure = z
-  .object({ failure, meaning: line, name: failureName })
-  .transform((entry) => ({ name: entry.name, exitCode: entry.failure, meaning: entry.meaning }));
+const declaredFailure = z.object({ failure, meaning: line }).transform((entry) => ({
+  code: entry.failure.code,
+  exitCode: entry.failure.exitCode,
+  meaning: entry.meaning,
+}));
 
 /**
  * The manifest's collecting extension on Commands, as declarations alone. The author and any

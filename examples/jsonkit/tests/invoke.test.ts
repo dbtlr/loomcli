@@ -42,6 +42,12 @@ test('a completed invocation reads completed and a failed one carries the code a
   expect(wedge[4]?.named).toMatchObject({
     exitCode: 65,
     failure: { name: 'PathNotFoundError' },
+    form: {
+      code: 'path-not-found',
+      exitCode: 65,
+      hints: [],
+      message: 'Path not found: "missing". Run jsonkit keys to list the keys at the root.',
+    },
     status: 'failed',
   });
 });

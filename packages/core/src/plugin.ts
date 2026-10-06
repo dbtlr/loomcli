@@ -6,6 +6,8 @@ import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
+import { readEncodings } from './encoders.js';
+import type { FailureEncoder, FailureEncoding } from './encoders.js';
 import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
@@ -36,6 +38,7 @@ import {
   shallowRecord,
 } from './plain.js';
 import {
+  failureEncoderTaken,
   foreignValue,
   middlewareActivation,
   notAFunction,
@@ -113,13 +116,21 @@ interface DeclaredPlugin {
   extensions?: unknown;
   views?: unknown;
   translators?: unknown;
+  failureEncoders?: unknown;
   signals?: unknown;
   source?: unknown;
   commands?: unknown;
 }
 
 /** The slots of a definition that hold a list, each copied with its entries as they were built. */
-const definitionLists = ['extensions', 'signals', 'commands', 'views', 'translators'] as const;
+const definitionLists = [
+  'extensions',
+  'signals',
+  'commands',
+  'views',
+  'translators',
+  'failureEncoders',
+] as const;
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, BuiltPlugin>();
@@ -236,6 +247,8 @@ interface PluginDefinition<
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
+  /** The encoders a failed `run()` writes its failure through, one per media type. */
+  failureEncoders?: readonly FailureEncoding[];
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
@@ -425,6 +438,8 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
   const descriptors: DescriptorRegistry = new Map();
   // Each slot has one owner, so the first plugin to claim it names the second claimant's diagnostic.
   const owners = new Map<Slot, number>();
+  // Each media type has one encoder, so the first plugin to register it names the second's diagnostic.
+  const encoders = new Map<string, { identity: string; index: number }>();
   const claim = (slot: Slot, index: number) => {
     const owner = owners.get(slot);
     if (owner !== undefined) {
@@ -461,6 +476,20 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
     }
     if (entry.source) {
       claim('source', index);
+    }
+    for (const mediaType of entry.failureEncoders.keys()) {
+      const registered = encoders.get(mediaType);
+      if (registered !== undefined) {
+        throw new DeclarationError(failureEncoderTaken, {
+          correction: 'Install one of them.',
+          findings: [
+            partFinding(site, [registered.index], 'the first encoder'),
+            partFinding(site, [index], 'the second encoder'),
+          ],
+          sentence: `${pluginSentence(identity)} registers a failure encoder for ${quoted(mediaType)}, which plugin ${quoted(registered.identity)} already registers.`,
+        });
+      }
+      encoders.set(mediaType, { identity, index });
     }
   }
   return { descriptors, plugins: installed };
@@ -944,6 +973,8 @@ interface BuiltPlugin {
   views: unknown;
   /** The translations the plugin registers, which resolve after the application's. */
   translators: TranslationContributor;
+  /** The failure encoders the plugin registers, by media type. */
+  failureEncoders: ReadonlyMap<string, FailureEncoder>;
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
@@ -1021,9 +1052,14 @@ function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
     pluginSlot(named, 'translators', declaration.translators),
     declaration.translators,
   );
+  const failureEncoders = readEncodings(
+    pluginSlot(named, 'failureEncoders', declaration.failureEncoders),
+    declaration.failureEncoders,
+  );
   return {
     commands,
     descriptors: build.descriptors,
+    failureEncoders,
     identity: named,
     inputs,
     middleware,
