@@ -66,6 +66,35 @@ test('an action failure after rows writes the rows on stdout and the line alone 
   });
 });
 
+/** The incomplete-result line for the `list` Command and its two counts. */
+function incomplete(yielded: number, written: number): string {
+  return `Output is incomplete: Command "list" stopped after ${String(yielded)} rows, ${String(written)} written.\n`;
+}
+
+test('a stream cancelled mid-sequence under an encoded selection writes the incomplete-result line, because no encoder writes a failure', () => {
+  expect(run(['list', '--pick', 'json', '--how', 'stream-cancel'])).toEqual({
+    status: 130,
+    stderr: incomplete(1, 1),
+    stdout: '{"key":"a"}\nexit:130\n',
+  });
+});
+
+test('a stdout that fails with EPIPE under an encoded selection writes the incomplete-result line beside its plain fallback report', () => {
+  expect(run(['list', '--pick', 'json'], { env: { FIXTURE_STDOUT: 'epipe' } })).toEqual({
+    status: 1,
+    stderr: `${incomplete(1, 0)}enc: Something went wrong.\n`,
+    stdout: 'exit:1\n',
+  });
+});
+
+test('a broken encoder after rows writes the incomplete-result line ahead of the default text', () => {
+  expect(run(['list', '--pick', 'json'], { encoder: 'throws' })).toEqual({
+    status: 1,
+    stderr: `${incomplete(1, 1)}The key "b" is refused.\nenc: Something went wrong.\n`,
+    stdout: '{"key":"a"}\nexit:1\n',
+  });
+});
+
 test('a selection that declares no encoded media type writes its text as before', () => {
   const table = run(['list']);
   expect(table.stdout).toBe('{"key":"a"}\nexit:1\n');
@@ -133,7 +162,7 @@ test("a structural fault core raises from argv words reaches the line with its c
 
 const brokenReasons = {
   number: 'The encoder returned number instead of a string.',
-  promise: 'The encoder returned object instead of a string.',
+  promise: 'The encoder returned a promise instead of a string.',
   throws: 'The encoder broke.',
 };
 

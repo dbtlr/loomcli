@@ -1,6 +1,8 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, extension, InputError, plugin } from '@loomcli/core';
+import { z } from 'zod';
 
 // Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code.
+// FIXTURE_SOURCE=fails installs a configuration source that cannot read its settings.
 const words = process.argv.slice(2);
 
 /** A validator that accepts lowercase words, rejects `bad`, and throws for `throw`. */
@@ -19,11 +21,17 @@ const word = {
   },
 };
 
-/** A validator that accepts decimal digits alone. */
+/** A validator that accepts decimal digits alone, and throws for `throw`. */
 const digits = {
   '~standard': {
-    validate: (value) =>
-      /^\d+$/u.test(value) ? { value: Number(value) } : { issues: [{ message: 'Use digits.' }] },
+    validate: (value) => {
+      if (value === 'throw') {
+        throw new Error('The depth validator broke.');
+      }
+      return /^\d+$/u.test(value)
+        ? { value: Number(value) }
+        : { issues: [{ message: 'Use digits.' }] };
+    },
     vendor: 'fixture',
     version: 1,
   },
@@ -57,8 +65,31 @@ const owning = plugin('@fixture/owning', {
 /** Another plugin's option, which never appears in the fixture plugin's record. */
 const other = plugin('@fixture/other', { options: { theirs: { type: 'string' } } });
 
-const app = new Application('owns', { plugins: [owning, other] })
+/** The binding the failing source answers for, carried by the application's `fed` option. */
+const settingsKey = extension('@fixture/settings/key', { schema: z.string(), target: 'option' });
+
+/** A configuration source that cannot read its settings, as a missing file named on argv is not. */
+const settings = plugin('@fixture/settings', {
+  extensions: [settingsKey],
+  source: {
+    binding: settingsKey,
+    load: async () => ({
+      default: () => {
+        throw new InputError('The settings file cannot be read.', []);
+      },
+    }),
+  },
+});
+
+const plugins =
+  process.env.FIXTURE_SOURCE === 'fails' ? [owning, other, settings] : [owning, other];
+
+const app = new Application('owns', { plugins })
   .globalOption('app', { type: 'string' })
+  .globalOption('fed', {
+    extensions: process.env.FIXTURE_SOURCE === 'fails' ? [settingsKey('fed')] : [],
+    type: 'string',
+  })
   .command(
     new Command('get')
       .option('depth', { type: 'string', validate: digits })

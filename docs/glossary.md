@@ -410,7 +410,7 @@ One failure as plain data, `{ code, exitCode, message, hints }`: its failure cod
 _Avoid_: Error object, error payload, error JSON, failure document
 
 **Failure encoder**:
-A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s selected view declares that media type, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. One media type has one encoder, and core encodes nothing itself.
+A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s selected view declares that media type, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. A run whose failure no encoder writes, such as a cancelled stream or a broken encoder, keeps that line. One media type has one encoder, and core encodes nothing itself.
 _Avoid_: Error formatter, JSON failure view, error serializer, failure override
 
 **Hint**:
@@ -519,7 +519,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural or input-source one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:

@@ -137,6 +137,16 @@ test('textstat --format json --bogus writes the unknown-option line, because cor
   });
 });
 
+test('textstat --format json -c with a missing file writes the configuration failure as the JSON line, because core validates --format under the held input-source fault', () => {
+  withOneFile((cwd) => {
+    expect(invoke(main, ['--format', 'json', '-c', 'missing.json', 'one.txt'], { cwd })).toEqual({
+      status: 2,
+      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \\"--config\\": File \\"missing.json\\" does not exist. Supply the path of an existing file.",${usage}}}\n`,
+      stdout: '',
+    });
+  });
+});
+
 test('textstat writes its text diagnostic when no --format selects an encoded view, or a rejected one selects nothing', () => {
   withOneFile((cwd) => {
     const metric = invoke(main, ['--metric', 'nope', 'one.txt'], { cwd });

@@ -714,9 +714,9 @@ function rawReasonOf(thrown: unknown): string {
 }
 
 /**
- * Why a returned value is not the text a view or a failure encoder owes. Each is synchronous, so a
- * returned promise is a non-string return like any other: it receives a rejection handler and is
- * otherwise ignored.
+ * Why a returned value is not the text a view or a failure encoder owes. A view is synchronous, so
+ * a promise it returns is a non-string return like any other: it receives a rejection handler and
+ * is otherwise ignored. An encoder's promise has a reason of its own, which its caller reads first.
  */
 export function notTextReason(subject: 'encoder' | 'view', value: unknown): string {
   if (isThenable(value)) {

@@ -1,3 +1,6 @@
+import { Writable } from 'node:stream';
+import { setTimeout as after } from 'node:timers/promises';
+
 import {
   Application,
   Command,
@@ -11,6 +14,7 @@ import {
 
 // The first argument names a scenario; a run scenario passes the rest as the run's words.
 // FIXTURE_BUILD names the packet's build, and FIXTURE_ENCODER the encoder the plugin registers.
+// FIXTURE_STDOUT=epipe gives a run a stdout that refuses every write with an EPIPE-style error.
 const [scenario, ...words] = process.argv.slice(2);
 
 const packet = { packet: { build: process.env.FIXTURE_BUILD ?? 'distributed' } };
@@ -94,6 +98,13 @@ const failing = {
   },
 };
 
+/** Rows whose source cancels the run after its first row and then ends, as Ctrl-C mid-stream does. */
+async function* cancelledRows() {
+  yield { key: 'a' };
+  caller.abort();
+  await after(10);
+}
+
 /** Rows whose source throws after its first row. */
 async function* refusedRows() {
   yield { key: 'a' };
@@ -110,6 +121,10 @@ const list = new Command('list', { description: 'The list command.' })
     if (options.how === 'cancel') {
       caller.abort();
       throw new FatalError('Refused after the abort.');
+    }
+    if (options.how === 'stream-cancel') {
+      await out.results(cancelledRows());
+      return;
     }
     if (options.how !== undefined) {
       failing[options.how]();
@@ -165,6 +180,15 @@ function application(plugins = [encoding]) {
     .command(extra);
 }
 
+/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
+function brokenPipe() {
+  return new Writable({
+    write(chunk, chunkEncoding, callback) {
+      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    },
+  });
+}
+
 /** Prints what a declaration fault reports, or that the call returned. */
 function declare(build) {
   try {
@@ -205,7 +229,11 @@ const scenarios = {
   'not-a-function': () => declare(() => encodeFailure('application/json', 'line')),
   'not-a-list': () => declare(() => plugin('@fixture/odd', { failureEncoders: 'line' })),
   run: async () => {
-    const code = await application().run({ host: { argv: words }, signal: caller.signal });
+    const stdout = process.env.FIXTURE_STDOUT === 'epipe' ? brokenPipe() : undefined;
+    const code = await application().run({
+      host: { argv: words, ...(stdout ? { stdout } : {}) },
+      signal: caller.signal,
+    });
     process.stdout.write(`exit:${String(code)}\n`);
   },
   'taken-across-plugins': () =>

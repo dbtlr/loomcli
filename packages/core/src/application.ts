@@ -168,6 +168,15 @@ function silenced(
   return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
 }
 
+/** The failure a view that broke while the run wrote its output is, once nothing else failed. */
+function brokenOutput(cause: unknown): InternalError {
+  return new InternalError(brokenOutputView, {
+    cause,
+    correction: viewCorrection,
+    sentence: `Rendering output failed: ${reasonOf(cause)}`,
+  });
+}
+
 /** The selection of a run whose chain never ran, which reaches no Command's result. */
 function unselected(): FailureSelection {
   return noSelection;
@@ -765,13 +774,7 @@ class ApplicationBuilder<
         const { graph, inspected } = built;
         reached = { inspected, plugins: built.plugins };
         if (door.encodes) {
-          const registered = encoderRegistry(built.plugins);
-          encoders = registered;
-          // The rule follows the registration, which core knows when a sequence stops.
-          invocationOutput.silenceIncomplete(() => {
-            const { mediaType } = selected();
-            return mediaType !== undefined && registered.has(mediaType);
-          });
+          encoders = encoderRegistry(built.plugins);
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = bound?.places ?? inputPlaces(graph);
@@ -825,11 +828,7 @@ class ApplicationBuilder<
         const fault = output.fault;
         if (fault) {
           // The action returned, so the view failure is this invocation's own failure.
-          throw new InternalError(brokenOutputView, {
-            cause: fault.cause,
-            correction: viewCorrection,
-            sentence: `Rendering output failed: ${reasonOf(fault.cause)}`,
-          });
+          throw brokenOutput(fault.cause);
         }
       } catch (error) {
         primary = error;
@@ -879,7 +878,7 @@ class ApplicationBuilder<
       // A deferred fault a translator answered turns it into that failure's own code instead.
       // The primary outcome keeps its code, the way a view failure leaves it alone.
       // It is reported the way the primary failure is, so an override answers its class.
-      for (const fault of faults) {
+      const reportFault = async (fault: LoomError): Promise<void> => {
         if (!silenced(fault, controller.signal, cancellation())) {
           const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
           // The first fault that sets the code after a primary outcome that succeeded decides it.
@@ -905,6 +904,18 @@ class ApplicationBuilder<
             reportingCause ??= reportError;
           }
         }
+      };
+      for (const fault of faults) {
+        await reportFault(fault);
+      }
+      /**
+       * A report writes the held incomplete-result lines ahead of its failure, or drops them when an
+       * encoder wrote the failure. A run no report reached, such as a cancelled one or one whose
+       * stdout failed, writes them now, and a line whose view broke is then the run's view fault.
+       */
+      const lineFault = await output?.writeIncomplete();
+      if (lineFault !== undefined && decisive === undefined) {
+        await reportFault(brokenOutput(lineFault.cause));
       }
       if (output) {
         const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));

@@ -3,8 +3,10 @@ import { expect, test } from 'vite-plus/test';
 import { invoke } from '../../../scripts/test-process.js';
 
 /** The record the fixture plugin's middleware read, the run's exit code, and its stderr. */
-function owned(words: string[]) {
-  const { stderr, stdout } = invoke(new URL('fixtures/own-options.mjs', import.meta.url), words);
+function owned(words: string[], env: Record<string, string> = {}) {
+  const { stderr, stdout } = invoke(new URL('fixtures/own-options.mjs', import.meta.url), words, {
+    env,
+  });
   const [record = '{}', exit = ''] = stdout.split('\n');
   const { frozen, own }: { frozen: boolean; own: unknown } = JSON.parse(record);
   return { exit, frozen, own, stderr };
@@ -70,4 +72,31 @@ test('an option is absent when its own occurrence faulted, or when a structural 
     spare: '<undefined>',
   });
   expect(owned(['get', '--bogus']).own).toEqual({ mine: '<undefined>', spare: '<undefined>' });
+});
+
+test('under an input-source fault core still validates its own options whose tokens parsed, and the source fault stays held', () => {
+  // An option the invocation omitted has no tokens, so no pass validates it and it is absent.
+  const failing = { FIXTURE_SOURCE: 'fails' };
+  expect(owned(['get', '--mine', 'abc', '--local', 'xyz'], failing)).toEqual({
+    exit: 'exit:2',
+    frozen: true,
+    own: { local: 'XYZ', mine: 'ABC' },
+    stderr: 'owns: The settings file cannot be read.\n',
+  });
+  expect(owned(['get', '--mine', 'bad', '--local', 'throw'], failing)).toEqual({
+    exit: 'exit:2',
+    frozen: true,
+    own: {},
+    stderr: 'owns: The settings file cannot be read.\n',
+  });
+});
+
+test('under a validator that throws on another input core still validates its own options, and the developer error stays held', () => {
+  const broken = owned(['get', '--depth', 'throw', '--mine', 'abc', '--local', 'xyz']);
+  expect(broken).toEqual({
+    exit: 'exit:1',
+    frozen: true,
+    own: { local: 'XYZ', mine: 'ABC' },
+    stderr: 'owns: Something went wrong.\n',
+  });
 });

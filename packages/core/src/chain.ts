@@ -49,8 +49,8 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * value of each option the middleware's own plugin declared, its global options and each local
  * option its hook declared on the routed Command, whatever fault core holds for another input: an
  * option a validator rejected, one whose occurrence faulted, and one no validation reached are
- * absent. Under a held structural fault core still validates the plugin's hook-declared options
- * whose tokens parsed, for this record alone. `spellings` holds the spelling that
+ * absent. Under any held fault core still validates the plugin's own options whose tokens parsed,
+ * for this record alone. `spellings` holds the spelling that
  * supplied each of the plugin's own options as a token, which a filled or defaulted option never
  * has. `request` is the routed Command's invocation, parsed and validated ahead of the chain, and
  * `null` while core holds a fault and on a group. `view` names the view the result renders

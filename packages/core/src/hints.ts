@@ -429,20 +429,22 @@ function brokenEncoderLines(
  * failure text the report writes, as it is. A development build writes a fault only the author
  * can fix as its Developer Diagnostic with the hints under it first, and the encoded line after one
  * blank line. A broken encoder leaves core's default text for the failure, without hints, and the
- * broken encoder's own report, to the plain fallback path.
+ * broken encoder's own report, to the plain fallback path. The run's held incomplete-result lines
+ * are dropped when the encoder writes the failure, and written ahead of everything when it breaks.
  */
 async function encodeFailureReport(
   sink: FailureSink,
   failure: LoomError,
   encoding: FailureContextScene & { form: FailureForm; installed: InstalledEncoder },
 ): Promise<OwnReport> {
-  const { build } = sink;
   const { developer, form, installed } = encoding;
-  const diagnosed = build.development && isAuthorFault(failure);
+  const diagnosed = sink.build.development && isAuthorFault(failure);
+  // The encoder answers first, because whether it wrote the failure decides the held lines.
+  const answer = callEncoder(installed, form);
+  await settleIncomplete(sink.output, answer);
   if (diagnosed) {
     await writeDiagnostic(sink, failure, encoding);
   }
-  const answer = callEncoder(installed, form);
   if (answer.kind === 'encoded') {
     await sink.output.encoded(diagnosed ? `\n${answer.text}` : answer.text);
     return { broken: false, plain: '' };
@@ -452,9 +454,21 @@ async function encodeFailureReport(
     plain: brokenEncoderLines(
       failure,
       { answer, diagnosed, installed },
-      { build, scene: developer },
+      { build: sink.build, scene: developer },
     ),
   };
+}
+
+/**
+ * The run's held incomplete-result lines once an encoder answered: dropped when it wrote the
+ * failure, whose line is then the only failure text, and written when it broke.
+ */
+async function settleIncomplete(output: Output, answer: EncoderAnswer): Promise<void> {
+  if (answer.kind === 'encoded') {
+    output.dropIncomplete();
+    return;
+  }
+  await output.writeIncomplete();
 }
 
 /**
@@ -489,18 +503,20 @@ async function reportFailure(
 
 /**
  * One failure's own report: the encoding stage when an installed plugin encodes the media type the
- * run selected, and the failure's view otherwise.
+ * run selected, and the failure's view otherwise, after the run's held incomplete-result lines.
  */
-function reportOwn(
+async function reportOwn(
   sink: FailureSink,
   failure: LoomError,
   scene: FailureContextScene & { form: FailureForm },
 ): Promise<OwnReport> {
   const { mediaType } = scene.selection;
   const installed = mediaType === undefined ? undefined : sink.encoders?.get(mediaType);
-  return installed
-    ? encodeFailureReport(sink, failure, { ...scene, installed })
-    : renderFailure(sink, failure, scene);
+  if (installed) {
+    return encodeFailureReport(sink, failure, { ...scene, installed });
+  }
+  await sink.output.writeIncomplete();
+  return renderFailure(sink, failure, scene);
 }
 
 /**

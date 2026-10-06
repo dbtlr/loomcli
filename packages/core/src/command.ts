@@ -2845,8 +2845,8 @@ async function fillScope(
  * whatever was held, and the routed Command's own declarations only when the pass reads its local
  * scope, which the run's one pass does when nothing is held and the Command is not a group. `only`
  * narrows the declarations a pass validates, as the pass over a configuration source's own options
- * does ahead of its call and the pass over hook-declared options under a held structural fault
- * does, while every validator reads the same context. The run's one pass reads the source pass's
+ * does ahead of its call and the pass over the plugins' own options under a held fault does,
+ * while every validator reads the same context. The run's one pass reads the source pass's
  * values and problems rather than validating them again.
  */
 function validateInvocation(
@@ -2880,52 +2880,66 @@ function validateInvocation(
 }
 
 /**
- * The hook-declared options of the routed Command that a held structural fault leaves unvalidated
- * and that core still validates for `ownOptions`: each one whose tokens parsed and none of whose
- * occurrences faulted. A group validates no local option, and no fault, or a fault no structure
- * caused, leaves nothing to add, because the run's own pass validated the Command's inputs.
+ * The options of the plugins that a held fault left unvalidated and that core still validates for
+ * `ownOptions`: each plugin's global options, and each local option a hook declared on the routed
+ * Command, whose tokens parsed, none of whose occurrences faulted, and that no earlier pass
+ * validated. A group validates no local option. Under a validation problem the run's own pass
+ * validated every one of them, so only a structural fault, an input-source fault, or a validator
+ * that threw leaves any to add.
  */
-function attachedUnderFault(routed: ParsedInvocation): ReadonlySet<InputDeclaration> {
-  const { command, fault, faulted, values } = routed;
-  if (fault === undefined || command.dispatch === undefined) {
-    return new Set();
-  }
-  return new Set(
-    command.inputs.filter(
-      (input) =>
-        input.kind === 'option' &&
-        command.attachedBy.has(input) &&
-        isSupplied(values.locals, input.name) &&
-        !faulted.has(input.name),
-    ),
-  );
+function ownUnderFault(
+  { graph, routed }: Preparation,
+  passes: readonly ValidatedInputs[],
+): ReadonlySet<InputDeclaration> {
+  const { command, faulted, values } = routed;
+  const parsed = (input: OptionInput, supplied: OptionValues) =>
+    isSupplied(supplied, input.name) &&
+    !faulted.has(input.name) &&
+    !passes.some((pass) => pass.has(input));
+  const globals = graph.globals.plugins
+    .flatMap(({ inputs }) => inputs)
+    .filter((input) => parsed(input, values.globals));
+  const attached =
+    command.dispatch === undefined
+      ? []
+      : command.inputs.filter(
+          (input) =>
+            input.kind === 'option' &&
+            command.attachedBy.has(input) &&
+            parsed(input, values.locals),
+        );
+  return new Set([...globals, ...attached]);
 }
 
 /**
- * The pass over the hook-declared options a held structural fault leaves unvalidated, for
- * `ownOptions` alone: the structural fault stays the held one whatever the validators answer, so a
- * rejection, and a validator that throws, leave the option absent and report nothing.
+ * The pass over the plugins' options a held fault left unvalidated, for `ownOptions` alone: the
+ * held fault stays the one raised whatever the validators answer, so a rejection, and a validator
+ * that throws, leave the option absent and report nothing.
  */
-async function validateAttached(
+async function validateOwn(
   preparation: Preparation,
   globals: OptionValues,
-): Promise<ValidatedInputs | undefined> {
+  passes: readonly ValidatedInputs[],
+): Promise<readonly ValidatedInputs[]> {
   const { routed } = preparation;
-  const only = attachedUnderFault(routed);
+  const only = ownUnderFault(preparation, passes);
   if (only.size === 0) {
-    return undefined;
+    return passes;
   }
   try {
     const validation = await validateInvocation(preparation, {
-      local: { args: routed.args, options: copyValues(routed.values.locals), passthrough: [] },
+      local:
+        routed.command.dispatch === undefined
+          ? undefined
+          : { args: routed.args, options: copyValues(routed.values.locals), passthrough: [] },
       only,
       sources: { labels: new Map(), rejected: new Map() },
       values: globals,
     });
-    return validation.values;
+    return [...passes, validation.values];
   } catch {
-    // The structural fault is the held one, so a broken validator here reports nothing.
-    return undefined;
+    // The held fault is the one raised, so a broken validator here reports nothing.
+    return passes;
   }
 }
 
@@ -3021,15 +3035,15 @@ export async function prepareDispatch(
   const { globals, scope, sources } = await fillScope(preparation, local);
   // A configuration source's own options passed their validators ahead of its call.
   const prior = sources.validated ? [sources.validated.values] : [];
-  const held = (
+  const held = async (
     fault: unknown,
     read: { options: Prepared['options']; passes: readonly ValidatedInputs[] },
-  ): Prepared => ({
+  ): Promise<Prepared> => ({
     fault: local.kind === 'held' ? local.fault : fault,
     globals,
     kind: 'held',
     options: read.options,
-    own: ownRecord(routed, read.passes),
+    own: ownRecord(routed, await validateOwn(preparation, globals, read.passes)),
     request: null,
     result,
   });
@@ -3047,9 +3061,7 @@ export async function prepareDispatch(
         ? null
         : frozenValues(graph.globals.inputs, validation.values);
     if (local.kind === 'held' || validation.failure) {
-      const attached = await validateAttached(preparation, globals);
-      const passes = attached ? [validation.values, attached] : [validation.values];
-      return held(validation.failure, { options, passes });
+      return await held(validation.failure, { options, passes: [validation.values] });
     }
     const ready = readyDispatch(preparation, local, validation.values);
     return {
@@ -3062,6 +3074,6 @@ export async function prepareDispatch(
     };
   } catch (error) {
     // The fault is held as a failure, so a throw from reading a validator's output is never offered.
-    return held(toFailure(error), { options: null, passes: prior });
+    return await held(toFailure(error), { options: null, passes: prior });
   }
 }

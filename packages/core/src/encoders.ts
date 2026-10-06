@@ -7,6 +7,7 @@ import { failureEncoderTaken, foreignValue, notAFunction, notAList } from './plu
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
 import { brokenFailureEncoder } from './rules.js';
+import { ignoreRejection, isThenable } from './thenable.js';
 
 /** Phantom key. It brands a failure encoding and holds no runtime value. */
 declare const failureEncoding: unique symbol;
@@ -152,8 +153,8 @@ type EncoderAnswer =
   | { kind: 'broken'; reason: string; cause: unknown };
 
 /**
- * One encoder's call. An encoder is synchronous, so a returned promise is a value that is not a
- * string like any other: it receives a rejection handler and is otherwise ignored, as a view's is.
+ * One encoder's call. An encoder is synchronous, so a returned promise is a broken answer that says
+ * so, as a hook's and a translator's do: it receives a rejection handler and is otherwise ignored.
  */
 function callEncoder(installed: InstalledEncoder, form: FailureForm): EncoderAnswer {
   let encoded: unknown = undefined;
@@ -162,9 +163,18 @@ function callEncoder(installed: InstalledEncoder, form: FailureForm): EncoderAns
   } catch (error) {
     return { cause: error, kind: 'broken', reason: reasonOf(error) };
   }
-  return typeof encoded === 'string'
-    ? { kind: 'encoded', text: encoded }
-    : { cause: undefined, kind: 'broken', reason: notTextReason('encoder', encoded) };
+  if (typeof encoded === 'string') {
+    return { kind: 'encoded', text: encoded };
+  }
+  if (isThenable(encoded)) {
+    ignoreRejection(encoded);
+    return {
+      cause: undefined,
+      kind: 'broken',
+      reason: 'The encoder returned a promise instead of a string.',
+    };
+  }
+  return { cause: undefined, kind: 'broken', reason: notTextReason('encoder', encoded) };
 }
 
 /** The defect one broken encoder reports in a development build. */
