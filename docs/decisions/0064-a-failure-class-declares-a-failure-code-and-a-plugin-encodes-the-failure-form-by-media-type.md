@@ -48,7 +48,7 @@ A script and an agent branch on a failure's code under `--format json`, and an e
 
 A failure under a JSON selection writes one line to stderr, and its operator no longer reads the sentence as prose there. Every other failure, a build fault and an unknown command included, prints its text as before. A held fault on the routed Command's words is text too, because its local options never validate, so the formatter sees no selection.
 
-The manifest document's failure entries change shape, and an author's `manifestCommand` values drop `name`, so the implementation ships a breaking fragment. ADR-0009, ADR-0021, ADR-0023, ADR-0040, ADR-0045, ADR-0046, ADR-0050, ADR-0051, ADR-0059, ADR-0061, and ADR-0063 carry dated entries.
+The manifest document's failure entries change shape, and an author's `manifestCommand` values drop `name`, so the implementation ships a breaking fragment. ADR-0009, ADR-0010, ADR-0021, ADR-0023, ADR-0028, ADR-0040, ADR-0045, ADR-0046, ADR-0050, ADR-0051, ADR-0059, ADR-0061, and ADR-0063 carry dated entries.
 
 ## Status
 
