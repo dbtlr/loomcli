@@ -4,7 +4,7 @@ title: ADR-0045 - A failure class declares its exit code
 description: A failure class states its exit code as a static field, read from the nearest ancestor that declares one, so one class exits with one code wherever it is raised. The declarable codes are 1 through 125, a reserved code throws a DeclarationError at construction, and core exports the sysexits names. A configuration source's LoomError reports with its class's code.
 status: accepted
 created: 2026-09-27
-modified: 2026-09-29
+modified: 2026-10-06
 ---
 
 # ADR-0045 - A failure class declares its exit code
@@ -56,3 +56,4 @@ Accepted 2026-09-27 with the implementation. `LoomError` declares 1 and `UsageEr
 - 2026-09-28: Accepted [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md) replaces the `Invalid input:` prefix the Consequences name: core's default text opens every `UsageError` with the application name and a colon. An author class that declares 2 without extending `UsageError` still takes neither that prefix nor a `UsageError` override.
 - 2026-09-29: [ADR-0049](0049-a-translator-turns-a-foreign-throw-into-a-failure-class.md), proposed, lets a translator turn a foreign throw from an action, a middleware, or a configuration source into a failure class, which then exits with its declared code. The clause that a plain `Error` from a source stays the plugin fault with code 1 holds only when no translator answers it. `LoomError`'s constructor gains the platform's optional `ErrorOptions`, so the clause that it takes the message alone no longer holds. It binds when accepted.
 - 2026-09-29: ADR-0049 is accepted, so the two clauses above bind.
+- 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, adds a second static to every failure class, the failure code, read as this record reads `exitCode`: from the nearest ancestor that declares one, captured at the class's first construction beside the exit code, with core's classes captured when the package loads. A code outside its kebab-case grammar throws `@loomcli/core/failure-code` from `LoomError`'s constructor after the exit code check, as an undeclarable exit code throws. The code lives on the class alone: no instance accessor is added. This record's exit code rules are unchanged. It binds when ADR-0064 is accepted.

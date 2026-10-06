@@ -4,7 +4,7 @@ title: ADR-0063 - The MCP plugin serves opted-in Commands as tools
 description: '@loomcli/plugins/mcp installs a plugin Command, app mcp, whose action serves every Command that carries an mcpCommand value as one MCP tool over stdio, each call run through invoke. Tool names flatten the path, annotations are hints the author owns and Loom never infers, and the protocol is written in a private workspace package pinned to revision 2026-07-28 and compiled into the plugin pack.'
 status: proposed
 created: 2026-10-05
-modified: 2026-10-05
+modified: 2026-10-06
 ---
 
 # ADR-0063 - The MCP plugin serves opted-in Commands as tools
@@ -53,3 +53,4 @@ Proposed 2026-10-05 with the contract in [MCP](../core.md#mcp). It moves to acce
 ## Changelog
 
 - 2026-10-05: Proposed with the contract.
+- 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, supplies the failure identity this record waited for. A failed call's `structuredContent` is `{ exitCode, failure }`, where `failure` is the failure form, `{ code, exitCode, message, hints }`, which the plugin's handler reads from its context. The form follows the build and carries no cause. It binds with this record and ADR-0064.
