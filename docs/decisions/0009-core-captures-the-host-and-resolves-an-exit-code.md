@@ -4,7 +4,7 @@ title: ADR-0009 - Core captures the host itself, accepts whole-field overrides, 
 description: run() snapshots the process, replaces any supplied host field entirely, uses Node streams in its public contract, never calls process.exit, never rejects, and may run the same Application again.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-30
+modified: 2026-10-05
 ---
 
 # ADR-0009 - Core captures the host itself, accepts whole-field overrides, and resolves an exit code
@@ -35,3 +35,4 @@ Application code owns file access and stdin reads. Tests drive a real Applicatio
 - 2026-09-09: ADR-0018 is accepted. The entry above binds as written, and the amended sentence now governs in the original's place.
 - 2026-09-29: [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, adds one optional host field, `readSource`, which process capture supplies as a synchronous UTF-8 read and a host override may replace. Core calls it only in a development build, only while it reports a defect, and only for a file whose resolved path lies under `host.cwd`, to print the author's source lines. Application code still owns every other file access. [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) gives the Application a `packet` option, a build fact, and core reads no environment variable or process property to learn the build. Both bind when accepted.
 - 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the `packet` option in the entry above binds with ADR-0051.
+- 2026-10-05: [ADR-0059](0059-a-command-runs-by-name-through-invoke.md), proposed, leaves `run()` as this record states it: it captures the host, accepts whole-field overrides, resolves an exit code alone, and sets `process.exitCode`. An embedding host that wants a structured outcome calls `invoke()` instead, which runs one Command by name, captures what it writes, and resolves `completed`, `failed`, or `cancelled`. That outcome is the one result this record's rejected option protects: a failed call still reports one outcome whichever way it failed. `app.invoke()` captures `env`, `cwd`, `platform`, and `readSource` as `run()` does, or takes whole-field overrides of those four, and an invocation by name installs no listener, sets no `process.exitCode`, and touches no real stdio. It binds when that record is accepted.
