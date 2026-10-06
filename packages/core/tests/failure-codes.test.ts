@@ -34,6 +34,7 @@ test("each core class reads its failure code without an instance, and an author'
     UnknownCommandError: 'unknown-command',
     UnknownOptionError: 'unknown-option',
     UsageError: 'usage',
+    WorkingDirectoryError: 'working-directory-unreadable',
   });
 });
 

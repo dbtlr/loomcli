@@ -22,6 +22,7 @@ export {
   UnknownCommandError,
   UnknownOptionError,
   UsageError,
+  WorkingDirectoryError,
 } from './errors.js';
 export {
   EX_CANTCREAT,

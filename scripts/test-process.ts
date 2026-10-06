@@ -1,4 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +10,29 @@ const fixtureTimeout = 10_000;
 
 /** The prefixes of the variables the example applications bind to their options. */
 const exampleBindings = ['TEXTSTAT_', 'JSONKIT_'];
+
+/** Each runtime's own executable, by the name a test gives it, read once per test process. */
+const executables = new Map<string, string>();
+
+/**
+ * The runtime's own executable rather than the name on PATH, which a version manager's shim may
+ * answer. A shim reads the working directory itself, so it warns from a removed one.
+ */
+function runtimeExecutable(runtime: string): string {
+  const known = executables.get(runtime);
+  if (known !== undefined) {
+    return known;
+  }
+  const result = spawnSync(runtime, ['-e', 'process.stdout.write(process.execPath)'], {
+    encoding: 'utf8',
+    timeout: fixtureTimeout,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  executables.set(runtime, result.stdout);
+  return result.stdout;
+}
 
 /**
  * The environment a fixture starts from: the parent's, minus every variable an example binds.
@@ -51,6 +77,40 @@ export function invoke(
     throw result.error;
   }
   return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+/**
+ * Runs one file as `invoke` does, from a working directory removed before the runtime starts, as
+ * an operator's shell that sits in a deleted directory runs it.
+ */
+export function invokeFromRemovedDirectory(
+  file: URL,
+  args: string[] = [],
+  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
+) {
+  const { env, runtime } = options;
+  const executable = runtimeExecutable(runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node');
+  const directory = mkdtempSync(join(tmpdir(), 'loom-removed-'));
+  try {
+    const result = spawnSync(
+      'sh',
+      [
+        '-c',
+        'cd "$0" && rmdir "$0" && exec "$@"',
+        directory,
+        executable,
+        fileURLToPath(file),
+        ...args,
+      ],
+      { encoding: 'utf8', env: childEnvironment(env), timeout: fixtureTimeout },
+    );
+    if (result.error) {
+      throw result.error;
+    }
+    return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
 }
 
 /** How the fixture ended: the status it resolved, or the signal that ended it, and its output. */

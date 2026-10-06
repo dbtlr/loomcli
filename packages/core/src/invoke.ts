@@ -2,7 +2,8 @@ import { Readable, Writable } from 'node:stream';
 
 import { InternalError } from './errors.js';
 import type { LoomError } from './errors.js';
-import { readSourceFile } from './host.js';
+import { capturedHost, captureWorkingDirectory, readSourceFile } from './host.js';
+import type { HostCapture, WorkingDirectory } from './host.js';
 import type { NamedCall } from './lower.js';
 import { isPlainObject } from './plain.js';
 import { invokeOptions } from './rules.js';
@@ -10,6 +11,9 @@ import type { Host, InvokeOptions } from './types.js';
 
 /** The host fields an invocation by name reads, which `app.invoke` replaces whole. */
 type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform'>> & Pick<Host, 'readSource'>;
+
+/** The four fields one invocation by name runs on, its working directory as its capture read it. */
+type CapturedFields = Omit<InvocationFields, 'cwd'> & { readonly directory: WorkingDirectory };
 
 /** The four host fields by name, the only keys `app.invoke` accepts under `host`. */
 const hostFields = new Set(['cwd', 'env', 'platform', 'readSource']);
@@ -193,10 +197,13 @@ function readCall<Mapped>(
   }
 }
 
-/** The four fields `app.invoke` captures from the process at entry, unless the caller replaces one. */
-function processFields(overrides: Partial<InvocationFields>): InvocationFields {
+/**
+ * The four fields `app.invoke` captures from the process at entry, unless the caller replaces one.
+ * The working directory is read through the step `run()` shares.
+ */
+function processFields(overrides: Partial<InvocationFields>): CapturedFields {
   return {
-    cwd: overrides.cwd ?? process.cwd(),
+    directory: captureWorkingDirectory(overrides.cwd),
     env: overrides.env ?? process.env,
     platform: overrides.platform ?? process.platform,
     readSource: overrides.readSource ?? readSourceFile,
@@ -204,9 +211,12 @@ function processFields(overrides: Partial<InvocationFields>): InvocationFields {
 }
 
 /** The four fields an action's call reads from its run's host, which it never reads from the process. */
-function fieldsOf(host: Host): InvocationFields {
+function fieldsOf(host: Host): CapturedFields {
   const { cwd, env, platform, readSource } = host;
-  return readSource === undefined ? { cwd, env, platform } : { cwd, env, platform, readSource };
+  const directory = { cwd };
+  return readSource === undefined
+    ? { directory, env, platform }
+    : { directory, env, platform, readSource };
 }
 
 /** A stream that keeps every byte written to it, decoded as UTF-8 when the run has ended. */
@@ -230,15 +240,15 @@ const noTerminal = (): Host['terminal'] => ({
 
 /**
  * The host an invocation by name runs on: the four fields it reads, capture sinks for stdout and
- * stderr, an empty stdin, no argv, and no terminal. Nothing in it is the process's own stream.
+ * stderr, an empty stdin, no argv, and no terminal. Nothing in it is the process's own stream. A
+ * working directory its capture could not read is the failure in its place.
  */
 function invocationHost(
-  fields: InvocationFields,
+  fields: CapturedFields,
   sinks: { stderr: Writable; stdout: Writable },
-): Host {
-  const host: Host = {
+): HostCapture {
+  const facts = {
     argv: [],
-    cwd: fields.cwd,
     env: { ...fields.env },
     platform: fields.platform,
     stderr: sinks.stderr,
@@ -246,7 +256,10 @@ function invocationHost(
     stdout: sinks.stdout,
     terminal: noTerminal(),
   };
-  return fields.readSource === undefined ? host : { ...host, readSource: fields.readSource };
+  return capturedHost(
+    fields.readSource === undefined ? facts : { ...facts, readSource: fields.readSource },
+    fields.directory,
+  );
 }
 
 /**
@@ -269,5 +282,5 @@ function mappedFailure<Mapped>(
   return failure as Mapped;
 }
 
-export type { InvocationFields, InvokeCall, ReadCall };
+export type { CapturedFields, InvocationFields, InvokeCall, ReadCall };
 export { captureSink, fieldsOf, invocationHost, mappedFailure, processFields, readCall };
