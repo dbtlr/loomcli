@@ -1,5 +1,5 @@
 ---
-description: Public SDK, invocation phases, invocation by name, host capture, rendered and semantic output, the view registry and media types, the failure classes and their views, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
+description: Public SDK, invocation phases, invocation by name, host capture, rendered and semantic output, the view registry and media types, the failure classes, their codes, views, and failure form, failure encoders, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
 ---
 
 # Core reference
@@ -104,7 +104,7 @@ A declaration fault throws `DeclarationError` at the earliest of three moments t
 
 ### At the call
 
-The call that receives a bad value throws, and so does a call that the receiver's own earlier calls make wrong. The calls are `new Command()`, `new Application()`, `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `result()`, `rows()`, `views()`, `action()`, `extend()`, `extension()`, `view()`, `plugin()`, `translate()`, `diagnosticRule()`, and the settings checks `checkPluginSettings()` and `checkShortSetting()`, which a plugin factory calls on its settings.
+The call that receives a bad value throws, and so does a call that the receiver's own earlier calls make wrong. The calls are `new Command()`, `new Application()`, `argument()`, `option()`, `globalOption()`, `alias()`, `command()`, `result()`, `rows()`, `views()`, `action()`, `extend()`, `extension()`, `view()`, `plugin()`, `translate()`, `encodeFailure()`, `diagnosticRule()`, and the settings checks `checkPluginSettings()` and `checkShortSetting()`, which a plugin factory calls on its settings.
 
 - **Names.** An invalid application name, from `new Application()`; an invalid Command name, from `new Command()`; an invalid argument, option, alias, or short spelling, from the call that declares it; an `alias()` call with no names; and a view name that is not a bare token or is integer-like, from `result()`, `rows()`, or `views()`.
 - **Identities.** An identity outside the [identity grammar](#identity-and-installation), from `plugin()`, `extension()`, or `view()`, before any other rule on the call.
@@ -116,9 +116,9 @@ The call that receives a bad value throws, and so does a call that the receiver'
 - **Order.** Every `argument()`, `option()`, `alias()`, `result()`, `rows()`, or `command()` call after `action()`, and a second `action()`; `argument()` on a Command that holds children, the root with plugin Commands included, and `command()` on one that declares arguments; a variadic argument that is not last, an argument after an optional one, and an optional argument before a required one; an alias that repeats its own Command's name or another of its aliases; and a value passed to `command()` that is not a Command.
 - **Results.** A second `result()` or `rows()`; a row view under `result()`; a views entry that is not a view or that carries both `render` and `row`; and `views()` on a declaration with no result.
 - **Extensions.** On a call that carries `extensions` and on `extend()`: an entry that is not an extension value, a value on the wrong target, two values of one extension in one layer, a descriptor with no schema or with a `collect` that is not a Boolean, a value its schema rejects, a schema that answers asynchronously, an output that is not plain data, and two distinct descriptors that share an identity within the receiver, the installed plugins' descriptors included for the Application.
-- **Plugins.** `plugin()` applies every rule on one definition: the identity, the definition's shape, the `options` record and each option declaration, an option with a presence rule, the `middleware` object with its activation and loader, an `onCommandAttach`, `onGraphBuilt`, or `onFailure` that is not a function, the `extensions`, `views`, `translators`, `signals`, and `commands` lists and their entries, one key overridden twice, a signal outside the closed set or claimed twice, every `source` rule, and the theme mapping rules. Each `commands` entry also meets the [attach](#at-attach) checks at `plugin()`, against the root it will join and the entries before it: a Command that is not finished, and two entries with one name or an alias that repeats a sibling's. The nesting cap needs no check here, because the entry's own `command()` calls already enforce it. A sibling diagnostic names the root Command, the parent the entries attach to.
-- **The Application.** `new Application(name, options)` applies every rule on its own options and on the installed set: a `views` entry that is not an override, a `translators` entry that is not a translation, a `packet` that is not a plain object or whose `build` is neither `development` nor `distributed`, two overrides for one key, two distinct declared-view objects that share an identity across the Application, its plugins, and core, a `plugins` value that is not an array or an entry that is not a plugin, an identity installed twice, a second claim on the signals slot, the theme slot, or the configuration source, two plugins whose options share a key or a spelling or bind one variable, and two distinct descriptors that share an identity across the plugins.
-- **Failure classes.** Constructing a failure whose class declares an exit code outside 1 through 125 throws from `LoomError`'s constructor, under [Declared exit codes](#declared-exit-codes). A failure is usually constructed inside a run, where the fault reports with code 1 like any run-time `DeclarationError`.
+- **Plugins.** `plugin()` applies every rule on one definition: the identity, the definition's shape, the `options` record and each option declaration, an option with a presence rule, the `middleware` object with its activation and loader, an `onCommandAttach`, `onGraphBuilt`, or `onFailure` that is not a function, the `extensions`, `views`, `translators`, `failureEncoders`, `signals`, and `commands` lists and their entries, one key overridden twice, two [failure encoders](#failure-encoders) for one media type, a signal outside the closed set or claimed twice, every `source` rule, and the theme mapping rules. Each `commands` entry also meets the [attach](#at-attach) checks at `plugin()`, against the root it will join and the entries before it: a Command that is not finished, and two entries with one name or an alias that repeats a sibling's. The nesting cap needs no check here, because the entry's own `command()` calls already enforce it. A sibling diagnostic names the root Command, the parent the entries attach to.
+- **The Application.** `new Application(name, options)` applies every rule on its own options and on the installed set: a `views` entry that is not an override, a `translators` entry that is not a translation, a `packet` that is not a plain object or whose `build` is neither `development` nor `distributed`, two overrides for one key, two distinct declared-view objects that share an identity across the Application, its plugins, and core, a `plugins` value that is not an array or an entry that is not a plugin, an identity installed twice, a second claim on the signals slot, the theme slot, or the configuration source, two plugins that register a failure encoder for one media type, two plugins whose options share a key or a spelling or bind one variable, and two distinct descriptors that share an identity across the plugins.
+- **Failure classes.** Constructing a failure whose class declares an exit code outside 1 through 125 throws from `LoomError`'s constructor, under [Declared exit codes](#declared-exit-codes), and so does constructing one whose class declares a failure code outside its grammar, under [Failure codes](#failure-codes). A failure is usually constructed inside a run, where the fault reports with code 1 like any run-time `DeclarationError`.
 
 ### At attach
 
@@ -137,6 +137,7 @@ One attach operation serves `Command.command()`, `Application.command()`, and ea
 - **Lifecycle hooks.** A hook that returns anything but the attached Command or throws, and every fault in what a hook contributes: the hook-collision rule, a rule a hook's erased call breaks, the result rules over the record the hooks returned, and a descriptor a hook's value brings that shares an identity with another. A value a hook passes to `extend()` is validated at that call, as [Lifecycle hooks](#lifecycle-hooks) states. Then an `onGraphBuilt` hook that throws or returns a value, and every `DeclarationError` one throws to reject the built graph, under [Judging the built graph](#judging-the-built-graph).
 - **Defaults and implied values.** `run()` alone passes each declared default and each [implied value](#implied-values) through its validator, before it reads any token, because the validator may answer asynchronously.
 - **Input schemas.** In a [development build](#development-builds), `inspect()` and every `run()` call each validated input's converter at build and throw `@loomcli/core/schema-converter-failed` for a converter that throws or returns anything but a plain object. A distributed build runs no such check.
+- **Descriptions.** In a [development build](#development-builds), every `run()` and every `app.invoke()` throw `@loomcli/core/undescribed` for a graph that holds a Command, an option, or an argument without a description, under [Undescribed declarations](#undescribed-declarations). A lifecycle hook can still add an input until build, so build is the first moment that knows every member. `inspect()` and a distributed build run no such check.
 
 ## Local options
 
@@ -1226,8 +1227,8 @@ Codes 3 through 125 belong to the application: core raises none of them, and a f
 
 Each invocation follows this order:
 
-1. Capture host facts and apply overrides.
-2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph, and every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
+1. Capture host facts and apply overrides. A working directory that cannot be read fails the run here, under [An unreadable working directory](#an-unreadable-working-directory).
+2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then, in a [development build](#development-builds), every [description](#undescribed-declarations), then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph, and every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
 3. Copy invocation tokens for input processing.
 4. Route from the root, reading option words against the global options and the own options of each Command with an action and children that routing passes through, under [Global consumption and routing](#global-consumption-and-routing). An unknown command is raised here, before the chain.
 5. Parse the routed Command's remaining words against its table, up to the first bare `--`. Hold the first structural fault in word order, raising nothing yet, and keep reading so every global option is found. A routed Command that is a group holds the missing-subcommand error behind any structural fault.
@@ -1252,7 +1253,7 @@ The validation lifecycle is proven when public process fixtures establish these 
 ### Invocation by name
 
 ```ts
-import type { FailureExitCode, Host, LoomError } from '@loomcli/core';
+import type { FailureExitCode, FailureForm, Host, LoomError } from '@loomcli/core';
 
 interface InvocationValues {
   readonly args?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | undefined>>;
@@ -1263,7 +1264,12 @@ interface InvokeOptions<Mapped = LoomError> {
   readonly view?: string; // the starting view selection, as a middleware's `view` assignment
   readonly failure?: (
     failure: Readonly<LoomError>,
-    context: { readonly application: string; readonly path: readonly string[]; readonly exitCode: FailureExitCode },
+    context: {
+      readonly application: string;
+      readonly path: readonly string[];
+      readonly exitCode: FailureExitCode;
+      readonly form: FailureForm; // new: see The failure form
+    },
   ) => Mapped;
   readonly signal?: AbortSignal; // composed with the parent run's signal
 }
@@ -1272,6 +1278,7 @@ type InvocationOutcome<Mapped = LoomError> =
   | {
       readonly status: 'failed';
       readonly failure: Mapped;
+      readonly form: FailureForm; // new: the failure form of the failure the handler received
       readonly exitCode: FailureExitCode;
       readonly output: string;
       readonly messages: string;
@@ -1343,11 +1350,12 @@ export const report = new Command('report').action(async ({ invoke, out, style }
 - **Reported by name.** An invocation by name types no spelling, so every problem core reports names an input by its declared name, the key the caller wrote, in place of the [reported spelling](#failure-classes) and of the spelling a parser fault names. `InputProblem.spelling` and `UnknownOptionError.spelling` hold that name. The sentences read `Option "file": Use a string or a number.`, `Option "depth" is required. Supply a value.`, `Option "min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.`, `Unknown option "verbos". Supply the name of a declared option.`, and `Command "get" declares no argument "pth". Supply the name of a declared argument.` An argument already reports under its name. A [configuration source](#input-sources) reads `invokedBy` on its context and names a problem's option the same way.
 - **Capture.** The run's stdout and stderr are capture sinks. `output` holds every byte the run wrote to stdout, decoded as UTF-8: the rendered result on a Command that declares one, and `out.print` and `out.render` text on one that does not. `messages` holds every byte the run wrote to stderr: the semantic lanes, the action's `print` and `render` on a result Command, a failure's diagnostic and its hints, and the [incomplete-result](#a-sequence-that-stops-early) line. Stdin is an empty stream, `host.argv` is `[]`, and every terminal fact reads not a TTY, with no width or height. The captured text is plain: core resolves it as for a destination that supports no color, modifier, or hyperlink, whatever the rendering policy or `FORCE_COLOR` says, and `terminalControls` keeps the Application's setting.
 - **The view.** `view` is the starting selection: the name a middleware's `view` reads before any assignment, in place of the declaration's default. A later assignment still wins, and the [formatter](#formatter) assigns only when `--format` was supplied. A name the routed Command's result does not hold, a value that is not a string, and a `view` on a Command that declares no result are the view-selection defect at the dispatch boundary, exit 1, under `@loomcli/core/view-selection`, with `invoke()` named in the plugin's place: `invoke() selected view "yaml", which Command "count" does not name.`, `invoke() selected a view that is not a string on Command "count".`, and `invoke() selected view "json" on Command "get", which declares no result.` A takeover or a cancellation leaves it unobserved, as it leaves a middleware's.
-- **The outcome.** `completed` is a run that would resolve 0, a takeover included. `failed` is a run that would resolve a failure code: `exitCode` is that code, `output` and `messages` hold everything the run wrote, the failure's report included, and `failure` holds what the caller's handler returned, or the failure itself when the caller passed no handler. `cancelled` is a cancelled run, and `exitCode` is the code of the cause that aborted it; its captured text is discarded. `invoke` never rejects, except with a throw from the caller's handler. `Mapped` is inferred from the handler, and without one it is `LoomError`.
-- **The failure path.** A failure takes `run()`'s path. A foreign throw is offered to the translators, each `onFailure` hook adds its [hints](#failure-hints), and the failure's view renders, by build, into `messages`: a defect in a [distributed build](#development-builds) writes the generic defect message there, and a broken failure view or hook reports through the plain fallback path there and forces 1. Then core calls the caller's `failure` handler once, for the primary failure, or, when the primary outcome succeeded and a fault reported after it set the code, such as a plugin's `next()` fault, for the first such fault, with the failure as the run caught it, the translated failure and never the raw throw, and a context that holds `application`, `path`, and the outcome's `exitCode`. The handler adds structure and never replaces the text: `messages` holds the same report `run()` writes to stderr. It receives neither the style nor the hints, which belong to the rendered text, nor the graph, which a failure raised at build lacks, under [ADR-0046](decisions/0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md). It receives the failure in both builds, its `cause` included, so what it exposes is the caller's decision. A handler that throws makes `invoke` reject with that throw, and the run's captured text is discarded. A cancellation never reaches it.
+- **The outcome.** `completed` is a run that would resolve 0, a takeover included. `failed` is a run that would resolve a failure code: `exitCode` is that code, `output` and `messages` hold everything the run wrote, the failure's report included, and `failure` holds what the caller's handler returned, or the failure itself when the caller passed no handler, and `form` holds that failure's [failure form](#the-failure-form). `cancelled` is a cancelled run, and `exitCode` is the code of the cause that aborted it; its captured text is discarded. `invoke` never rejects, except with a throw from the caller's handler. `Mapped` is inferred from the handler, and without one it is `LoomError`.
+- **The failure path.** A failure takes `run()`'s path. A foreign throw is offered to the translators, each `onFailure` hook adds its [hints](#failure-hints), and the failure's view renders, by build, into `messages`: a defect in a [distributed build](#development-builds) writes the generic defect message there, and a broken failure view or hook reports through the plain fallback path there and forces 1. Then core calls the caller's `failure` handler once, for the primary failure, or, when the primary outcome succeeded and a fault reported after it set the code, such as a plugin's `next()` fault, for the first such fault, with the failure as the run caught it, the translated failure and never the raw throw, and a context that holds `application`, `path`, the outcome's `exitCode`, and the failure's [failure form](#the-failure-form). The handler adds structure and never replaces the text: `messages` holds the same report `run()` writes to stderr when no [failure encoder](#failure-encoders) answers. It receives no style, because the form's hints are plain text, and no graph, which a failure raised at build lacks, under [ADR-0046](decisions/0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md). It receives the failure in both builds, its `cause` included, so what it exposes is the caller's decision. A handler that throws makes `invoke` reject with that throw, and the run's captured text is discarded. A cancellation never reaches it.
+- **No encoded line.** The [failure-encoding stage](#failure-encoders) runs under `run()` alone. Under `invoke`, a failure's view renders into `messages` whatever media type the selected view declares, so `invoke(['paths'], …, { view: 'json' })` captures the failure's text, and the caller reads the form from the outcome and from its handler's context.
 - **Spellings.** A value lowered by name is recorded in a middleware's [`spellings`](#middleware) under the option's reported spelling, its long form, else its negative or short form, so [help](#help-variants) renders the extended page for `help: true`, as it does for `--help`.
 - **Where the run was.** A run `invoke` started reads `invokedBy: 'name'` on the [failure view context](#failure-view-context) and the [failure hook context](#failure-hints), and every other run reads `'argv'`. A hint that points at a command line skips an invocation by name: [help's hint](#helps-failure-hint) and the example `--explain` hint return none for it, and the [suggestions](#suggestions) plugin offers declared names in place of spellings.
-- **No process effects.** An invocation by name installs no process listener, even when an installed plugin holds the signals slot. It sets no `process.exitCode`, writes to no real stdout or stderr, reads no real stdin, and calls no `process.exit()`. An action's `invoke` reads nothing from the process: the call's `env`, `cwd`, `platform`, and `readSource` are its run's host fields. `app.invoke` captures those four from the process at entry, as `run()` does, unless `host` replaces a whole field, and it accepts no other host field and neither `argv` nor `rendering`.
+- **No process effects.** An invocation by name installs no process listener, even when an installed plugin holds the signals slot. It sets no `process.exitCode`, writes to no real stdout or stderr, reads no real stdin, and calls no `process.exit()`. An action's `invoke` reads nothing from the process: the call's `env`, `cwd`, `platform`, and `readSource` are its run's host fields. `app.invoke` captures those four from the process at entry, as `run()` does, unless `host` replaces a whole field, and it accepts no other host field and neither `argv` nor `rendering`. A working directory that capture cannot read resolves `failed`, under [An unreadable working directory](#an-unreadable-working-directory).
 - **The graph.** An action's `invoke` reuses the graph its run built and validated, and that run's declared-value checks: no lifecycle hook runs again, and each declared default and implied value is the run's validated output, an array default copied for the call. `app.invoke` builds the graph for each call, as `run()` does, so every `onCommandAttach` and [`onGraphBuilt`](#judging-the-built-graph) hook runs and every declared default and implied value validates, and a build fault is a `failed` outcome with exit 1. Both render by the Application's [packet](#development-builds).
 - **Cancellation.** Each call has its own run signal. An action's `invoke` derives it from its run's signal and the call's `signal`, and the first to abort fixes the reason. A parent's abort carries the parent's reason, so the call reads `cancelled` with 130 or 143 as the parent's cause does, and an abort of the call's own `signal` reads 130 as a caller abort. `app.invoke` derives it from the call's `signal` alone. A signal already aborted at the call resolves `cancelled` having run no middleware and no action. Inside the call, the rules of [Signals and cancellation](#signals-and-cancellation) hold.
 - **Concurrency.** Calls may overlap, from one action or from many. Each is its own run and shares nothing mutable with another, and Loom adds no queue, limit, or timer. An application whose actions cannot overlap serializes the calls itself.
@@ -1365,7 +1373,7 @@ Invocation by name is proven when public APIs alone produce these results under 
 - **Lowering.** A fixture pins every row of the table and each unlowerable value's issue. `false` on a positive option is absence, and a bound variable still fills it. An empty array on a required multiple option is the missing-input problem. A number on an unvalidated string option reaches the action as its `String` text. `true` on a string option with an implied value supplies it, and `3` on a counted option reads `3`. `null`, an object, `NaN`, `1.5` on a counted option, and `true` on an argument each report their sentence with exit 2.
 - **Names.** An unknown option name, an unknown argument name, and an unknown path element report their by-name sentences with exit 2. `jsonkit.invoke(['nope'], {})` lists the root's children, a path through an alias routes, and `invoke(['get'], { options: { help: true } })` completes with help's extended page for `get` as `output`.
 - **Capture.** A fixture action that writes every lane and a result proves the split between `output` and `messages`, reads `host.terminal` as not a TTY and `host.argv` as `[]`, and writes no ANSI under `FORCE_COLOR=1` and under `rendering: { color: 'always' }`. `jsonkit.invoke(['get'], { args: { path: 'name' } })` reads the empty stdin and fails with exit 65.
-- **Failures.** A handler maps a failure into `failed.failure` and receives the translated failure, never the foreign throw. With no handler `failed.failure` is the failure. A defect writes the generic defect message into `messages` in a distributed build and its Developer Diagnostic in a development one, while the handler receives the `InternalError`. A broken failure view resolves `failed` with exit 1, and a handler that throws makes `invoke` reject with the same value.
+- **Failures.** A handler maps a failure into `failed.failure` and receives the translated failure, never the foreign throw. With no handler `failed.failure` is the failure. `failed.form` and the handler's `form` are one failure form, as [The failure form](#the-failure-form) builds it. A defect writes the generic defect message into `messages` in a distributed build and its Developer Diagnostic in a development one, while the handler receives the `InternalError`. A broken failure view resolves `failed` with exit 1, and a handler that throws makes `invoke` reject with the same value.
 - **The view.** `view: 'json'` renders the JSON view, and a middleware's later assignment wins over it. An unknown name, a non-string, and a view on a Command with no result each report their `invoke()` sentence with exit 1.
 - **Process isolation.** A parent run with a sentinel host whose streams record every write calls `invoke` from its action, with a signals owner installed. The process's listener counts, `process.exitCode`, and real stdout and stderr are unchanged, and the parent's own streams receive nothing from the call. `app.invoke` with a `host` override reads only the four fields.
 - **Cancellation.** A parent run cancelled by `SIGTERM` resolves a call in flight as `cancelled` with 143, and the call's own abort resolves 130. A pre-aborted signal runs no action, and a cancelled call never reaches the handler.
@@ -1382,7 +1390,7 @@ Invocation by name is proven when public APIs alone produce these results under 
 | ------------------ | ------------------------------------------------------------- |
 | `argv`             | Application tokens without the runtime and script prefix      |
 | `platform`         | Captured process platform string, such as `linux` or `win32` |
-| `cwd`              | Working directory                                             |
+| `cwd`              | Working directory; a capture that throws fails the run, under [An unreadable working directory](#an-unreadable-working-directory) |
 | `env`              | Map of environment names to strings or `undefined`            |
 | `stdin`            | Node `Readable` connection                                    |
 | `stdout`, `stderr` | Node `Writable` connections                                   |
@@ -1396,6 +1404,46 @@ The environment snapshot is a plain, case-sensitive map on every operating syste
 Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads. The one file core reads is a source file for a defect's findings in a development build, through `readSource`, under the guards [Developer Diagnostics](#developer-diagnostics) states. Process capture supplies `readSource(path, cwd)` as a synchronous read of a UTF-8 file that resolves both paths through symbolic links and answers `undefined` for a file outside `cwd`, for a path that is not a regular file, such as a FIFO or a device, for a file larger than 1 MiB, and for any failure. An override replaces it like any other field, so a test supplies its own reader, and a reader that always answers `undefined` leaves the findings at the stack location.
 
 The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference. Core exports the `Host` and `Out` types, so a helper extracted out of an action, such as a reader that opens a file or `host.stdin`, states its own parameters without reading them back off the action context.
+
+### An unreadable working directory
+
+```ts
+class WorkingDirectoryError extends LoomError {
+  static override readonly code: string; // 'working-directory-unreadable'; the exit code is LoomError's 1
+  constructor(options?: ErrorOptions); // the message is fixed
+}
+```
+
+```ts
+import { WorkingDirectoryError } from '@loomcli/core';
+
+import { jsonkit } from './application.js';
+
+// The host process sits in a directory another process removed, such as a deleted git worktree.
+// run() writes `jsonkit: The current working directory cannot be read. Change to a directory that
+// exists and run the command again.` to stderr and resolves 1; invoke() resolves failed.
+const outcome = await jsonkit.invoke(['keys'], { options: { file: '/srv/doc.json' } });
+if (outcome.status === 'failed' && outcome.failure instanceof WorkingDirectoryError) {
+  // outcome.form.code is 'working-directory-unreadable', and outcome.exitCode is 1.
+}
+```
+
+A process whose working directory was removed cannot read it, and the platform's `process.cwd()` throws. Core captures the working directory for every run, so the run fails cleanly under one rule, as git does, and neither door rejects with the platform's error.
+
+- **Captured once.** `run()` and `app.invoke` capture `cwd` through one shared step, once per run. When the read throws, the run fails with `WorkingDirectoryError` before the graph builds. A `host.cwd` override replaces the capture, so it never meets the failure, and an action's `invoke` reads its run's `cwd` and captures nothing.
+- **The failure.** `WorkingDirectoryError` exits 1, and its [failure code](#failure-codes) is `working-directory-unreadable`. Its `message` is `The current working directory cannot be read. Change to a directory that exists and run the command again.`, and core's default text opens it with the application name, as it opens a usage error's line. It is an operator failure, not a defect, so both builds print the same bytes. Its `cause` is the value the capture threw.
+- **Where it reports.** It is raised before the graph builds, so its `path` is `[]`, no `onFailure` hook runs, and no view override applies, because overrides register at build: core's default text writes it. The [failure view context](#failure-view-context) reads `view` and `mediaType` as `undefined`, so no [failure encoder](#failure-encoders) answers it.
+- **No second capture.** The failure path writes through the streams and terminal facts the same capture read, or their overrides, and reads no host field from the process again. `run()` resolves 1 and sets `process.exitCode` to 1. `app.invoke` resolves `failed` with exit 1, the failure, its [failure form](#the-failure-form), and the line in `messages`.
+- **Names.** `WorkingDirectoryError` is exported from `@loomcli/core`.
+
+#### An unreadable working directory acceptance
+
+An unreadable working directory is proven when public APIs alone produce these results under Node and Bun:
+
+- **Both builds.** A process test removes its working directory and runs jsonkit's bundle and jsonkit's source with `keys -f <absolute path>`. Each writes exactly `jsonkit: The current working directory cannot be read. Change to a directory that exists and run the command again.` and one newline to stderr, writes nothing to stdout, prints no stack, and exits 1. The same run with `--format json` on `paths` writes the same text line.
+- **Embedding.** `jsonkit.invoke(['keys'], …)` from a removed directory resolves `failed` with exit 1, a `WorkingDirectoryError`, the form `{ code: 'working-directory-unreadable', exitCode: 1, message, hints: [] }`, and the line in `messages`, and never rejects.
+- **Overrides.** `run({ host: { cwd } })` and `app.invoke` with `host: { cwd }` from a removed directory complete, and an action's `invoke` in such a run completes with its run's `cwd`.
+- **The class.** `WorkingDirectoryError.code` reads `working-directory-unreadable` and `WorkingDirectoryError.exitCode` reads 1 without an instance.
 
 ## Output and failures
 
@@ -1465,7 +1513,7 @@ The type parameter is inferred from the value, so `out.render(rows, table)` chec
 
 ### Views
 
-Every byte core or a plugin renders passes through one registry of views. A failure diagnostic, a semantic lane message, a help page, and a version line each render through a declared view, and an application replaces the function behind any of them through the `views` option. The registry has one override surface and one resolution, so branding a plugin's page and branding a failure class are the same call.
+Every byte core or a plugin renders passes through one registry of views, except the line a [failure encoder](#failure-encoders) writes for a failed run in place of the failure's view. A failure diagnostic, a semantic lane message, a help page, and a version line each render through a declared view, and an application replaces the function behind any of them through the `views` option. The registry has one override surface and one resolution, so branding a plugin's page and branding a failure class are the same call.
 
 ```ts
 interface DeclaredViewBrand {
@@ -1536,15 +1584,17 @@ Three rules guard the registry, each a `DeclarationError` thrown from the call t
 
 ### Failure classes
 
-Every failure `run()` reports is an instance of a public class. Each class carries the facts its sentence interpolates, so a view reads them instead of parsing prose. `message` is the sentence without its category prefix, except a `DeclarationError`'s, which holds its whole [Developer Diagnostic](#developer-diagnostics) while `sentence` holds the sentence. The exit code is a static field the class declares, so a subclass inherits it and a view reads it on the instance, as [Declared exit codes](#declared-exit-codes) describes.
+Every failure `run()` reports is an instance of a public class. Each class carries the facts its sentence interpolates, so a view reads them instead of parsing prose. `message` is the sentence without its category prefix, except a `DeclarationError`'s, which holds its whole [Developer Diagnostic](#developer-diagnostics) while `sentence` holds the sentence. The exit code is a static field the class declares, so a subclass inherits it and a view reads it on the instance, as [Declared exit codes](#declared-exit-codes) describes. The failure code is a static field too, which a machine reader branches on, as [Failure codes](#failure-codes) describes.
 
 ```ts
 abstract class LoomError extends Error {
+  static readonly code: string; // 'failure'; see Failure codes
   static readonly exitCode: FailureExitCode; // 1
   readonly exitCode: FailureExitCode;
   constructor(message: string, options?: ErrorOptions); // ErrorOptions is the platform's { cause }
 }
 abstract class UsageError extends LoomError {
+  static override readonly code: string; // 'usage'
   static override readonly exitCode: FailureExitCode; // 2: the invocation is wrong
 }
 
@@ -1560,8 +1610,8 @@ type InputProblem =
 function reportedSpelling(option: OptionNode): string; // '--file', '--no-quiet', or '-F'
 ```
 
-| Class                     | Base         | Code | Facts                                  |
-| ------------------------- | ------------ | ---- | -------------------------------------- |
+| Class                     | Base         | Exit code | Facts                             |
+| ------------------------- | ------------ | --------- | -------------------------------------- |
 | `InputError`              | `UsageError` | 2    | `problems`                             |
 | `UnknownCommandError`     | `UsageError` | 2    | `token`, `candidates`                  |
 | `NonCallableCommandError` | `UsageError` | 2    | `command`, `candidates`                |
@@ -1573,10 +1623,11 @@ function reportedSpelling(option: OptionNode): string; // '--file', '--no-quiet'
 | `MisplacedOptionError`    | `UsageError` | 2    | `spelling`, `commands`                 |
 | `DeclarationError`        | `LoomError`  | 1    | `rule`, `sentence`, `findings`, `correction`; see [Developer Diagnostics](#developer-diagnostics) |
 | `FatalError`              | `LoomError`  | 1    | the message `out.fatal()` received     |
+| `WorkingDirectoryError`   | `LoomError`  | 1    | `cause`, the value capture threw; see [An unreadable working directory](#an-unreadable-working-directory) |
 | `InternalError`           | `LoomError`  | 1    | `cause`, the thrown value core wrapped, and `rule`, `sentence`, `correction` |
 | `ResultError`             | `InternalError` | 1 | `path`, `kind`, and an `undefined` `cause`; see [Results](#results) |
 
-Core's default views open each failure with a prefix: the application name and a colon for every `UsageError`, as in `jsonkit: Unknown command "nope". Use one of: get, keys.`, so the operator reads who is speaking under rule 2 of [Failure messages](failure-messages.md#2-say-what-went-wrong-and-what-to-do-instead). The name opens every line of a `UsageError`'s message, so an `InputError` that reports two problems opens both of its lines with it, as in `jsonkit: Option "--limit": Use decimal digits.` above `jsonkit: Argument "path" requires a value. Supply a value for "path".`, and the hint lines an `onFailure` hook adds below them carry no prefix. The failure's `message` holds the lines without the name, so an override reads the problems alone. `FatalError` takes no prefix. `DeclarationError`, `InternalError`, and `ResultError` take none either, because an operator never reads their sentence: in a distributed build their default text is the generic defect message, `jsonkit: Something went wrong.`, and in a development build core renders their [Developer Diagnostic](#developer-diagnostics) without consulting a view, under [Development builds](#development-builds).
+Core's default views open each failure with a prefix: the application name and a colon for every `UsageError`, as in `jsonkit: Unknown command "nope". Use one of: get, keys.`, so the operator reads who is speaking under rule 2 of [Failure messages](failure-messages.md#2-say-what-went-wrong-and-what-to-do-instead). The name opens every line of a `UsageError`'s message, so an `InputError` that reports two problems opens both of its lines with it, as in `jsonkit: Option "--limit": Use decimal digits.` above `jsonkit: Argument "path" requires a value. Supply a value for "path".`, and the hint lines an `onFailure` hook adds below them carry no prefix. The failure's `message` holds the lines without the name, so an override reads the problems alone. `FatalError` takes no prefix, and `WorkingDirectoryError` takes the application name, as a usage error's line does. `DeclarationError`, `InternalError`, and `ResultError` take none either, because an operator never reads their sentence: in a distributed build their default text is the generic defect message, `jsonkit: Something went wrong.`, and in a development build core renders their [Developer Diagnostic](#developer-diagnostics) without consulting a view, under [Development builds](#development-builds).
 
 `InputError.problems` carries the whole validation phase in authoring order: each required input the invocation omitted, and each value a validator rejected with the issues that validator returned. `spelling` is the token an operator would type: `--file` for an option, `--no-quiet` for a negative-only Boolean option, `-F` for a `shortOnly` option, and the declared name for an argument. In an [invocation by name](#invocation-by-name) it is the declared name for an option too, the key the caller wrote. An omitted required argument is a `missing` problem like an omitted required option, so omission has one class whichever kind of input it names. An `invalid` problem always carries at least one issue: a validator that rejected a value and returned none reports `The validator rejected this value without an explanation. Supply a different value.`, the sentence core's own text uses. Error precedence is unchanged, because routing and token errors still precede validation. An action may also throw an `InputError` for a rule over a whole list of values under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md); it carries the problems the action names, and it reports with exit code 2 after the middleware chain rather than before it.
 
@@ -1688,6 +1739,124 @@ Declared exit codes are proven when public APIs alone produce these results unde
 - **Exports.** The fifteen constants hold their `sysexits.h` values, `EX_OK` is absent, and `FailureExitCode` accepts 1 and 125 and rejects 0 and 126.
 - **Example.** `jsonkit get missing -f doc.json` and `jsonkit keys missing -f doc.json` exit 65, as the [failure example coverage](#example-coverage-2) pins.
 
+### Failure codes
+
+```ts
+abstract class LoomError extends Error {
+  static readonly code: string; // 'failure'; a kebab-case code, captured at the class's first construction
+  static readonly exitCode: FailureExitCode; // 1
+  get exitCode(): FailureExitCode;
+  constructor(message: string, options?: ErrorOptions);
+}
+class FatalError extends LoomError {
+  static override readonly code: string; // 'fatal'; each core class annotates its code as string
+}
+```
+
+```ts
+import { EX_DATAERR, FatalError } from '@loomcli/core';
+
+// `jsonkit get missing -f doc.json` exits 65, and a machine reader branches on `path-not-found`.
+export class PathNotFoundError extends FatalError {
+  static override readonly code = 'path-not-found';
+  static override readonly exitCode = EX_DATAERR;
+  readonly path: string;
+
+  constructor(path: string) {
+    super(`Path not found: "${path}". Run jsonkit keys to list the keys at the root.`);
+    this.name = 'PathNotFoundError';
+    this.path = path;
+  }
+}
+```
+
+A failure class states a failure code once, on the class, so a script or an agent tells one failure from another where many share an exit code. The code is read the way [Declared exit codes](#declared-exit-codes) reads the exit code. [ADR-0064](decisions/0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md) records the decision.
+
+| Class                     | Failure code                   |
+| ------------------------- | ------------------------------ |
+| `LoomError`               | `failure`                      |
+| `UsageError`              | `usage`                        |
+| `InputError`              | `invalid-input`                |
+| `UnknownCommandError`     | `unknown-command`              |
+| `NonCallableCommandError` | `missing-subcommand`           |
+| `UnexpectedArgumentError` | `unexpected-argument`          |
+| `UnknownOptionError`      | `unknown-option`               |
+| `MissingValueError`       | `missing-value`                |
+| `UnexpectedValueError`    | `unexpected-value`             |
+| `RepeatedOptionError`     | `repeated-option`              |
+| `MisplacedOptionError`    | `misplaced-option`             |
+| `FatalError`              | `fatal`                        |
+| `WorkingDirectoryError`   | `working-directory-unreadable` |
+| `DeclarationError`        | `internal`                     |
+| `InternalError`           | `internal`                     |
+| `ResultError`             | `internal`, inherited          |
+
+- **The declaration.** A class declares its code as `static override readonly code`. Core reads the code from the thrown failure's class, walking to the nearest ancestor that declares one, so an author class that declares none reads its parent's: a bare `FatalError` subclass reads `fatal`, and a class that extends jsonkit's `PathNotFoundError` without a code reads `path-not-found`. A projection reads `Class.code` without constructing a failure.
+- **The grammar.** A code is one or more words of lowercase ASCII letters and digits joined by single hyphens, the grammar of the rule name that ends a [rule identity](#developer-diagnostics), such as `path-not-found` or `http-503`. It has no package part: a code names one failure of the application that raises it.
+- **Captured once.** Core reads a class's code at the first construction of the class, or of a subclass that declares none, beside its exit code, and keeps it. A static written later, or a static getter that answers differently on a later read, changes no failure of that class. Core captures its own classes when `@loomcli/core` loads, so a write to `FatalError.code` or any other core class's static changes no code core reports. A static getter that throws makes the construction throw that error, which reports as an internal error with code 1.
+- **On the class alone.** A failure instance carries no `code` member of core's. The [failure form](#the-failure-form) reports the captured code, and an author's own instance field named `code`, such as one copied from a Node system error, keeps its own meaning.
+- **Type checks.** `LoomError` types its static as `string`, and every core class annotates its own as `string`, so a subclass declares any literal. A `readonly` static with a literal initializer takes that literal as its type, so an author class whose own subclasses declare other codes annotates its declaration, `static override readonly code: string = 'registry';`. A static that is not a string is a compile error, as a static side that incorrectly extends its base (TS2417). The types do not check the grammar.
+- **An invalid code.** After its exit code check, `LoomError`'s constructor reads the class's code and, when it is not a string in the grammar, throws a `DeclarationError` under `@loomcli/core/failure-code` in place of the failure: `Failure class "RegistryDownError" declares failure code "Registry_Down".`, with the correction `Declare a kebab-case code of lowercase letters and digits, such as "registry-down".` and an explanation that says a machine reader branches on the code, so it follows one grammar. A value that is not a string reads `declares a failure code that is not a string.` in place of `declares failure code "Registry_Down".` The class is named by `new.target.name`, escaped, and the fault carries no finding, as the exit code fault does. A failure constructed inside a run reports the fault with code 1, by build as [Development builds](#development-builds) states, and one constructed outside a run throws at that line.
+- **Author faults read `internal`.** `DeclarationError`, `InternalError`, and `ResultError` read `internal`, and the failure form reads `internal` for every failure that is an instance of `DeclarationError` or `InternalError`, in both builds, so no rule identity and no class reaches a machine reader. A defect a [translator](#translators) never answered, an unconstructed failure, and a build fault all read `internal`.
+- **Its readers.** The [failure form](#the-failure-form) carries the code to [`invoke`](#invocation-by-name)'s outcome, to a [failure encoder](#failure-encoders), and to the [MCP](#mcp) plugin's failed calls, and the [manifest](#manifest-failures) lists each declared failure by its class's code.
+
+#### Failure codes acceptance
+
+Failure codes are proven when public APIs alone produce these results under Node and Bun:
+
+- **Core's codes.** Each class in the table reads its code without an instance, and a failure core raises for each reaches `invoke`'s `failed.form.code` with it.
+- **Inherited.** A `FatalError` subclass that declares nothing reads `fatal`, a subclass of `PathNotFoundError` that declares nothing reads `path-not-found`, and a direct `LoomError` subclass that declares nothing reads `failure`.
+- **The example.** jsonkit's `PathNotFoundError` declares `path-not-found` and its `InvalidJsonError` declares `invalid-json`, and `jsonkit.invoke(['get'], { args: { path: 'missing' }, options: { file: 'doc.json' } })` reads `path-not-found` with exit 65.
+- **Invalid.** Classes that declare `'Path_Not_Found'`, `''`, `'-x'`, `'a--b'`, `'path not found'`, and `42` each throw `@loomcli/core/failure-code` at construction, and an action that constructs one exits 1 with the Developer Diagnostic from source and the generic defect message from a bundle.
+- **Captured once.** A class whose static is reassigned between two constructions reads its first code on both, and after every core class's static is set to `'x'`, an unknown command still reads `unknown-command` and an undeclaring `FatalError` subclass reads `fatal`.
+- **Author faults.** A `TypeError` from an action, a `ResultError`, a build fault, an unconstructed failure, and an author's `InternalError` subclass that declares `'oops'` each read `internal` in both builds.
+- **Types.** The negative type checks reject a numeric static `code` and a subclass whose literal code conflicts with a literal-typed parent's.
+
+### The failure form
+
+```ts
+interface FailureForm {
+  readonly code: string; // the class's failure code; 'internal' for a defect or a declaration fault
+  readonly exitCode: FailureExitCode; // the failure's declared exit code
+  readonly message: string; // the sentence as plain text, without the application-name prefix
+  readonly hints: readonly string[]; // the onFailure lines as plain text, in the order the failure view receives them
+}
+```
+
+```ts
+import { textstat } from './application.js';
+
+// `textstat --metric nope one.txt`, run by name: the form is the same data a failure encoder writes.
+const outcome = await textstat.invoke([], { args: { files: ['one.txt'] }, options: { metric: 'nope' } });
+if (outcome.status === 'failed') {
+  // {"code":"invalid-input","exitCode":2,"message":"Option \"metric\": Expected one of: bytes, words, lines.","hints":[]}
+  process.stdout.write(`${JSON.stringify(outcome.form)}\n`);
+}
+```
+
+The failure form is one failure as plain data, so a reader that cannot parse prose reads what went wrong. Core builds it, and the readers that need a failure as data share it: [`invoke`](#invocation-by-name)'s outcome and its caller's handler, a [failure encoder](#failure-encoders) under `run()`, and the [MCP](#mcp) plugin. [ADR-0064](decisions/0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md) records the decision.
+
+- **When.** Core builds one form for each failure it reports, after the [translators](#translators) and the `onFailure` [hooks](#failure-hints), so a translated failure reads its own class and the form holds the hooks' hints. It is a frozen plain object whose keys are, in order, `code`, `exitCode`, `message`, and `hints`.
+- **`code`.** The class's [failure code](#failure-codes), or `internal` for a defect or a declaration fault.
+- **`exitCode`.** The failure's declared exit code, the value `failure.exitCode` reads. The code the run resolves can differ: a broken failure view, `onFailure` hook, or failure encoder forces 1, and a cancelled run keeps its signal's code. `invoke`'s outcome reports that code beside the form.
+- **`message`.** For an operator failure, the failure's `message`: the sentence without the application-name prefix, so a usage error that reports two problems holds both lines, separated by one line break, with no trailing newline. Core resolves its markup as plain text, as [`invoke`](#invocation-by-name) resolves its captured text, with no color, modifier, or hyperlink. For a defect or a declaration fault, the message follows the build: `Something went wrong.` in a [distributed build](#development-builds), and the fault's `sentence` in a development build. A form never carries a cause, a stack, a finding, or a rule identity.
+- **`hints`.** The hints the [failure view context](#failure-view-context) receives, each resolved as plain text, in the same order. It is `[]` when no hook contributed and for a failure no hook runs for, such as a build fault.
+- **Nothing else.** The form carries no exit name, because the [manifest](#manifest)'s `exitCodes` table explains each number, and no fact of the class, such as `InputError.problems`. A later field can add class facts without changing the four.
+- **Not on the views.** A failure view and an `onFailure` hook receive the failure and their contexts, never the form.
+- **Names.** `FailureForm` is exported from `@loomcli/core`.
+
+#### The failure form acceptance
+
+The failure form is proven when public APIs alone produce these results under Node and Bun:
+
+- **The example.** The `invoke` above reads the form in its comment, and `jsonkit.invoke(['get'], { args: { path: 'missing' }, options: { file: 'doc.json' } })` reads `{ code: 'path-not-found', exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list the keys at the root.', hints: [] }`.
+- **Two problems.** An `InputError` with two problems reads both lines in `message`, with no application name and no trailing newline.
+- **Plain text.** A `FatalError` whose message carries a style mark, and a hint that carries one, read as plain text with no ANSI and no markup under `FORCE_COLOR=1`.
+- **By build.** A `TypeError` from an action reads `Something went wrong.` from a bundle and the defect's sentence from source, and neither form holds a stack frame.
+- **Hints.** Two fixture plugins' hints read in installation order, and a build fault reads `[]`.
+- **Exit codes.** A usage error whose `onFailure` hook breaks reads `exitCode` 2 in the form and 1 on the outcome.
+- **Frozen.** An assignment to a form's member throws in strict mode code.
+
 ### Failure views
 
 Core keys each failure class's default text function as that class's default view, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.
@@ -1732,7 +1901,9 @@ interface FailureViewContext extends ViewContext {
   readonly application: string;
   readonly path: readonly string[];
   readonly hints: readonly string[];
-  readonly invokedBy: 'argv' | 'name'; // new: how the run received its inputs
+  readonly invokedBy: 'argv' | 'name'; // how the run received its inputs
+  readonly view: string | undefined; // new: the view name the run had selected when it failed
+  readonly mediaType: string | undefined; // new: the media type that view declares
 }
 interface FailureView<Failure extends LoomError> {
   render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
@@ -1764,13 +1935,89 @@ A failure carries what went wrong, and the run carries where it happened. [ADR-0
 - **`path`.** The canonical names routing walked when the failure was raised; an alias reports its Command's canonical name, as `CommandNode.path` does. It is `[]` before routing: for a declaration fault raised at graph build, a failure raised before build, and a declared default or implied value its validator rejects. For an unknown Command it is the partial path walked before the unknown token, so `store cache nope` reads `['cache']`. Otherwise it is the path routing reached, for every held fault, a structural fault on a global option and a misplaced option included, and for every failure the chain or the action raised, so `store --file` with no value reads `[]`, `store cache --force clear` reads `['cache']`, and `store cache clear --bogus` reads `['cache', 'clear']`.
 - **`hints`.** The lines the installed plugins' `onFailure` hooks returned for this failure, in installation order, as a frozen array, under [Failure hints](#failure-hints). It is `[]` when no hook contributed and for a failure no hook runs for.
 - **`invokedBy`.** How the run received its inputs: `'argv'` for a `run()` call and `'name'` for a run [`invoke()`](#invocation-by-name) started, a nested one included. The by-name sentences [Failure classes](#failure-classes) states are the failure's own `message`, which core writes where it raises the failure, so core's default text and a view that prints `message` read them as they are. A view or a hint that points at a command line, such as `Run "jsonkit get --help"`, reads `invokedBy` to stay silent where no command line exists.
-- **Filled once.** `run()` and `invoke()` fill all four where they catch the failure, before they call the view. Core adds nothing to the failure instance, and no failure class carries a field for any of them. A fault reported after the primary outcome, such as a plugin's `next()` fault, reads the same `application` and `path` and hints of its own.
+- **`view` and `mediaType`.** The run's selection when it failed, which a [failure encoder](#failure-encoders) reads under `run()`. For a failure raised after the dispatch boundary dispatched the action, `view` is the [selected view](#emitting-a-result) the boundary read. For a failure raised before the action was dispatched, a held fault the boundary raises included, `view` is the name a middleware assigned to `view` or [`invoke()`](#invocation-by-name) started with, when either did. `mediaType` is the media type that view declares, read from the routed Command's `ResultNode.mediaTypes` under [Media types](#media-types), and `undefined` when the view declares none. Neither field is the graph, so the rule below that a failure view's context carries no graph stands.
+- **When the selection is `undefined`.** Both fields are `undefined` for a failure raised before the chain, a build fault, an unknown command, and a declared default its validator rejects included; on a Command that declares no result; for a failure raised before dispatch when nothing selected a view, so a `--format` its validator rejected, which the [formatter](#formatter) never assigns, leaves both `undefined`; and for a selection that names no view of the routed Command's result or is not a string, which the dispatch boundary would reject.
+- **Filled once.** `run()` and `invoke()` fill all six where they catch the failure, before they call the view. Core adds nothing to the failure instance, and no failure class carries a field for any of them. A fault reported after the primary outcome, such as a plugin's `next()` fault, reads the same `application`, `path`, `view`, and `mediaType`, and hints of its own.
 - **Default text.** Core's default text for every class writes the sentence it writes without hints, then each hint followed by one newline, with no prefix and no indent. A hint is marked text, so core resolves it for stderr as it resolves view output and escapes nothing in it. With no hints, the default text is unchanged byte for byte.
 - **Overrides.** An override receives the hints and decides whether to print them. One that ignores `hints` prints none, and core never appends them behind an override.
 - **Plain fallback.** The plain fallback path of the [Failure contract](#failure-contract) writes core's default text for the original failure without hints, because it resolves no markup and writes nothing a plugin produced.
 - **No `command`.** A failure view's context never carries a member named `command`. A build fault has no graph, and `path` names the place; advice that needs the graph belongs in a hint.
 - **Other views.** Lane views, the help page, the version line, and result views receive `ViewContext` unchanged.
 - **Types.** `FailureViewContext` and `FailureView` are exported, and `override(FailureClass, view)` takes a `FailureView` of the class's instances. A `View<Failure>` written against `ViewContext` is assignable to it, because its function reads less of the context, so an existing failure override compiles unchanged.
+
+##### Selection in the failure contexts acceptance
+
+`view` and `mediaType` are proven when public APIs alone produce these results under Node and Bun, each read by a fixture view override and a fixture `onFailure` hook alike:
+
+- **After dispatch.** `jsonkit paths --format json -f <document with a refused key>` reads `json` and `application/json`, and `jsonkit paths -f <the same document>` reads the default view, `list`, and `undefined`.
+- **A held fault.** `textstat --format json --metric nope one.txt` reads `json` and `application/json`, and `textstat --metric nope one.txt` reads `undefined` for both.
+- **No selection.** `textstat --format yaml one.txt`, `textstat --format json --bogus one.txt`, `jsonkit typo --format json -f doc.json`, a build fault, a declared default its validator rejects, and a failure on jsonkit's `get`, which declares no result, each read `undefined` for both.
+- **A bad selection.** A fixture middleware that assigns `yaml` to `view` and then calls `next()` under a held fault reads `undefined` for both.
+- **By name.** `invoke(['paths'], …, { view: 'json' })` against a document with a refused key reads `json` and `application/json` on both contexts.
+
+### Failure encoders
+
+```ts
+type FailureEncoder = (form: FailureForm) => string;
+function encodeFailure(mediaType: string, encoder: FailureEncoder): FailureEncoding; // FailureEncoding is opaque and branded
+
+interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
+  failureEncoders?: readonly FailureEncoding[]; // new
+  // ...
+}
+```
+
+```ts
+// src/format/plugin.ts, the entry module of the @loomcli/plugins/format subpath
+import { encodeFailure, plugin } from '@loomcli/core';
+import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';
+
+import Package from '../../package.json' with { type: 'json' };
+import { escapeControls } from '../encode.js';
+import { attachFormat } from './attach.js';
+
+export interface FormatSettings {
+  readonly short?: NonNullable<StringOption['short']>;
+}
+
+// One line on stderr: {"error":{"code":…,"exitCode":…,"message":…,"hints":[…]}} and a newline.
+const errorLine: FailureEncoder = (form) => `${escapeControls(JSON.stringify({ error: form }))}\n`;
+
+export function format(settings?: FormatSettings): Plugin<{}> {
+  // ...the settings check under Plugin settings...
+  return plugin(`${Package.name}/format`, {
+    failureEncoders: [encodeFailure('application/json', errorLine), encodeFailure('application/jsonl', errorLine)],
+    middleware: { activate: 'always', load: () => import('./middleware.js') },
+    onCommandAttach: attachFormat(settings?.short),
+  });
+}
+```
+
+A failure encoder writes a failed run's [failure form](#the-failure-form) in the media type the run selected, so a run that prints JSON on success prints JSON on failure. It is a stage ahead of view resolution, not a view override, because overrides resolve first-in-wins and none can decline. Core encodes nothing itself, under [ADR-0023](decisions/0023-a-command-declares-its-result-and-core-resolves-its-presentation.md). [ADR-0064](decisions/0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md) records the decision.
+
+- **Registration.** `encodeFailure(mediaType, encoder)` pairs a media type with a function and returns a `FailureEncoding`. A plugin lists its encodings under `failureEncoders`, as it lists [translations](#translators) under `translators`. The Application registers none; an application that wants its own encoder installs a small local plugin.
+- **One encoder per media type.** Media types compare as the exact strings core stores, under [Media types](#media-types), which holds no grammar. Two encodings for one media type in one plugin are a `DeclarationError` from `plugin()`, and two plugins that register one media type are a `DeclarationError` from the Application constructor, both under `@loomcli/core/failure-encoder-taken`.
+- **When it answers.** When `run()` reports a failure whose [failure view context](#failure-view-context) reads a `mediaType` that an installed plugin registered, core calls that encoder once with the failure's form and writes the returned text to stderr as it is: it resolves no markup, escapes nothing, and appends nothing, so the encoder owns its newline. No failure view resolves for that failure, an application's override included. A failure whose `mediaType` is `undefined`, or that no encoder answers, renders through its view as before.
+- **Defects by build.** In a [development build](#development-builds), a defect or a declaration fault writes its [Developer Diagnostic](#developer-diagnostics) and the hints under it first, as today, and then, after one blank line, the encoder's line. In a distributed build the encoder's line takes the place of the generic defect message, and its form reads `internal` and `Something went wrong.`
+- **Each reported failure.** The stage takes the place of the view wherever core resolves a failure's view: the primary failure and each fault reported after it, each with a line of its own. A report core writes through the plain fallback path of the [Failure contract](#failure-contract), such as a broken failure view's or a broken hook's, stays text, and the at-most-once rule of the generic defect message applies to that text alone.
+- **Stdout is untouched.** The stage writes to stderr alone. Rows a result wrote before the failure stay on stdout, and the [incomplete-result](#a-sequence-that-stops-early) line keeps its own view on stderr.
+- **`run()` alone.** [`invoke`](#invocation-by-name) never calls an encoder: its outcome and its caller's handler carry the form, and `messages` keeps the failure view's text.
+- **Synchronous.** An encoder runs synchronously and receives the form alone.
+- **A broken encoder.** An encoder that throws or returns a value that is not a string, a promise included, is a defect. Core writes the original failure's default text through the plain fallback path, then reports the broken encoder by build: the generic defect message in a distributed build, at most once per run, and the Developer Diagnostic of `@loomcli/core/broken-failure-encoder` in a development build. Its sentence is `Plugin "@acme/json" failed to encode the failure as "application/json": <reason>`, where the reason is the thrown value's, escaped, or `The encoder returned number instead of a string.`, and its correction is `Return the encoded failure as a string, and throw nothing from the encoder.` A returned promise receives a rejection handler and is otherwise ignored. The run returns 1, except a cancelled run, which keeps its signal's code.
+- **Names.** `encodeFailure`, `FailureEncoder`, and `FailureEncoding` are exported from `@loomcli/core`. `encodeFailure()` rejects a media type that is not a string under `@loomcli/core/media-type` and an encoder that is not a function under `@loomcli/core/not-a-function`, and `plugin()` rejects a `failureEncoders` value that is not an array and an entry that is not an encoding, under [Plugin declaration errors](#plugin-declaration-errors).
+
+#### Failure encoders acceptance
+
+Failure encoders are proven when public APIs alone produce these results under Node and Bun, with textstat and jsonkit installing the [formatter](#formatter):
+
+- **A held fault.** `textstat --format json --metric nope one.txt` writes exactly `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--metric\": Expected one of: bytes, words, lines.","hints":["Run \"textstat --help\" to see the usage."]}}` and one newline to stderr, nothing to stdout, and exits 2. `--format jsonl` writes the same bytes.
+- **An action failure.** `jsonkit paths --format json -f broken.json` writes the `invalid-json` line with exit code 65, and `jsonkit paths --format jsonl -f <document with a refused key>` writes the rows before the key on stdout, then the incomplete-result line and the `fatal` line on stderr.
+- **Text.** `textstat --metric nope one.txt`, `textstat --format yaml one.txt`, `textstat --format json --bogus one.txt`, and `jsonkit typo --format json -f doc.json` write their text diagnostics unchanged, as does a build fault under `--format json`.
+- **Defects.** A fixture action that throws a `TypeError` under `--format json` writes `{"error":{"code":"internal","exitCode":1,"message":"Something went wrong.","hints":[]}}` from a bundle, with no generic text line, and its Developer Diagnostic and then the line with its sentence from source.
+- **Overrides.** jsonkit's `FatalError` override renders `jsonkit paths -f broken.json` and is not consulted under `--format json`.
+- **Registration faults.** Two encodings for one media type in one plugin, and in two installed plugins, throw `@loomcli/core/failure-encoder-taken`; a numeric media type, an encoder that is not a function, a `failureEncoders` value that is not an array, and an entry that is not an encoding throw their rules.
+- **Broken.** An encoder that throws, one that returns a number, and one that returns a promise each write the failure's default text, then the generic defect message from a bundle or the `@loomcli/core/broken-failure-encoder` diagnostic from source, and exit 1, or 130 in a run a caller cancelled.
+- **By name.** `textstat.invoke([], …, { view: 'json' })` with an invalid metric captures the text diagnostic in `messages`, calls no encoder, and carries the form on the outcome.
 
 ### Translators
 
@@ -1846,6 +2093,7 @@ View and destination failures are internal errors and return code 1, except in a
 | A lane view throws or returns a non-string        | The semantic call rejects with the view's error, and nothing is written for that call. The rest of the row above applies: later output still writes, and core reports one `InternalError` after the chain and the action have settled and returns 1.                                                                                |
 | A destination write fails                         | The call rejects, later writes to that destination reject, core reports the broken destination by build through one plain stderr fallback, the generic defect message in a distributed build, at most once per run, and the Developer Diagnostic of `@loomcli/core/broken-destination`, whose sentence is `Could not write invocation output.`, in a development build, and returns 1, unless the action awaits the call, lets its rejection propagate, and a [translator](#translators) answers it: the translated failure then reports in place of the fallback report and returns its own code. |
 | A failure view throws or returns a non-string     | Core writes the default text of the original failure through the plain fallback path on stderr, bypassing every override whichever contributor made it, then reports the broken view by build: the generic defect message in a distributed build, at most once per run, and the Developer Diagnostic of `@loomcli/core/broken-failure-view`, whose sentence is `Rendering the failure failed: <reason>`, in a development build. It returns 1. The original failure stays primary. |
+| A failure encoder throws or returns a non-string  | Core writes the default text of the original failure through the plain fallback path on stderr, then reports the broken encoder by build: the generic defect message in a distributed build, at most once per run, and the Developer Diagnostic of `@loomcli/core/broken-failure-encoder` in a development build, under [Failure encoders](#failure-encoders). It returns 1. The original failure stays primary. |
 | An `onFailure` hook breaks                        | The hook throws, returns a value that is not a string or an array of strings, or returns a promise. Core drops that hook's hints, renders the failure with every other plugin's hints, then reports the broken hook by build through the plain fallback path, and returns 1. The original failure stays primary. [Failure hints](#failure-hints) states the report. |
 | The fallback write fails                          | Reporting stops. `run()` still resolves 1.                                                                                                                                                                                                                                                                        |
 
@@ -1903,13 +2151,14 @@ Whether an application is in development is a build fact. The packet in the sour
   | A usage error, a `FatalError`, or an author's own class, a [translated](#translators) one included | Its view, unchanged | Its view, unchanged |
   | A defect: an `InternalError` or `ResultError`                                          | Its Developer Diagnostic, ahead of every override | `jsonkit: Something went wrong.` through its view, at most once per run |
   | A `DeclarationError` from build or from a run: a hook fault, a declared default or implied value its validator rejects, a validator that throws or returns a malformed result | Its Developer Diagnostic, ahead of every override | `jsonkit: Something went wrong.` through its view, at most once per run |
-  | A broken failure view or `onFailure` hook, after the failure's own text, or a broken output view | One Developer Diagnostic per broken contract, in the order [Failure contract](#failure-contract) and [Failure hints](#failure-hints) give | `jsonkit: Something went wrong.`, at most once per run |
+  | A broken failure view, `onFailure` hook, or [failure encoder](#failure-encoders), after the failure's own text, or a broken output view | One Developer Diagnostic per broken contract, in the order [Failure contract](#failure-contract) and [Failure hints](#failure-hints) give | `jsonkit: Something went wrong.`, at most once per run |
 
   A `DeclarationError` thrown at a call or an attach never reaches `run()`, and its message carries its diagnostic in both builds, under [Declaration faults](#declaration-faults).
 - **The generic message.** It is the application name, a colon, and `Something went wrong.`, with no reason, class name, code, or path. A run writes it at most once, whichever faults it reports, so a second defect that core's own view renders writes nothing. It is the default text of `InternalError` and `DeclarationError` in a distributed build, so `override(InternalError, view)` replaces it for defects and `override(DeclarationError, view)` for declaration faults, and an `onFailure` hint, such as where to report the defect, prints under it. It is the one operator message with no next step, because a defect has none Loom can name, as rule 7 of [Failure messages](failure-messages.md#7-a-defect-shows-one-generic-message) states.
 - **Exit codes.** A defect and a declaration fault exit 1 in both builds, and a cancelled run keeps its signal's code under [Signals and cancellation](#signals-and-cancellation).
 - **Names.** `Packet` is exported from `@loomcli/core`, and `packet` from `@loomcli/loom/build`.
-- **Checks only development runs.** A development build reports author mistakes a distributed build tolerates. A validated input's converter that throws or returns anything other than a plain object is a `DeclarationError` at build under the rule `@loomcli/core/schema-converter-failed`, naming the input, the target, and the converter's message, from `run()` and from `inspect()`; a distributed build reads its [input schema](#input-schema) as `null`, as it does today.
+- **Checks only development runs.** A development build reports author mistakes a distributed build tolerates. A validated input's converter that throws or returns anything other than a plain object is a `DeclarationError` at build under the rule `@loomcli/core/schema-converter-failed`, naming the input, the target, and the converter's message, from `run()` and from `inspect()`; a distributed build reads its [input schema](#input-schema) as `null`, as it does today. A Command, an option, or an argument without a description fails the run under `@loomcli/core/undescribed`, as [Undescribed declarations](#undescribed-declarations) states; a distributed build skips that check.
+- **The failure form.** A defect's or a declaration fault's [failure form](#the-failure-form) follows the build too: its `message` reads `Something went wrong.` in a distributed build and the fault's sentence in a development one, and its `code` reads `internal` in both.
 
 #### Development builds acceptance
 
@@ -1927,6 +2176,55 @@ Development builds are proven when public APIs alone produce these results:
 - **Without the writer.** A packed consumer bundles a fixture application with `Bun.build` and with Rolldown, each with no plugin. Each bundle pads wide, combining, emoji, and flag text to its display width, and reads `development`, under Node and Bun, and keeps the license notices of core's derived modules.
 
 Each case runs under Node and Bun, except the source runs, which run under Bun.
+
+#### Undescribed declarations
+
+```ts
+// The facts the check reads, as inspect() publishes them.
+interface CommandNode {
+  readonly description: string | undefined; // the Application's description on the root
+  // ...the fields under Graph inspection...
+}
+interface ArgumentNode {
+  readonly description: string | undefined;
+  // ...
+}
+// Each OptionNode variant carries the same field, on global and local options alike.
+```
+
+```ts
+// src/application.ts, run from source, where loom.packet.json reads development
+import { Application, Command } from '@loomcli/core';
+
+import packet from '../loom.packet.json' with { type: 'json' };
+
+const get = new Command('get', { description: 'Read one value at a path.' })
+  .argument('path', { required: true })
+  .action(({ args, out }) => out.print(args.path));
+
+// `bun src/main.ts get name` exits 1 with one Developer Diagnostic under @loomcli/core/undescribed:
+// "2 declarations have no description.", with a finding for --verbose and one for get's path.
+export const store = new Application('store', { description: 'Read stored values.', packet })
+  .globalOption('verbose', { type: 'boolean' })
+  .command(get);
+```
+
+Agents, MCP tools, help, and the manifest describe a Command and its inputs by their descriptions, so a development build fails a run whose graph leaves one out, and the author meets the gap before an operator or an agent does. A distributed build skips the check. [ADR-0050](decisions/0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) carries the dated entry.
+
+- **The check.** In a development build, after the graph builds and the build rules over what the lifecycle hooks returned have passed, and before any [`onGraphBuilt`](#judging-the-built-graph) hook runs, core reads the description of every Command, the root included, every global option, every local option, and every argument. A member whose description is `undefined` is a gap. Any gap fails the run with one `DeclarationError` under `@loomcli/core/undescribed`, a build fault with exit 1 that renders its Developer Diagnostic, as [Development builds](#development-builds) states.
+- **No exemption.** A hidden or deprecated member is checked, because a hidden Command still routes, prints its own manifest slice, and can opt in to [MCP](#mcp). What a plugin declares is checked too: its global options, its [Commands](#plugin-commands), and each option and argument its `onCommandAttach` hook declares. The root reads the Application's description.
+- **One diagnostic.** One fault lists every gap. Its sentence is `2 declarations have no description.`, or `1 declaration has no description.`, its correction is `Give each one a description of one line.`, and its explanation says that agents, MCP tools, help, and the manifest read the descriptions. It carries one finding per gap, in graph order: the global options in graph order, then each Command, the root first and then depth first in authoring order, each followed by its arguments and then its local options in authoring order. Each finding rebuilds the call that declared the member, under the rules of [Developer Diagnostics](#developer-diagnostics): a Command as the call that attached it, the root as `new Application('store', { … })`, a global option as its `globalOption()` call or its plugin's `options` entry, and an input a hook declared as the hook's call, noted with its plugin. Each marks the member's name and carries the note `no description`.
+- **Where it runs.** Every `run()` and every [`app.invoke()`](#invocation-by-name) in a development build, before routing, so a run with a gap fails whatever its words, `--help` and a completion request included. An action's `invoke` reuses its run's graph and checks nothing again. `inspect()` runs no such check.
+- **Distributed builds.** A distributed build reads no description for this check, so a shipped application never fails on one.
+
+##### Undescribed declarations acceptance
+
+The check is proven when public APIs alone produce these results under Node and Bun, from source under Bun:
+
+- **The examples.** jsonkit and textstat describe every Command, option, and argument, the installed plugins' included, so every golden their source runs pin is unchanged, and every first-party plugin's Commands and options carry a description.
+- **Every gap.** A fixture whose root, a hidden Command, a deprecated option, a global option, a plugin's option, a plugin Command's argument, and an option a hook declares carry no description exits 1 from source with one diagnostic that lists seven findings in graph order, and runs from a bundle.
+- **Every word.** The same fixture exits 1 from source under `--help` and under a completion request.
+- **The doors.** `app.invoke` from source resolves `failed` with exit 1 and a form whose code is `internal`, `inspect()` returns the graph, and a fixture `onGraphBuilt` hook is never called.
 
 ### Developer Diagnostics
 
@@ -2039,6 +2337,7 @@ A Developer Diagnostic teaches the author what broke, where, why the rule exists
   | `@loomcli/core/broken-failure-view`     | A failure view threw or returned a non-string                                                |
   | `@loomcli/core/broken-output-view`      | An output or lane view threw or returned a non-string                                        |
   | `@loomcli/core/broken-failure-hook`     | An `onFailure` hook threw or returned a value that is not hints                              |
+  | `@loomcli/core/broken-failure-encoder`  | A [failure encoder](#failure-encoders) threw or returned a value that is not a string        |
   | `@loomcli/core/plugin-loader-failed`    | A plugin's middleware or source loader rejected or exported no default                       |
   | `@loomcli/core/next-misuse`             | A middleware called `next()` twice or after it returned                                      |
   | `@loomcli/core/result-contract`         | An action broke the [result](#results) contract, one `ResultError` kind                      |
@@ -2247,9 +2546,9 @@ A view declares the media type of the text it writes, and a result publishes it 
 - **An open string.** Core never checks the value: it holds no grammar and no registry of media types, and it never compares the text a view writes with the type it declares. A view whose text does not match its declared type breaks its author's promise. The one rule is the type: a `mediaType` that is not a string is the declaration error `@loomcli/core/media-type`, which TypeScript already rejects.
 - **Copied when stored.** The call that stores a view reads its `mediaType` once and keeps the string: `result()`, `rows()`, `views()`, and the `views()` a [lifecycle hook](#lifecycle-hooks) calls for a result's record, and `view()` for a declared view. A later write to the view object changes no fact. A view handed to `out.render` is never stored, and its media type has no reader.
 - **The graph fact.** `ResultNode.mediaTypes` holds one entry for each view name the record holds, a view a hook added included: the string the view declared, or `null`. It is frozen with the rest of the node.
-- **Selection is by name.** Core reads no media type at run time. A run selects a view by name, through a middleware's `view` or `invoke()`'s starting selection, and never by media type.
+- **Selection is by name.** A run selects a view by name, through a middleware's `view` or `invoke()`'s starting selection, and never by media type. Core reads a media type at run time for one purpose: a failed `run()` reads its selected view's media type, as the [failure view context](#failure-view-context) states, to find a [failure encoder](#failure-encoders).
 - **The pack's views.** The formatter's `json()` declares `application/json`, and `jsonl()` declares `application/jsonl`, under every `map`. The table and records views declare none, because they write text for a terminal.
-- **Its readers.** The [manifest](#manifest) copies `mediaTypes` with each result and states its two encodings for the views that declare them. The [MCP](#mcp) plugin selects the first view whose media type is `application/json` and sends its output as structured content.
+- **Its readers.** The [manifest](#manifest) copies `mediaTypes` with each result and states its two encodings for the views that declare them. The [MCP](#mcp) plugin selects the first view whose media type is `application/json` and sends its output as structured content. A [failure encoder](#failure-encoders) answers a failed `run()` whose selected view declares the media type it registered.
 
 | Rejected declaration | Diagnostic | Rule |
 | --- | --- | --- |
@@ -2335,7 +2634,7 @@ The results increment is proven when [textstat](../examples/textstat/src/applica
 
 ## Plugins
 
-Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds the options it contributes, one middleware with its activation and a loader, the extensions it defines, the views it declares and overrides, the [translators](#translators) it registers, one optional claim on the signals slot, one optional [configuration source](#input-sources), the [Commands](#plugin-commands) it attaches to the root, and its [lifecycle hooks](#lifecycle-hooks), the functions core calls at named points of an Application's life. Creating and installing the value runs none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when `run()` renders a failure, and the middleware runs inside an invocation. An installed plugin costs its entry module and the declarations that module imports on an invocation that never reaches it, plus one call of each hook it implements at every point core calls it: `onCommandAttach` once per Command and `onGraphBuilt` once per build, since the graph builds on every invocation, and `onFailure` once per rendered failure. Its middleware module loads only when the chain reaches it.
+Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds the options it contributes, one middleware with its activation and a loader, the extensions it defines, the views it declares and overrides, the [translators](#translators) and [failure encoders](#failure-encoders) it registers, one optional claim on the signals slot, one optional [configuration source](#input-sources), the [Commands](#plugin-commands) it attaches to the root, and its [lifecycle hooks](#lifecycle-hooks), the functions core calls at named points of an Application's life. Creating and installing the value runs none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when `run()` renders a failure, and the middleware runs inside an invocation. An installed plugin costs its entry module and the declarations that module imports on an invocation that never reaches it, plus one call of each hook it implements at every point core calls it: `onCommandAttach` once per Command and `onGraphBuilt` once per build, since the graph builds on every invocation, and `onFailure` once per rendered failure. Its middleware module loads only when the chain reaches it.
 
 The optional [theme contribution](#plugindefinitiontheme-field) claims the single theme slot.
 
@@ -2353,6 +2652,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
+  failureEncoders?: readonly FailureEncoding[]; // new: see Failure encoders
   signals?: readonly ('SIGINT' | 'SIGTERM')[];
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
@@ -2451,7 +2751,7 @@ A plugin declares global options under `options`, keyed by name. They are global
 - **One parse.** Routing reads a plugin's option like every global option, and every Command's table holds it, so it shares short groups with the routed Command's local options: `textstat -ht` sets help's `help` and the root's `total`. A structural fault on it is the fault any option produces, held under [Global consumption and routing](#global-consumption-and-routing).
 - **One validation.** Its value validates with the other global options, in authoring order after the application's own and then in plugin installation order, and a rejected value is an ordinary input problem with exit code 2.
 - **Every reader.** Its validated value reaches every action and every middleware's `options`. An action's type names it through the installed plugin tuple: the Application's own action reads it from the constructor's `plugins`, and a Command built where the Application's `Register` augmentation is visible reads it through `EnvironmentOf`, under [Modular authoring](#modular-authoring). A [plugin Command](#plugin-commands) receives it at run time, and its types name no global option, because it compiles without the Application. A plugin typed as the wide `Plugin`, or a list widened to `Plugin[]`, names no option in an action's type; the value still reaches the action at run time.
-- **Its own plugin keeps two things.** [Activation](#activation) lists the plugin's own option names, and [`spellings`](#middleware) records how its own options were typed. Neither reaches another plugin's options or the application's.
+- **Its own plugin keeps three things.** [Activation](#activation) lists the plugin's own option names, [`spellings`](#middleware) records how its own options were typed, and [`ownOptions`](#middleware) holds its own options' validated values under a held fault. None reaches another plugin's options or the application's.
 - **Collisions.** Every collision is a declaration error, by key, by spelling, or by variable, against an application global option, a local option on any Command, or another plugin's option, under [Plugin declaration errors](#plugin-declaration-errors).
 - **Types.** `GlobalOptionConfig`, `PluginOptions`, and `PluginOptionValues<Options>` are exported, as `OptionsOf` is. `PluginOptionValues` maps each declaration through the same `OptionValue` an action's options use, so a validated option reads as its validator's output.
 
@@ -2541,6 +2841,7 @@ An invocation runs one chain. After routing has selected a Command, and after co
 ```ts
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
+  readonly ownOptions: Partial<PluginOptionValues<Options>> & Readonly<Record<string, unknown>>; // new
   readonly spellings: PluginOptionSpellings<Options>;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -2567,6 +2868,7 @@ type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
 ```
 
 - `options` holds the validated value of every global option, the application's and every plugin's, keyed by declared name. The plugin's own options are typed from its declaration, and every other key reads `unknown`, because a plugin compiles without the Application that installs it. It is `null` when a global option has a structural fault or a validation problem, whichever fault is held, so a middleware never reads a global value no validator accepted; a fault on a local option alone leaves it set, so a wrapping plugin keeps its own settings on a run that fails. It is also `null` when a configuration source fails or a validator throws, because core then holds no validated value to give. Each value is a copy frozen to every depth, as the request's values are, so a middleware copies a value before changing it. `Middleware` accepts the plugin type or its factory's type, with or without parameters, and the exported `OptionsOf` extracts the declared options from either, so `Middleware<typeof help>` reads them from the factory's annotated return type.
+- `ownOptions` holds the validated value of each option the plugin itself declared that validated in this run, keyed by declared name: each key of its `options`, typed from the declaration, and each local option its [`onCommandAttach`](#lifecycle-hooks) hook declared on the routed Command, typed `unknown`, because nothing a hook adds reaches the types. It holds them whether or not core holds a fault for another input, so a plugin reads its own setting on a run that fails, as the [formatter](#formatter) reads `--format` under a held fault. An option whose validator rejected it, or whose validation never ran, is absent: a local option validates only when no structural fault is held and the routed Command is not a group, under [Invocation](#invocation). An option the invocation omitted that has no default reads `undefined`, as an action reads it. Each value is a copy frozen to every depth, as under `options`, and the record is frozen. Another plugin's options and the application's never appear in it.
 - `spellings` holds, for each of the plugin's own options that the invocation supplied as a token, the spelling that supplied it: `--help`, `-h`, or `--no-total`, the spelling alone without a value attached with `=`, `-t` for a letter inside a short group such as `-tV`, and `-n` for a value letter whose value is attached, as in `-n5`. An option filled by the [input sources](#input-sources), or left to its default, has no entry, and neither does an option of the plugin the invocation did not supply, nor an occurrence that faulted. An option other than a multiple string option or a counted option is supplied at most once, because a repeat is the repeated-option usage error of [Global consumption and routing](#global-consumption-and-routing), so it has one spelling, its first well-formed occurrence's; a multiple string option and a counted option record the spelling of their last occurrence. A bare spelling of a string option with an [implied value](#implied-values) records that spelling, as `--backup` or `-b`. The record is frozen, and the exported `PluginOptionSpellings` types it from the declaration. A plugin reads the spellings of its own declared options alone, whatever its activation, although `options` holds every global option's value, so the action, the request, and the graph still cannot tell which tier supplied a value. [ADR-0040](decisions/0040-help-derives-compact-or-extended-from-the-spelling-the-operator-typed.md) records the decision, and [help variants](#help-variants) are its first reader.
 - `graph` is the frozen graph `inspect()` returns, and `command` is the routed node inside it, so `jsonkit get --help` renders help for `get`, `jsonkit --help` for the root, and `store cache --help` for the `cache` group. An unknown command fails in routing before any middleware runs. A group's missing subcommand is held behind any structural fault and raised at the dispatch boundary, so a middleware can take over a group invocation, and with no takeover `store cache` reports the missing subcommand and `store cache --verbose` the unknown option.
 - `request` is the routed Command's invocation after parsing and validation, the exported `Request`: the argument values under `args`, the local option values under `options`, each as the validator output an action receives, and the passthrough tokens. It is `null` while core holds a fault and on a group, so a middleware never reads a half-parsed invocation. The records are untyped: a middleware runs ahead of every action and the graph carries no type for a value, so it checks what it reads. Every array and plain object is copied and frozen to any depth, so a middleware reads a separate snapshot of those action inputs; a value that is neither, a class instance or a `Date` a validator produced, is shared by reference because core cannot copy it meaningfully. The request provides no supported path to replace validated action inputs. A validator's output determines the value the action receives. Additional context data, including data a middleware derives from these inputs, belongs to the separate typed context contribution design. Global option values are not here; a middleware reads them under `options`.
@@ -2753,7 +3055,9 @@ type FailureHook = (failure: Readonly<LoomError>, context: FailureHookContext) =
 interface FailureHookContext {
   readonly application: string;
   readonly path: readonly string[];
-  readonly invokedBy: 'argv' | 'name'; // new: the value the failure view reads
+  readonly invokedBy: 'argv' | 'name'; // the value the failure view reads
+  readonly view: string | undefined; // new: the selection the failure view reads
+  readonly mediaType: string | undefined; // new
   readonly style: ContextualStyle;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -2788,7 +3092,7 @@ export function suggest(): Plugin {
 A hint is a line a plugin adds under a failure message. Plugins add hints to a failure and never replace each other's views; the failure's view receives them under [Failure view context](#failure-view-context). [ADR-0046](decisions/0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md) records the decision.
 
 - **When.** Core calls each installed plugin's hook, in installation order, for each failure `run()` renders after graph build, before it calls that failure's view: the primary failure, and each fault reported after it, with calls of its own. A declared default or implied value its validator rejects is such a failure, because the graph has built. No hook runs for a declaration fault raised at graph build or for a failure raised before build, because no valid graph exists; a plugin's overrides are not consulted for a build fault either. No hook runs where nothing renders: a takeover such as `--help` never raises the held fault, and a cancelled run reports its own cancellation silently under [Signals and cancellation](#signals-and-cancellation). A failure a cancelled run still renders receives hints like any other. No hook runs for a line the plain fallback path writes.
-- **What it receives.** The failure instance as `run()` caught it, typed `Readonly<LoomError>` as a failure view receives its failure, and the context above. The guarantee is the type's: core neither freezes nor copies the failure, so a JavaScript hook that assigns to it, `message` included, steps outside the contract, and the view may render what it assigned. A hook cannot catch or suppress the failure, and a working hook cannot change the exit code, because core reads the code before any hook runs. `application`, `path`, and `invokedBy` are the values the failure view reads, so a hook that points at a command line returns no hint for an [invocation by name](#invocation-by-name). `style` is the contextual style for stderr, so a hook escapes text the operator typed, such as `failure.spelling` or `failure.token`, with `style.escape()` before interpolating it. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns for this run, and `command` is the node at `path` inside it: the root when `path` is empty, the last Command the partial path reached for an unknown Command, and the routed node otherwise, so `command.path` equals `path`. They are the values an action and a middleware read under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md), and reading either builds the run's graph once.
+- **What it receives.** The failure instance as `run()` caught it, typed `Readonly<LoomError>` as a failure view receives its failure, and the context above. The guarantee is the type's: core neither freezes nor copies the failure, so a JavaScript hook that assigns to it, `message` included, steps outside the contract, and the view may render what it assigned. A hook cannot catch or suppress the failure, and a working hook cannot change the exit code, because core reads the code before any hook runs. `application`, `path`, `invokedBy`, `view`, and `mediaType` are the values the failure view reads, so a hook that points at a command line returns no hint for an [invocation by name](#invocation-by-name), and a hook reads the run's selection when it failed. `style` is the contextual style for stderr, so a hook escapes text the operator typed, such as `failure.spelling` or `failure.token`, with `style.escape()` before interpolating it. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns for this run, and `command` is the node at `path` inside it: the root when `path` is empty, the last Command the partial path reached for an unknown Command, and the routed node otherwise, so `command.path` equals `path`. They are the values an action and a middleware read under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md), and reading either builds the run's graph once.
 - **What it returns.** A string is one hint, a readonly array is one hint per element in order, and `undefined` or `[]` contributes none. Each hint is marked text that core resolves for stderr as it resolves view output. Core keeps every string as returned and neither trims, filters, nor deduplicates, so an empty string prints an empty line and a line break inside a hint is written as it is. Core reads a returned array's length once and copies each index into a frozen array of its own, calling no method on the returned value, so an array subclass or a proxy contributes the strings it holds, whatever its own methods answer.
 - **Order.** Hints keep installation order, and each hook's strings keep their own. Each hook receives the failure and its context alone and never another hook's hints, so no plugin removes or rewords another's, and two plugins that return the same line print it twice.
 - **Candidates.** A hook that suggests a name reads its candidates from the graph: `graph.globals` and `command.options` for an option spelling, and `command.children` for a Command name. It leaves out what [completion](#completion) leaves out, by the node facts: a hidden or deprecated member, and every alias, since a child's `name` is its canonical name. `UnknownOptionError` carries no accepted spellings, and `candidates` on the routing errors leaves out hidden and deprecated children, the same rule. A hint adds a line; a plugin that wants the near match inside the sentence itself overrides the failure's view, as the [suggestions](#suggestions) plugin does.
@@ -2995,7 +3299,7 @@ The published `ExitCode` type widened from `0 | 1 | 2` to add the two cancellati
 
 ### Plugin declaration errors
 
-Each rule below is a `DeclarationError` with code 1 that throws at the moment [Declaration faults](#declaration-faults) assigns it. The following reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's definition, `options` record, single option declaration, `middleware` object, `onCommandAttach`, `onGraphBuilt`, and `onFailure` functions, `extensions` list, `views` list, `signals` list, and `commands` list; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `AnyExtension` requires one; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin's option with a presence rule, since `GlobalOptionConfig` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options. The identity rule reaches every author, because the types accept any string.
+Each rule below is a `DeclarationError` with code 1 that throws at the moment [Declaration faults](#declaration-faults) assigns it. The following reach JavaScript authors alone, because the types already reject the declaration: every shape rule on the `plugins` slot and on one plugin's definition, `options` record, single option declaration, `middleware` object, `onCommandAttach`, `onGraphBuilt`, and `onFailure` functions, `extensions` list, `views` list, `failureEncoders` list, `signals` list, and `commands` list; an `encodeFailure()` media type that is not a string or encoder that is not a function; a `views` entry that is neither a declared view nor an override, since the list is typed as `ViewContribution[]`; the two `extensions` rules a plugin's own list carries, a value that is not a descriptor and a descriptor with no schema; a descriptor whose `collect` is not a Boolean, since `AnyExtension` requires one; an `extensions` entry on a declaration that is not an extension value; an extension value on the wrong target, since each config object's `extensions` slot is typed by target; a signal outside the closed set, since the `signals` list is typed by that set; and a plugin's option with a presence rule, since `GlobalOptionConfig` omits those keys. The activation-name rule reaches a TypeScript author only for a plugin that declares no options. The identity rule reaches every author, because the types accept any string.
 
 | Rejected declaration                             | Diagnostic                                                                                                                                                                              | Rule |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
@@ -3027,6 +3331,10 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 | A `translate()` key that is not a class          | `translate() received a key that is not a class. Supply an error class, such as SyntaxError.`                                                                                          | `@loomcli/core/translation-key` |
 | A `translate()` key that is a failure class      | `translate() received a failure class as its key. Key the translation on the foreign class it replaces.` A key that is not a class reports the row above first. | `@loomcli/core/translation-key` |
 | A translator that is not a function              | `translate() received a translator that is not a function. Supply a function that returns a failure or undefined.`                                                                     | `@loomcli/core/not-a-function` |
+| A `failureEncoders` entry that is not an encoding | `Plugin "@acme/json" holds a failure encoder entry that is not an encoding. Supply the value returned by encodeFailure(mediaType, encoder).` A `failureEncoders` value that is not an array reads `Plugin "@acme/json" declares failureEncoders that are not an array. Supply a list of values returned by encodeFailure(mediaType, encoder).` under `@loomcli/core/not-a-list`. | `@loomcli/core/foreign-value` |
+| An `encodeFailure()` media type that is not a string | `encodeFailure() received a media type that is not a string. Supply a media type such as "application/json".` | `@loomcli/core/media-type` |
+| An encoder that is not a function                | `encodeFailure() received an encoder that is not a function. Supply a function of the failure form that returns a string.` | `@loomcli/core/not-a-function` |
+| Two failure encoders for one media type          | `Plugin "@acme/json" registers two failure encoders for "application/json". Register one.` `plugin()` throws it. Two plugins read `Plugin "@acme/json" registers a failure encoder for "application/json", which plugin "@loomcli/plugins/format" already registers. Install one of them.`, which the Application constructor throws, with a finding for each entry. | `@loomcli/core/failure-encoder-taken` |
 | A `diagnosticRule()` identity outside the grammar | `Diagnostic rule "Retry Limit" has no package part, or a subpath or rule name that is not kebab-case. Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".` An empty segment, an uppercase letter in any segment, and a trailing `/` read the same sentence.                   | `@loomcli/core/rule-identity` |
 | A `diagnosticRule()` with an empty headline or explanation | `Diagnostic rule "@acme/retry/retry-limit" declares an empty headline. Supply a short noun phrase.` An empty explanation reads `declares an empty explanation. Supply prose that says why the rule exists.` | `@loomcli/core/rule-prose` |
 | A `diagnosticRule()` docs value that is not a URL | `Diagnostic rule "@acme/retry/retry-limit" declares docs that are not a URL. Supply an absolute https URL, or omit docs.`                                                             | `@loomcli/core/rule-docs` |
@@ -3681,7 +3989,7 @@ The implementation re-pins hand-written help pages and version lines against bui
 
 ### Formatter
 
-The formatter is `@loomcli/plugins/format`. Its factory `format(settings?)` takes one optional setting, `short`, the short spelling `--format` takes, under the convention of [Plugin settings](#plugin-settings), and with none `--format` has no short spelling. It declares no global option and claims no slot. It ships two views, `json()` and `jsonl()`, one hook that puts `--format` on every Command that declares a [result](#results), and one always-on middleware that copies a supplied name into `view`. The plugin owns the encodings and the option; core owns the selection.
+The formatter is `@loomcli/plugins/format`. Its factory `format(settings?)` takes one optional setting, `short`, the short spelling `--format` takes, under the convention of [Plugin settings](#plugin-settings), and with none `--format` has no short spelling. It declares no global option and claims no slot. It ships two views, `json()` and `jsonl()`, one hook that puts `--format` on every Command that declares a [result](#results), one always-on middleware that copies a supplied name into `view`, and two [failure encoders](#failure-encoders), for `application/json` and `application/jsonl`. The plugin owns the encodings and the option; core owns the selection.
 
 ```ts
 // @loomcli/plugins/format
@@ -3719,6 +4027,8 @@ export const textstat = new Application('textstat', { plugins: [help(), version(
 $ textstat --format json one.txt      # the rows as one JSON array on stdout, warnings on stderr
 $ textstat --format yaml one.txt
 textstat: Option "--format": Supply one of table, json, jsonl.
+$ textstat --format json --metric nope one.txt
+{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--metric\": Expected one of: bytes, words, lines.","hints":["Run \"textstat --help\" to see the usage."]}}
 $ jsonkit get --format json user.name -f doc.json
 jsonkit: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".
 Run "jsonkit get --explain" to explain this command.
@@ -3751,7 +4061,8 @@ GLOBAL OPTIONS
 - **Views.** `json()` and `jsonl()` are whole views: under `result<Value>` they receive the value, and under `rows<Row>` core collects the sequence and they receive the array. `map` reshapes what they receive, identity by default. They are bare pack views under [Row views](#row-views), typed by contextual typing inside a `views` record and stated, `json<Summary>()`, when hoisted or written as the second argument of `out.render`. They render as ordinary views with the plugin uninstalled, so a Command that names `json: json()` first prints JSON by default with no `--format` anywhere. `json()` declares the [media type](#media-types) `application/json` and `jsonl()` declares `application/jsonl`, whatever `map` they take and whatever key holds them.
 - **Bytes.** `json()` writes `JSON.stringify(mapped, null, 2)` and one newline. `jsonl()` writes one line per element when the mapped value is an array, each `JSON.stringify(element)` and one newline, and one such line otherwise; an empty array prints nothing. `toJSON` is honored and an `undefined`, function, or symbol property is dropped, as `JSON.stringify` does. A value that encodes to nothing, `undefined` at the top, or that `JSON.stringify` throws on, a `bigint` or a cycle, makes the view throw `The value cannot be encoded as JSON. Emit plain JSON data from the action.`, or for `undefined`, `The value cannot be encoded as JSON, because it is undefined. Emit plain JSON data from the action.`, reported through the output-view row of the [Failure contract](#failure-contract). The message carries no engine reason, which differs between runtimes; the thrown error keeps the engine's error as its `cause`. The text is data: each view escapes it through `style.escape` and replaces every character from U+007F to U+009F with its `\uXXXX` escape, four lowercase hex digits, so nothing the [rendering policy](#rendering-policies) would strip or read as a terminal control reaches it, and applies no style, so the bytes are the same under every capability.
 - **The hook.** A Command with no result is returned unchanged. On one with a result, the hook appends `json` and then `jsonl` to the `views` record where the record lacks the key, so an author's own `json: json({ map })` or `json: myView` is kept as written and the default is unchanged, then declares the local string option `format` after the author's options, with the short spelling `settings.short` names, or none when it is omitted, `control: true` under [Control options](#control-options), and no default, the description `Select the output format, <default> by default.`, where `<default>` is the declared default at that hook, and a validator that accepts each key and returns the issue `Supply one of <names>.` for anything else. The validator also accepts `ndjson` and transforms it to `jsonl`, unless the record names `ndjson` itself; `ndjson` is an unadvertised alias under [Aliases](#aliases). The validator maps `ndjson` to `jsonl` before it checks the record's keys, so the option's [input schema](#input-schema) is the enum of the record's keys and the unadvertised alias stays out of it. The option is an ordinary local option in every respect: parsed at local placement, on the help page as `--format <format>`, or `-f, --format <format>` under `format({ short: 'f' })`, with its description and its accepted values, under the node's `options` in `inspect()`, reaching the action at run time under `options.format` and absent from its types. `format()` judges its settings at its own call through core's [`checkShortSetting`](#plugin-settings), so settings that are not an object are the `@loomcli/core/not-an-object` fault and a short spelling that is not one ASCII letter is the `@loomcli/core/short-alias` fault every option's short spelling answers, each thrown from `format()` with a finding that quotes the `format()` call and names the plugin. A key or spelling collision with an option the Command, the Application, or another plugin declares, the chosen short spelling included, is the hook-collision build error, naming the plugin, the Command, and the declaration that already holds the name or spelling, and the developer resolves it; the plugin offers no rename. A plugin whose hook adds a view installs ahead of `format()` if `--format` is to accept its name. The same order lets the description reflect a hook's changed default.
-- **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and `request` holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault leaves `request` at `null` and is raised at the dispatch boundary unless a later middleware takes over, so `--format yaml` is the validator's issue, exit 2, and `--format yaml --help` with help installed after the formatter still prints the page. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
+- **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and [`ownOptions`](#middleware) holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. A held fault on another input leaves `format` in `ownOptions`, so the selection stands for the failure, and the fault is raised at the dispatch boundary unless a later middleware takes over. A `--format` its validator rejected is absent from `ownOptions`, so `--format yaml` is the validator's issue, exit 2, written as text, and `--format yaml --help` with help installed after the formatter still prints the page.
+- **The failure encoders.** The plugin registers one encoder for `application/json` and one for `application/jsonl`, the media types its two views declare, so a failed run whose selected view is a `json()` or `jsonl()` view writes its [failure form](#the-failure-form) as JSON. Both write the same bytes: one line, `JSON.stringify({ error: form })` with the form's keys in the order `code`, `exitCode`, `message`, `hints`, then one newline, to stderr. Every character from U+007F to U+009F is replaced by its `\uXXXX` escape, four lowercase hex digits, as the views replace it, and no style applies. An author's own view that declares either media type selects the same encoder. `--format` on a Command with no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
 
 ```ts
 // src/format/middleware.ts, loaded on every invocation that reaches it
@@ -3760,7 +4071,8 @@ import type { Middleware } from '@loomcli/core';
 import type { format } from './plugin.js';
 
 const middleware: Middleware<typeof format> = async (context) => {
-  const selected = context.request?.options.format;
+  // A hook-declared option, so its value is unknown to the types; it stands under a held fault.
+  const selected = context.ownOptions.format;
   if (context.view !== null && typeof selected === 'string') {
     context.view = selected;
   }
@@ -3772,7 +4084,7 @@ export default middleware;
 
 #### Formatter example coverage
 
-The formatter increment is proven when textstat installs `format({ short: 'f' })` and jsonkit installs `format({ short: 'o' })`, after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat -f json one.txt` and `textstat --format json one.txt` print the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths -o jsonl -f doc.json` and `jsonkit paths --format jsonl -f doc.json` print one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description names the declared default, as specified by the [help restyle](#help-and-version-restyle), and whose [accepted values](#accepted-values) list the view names. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, the hook-collision error against a local, a global, and another plugin's `format`, `format({ short: 'f' })` putting `-f` on the help row and selecting a view through it, its short spelling colliding with a local option's and with help's `-h`, and `format()` throwing at its call for `'fo'`, `'-f'`, `'1'`, `''`, `'é'`, and `5` under the short-alias rule and for settings of `'f'`, `5`, `null`, and an array under not-an-object. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. Each case runs under Node and Bun.
+The formatter increment is proven when textstat installs `format({ short: 'f' })` and jsonkit installs `format({ short: 'o' })`, after `help()` and `version()` and ahead of the example plugin, and public APIs alone produce the transcript above: `textstat -f json one.txt` and `textstat --format json one.txt` print the rows as one indented array with the `--timing` line still on stderr, `textstat --format jsonl one.txt` prints one line per row, `textstat one.txt` prints its table, `jsonkit paths -o jsonl -f doc.json` and `jsonkit paths --format jsonl -f doc.json` print one line per `Entry`, `--format ndjson` prints the same bytes, and `--format json` prints one indented array. `textstat --help` prints the page under [The help page](#the-help-page) with its `--format` row, whose description names the declared default, as specified by the [help restyle](#help-and-version-restyle), and whose [accepted values](#accepted-values) list the view names. `inspect()` reports `['table', 'json', 'jsonl']` on textstat's root and `['list', 'table', 'json', 'jsonl']` on `paths`. The acceptance tests cover both views under both units with an empty array and with a map, a `bigint` and a top-level `undefined` as view faults, U+009B and U+001B inside a string printed as escapes under `color: 'never'` and `'always'` alike, an author-declared `json` kept with its map and position, an author-declared `ndjson` key that the alias no longer serves, `--format yaml`, `--format` on a no-result Command, `--format` twice and with no value, an omitted `--format` leaving an earlier plugin's selection in place, `--format yaml --help` printing the page, the hook-collision error against a local, a global, and another plugin's `format`, `format({ short: 'f' })` putting `-f` on the help row and selecting a view through it, its short spelling colliding with a local option's and with help's `-h`, and `format()` throwing at its call for `'fo'`, `'-f'`, `'1'`, `''`, `'é'`, and `5` under the short-alias rule and for settings of `'f'`, `5`, `null`, and an array under not-an-object. The lifecycle cases live with the [plugin example coverage](#example-coverage-3): a fixture hook declaring an option the action reads at run time and `request` carries, the hook receiving the root, `result` and `hasAction` read from a hook, two plugins' hooks in order with the later replacing a view, each hook build error, `request` holding values on a valid invocation and `null` under a held fault and on a group, a takeover under a held fault and under a throwing validator exiting 0 with no diagnostic, an always-on wrapper ahead of help reaching help's takeover, the held fault raised at the boundary with its code and rank and ranking ahead of a bad `view`, a run cancelled inside a validator and one cancelled mid-chain resolving the signal's code, `view` starting at the default and `null` on a no-result Command, the last assignment before the boundary winning across two middleware, an assignment after the boundary changing nothing, and each `view` fault raised at the boundary and unobserved under a takeover. The two failure encoders' lines are pinned under [Failure encoders acceptance](#failure-encoders-acceptance), and a fixture middleware reads its own global and hook-declared options from `ownOptions` under a held fault on another input, and finds an option absent when its validator rejected the option's own value. Each case runs under Node and Bun.
 
 ### Table
 
@@ -4002,7 +4314,7 @@ interface ManifestCommand {
   readonly children: readonly ManifestCommand[];
 }
 interface ManifestFailure {
-  readonly name: string;
+  readonly code: string; // the class's failure code, in place of the retired hand-written name
   readonly exitCode: number;
   readonly meaning: string;
 }
@@ -4118,12 +4430,12 @@ type ManifestOption =
     "result": null,
     "failures": [
       {
-        "name": "path-not-found",
+        "code": "path-not-found",
         "exitCode": 65,
         "meaning": "The path names no value in the document."
       },
       {
-        "name": "invalid-json",
+        "code": "invalid-json",
         "exitCode": 65,
         "meaning": "The document is not valid JSON."
       }
@@ -4168,16 +4480,16 @@ import { z } from 'zod';
 
 // The pack's shared line and prose rules, which help's schema also uses.
 import { line, prose } from '../lines.js';
-// failure accepts a class that extends LoomError and outputs its declared exit code;
-// failureName accepts a kebab-case name.
-import { failure, failureName } from './failures.js';
+// failureEntry accepts { failure, meaning }, where failure is a class that extends LoomError,
+// and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
+import { failureEntry } from './failures.js';
 
 export const manifestCommand = extension(`${Package.name}/manifest/command`, {
   collect: true,
   schema: z.object({
     details: prose.optional(),
     examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
-    failures: z.array(z.object({ failure, meaning: line, name: failureName })).optional(),
+    failures: z.array(failureEntry).optional(),
   }),
   target: 'command',
 });
@@ -4209,21 +4521,20 @@ import { getValue } from './actions/get-value.js';
 import { InvalidJsonError } from './translators.js';
 
 export class PathNotFoundError extends FatalError {
+  static override readonly code = 'path-not-found';
   static override readonly exitCode = EX_DATAERR;
   // ...
 }
 
-// Shared by every Command that reads a document.
-export const readFailures = [
-  { failure: InvalidJsonError, meaning: 'The document is not valid JSON.', name: 'invalid-json' },
-];
+// Shared by every Command that reads a document. InvalidJsonError declares the code invalid-json.
+export const readFailures = [{ failure: InvalidJsonError, meaning: 'The document is not valid JSON.' }];
 
 export const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [
     manifestCommand({
       failures: [
-        { failure: PathNotFoundError, meaning: 'The path names no value in the document.', name: 'path-not-found' },
+        { failure: PathNotFoundError, meaning: 'The path names no value in the document.' },
         ...readFailures,
       ],
     }),
@@ -4233,12 +4544,13 @@ export const get = new Command('get', {
 
 A Command states the failures it can raise, each with the exit code its class declares and one line of meaning, so an agent reading the manifest knows what a code means before it runs the Command. The list is the manifest plugin's own fact, set by the author and by plugins, and core never checks it: the manifest is as accurate as its declarations.
 
-- **An entry.** `failure` is the class, and the extension reads its `exitCode` when the value is made, as [Declared exit codes](#declared-exit-codes) lets a projection read it without an instance. The schema outputs `{ name, exitCode, meaning }`, plain data alone as every extension value holds, so the class never reaches the graph. The schema's input type for `failure` is `unknown`, because no typed path names a class without an assertion, so a value that is not a failure class is rejected at run time alone. `name` is kebab-case and written by the author, because a class name does not survive a minifying build. `meaning` is one line. A value that is not a class extending `LoomError`, a name that is not kebab-case, and a meaning that is not one line are rejected at the call by the extension's schema. A class whose code is not declarable is rejected there too, with the sentence core throws when it constructs that class. The schema guards every read of the class, so it answers synchronously and the author's error never escapes the call. A static `exitCode` getter that throws reads as a code that is not a finite number. A `prototype` read that throws, such as a proxy's, reads as a value that is not a failure class. A static `name` that is not a string is read as text, as core reads it, so `static name = 42` reads `Failure class "42"`. A static `name` that throws, or that cannot be read as text, names the class in the sentence as the empty name an anonymous class has, `Failure class ""`.
+- **An entry.** `failure` is the class, and the extension reads its [failure code](#failure-codes) and its `exitCode` when the value is made, as [Declared exit codes](#declared-exit-codes) lets a projection read a code without an instance. The schema outputs `{ code, exitCode, meaning }`, plain data alone as every extension value holds, so the class never reaches the graph. The schema's input type for `failure` is `unknown`, because no typed path names a class without an assertion, so a value that is not a failure class is rejected at run time alone. The entry carries no hand-written name: `code` is the class's failure code, which survives a minifying build where a class name does not, so a class that declares none lists the code it inherits, such as `fatal`. `meaning` is one line. A value that is not a class extending `LoomError` and a meaning that is not one line are rejected at the call by the extension's schema. A class whose exit code is not declarable, or whose failure code is outside its grammar, is rejected there too, with the sentence core throws when it constructs that class. The schema guards every read of the class, so it answers synchronously and the author's error never escapes the call. A static `exitCode` getter that throws reads as an exit code that is not a finite number, and a static `code` getter that throws reads as a failure code that is not a string. A `prototype` read that throws, such as a proxy's, reads as a value that is not a failure class. A static `name` that is not a string is read as text, as core reads it, so `static name = 42` reads `Failure class "42"`. A static `name` that throws, or that cannot be read as text, names the class in the sentence as the empty name an anonymous class has, `Failure class ""`.
 - **Per Command.** A Command's list is what its own values declare. A Command inherits nothing from its parent or the root, so a failure every Command can raise is listed on each, and a shared constant, as above, keeps the lists in step.
 - **From plugins.** A plugin that raises its own failures, or ships [translators](#translators) that return them, supplies entries through its `onCommandAttach` hook, as help supplies `details`.
-- **The entry's field.** `failures` lists `{ name, exitCode, meaning }` in collection order. Two entries on one Command with the same name, code, and meaning print once, at the first. A Command that declares none reads `[]`.
-- **The table.** `exitCodes` keeps core's five rows and their text. Each other code any Command in the application declares, hidden Commands included, gains a row, `Declared failures: ` followed by the names that carry it, comma-separated, in the order they are first met walking the graph from the root depth-first, each Command's children in `CommandNode.children` order. A declared failure whose code is 1 or 2 adds no row, because core's row already explains the code, and it still appears in its Command's `failures`. The rows print in ascending numeric order, as JavaScript enumerates integer keys.
-- **One name, one failure.** A name means one failure across the application. Two entries with one name and a different code or meaning are a `DeclarationError` under the rule `@loomcli/plugins/manifest/failure-name-conflict` that the manifest's middleware throws when it builds the document, naming the name and both Commands, `Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select". Declare one code and one meaning for each failure name.`, which `run()` reports by build under [Development builds](#development-builds). Its two findings rebuild each declaration as the `manifestCommand({ failures: [...] })` entry the graph holds, `{ name, exitCode, meaning }`, mark the key the two disagree on, and note the Command that declares it. The rule takes the package's name and the manifest plugin's subpath, as the grammar of [diagnostic rules](#developer-diagnostics) and of issue codes reads it.
+- **The entry's field.** `failures` lists `{ code, exitCode, meaning }` in collection order. Two entries on one Command with the same failure code, exit code, and meaning print once, at the first. A Command that declares none reads `[]`.
+- **The table.** `exitCodes` keeps core's five rows and their text. Each other code any Command in the application declares, hidden Commands included, gains a row, `Declared failures: ` followed by the failure codes that carry it, comma-separated, in the order they are first met walking the graph from the root depth-first, each Command's children in `CommandNode.children` order. A declared failure whose code is 1 or 2 adds no row, because core's row already explains the code, and it still appears in its Command's `failures`. The rows print in ascending numeric order, as JavaScript enumerates integer keys.
+- **One code, one failure.** A failure code means one failure across the application. Two entries with one failure code and a different exit code or meaning, such as two `FatalError` subclasses that declare no code and different exit codes, are a `DeclarationError` under the rule `@loomcli/plugins/manifest/failure-name-conflict` that the manifest's middleware throws when it builds the document, naming the code and both Commands, `Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "select". Declare one exit code and one meaning for each failure code.`, which `run()` reports by build under [Development builds](#development-builds). Its two findings rebuild each declaration as the `manifestCommand({ failures: [...] })` entry the graph holds, `{ code, exitCode, meaning }`, mark the key the two disagree on, and note the Command that declares it. The rule takes the package's name and the manifest plugin's subpath, as the grammar of [diagnostic rules](#developer-diagnostics) and of issue codes reads it, and it keeps its identity now that it is keyed on the code.
+- **Breaking.** The entry's `name` is retired, and the document's failure entries carry `code` in its place. The entry's schema names `failure` and `meaning` alone, so a stale `name` is dropped as every key the schema does not name is, and TypeScript rejects it in an entry literal. An author moves each name onto its class as `static override readonly code`; two classes left on an inherited code with different exit codes or meanings report the one-code rule above. The implementation's change fragment states the migration.
 
 #### Manifest acceptance
 
@@ -4250,7 +4562,7 @@ The manifest is proven when both example applications install `manifest({ short:
 - **Short spellings.** `textstat -M`, `jsonkit -M`, and `jsonkit get -M` print the same documents as their long forms. A fixture proves no short spelling by default, either case of an ASCII letter accepted, invalid settings rejected at the factory call, and collisions with an application global, a local option, and another plugin reported under the ordinary spelling-taken rule.
 - **Takeover and precedence.** `jsonkit get --manifest` without its required argument prints with exit 0, and so does `--manifest` on a group in a fixture application. An unknown Command still reports its routing error. `jsonkit --help --manifest` prints help and `jsonkit --version --manifest` prints the version. A `--manifest` token after `--` is not read as the option.
 - **Entries.** Fixture applications cover: a hidden option and a hidden global omitted. An explicit `default: undefined` reads `null`. Two `manifestCommand` values with `details` produce two strings in collection order, and a value with neither field adds nothing. A U+009B inside a description prints as `\u009b`. A declared `bigint`, `NaN`, or function default, and a published schema holding `NaN`, fail the write. Keys follow the type block's order, `result` included, and no version field appears.
-- **Declared failures.** jsonkit declares `invalid-json` on every Command that reads a document and `path-not-found` on `get`, `keys`, and the deprecated `fetch`, which runs `get`'s action, all 65, and `jsonkit get --manifest` prints the document above byte for byte, with the `65` row between `2` and `130`. A malformed document given to each Command that declares `invalid-json` exits 65, the code its manifest lists. Fixture applications cover: a Command with no declared failures reading `[]`; a class that declares no code listing 1 with no row added; one name declared on two Commands with one code and meaning listed on both with one row; one name with two codes, and with two meanings, reporting its `DeclarationError`; an author value and a plugin's `onCommandAttach` value concatenated in collection order, with an identical pair printed once; a hidden Command's code joining the table; a value holding a function that is not a failure class, a name with an uppercase letter, and a meaning with a line break each rejected at the call; and a failure class whose static `exitCode` is 200 rejected at the call.
+- **Declared failures.** jsonkit declares `invalid-json` on every Command that reads a document and `path-not-found` on `get`, `keys`, and the deprecated `fetch`, which runs `get`'s action, all 65, and `jsonkit get --manifest` prints the document above byte for byte, with the `65` row between `2` and `130`. A malformed document given to each Command that declares `invalid-json` exits 65, the code its manifest lists. Fixture applications cover: a Command with no declared failures reading `[]`; a class that declares no exit code listing 1 with no row added; a `FatalError` subclass that declares no failure code listing `fatal`; one failure code declared on two Commands with one exit code and meaning listed on both with one row; one failure code with two exit codes, and with two meanings, reporting its `DeclarationError`; an author value and a plugin's `onCommandAttach` value concatenated in collection order, with an identical pair printed once; a hidden Command's code joining the table; a value holding a function that is not a failure class and a meaning with a line break each rejected at the call; a stale `name` dropped from the entry; and a failure class whose static `exitCode` is 200, and one whose static `code` is `'Bad_Code'`, rejected at the call.
 - **Control options and media types.** Every option entry carries `control`, `true` on `--help`, `--version`, `--manifest`, and `--format` and `false` on jsonkit's own options, and every `result` carries `mediaTypes`. A fixture whose `json` key holds a view that declares no media type, and whose `wire` key holds a mapped `json()`, reads its media types from the result, and the pinned documents are re-pinned for both fields.
 - **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs its chosen `-M`.
 
@@ -4474,7 +4786,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
   - A Command whose tool would list an argument and an option under one name, a global option included, is a build fault, because a tool's arguments are one object. An author's argument and option may share a name everywhere else.
 - **A call.** `tools/call` names a tool and passes `arguments`, an object or nothing. The plugin checks each key against the tool's `properties`: a key outside them, a hidden or control option's name included, is a tool execution error whose text is `Tool "jsonkit_get" takes no argument "x". Use a property its input schema lists.`, as the one text item with `isError: true` and no `structuredContent`, and no run starts. Otherwise the plugin splits the object, a key that names an argument going under `args` and every other key under `options`, and calls `invoke(path, { args, options }, { failure, signal, view })`. `view` is the first view, in record order, whose [media type](#media-types) is `application/json`, and it is omitted when the Command declares no result or no such view. `signal` is the call's own, which `notifications/cancelled` aborts. Values are not checked against the schema: [lowering](#invocation-by-name), the validators, and the run's own faults judge them and report by name.
 - **A completed call.** `isError` is `false`, and `content` holds `output` as one text item and then `messages` as another, each only when it is not empty, or one empty text item when both are. When the view the plugin selected declares `application/json`, `structuredContent` is `output` parsed as JSON, any JSON value; when `output` does not parse, because a view's media type is a promise core never checks, the result carries the text alone. A `jsonl` view's output stays text. No content item carries annotations.
-- **A failed call.** `isError` is `true`, and `content` holds `messages`, then any partial `output`, each only when it is not empty. The text is the failure's own report, by build, with no command-line hint, so a model reads what went wrong and what to do instead, and a defect in a distributed build reads the generic defect message. `structuredContent` is what the plugin's failure handler returns, `{ exitCode }`, the outcome's exit code. The failure's stable identity has its own contract, which lands before this plugin is built and adds the identity to this object under `failure`. The handler exposes neither the message nor the cause. With both `messages` and `output` empty, as under an override view that renders nothing, `content` holds one empty text item, as a completed call's does.
+- **A failed call.** `isError` is `true`, and `content` holds `messages`, then any partial `output`, each only when it is not empty. The text is the failure's own report, by build, with no command-line hint, so a model reads what went wrong and what to do instead, and a defect in a distributed build reads the generic defect message. `structuredContent` is what the plugin's failure handler returns, `{ exitCode, failure }`: the outcome's exit code and the handler context's [failure form](#the-failure-form), `{ code, exitCode, message, hints }`. The form follows the build, so a defect in a distributed build reads `internal` and `Something went wrong.`, and its hints are the by-name hints, with no command-line hint. The handler exposes no cause and no stack. With both `messages` and `output` empty, as under an override view that renders nothing, `content` holds one empty text item, as a completed call's does.
 - **A cancelled call.** The server sends no response for it, as the protocol asks.
 - **Protocol errors.** The plugin answers these as JSON-RPC errors rather than tool results, because no run started:
 
@@ -4528,8 +4840,8 @@ The protocol package is proven when its own conformance tests, which import noth
 The plugin is proven when jsonkit installs `mcp()` and opts in its root, `get`, `keys`, and `select`, each with `annotations: { openWorld: false, readOnly: true }`, and leaves `fetch`, `debug`, and `paths` out, and public APIs alone produce these results under Node and Bun:
 
 - **A real session.** A process test launches the built `jsonkit mcp` under Node and under Bun and drives a session over stdio: `server/discover` names `jsonkit`, its version, and its description; `tools/list` lists `jsonkit`, `jsonkit_get`, `jsonkit_keys`, and `jsonkit_select` in that order with the schemas above, `file` and `verbose` among each tool's properties, and no `help`, `version`, `manifest`, `format`, or `explain` property; and a call of each tool against a document file answers as below. Closing stdin ends the process with exit 0.
-- **Results.** `jsonkit_get` answers the value as text with no `structuredContent`; `jsonkit` answers the root's members as text and as `structuredContent`, the array its `json` view prints; `jsonkit_select` with an absent field answers the fields as text and the warning as a second text item; and a missing path answers `isError: true` with `Path not found: "missing". Run jsonkit keys to list the keys at the root.` and `structuredContent` holding exit code 65.
-- **Errors.** An unknown tool and non-object arguments answer `-32602`. A key outside the schema answers the plugin's tool execution error. A value of the wrong shape and a missing required argument answer `isError: true` with the by-name sentence and no help hint, and a malformed document answers 65.
+- **Results.** `jsonkit_get` answers the value as text with no `structuredContent`; `jsonkit` answers the root's members as text and as `structuredContent`, the array its `json` view prints; `jsonkit_select` with an absent field answers the fields as text and the warning as a second text item; and a missing path answers `isError: true` with `Path not found: "missing". Run jsonkit keys to list the keys at the root.` and `structuredContent` `{ exitCode: 65, failure: { code: 'path-not-found', exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list the keys at the root.', hints: [] } }`.
+- **Errors.** An unknown tool and non-object arguments answer `-32602`. A key outside the schema answers the plugin's tool execution error. A value of the wrong shape and a missing required argument answer `isError: true` with the by-name sentence, no help hint, and a form whose code is `invalid-input`, and a malformed document answers 65 with the code `invalid-json`. A fixture tool whose action throws a `TypeError` answers the form `internal` with `Something went wrong.` from a bundle.
 - **Cancellation and concurrency.** A fixture tool that waits on its signal is cancelled by `notifications/cancelled` and answers nothing while a second call answers. Two overlapping calls answer by their own ids. A run cancelled through a caller signal aborts both calls in flight.
 - **Fixtures.** Fixture applications prove a hidden Command that opts in listed, a deprecated one listed with its message opening the description, an alias never listed, a description and a property description override, annotations projected and omitted, the three build faults with their diagnostics in both builds, a property derived for each kind of input with a `null` schema, an array property for a multiple option, a mapped `json` view under another key chosen for `structuredContent`, a view under `application/json` whose text does not parse answering text alone, and the install refused on a root that declares arguments.
 - **Packed consumers.** `check:packed` installs the packed pack, imports `@loomcli/plugins/mcp` and `@loomcli/plugins/mcp/extension`, compiles against their declarations, finds no `@loom/mcp` among the tarball's dependencies, and serves an MCP session from a fixture application under Node and Bun.

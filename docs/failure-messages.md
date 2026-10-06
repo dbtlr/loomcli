@@ -71,6 +71,7 @@ The wording follows the status phrase web frameworks show for a 500, such as `In
 
 - **The exception to rule 2.** The generic message is the one operator message with no next step, because a defect has none Loom can name honestly. An author who has one adds it.
 - **Replacing it.** An author replaces the message with the existing `override(InternalError, view)` for defects and `override(DeclarationError, view)` for declaration faults, and adds a pointer, such as where to report the defect, through an `onFailure` hint.
+- **The failure form.** In a distributed build, a defect's [failure form](core.md#the-failure-form) carries the same generic message, `Something went wrong.`, and the code `internal`, so a JSON line or an invocation by name names no rule and no class either.
 - **The author's detail.** The author sees what broke and how to fix it in a [Developer Diagnostic](core.md#developer-diagnostics), which a [development build](core.md#development-builds) renders in place of the generic message. The packet built into the application decides which build a run is.
 
 ## 8. Classify an author fault that reaches a shipped application
