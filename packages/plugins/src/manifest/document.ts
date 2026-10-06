@@ -9,6 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { encodeText } from '../encode.js';
+import { isPlainJson } from '../plain-data.js';
 import { failureCodeConflict } from '../rules.js';
 import { manifestCommand } from './extension.js';
 
@@ -361,41 +362,6 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
     globals: visible(graph.globals).map(optionEntry),
     command: commandEntry(command),
   };
-}
-
-/**
- * Whether a value is plain JSON data: null, a Boolean, a finite number, a string, or arrays and
- * plain objects of these. Core copies every plain object it snapshots onto `Object.prototype`, so
- * a null-prototype object never reaches the document. Core also copies a value that holds itself
- * with its cycle, which no JSON text can carry, so a container that is one of its own `ancestors`
- * is not plain JSON data.
- */
-function isPlainJson(value: unknown, ancestors: ReadonlySet<object> = new Set()): boolean {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return true;
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value);
-  }
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !ancestors.has(value) &&
-    isPlainContainer(value, ancestors)
-  );
-}
-
-/** Whether an array or a plain object holds plain JSON data alone, under its `ancestors`. */
-function isPlainContainer(value: object, ancestors: ReadonlySet<object>): boolean {
-  const inner = new Set([...ancestors, value]);
-  if (Array.isArray(value)) {
-    return value.every((item: unknown) => isPlainJson(item, inner));
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return (
-    prototype === Object.prototype &&
-    Object.values(value).every((item: unknown) => isPlainJson(item, inner))
-  );
 }
 
 /** How a diagnostic names one input: an option by its spelling, an argument by its name. */

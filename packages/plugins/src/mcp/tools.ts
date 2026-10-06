@@ -1,6 +1,7 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
 
+import { isPlainJson } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 
 /**
@@ -96,26 +97,6 @@ function described(
   return description === undefined ? notice : `${notice}\n${description}`;
 }
 
-/** Whether a value is plain JSON data, which a schema's `default` can carry. */
-function isJsonData(value: unknown): boolean {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return true;
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value);
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonData);
-  }
-  if (typeof value !== 'object') {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return (
-    (prototype === Object.prototype || prototype === null) && Object.values(value).every(isJsonData)
-  );
-}
-
 /** A published schema without its top-level `$schema` key, whose dialect the protocol's matches. */
 function withoutDialect(schema: Schema): Schema {
   return Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$schema'));
@@ -161,7 +142,7 @@ function propertyDescription(property: Property): string | undefined {
 /** The input's declared default, when it is plain JSON data. */
 function propertyDefault(property: Property): { readonly default: unknown } | undefined {
   const { node } = property;
-  if (!('default' in node) || node.default === undefined || !isJsonData(node.default.value)) {
+  if (!('default' in node) || node.default === undefined || !isPlainJson(node.default.value)) {
     return undefined;
   }
   return { default: node.default.value };

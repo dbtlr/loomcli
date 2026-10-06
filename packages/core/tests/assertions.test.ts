@@ -2,27 +2,31 @@ import { readdir, readFile } from 'node:fs/promises';
 
 import { expect, test } from 'vite-plus/test';
 
-const source = new URL('../src/', import.meta.url);
+/** Every package in the repository, each of whose `src` directories ships to authors. */
+const packages = new URL('../../', import.meta.url);
 
 /**
- * The seams where validated `unknown` values meet declaration-inferred types. Nothing else.
+ * The seams where validated `unknown` values meet declaration-inferred types, by path under
+ * `packages`, across every package's sources. Nothing else.
  * `extension.ts` reads a stored output back from the record the graph keys by string identity,
  * after the descriptor that produced it has been compared by reference. `view.ts` reads one stored
  * view function back under the key `override()` typed it against. `output.ts` hands one result to
  * the view its own declaration named, out of the record that erased the data type on the way in.
  * `capture.ts` hands a declaring call the copy it took of a declaration under the declared type.
  * `invoke.ts` hands a call with no failure handler the failure itself as the outcome's `Mapped`,
- * which such a call infers as its default, `LoomError`.
+ * which such a call infers as its default, `LoomError`. The MCP plugin's `plugin.ts` hands
+ * `invoke` a client's named values, which `invoke` judges at run time as it judges any caller's.
  */
 const allowed = {
-  'capture.ts': 1,
-  'command.ts': 1,
-  'extension.ts': 1,
-  'invoke.ts': 1,
-  'output.ts': 1,
-  'style.ts': 1,
-  'validation.ts': 1,
-  'view.ts': 1,
+  'core/src/capture.ts': 1,
+  'core/src/command.ts': 1,
+  'core/src/extension.ts': 1,
+  'core/src/invoke.ts': 1,
+  'core/src/output.ts': 1,
+  'core/src/style.ts': 1,
+  'core/src/validation.ts': 1,
+  'core/src/view.ts': 1,
+  'plugins/src/mcp/plugin.ts': 1,
 };
 
 /**
@@ -58,12 +62,22 @@ function disablesAssertions(line: string) {
   return rules !== null && (rules === '' || rules.includes('no-unsafe-type-assertion'));
 }
 
+/** Every TypeScript source file under a package's `src`, by path under `packages`. */
+async function sourceFiles(): Promise<string[]> {
+  const files: string[] = [];
+  for (const name of await readdir(packages)) {
+    const source = `${name}/src/`;
+    const entries = await readdir(new URL(source, packages), { recursive: true }).catch(() => []);
+    files.push(...entries.filter((entry) => entry.endsWith('.ts')).map((entry) => source + entry));
+  }
+  return files;
+}
+
 async function collectSites(): Promise<{ escapes: string[]; sites: Site[] }> {
   const found: Site[] = [];
   const escaped: string[] = [];
-  const entries = await readdir(source, { recursive: true });
-  for (const file of entries.filter((entry) => entry.endsWith('.ts'))) {
-    const contents = await readFile(new URL(file, source), 'utf8');
+  for (const file of await sourceFiles()) {
+    const contents = await readFile(new URL(file, packages), 'utf8');
     const lines = contents.split('\n');
     lines.forEach((line, index) => {
       if (disablesAssertions(line)) {
@@ -77,7 +91,7 @@ async function collectSites(): Promise<{ escapes: string[]; sites: Site[] }> {
   return { escapes: escaped, sites: found };
 }
 
-test('every unsafe type assertion in core is a documented last resort', async () => {
+test("every unsafe type assertion in a package's sources is a documented last resort", async () => {
   const { escapes: found, sites } = await collectSites();
   expect(found).toEqual([]);
   const counts: Record<string, number> = {};

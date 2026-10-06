@@ -11,6 +11,7 @@ import type {
 } from '@loomcli/core';
 
 import Package from '../../package.json' with { type: 'json' };
+import { isRecord } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
@@ -87,15 +88,10 @@ function callResult(
   };
 }
 
-/** Whether a value is a JSON object, as a call's `arguments` must be. */
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** A call's arguments, an object or nothing, which reads as no arguments. */
 function argumentsOf(entry: ToolEntry, call: ToolCall): Readonly<Record<string, unknown>> {
   const received = call.arguments === undefined ? {} : call.arguments;
-  if (!isObject(received)) {
+  if (!isRecord(received)) {
     throw new ProtocolError(
       errorCodes.invalidParams,
       `Tool "${entry.name}" arguments must be an object. Supply a JSON object of named inputs.`,

@@ -14,11 +14,11 @@ import type {
   SourceResolver,
 } from '@loomcli/core';
 
+import { isRecord } from '../plain-data.js';
 import { configInput } from './extension.js';
 import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import type { config } from './plugin.js';
-import { isPlainObject } from './reading.js';
 
 /**
  * The configuration plugin's resolver. Its rules are the plugin contract: find the one file the run
@@ -51,7 +51,7 @@ const missing = Symbol('missing');
 function valueAt(object: Record<string, unknown>, segments: readonly string[]): unknown {
   let current: unknown = object;
   for (const segment of segments) {
-    if (!isPlainObject(current) || !Object.hasOwn(current, segment)) {
+    if (!isRecord(current) || !Object.hasOwn(current, segment)) {
       return missing;
     }
     current = current[segment];
