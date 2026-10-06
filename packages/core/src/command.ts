@@ -41,7 +41,7 @@ import {
   toFailure,
   reasonOf,
 } from './errors.js';
-import type { LoomError } from './errors.js';
+import type { InvokedBy, LoomError } from './errors.js';
 import {
   buildExtensions,
   extendStore,
@@ -91,7 +91,7 @@ import {
   tableEntries,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
-import { argumentSlot, candidatesOf } from './parse.js';
+import { candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
 import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
 import { brokenAttachHook, notAnObject } from './plugin-rules.js';
@@ -169,6 +169,8 @@ export interface DispatchInput {
   graph: () => CommandGraph;
   style: ContextualStyle;
   host: Host;
+  /** Runs another Command of this run's graph by name, which the action receives as `invoke`. */
+  invoke: ActionContext<unknown>['invoke'];
   /** The action's channel, whose `results` accepts whatever the routed declaration named. */
   out: Out<OpenResult>;
   passthrough: string[];
@@ -942,6 +944,7 @@ export function declareAction<Args, Options, Globals, Result>(
         return context.graph;
       },
       host: context.host,
+      invoke: context.invoke,
       options: context.options,
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
@@ -2136,7 +2139,17 @@ function bindDispatch<Args, Options, Globals>(
   action: Action<Args, Globals & Options>,
   globals: BuiltGlobals,
 ) {
-  return ({ command, graph, host, out, passthrough, signal, style, values }: DispatchInput) => {
+  return ({
+    command,
+    graph,
+    host,
+    invoke,
+    out,
+    passthrough,
+    signal,
+    style,
+    values,
+  }: DispatchInput) => {
     const bound = state.bind(values);
     // Last resort: no typed path exists.
     // The graph erases the binder's generic relationship.
@@ -2154,6 +2167,7 @@ function bindDispatch<Args, Options, Globals>(
         return graph();
       },
       host,
+      invoke,
       options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
@@ -2554,40 +2568,6 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
   return places;
 }
 
-/** One positional word bound to its slot: a variadic slot collects it, any other holds it. */
-function bindWord(
-  values: Map<InputDeclaration, string | string[]>,
-  slot: ArgumentSlot,
-  word: string,
-): void {
-  const bound = values.get(slot.input);
-  if (!slot.variadic) {
-    values.set(slot.input, word);
-  } else if (Array.isArray(bound)) {
-    bound.push(word);
-  } else {
-    values.set(slot.input, [word]);
-  }
-}
-
-/**
- * The words each positional slot received. Parsing already held the first positional no slot
- * accepts, so every positional here has a slot. An omitted required argument binds nothing and
- * reports as a missing input in the validation phase, so omission has one class whether the input
- * is an argument or an option. An empty variadic tail binds nothing, so validation reads it as
- * `[]` or reports the omission.
- */
-function bindArguments(command: BuiltCommand, positionals: readonly string[]) {
-  const values = new Map<InputDeclaration, string | string[]>();
-  for (const [position, word] of positionals.entries()) {
-    const slot = argumentSlot(command.arguments, position);
-    if (slot) {
-      bindWord(values, slot, word);
-    }
-  }
-  return values;
-}
-
 /** What one invocation reaches the middleware chain with. */
 export interface DispatchInvocation {
   /** The channel the action receives, which the results lane builds from the routed node. */
@@ -2599,6 +2579,10 @@ export interface DispatchInvocation {
   declaredValues: DeclaredValues;
   /** The graph `inspect()` returns for the run, built on its first read, which a source reads. */
   inspected: () => CommandGraph;
+  /** How the run received its inputs, which names every input a problem reports. */
+  invokedBy: InvokedBy;
+  /** Runs another Command of this run's graph by name, which the action receives. */
+  invoke: DispatchInput['invoke'];
   /** Offers a configuration source's foreign throw to the translators where its call settles. */
   offer: (thrown: unknown) => LoomError | undefined;
   signal: AbortSignal;
@@ -2676,7 +2660,7 @@ function parseLocal(routed: ParsedInvocation): LocalPhase {
     return { fault: new NonCallableCommandError(path, candidatesOf(command)), kind: 'held' };
   }
   return {
-    args: bindArguments(command, routed.positionals),
+    args: routed.args,
     dispatch,
     kind: 'parsed',
     options: routed.values.locals,
@@ -2733,6 +2717,7 @@ async function fillScope(
     globals: { global: true, inputs: graph.globals.inputs, values: globals },
     host: invocation.host,
     inspected: invocation.inspected,
+    invokedBy: invocation.invokedBy,
     locals:
       local.kind === 'parsed'
         ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
@@ -2781,6 +2766,7 @@ function validateInvocation(
     declaredValues: invocation.declaredValues,
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: parsed ? routed.command.inputs : [] },
+    named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
     passthrough: tailOf(local),
     places: invocation.places,
     signal: invocation.signal,
@@ -2816,6 +2802,7 @@ function readyDispatch(
           command: () => nodeAt(invocation.inspected(), path),
           graph: invocation.inspected,
           host: invocation.host,
+          invoke: invocation.invoke,
           out: channel.out,
           passthrough: local.passthrough,
           signal: invocation.signal,

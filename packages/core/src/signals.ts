@@ -62,6 +62,45 @@ interface SignalBracket {
 }
 
 /**
+ * The first cause to abort one run's private controller, which fixes the reason and the code; a
+ * later cause changes neither.
+ */
+function firstCause(controller: AbortController): {
+  cancel: (next: CancellationReason) => void;
+  reason: () => CancellationReason | undefined;
+} {
+  let reason: CancellationReason | undefined = undefined;
+  return {
+    cancel: (next) => {
+      if (reason) {
+        return;
+      }
+      reason = next;
+      controller.abort(next);
+    },
+    reason: () => reason,
+  };
+}
+
+/**
+ * Calls `listener` once `signal` aborts, at once when it has aborted already, and answers the call
+ * that ends the subscription.
+ */
+function subscribe(signal: AbortSignal | undefined, listener: () => void): () => void {
+  if (signal === undefined) {
+    return () => undefined;
+  }
+  if (signal.aborted) {
+    listener();
+    return () => undefined;
+  }
+  signal.addEventListener('abort', listener);
+  return () => {
+    signal.removeEventListener('abort', listener);
+  };
+}
+
+/**
  * The bracket for one run. Core subscribes to a caller's signal at run entry, and installs its own
  * process listeners only for the plugin that owns the signals slot, only after the graph has built,
  * and only until the run resolves. A process signal that arrives once the run is already cancelled
@@ -69,7 +108,7 @@ interface SignalBracket {
  * the process when no other listener remains. Core does not own the process.
  */
 function bracketRun(controller: AbortController, caller: AbortSignal | undefined): SignalBracket {
-  let reason: CancellationReason | undefined = undefined;
+  const first = firstCause(controller);
   let held: { handler: () => void; signal: ProcessSignal }[] = [];
 
   const release = () => {
@@ -79,37 +118,23 @@ function bracketRun(controller: AbortController, caller: AbortSignal | undefined
     held = [];
   };
 
-  const cancel = (next: CancellationReason) => {
-    if (reason) {
-      return;
-    }
-    reason = next;
-    controller.abort(next);
-  };
-
   const received = (signal: ProcessSignal) => {
-    if (reason) {
+    if (first.reason()) {
       release();
       process.kill(process.pid, signal);
       return;
     }
-    cancel({ source: signal });
+    first.cancel({ source: signal });
   };
 
-  const aborted = () => {
-    cancel({ cause: caller?.reason, source: 'caller' });
-  };
-
-  if (caller?.aborted === true) {
-    aborted();
-  } else {
-    caller?.addEventListener('abort', aborted);
-  }
+  const unsubscribe = subscribe(caller, () => {
+    first.cancel({ cause: caller?.reason, source: 'caller' });
+  });
 
   return {
     finish: () => {
       release();
-      caller?.removeEventListener('abort', aborted);
+      unsubscribe();
     },
     install: (owned) => {
       for (const signal of owned) {
@@ -120,9 +145,51 @@ function bracketRun(controller: AbortController, caller: AbortSignal | undefined
         held.push({ handler, signal });
       }
     },
-    reason: () => reason,
+    reason: first.reason,
   };
 }
 
-export type { CancellationCode, CancellationReason, ProcessSignal, SignalBracket };
-export { bracketRun, cancellationCode, isCancellationEcho, isProcessSignal };
+/**
+ * The run an action belongs to, as a call it makes reads it: the run's signal, and the reason the
+ * run's first cause fixed.
+ */
+interface ParentRun {
+  signal: AbortSignal;
+  reason: () => CancellationReason | undefined;
+}
+
+/**
+ * The bracket for one invocation by name. Its signal derives from the parent run's, when an action
+ * made the call, and from the caller's own, and the first to abort fixes the reason: a parent's
+ * abort carries the parent's reason, so the call resolves the parent's code, and the caller's own
+ * abort reads as a caller abort. It installs no process listener, whatever the signals owner
+ * claimed, so the call touches no process.
+ */
+function bracketCall(
+  controller: AbortController,
+  causes: { caller: AbortSignal | undefined; parent: ParentRun | undefined },
+): SignalBracket {
+  const { caller, parent } = causes;
+  const first = firstCause(controller);
+  // A parent's signal aborts only after its own first cause fixed the reason it carries.
+  const subscriptions = [
+    subscribe(parent?.signal, () => {
+      first.cancel(parent?.reason() ?? { source: 'caller' });
+    }),
+    subscribe(caller, () => {
+      first.cancel({ cause: caller?.reason, source: 'caller' });
+    }),
+  ];
+  return {
+    finish: () => {
+      for (const unsubscribe of subscriptions) {
+        unsubscribe();
+      }
+    },
+    install: () => undefined,
+    reason: first.reason,
+  };
+}
+
+export type { CancellationCode, CancellationReason, ParentRun, ProcessSignal, SignalBracket };
+export { bracketCall, bracketRun, cancellationCode, isCancellationEcho, isProcessSignal };

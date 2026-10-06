@@ -2,6 +2,7 @@ import type { Writable } from 'node:stream';
 
 import { captureDeclaration, unreadableArgument } from './capture.js';
 import { runInvocation } from './chain.js';
+import type { Invocation, StartingView } from './chain.js';
 import { portableName } from './command-rules.js';
 import {
   attachToRoot,
@@ -48,7 +49,8 @@ import {
   reasonOf,
   toFailure,
 } from './errors.js';
-import type { LoomError } from './errors.js';
+import type { InvokedBy, LoomError } from './errors.js';
+import type { FailureExitCode } from './exit-codes.js';
 import { storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
 import {
@@ -61,15 +63,27 @@ import {
 import type { FactSite } from './facts.js';
 import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
-import { destinationReport, reportFailure } from './hints.js';
+import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import { globalOptionAfterCommand } from './input-rules.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
+import {
+  captureSink,
+  fieldsOf,
+  invocationHost,
+  mappedFailure,
+  plainPolicy,
+  processFields,
+  readCall,
+} from './invoke.js';
+import type { InvocationFields, ReadCall } from './invoke.js';
 import { coreViews } from './lanes.js';
+import { lowerInvocation } from './lower.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
+import { parseInvocation } from './parse.js';
 import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js';
 import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
@@ -77,8 +91,8 @@ import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
-import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
-import type { CancellationCode, SignalBracket } from './signals.js';
+import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
+import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
 import { readTranslations, translateThrow } from './translators.js';
 import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
@@ -95,6 +109,9 @@ import type {
   NameConstraint,
   ExitCode,
   Host,
+  InvocationOutcome,
+  InvocationValues,
+  InvokeOptions,
   OptionConfig,
   OptionValue,
   ResultViews,
@@ -103,13 +120,14 @@ import type {
   RunOptions,
   ValidateOmittedConstraint,
 } from './types.js';
-import type { ArgumentInput, OptionInput } from './validation.js';
+import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
 import { checkDeclarations, prepareDeclaredValues } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
 /**
- * Every authoring call an Application can publish, beside `run()` and `name`, which always remain.
+ * Every authoring call an Application can publish, beside `inspect()`, `run()`, `invoke()`, and
+ * `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
  * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
  * to no bare token, so it has no name to alias.
@@ -505,7 +523,10 @@ class ApplicationBuilder<
    * are published first, so a build fault reports through them. The merged registry is published
    * once the build has succeeded, so a build fault never resolves through a plugin's overrides.
    */
-  private prepare(stage: PrepareStage): {
+  private prepare(
+    stage: PrepareStage,
+    reuse?: BuiltGraph,
+  ): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
     plugins: readonly BuiltPlugin[];
@@ -514,7 +535,8 @@ class ApplicationBuilder<
     stage.views([views]);
     stage.rendering(rendering);
     stage.plugins(plugins);
-    const graph = buildGraph(this.#root, this.#globals, plugins);
+    // An action's call reuses the graph its run built, so no lifecycle hook runs again.
+    const graph = reuse ?? buildGraph(this.#root, this.#globals, plugins);
     stage.views([views, ...contributors]);
     return { facts, graph, plugins };
   }
@@ -538,9 +560,76 @@ class ApplicationBuilder<
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
-    let stderr: Writable = process.stderr;
+    const end = await this.#execute(argvDoor(options));
+    return end.exitCode;
+  }
+
+  /**
+   * Runs one Command of a graph built for this call by its path, with named values in place of
+   * argv, captures what the run writes, and resolves a structured outcome. It touches no process.
+   */
+  invoke<Mapped = LoomError>(
+    path: readonly string[],
+    values: InvocationValues,
+    options?: InvokeOptions<Mapped> & {
+      readonly host?: Partial<Pick<Host, 'env' | 'cwd' | 'platform' | 'readSource'>>;
+    },
+  ): Promise<InvocationOutcome<Mapped>> {
+    return this.#invoke({ options, path, values }, undefined);
+  }
+
+  /**
+   * One invocation by name: the call read where it entered, the run on capture sinks, and the
+   * outcome, whose failure the caller's handler maps once the run has ended. An action's call
+   * reuses the graph its run built and reads its run's host fields and signal.
+   */
+  async #invoke<Mapped>(
+    call: {
+      path: readonly string[];
+      values: InvocationValues;
+      options: Parameters<typeof readCall<Mapped>>[0]['options'];
+    },
+    action: ActionCall | undefined,
+  ): Promise<InvocationOutcome<Mapped>> {
+    const read = readCall(call, action === undefined ? 'application' : 'action');
+    const sinks = { stderr: captureSink(), stdout: captureSink() };
+    const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
+    const overrides = 'call' in read ? read.call.host : {};
+    const end = await this.#execute(
+      nameDoor(read, {
+        action,
+        declared: this.#config.rendering,
+        fields: () => action?.fields ?? processFields(overrides),
+        streams,
+      }),
+    );
+    if (end.kind === 'cancelled') {
+      return { exitCode: end.exitCode, status: 'cancelled' };
+    }
+    const output = sinks.stdout.text();
+    const messages = sinks.stderr.text();
+    if (end.kind === 'completed') {
+      return { messages, output, status: 'completed' };
+    }
+    const { exitCode, path } = end;
+    const handler = 'call' in read ? read.call.failure : read.failure;
+    const failure = mappedFailure(end.failure, handler, {
+      application: this.#name,
+      exitCode,
+      path,
+    });
+    return { exitCode, failure, messages, output, status: 'failed' };
+  }
+
+  /**
+   * The one run body `run()` and `invoke()` share. The door decides what differs: where the run
+   * reads its inputs and host, where it writes, which signals cancel it, whether it builds its own
+   * graph or reuses an action's run's, and whether it touches the process.
+   */
+  async #execute(door: RunDoor): Promise<RunEnd> {
+    let stderr: Writable = door.stderr;
     let output: Output | undefined = undefined;
-    let code: ExitCode = 0;
+    let code: 0 | FailureExitCode = 0;
     let reportingFailed = false;
     // A registry that could not be built reports through core's defaults, not through itself.
     let registry: ViewRegistry | undefined = undefined;
@@ -548,17 +637,20 @@ class ApplicationBuilder<
     const faults: LoomError[] = [];
     // The failure this run reports as its primary outcome, so nothing reports it a second time.
     let primary: unknown = noPrimary;
+    // The failure that set this run's failure code, which an invocation by name hands its caller.
+    let decisive: LoomError | undefined = undefined;
     // Each failure a translator answered, keyed to the foreign throw it replaced.
     const translatedFrom = new Map<unknown, unknown>();
     // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
     let walked: readonly string[] = Object.freeze([]);
     let reached: BuiltRun | undefined = undefined;
-    // The host a failure's report reads, once it is captured; before that, the process's own.
+    // The host a failure's report reads, once it is captured; before that, the door's fallback.
     let reportHost: Host | undefined = undefined;
     const scene = (): FailureScene & { host: Host } => ({
       application: this.#name,
       built: reached,
-      host: (reportHost ??= captureHost(undefined, stderr)),
+      host: (reportHost ??= door.fallback(stderr)),
+      invokedBy: door.invokedBy,
       path: walked,
     });
     // What this run's build decides about its reports, shared by every report the run writes.
@@ -603,63 +695,80 @@ class ApplicationBuilder<
      */
     try {
       try {
-        const overrides = options?.host;
-        stderr = overrides?.stderr ?? stderr;
-        const host = captureHost(overrides, stderr);
+        const entered = door.enter();
+        stderr = entered.stderr ?? stderr;
+        const host = entered.host(stderr);
         reportHost = host;
-        const invocationOutput = new Output(host, controller.signal);
+        const invocationOutput = door.output(host, controller.signal);
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
-        signals = bracketRun(controller, checkSignal(options?.signal));
-        const built = this.prepare({
-          plugins: (plugins) => {
-            invocationOutput.configure(
-              policy,
-              plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
-            );
+        signals = entered.bracket(controller);
+        const { bound } = door;
+        const built = this.prepare(
+          {
+            plugins: (plugins) => {
+              invocationOutput.configure(
+                policy,
+                plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
+              );
+            },
+            rendering: (declared) => {
+              policy = door.rendering(declared);
+              invocationOutput.configure(policy, new Map());
+            },
+            views: (value) => {
+              registry = value;
+              invocationOutput.useViews(value);
+            },
           },
-          rendering: (declared) => {
-            const rendering = options?.rendering;
-            policy = { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
-            invocationOutput.configure(policy, new Map());
-          },
-          views: (value) => {
-            registry = value;
-            invocationOutput.useViews(value);
-          },
-        });
+          bound?.graph,
+        );
         const { graph } = built;
         // The graph `inspect()` returns, built at most once for the run, whoever reads it first.
         let inspectedGraph: CommandGraph | undefined = undefined;
         const { development } = this.#config;
-        const inspected = () =>
-          (inspectedGraph ??= inspectGraph(this.#name, graph, { ...built.facts, development }));
+        const inspected =
+          bound?.inspected ??
+          (() =>
+            (inspectedGraph ??= inspectGraph(this.#name, graph, { ...built.facts, development })));
         reached = { inspected, plugins: built.plugins };
         if (development) {
           // A development build asks every converter at build, so its check runs on every run.
           inspected();
         }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
-        const places = inputPlaces(graph);
-        const declaredValues = await prepareDeclaredValues(inputs, host, places);
+        const places = bound?.places ?? inputPlaces(graph);
+        const declaredValues =
+          bound?.declaredValues ?? (await prepareDeclaredValues(inputs, host, places));
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
            * The listeners the validated signals owner claimed. A build failure installs none, and
            * neither does a run the caller had already cancelled: it touches the process not at all.
+           * An invocation by name's bracket installs none either.
            */
           signals.install(ownedSignals(built.plugins));
+          const run = signals;
+          // An action's own call reuses this run's graph, host fields, and signal.
+          const action: ActionCall = {
+            bound: { declaredValues, graph, inspected, places },
+            fields: fieldsOf(host),
+            parent: { reason: () => run.reason(), signal: controller.signal },
+          };
           await runInvocation({
             channel: (binding) => invocationOutput.channel(binding),
             declaredValues,
             graph,
             host,
             inspected,
+            invoke: (path, values, options) => this.#invoke({ options, path, values }, action),
+            invokedBy: door.invokedBy,
             offer,
             out: output.out,
             places,
             plugins: built.plugins,
+            read: entered.read(host),
             report: (fault) => faults.push(fault),
             route: (path) => {
               walked = path;
@@ -667,6 +776,7 @@ class ApplicationBuilder<
             },
             signal: controller.signal,
             sourceOut: output.sourceOut,
+            start: entered.start,
             style: output.style,
           });
         }
@@ -687,7 +797,8 @@ class ApplicationBuilder<
         try {
           const failure = toFailure(error);
           code = exitCodeOf(failure);
-          output ??= new Output(captureHost(undefined, stderr), controller.signal);
+          decisive = failure;
+          output ??= door.output(door.fallback(stderr), controller.signal);
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
@@ -730,6 +841,8 @@ class ApplicationBuilder<
       for (const fault of faults) {
         if (!silenced(fault, controller.signal, cancellation())) {
           const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
+          // The first fault that sets the code after a primary outcome that succeeded decides it.
+          decisive = code === 0 ? fault : decisive;
           code = code === 0 ? own : code;
           try {
             const sink = output && { build, output, registry: registry ?? noViews, stderr };
@@ -764,20 +877,165 @@ class ApplicationBuilder<
        * changing it. The signal decides the code whatever the action did afterward, so this
        * reading comes last.
        */
-      code = cancellation() ?? code;
-      process.exitCode = code;
-      return code;
+      const cancelled = cancellation();
+      const exitCode: ExitCode = cancelled ?? code;
+      door.settle(exitCode);
+      if (cancelled !== undefined) {
+        return { exitCode: cancelled, kind: 'cancelled' };
+      }
+      if (code === 0) {
+        return { exitCode: code, kind: 'completed' };
+      }
+      // A run whose destination alone failed reports that defect, which is its failure.
+      const failure = decisive ?? destinationDefect(reportingCause);
+      return { exitCode: code, failure, kind: 'failed', path: walked };
     } finally {
       signals?.finish();
     }
   }
 }
 
+/** How one run ended, which `run()` reads the code of and `invoke()` builds its outcome from. */
+type RunEnd =
+  | { kind: 'cancelled'; exitCode: CancellationCode }
+  | { kind: 'completed'; exitCode: 0 }
+  | { kind: 'failed'; exitCode: FailureExitCode; failure: LoomError; path: readonly string[] };
+
+/**
+ * The graph an action's run built and validated, which a call the action makes reuses: no lifecycle
+ * hook runs again, and each declared default and implied value is that run's validated output.
+ */
+interface BoundGraph {
+  declaredValues: DeclaredValues;
+  graph: BuiltGraph;
+  inspected: () => CommandGraph;
+  places: InputPlaces;
+}
+
+/** What a call an action makes reads from its run: the graph, the four host fields, the signal. */
+interface ActionCall {
+  bound: BoundGraph;
+  fields: InvocationFields;
+  parent: ParentRun;
+}
+
+/** What one run reads at its entry, before the graph is built. */
+interface RunEntry {
+  /** The stderr the caller's host names, if it names one. */
+  stderr: Writable | undefined;
+  /** The run's host, captured around the stderr the run writes to. */
+  host: (stderr: Writable) => Host;
+  /** Subscribes the run's controller to whatever cancels it. */
+  bracket: (controller: AbortController) => SignalBracket;
+  /** Reads the run's inputs against the built graph. */
+  read: (host: Host) => Invocation['read'];
+  /** The view the run starts from, which an invocation by name's caller may select. */
+  start: StartingView | undefined;
+}
+
+/**
+ * What differs between `run()` and an invocation by name, so one run body serves both. A run reads
+ * argv and touches the process: it captures the real streams, installs the signals owner's
+ * listeners, and sets `process.exitCode`. An invocation by name reads named values, writes to
+ * capture sinks, resolves its output plain, and touches no process.
+ */
+interface RunDoor {
+  readonly invokedBy: InvokedBy;
+  /** The stream a report reaches until the run's host names its own. */
+  readonly stderr: Writable;
+  /** Reads what the caller passed, at run entry. */
+  enter: () => RunEntry;
+  /** The host a report reads when the run failed before its own was captured. */
+  fallback: (stderr: Writable) => Host;
+  /** The run's output, before the build hands it the declared policy. */
+  output: (host: Host, signal: AbortSignal) => Output;
+  /** The policy the run resolves its output by, from the Application's declared one. */
+  rendering: (declared: RenderingPolicy) => RenderingPolicy;
+  /** The graph an action's run built, which this run reuses, or none for a run that builds. */
+  bound: BoundGraph | undefined;
+  /** The process effect the run ends with, once its code is final. */
+  settle: (code: ExitCode) => void;
+}
+
+/** The door `run()` enters by: argv and the process's own host, signals, and exit status. */
+function argvDoor(options: RunOptions | undefined): RunDoor {
+  return {
+    bound: undefined,
+    enter: () => {
+      const overrides = options?.host;
+      return {
+        bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
+        host: (stderr) => captureHost(overrides, stderr),
+        read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
+        start: undefined,
+        stderr: overrides?.stderr,
+      };
+    },
+    fallback: (stderr) => captureHost(undefined, stderr),
+    invokedBy: 'argv',
+    output: (host, signal) => new Output(host, signal),
+    rendering: (declared) => {
+      const rendering = options?.rendering;
+      return { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
+    },
+    settle: (code) => {
+      process.exitCode = code;
+    },
+    stderr: process.stderr,
+  };
+}
+
+/**
+ * The door an invocation by name enters by: the call read where it entered, a host of capture
+ * sinks around four fields, a signal derived from the call's own and an action's run, and no
+ * process effect. A call that could not be read reports its defect from the entry.
+ */
+function nameDoor<Mapped>(
+  read: ReadCall<Mapped>,
+  setup: {
+    action: ActionCall | undefined;
+    declared: RenderingPolicy;
+    fields: () => InvocationFields;
+    streams: { stderr: Writable; stdout: Writable };
+  },
+): RunDoor {
+  const { action, declared, streams } = setup;
+  const host = () => invocationHost(setup.fields(), streams);
+  return {
+    bound: action?.bound,
+    enter: () => {
+      if ('fault' in read) {
+        throw read.fault;
+      }
+      const { call } = read;
+      return {
+        bracket: (controller) =>
+          bracketCall(controller, { caller: call.signal, parent: action?.parent }),
+        host,
+        read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
+        start: call.view,
+        stderr: undefined,
+      };
+    },
+    fallback: host,
+    invokedBy: 'name',
+    output: (captured, signal) => {
+      const output = new Output(captured, signal);
+      // A malformed call's report must already render plain, so the policy applies before the call is read.
+      output.configure(plainPolicy(declared), new Map());
+      return output;
+    },
+    rendering: plainPolicy,
+    settle: () => undefined,
+    stderr: streams.stderr,
+  };
+}
+
 /**
  * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
- * `inspect()`, `run()`, and `name`. Every authoring call returns a new declaration value, leaves
- * its receiver unchanged, and publishes only the calls that are still valid after it. `inspect()`,
- * `run()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
+ * `inspect()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new declaration
+ * value, leaves its receiver unchanged, and publishes only the calls that are still valid after it.
+ * `inspect()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
  * It defaults to the state after `action()`, which publishes the fewest calls, so
  * `Application<A, O, G>` accepts an application in any state, a finished one included.
  */
@@ -794,6 +1052,7 @@ export type Application<
   | typeof declaredTypes
   | 'extend'
   | 'inspect'
+  | 'invoke'
   | 'name'
   | 'run'
   | State

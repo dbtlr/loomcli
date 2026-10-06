@@ -1040,3 +1040,49 @@ test.each([
 ])('config(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });
+
+/** The outcome the fixture prints when it runs the root by name with these values. */
+function invokedRoot(space: Workspace, values: unknown, env: Record<string, string> = {}): unknown {
+  const result = invoke(fixture, ['invoke', JSON.stringify(values)], {
+    cwd: space.root,
+    env: { FIXTURE_CWD: space.project, HOME: space.home, USERPROFILE: space.profile, ...env },
+  });
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return JSON.parse(result.stdout);
+}
+
+test(
+  'in an invocation by name, a wrong value from the file names its option by declared name, with no help hint',
+  inWorkspace((space) => {
+    space.write('.app.json', json({ limits: { bytes: true } }));
+    expect(invokedRoot(space, {})).toEqual({
+      exitCode: 2,
+      messages: 'app: Option "limit" (from limits.bytes in .app.json): Use a string or a number.\n',
+      output: '',
+      status: 'failed',
+    });
+  }),
+);
+
+test(
+  'in an invocation by name, a named file that cannot be used names the config option by its declared name',
+  inWorkspace((space) => {
+    expect(
+      invokedRoot(space, { options: { config: 'missing.json' } }, { FIXTURE_VIEWS: 'input' }),
+    ).toEqual({
+      exitCode: 2,
+      messages: `${json([
+        {
+          input: { global: true, kind: 'option', name: 'config' },
+          issues: [
+            { message: 'File "missing.json" does not exist. Supply the path of an existing file.' },
+          ],
+          reason: 'invalid',
+          spelling: 'config',
+        },
+      ])}\n`,
+      output: '',
+      status: 'failed',
+    });
+  }),
+);

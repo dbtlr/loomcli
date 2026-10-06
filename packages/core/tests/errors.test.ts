@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { undeclaredArgument, unknownOptionName } from '../src/errors.js';
 
 test.each([
   [
@@ -173,3 +174,10 @@ test.each(['null-prototype', 'null-prototype-application'])(
     });
   },
 );
+
+test.each([
+  ['unknownOptionName', unknownOptionName('lound')],
+  ['undeclaredArgument', undeclaredArgument(['get'], 1, 'extra')],
+])("%s's by-name error opens its stack with its own name and message", (_builder, error) => {
+  expect(error.stack?.startsWith(`${error.name}: ${error.message}\n`)).toBe(true);
+});

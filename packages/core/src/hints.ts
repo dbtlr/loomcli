@@ -3,7 +3,7 @@ import type { Writable } from 'node:stream';
 import { developerPlainText, developerText } from './developer.js';
 import type { DeveloperScene } from './developer.js';
 import { genericDefectText, InternalError, isAuthorFault, reasonOf } from './errors.js';
-import type { LoomError } from './errors.js';
+import type { InvokedBy, LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import { reportPlainly } from './output.js';
@@ -22,14 +22,16 @@ import { describeFailure } from './view.js';
 import type { FailureReport, FailureViewContext, ViewRegistry } from './view.js';
 
 /**
- * What one `onFailure` hook reads beside the failure. `application` and `path` are the values the
- * failure view reads, and `style` is the contextual style for stderr, so a hook escapes text the
+ * What one `onFailure` hook reads beside the failure. `application`, `path`, and `invokedBy` are the
+ * values the failure view reads, so a hook that points at a command line returns no hint for an
+ * invocation by name, and `style` is the contextual style for stderr, so a hook escapes text the
  * operator typed. `graph` is the frozen graph `inspect()` returns for the run, and `command` is the
  * node at `path` inside it; reading either builds the run's graph once.
  */
 interface FailureHookContext {
   readonly application: string;
   readonly path: readonly string[];
+  readonly invokedBy: InvokedBy;
   readonly style: ContextualStyle;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
@@ -53,12 +55,14 @@ interface BuiltRun {
 }
 
 /**
- * Where one failure happened, filled where `run()` catches it. `built` is absent for a failure
- * raised at or before graph build, which no hook runs for, because no valid graph exists.
+ * Where one failure happened, filled where `run()` or `invoke()` catches it. `built` is absent for
+ * a failure raised at or before graph build, which no hook runs for, because no valid graph exists.
+ * `invokedBy` says how the run received its inputs.
  */
 interface FailureScene {
   application: string;
   path: readonly string[];
+  invokedBy: InvokedBy;
   built: BuiltRun | undefined;
 }
 
@@ -185,7 +189,7 @@ function hookContext(
   scene: FailureScene & { built: BuiltRun },
   style: ContextualStyle,
 ): FailureHookContext {
-  const { application, built, path } = scene;
+  const { application, built, invokedBy, path } = scene;
   let command: CommandNode | undefined = undefined;
   return Object.freeze({
     application,
@@ -196,6 +200,7 @@ function hookContext(
     get graph() {
       return built.inspected();
     },
+    invokedBy,
     path,
     style,
   });
@@ -331,6 +336,7 @@ function repeatsGeneric(build: BuildReports, report: FailureReport, failure: Loo
 interface FailureContextScene {
   developer: DeveloperScene;
   hints: readonly string[];
+  invokedBy: InvokedBy;
   path: readonly string[];
 }
 
@@ -340,6 +346,7 @@ function failureContext(output: Output, scene: FailureContextScene): FailureView
     ...output.context('stderr'),
     application: scene.developer.application,
     hints: scene.hints,
+    invokedBy: scene.invokedBy,
     path: scene.path,
   });
 }
@@ -357,7 +364,12 @@ async function reportFailure(
 ): Promise<boolean> {
   const { broken, hints } = collectHints(scene, failure, sink.output.context('stderr').style);
   const developer: DeveloperScene = { application: scene.application, host: scene.host };
-  const report = await renderFailure(sink, failure, { developer, hints, path: scene.path });
+  const report = await renderFailure(sink, failure, {
+    developer,
+    hints,
+    invokedBy: scene.invokedBy,
+    path: scene.path,
+  });
   const plain = plainLines(report, broken, { build: sink.build, failure, scene: developer });
   if (plain !== '') {
     await reportPlainly(sink.stderr, plain);
@@ -375,13 +387,17 @@ function destinationReport(build: BuildReports, cause: unknown, scene: Developer
   if (!build.development) {
     return genericOnce(build, scene.application);
   }
-  const defect = new InternalError(brokenDestination, {
+  return `${build.reported ? '\n' : ''}${developerPlainText(destinationDefect(cause), scene)}`;
+}
+
+/** The defect a destination that failed a write the run owed it is. */
+function destinationDefect(cause: unknown): InternalError {
+  return new InternalError(brokenDestination, {
     cause,
     correction: 'Give run() host streams that accept every write until the run resolves.',
     sentence: 'Could not write invocation output.',
   });
-  return `${build.reported ? '\n' : ''}${developerPlainText(defect, scene)}`;
 }
 
 export type { BuildReports, BuiltRun, FailureHook, FailureHookContext, FailureScene };
-export { destinationReport, reportFailure };
+export { destinationDefect, destinationReport, reportFailure };

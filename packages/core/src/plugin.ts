@@ -172,6 +172,8 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
  * the ordinary channels a middleware and an action already read. Each request is a node inside
  * `graph`, the graph `inspect()` returns for the run. `out` is the channel a middleware receives,
  * and `style` the contextual style an action receives, so a source warns and escapes as they do.
+ * `invokedBy` reads `'name'` in a run `invoke()` started, where a problem names an option by its
+ * declared name, as core's own problems do there.
  */
 interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly host: Host;
@@ -180,6 +182,7 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly graph: CommandGraph;
   readonly out: Out;
   readonly style: ContextualStyle;
+  readonly invokedBy: 'argv' | 'name';
 }
 
 /**

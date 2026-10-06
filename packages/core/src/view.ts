@@ -71,14 +71,16 @@ type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) =
 
 /**
  * What every failure view reads: the stderr view context, where the run was, and the hints the
- * installed plugins' `onFailure` hooks returned. `run()` fills it where it catches the failure, so
- * no failure class carries these facts. `path` holds the canonical names routing walked, `[]`
- * before routing, and `hints` is `[]` when no hook contributed.
+ * installed plugins' `onFailure` hooks returned. `run()` and `invoke()` fill it where they catch the
+ * failure, so no failure class carries these facts. `path` holds the canonical names routing
+ * walked, `[]` before routing, and `hints` is `[]` when no hook contributed. `invokedBy` reads
+ * `'name'` for a run `invoke()` started, where no command line exists, and `'argv'` otherwise.
  */
 interface FailureViewContext extends ViewContext {
   readonly application: string;
   readonly path: readonly string[];
   readonly hints: readonly string[];
+  readonly invokedBy: 'argv' | 'name';
 }
 
 /**
