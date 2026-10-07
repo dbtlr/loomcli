@@ -15,7 +15,7 @@ modified: 2026-10-07
 
 That design asks every author to keep a file, import it, and wire it into the Application, and it ties the distributed build to one `Bun.build` plugin, which the `bun build` command line cannot load. It also carries one fact. An application that checks for updates, prints its version and lane, or names the release asset it came from needs more: the version it was built from, the repository it was released from, and later how it was installed.
 
-A bundler `define` replaces an identifier with a value while it bundles. Verification against the toolchains Loom applications use established three facts. A define reaches code inside `node_modules`, so it reaches core's own modules. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one. esbuild, Rollup, and Vite each offer one. ADR-0050 rejected a define because running the source has no value for it; a `typeof` guard reads that absence as a fact of its own.
+A bundler `define` replaces an identifier with a value while it bundles. Verification against the toolchains Loom applications use established three facts. A define reaches code inside `node_modules`. The define reaches core only when the bundle includes `@loomcli/core`; a build that leaves core external reads `source`. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one. esbuild, Rollup, and Vite each offer one. ADR-0050 rejected a define because running the source has no value for it; a `typeof` guard reads that absence as a fact of its own.
 
 ## Decision
 

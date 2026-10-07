@@ -236,9 +236,9 @@ _Avoid_: Environment (for the whole object), process, platform, context
 The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an installation group. The build bakes them into the artifact, and core holds them on the host as `release`. An artifact built with none reads `source`.
 _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
-**Lane**:
-The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names.
-_Avoid_: Channel, track, dist-tag
+**Release lane**:
+The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, and the release facts name the field `lane`.
+_Avoid_: Lane (alone), channel, track, dist-tag
 
 **Development build**:
 An application whose release facts read `source` or `development`: the source run while the author works, an artifact built with no facts, or an artifact built for development. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
@@ -578,7 +578,11 @@ _Avoid_: Minor fragment, enhancement
 
 **Fix fragment**:
 A change fragment, named `<slug>.md` with no kind prefix, for a compatible correction. It advances the patch version.
-_Avoid_: Patch fragment, ordinary fragment, bugfix
+_Avoid_: Patch fragment, bugfix
+
+**Ordinary fragment**:
+A change fragment, named `<slug>.md`, that this repository's synchronized release uses for every change that is not breaking, under [ADR-0012](decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md). It advances the patch version. A package under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) splits it into the feature fragment and the fix fragment.
+_Avoid_: Patch fragment, minor fragment
 
 **Release cut**:
 The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release. It may also mark accepted the proposed decisions the release ships, and change nothing else.

@@ -62,7 +62,8 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 
 - **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>[-variant]`, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`, or `bun-linux-x64-musl`. The default is the compile target Bun names for the host. `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
 - **The entry.** `--entry` names the module that calls `run()`. The default is `src/main.ts`.
-- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`.
+- **The dependencies.** `loom build` bundles the package's dependencies, `@loomcli/core` included, so the define reaches core and the artifact reads the facts it bakes.
+- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`. A `bun-windows-*` target's output and asset names end in `.exe`, such as `dist/notes.exe` and `notes-windows-x64.exe`.
 - **The name.** A binary's default path and its asset name read the application's name from `package.json` `bin`: a string `bin` gives the package name without its scope, and an object `bin` with one key gives that key. `--name` overrides it. With no `bin`, or a `bin` with several keys, and no `--name`, a build that needs the name fails and names `--name`.
 - **The build.** `--build` takes `development` or `distributed`, and the default is `distributed`. Those are the `build` values the artifact reads.
 - **Watching.** `--watch` runs `bun build --watch` for the target and passes the facts with `--define`, with `build` set to `development`. It rebuilds on each change until it is stopped, and it writes as `bun build --watch` writes. `--watch` with `--build distributed` is an option error.
@@ -88,18 +89,18 @@ loom check [--application <module>]
 
 ```text
 $ loom check
--- UNDESCRIBED DECLARATIONS ----------------------------- @loomcli/core/undescribed
+-- MISSING DESCRIPTION ------------------------------- @loomcli/core/undescribed
 
 1 declaration has no description.
 ...
 warning: .changes/README.md differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.
 ```
 
-`loom check` reports every fault the package's application and code hold before anything runs.
+`loom check` reports every fault the package's application and code hold before anything runs, except a declared default or implied value its validator rejects, which only a run reports.
 
 - **The application module.** `--application` names the module that exports the Application. The default is `src/application.ts`. `loom check` imports it and finds the exported value that is an Application, whatever its export name. No Application, or more than one, fails the check and names the module. It never imports the entry, because the entry calls `run()`.
-- **The type pass.** It runs the package's own installed TypeScript, the `typescript` development dependency, against the package's `tsconfig.json`, emitting nothing, and prints what the compiler reports. Any compiler error fails the check. When the package installs no compiler or holds no `tsconfig.json`, the type pass is skipped with a one-line note, and the graph checks still run.
-- **The graph checks.** It reads no release facts, so the import is a source run, and it calls the Application's [`check()`](core.md#checking-the-declarations), which builds the graph with nothing run and returns every fault a development run reports before routing. A `DeclarationError` thrown while the module loads, at an authoring call or an attach, is a fault too, and so is any other throw while it loads.
+- **The type pass.** It runs the package's own installed TypeScript, the `typescript` development dependency, against the package's `tsconfig.json`, emitting nothing, and prints what the compiler reports. Any compiler error fails the check. The compiler resolves from the package directory, so a `typescript` hoisted to a monorepo root counts as installed. When no compiler resolves or the package holds no `tsconfig.json`, the type pass is skipped with a one-line note, and the graph checks still run.
+- **The graph checks.** It reads no release facts, so the import is a source run, and it calls the Application's [`check()`](core.md#checking-the-declarations), which builds the graph with nothing run and returns every fault a development run reports before routing, except a declared default or implied value its validator rejects. A `DeclarationError` thrown while the module loads, at an authoring call or an attach, is a fault too, and so is any other throw while it loads.
 - **Output.** Each fault prints as its [Developer Diagnostic](core.md#developer-diagnostics) on stderr, one blank line between faults. Any fault exits 1, and no fault exits 0.
 - **Drift.** A [managed file](#managed-files) whose content no longer matches its header draws one warning line naming the file. A warning never fails the check.
 - **Not yet.** A finding names no file or line. A later contract adds them.
@@ -125,13 +126,14 @@ loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
 ```sh
 printf -- '- Add the `--tag` option to `notes list`.\n' > .changes/feature.list-by-tag.md
 loom changelog check
+git add .changes && git commit -m 'Add list-by-tag fragment'
 loom changelog write --dry-run        # prints the section and 1.5.0, writes nothing
 loom changelog write --date 2026-10-07
 ```
 
 A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory, the version is the package's `package.json` `version`, and git tags never enter.
 
-- **Three kinds.** A fragment named `breaking.<slug>.md` is a breaking change, `feature.<slug>.md` a feature, and `<slug>.md` a fix. A bare `breaking.md` or `feature.md` is invalid. A fragment's body follows the grammar of the [fragment guide](../.changes/README.md), and a breaking fragment carries its `### Migration` section with the five labels. `.changes/README.md` is the guide, not a fragment.
+- **Three kinds.** A fragment named `breaking.<slug>.md` is a breaking change, `feature.<slug>.md` a feature, and `<slug>.md` a fix. A bare `breaking.md` or `feature.md` is invalid. A fragment's body follows the grammar of the fragment guide `loom init` writes: Markdown bullets with no frontmatter or headings, and for a breaking fragment one `### Migration` section with the five labels. A subdirectory or a non-Markdown file in `.changes/` is invalid. `.changes/README.md` is the guide, not a fragment.
 - **The bump.** The highest kind present decides the next version.
 
   | Current version | Highest kind present | Next version |
@@ -167,10 +169,12 @@ loom init [--only <piece>]... [--force]
 
 ```sh
 mkdir notes && cd notes
-loom init            # a new application: package.json, src/, .changes/README.md, and the skill
+bunx @loomcli/loom init   # a new application: package.json, src/, .changes/README.md, and the skill
 pnpm install
 loom check
 ```
+
+In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`, as the rest of this page writes it.
 
 `loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks. It writes two sorts of files: scaffold files, which become the author's at once, and managed files, which init keeps current.
 
@@ -181,7 +185,7 @@ loom check
 
 ### Scaffold files
 
-- **The files.** `src/application.ts` exports an Application named for the package, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`.
+- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps.
 - **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, `loom check`. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
 - **The application's name.** It is the `bin` key when `bin` is an object with one key, else the package name without its scope.
 - **Written once.** Init writes a scaffold file or key only when it is missing. It never overwrites an existing file or key and never tracks one afterward, because each is the author's code from the moment it is written.

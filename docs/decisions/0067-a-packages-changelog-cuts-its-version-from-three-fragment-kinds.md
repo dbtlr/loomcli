@@ -37,7 +37,7 @@ The contract and the acceptance are in [The package changelog](../toolchain.md#t
 
 ## Consequences
 
-`loom changelog write --dry-run` replaces the repository's `preview` for a package. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain.md#loom-init) writes it into each package. A fragment already named `feature.<slug>.md` in this repository was an ordinary fragment and stays one under ADR-0012's compiler.
+`loom changelog write --dry-run` replaces the repository's `preview` for a package. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain.md#loom-init) writes it into each package. A fragment already named `feature.<slug>.md` in this repository was an ordinary fragment and stays one under ADR-0012's compiler. The managed guide `loom init` writes covers `feature.`; this repository's guide keeps ADR-0012's two kinds.
 
 ## Status
 
