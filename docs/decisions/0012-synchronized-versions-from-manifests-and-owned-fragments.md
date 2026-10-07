@@ -4,7 +4,7 @@ title: ADR-0012 - Synchronized library versions derive from manifests and owned 
 description: Every publishable library shares one 0.x version read from package.json, never from tags. Each consumer-visible PR owns one change fragment, ordinary PRs cannot touch versions, and a maintainer-approved release-cut PR is the only path that writes them.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-07
+modified: 2026-10-07
 ---
 
 # ADR-0012 - Synchronized library versions derive from manifests and owned change fragments, and only a release cut changes them
@@ -30,3 +30,7 @@ The [changelog compiler](../changelog-compiler.md), the [PR guards](../pr-guards
 ## Consequences
 
 Replacement version overrides are rejected. Publication and recovery machinery, which is what publication records would serve, remains separate work and is not covered by this record.
+
+## Changelog
+
+- 2026-10-07: [ADR-0067](0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), proposed, generalizes this record's fragment and manifest rules to any one package, with its own `.changes/` and `CHANGELOG.md`, and adds a `feature.` kind. This record keeps governing this repository's synchronized release, its release cut, and its hidden commands. Every library here is below `1.0.0`, where a feature fragment advances the patch as an ordinary fragment does, so a cut computes the same version under either record.

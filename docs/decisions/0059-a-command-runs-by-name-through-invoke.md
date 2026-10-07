@@ -4,7 +4,7 @@ title: ADR-0059 - A Command runs by name through invoke
 description: Core gains invoke(path, values, options?), on the action context and on Application, which runs one Command of a built graph with named values lowered to the tokens argv would give, captures what the selected view and the lanes write, renders a failure's view into the captured messages and lets the caller's handler add structure, reports inputs by declared name, marks the failure and source contexts with invokedBy, and touches no process. run() is unchanged.
 status: accepted
 created: 2026-10-05
-modified: 2026-10-06
+modified: 2026-10-07
 ---
 
 # ADR-0059 - A Command runs by name through invoke
@@ -64,3 +64,4 @@ Accepted in 0.9.0.
 
 - 2026-10-05: Proposed with the contract.
 - 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, gives the outcome and the caller's handler the failure form. `failed` gains `form`, and the handler's context gains `form` beside `application`, `path`, and `exitCode`, so a caller reads the failure's code, exit code, message by build, and hints with no handler at all. The hints this record kept out of the handler now reach it as plain lines inside the form. `invoke` writes no encoded line: its `messages` keep the failure view's text whatever media type the selected view declares. A working directory that `app.invoke` cannot capture resolves `failed`, under [An unreadable working directory](../core.md#an-unreadable-working-directory). It binds with this record and ADR-0064.
+- 2026-10-07: [ADR-0065](0065-release-facts-on-the-host-say-how-the-running-application-was-built.md), proposed, adds `release` to the host fields this record lists: an action's `invoke` takes `env`, `cwd`, `platform`, `readSource`, and `release` from its run's host, and `app.invoke` captures those five or takes whole-field overrides of them. A `host` field outside the five is the `@loomcli/core/invoke-options` defect. It binds when that record is accepted.

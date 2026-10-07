@@ -6,6 +6,8 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 The changelog compiler is the first command group in the Loom CLI, `@loomcli/loom`, in `packages/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. `@loomcli/loom` is published with the libraries for its `@loomcli/loom/build` surface, and its version moves with theirs. Its release commands are hidden, so no listing advertises them.
 
+This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+
 `pnpm build` compiles the library, examples, and local Loom CLI. Running its changelog command group prepares release files.
 
 An agent release skill coordinates preparation and reviews the result. Merging the release PR publishes it through the [release workflow](release-workflow.md), which reconciles the registry, the version tag, and the GitHub Release with the manifest version.

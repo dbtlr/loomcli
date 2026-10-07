@@ -229,19 +229,23 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, and terminal facts. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts the build baked in. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
-**Packet**:
-The build-time fact file `loom.packet.json` at an application's package root, which the entry hands to the Application as data. Its `build` member says whether the application is a development build or a distributed build: the source tree's packet reads `development`, and the build writes `distributed` into the artifact through `packet()` from `@loomcli/loom/build`. An Application given no packet is distributed.
-_Avoid_: Environment, mode, profile, `NODE_ENV`
+**Release facts**:
+The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an installation group. The build bakes them into the artifact, and core holds them on the host as `release`. An artifact built with none reads `source`.
+_Avoid_: Packet, build info, environment, mode, `NODE_ENV`
+
+**Lane**:
+The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names.
+_Avoid_: Channel, track, dist-tag
 
 **Development build**:
-An application whose packet reads `development`, such as the source run while the author works. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
+An application whose release facts read `source` or `development`: the source run while the author works, an artifact built with no facts, or an artifact built for development. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
 _Avoid_: Debug mode, dev mode, source mode
 
 **Distributed build**:
-An application whose packet reads `distributed`, or that has no packet: what an operator installs. A defect or declaration fault that `run()` reports shows the generic defect message. Operator failures print the same bytes in both builds.
+An application whose release facts read `distributed`: what an operator installs. A defect or declaration fault that `run()` reports shows the generic defect message. Operator failures print the same bytes in both builds.
 _Avoid_: Production, release mode, shipped mode
 
 **Exit code**:
@@ -561,8 +565,20 @@ A publishable first-party package under `packages/`, a library or the `@loomcli/
 _Avoid_: Release target, public workspace
 
 **Change fragment**:
-A pending record of one pull request's consumer-visible changes and any required migration.
+A pending record of one pull request's consumer-visible changes and any required migration, kept in a package's `.changes/` until a cut consumes it. Its kind is breaking, feature, or fix.
 _Avoid_: Changeset, release note draft
+
+**Breaking fragment**:
+A change fragment, named `breaking.<slug>.md`, for a change that forces a consumer to change its code or requirements. It carries a migration section, and it advances the major version from `1.0.0` and the minor below it.
+_Avoid_: Major fragment, breaking changeset
+
+**Feature fragment**:
+A change fragment, named `feature.<slug>.md`, for a compatible addition. It advances the minor version from `1.0.0` and the patch below it.
+_Avoid_: Minor fragment, enhancement
+
+**Fix fragment**:
+A change fragment, named `<slug>.md` with no kind prefix, for a compatible correction. It advances the patch version.
+_Avoid_: Patch fragment, ordinary fragment, bugfix
 
 **Release cut**:
 The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release. It may also mark accepted the proposed decisions the release ships, and change nothing else.
@@ -579,3 +595,17 @@ _Avoid_: Direct change, visible change
 **Replacement cut**:
 The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes the next version and never rewrites, republishes, or retags the version it supersedes.
 _Avoid_: Retry, rebuild, republish, repair
+
+## Toolchain
+
+**Package directory**:
+The directory of the nearest `package.json` at or above where a `loom` command runs. Every command acts on that one package, never on a repository as a set of packages.
+_Avoid_: Project root, workspace, repository root
+
+**Scaffold file**:
+A file or `package.json` key `loom init` writes once, when it is missing, and never overwrites or tracks, because it is the author's code from the moment it is written, such as `src/application.ts`.
+_Avoid_: Template, generated file, boilerplate
+
+**Managed file**:
+A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches and warns once it drifts; deleting the header makes it the author's file.
+_Avoid_: Generated file, owned file, vendored file

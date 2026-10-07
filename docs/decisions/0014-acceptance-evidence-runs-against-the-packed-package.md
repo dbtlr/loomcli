@@ -4,7 +4,7 @@ title: ADR-0014 - Acceptance evidence runs against the packed package through th
 description: The example applications are the acceptance surface. They use only public core APIs, resolve core through the packed package, and run as real processes under every supported runtime. Passing tests alone do not accept a deliverable.
 status: accepted
 created: 2026-09-07
-modified: 2026-09-30
+modified: 2026-10-07
 ---
 
 # ADR-0014 - Acceptance evidence runs against the packed package through the public API
@@ -36,3 +36,4 @@ Adding a runtime or platform to the support statement means adding it to the exe
 - 2026-09-10: `pnpm check:packed` also packs `@loomcli/plugins` and installs both tarballs into the runtime consumer, which imports the `help`, `help/extension`, and `version` subpaths, compiles against their emitted declarations, and prints a help page and a version line under Node and Bun. This is the extension [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md) requires before it can move to accepted.
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md), proposed, builds each example application with `Bun.build` and `packet()`, so the built examples this record runs as processes under Node and Bun are bundles, and adds a source run under Bun for the development case. `@loomcli/loom` joins the packed packages, and a runtime consumer bundles a fixture with `packet()` from its packed tarball. It binds when accepted.
 - 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds: `pnpm check:packed` packs `@loomcli/loom` beside the libraries, compiles the runtime consumer against its declarations, bundles a fixture with `packet()` from the tarball under Bun, and runs the bundle under Node and Bun.
+- 2026-10-07: [ADR-0065](0065-release-facts-on-the-host-say-how-the-running-application-was-built.md) and [ADR-0066](0066-the-toolchain-acts-on-one-package-directory.md), proposed, change what `pnpm check:packed` proves for `@loomcli/loom`: the packed consumer runs the packed `loom` bin's `loom build --target node` in its fixture package, and the bundle reads `distributed` under Node and Bun while the source reads `source`. A bundle built with no define reads `source`. `@loomcli/loom` exports no `./build` subpath. They bind when accepted.

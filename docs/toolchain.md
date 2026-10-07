@@ -1,0 +1,213 @@
+---
+description: The public contract of the loom command, which acts on one package directory to build an application with its release facts, check its declarations, cut its version from its changelog fragments, and scaffold it.
+---
+
+# Toolchain reference
+
+`@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, checks, versions, and scaffolds that application. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), and [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
+
+## One package directory
+
+```text
+loom build [--target <target>] [--out <path>] [--entry <module>] [--build development|distributed]
+           [--watch] [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
+loom check [--application <module>]
+loom changelog check
+loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
+loom init [--only <piece>]... [--force]
+```
+
+```sh
+cd packages/notes
+loom check && loom build --target node
+```
+
+Every `loom` command acts on one package: the package whose directory it runs in.
+
+- **The package directory.** It is the directory of the nearest `package.json` at or above the working directory. A command run with no `package.json` at or above it fails with exit 1 and says to run it inside a package directory. `loom init` in an empty directory is the one exception, under [loom init](#loom-init).
+- **One package, never a set.** Loom never acts on a repository root as a set of packages and holds no list of the packages a repository ships. In a monorepo, the monorepo's own tool runs a command in each package, or the author runs it in each one. A command run at a monorepo root acts on the root's own `package.json`.
+- **No configuration file.** Every value is a command option, a convention, or a standard `package.json` field, such as `version`, `bin`, or `repository`. An option overrides the convention.
+- **Paths.** A path an option names resolves against the working directory, as any command-line path does. A conventional path, such as `src/main.ts`, resolves against the package directory.
+- **Bun.** `loom build` and `loom check` do their work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
+- **Exit codes.** 0 is success. 1 is a failed build, a failed check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
+- **Out of this contract.** Release orchestration is designed separately: PR guards, publishing to npm or GitHub, prerelease lanes, release workflows, installer scripts, and cuts across several packages.
+
+### One package directory acceptance
+
+The package directory is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
+
+- **The nearest package.** `loom changelog check` run in a package's `src/` validates that package's `.changes/`.
+- **A monorepo root.** In a fixture workspace whose root and two member packages each hold fragments, `loom changelog check` at the root validates the root's fragments alone.
+- **No package.** `loom build` in a directory with no `package.json` at or above it exits 1 and says to run it inside a package directory.
+- **An option over the convention.** `loom build --entry src/cli.ts` builds that module, and with no `--entry` the build reads `src/main.ts`.
+
+## loom build
+
+```text
+loom build [--target <target>] [--out <path>] [--entry <module>] [--build development|distributed]
+           [--watch] [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
+```
+
+```sh
+loom build --target node                          # dist/main.js, release facts { build: 'distributed' }
+loom build --target bun-linux-arm64 --release     # dist/notes, with release and asset facts
+loom build --watch --target node                  # rebuilds on change, { build: 'development' }
+
+# A custom build composes the same facts into its own bundler call.
+bun build src/main.ts src/application.ts --outdir dist --splitting --target node \
+  --define "$(loom build --target node --define)"
+```
+
+`loom build` builds the package's application for one target and bakes its [release facts](core.md#release-facts) into the artifact through the define `__LOOM_RELEASE__`.
+
+- **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>[-variant]`, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`, or `bun-linux-x64-musl`. The default is the compile target Bun names for the host. `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
+- **The entry.** `--entry` names the module that calls `run()`. The default is `src/main.ts`.
+- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`.
+- **The name.** A binary's default path and its asset name read the application's name from `package.json` `bin`: a string `bin` gives the package name without its scope, and an object `bin` with one key gives that key. `--name` overrides it. With no `bin`, or a `bin` with several keys, and no `--name`, a build that needs the name fails and names `--name`.
+- **The build.** `--build` takes `development` or `distributed`, and the default is `distributed`. Those are the `build` values the artifact reads.
+- **Watching.** `--watch` runs `bun build --watch` for the target and passes the facts with `--define`, with `build` set to `development`. It rebuilds on each change until it is stopped, and it writes as `bun build --watch` writes. `--watch` with `--build distributed` is an option error.
+- **A release.** `--release` adds the release group. `version` is the package's `version`, and a missing `version` fails the build and names the `package.json` field. `repository` is read from the standard `repository` field, so `git+https://github.com/dbtlr/loomcli.git` reads as `dbtlr/loomcli`, or from `--repository <owner/name>`, which overrides it. `asset` is `<name>-<os>-<arch>[-variant]` for a compile target, such as `notes-linux-x64-musl`, and absent for `node` and `bun`. A value that cannot be read fails the build and names the option to pass.
+- **Composing a custom build.** `--facts` prints the facts JSON, and `--define` prints the define pair, `__LOOM_RELEASE__=<json>`. Each reads the same options a build reads, prints one line to stdout, and builds nothing, and they exclude each other. `loom build` computes its own facts with the same code, so an author who needs a bundler option `loom build` does not offer composes the same facts into that bundler's define.
+- **A failed build changes nothing.** A build writes into a temporary directory beside the output and moves each file into place only after the whole build succeeds, replacing the file of the same name. A failed build leaves any earlier output in place, and files the build does not write are left alone. The build never writes into the source tree.
+
+### loom build acceptance
+
+`loom build` is proven when process runs of the packed `loom` bin produce these results under Node and Bun, with the artifacts run under both:
+
+- **Targets.** `--target node` and `--target bun` each write a bundle that reads `{ build: 'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a binary that runs with no runtime installed. `--target browser` and an unknown target each exit with an error that names the targets.
+- **The build.** `--build development` writes an artifact that reads `development`, and `--watch` rebuilds after a source change into an artifact that reads `development`.
+- **A release.** `--release` in a package at `1.1.0-next.3` whose `repository` is the `git+https://` form reads version `1.1.0-next.3`, lane `next`, and repository `owner/name`, with an asset only for a compile target. `--repository` overrides the field. A package with no `repository` and no `--repository` exits 1 and names `--repository`. A compile target with no `bin` and no `--name` exits 1 and names `--name`.
+- **Composing.** `--facts` prints the facts JSON and `--define` the pair, and neither writes a file. A `bun build --define` with the printed pair, and a `Bun.build` call with the printed facts, each write an artifact that reads the same facts `loom build` bakes.
+- **A failed build.** A syntax error in the entry exits 1, and the earlier output is byte-identical afterward.
+
+## loom check
+
+```text
+loom check [--application <module>]
+```
+
+```text
+$ loom check
+-- UNDESCRIBED DECLARATIONS ----------------------------- @loomcli/core/undescribed
+
+1 declaration has no description.
+...
+warning: .changes/README.md differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.
+```
+
+`loom check` reports every fault the package's application and code hold before anything runs.
+
+- **The application module.** `--application` names the module that exports the Application. The default is `src/application.ts`. `loom check` imports it and finds the exported value that is an Application, whatever its export name. No Application, or more than one, fails the check and names the module. It never imports the entry, because the entry calls `run()`.
+- **The type pass.** It runs the package's own installed TypeScript, the `typescript` development dependency, against the package's `tsconfig.json`, emitting nothing, and prints what the compiler reports. Any compiler error fails the check. When the package installs no compiler or holds no `tsconfig.json`, the type pass is skipped with a one-line note, and the graph checks still run.
+- **The graph checks.** It reads no release facts, so the import is a source run, and it calls the Application's [`check()`](core.md#checking-the-declarations), which builds the graph with nothing run and returns every fault a development run reports before routing. A `DeclarationError` thrown while the module loads, at an authoring call or an attach, is a fault too, and so is any other throw while it loads.
+- **Output.** Each fault prints as its [Developer Diagnostic](core.md#developer-diagnostics) on stderr, one blank line between faults. Any fault exits 1, and no fault exits 0.
+- **Drift.** A [managed file](#managed-files) whose content no longer matches its header draws one warning line naming the file. A warning never fails the check.
+- **Not yet.** A finding names no file or line. A later contract adds them.
+
+### loom check acceptance
+
+`loom check` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
+
+- **Clean.** A new scaffold from `loom init` and the example applications each exit 0 and print nothing on stdout.
+- **Every fault.** A fixture whose application has two failing converters, an undescribed option, and a rejecting `onGraphBuilt` hook prints four Developer Diagnostics in that order and exits 1, and no action runs.
+- **Load faults.** A module whose `option()` call declares `multiple` on a Boolean option prints that rule's diagnostic and exits 1.
+- **The module.** A module that exports no Application and one that exports two each exit 1 and name the module. An Application exported as `default` is found. `--application src/app.ts` reads that module.
+- **The type pass.** A type error exits 1 with the compiler's report, and a package with no `typescript` installed prints the one-line note and still reports its graph faults.
+- **Drift.** An edited managed file prints one warning, and the check exits 0 when nothing else is wrong.
+
+## The package changelog
+
+```text
+loom changelog check
+loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
+```
+
+```sh
+printf -- '- Add the `--tag` option to `notes list`.\n' > .changes/feature.list-by-tag.md
+loom changelog check
+loom changelog write --dry-run        # prints the section and 1.5.0, writes nothing
+loom changelog write --date 2026-10-07
+```
+
+A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory, the version is the package's `package.json` `version`, and git tags never enter.
+
+- **Three kinds.** A fragment named `breaking.<slug>.md` is a breaking change, `feature.<slug>.md` a feature, and `<slug>.md` a fix. A bare `breaking.md` or `feature.md` is invalid. A fragment's body follows the grammar of the [fragment guide](../.changes/README.md), and a breaking fragment carries its `### Migration` section with the five labels. `.changes/README.md` is the guide, not a fragment.
+- **The bump.** The highest kind present decides the next version.
+
+  | Current version | Highest kind present | Next version |
+  | --------------- | -------------------- | ------------ |
+  | `0.0.0`         | Any                  | `0.1.0`      |
+  | `0.4.7`         | Breaking             | `0.5.0`      |
+  | `0.4.7`         | Feature or fix       | `0.4.8`      |
+  | `1.4.7`         | Breaking             | `2.0.0`      |
+  | `1.4.7`         | Feature              | `1.5.0`      |
+  | `1.4.7`         | Fix                  | `1.4.8`      |
+
+  A current version that is not `MAJOR.MINOR.PATCH`, a prerelease included, fails the cut, because prerelease lanes belong to release orchestration.
+- **`check`.** It validates every fragment in `.changes/` and exits 1 for any invalid one, naming it. It accepts an empty set and a missing `.changes/`, and it needs no git history, so it runs in CI.
+- **`write`.** It validates the fragments, computes the next version, and renders one section: `## v<version> - <date>`, the narrative when given, then `### Breaking Changes`, `### Features`, and `### Fixes`, each omitted when empty. Each breaking fragment keeps its migration section beside its entries. Within a group, fragments sort by the first-parent commit that added each one and then by file name, so `write` needs full git history, and a shallow clone or a fragment no commit added fails it. It prepends the section above the earlier release sections of `CHANGELOG.md`, keeping its frontmatter, title, and history, and creates the file with a `# Changelog` title when it is missing. It sets `version` in `package.json`, changing nothing else in the file, and deletes the consumed fragments. It writes every file through a temporary copy and replaces them together, so a failure before the replacement changes nothing.
+- **Options.** `--date` is the release date, by default the current UTC date, and an invalid calendar date fails. `--narrative` copies the prose of a Markdown file above the entries, and the file cannot be empty or hold a level-one or level-two heading. `--dry-run` prints the section and the next version and writes nothing.
+- **An empty set.** `write` with no fragments fails, `0.0.0` included, because a cut with nothing to release changes nothing a consumer can read.
+- **Left to other tools.** `write` refreshes no lockfile, which is the package manager's job, so the author runs it after the cut. It reports no material changes, keeps no versions synchronized across packages, and checks no tags or PR titles.
+
+### The package changelog acceptance
+
+The package changelog is proven when process runs of the packed `loom` bin produce these results under Node and Bun, in fixture git repositories:
+
+- **The bump table.** Each row of the table cuts its next version from fixtures holding those kinds, and a package at `1.2.0-next.1` fails the cut.
+- **Ordering.** Fragments added in three commits render in landing order within each group, breaking entries first, and a fragment edited in a later commit keeps its first position.
+- **`check`.** A breaking fragment without its migration labels, a bare `feature.md`, and a fragment in a subdirectory each fail `check` with exit 1 and their names.
+- **`write`.** A cut prepends the section, sets `version` with the rest of `package.json` byte-identical, deletes the consumed fragments, and leaves `.changes/README.md`. A shallow clone fails and changes no file. `--dry-run` prints the section and the version and leaves every file byte-identical.
+
+## loom init
+
+```text
+loom init [--only <piece>]... [--force]
+```
+
+```sh
+mkdir notes && cd notes
+loom init            # a new application: package.json, src/, .changes/README.md, and the skill
+pnpm install
+loom check
+```
+
+`loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks. It writes two sorts of files: scaffold files, which become the author's at once, and managed files, which init keeps current.
+
+- **Where.** In an empty working directory, init scaffolds a new application there, whatever lies above it. Otherwise it acts on the package directory. A directory that is neither empty nor inside a package fails with exit 1.
+- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, and `skill` is the changelog skill. `--only <piece>` limits init to the pieces it names, and it may repeat.
+- **Output.** Init prints one line for each file or key it writes and each warning it raises, and it installs nothing. The author runs the package manager afterward.
+- **Later pieces.** The release-cut skill, workflows, and installer scripts join init with the release orchestration design.
+
+### Scaffold files
+
+- **The files.** `src/application.ts` exports an Application named for the package, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`.
+- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, `loom check`. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
+- **The application's name.** It is the `bin` key when `bin` is an object with one key, else the package name without its scope.
+- **Written once.** Init writes a scaffold file or key only when it is missing. It never overwrites an existing file or key and never tracks one afterward, because each is the author's code from the moment it is written.
+
+### Managed files
+
+```markdown
+<!-- Managed by loom init. sha256:923fbdf28841b97b237ceaed44c491528c9e1776959c0e8f40ee87488b415571 -->
+
+# Change fragments
+```
+
+- **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory.
+- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first line after its frontmatter.
+- **Re-running init.** Init re-renders a managed file whose checksum matches, so an unedited file follows the running toolchain. A file whose content no longer matches its checksum has drifted. Init warns about it and leaves it alone, and `--force` re-renders it. `--force` never touches a scaffold file.
+- **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and `loom check` stops checking it.
+- **Drift is a warning.** `loom check` warns about a drifted managed file and never fails for one.
+
+### loom init acceptance
+
+`loom init` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
+
+- **A new application.** In an empty directory, init writes `package.json`, both scaffold files, and both managed files. After the package manager installs, `loom check` exits 0, `loom build --target node` builds, and the bundle runs under Node and Bun.
+- **An existing package.** In a package with its own `src/application.ts` and a `scripts.build`, init writes the missing pieces and leaves both byte-identical. `--only changes` writes `.changes/README.md` alone.
+- **Managed files.** Re-running init on an unedited managed file re-renders it. An edited one draws one warning and stays byte-identical, and `--force` re-renders it. A file whose header was deleted stays byte-identical under `--force`, and `loom check` raises no warning for it.
+
+## This repository's release
+
+The repository that develops Loom releases its packages together, at one synchronized version, under [ADR-0012](decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md). Its release keeps the hidden commands the [changelog compiler](changelog-compiler.md), [PR guards](pr-guards.md), and [release workflow](release-workflow.md) references document. No listing advertises them, and they are not part of this contract. A public command owns its path, so a hidden command that shares a path with one moves to a path of its own when the public command ships.
