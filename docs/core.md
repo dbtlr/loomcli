@@ -1242,7 +1242,7 @@ process.exitCode = faults.length === 0 ? 0 : 1;
 
 #### Checking the declarations acceptance
 
-`check()` is proven when public APIs alone produce these results under Node and Bun:
+`check()` is proven when public APIs and process runs alone produce these results under Node and Bun:
 
 - **Clean.** jsonkit and textstat each return an empty list.
 - **Every fault.** A fixture with two inputs whose converters throw, an undescribed option, and an `onGraphBuilt` hook that rejects the graph returns four faults, in that order, under `@loomcli/core/schema-converter-failed` twice, `@loomcli/core/undescribed`, and the hook's rule. `run()` from source reports the first alone, and `inspect()` throws it.

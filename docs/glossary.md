@@ -233,7 +233,7 @@ The captured facts of the process an invocation runs in: argument tokens, workin
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Release facts**:
-The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an installation group. The build bakes them into the artifact, and core holds them on the host as `release`. An artifact built with none reads `source`.
+The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an optional installation group. The build bakes them into the artifact, and core holds them on the host as `release`. An artifact built with none reads `source`.
 _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
 **Release lane**:
