@@ -6,6 +6,8 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 `.github/workflows/release.yml` reconciles three records with the version in the participating manifests: the npm registry, the annotated tag `v<version>`, and the GitHub Release. Merging the guarded release PR is the only authorization. The workflow holds no registry secret, and every step reads before it writes, so a repeated run changes nothing. [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md) records the design and the rejected alternatives.
 
+This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+
 The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds the two commands, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
 
 ## Trigger

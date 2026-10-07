@@ -6,6 +6,8 @@ description: Local and CI checks for PR fragments, library versions, and normal 
 
 The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog compiler's parser, version calculation, renderer, and build-path policy.
 
+This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+
 Command-specific code lives in `packages/loom/src/commands/changelog/` and `packages/loom/src/commands/pr/`. Both commands are hidden, so no listing advertises them. Both use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
 ```sh
