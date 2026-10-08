@@ -29,15 +29,45 @@ async function report(out: Out, passthrough: string[], work: () => Promise<strin
   }
 }
 
-export const release = new Command('release', { hidden: true })
+export const release = new Command('release', {
+  description: 'Plan and record a release.',
+  hidden: true,
+})
   .command(
-    new Command('plan')
-      .option('repository', { required: true, type: 'string' })
-      .option('output', { required: true, type: 'string' })
-      .option('registry', { default: defaultRegistry, type: 'string' })
-      .option('github-api', { default: defaultGitHubApi, type: 'string' })
-      .option('head', { default: 'HEAD', type: 'string' })
-      .option('request-timeout-ms', { default: '30000', type: 'string', validate: count })
+    new Command('plan', {
+      description: 'Reconcile the head with the registry and write a release plan.',
+    })
+      .option('repository', {
+        description: 'Name the GitHub repository as owner/name.',
+        required: true,
+        type: 'string',
+      })
+      .option('output', {
+        description: 'Write the release plan JSON to this file.',
+        required: true,
+        type: 'string',
+      })
+      .option('registry', {
+        default: defaultRegistry,
+        description: 'Name the package registry URL.',
+        type: 'string',
+      })
+      .option('github-api', {
+        default: defaultGitHubApi,
+        description: 'Name the GitHub API URL.',
+        type: 'string',
+      })
+      .option('head', {
+        default: 'HEAD',
+        description: 'Name the revision to plan the release for.',
+        type: 'string',
+      })
+      .option('request-timeout-ms', {
+        default: '30000',
+        description: 'Give the milliseconds each request may take.',
+        type: 'string',
+        validate: count,
+      })
       .action(async ({ host, options, out, passthrough }) => {
         await report(out, passthrough, async () => {
           const plan = await planRelease({
@@ -55,14 +85,47 @@ export const release = new Command('release', { hidden: true })
       }),
   )
   .command(
-    new Command('record')
-      .option('repository', { required: true, type: 'string' })
-      .option('plan', { required: true, type: 'string' })
-      .option('registry', { default: defaultRegistry, type: 'string' })
-      .option('github-api', { default: defaultGitHubApi, type: 'string' })
-      .option('request-timeout-ms', { default: '30000', type: 'string', validate: count })
-      .option('retry-attempts', { default: '8', type: 'string', validate: count })
-      .option('retry-delay-ms', { default: '5000', type: 'string', validate: count })
+    new Command('record', {
+      description: 'Record a planned release as a tag and a GitHub release.',
+    })
+      .option('repository', {
+        description: 'Name the GitHub repository as owner/name.',
+        required: true,
+        type: 'string',
+      })
+      .option('plan', {
+        description: 'Read the release plan JSON from this file.',
+        required: true,
+        type: 'string',
+      })
+      .option('registry', {
+        default: defaultRegistry,
+        description: 'Name the package registry URL.',
+        type: 'string',
+      })
+      .option('github-api', {
+        default: defaultGitHubApi,
+        description: 'Name the GitHub API URL.',
+        type: 'string',
+      })
+      .option('request-timeout-ms', {
+        default: '30000',
+        description: 'Give the milliseconds each request may take.',
+        type: 'string',
+        validate: count,
+      })
+      .option('retry-attempts', {
+        default: '8',
+        description: 'Give how many times to retry a pending read.',
+        type: 'string',
+        validate: count,
+      })
+      .option('retry-delay-ms', {
+        default: '5000',
+        description: 'Give the milliseconds to wait between retries.',
+        type: 'string',
+        validate: count,
+      })
       .action(async ({ host, options, out, passthrough }) => {
         await report(out, passthrough, async () => {
           const token = host.env.GH_TOKEN;

@@ -2,45 +2,45 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-function run(scenario: string, build: 'development' | 'distributed' | 'none') {
+function run(scenario: string, build: 'development' | 'distributed' | 'source') {
   return invoke(new URL('fixtures/builds.mjs', import.meta.url), [scenario, build]);
 }
 
 const foreignThrowBanner =
   '-- UNHANDLED EXCEPTION ----------------------------- @loomcli/core/foreign-throw\n';
 
-test.each(['distributed', 'none'] as const)(
-  'a defect in a %s build writes the generic message alone',
+test('a defect in a distributed build writes the generic message alone', () => {
+  expect(run('type-error', 'distributed')).toEqual({
+    status: 1,
+    stderr: 'probe: Something went wrong.\n',
+    stdout: 'resolved:1\n',
+  });
+});
+
+test.each(['development', 'source'] as const)(
+  "a defect in a %s build writes its Developer Diagnostic with the author's source",
   (build) => {
-    expect(run('type-error', build)).toEqual({
-      status: 1,
-      stderr: 'probe: Something went wrong.\n',
-      stdout: 'resolved:1\n',
-    });
+    const { status, stderr } = run('type-error', build);
+    expect(status).toBe(1);
+    expect(stderr.startsWith(foreignThrowBanner)).toBe(true);
+    // The excerpt marks the frame's line and puts a caret under its column.
+    // Node reports the failing read itself.
+    // Bun folds `value` into `(void 0).length` and reports a line of the action at or above the read.
+    // So the marked line is one of the action's, and the failing line shows in the excerpt.
+    expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6[4-6]:\d+$/mu);
+    expect(stderr).toMatch(
+      /^> 6[4-6] \| .*(?:\.action\(\(\) => \{|const value = undefined;|return value\.length;)$/mu,
+    );
+    expect(stderr).toMatch(/^(?:> | {2})66 \| {11}return value\.length;$/mu);
+    expect(stderr).toMatch(/^ {5}\| +\^$/mu);
+    expect(stderr).toMatch(/^TypeError: .+$/mu);
+    expect(stderr).toMatch(/^ {4}at .+builds\.mjs:6\d:\d+\)?$/mu);
+    expect(stderr).toContain(
+      '\n\nCatch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.\n',
+    );
+    expect(stderr).not.toContain('Something went wrong');
   },
 );
-
-test("a defect in a development build writes its Developer Diagnostic with the author's source", () => {
-  const { status, stderr } = run('type-error', 'development');
-  expect(status).toBe(1);
-  expect(stderr.startsWith(foreignThrowBanner)).toBe(true);
-  // The excerpt marks the frame's line and puts a caret under its column.
-  // Node reports the failing read itself.
-  // Bun folds `value` into `(void 0).length` and reports a line of the action at or above the read.
-  // So the marked line is one of the action's, and the failing line shows in the excerpt.
-  expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6[4-6]:\d+$/mu);
-  expect(stderr).toMatch(
-    /^> 6[4-6] \| .*(?:\.action\(\(\) => \{|const value = undefined;|return value\.length;)$/mu,
-  );
-  expect(stderr).toMatch(/^(?:> | {2})66 \| {11}return value\.length;$/mu);
-  expect(stderr).toMatch(/^ {5}\| +\^$/mu);
-  expect(stderr).toMatch(/^TypeError: .+$/mu);
-  expect(stderr).toMatch(/^ {4}at .+builds\.mjs:6\d:\d+\)?$/mu);
-  expect(stderr).toContain(
-    '\n\nCatch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.\n',
-  );
-  expect(stderr).not.toContain('Something went wrong');
-});
 
 test('a cause chain of two prints both, and a thrown value that is not an Error prints as a value', () => {
   const chain = run('chain', 'development').stderr;
@@ -74,7 +74,7 @@ test('an onFailure hint prints under the generic message and under the Developer
   );
 });
 
-test('a build fault writes the generic message when distributed and its diagnostic in development, and inspect() throws it in both', () => {
+test('a build fault writes the generic message when distributed and its diagnostic in development, and inspect() throws it from source', () => {
   expect(run('build-fault', 'distributed')).toEqual({
     status: 1,
     stderr: 'probe: Something went wrong.\n',
@@ -96,11 +96,9 @@ test('a build fault writes the generic message when distributed and its diagnost
     ].join('\n'),
     stdout: 'resolved:1\n',
   });
-  for (const build of ['development', 'distributed'] as const) {
-    expect(run('inspect', build).stdout).toBe(
-      'thrown: DeclarationError: The root Command has no action.\n',
-    );
-  }
+  expect(run('inspect', 'source').stdout).toBe(
+    'thrown: DeclarationError: The root Command has no action.\n',
+  );
 });
 
 test('a declaration fault run() reports opens its findings with the application name before the path', () => {
@@ -245,7 +243,7 @@ test('the captured reader refuses a link that leaves the working directory, a pa
 });
 
 test('a working directory the host names through a symbolic link still shows the author its source', () => {
-  const { stderr } = run('linked-cwd', 'none');
+  const { stderr } = run('linked-cwd', 'source');
   // Node and Bun place the throw's column differently, so the column is any number.
   expect(stderr).toMatch(
     /\n\nfails\.mjs:2:\d+\n\n {2}1 \| export function fails\(\) \{\n> 2 \| {3}throw new Error\("Linked\."\);\n/u,
@@ -321,28 +319,6 @@ test('a DeclarationError thrown in an onFailure hook or a plugin loader reads as
   for (const stderr of [hook, loader]) {
     expect(stderr).not.toContain(String.raw`\u000a`);
   }
-});
-
-test.each([
-  [
-    'packet-staging',
-    'thrown: The packet\'s build is "staging". Set build to "development" or "distributed".\n',
-  ],
-  [
-    'packet-missing',
-    'thrown: The packet has no build. Set build to "development" or "distributed".\n',
-  ],
-  [
-    'packet-not-object',
-    'thrown: The Application packet must be an object. Import loom.packet.json and pass it as packet.\n',
-  ],
-])('the Application constructor rejects %s', (scenario, stdout) => {
-  expect(run(scenario, 'none').stdout).toBe(stdout);
-});
-
-test('a packet with an extra member reads as its build, and a later change to the imported object changes no run', () => {
-  expect(run('packet-extra', 'none').stderr).toBe('probe: Something went wrong.\n');
-  expect(run('packet-mutation', 'none').stderr.startsWith(foreignThrowBanner)).toBe(true);
 });
 
 test.each([

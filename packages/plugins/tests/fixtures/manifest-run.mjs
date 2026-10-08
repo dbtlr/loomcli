@@ -11,8 +11,7 @@ import { z } from 'zod';
 const dispatch = ({ out }) => out.print('dispatched');
 
 // A test that reads a defect's own sentence runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 /** The view a result names, so the formatter adds `json`, `jsonl`, and `--format` beside it. */
 const text = { render: (value) => `${value}\n` };
@@ -82,7 +81,6 @@ function application(settings) {
 /** An application whose one option declares a default that JSON cannot carry. */
 function defaulted(value) {
   return new Application('app', {
-    ...packet,
     description: 'Probe a default.',
     plugins: [manifest()],
   })
@@ -116,7 +114,7 @@ function publishing(input) {
 
 /** An application whose one option publishes the schema `input` returns. */
 const published = (input) => () =>
-  new Application('app', { ...packet, description: 'Probe a schema.', plugins: [manifest()] })
+  new Application('app', { description: 'Probe a schema.', plugins: [manifest()] })
     .option('odd', { description: 'An odd schema.', type: 'string', validate: publishing(input) })
     .action(dispatch);
 
@@ -131,7 +129,6 @@ function looped() {
 function placed(where, value) {
   const odd = { default: value, description: 'An odd default.', type: 'string', validate: z.any() };
   const app = new Application('app', {
-    ...packet,
     description: 'Probe a default.',
     plugins: [manifest()],
   });
@@ -155,7 +152,7 @@ function placed(where, value) {
  * holds a mapped `json()`, so the document reads each encoding from the result, not from a name.
  */
 const wired = () =>
-  new Application('app', { ...packet, plugins: [format(), manifest()] })
+  new Application('app', { plugins: [format(), manifest()] })
     .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
     .action(({ out }) => out.results('wired'));
 
@@ -184,6 +181,6 @@ const [scenario, ...argv] = process.argv.slice(2);
 // `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
 const forced = process.env.COLOR === 'always';
 await scenarios[scenario]().run({
-  host: { argv },
+  host: { argv, release },
   ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
 });

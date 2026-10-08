@@ -4,7 +4,6 @@ const input = JSON.parse(process.argv[2]);
 // A development build, so a broken color helper prints its Developer Diagnostic.
 const app = new Application('resolve', {
   description: 'Resolve styled text.',
-  packet: { build: 'development' },
   plugins: input.themes?.map((mapping, index) =>
     plugin(`theme-${index}`, {
       theme: Object.fromEntries(

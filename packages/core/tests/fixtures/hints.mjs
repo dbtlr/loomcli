@@ -133,14 +133,9 @@ function routed(options = {}) {
     .command(cache);
 }
 
-// A test that reads a broken contract's own sentence runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
-
 /** A broken hook installed ahead of a working one, on a graph whose fault is a usage error. */
 function broken(answer) {
   return routed({
-    ...packet,
     plugins: [hinting('fixture/broken', answer), hinting('fixture/fine', () => 'still here')],
   }).action(dispatch);
 }
@@ -347,7 +342,6 @@ const scenarios = {
   'converter-fault': () =>
     new Application('store', {
       description: 'The store application.',
-      packet: { build: 'development' },
       plugins: [hinting('fixture/one', () => 'converter-fault hint')],
     })
       .option('mode', {
@@ -484,7 +478,14 @@ if (build === undefined) {
 }
 // A declaration that throws reports its fault and ends the fixture here.
 const app = declare(build);
-const code = await app.run({ host: { argv }, signal: controller.signal });
+/**
+ * The build the run reads. A test that reads a broken contract's own sentence names a development
+ * build, and a converter fault waits for one; every other run is distributed.
+ */
+const release = {
+  build: process.env.FIXTURE_BUILD ?? (scenario === 'converter-fault' ? 'source' : 'distributed'),
+};
+const code = await app.run({ host: { argv, release }, signal: controller.signal });
 for (const call of calls) {
   process.stdout.write(`${call}\n`);
 }

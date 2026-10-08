@@ -33,4 +33,4 @@ const app = new Application('spellings')
   .command(cache)
   .action(report('root'));
 
-await app.run({ host: { argv: process.argv.slice(3) } });
+await app.run({ host: { argv: process.argv.slice(3), release: { build: 'distributed' } } });

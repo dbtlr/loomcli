@@ -1,5 +1,8 @@
 import { Application, Command, plugin } from '@loomcli/core';
 
+// A test that reads a defect's own sentence runs the fixture as a development build.
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+
 const scenario = process.argv[2];
 const argv = process.argv.slice(3);
 
@@ -254,10 +257,6 @@ function application() {
   );
   return new Application('app', {
     description: 'The app application.',
-    // A test that reads a defect's own sentence runs the fixture as a development build.
-    ...(process.env.FIXTURE_BUILD === undefined
-      ? {}
-      : { packet: { build: process.env.FIXTURE_BUILD } }),
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
     version: '1.2.0',
   })
@@ -269,5 +268,5 @@ function application() {
     .action(({ out }) => out.print('root'));
 }
 
-const code = await application().run({ host: { argv }, signal: controller.signal });
+const code = await application().run({ host: { argv, release }, signal: controller.signal });
 process.stdout.write(`resolved:${code}\n`);

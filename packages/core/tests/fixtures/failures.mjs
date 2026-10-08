@@ -144,13 +144,11 @@ function routed(views) {
 }
 
 // A test that reads a broken contract's own sentence runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 function ending(views, action) {
   return new Application('failures', {
     description: 'The failures application.',
-    ...packet,
     views,
   }).action(action);
 }
@@ -258,7 +256,7 @@ function build() {
 }
 
 // An unusable destination proves the fallback path stops reporting without changing the status.
-const host = scenario === 'broken-fallback' ? { argv, stderr: {} } : { argv };
+const host = scenario === 'broken-fallback' ? { argv, release, stderr: {} } : { argv, release };
 const app = declare(build);
 const code = await app.run({ host });
 process.stdout.write(`resolved:${code}\n`);

@@ -25,7 +25,9 @@ const app = new Application('example')
   .extend(other('root'));
 const mode = process.argv[2];
 if (mode === 'invoke') {
-  await app.run({ host: { argv: ['r', 'document', '--raw', '--quiet'] } });
+  await app.run({
+    host: { argv: ['r', 'document', '--raw', '--quiet'], release: { build: 'distributed' } },
+  });
 } else if (mode === 'inspect') {
   const before = new Application('library').command(original).inspect().root.children[0];
   const graph = app.inspect();

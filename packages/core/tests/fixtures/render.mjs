@@ -93,5 +93,5 @@ const app = new Application('render').action(async ({ out }) => {
   }
 });
 
-const code = await app.run({ host: { argv: [] } });
+const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
 process.stdout.write(`resolved:${code}\n`);

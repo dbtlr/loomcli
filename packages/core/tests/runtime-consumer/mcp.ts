@@ -21,4 +21,4 @@ const app = new Application('packed-mcp', { plugins: [installed], version: '1.0.
   greet,
 );
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

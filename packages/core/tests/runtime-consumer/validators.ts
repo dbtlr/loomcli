@@ -15,4 +15,4 @@ const app = new Application('validators')
     return out.print(JSON.stringify({ listen, mode, tags, workers }));
   });
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

@@ -13,8 +13,7 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 const dispatch = ({ out }) => out.print('dispatched');
 
 // A test that reads a declaration fault's own sentence runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 // The manifest reads each class's statics alone, so no fixture constructs one.
 
@@ -205,7 +204,6 @@ function conflicting(second) {
   }).action(dispatch);
   return new Application('app', {
     description: 'The app application.',
-    ...packet,
     plugins: [manifest()],
   })
     .command(get)
@@ -229,7 +227,6 @@ function conflictingOnOneCommand(second) {
   }).action(dispatch);
   return new Application('app', {
     description: 'The app application.',
-    ...packet,
     plugins: [manifest(), again],
   })
     .command(get)
@@ -257,4 +254,4 @@ const scenarios = {
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
-await scenarios[scenario]().run({ host: { argv } });
+await scenarios[scenario]().run({ host: { argv, release } });

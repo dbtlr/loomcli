@@ -1,17 +1,21 @@
 import { Application, Command, pad } from '@loomcli/core';
 
-import packet from './loom.packet.json' with { type: 'json' };
-
-// The application each bundler bundles without packet().
+// The application each bundler bundles with no define, so nothing bakes release facts into it.
 // `measure` pads wide, combining, and emoji text, so it reads core's Unicode tables.
-// It prints the packet last, which reads development, because no writer touched it.
-await new Application('bundled', { description: 'Measure bundled text.', packet })
+// It prints the build last, which reads source, as the source run does.
+// `fail` throws a foreign error, which a source build reports as its Developer Diagnostic.
+await new Application('bundled', { description: 'Measure bundled text.' })
   .command(
-    new Command('measure', { description: 'Pad text to its width.' }).action(({ out }) => {
+    new Command('measure', { description: 'Pad text to its width.' }).action(({ host, out }) => {
       for (const text of ['日本', 'é', '👩‍💻', '🇯🇵', 'abc']) {
         out.print(`${pad(text, 6)}|`);
       }
-      out.print(packet.build);
+      out.print(host.release.build);
+    }),
+  )
+  .command(
+    new Command('fail', { description: 'Throw a foreign error.' }).action(() => {
+      throw new TypeError('The bundle failed.');
     }),
   )
   .run({ host: { argv: process.argv.slice(2) } });

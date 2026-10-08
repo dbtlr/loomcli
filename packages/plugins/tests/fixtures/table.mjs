@@ -93,5 +93,5 @@ const app = selected.declared
 const stdout = selected.discardOutput
   ? new Writable({ write: (_chunk, _encoding, done) => done() })
   : process.stdout;
-const code = await app.run({ host: { argv: [], stdout } });
+const code = await app.run({ host: { argv: [], release: { build: 'distributed' }, stdout } });
 process.stdout.write(`resolved:${String(code)}\n`);

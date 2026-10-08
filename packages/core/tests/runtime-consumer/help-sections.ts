@@ -38,4 +38,6 @@ const app = new Application('grouped', {
   .command(edit)
   .command(read);
 
-process.exitCode = await app.run({ host: { argv: process.argv.slice(2) } });
+process.exitCode = await app.run({
+  host: { argv: process.argv.slice(2), release: { build: 'distributed' } },
+});

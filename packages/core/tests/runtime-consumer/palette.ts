@@ -32,8 +32,14 @@ const app = new Application('palette', { plugins: [named] }).action(({ out, styl
   ),
 );
 for (const env of [{}, { TERM: 'xterm-256color' }, { COLORTERM: 'truecolor' }]) {
-  await app.run({ host: { argv: [], env }, rendering: { color: 'always', modifiers: 'always' } });
+  await app.run({
+    host: { argv: [], env, release: { build: 'distributed' } },
+    rendering: { color: 'always', modifiers: 'always' },
+  });
 }
 await new Application('bare', { plugins: [bare] })
   .action(({ out, style: contextual }) => out.print(contextual.success('bare')))
-  .run({ host: { argv: [], env: {} }, rendering: { color: 'always' } });
+  .run({
+    host: { argv: [], env: {}, release: { build: 'distributed' } },
+    rendering: { color: 'always' },
+  });

@@ -5,11 +5,11 @@ import { Application, Command, DeclarationError, diagnosticRule, plugin } from '
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
 
-/**
- * The options each Application declares: its description, and the packet that renders a build
- * fault by the build a test names.
- */
-const probe = { description: 'Probe the graph.', packet: { build } };
+/** The options each Application declares. */
+const probe = { description: 'Probe the graph.' };
+
+/** The release facts each run reads, which render a build fault by the build a test names. */
+const release = { build };
 
 /** Prints one line of JSON to stdout, the fixture's report. */
 function print(value) {
@@ -32,7 +32,9 @@ function sink() {
 async function runCaptured(app, argv) {
   const stdout = sink();
   const stderr = sink();
-  const exitCode = await app.run({ host: { argv, stderr: stderr.stream, stdout: stdout.stream } });
+  const exitCode = await app.run({
+    host: { argv, release, stderr: stderr.stream, stdout: stdout.stream },
+  });
   return { exitCode, stderr: stderr.text(), stdout: stdout.text() };
 }
 
@@ -89,9 +91,9 @@ if (scenario === 'order') {
   const sameAsAction = graphs.at(-1) === readByAction && graphs.at(-2) === readByAction;
   app.inspect();
   mark('inspect');
-  await app.invoke(['count'], {});
+  await app.invoke(['count'], {}, { host: { release } });
   mark('app.invoke');
-  await app.invoke(['caller'], {});
+  await app.invoke(['caller'], {}, { host: { release } });
   mark('app.invoke with an action invoke');
   print({ calls: calls.slice(0, 2), marks, sameAsAction });
 } else if (scenario === 'reject') {
@@ -176,8 +178,8 @@ if (scenario === 'order') {
       return undefined;
     },
   });
-  const app = new Application('probe', { plugins: [writing] })
-    .command(new Command('leaf').action(() => undefined))
+  const app = new Application('probe', { ...probe, plugins: [writing] })
+    .command(new Command('leaf', { description: 'Do nothing.' }).action(() => undefined))
     .action(({ graph, out }) => out.print(String(graph.root.children.length)));
   const quiet = await runCaptured(app, []);
   const unguarded = new Application('probe', {

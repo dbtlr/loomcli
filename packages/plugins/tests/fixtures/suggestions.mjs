@@ -131,5 +131,5 @@ const scenarios = {
   'plugin-before': () => kit({ plugins: [overriding('before'), suggestions()] }),
 };
 
-const code = await scenarios[scenario]().run({ host: { argv } });
+const code = await scenarios[scenario]().run({ host: { argv, release: { build: 'distributed' } } });
 process.exitCode = code;

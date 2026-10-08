@@ -121,4 +121,4 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(odd)
   .command(backups);
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

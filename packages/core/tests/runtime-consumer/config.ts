@@ -17,4 +17,4 @@ const app = new Application('packed-config', {
     return out.print(word);
   });
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

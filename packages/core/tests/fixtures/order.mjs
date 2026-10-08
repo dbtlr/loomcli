@@ -25,4 +25,4 @@ await new Application('order')
   .command(order)
   .command(pair)
   .action(({ out }) => out.print('root'))
-  .run({ host: { argv: process.argv.slice(2) } });
+  .run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

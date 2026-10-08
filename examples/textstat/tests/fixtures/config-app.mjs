@@ -48,7 +48,14 @@ try {
     })
     .action(({ options, out }) => out.print(JSON.stringify(options)));
   const platform = process.env.FIXTURE_PLATFORM;
-  await app.run({ host: { argv, cwd, ...(platform === undefined ? {} : { platform }) } });
+  await app.run({
+    host: {
+      argv,
+      cwd,
+      release: { build: 'distributed' },
+      ...(platform === undefined ? {} : { platform }),
+    },
+  });
 } catch (error) {
   process.stdout.write(`${error.name}: ${error.rule?.identity ?? error.message}\n`);
 }

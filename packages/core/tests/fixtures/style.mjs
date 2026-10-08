@@ -43,6 +43,7 @@ const options = {
     argv: [],
     env,
     platform: 'linux',
+    release: { build: 'distributed' },
     terminal: {
       stderr: { isTTY: true },
       stdin: { isTTY: false },

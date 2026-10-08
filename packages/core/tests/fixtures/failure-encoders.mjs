@@ -13,11 +13,11 @@ import {
 } from '@loomcli/core';
 
 // The first argument names a scenario; a run scenario passes the rest as the run's words.
-// FIXTURE_BUILD names the packet's build, and FIXTURE_ENCODER the encoder the plugin registers.
+// FIXTURE_BUILD names the run's build, and FIXTURE_ENCODER the encoder the plugin registers.
 // FIXTURE_STDOUT=epipe gives a run a stdout that refuses every write with an EPIPE-style error.
 const [scenario, ...words] = process.argv.slice(2);
 
-const packet = { packet: { build: process.env.FIXTURE_BUILD ?? 'distributed' } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 /** A validator that accepts each listed name and rejects every other value. */
 function oneOf(names) {
@@ -173,7 +173,6 @@ const branded = override(FatalError, { render: (failure) => `branded: ${failure.
 
 function application(plugins = [encoding]) {
   return new Application('enc', {
-    ...packet,
     description: 'The enc application.',
     plugins,
     views: [branded],
@@ -205,7 +204,7 @@ function declare(build) {
 
 const scenarios = {
   build: async () => {
-    const code = await application([encoding, judging]).run({ host: { argv: words } });
+    const code = await application([encoding, judging]).run({ host: { argv: words, release } });
     process.stdout.write(`exit:${String(code)}\n`);
   },
   'by-name': async () => {
@@ -221,7 +220,7 @@ const scenarios = {
     const outcome = await application([counting]).invoke(
       ['list'],
       { options: { depth: 'x' } },
-      { view: 'json' },
+      { host: { release }, view: 'json' },
     );
     process.stdout.write(
       `${JSON.stringify({ encoded, form: outcome.form, messages: outcome.messages })}\n`,
@@ -235,7 +234,7 @@ const scenarios = {
   run: async () => {
     const stdout = process.env.FIXTURE_STDOUT === 'epipe' ? brokenPipe() : undefined;
     const code = await application().run({
-      host: { argv: words, ...(stdout ? { stdout } : {}) },
+      host: { argv: words, release, ...(stdout ? { stdout } : {}) },
       signal: caller.signal,
     });
     process.stdout.write(`exit:${String(code)}\n`);

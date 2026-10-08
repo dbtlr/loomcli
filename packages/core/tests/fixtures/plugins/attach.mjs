@@ -180,6 +180,6 @@ const application = scenarios[scenario];
 if (mode === 'inspect') {
   note(inspected(application().inspect()));
 } else {
-  const code = await application().run({ host: { argv } });
+  const code = await application().run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write(`resolved:${code}\n`);
 }

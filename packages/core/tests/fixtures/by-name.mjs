@@ -5,11 +5,11 @@ import { Application, Command, FatalError, override, plugin, translate } from '@
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
 
-/**
- * The options each scenario's Application declares: its description, and the packet that renders a
- * defect by the build a test names.
- */
-const probe = { description: 'Probe a call by name.', packet: { build } };
+/** The options each scenario's Application declares. */
+const probe = { description: 'Probe a call by name.' };
+
+/** The release facts each run reads, which render a defect by the build a test names. */
+const release = { build };
 
 /** A foreign error the application's translator answers. */
 class ForeignError extends Error {
@@ -100,50 +100,70 @@ if (scenario === 'lowering') {
   const app = lowering();
   const env = { PROBE_FLAG: 'true' };
   const outcomes = {
-    absent: await app.invoke(['echo'], {
-      args: { files: [], target: 't' },
-      options: { flag: false, keep: true, tag: [], verbose: 0 },
-    }),
+    absent: await app.invoke(
+      ['echo'],
+      {
+        args: { files: [], target: 't' },
+        options: { flag: false, keep: true, tag: [], verbose: 0 },
+      },
+      { host: { release } },
+    ),
     bound: await app.invoke(
       ['echo'],
       { args: { target: 't' }, options: { flag: false } },
-      { host: { env } },
+      { host: { env, release } },
     ),
-    every: await app.invoke(['echo'], {
-      args: { files: ['a', 1], target: 'x' },
-      options: {
-        backup: true,
-        color: false,
-        flag: true,
-        keep: false,
-        name: 's',
-        ratio: 0.5,
-        tag: ['a', 2],
-        verbose: 3,
-        versions: true,
+    every: await app.invoke(
+      ['echo'],
+      {
+        args: { files: ['a', 1], target: 'x' },
+        options: {
+          backup: true,
+          color: false,
+          flag: true,
+          keep: false,
+          name: 's',
+          ratio: 0.5,
+          tag: ['a', 2],
+          verbose: 3,
+          versions: true,
+        },
       },
-    }),
-    missing: await app.invoke(['need'], { options: { item: [] } }),
-    single: await app.invoke(['echo'], {
-      args: { files: 'f', target: 7 },
-      options: { color: true, name: 5, tag: 'one' },
-    }),
-    unlowerable: await app.invoke(['echo'], {
-      args: { files: [['nested']], target: true },
-      options: {
-        backup: false,
-        color: 1,
-        name: null,
-        ratio: Number.NaN,
-        tag: [{}],
-        verbose: 1.5,
-        versions: false,
+      { host: { release } },
+    ),
+    missing: await app.invoke(['need'], { options: { item: [] } }, { host: { release } }),
+    single: await app.invoke(
+      ['echo'],
+      {
+        args: { files: 'f', target: 7 },
+        options: { color: true, name: 5, tag: 'one' },
       },
-    }),
-    unlowerableMore: await app.invoke(['echo'], {
-      args: { target: ['a'] },
-      options: { flag: 'yes', name: {}, ratio: true, verbose: true },
-    }),
+      { host: { release } },
+    ),
+    unlowerable: await app.invoke(
+      ['echo'],
+      {
+        args: { files: [['nested']], target: true },
+        options: {
+          backup: false,
+          color: 1,
+          name: null,
+          ratio: Number.NaN,
+          tag: [{}],
+          verbose: 1.5,
+          versions: false,
+        },
+      },
+      { host: { release } },
+    ),
+    unlowerableMore: await app.invoke(
+      ['echo'],
+      {
+        args: { target: ['a'] },
+        options: { flag: 'yes', name: {}, ratio: true, verbose: true },
+      },
+      { host: { release } },
+    ),
   };
   print(outcomes);
 } else if (scenario === 'names') {
@@ -191,18 +211,18 @@ if (scenario === 'lowering') {
     );
   const env = { PROBE_MIN_BYTES: 'many' };
   print({
-    byName: await app.invoke(['pair'], { args: { second: 'x' } }),
-    group: await app.invoke(['cache'], {}),
-    hidden: await app.invoke(['cache', 'purge'], {}),
+    byName: await app.invoke(['pair'], { args: { second: 'x' } }, { host: { release } }),
+    group: await app.invoke(['cache'], {}, { host: { release } }),
+    hidden: await app.invoke(['cache', 'purge'], {}, { host: { release } }),
     seen,
-    source: await app.invoke(['get'], {}, { host: { env } }),
+    source: await app.invoke(['get'], {}, { host: { env, release } }),
     sourceArgv: await (async () => {
       const stderr = sink();
-      const code = await app.run({ host: { argv: ['get'], env, stderr: stderr.stream } });
+      const code = await app.run({ host: { argv: ['get'], env, release, stderr: stderr.stream } });
       return { code, stderr: stderr.text() };
     })(),
-    unknownArgument: await app.invoke(['get'], { args: { pth: 'x' } }),
-    unknownOption: await app.invoke(['get'], { options: { verbos: true } }),
+    unknownArgument: await app.invoke(['get'], { args: { pth: 'x' } }, { host: { release } }),
+    unknownOption: await app.invoke(['get'], { options: { verbos: true } }, { host: { release } }),
   });
   process.exitCode = 0;
 } else if (scenario === 'capture') {
@@ -241,8 +261,8 @@ if (scenario === 'lowering') {
       }),
     );
   print({
-    plain: await app.invoke(['plain'], {}),
-    report: await app.invoke(['report'], {}),
+    plain: await app.invoke(['plain'], {}, { host: { release } }),
+    report: await app.invoke(['report'], {}, { host: { release } }),
   });
 } else if (scenario === 'failures') {
   const broken = process.argv[4] === 'broken-view';
@@ -304,14 +324,14 @@ if (scenario === 'lowering') {
   };
   const thrown = new Error('the handler broke');
   print({
-    defect: await app.invoke(['defect'], {}, { failure: handler }),
-    foreign: await app.invoke(['foreign'], {}, { failure: handler }),
+    defect: await app.invoke(['defect'], {}, { failure: handler, host: { release } }),
+    foreign: await app.invoke(['foreign'], {}, { failure: handler, host: { release } }),
     lateFault: await app.invoke(
       ['quiet'],
       { options: { twice: true } },
-      { failure: (failure) => failure.rule.identity },
+      { failure: (failure) => failure.rule.identity, host: { release } },
     ),
-    noHandler: await app.invoke(['foreign'], {}).then((outcome) => ({
+    noHandler: await app.invoke(['foreign'], {}, { host: { release } }).then((outcome) => ({
       ...outcome,
       failure: {
         isTranslated: outcome.failure instanceof TranslatedError,
@@ -327,6 +347,7 @@ if (scenario === 'lowering') {
           failure: () => {
             throw thrown;
           },
+          host: { release },
         },
       )
       .then(
@@ -369,24 +390,29 @@ if (scenario === 'lowering') {
       }).action(() => undefined),
     );
   print({
-    assigned: await app.invoke(['count'], { options: { later: true } }, { view: 'json' }),
-    json: await app.invoke(['count'], {}, { view: 'json' }),
-    noResult: await app.invoke(['get'], {}, { view: 'json' }),
-    notString: await app.invoke(['count'], {}, { view: 5 }),
-    unknown: await app.invoke(['count'], {}, { view: 'yaml' }),
+    assigned: await app.invoke(
+      ['count'],
+      { options: { later: true } },
+      { host: { release }, view: 'json' },
+    ),
+    json: await app.invoke(['count'], {}, { host: { release }, view: 'json' }),
+    noResult: await app.invoke(['get'], {}, { host: { release }, view: 'json' }),
+    notString: await app.invoke(['count'], {}, { host: { release }, view: 5 }),
+    unknown: await app.invoke(['count'], {}, { host: { release }, view: 'yaml' }),
   });
 } else if (scenario === 'shape') {
   const app = new Application('probe', probe).action(() => undefined);
+  // Each call names the run's build, which renders its fault, except a host that cannot be read.
   const malformed = {
-    args: [[], { args: [] }],
-    failure: [[], {}, { failure: 'not a function' }],
-    host: [[], {}, { host: { argv: ['x'] } }],
-    options: [[], { options: 'verbose' }],
-    passthrough: [[], { passthrough: [1] }],
-    path: ['get', {}],
-    signal: [[], {}, { signal: 'not a signal' }],
-    values: [[], null],
-    valuesKey: [[], { flags: {} }],
+    args: [[], { args: [] }, { host: { release } }],
+    failure: [[], {}, { failure: 'not a function', host: { release } }],
+    host: [[], {}, { host: { argv: ['x'], release } }],
+    options: [[], { options: 'verbose' }, { host: { release } }],
+    passthrough: [[], { passthrough: [1] }, { host: { release } }],
+    path: ['get', {}, { host: { release } }],
+    signal: [[], {}, { host: { release }, signal: 'not a signal' }],
+    values: [[], null, { host: { release } }],
+    valuesKey: [[], { flags: {} }, { host: { release } }],
   };
   const outcomes = {};
   for (const [slot, call] of Object.entries(malformed)) {
@@ -409,9 +435,9 @@ if (scenario === 'lowering') {
     }),
   );
   print({
-    action: await app.invoke(['nested'], {}),
-    args: await app.invoke(['x'], { args: [] }, { failure: handler }),
-    options: await app.invoke(['x'], { options: null }, { failure: handler }),
+    action: await app.invoke(['nested'], {}, { host: { release } }),
+    args: await app.invoke(['x'], { args: [] }, { failure: handler, host: { release } }),
+    options: await app.invoke(['x'], { options: null }, { failure: handler, host: { release } }),
     received,
     rejected: await app
       .invoke(
@@ -421,13 +447,14 @@ if (scenario === 'lowering') {
           failure: () => {
             throw thrown;
           },
+          host: { release },
         },
       )
       .then(
         () => 'resolved',
         (error) => error === thrown,
       ),
-    signal: await app.invoke(['x'], {}, { failure: handler, signal: {} }),
+    signal: await app.invoke(['x'], {}, { failure: handler, host: { release }, signal: {} }),
   });
 }
 
@@ -469,7 +496,13 @@ if (scenario === 'isolation') {
       }),
     );
   const code = await app.run({
-    host: { argv: ['parent'], cwd: '/sentinel', stderr: stderr.stream, stdout: stdout.stream },
+    host: {
+      argv: ['parent'],
+      cwd: '/sentinel',
+      release,
+      stderr: stderr.stream,
+      stdout: stdout.stream,
+    },
   });
   print({ code, stderr: stderr.text(), stdout: stdout.text() });
   process.exitCode = 0;
@@ -491,7 +524,7 @@ if (scenario === 'isolation') {
     await app.invoke(
       [],
       {},
-      { host: { cwd: '/virtual', env: { ONLY: 'x' }, platform: 'plan9', readSource } },
+      { host: { cwd: '/virtual', env: { ONLY: 'x' }, platform: 'plan9', readSource, release } },
     ),
   );
 } else if (scenario === 'nesting') {
@@ -514,7 +547,10 @@ if (scenario === 'isolation') {
         await out.print(JSON.stringify({ left, right }));
       }),
     );
-  print({ both: await app.invoke(['both'], {}), inner: await app.invoke(['inner'], {}) });
+  print({
+    both: await app.invoke(['both'], {}, { host: { release } }),
+    inner: await app.invoke(['inner'], {}, { host: { release } }),
+  });
 } else if (scenario === 'graph') {
   const calls = { attach: 0, built: 0 };
   const counting = plugin('@fixture/counting', {
@@ -546,9 +582,9 @@ if (scenario === 'isolation') {
         await out.print(`${calls.attach - before.attach} ${calls.built - before.built}`);
       }),
     );
-  const ran = await app.invoke(['caller'], {});
+  const ran = await app.invoke(['caller'], {}, { host: { release } });
   const afterOne = { ...calls };
-  await app.invoke(['leaf'], {});
+  await app.invoke(['leaf'], {}, { host: { release } });
   const failing = plugin('@fixture/failing', {
     onCommandAttach: () => {
       throw new Error('the hook broke');
@@ -559,7 +595,7 @@ if (scenario === 'isolation') {
     plugins: [failing],
   })
     .action(() => undefined)
-    .invoke([], {});
+    .invoke([], {}, { host: { release } });
   print({
     broken,
     fromAction: ran.output,
@@ -584,8 +620,8 @@ if (scenario === 'isolation') {
     ],
   }).action(({ out }) => out.fatal('Stopped.'));
   const stderr = sink();
-  await app.run({ host: { argv: [], stderr: stderr.stream } });
-  const named = await app.invoke([], {});
+  await app.run({ host: { argv: [], release, stderr: stderr.stream } });
+  const named = await app.invoke([], {}, { host: { release } });
   print({ argv: stderr.text(), named: named.messages, seen });
   process.exitCode = 0;
 }
@@ -639,11 +675,15 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
       }),
     );
   if (scenario === 'sigterm') {
-    const code = await app.run({ host: { argv: ['parent'] } });
+    const code = await app.run({ host: { argv: ['parent'], release } });
     print({ code });
   } else if (scenario === 'own-abort') {
     const controller = new AbortController();
-    const pending = app.invoke(['slow'], {}, { failure, signal: controller.signal });
+    const pending = app.invoke(
+      ['slow'],
+      {},
+      { failure, host: { release }, signal: controller.signal },
+    );
     while (!marks.includes('action')) {
       await new Promise((resolve) => setTimeout(resolve, 1));
     }
@@ -652,7 +692,10 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
   } else {
     const controller = new AbortController();
     controller.abort();
-    print({ marks, outcome: await app.invoke(['slow'], {}, { signal: controller.signal }) });
+    print({
+      marks,
+      outcome: await app.invoke(['slow'], {}, { host: { release }, signal: controller.signal }),
+    });
   }
 }
 
@@ -678,7 +721,13 @@ if (scenario === 'spellings') {
     ...probe,
     plugins: [spelling],
   }).action(() => undefined);
-  print(await app.invoke([], { options: { loud: true, quiet: false, tiny: true } }));
+  print(
+    await app.invoke(
+      [],
+      { options: { loud: true, quiet: false, tiny: true } },
+      { host: { release } },
+    ),
+  );
 }
 
 /** The listeners the process holds on each signal a signals owner claims. */

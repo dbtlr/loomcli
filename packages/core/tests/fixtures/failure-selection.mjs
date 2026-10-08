@@ -116,9 +116,9 @@ const shapes = {
 
 const app = shapes[shape]();
 if (process.env.FIXTURE_BY_NAME === undefined) {
-  await app.run({ host: { argv: words } });
+  await app.run({ host: { argv: words, release: { build: 'distributed' } } });
 } else {
   const [path, view] = JSON.parse(process.env.FIXTURE_BY_NAME);
-  const outcome = await app.invoke(path, {}, { view });
+  const outcome = await app.invoke(path, {}, { host: { release: { build: 'distributed' } }, view });
   process.stderr.write(outcome.messages);
 }

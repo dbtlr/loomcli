@@ -467,6 +467,6 @@ if (mode === 'rule') {
     process.stdout.write(`${kind}:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
-  const code = await app.run({ host: { argv: [] } });
+  const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
   process.stdout.write(`resolved:${code}\n`);
 }

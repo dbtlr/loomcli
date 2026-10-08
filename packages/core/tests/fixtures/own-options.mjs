@@ -101,5 +101,5 @@ const app = new Application('owns', { plugins })
       .action(() => undefined),
   );
 
-const code = await app.run({ host: { argv: words } });
+const code = await app.run({ host: { argv: words, release: { build: 'distributed' } } });
 process.stdout.write(`exit:${String(code)}\n${JSON.stringify(calls)}\n`);

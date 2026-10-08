@@ -33,7 +33,6 @@ const declarations = {
   application: () => ({
     description: 'Probe the reads.',
     extensions: [note('x')],
-    packet: { build: 'distributed' },
     plugins: [plugin('@acme/log', {})],
     rendering: { color: 'auto' },
     translators: [translate(SyntaxError, act)],
@@ -103,7 +102,7 @@ const factOf = {
 
 /** The plain objects and lists each declaration holds, which the trap counts watch. */
 const parts = {
-  application: ['packet', 'rendering', 'plugins', 'views', 'translators', 'extensions'],
+  application: ['rendering', 'plugins', 'views', 'translators', 'extensions'],
   command: ['extensions'],
   option: ['extensions'],
   plugin: [
@@ -300,11 +299,11 @@ const modes = {
   // A verdict one declaring call reached answers no later call: each part changes its prototype after.
   later: () => {
     const foreign = { kind: 'foreign' };
-    const packet = Object.create(foreign);
-    packet.build = 'distributed';
-    const before = outcome(() => new Application('probe', { packet }));
-    Object.setPrototypeOf(packet, Object.prototype);
-    const after = outcome(() => new Application('probe', { packet }));
+    const rendering = Object.create(foreign);
+    rendering.color = 'auto';
+    const before = outcome(() => new Application('probe', { rendering }));
+    Object.setPrototypeOf(rendering, Object.prototype);
+    const after = outcome(() => new Application('probe', { rendering }));
     const definition = { views: [] };
     plugin('@acme/probe', definition);
     Object.setPrototypeOf(definition, foreign);

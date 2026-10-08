@@ -23,8 +23,8 @@ import {
 
 const [scenario, build = 'distributed'] = process.argv.slice(2);
 
-/** The packet one run reads, which decides whether a defect shows its Developer Diagnostic. */
-const packet = { packet: { build } };
+/** The release facts one run reads, which decide whether a defect shows its Developer Diagnostic. */
+const release = { build };
 
 /** Every class core exports, keyed by its name, as a projection reads them without an instance. */
 const coreClasses = {
@@ -121,17 +121,15 @@ const judging = plugin('@fixture/judging', {
 
 /** The form of the failure one run by name resolves with, or the outcome when it did not fail. */
 async function formOf(app, path = [], values = {}) {
-  const outcome = await app.invoke(path, values);
+  const outcome = await app.invoke(path, values, { host: { release } });
   return outcome.status === 'failed' ? outcome.form : outcome;
 }
 
 /** An application whose action throws what `raise` returns. */
 function raising(raise) {
-  return new Application('codes', { ...packet, description: 'The codes application.' }).action(
-    () => {
-      throw raise();
-    },
-  );
+  return new Application('codes', { description: 'The codes application.' }).action(() => {
+    throw raise();
+  });
 }
 
 const scenarios = {
@@ -140,18 +138,15 @@ const scenarios = {
     const forms = {
       build: await formOf(
         new Application('codes', {
-          ...packet,
           description: 'The codes application.',
           plugins: [judging],
         }).action(() => undefined),
       ),
       internal: await formOf(raising(() => new OopsError())),
       result: await formOf(
-        new Application('codes', { ...packet, description: 'The codes application.' })
-          .result()
-          .action(() => {
-            // The action returns without emitting the result it declared.
-          }),
+        new Application('codes', { description: 'The codes application.' }).result().action(() => {
+          // The action returns without emitting the result it declared.
+        }),
       ),
       'type-error': await formOf(raising(() => new TypeError('Cannot read the value.'))),
       unconstructed: await formOf(raising(() => Object.create(FatalError.prototype))),
@@ -171,7 +166,7 @@ const scenarios = {
   },
   /** A failure core raises by name for each class reaches the form with the class's code. */
   'core-forms': async () => {
-    const app = new Application('codes', { ...packet, description: 'The codes application.' })
+    const app = new Application('codes', { description: 'The codes application.' })
       .command(
         new Command('group', { description: 'The group command.' }).command(
           new Command('leaf', { description: 'The leaf command.' }).action(() => undefined),
@@ -210,7 +205,7 @@ const scenarios = {
     for (const Class of Object.values(coreClasses)) {
       Object.defineProperty(Class, 'code', { value: 'x' });
     }
-    const app = new Application('codes', { ...packet, description: 'The codes application.' })
+    const app = new Application('codes', { description: 'The codes application.' })
       .command(new Command('get', { description: 'The get command.' }).action(() => undefined))
       .command(
         new Command('fail', { description: 'The fail command.' }).action(() => {
@@ -233,7 +228,7 @@ const scenarios = {
   /** An invalid class constructed inside a run reports the fault by build. */
   invalid: async () => {
     const code = await raising(() => new invalid[process.env.FIXTURE_CLASS]('Never.')).run({
-      host: { argv: [] },
+      host: { argv: [], release },
     });
     process.stdout.write(`resolved:${String(code)}\n`);
   },

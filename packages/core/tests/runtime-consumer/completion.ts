@@ -9,4 +9,4 @@ const app = new Application('packed-completion', { plugins: [installed] }).actio
   out.print('root'),
 );
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

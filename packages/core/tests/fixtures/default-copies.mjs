@@ -44,8 +44,8 @@ fields.push('c');
 tags.push('two');
 
 if (mode === 'runs') {
-  await app.run({ host: { argv: [] } });
-  await app.run({ host: { argv: [] } });
+  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
   // Two mutating invocations later, the declaration still reports the values it was written with.
   const graph = app.inspect();
   process.stdout.write(

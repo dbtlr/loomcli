@@ -1,8 +1,6 @@
 # @loomcli/loom
 
-The Loom CLI toolchain. Its public surface is `@loomcli/loom/build`, which exports `packet()`.
-
-`packet()` is a `Bun.build` plugin. A Loom application keeps a `loom.packet.json` that reads `{ "build": "development" }` at its package root and passes it to its `Application` as `packet`. While Bun bundles the application, `packet()` writes `distributed` into the packet the bundle carries, so an operator sees one generic message for a defect, and the source file keeps reading `development`. An application bundled without it, by any bundler, starts and reads the source packet, `development`, so it is a development build.
+The Loom CLI toolchain. It exports no module, and its public commands, `loom build` and `loom check` among them, ship in a later release, as the [toolchain reference](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md) describes.
 
 ## Install
 
@@ -12,13 +10,16 @@ pnpm add -D @loomcli/loom
 
 ## Build
 
-```ts
-// scripts/build.ts, run as `bun scripts/build.ts`; the bundle reads { "build": "distributed" }.
-import { packet } from '@loomcli/loom/build';
+Core fills `host.release` from the release facts the build bakes into the `__LOOM_RELEASE__` identifier through a bundler `define`. Until `loom build` ships, bake them with your bundler:
 
-await Bun.build({ entrypoints: ['src/main.ts'], outdir: 'dist', plugins: [packet()], target: 'node' });
+```ts
+// scripts/build.ts, run as `bun scripts/build.ts`; the bundle reads { build: 'distributed' }.
+await Bun.build({
+  define: { __LOOM_RELEASE__: JSON.stringify({ build: 'distributed' }) },
+  entrypoints: ['src/main.ts'],
+  outdir: 'dist',
+  target: 'node',
+});
 ```
 
-Build a compiled binary through the same plugin with the `compile` option of `Bun.build`. The `bun build` command line takes no plugin.
-
-See [Development builds](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#development-builds) for the packet contract.
+The define reaches core only when the bundle includes `@loomcli/core`. A bundle built without it reads `{ build: 'source' }`, as the source run does, so a defect prints its Developer Diagnostic. See [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#release-facts) for the contract.

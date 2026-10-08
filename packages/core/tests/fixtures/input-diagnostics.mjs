@@ -73,9 +73,26 @@ const broken = {
   },
 };
 
+/**
+ * The graph a distributed run's plugins judge. `inspect()` learns its build from the release facts
+ * a bundle bakes in, so a source run reads a distributed build's graph here instead.
+ */
+let judged = undefined;
+const judging = plugin('@acme/judge', {
+  onGraphBuilt: (graph) => {
+    judged = graph;
+  },
+});
+
+/** The options of an application in one build: a distributed one installs the judging plugin. */
+const probe = (build) =>
+  build === 'distributed'
+    ? { description: 'Probe.', plugins: [judging] }
+    : { description: 'Probe.' };
+
 /** An application in one build whose `get` Command declares one option validated by `validate`. */
 const validated = (build, validate) =>
-  new Application('probe', { description: 'Probe.', packet: { build } }).command(
+  new Application('probe', probe(build)).command(
     new Command('get', { description: 'Probe.' })
       .option('limit', { description: 'Limit.', type: 'string', validate })
       .action(act),
@@ -261,35 +278,35 @@ const reported = {
   'converter-getter': () => validated('development', getterThrowing),
   'converter-getter-distributed': () => validated('distributed', getterThrowing),
   'converter-list': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+    new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
         .option('limit', { description: 'Limit.', type: 'string', validate: listing })
         .action(act),
     ),
   'converter-throws': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+    new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
         .argument('path', { description: 'Path.', validate: throwing })
         .action(act),
     ),
   'converter-throws-distributed': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'distributed' } }).command(
+    new Application('probe', probe('distributed')).command(
       new Command('get', { description: 'Probe.' })
         .argument('path', { description: 'Path.', validate: throwing })
         .action(act),
     ),
   'global-validator-throws': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } })
+    new Application('probe', { description: 'Probe.' })
       .globalOption('limit', { description: 'Limit.', type: 'string', validate: broken })
       .command(leaf('get')),
   'invalid-default': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+    new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
         .option('limit', { default: 'x', description: 'Limit.', type: 'string', validate: digits })
         .action(act),
     ),
   'invalid-implied': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+    new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
         .option('backup', {
           description: 'Backup.',
@@ -303,7 +320,6 @@ const reported = {
   'plugin-invalid-default': () =>
     new Application('probe', {
       description: 'Probe.',
-      packet: { build: 'development' },
       plugins: [
         plugin('@acme/log', {
           options: {
@@ -315,7 +331,6 @@ const reported = {
   'plugin-invalid-implied': () =>
     new Application('probe', {
       description: 'Probe.',
-      packet: { build: 'development' },
       plugins: [
         plugin('@acme/copy', {
           options: {
@@ -327,7 +342,6 @@ const reported = {
   'plugin-validator-throws': () =>
     new Application('probe', {
       description: 'Probe.',
-      packet: { build: 'development' },
       plugins: [
         plugin('@acme/log', {
           options: { level: { description: 'Level.', type: 'string', validate: broken } },
@@ -335,7 +349,7 @@ const reported = {
       ],
     }).command(leaf('get')),
   'validator-throws': () =>
-    new Application('probe', { description: 'Probe.', packet: { build: 'development' } }).command(
+    new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
         .option('limit', { description: 'Limit.', type: 'string', validate: broken })
         .action(act),
@@ -351,11 +365,26 @@ const argvOf = {
 
 const [scenario, mode] = process.argv.slice(2);
 
+/** The build a reported scenario runs in, which its name states. */
+const build = scenario.endsWith('-distributed') ? 'distributed' : 'source';
+
+/** One reported scenario's run, with its words and its build. */
+const run = (app) => app.run({ host: { argv: argvOf[scenario] ?? ['get'], release: { build } } });
+
+/** The graph a scenario reads: `inspect()`'s from source, and a distributed run's otherwise. */
+async function graphOf(app) {
+  if (build === 'source') {
+    return app.inspect();
+  }
+  await run(app);
+  return judged;
+}
+
 if (scenario in reported) {
   const app = reported[scenario]();
   if (mode === 'inspect') {
     try {
-      const graph = app.inspect();
+      const graph = await graphOf(app);
       const [child] = graph.root.children;
       const [input] = [...child.arguments, ...child.options];
       process.stdout.write(`${JSON.stringify({ schema: input.schema })}\n`);
@@ -363,7 +392,8 @@ if (scenario in reported) {
       process.stdout.write(`${error.message}\n`);
     }
   } else if (mode === 'cycle') {
-    const [child] = app.inspect().root.children;
+    const graph = await graphOf(app);
+    const [child] = graph.root.children;
     const { schema } = child.options[0];
     const cycle = schema.self === schema;
     process.stdout.write(
@@ -376,7 +406,7 @@ if (scenario in reported) {
       process.stdout.write(`${JSON.stringify({ cause: error.cause?.message ?? null })}\n`);
     }
   } else {
-    process.exitCode = await app.run({ host: { argv: argvOf[scenario] ?? ['get'] } });
+    process.exitCode = await run(app);
   }
 } else {
   try {

@@ -10,4 +10,4 @@ const app = new Application('options')
     out.print(JSON.stringify({ args, argv: host.argv, options, passthrough }));
   });
 
-await app.run({ host: { argv: process.argv.slice(3) } });
+await app.run({ host: { argv: process.argv.slice(3), release: { build: 'distributed' } } });

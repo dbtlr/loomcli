@@ -8,7 +8,7 @@ Loom CLI is a TypeScript framework for command applications. The current increme
 
 ## Run textstat
 
-Install dependencies, build the packages, and bundle the examples. Bundling needs [Bun](https://bun.sh), because each example is bundled with `Bun.build` and the `packet()` plugin from `@loomcli/loom/build`:
+Install dependencies, build the packages, and bundle the examples. Bundling needs [Bun](https://bun.sh), because each example is bundled with `Bun.build`, which bakes the [release facts](docs/core.md#release-facts) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -48,7 +48,7 @@ The same built application runs with Bun:
 bun examples/textstat/dist/main.js README.md
 ```
 
-The bundle is a distributed build, so a defect prints `textstat: Something went wrong.`. The source is a development build, because its [packet](examples/textstat/loom.packet.json) reads `development`, so a defect prints its Developer Diagnostic when the source runs under Bun:
+The bundle is a distributed build, so a defect prints `textstat: Something went wrong.`. The source is a development build, because nothing baked release facts into it, so they read `{ build: 'source' }`, and a defect prints its Developer Diagnostic when the source runs under Bun:
 
 ```sh
 bun examples/textstat/src/main.ts README.md

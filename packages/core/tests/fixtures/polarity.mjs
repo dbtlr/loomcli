@@ -6,4 +6,4 @@ await new Application('polarity')
   .option('silent', { polarity: 'negative', short: 's', shortOnly: true, type: 'boolean' })
   .option('metric', { short: 'm', shortOnly: true, type: 'string' })
   .action(({ options, passthrough, out }) => out.print(JSON.stringify({ options, passthrough })))
-  .run();
+  .run({ host: { release: { build: 'distributed' } } });

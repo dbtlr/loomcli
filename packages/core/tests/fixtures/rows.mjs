@@ -222,7 +222,11 @@ function build() {
 }
 
 const code = await build().run({
-  host: { argv: scenario === 'root' ? [] : ['count'], stdout: stdout() },
+  host: {
+    argv: scenario === 'root' ? [] : ['count'],
+    release: { build: 'distributed' },
+    stdout: stdout(),
+  },
   signal: controller.signal,
 });
 if (events.length > 0) {

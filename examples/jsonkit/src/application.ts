@@ -16,7 +16,6 @@ import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 
-import packet from '../loom.packet.json' with { type: 'json' };
 import Package from '../package.json' with { type: 'json' };
 import { summarize } from './actions/summarize.js';
 import { debug } from './commands/debug.js';
@@ -51,8 +50,6 @@ const configured = new Application('jsonkit', {
     manifestCommand({ failures: readFailures }),
     mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
-  // The source tree reads development; the build writes distributed into the bundle.
-  packet,
   plugins: [
     help(),
     suggestions(),

@@ -75,5 +75,7 @@ function currentRootGraph() {
 
 const graphs = { current: currentRootGraph, graph, root: rootGraph };
 const build = graphs[process.argv[2]];
-const code = await build().run({ host: { argv: process.argv.slice(3) } });
+const code = await build().run({
+  host: { argv: process.argv.slice(3), release: { build: 'distributed' } },
+});
 process.stdout.write(`resolved:${code}\n`);

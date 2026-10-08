@@ -282,9 +282,9 @@ function completing() {
 }
 
 const scenarios = {
-  'child-order': () => childOrder().run({ host: { argv } }),
-  commands: () => commands().run({ host: { argv } }),
-  completion: () => completing().run({ host: { argv } }),
+  'child-order': () => childOrder().run({ host: { argv, release: { build: 'distributed' } } }),
+  commands: () => commands().run({ host: { argv, release: { build: 'distributed' } } }),
+  completion: () => completing().run({ host: { argv, release: { build: 'distributed' } } }),
   graph: () => {
     process.stdout.write(
       `${JSON.stringify(
@@ -296,13 +296,16 @@ const scenarios = {
   },
   invalid,
   metadata,
-  'named-only': () => commands(false).run({ host: { argv } }),
-  options: () => options().run({ host: { argv } }),
-  ordered: () => ordered().run({ host: { argv } }),
-  'parent-order': () => ordered(true).run({ host: { argv } }),
-  scoped: () => scoped().run({ host: { argv } }),
-  wide: () => wide().run({ host: { argv } }),
+  'named-only': () => commands(false).run({ host: { argv, release: { build: 'distributed' } } }),
+  options: () => options().run({ host: { argv, release: { build: 'distributed' } } }),
+  ordered: () => ordered().run({ host: { argv, release: { build: 'distributed' } } }),
+  'parent-order': () => ordered(true).run({ host: { argv, release: { build: 'distributed' } } }),
+  scoped: () => scoped().run({ host: { argv, release: { build: 'distributed' } } }),
+  wide: () => wide().run({ host: { argv, release: { build: 'distributed' } } }),
   'wide-styled': () =>
-    wide().run({ host: { argv, env: {} }, rendering: { color: 'always', modifiers: 'always' } }),
+    wide().run({
+      host: { argv, env: {}, release: { build: 'distributed' } },
+      rendering: { color: 'always', modifiers: 'always' },
+    }),
 };
 await scenarios[scenario](argv);

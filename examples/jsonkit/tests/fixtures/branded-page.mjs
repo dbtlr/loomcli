@@ -25,4 +25,6 @@ const application = new Application('jsonkit', {
   views: [override(helpPage, scenario === 'broken' ? breaks : branded)],
 }).action(({ out }) => out.print('summarized'));
 
-process.exitCode = await application.run({ host: { argv: ['--help'] } });
+process.exitCode = await application.run({
+  host: { argv: ['--help'], release: { build: 'distributed' } },
+});

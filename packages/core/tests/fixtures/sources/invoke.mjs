@@ -11,6 +11,9 @@ import { z } from 'zod';
 
 import { configKey } from './extension.mjs';
 
+// A test that reads a defect's own sentence runs the fixture as a development build.
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+
 if (process.env.FIXTURE_TTY === '1') {
   Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
 }
@@ -224,10 +227,6 @@ function application() {
     .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
   return new Application('app', {
     description: 'The app application.',
-    // A test that reads a defect's own sentence runs the fixture as a development build.
-    ...(process.env.FIXTURE_BUILD === undefined
-      ? {}
-      : { packet: { build: process.env.FIXTURE_BUILD } }),
     plugins: (installed[process.argv[2]] ?? (() => []))(),
     views: overrides[process.env.FIXTURE_VIEWS ?? 'none'],
   })
@@ -256,15 +255,15 @@ if (mode === 'inspect') {
   // The caller cancelled the run before it started.
   const controller = new AbortController();
   controller.abort();
-  const code = await application().run({ host: { argv }, signal: controller.signal });
+  const code = await application().run({ host: { argv, release }, signal: controller.signal });
   process.stdout.write(`resolved:${code}\n`);
 } else if (mode === 'cancel') {
   // The source aborts the caller's signal from inside its own call, so the abort lands in flight.
   const controller = new AbortController();
   globalThis.fixtureAbort = () => controller.abort();
-  const code = await application().run({ host: { argv }, signal: controller.signal });
+  const code = await application().run({ host: { argv, release }, signal: controller.signal });
   process.stdout.write(`resolved:${code}\n`);
 } else {
-  const code = await application().run({ host: { argv } });
+  const code = await application().run({ host: { argv, release } });
   process.stdout.write(`resolved:${code}\n`);
 }
