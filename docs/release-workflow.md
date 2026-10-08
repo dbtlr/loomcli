@@ -8,7 +8,7 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
 
-The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds the two commands, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
+The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
 
 ## Trigger
 

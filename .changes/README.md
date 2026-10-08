@@ -18,7 +18,7 @@ A documentation-only diff can describe changed behavior. Judge the consumer effe
 
 - Use `<slug>.md` for a fix, `feature.<slug>.md` for a compatible addition, and `breaking.<slug>.md` for a breaking change.
 - Choose a unique, nonempty slug. Only the `feature.` and `breaking.` prefixes carry meaning. A bare `feature.md` or `breaking.md` is invalid.
-- Keep fragments directly in `.changes/`. Names are case-sensitive. Subdirectories and other file formats are invalid.
+- Keep fragments directly in `.changes/`. Names are case-sensitive. Subdirectories and other file formats are invalid. A hidden entry, one whose name starts with `.`, is ignored.
 - Keep this `README.md` as the directory guide. It is not a fragment and does not satisfy the fragment requirement.
 
 ## Describe the consumer result

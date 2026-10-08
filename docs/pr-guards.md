@@ -8,7 +8,7 @@ The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog
 
 This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
 
-Command-specific code lives in `packages/loom/src/commands/changelog/` and `packages/loom/src/commands/pr/`. Both commands are hidden, so no listing advertises them. Both use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
+The PR guard lives in `packages/loom/src/commands/pr/`, and the synchronized cut in `packages/loom/src/commands/release/cut.ts`. Both are hidden, so no listing advertises them. The public `loom changelog` commands live in `packages/loom/src/commands/changelog/`. All three use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
 ```sh
 pnpm build

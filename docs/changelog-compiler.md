@@ -22,7 +22,7 @@ pnpm loom release cut --dry-run --date 2026-09-07
 pnpm loom release cut --date 2026-09-07
 ```
 
-`changelog check` validates every file in `.changes/`, except the regular file `README.md`, and names every invalid one. It accepts an empty set and does not require Git history. The [toolchain reference](toolchain.md#the-package-changelog) documents it, and the [fragment guide](../.changes/README.md) defines the Markdown grammar. Leading verbs, consumer relevance, and migration accuracy remain review judgments. Fragments and narratives cannot leave Markdown blocks open across generated release headings.
+`changelog check` validates every entry in `.changes/`, except the regular file `README.md` and hidden entries whose names start with `.`, and names every invalid one. It accepts an empty set and does not require Git history. The [toolchain reference](toolchain.md#the-package-changelog) documents it, and the [fragment guide](../.changes/README.md) defines the Markdown grammar. Leading verbs, consumer relevance, and migration accuracy remain review judgments. Fragments and narratives cannot leave Markdown blocks open across generated release headings.
 
 `release cut --dry-run` validates the fragments and prints one proposed release section. It does not change files. Fragments must have a recorded addition in the current branch's first-parent history. Existing fragments can contain local edits during a dry run.
 
