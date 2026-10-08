@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { requireClosedBlocks } from './markdown.js';
+import { requireClosedBlocks, withoutByteOrderMark } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
 
 // Undefined for a name outside the grammar: a bare kind prefix, an empty slug, or another extension.
@@ -81,13 +81,18 @@ function readFragment(
   ref: string | undefined,
 ) {
   const { name } = entry;
-  const kind = entry.isFile() ? fragmentKind(name) : undefined;
+  if (!entry.isFile()) {
+    throw new Error(
+      `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.`,
+    );
+  }
+  const kind = fragmentKind(name);
   if (kind === undefined) {
     throw new Error(
       `.changes/${name}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`,
     );
   }
-  const body = readRegularFile(root, `.changes/${name}`, ref);
+  const body = withoutByteOrderMark(readRegularFile(root, `.changes/${name}`, ref));
   validateBody(name, kind, body);
   return { body, kind, name };
 }

@@ -1,9 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { Command } from '@loomcli/core';
 
-import { releaseDate } from '../../helpers/changelog.js';
+import { readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { readFragments } from '../../helpers/fragments.js';
 import { preparePackageCut, writePackageCut } from '../../helpers/package-changelog.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
@@ -44,10 +41,7 @@ export const changelog = new Command('changelog', {
           const directory = packageDirectory(host.cwd);
           const cut = preparePackageCut(directory, {
             date: releaseDate(options.date),
-            narrative:
-              options.narrative === undefined
-                ? undefined
-                : readFileSync(resolve(host.cwd, options.narrative), 'utf8'),
+            narrative: readNarrative(host.cwd, options.narrative),
           });
           if (!options['dry-run']) {
             writePackageCut(directory, cut);

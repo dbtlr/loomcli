@@ -1,6 +1,7 @@
-import { highestKind, landedFragments, nextVersion, renderSection } from './changelog.js';
+import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
+import { nextVersion } from './version.js';
 
 export function prepareRelease(
   root: string,

@@ -11,79 +11,16 @@ import { join } from 'node:path';
 
 import { z } from 'zod';
 
-import {
-  highestKind,
-  insertSection,
-  landedFragments,
-  nextVersion,
-  parseVersion,
-  renderSection,
-} from './changelog.js';
-import { readRegularFile } from './repository.js';
-
-// The end of the JSON string that opens at the index, past its closing quote.
-function stringEnd(source: string, start: number) {
-  let index = start + 1;
-  while (index < source.length && source[index] !== '"') {
-    index += source[index] === '\\' ? 2 : 1;
-  }
-  return index + 1;
-}
-
-/**
- * The span of the top-level `version` string in a JSON object's source. Scanning instead of
- * re-serializing keeps every other byte, and a nested `version`, such as a script's, never matches.
- * The last one wins, as it does for `JSON.parse`.
- */
-function versionSpan(source: string) {
-  let depth = 0;
-  let state: 'key' | 'colon' | 'value' | 'other' = 'other';
-  let key: unknown = undefined;
-  let span: { end: number; start: number } | undefined = undefined;
-  let index = 0;
-  while (index < source.length) {
-    const character = source[index];
-    let next = index + 1;
-    if (character === '"') {
-      next = stringEnd(source, index);
-      if (depth === 1 && state === 'key') {
-        key = JSON.parse(source.slice(index, next));
-        state = 'colon';
-      } else if (depth === 1 && state === 'value') {
-        span = key === 'version' ? { end: next, start: index } : span;
-        state = 'other';
-      }
-    } else if (character === '{' || character === '[') {
-      depth += 1;
-      state = depth === 1 && character === '{' ? 'key' : 'other';
-    } else if (character === '}' || character === ']') {
-      depth -= 1;
-      state = 'other';
-    } else if (depth === 1 && character === ':') {
-      state = 'value';
-    } else if (depth === 1 && character === ',') {
-      state = 'key';
-    } else if (depth === 1 && state === 'value' && !/\s/u.test(character ?? '')) {
-      state = 'other';
-    }
-    index = next;
-  }
-  return span;
-}
-
-// The manifest with its top-level `version` set and every other byte kept.
-function withVersion(source: string, version: string) {
-  const span = versionSpan(source);
-  if (span === undefined) {
-    throw new Error('package.json: expected a version string.');
-  }
-  return source.slice(0, span.start) + JSON.stringify(version) + source.slice(span.end);
-}
+import { highestKind, insertSection, landedFragments, renderSection } from './changelog.js';
+import { withVersion } from './manifest.js';
+import { withoutByteOrderMark } from './markdown.js';
+import { isRepository, isShallow, readRegularFile } from './repository.js';
+import { nextVersion, parseVersion } from './version.js';
 
 function manifestVersion(source: string) {
   let document: unknown = undefined;
   try {
-    document = JSON.parse(source);
+    document = JSON.parse(withoutByteOrderMark(source));
   } catch (error) {
     throw new Error('package.json: expected valid JSON.', { cause: error });
   }
@@ -92,6 +29,31 @@ function manifestVersion(source: string) {
     throw new Error('package.json: expected a version string.');
   }
   return parsed.data.version;
+}
+
+function packageVersion(source: string) {
+  const text = manifestVersion(source);
+  const version = parseVersion(text);
+  if (version === undefined) {
+    throw new Error(
+      `package.json version ${JSON.stringify(text)} is not MAJOR.MINOR.PATCH, so set a release version such as 1.2.0; prerelease versions belong to release orchestration.`,
+    );
+  }
+  return version;
+}
+
+// Write orders fragments by the commits that added them, so it reads the full history of a repository.
+function requireHistory(directory: string) {
+  if (!isRepository(directory)) {
+    throw new Error(
+      'loom changelog write orders fragments by the commits that added them, so run it inside a git repository with the fragments committed.',
+    );
+  }
+  if (isShallow(directory)) {
+    throw new Error(
+      'loom changelog write needs full git history to order the fragments, so fetch it with git fetch --unshallow and run it again.',
+    );
+  }
 }
 
 /**
@@ -103,10 +65,11 @@ export function preparePackageCut(
   options: { date: string; narrative: string | undefined },
 ) {
   const manifest = readRegularFile(directory, 'package.json');
-  const current = parseVersion(manifestVersion(manifest));
+  const current = packageVersion(manifest);
+  requireHistory(directory);
   const { fragments } = landedFragments(directory);
   if (fragments.length === 0) {
-    throw new Error('No fragments to release. Add a fragment to .changes/ first.');
+    throw new Error('No fragments to release, so add a fragment to .changes/ first.');
   }
   const version = nextVersion(current, highestKind(fragments));
   const section = renderSection({
@@ -128,29 +91,59 @@ export function preparePackageCut(
 }
 
 /**
- * Installs a prepared cut. Each file is written to a temporary copy beside it first, so a failure
- * before the copies replace the originals changes nothing. The consumed fragments go last.
+ * Installs a prepared cut. The new files are staged in a temporary directory beside the originals,
+ * so a failure while staging changes nothing. The replacement then moves each original and each
+ * consumed fragment into that directory and the staged files into place, and a failure undoes every
+ * move made so far. Only when the undo itself fails does the directory stay, holding the originals.
  */
 export function writePackageCut(directory: string, cut: ReturnType<typeof preparePackageCut>) {
   const stage = mkdtempSync(join(directory, '.loom-changelog-'));
+  const moves: { from: string; to: string }[] = [];
+  const move = (from: string, to: string) => {
+    renameSync(from, to);
+    moves.push({ from, to });
+  };
+  let keep = false;
   try {
     const files = [
       ['CHANGELOG.md', cut.changelog],
       ['package.json', cut.manifest],
     ] satisfies [string, string][];
     for (const [name, contents] of files) {
-      writeFileSync(join(stage, name), contents);
+      writeFileSync(join(stage, `new.${name}`), contents);
       if (existsSync(join(directory, name))) {
-        chmodSync(join(stage, name), statSync(join(directory, name)).mode);
+        chmodSync(join(stage, `new.${name}`), statSync(join(directory, name)).mode);
       }
     }
     for (const [name] of files) {
-      renameSync(join(stage, name), join(directory, name));
+      if (existsSync(join(directory, name))) {
+        move(join(directory, name), join(stage, `old.${name}`));
+      }
+      move(join(stage, `new.${name}`), join(directory, name));
     }
     for (const fragment of cut.fragments) {
-      rmSync(join(directory, '.changes', fragment.name));
+      move(join(directory, '.changes', fragment.name), join(stage, `fragment.${fragment.name}`));
     }
+  } catch (error) {
+    const failed: string[] = [];
+    for (const { from, to } of moves.toReversed()) {
+      try {
+        renameSync(to, from);
+      } catch {
+        failed.push(from);
+      }
+    }
+    if (failed.length > 0) {
+      keep = true;
+      throw new Error(
+        `Restoring ${failed.join(', ')} failed, so copy the originals back from ${stage}.`,
+        { cause: error },
+      );
+    }
+    throw error;
   } finally {
-    rmSync(stage, { force: true, recursive: true });
+    if (!keep) {
+      rmSync(stage, { force: true, recursive: true });
+    }
   }
 }

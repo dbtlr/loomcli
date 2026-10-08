@@ -33,11 +33,20 @@ export function headingText(heading: Heading) {
   return text(heading.children);
 }
 
+// A leading U+FEFF marks the encoding and is not content.
+export function withoutByteOrderMark(source: string) {
+  return source.startsWith('\uFEFF') ? source.slice(1) : source;
+}
+
 // A changelog opens every release with a depth-2 heading whose first word is the version.
 // The frontmatter is not Markdown, so it is split off before the body is parsed, and every offset counts from the body.
+// A leading byte order mark counts as part of the frontmatter, so it stays where it is.
 // The index is -1 while the changelog carries no section for the version.
 export function locateRelease(changelog: string, version: string): ReleaseLocation {
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog)?.[0] ?? '';
+  const mark = changelog.length - withoutByteOrderMark(changelog).length;
+  const frontmatter =
+    changelog.slice(0, mark) +
+    (/^---\r?\n[\s\S]*?\r?\n---\r?\n/u.exec(changelog.slice(mark))?.[0] ?? '');
   const body = changelog.slice(frontmatter.length);
   const nodes = fromMarkdown(body).children;
   const releases = nodes.flatMap((node) =>

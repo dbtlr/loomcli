@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
 
-import { insertSection, releaseDate } from '../../helpers/changelog.js';
-import { prepareLockfile, versionedManifest } from '../../helpers/release-files.js';
+import { insertSection, readNarrative, releaseDate } from '../../helpers/changelog.js';
+import { withVersion } from '../../helpers/manifest.js';
+import { prepareLockfile } from '../../helpers/release-files.js';
 import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
 import { report } from '../../helpers/report.js';
 import { git, readRegularFile } from '../../helpers/repository.js';
@@ -29,7 +30,7 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
   );
   for (const library of release.libraries) {
     original.set(library.path, library.source);
-    updates.set(library.path, versionedManifest(library.source, release.version));
+    updates.set(library.path, withVersion(library.source, release.version));
   }
   for (const fragment of release.fragments) {
     original.set(`.changes/${fragment.name}`, fragment.body);
@@ -121,10 +122,7 @@ function prepare(
   const release = prepareRelease(root, {
     date: releaseDate(options.date),
     initial: options.initial,
-    narrative:
-      options.narrative === undefined
-        ? undefined
-        : readFileSync(resolve(root, options.narrative), 'utf8'),
+    narrative: readNarrative(root, options.narrative),
     since: options.since,
   });
   requireReleaseNotes(release);

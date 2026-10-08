@@ -1,5 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
@@ -157,7 +159,11 @@ test.each(['directory', 'README.md'])('check refuses a directory named %s', (nam
   const root = directory();
   rmSync(join(root, '.changes/README.md'));
   mkdirSync(join(root, '.changes', name));
-  expect(run(root, 'check').stderr).toContain(`.changes/${name}:`);
+  expect(run(root, 'check')).toEqual({
+    status: 1,
+    stderr: `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.\n`,
+    stdout: '',
+  });
 });
 
 test('check rejects write options through Loom before reading files', () => {
@@ -316,7 +322,8 @@ test('write in a shallow clone fails and changes no file', () => {
   const before = snapshot(root);
   const result = run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
-  expect(result.stderr).toContain('full Git history');
+  expect(result.stderr).toContain('full git history');
+  expect(result.stderr).toContain('git fetch --unshallow');
   expect(snapshot(root)).toEqual(before);
 });
 
@@ -392,3 +399,170 @@ test.each([['check'], ['write', '--dry-run']])(
     expect(result.stderr).toContain('Arguments after -- are not supported.');
   },
 );
+
+test('write outside a git repository says to run it inside one with the fragments committed', () => {
+  const root = directory({ '.changes/fix.md': '- Fix output.\n' });
+  const before = snapshot(root);
+  const result = run(root, 'write', '--date', '2026-10-07');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('orders fragments by the commits that added them');
+  expect(result.stderr).toContain('inside a git repository');
+  expect(result.stderr).not.toContain('fatal:');
+  expect(snapshot(root)).toEqual(before);
+});
+
+test.each([
+  ['one committer date', ['2026-01-02T12:00:00Z', '2026-01-02T12:00:00Z', '2026-01-02T12:00:00Z']],
+  [
+    'dates that run backward',
+    ['2026-01-05T12:00:00Z', '2026-01-03T12:00:00Z', '2026-01-04T12:00:00Z'],
+  ],
+])('write orders fragments by their adding commits under %s', (_label, dates) => {
+  const root = packageRepository('1.4.7');
+  for (const [index, name] of ['charlie', 'bravo', 'alpha'].entries()) {
+    put(root, `.changes/${name}.md`, `- Fix ${name}.\n`);
+    commit(root, dates[index]);
+  }
+  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07').stdout).toBe(
+    '## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix charlie.\n\n- Fix bravo.\n\n- Fix alpha.\n\nNext version: 1.4.8\n',
+  );
+});
+
+test('write ignores history settings that change what git log prints', () => {
+  const root = packageRepository('1.4.7');
+  put(root, '.changes/old.md', '- Fix renamed.\n');
+  commit(root, '2026-01-02T12:00:00Z');
+  put(root, '.changes/middle.md', '- Fix middle.\n');
+  commit(root, '2026-01-03T12:00:00Z');
+  git(root, ['mv', '.changes/old.md', '.changes/renamed.md']);
+  commit(root, '2026-01-04T12:00:00Z');
+  git(root, ['config', 'log.showSignature', 'true']);
+  git(root, ['config', 'log.follow', 'true']);
+  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix middle.\n\n- Fix renamed.\n\nNext version: 1.4.8\n',
+  });
+});
+
+test('a byte order mark is not fragment or narrative content', () => {
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '﻿- Fix output.\n',
+    'narrative.md': '﻿This release fixes output.\n',
+  });
+  expect(run(root, 'check').stdout).toBe('Checked 1 fragment.\n');
+  expect(
+    run(root, 'write', '--dry-run', '--date', '2026-10-07', '--narrative', 'narrative.md').stdout,
+  ).toBe(
+    '## v1.4.8 - 2026-10-07\n\nThis release fixes output.\n\n### Fixes\n\n- Fix output.\n\nNext version: 1.4.8\n',
+  );
+});
+
+test('write keeps the byte order marks of CHANGELOG.md and package.json', () => {
+  const changelog =
+    '﻿---\ndescription: Releases.\n---\n\n# Changelog\n\n## v1.4.7 - 2026-01-01\n\n### Fixes\n\n- Old entry.\n';
+  const manifest = '﻿{\n  "name": "notes",\n  "version": "1.4.7"\n}\n';
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'CHANGELOG.md': changelog,
+  });
+  put(root, 'package.json', manifest);
+  commit(root);
+  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
+    changelog.replace(
+      '## v1.4.7',
+      '## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n\n## v1.4.7',
+    ),
+  );
+  expect(readFileSync(join(root, 'package.json'), 'utf8')).toBe(manifest.replace('1.4.7', '1.4.8'));
+});
+
+test.each([
+  ['no level-one title', 'Releases.\n', 'CHANGELOG.md needs a level-one title'],
+  [
+    'an Unreleased section',
+    '# Changelog\n\n## Unreleased\n\n- Pending.\n',
+    'CHANGELOG.md has an Unreleased section',
+  ],
+  [
+    'a bracketed Unreleased section',
+    '# Changelog\n\n## [Unreleased]\n\n- Pending.\n',
+    'CHANGELOG.md has an Unreleased section',
+  ],
+  [
+    'a section for the next version',
+    '# Changelog\n\n## v1.4.8 - 2026-01-01\n\n- Earlier.\n',
+    'CHANGELOG.md already has a v1.4.8 section',
+  ],
+])('write refuses a CHANGELOG.md with %s and says what to do', (_label, changelog, sentence) => {
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'CHANGELOG.md': changelog,
+  });
+  const before = snapshot(root);
+  const result = run(root, 'write', '--date', '2026-10-07');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(sentence);
+  expect(result.stderr.split('\n').filter(Boolean)).toHaveLength(1);
+  expect(result.stderr).toMatch(/, so .+\.\n$/u);
+  expect(snapshot(root)).toEqual(before);
+});
+
+// Node synchronizes patched builtin exports; the normal CLI cases use the selected runtime.
+test.each([
+  ['staging', 'write'],
+  ['replacement', 'rename'],
+])('write that fails during %s changes no file', (_label, mode) => {
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'CHANGELOG.md': '# Changelog\n',
+  });
+  const preload = join(temporaryRoot('loom-changelog-preload-'), 'fail.mjs');
+  put(
+    dirname(preload),
+    'fail.mjs',
+    `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const { renameSync, writeFileSync } = fs;
+fs.writeFileSync = function (path, ...args) {
+  if (process.env.FAIL_MODE === 'write' && String(path).endsWith('package.json')) {
+    throw new Error('induced staging failure');
+  }
+  return writeFileSync(path, ...args);
+};
+let failed = false;
+fs.renameSync = function (from, to) {
+  if (!failed && process.env.FAIL_MODE === 'rename' && String(to) === process.env.FAIL_TARGET) {
+    failed = true;
+    throw new Error('induced replacement failure');
+  }
+  return renameSync(from, to);
+};
+syncBuiltinESMExports();
+`,
+  );
+  const before = snapshot(root);
+  const result = spawnSync(
+    'node',
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      fileURLToPath(cli),
+      'changelog',
+      'write',
+      '--date',
+      '2026-10-07',
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, FAIL_MODE: mode, FAIL_TARGET: join(root, 'package.json') },
+      timeout: 10_000,
+    },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('induced');
+  expect(snapshot(root)).toEqual(before);
+});

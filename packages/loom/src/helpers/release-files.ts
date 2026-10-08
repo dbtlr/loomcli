@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseAllDocuments } from 'yaml';
 import { z } from 'zod';
 
+import { withVersion } from './manifest.js';
 import type { prepareRelease } from './release.js';
 import { git, readRegularFile, readRegularFileBytes } from './repository.js';
 
@@ -69,11 +70,6 @@ function updateLockfile(root: string) {
   return readRegularFile(root, 'pnpm-lock.yaml');
 }
 
-function versionedManifest(source: string, version: string) {
-  const document = z.record(z.string(), z.unknown()).parse(JSON.parse(source));
-  return `${JSON.stringify({ ...document, version }, null, 2)}\n`;
-}
-
 export function prepareLockfile(
   root: string,
   release: Pick<ReturnType<typeof prepareRelease>, 'libraries' | 'version'>,
@@ -90,7 +86,7 @@ export function prepareLockfile(
       writeFileSync(join(stage, path), readRegularFileBytes(root, path, ref));
     }
     for (const library of release.libraries) {
-      writeFileSync(join(stage, library.path), versionedManifest(library.source, release.version));
+      writeFileSync(join(stage, library.path), withVersion(library.source, release.version));
     }
     return updateLockfile(stage);
   } finally {
@@ -98,4 +94,4 @@ export function prepareLockfile(
   }
 }
 
-export { pnpmManifestPath, versionedManifest };
+export { pnpmManifestPath };

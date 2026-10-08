@@ -22,7 +22,7 @@ function cut(root: string, ...args: string[]) {
   return invoke(cli, ['release', 'cut', ...args], { cwd: root });
 }
 // The same cut with --dry-run, which prints the section and writes nothing.
-function preview(root: string, ...args: string[]) {
+function dryRun(root: string, ...args: string[]) {
   return cut(root, '--dry-run', ...args);
 }
 afterEach(() => {
@@ -73,7 +73,7 @@ test('a dry run derives the first version from manifests and preserves fragment 
   commit(root);
   git(root, ['tag', 'v0.99.0']);
   const before = git(root, ['status', '--porcelain']);
-  expect(preview(root, '--date', '2026-09-07')).toEqual({
+  expect(dryRun(root, '--date', '2026-09-07')).toEqual({
     status: 0,
     stderr: '',
     stdout:
@@ -91,7 +91,7 @@ test.each([
   put(root, `.changes/${name}`, body);
   commit(root);
   git(root, ['tag', 'v0.90.0']);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain(`## v${expected} - 2026-09-07`);
 });
@@ -105,7 +105,7 @@ test('a dry run sorts by the commit that added each fragment, then filename', ()
   commit(root, '2026-01-03T12:00:00Z');
   put(root, '.changes/z.md', '- First, corrected.\n');
   commit(root, '2026-01-04T12:00:00Z');
-  expect(preview(root, '--date', '2026-09-07').stdout).toBe(
+  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- First, corrected.\n\n- Second.\n\n- Third.\n\n',
   );
 });
@@ -115,32 +115,30 @@ test('a dry run refuses mismatched manifests and invalid dates without edits', (
   put(root, 'packages/other/package.json', '{"name":"other","version":"0.3.2"}\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
-  expect(preview(root).stderr).toContain('versions must match');
-  expect(preview(root, '--date', '2026-02-30').stderr).toContain('calendar date');
+  expect(dryRun(root).stderr).toContain('versions must match');
+  expect(dryRun(root, '--date', '2026-02-30').stderr).toContain('calendar date');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
 test('an empty set requires explicit first-release intent and cannot release later versions', () => {
   const root = repository();
-  expect(preview(root).stderr).toContain('No fragments');
+  expect(dryRun(root).stderr).toContain('No fragments');
   const later = repository('0.2.0');
-  expect(preview(later, '--initial').stderr).toContain('0.0.0');
+  expect(dryRun(later, '--initial').stderr).toContain('0.0.0');
 });
 
 test('an empty initial cut carries notes only through a narrative', () => {
   const root = repository();
-  expect(preview(root, '--initial', '--date', '2026-09-07').stderr).toContain(
+  expect(dryRun(root, '--initial', '--date', '2026-09-07').stderr).toContain(
     'requires a narrative',
   );
   put(root, 'narrative.md', 'Start using the typed command API.\n');
   commit(root);
-  expect(preview(root, '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md')).toEqual(
-    {
-      status: 0,
-      stderr: '',
-      stdout: '## v0.1.0 - 2026-09-07\n\nStart using the typed command API.\n\n',
-    },
-  );
+  expect(dryRun(root, '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v0.1.0 - 2026-09-07\n\nStart using the typed command API.\n\n',
+  });
 });
 
 test('material changes propagate through library peer dependencies while docs stay immaterial', () => {
@@ -153,12 +151,12 @@ test('material changes propagate through library peer dependencies while docs st
   put(root, 'docs/guide.md', '# Guide\n');
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('No material changes: unrelated.\n');
   put(root, 'tsconfig.json', '{}\n');
   commit(root);
-  expect(preview(root).stdout).not.toContain('No material changes:');
+  expect(dryRun(root).stdout).not.toContain('No material changes:');
 });
 
 test('a supplied history base changes the material report but never the version', () => {
@@ -168,7 +166,7 @@ test('a supplied history base changes the material report but never the version'
   const base = git(root, ['rev-parse', 'HEAD']);
   put(root, '.changes/fix.md', '- Fix.\n');
   commit(root);
-  const result = preview(root, '--since', base, '--date', '2026-09-07');
+  const result = dryRun(root, '--since', base, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.8.3 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core.');
@@ -179,7 +177,7 @@ test('the material report needs no tag for the current version', () => {
   put(root, 'docs/guide.md', '# Guide\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.6.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core.\n');
@@ -191,7 +189,7 @@ test('an abandoned unpublished version keeps the baseline at the commit that set
   put(root, 'packages/core/source.ts', 'export {};\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.2.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: other.\n');
@@ -205,7 +203,7 @@ test('a version tag on an unrelated commit does not move the baseline', () => {
   put(root, 'packages/core/source.ts', 'export {};\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.8.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: other.\n');
@@ -232,7 +230,7 @@ test('a version set on a side branch takes its baseline from the merge commit', 
     'Merge feature',
     'feature',
   ]);
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.4.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core, idle, other.\n');
@@ -247,14 +245,14 @@ test('the cut updates only release files, preserves workspace references, and re
   );
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  const previewed = preview(root, '--date', '2026-09-07');
+  const previewed = dryRun(root, '--date', '2026-09-07');
   const result = cut(root, '--date', '2026-09-07');
   expect(result).toEqual({ status: 0, stderr: '', stdout: previewed.stdout });
   expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain(
     '"version": "0.1.0"',
   );
-  expect(readFileSync(join(root, 'packages/adapter/package.json'), 'utf8')).toContain(
-    '"@sample/core": "workspace:*"',
+  expect(readFileSync(join(root, 'packages/adapter/package.json'), 'utf8')).toBe(
+    '{"name":"adapter","version":"0.1.0","dependencies":{"@sample/core":"workspace:*"}}\n',
   );
   expect(readFileSync(join(root, 'examples/demo/package.json'), 'utf8')).toContain('7.0.0');
   expect(readFileSync(join(root, 'packages/private/package.json'), 'utf8')).toContain('5.0.0');
@@ -288,7 +286,7 @@ test('the cut supports pnpm multi-document lockfiles and preserves earlier relea
   );
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const previewed = preview(root, '--date', '2026-09-07');
+  const previewed = dryRun(root, '--date', '2026-09-07');
   expect(cut(root, '--date', '2026-09-07')).toEqual(previewed);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
     `# Changelog\n\n${previewed.stdout}${history}`,
@@ -347,7 +345,7 @@ test('an optional narrative appears before entries without rewriting it', () => 
   put(root, '.changes/add.md', '- Add.\n');
   put(root, 'narrative.md', 'This release adds **typed** input.\n');
   commit(root);
-  expect(preview(root, '--date', '2026-09-07', '--narrative', 'narrative.md').stdout).toBe(
+  expect(dryRun(root, '--date', '2026-09-07', '--narrative', 'narrative.md').stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\nThis release adds **typed** input.\n\n### Fixes\n\n- Add.\n\n',
   );
 });
@@ -376,7 +374,7 @@ test('opaque fragment names are literal Git paths and merges establish landing o
     ],
     '2026-01-04T12:00:00Z',
   );
-  const result = preview(root, '--date', '2026-09-07');
+  const result = dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Landed first.\n\n- Landed last.\n\n',
@@ -403,7 +401,7 @@ test('Git history treats bracketed fragment names literally', () => {
   commit(root, '2026-01-03T12:00:00Z');
   put(root, '.changes/a.md', '- Third.\n');
   commit(root, '2026-01-04T12:00:00Z');
-  expect(preview(root, '--date', '2026-09-07').stdout).toBe(
+  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- First.\n\n- Second.\n\n- Third.\n\n',
   );
 });
@@ -413,7 +411,7 @@ test('private manifests need no name or version to be excluded', () => {
   put(root, 'packages/private/package.json', '{"private":true}\n');
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  expect(preview(root).status).toBe(0);
+  expect(dryRun(root).status).toBe(0);
 });
 
 test('explicit workspace targets win over dependency keys with the same library name', () => {
@@ -426,7 +424,7 @@ test('explicit workspace targets win over dependency keys with the same library 
   put(root, 'packages/zzz/code.ts', 'export {};\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
-  expect(preview(root).stdout).toContain('No material changes: @sample/core, aaa.');
+  expect(dryRun(root).stdout).toContain('No material changes: @sample/core, aaa.');
 });
 
 test('a persistent filesystem failure does not prevent restoration of earlier files', () => {
@@ -475,7 +473,7 @@ test('a dry run refuses shallow history instead of inventing landing dates', () 
   commit(source, '2026-01-03T12:00:00Z');
   const root = join(temporaryRoot('loom-release-cut-'), 'shallow');
   git(source, ['clone', '--depth', '1', '--no-local', source, root]);
-  expect(preview(root).stderr).toContain('full Git history');
+  expect(dryRun(root).stderr).toContain('full Git history');
 });
 
 test.each(['## **Unreleased**', '## **v0.1.0** - 2026-01-01'])(
@@ -485,7 +483,7 @@ test.each(['## **Unreleased**', '## **v0.1.0** - 2026-01-01'])(
     put(root, 'CHANGELOG.md', `# Changelog\n\n${heading}\n\n- Existing.\n`);
     put(root, '.changes/add.md', '- Add.\n');
     commit(root);
-    expect(cut(root).stderr).toContain('already contains');
+    expect(cut(root).stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
@@ -497,9 +495,7 @@ test.each(['```text\nunfinished', '<script>\nunfinished'])(
     put(root, '.changes/add.md', '- Add.\n');
     put(root, 'narrative.md', body);
     commit(root);
-    expect(preview(root, '--narrative', 'narrative.md').stderr).toContain(
-      'unclosed Markdown block',
-    );
+    expect(dryRun(root, '--narrative', 'narrative.md').stderr).toContain('unclosed Markdown block');
   },
 );
 
@@ -519,7 +515,7 @@ test.each(['## <em>Unreleased</em>', '## <code>v0.1.0</code> - 2026-01-01', '## 
     put(root, 'CHANGELOG.md', `# Changelog\n\n${heading}\n\n- Existing.\n`);
     put(root, '.changes/add.md', '- Add.\n');
     commit(root);
-    expect(cut(root).stderr).toContain('already contains');
+    expect(cut(root).stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
@@ -557,10 +553,21 @@ test('a feature fragment advances the synchronized patch and renders under Featu
   put(root, '.changes/feature.typed.md', '- Add typed input.\n');
   put(root, '.changes/output.md', '- Fix output.\n');
   commit(root);
-  expect(preview(root, '--date', '2026-09-07')).toEqual({
+  expect(dryRun(root, '--date', '2026-09-07')).toEqual({
     status: 0,
     stderr: '',
     stdout:
       '## v0.4.8 - 2026-09-07\n\n### Features\n\n- Add typed input.\n\n### Fixes\n\n- Fix output.\n\nNo material changes: @sample/core.\n\n',
   });
+});
+
+test('a dry run orders fragments added within one second by their commits', () => {
+  const root = repository();
+  for (const name of ['charlie', 'bravo', 'alpha']) {
+    put(root, `.changes/${name}.md`, `- Fix ${name}.\n`);
+    commit(root, '2026-01-02T12:00:00Z');
+  }
+  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
+    '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Fix charlie.\n\n- Fix bravo.\n\n- Fix alpha.\n\n',
+  );
 });
