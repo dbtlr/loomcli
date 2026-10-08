@@ -1,5 +1,9 @@
-import { expect, test } from 'vite-plus/test';
+import { readFileSync } from 'node:fs';
 
+import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
+
+import { invoke } from '../../../scripts/test-process.js';
 import { loom } from '../src/application.js';
 import { pnpmManifestPath } from '../src/helpers/release-files.js';
 
@@ -10,6 +14,23 @@ test('the release commands are hidden, so no listing advertises them', () => {
     { hidden: true, name: 'pr' },
     { hidden: true, name: 'release' },
   ]);
+});
+
+const cli = new URL('../dist/main.js', import.meta.url);
+
+test('--help prints the help page of the routed release Command', () => {
+  const result = invoke(cli, ['release', 'plan', '--help']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('loom release plan');
+  expect(result.stderr).toBe('');
+});
+
+test('--version prints the version of the @loomcli/loom package', () => {
+  const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+  const { version } = z.object({ version: z.string() }).parse(JSON.parse(manifest));
+  const result = invoke(cli, ['--version']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe(`loom v${version}\n`);
 });
 
 test('a missing pnpm fails lockfile preparation with a sentence that says how to install it', () => {
