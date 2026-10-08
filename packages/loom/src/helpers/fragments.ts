@@ -92,9 +92,10 @@ function readFragment(
       `.changes/${name}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`,
     );
   }
-  const body = withoutByteOrderMark(readRegularFile(root, `.changes/${name}`, ref));
+  const source = readRegularFile(root, `.changes/${name}`, ref);
+  const body = withoutByteOrderMark(source);
   validateBody(name, kind, body);
-  return { body, kind, name };
+  return { body, kind, name, source };
 }
 
 /** A fragment's kind, read from its file name: `breaking.<slug>.md`, `feature.<slug>.md`, or `<slug>.md`. */
@@ -102,8 +103,9 @@ export type FragmentKind = 'breaking' | 'feature' | 'fix';
 
 /**
  * Every fragment in `.changes/` under the root, read from the working tree or from a revision.
- * The regular file `README.md` is the guide, not a fragment, and a missing working-tree directory
- * holds no fragments. One error names every invalid entry, so a single run reports them all.
+ * The regular file `README.md` is the guide, not a fragment. A hidden entry, one whose name starts
+ * with `.`, is ignored, and a missing working-tree directory holds no fragments. One error names
+ * every invalid entry, so a single run reports them all.
  */
 export function readFragments(root: string, ref?: string) {
   if (ref === undefined && !existsSync(join(root, '.changes'))) {
@@ -111,6 +113,7 @@ export function readFragments(root: string, ref?: string) {
   }
   const failures: string[] = [];
   const fragments = readDirectory(root, '.changes', ref)
+    .filter((entry) => !entry.name.startsWith('.'))
     .filter((entry) => entry.name !== 'README.md' || !entry.isFile())
     .flatMap((entry) => {
       try {

@@ -33,7 +33,7 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
     updates.set(library.path, withVersion(library.source, release.version));
   }
   for (const fragment of release.fragments) {
-    original.set(`.changes/${fragment.name}`, fragment.body);
+    original.set(`.changes/${fragment.name}`, fragment.source);
     updates.set(`.changes/${fragment.name}`, undefined);
   }
   original.set(

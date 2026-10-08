@@ -539,7 +539,7 @@ test('an initial cut whose section lost its narrative carries no notes and fails
   const { base, root } = repository('0.0.0');
   expect(writeInitialRelease(root).status).toBe(0);
   const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
-  put(root, 'CHANGELOG.md', changelog.replace(`${narrativeProse}\n\n`, ''));
+  put(root, 'CHANGELOG.md', changelog.replace(`\n${narrativeProse}\n`, ''));
   commit(root);
   expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
 });
@@ -690,4 +690,16 @@ test('a release branch must include the current base and ordinary argument error
   expect(releaseCheck(root, base, '1.0.0').stderr).toContain('Expected release title');
   expect(check(root, base, '--', 'extra').stderr).toContain('Arguments after --');
   expect(invoke(cli, ['pr', 'check'], { cwd: root }).status).toBe(2);
+});
+
+test('a committed hidden entry in .changes/ is ignored, neither rejected nor counted as a fragment', () => {
+  const { base, root } = repository();
+  put(root, 'packages/core/index.js', 'export const value = 2;\n');
+  put(root, '.changes/.DS_Store', '\u0000binary');
+  put(root, '.changes/.output.md', '- Fix output.\n');
+  commit(root);
+  expect(check(root, base).stderr).toContain('fragment or skip-changelog');
+  put(root, '.changes/output.md', '- Fix output.\n');
+  commit(root);
+  expect(check(root, base)).toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
 });

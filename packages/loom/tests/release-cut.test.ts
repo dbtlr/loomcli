@@ -257,7 +257,7 @@ test('the cut updates only release files, preserves workspace references, and re
   expect(readFileSync(join(root, 'examples/demo/package.json'), 'utf8')).toContain('7.0.0');
   expect(readFileSync(join(root, 'packages/private/package.json'), 'utf8')).toContain('5.0.0');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
-    `---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n\n${previewed.stdout}`,
+    `---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n\n${previewed.stdout.replace(/\n+$/u, '\n')}`,
   );
   expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toContain('specifier: workspace:*');
   expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
@@ -569,5 +569,35 @@ test('a dry run orders fragments added within one second by their commits', () =
   }
   expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Fix charlie.\n\n- Fix bravo.\n\n- Fix alpha.\n\n',
+  );
+});
+
+test('the cut renders a fragment that starts with a byte order mark as a list and consumes it', () => {
+  const root = repository();
+  put(root, '.changes/add.md', '﻿- Add input.\n');
+  commit(root);
+  const result = cut(root, '--date', '2026-09-07');
+  expect(result).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n',
+  });
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
+    '---\ndescription: Releases.\n---\n\n# Changelog\n\nExisting introduction.\n\n## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n',
+  );
+  expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
+});
+
+test('the cut ignores hidden entries in .changes/ and leaves them in place', () => {
+  const root = repository();
+  put(root, '.changes/.DS_Store', '\u0000binary');
+  put(root, '.changes/.notes.md', '- Hidden fix.\n');
+  put(root, '.changes/add.md', '- Add input.\n');
+  commit(root);
+  expect(cut(root, '--date', '2026-09-07').stdout).toBe(
+    '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n',
+  );
+  expect(readdirSync(join(root, '.changes')).toSorted()).toEqual(
+    ['.DS_Store', '.notes.md', 'README.md'].toSorted(),
   );
 });

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { releaseDate, releaseInsertion } from './changelog.js';
+import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
@@ -24,7 +24,9 @@ export function checkRelease(
   ) {
     throw new Error('CHANGELOG.md must preserve its introduction and earlier releases.');
   }
-  const section = changelog.slice(before.length, changelog.length - after.length);
+  const placed = changelog.slice(before.length, changelog.length - after.length);
+  // A section that ends the file lands with one newline; the compiler's own form ends with a blank line.
+  const section = after === '' && !placed.endsWith('\n\n') ? `${placed}\n` : placed;
   const dateInput = /^## v0\.\d+\.\d+ - (?<date>\d{4}-\d{2}-\d{2})\n\n/u.exec(section)?.groups
     ?.date;
   if (dateInput === undefined) {
@@ -92,7 +94,7 @@ export function checkRelease(
   }
   const narrative = section.slice(heading.length, section.length - entries.length);
   const compiled = prepareRelease(root, { ...options, narrative: narrative || undefined }, base);
-  if (section !== compiled.section) {
+  if (placed !== placedSection(compiled.section, after)) {
     throw new Error('CHANGELOG.md must contain exactly one compiled release section.');
   }
   requireReleaseNotes(compiled);

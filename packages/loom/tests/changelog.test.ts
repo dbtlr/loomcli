@@ -294,7 +294,7 @@ test('write creates CHANGELOG.md with a title when it is missing', () => {
   const root = packageRepository('0.0.0', { '.changes/fix.md': '- Fix output.\n' });
   expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
-    '# Changelog\n\n## v0.1.0 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n\n',
+    '# Changelog\n\n## v0.1.0 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
   );
   expect(readFileSync(join(root, 'package.json'), 'utf8')).toBe(
     `${JSON.stringify({ name: 'notes', version: '0.1.0' }, null, 2)}\n`,
@@ -565,4 +565,50 @@ syncBuiltinESMExports();
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('induced');
   expect(snapshot(root)).toEqual(before);
+});
+
+test('write into a CHANGELOG.md that holds only its title ends the file with one newline', () => {
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'CHANGELOG.md': '# Changelog\n\nEvery release of notes.\n',
+  });
+  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
+    '# Changelog\n\nEvery release of notes.\n\n## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
+  );
+});
+
+// Hidden entries an editor or the operating system leaves behind.
+const hiddenEntries = {
+  '.changes/.#notes.md': '- Lock file.\n',
+  '.changes/.DS_Store': '\u0000\u0001binary',
+  '.changes/.hidden/fix.md': '- Fix hidden.\n',
+  '.changes/.notes.md': '- Hidden fix.\n',
+  '.changes/.notes.md.swp': '\u0000swap',
+};
+
+test('check ignores hidden entries in .changes/', () => {
+  const root = directory({ ...hiddenEntries, '.changes/fix.md': '- Fix output.\n' });
+  expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' });
+});
+
+test('check still rejects a backup file, which is not hidden', () => {
+  const root = directory({ '.changes/fix.md~': '- Fix output.\n' });
+  expect(run(root, 'check').stderr).toContain('.changes/fix.md~:');
+});
+
+test('write neither renders nor deletes hidden entries', () => {
+  const root = packageRepository('1.4.7', {
+    ...hiddenEntries,
+    '.changes/fix.md': '- Fix output.\n',
+  });
+  const result = run(root, 'write', '--date', '2026-10-07');
+  expect(result).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n\nNext version: 1.4.8\n',
+  });
+  expect(readdirSync(join(root, '.changes')).toSorted()).toEqual(
+    ['.#notes.md', '.DS_Store', '.hidden', '.notes.md', '.notes.md.swp', 'README.md'].toSorted(),
+  );
 });

@@ -86,6 +86,7 @@ export function landedFragments(root: string, ref?: string) {
         body: fragment.body,
         kind: fragment.kind,
         name: fragment.name,
+        source: fragment.source,
       };
     })
     .toSorted((left, right) => left.added - right.added || compareNames(left.name, right.name));
@@ -168,7 +169,13 @@ export function releaseInsertion(changelog: string, version: string) {
   return { after, before: before + blankLine(before) };
 }
 
+// The section as it lands. A section that ends the file closes with one newline.
+// A section above an earlier release keeps its blank line before that release's heading.
+export function placedSection(section: string, after: string) {
+  return after === '' ? section.replace(/\n+$/u, '\n') : section;
+}
+
 export function insertSection(changelog: string, section: string, version: string) {
   const { after, before } = releaseInsertion(changelog, version);
-  return before + section + after;
+  return before + placedSection(section, after) + after;
 }
