@@ -13,6 +13,7 @@ pnpm add -D @loomcli/loom
 A package keeps its pending changes as fragments in `.changes/` and cuts its `package.json` version from them.
 
 ```sh
+mkdir -p .changes
 printf -- '- Add the `--tag` option to `notes list`.\n' > .changes/feature.list-by-tag.md
 loom changelog check
 git add .changes && git commit -m 'Add list-by-tag fragment'

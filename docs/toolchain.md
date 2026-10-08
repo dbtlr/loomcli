@@ -124,6 +124,7 @@ loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
 ```
 
 ```sh
+mkdir -p .changes
 printf -- '- Add the `--tag` option to `notes list`.\n' > .changes/feature.list-by-tag.md
 loom changelog check
 git add .changes && git commit -m 'Add list-by-tag fragment'
