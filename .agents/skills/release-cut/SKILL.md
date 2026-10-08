@@ -17,7 +17,7 @@ Read the repository's [fragment guide](../../../.changes/README.md), [compiler r
 2. Fetch the current `main` and tags without overwriting conflicting local tags. Record the exact upstream `main` SHA as the cut base.
 3. Inspect open release PRs and recent release merges. Resume a matching unfinished cut instead of creating a duplicate. Stop if another open cut needs reconciliation.
 4. Read all participating manifests at the cut base. Participation and version arithmetic belong to the compiler. Keep the package list, current version, and base SHA together in the release evidence.
-5. Complete the previous-release prerequisite below before invoking `write`.
+5. Complete the previous-release prerequisite below before invoking `release cut`.
 
 ### Previous-release prerequisite
 
@@ -46,13 +46,13 @@ Run these commands from the isolated repository root:
 
 ```sh
 pnpm loom changelog check
-pnpm loom changelog preview --date YYYY-MM-DD
-pnpm loom changelog write --date YYYY-MM-DD
+pnpm loom release cut --dry-run --date YYYY-MM-DD
+pnpm loom release cut --date YYYY-MM-DD
 ```
 
 Replace the date with one valid UTC release date for both commands. Add `--initial` to both preparation commands for the initial cut; an initial cut that consumes no fragments also requires `--narrative`, because the section carries no entries. If a narrative is warranted, pass the same `--narrative FILE` to both. Use the default material baseline; normal cuts do not use `--since` overrides.
 
-An empty fragment set after the initial release does not create a release. A failed or interrupted write is not a prepared cut. Inspect its diagnostic; preserve the failed checkout for diagnosis and restart preparation from the recorded base in a fresh checkout when necessary.
+An empty fragment set after the initial release does not create a release. A failed or interrupted `release cut` run is not a prepared cut. Inspect its diagnostic; preserve the failed checkout for diagnosis and restart preparation from the recorded base in a fresh checkout when necessary.
 
 Accept every proposed decision the release ships. List the records in `docs/decisions/` whose frontmatter reads `status: proposed`, and read each one's Status section for the implementation it waits on. When the cycle diff ships that implementation, mark the record accepted in the cut: set `status: accepted`, set `modified` to the release date, and replace the Status section's text with `Accepted in <version>.`, using the target version without its `v`, such as `Accepted in 0.8.0.`. Add no Changelog entry, because the Status section records the release. Change that record's status cell in `docs/decisions/README.md` from `proposed` to `accepted`. Leave a record proposed when the release does not ship its implementation, and name it in the PR body with the reason. The release guard rejects any other change to a decision record or the index, so land other decision text in an ordinary preparatory PR before the cut.
 
@@ -69,7 +69,7 @@ Use the title form `chore(release): Release v<version> - <description>`. Keep pr
 
 ## Publish the PR for review
 
-Refresh upstream state before pushing. If `main` advanced, prepare again from the new base and repeat the previous-release prerequisite and cycle review. Do not rerun `write` on an already bumped release commit. Preserve any earlier cut until its replacement is validated; do not overwrite another contributor's branch.
+Refresh upstream state before pushing. If `main` advanced, prepare again from the new base and repeat the previous-release prerequisite and cycle review. Do not rerun `release cut` on an already bumped release commit. Preserve any earlier cut until its replacement is validated; do not overwrite another contributor's branch.
 
 Recheck that the target version is still unpublished and untagged, and that no other cut is open. Push the reviewed branch and create or update its ready-for-review PR using the exact validated title. The PR body records:
 
