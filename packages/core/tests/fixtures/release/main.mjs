@@ -127,6 +127,12 @@ const scenarios = {
   'override-defect': () => throwing().run({ host: { ...host, release: { build: 'distributed' } } }),
   'override-development': () =>
     throwing().run({ host: { ...host, release: { build: 'development' } } }),
+  'override-null': () => throwing().run({ host: { ...host, release: null } }),
+  'override-null-invoke': async () => {
+    const outcome = await throwing().invoke([], {}, { host: { release: null } });
+    print({ exitCode: outcome.exitCode, status: outcome.status });
+    return 0;
+  },
   throw: () => throwing().run({ host }),
 };
 

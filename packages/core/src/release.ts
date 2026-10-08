@@ -131,9 +131,13 @@ function captureRelease(override: ReleaseFacts | undefined): CapturedRelease {
   return override === undefined ? readBaked() : { facts: override };
 }
 
-/** Whether one run's facts make it a development build: any build but `distributed`. */
-function isDevelopment(release: ReleaseFacts): boolean {
-  return release.build !== 'distributed';
+/**
+ * Whether one run's facts make it a development build: any build but `distributed`. An override is
+ * taken as given, so facts core cannot read, like malformed baked facts, leave the build unknown,
+ * and the author reads their defect.
+ */
+function isDevelopment(release: unknown): boolean {
+  return !isPlainObject(release) || release.build !== 'distributed';
 }
 
 export type { CapturedRelease };

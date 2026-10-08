@@ -276,6 +276,13 @@ test('from source, a distributed override writes the generic message and a devel
   expect(failed.stderr).toMatch(foreignThrow);
 });
 
+test('a release override core cannot read is a development build, and the run still resolves its failure', () => {
+  const failed = fromSource('override-null');
+  expect(failed.status).toBe(1);
+  expect(failed.stderr).toMatch(foreignThrow);
+  expect(printed(fromSource('override-null-invoke'))).toEqual({ exitCode: 1, status: 'failed' });
+});
+
 test("app.invoke reads the source's facts, or its host override as given, and an action's invoke reads its run's", () => {
   expect(printed(fromSource('invoke'))).toMatchObject({
     output: `${JSON.stringify({ facts: { build: 'source' }, frozen: true })}\n`,

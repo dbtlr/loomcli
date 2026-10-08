@@ -753,8 +753,7 @@ class ApplicationBuilder<
      */
     const build: BuildReports = {
       get development() {
-        const release = reportHost?.release;
-        return release === undefined || isDevelopment(release);
+        return isDevelopment(reportHost?.release);
       },
       generic: false,
       reported: false,
