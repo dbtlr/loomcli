@@ -1,8 +1,9 @@
 import { isDeepStrictEqual } from 'node:util';
 
+import { releaseDate, releaseInsertion } from './changelog.js';
 import { checkDecisions } from './release-decisions.js';
-import { prepareLockfile, releaseInsertion } from './release-files.js';
-import { prepareRelease, releaseDate, requireReleaseNotes } from './release.js';
+import { prepareLockfile } from './release-files.js';
+import { prepareRelease, requireReleaseNotes } from './release.js';
 import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
 
 export function checkRelease(

@@ -1,26 +1,21 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import {
-  prepareLockfile,
-  releaseInsertion,
-  versionedManifest,
-} from '../../helpers/release-files.js';
-import type { prepareRelease } from '../../helpers/release.js';
-import { git, readRegularFile } from '../../helpers/repository.js';
+import { Command } from '@loomcli/core';
 
-function insertSection(changelog: string, section: string, version: string) {
-  const { after, before } = releaseInsertion(changelog, version);
-  return before + section + after;
-}
+import { insertSection, releaseDate } from '../../helpers/changelog.js';
+import { prepareLockfile, versionedManifest } from '../../helpers/release-files.js';
+import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
+import { report } from '../../helpers/report.js';
+import { git, readRegularFile } from '../../helpers/repository.js';
 
 // Stage package-manager work before touching the checkout; handled write failures restore originals.
 function installRelease(root: string, release: ReturnType<typeof prepareRelease>) {
   if (git(root, ['rev-parse', '--show-prefix']).trim() !== '') {
-    throw new Error('Run write from the repository root.');
+    throw new Error('Run release cut from the repository root.');
   }
   if (git(root, ['status', '--porcelain', '--untracked-files=all']).trim()) {
-    throw new Error('write requires a clean checkout. Commit the release inputs first.');
+    throw new Error('release cut requires a clean checkout. Commit the release inputs first.');
   }
   if (git(root, ['tag', '--list', `v${release.version}`]).trim()) {
     throw new Error(`Tag v${release.version} already exists.`);
@@ -94,8 +89,8 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
   }
 }
 
-export function writeRelease(root: string, release: ReturnType<typeof prepareRelease>) {
-  const lock = resolve(root, git(root, ['rev-parse', '--git-path', 'changelog-write.lock']).trim());
+function writeRelease(root: string, release: ReturnType<typeof prepareRelease>) {
+  const lock = resolve(root, git(root, ['rev-parse', '--git-path', 'release-cut.lock']).trim());
   try {
     mkdirSync(lock);
   } catch (error) {
@@ -113,3 +108,63 @@ export function writeRelease(root: string, release: ReturnType<typeof prepareRel
     rmSync(lock, { recursive: true });
   }
 }
+
+function prepare(
+  root: string,
+  options: {
+    date: string | undefined;
+    initial: boolean;
+    since: string | undefined;
+    narrative: string | undefined;
+  },
+) {
+  const release = prepareRelease(root, {
+    date: releaseDate(options.date),
+    initial: options.initial,
+    narrative:
+      options.narrative === undefined
+        ? undefined
+        : readFileSync(resolve(root, options.narrative), 'utf8'),
+    since: options.since,
+  });
+  requireReleaseNotes(release);
+  return release;
+}
+
+/**
+ * This repository's synchronized cut under ADR-0012, which also writes every participating
+ * library's version and the lockfile and reports material changes. `--dry-run` writes nothing.
+ */
+export const cut = new Command('cut', {
+  description:
+    'Cut the next synchronized release: update the changelog, versions, and lockfile, and consume the fragments.',
+})
+  .option('dry-run', {
+    description: 'Print the next release section without writing any file.',
+    type: 'boolean',
+  })
+  .option('date', {
+    description: 'Date the release as YYYY-MM-DD instead of today.',
+    type: 'string',
+  })
+  .option('initial', {
+    description: 'Cut the first release from version 0.0.0.',
+    type: 'boolean',
+  })
+  .option('since', {
+    description: 'Name the revision whose changes the release covers.',
+    type: 'string',
+  })
+  .option('narrative', {
+    description: 'Read the release narrative from this Markdown file.',
+    type: 'string',
+  })
+  .action(async ({ host, options, out, passthrough }) => {
+    await report(out, passthrough, () => {
+      const release = prepare(host.cwd, options);
+      if (!options['dry-run']) {
+        writeRelease(host.cwd, release);
+      }
+      return release.section;
+    });
+  });

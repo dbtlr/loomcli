@@ -7,32 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { parseAllDocuments } from 'yaml';
 import { z } from 'zod';
 
-import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import type { prepareRelease } from './release.js';
-import { blankLine } from './release.js';
 import { git, readRegularFile, readRegularFileBytes } from './repository.js';
-
-function releaseInsertion(changelog: string, version: string) {
-  const { body, frontmatter, nodes, releases } = locateRelease(changelog, version);
-  requireClosedBlocks(body, 'CHANGELOG.md');
-  const headings = nodes.filter((node) => node.type === 'heading');
-  if (!headings.some((node) => node.depth === 1)) {
-    throw new Error('CHANGELOG.md requires a title.');
-  }
-  if (
-    headings.some(
-      (node) =>
-        headingText(node).trim().toLowerCase() === 'unreleased' ||
-        headingText(node).trim().split(/\s/u)[0] === `v${version}`,
-    )
-  ) {
-    throw new Error('CHANGELOG.md already contains this version or an Unreleased section.');
-  }
-  const offset = releases[0]?.position?.start.offset;
-  const before = offset === undefined ? changelog : changelog.slice(0, frontmatter.length + offset);
-  const after = offset === undefined ? '' : changelog.slice(frontmatter.length + offset);
-  return { after, before: before + blankLine(before) };
-}
 
 /**
  * The installed pnpm manifest's path. pnpm is an optional peer dependency, because only lockfile
@@ -122,4 +98,4 @@ export function prepareLockfile(
   }
 }
 
-export { pnpmManifestPath, releaseInsertion, versionedManifest };
+export { pnpmManifestPath, versionedManifest };

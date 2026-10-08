@@ -125,6 +125,7 @@ export function readLibraries(root: string, ref?: string) {
   return requireCoherentLibraries([first, ...rest]);
 }
 
+// The synchronized version every participating library carries, a stable 0.x version.
 export function currentVersion(libraries: ReturnType<typeof readLibraries>) {
   const version = libraries[0]?.manifest.version;
   const match = /^0\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$/u.exec(version ?? '');
@@ -136,5 +137,5 @@ export function currentVersion(libraries: ReturnType<typeof readLibraries>) {
   if (!Number.isSafeInteger(minor + 1) || !Number.isSafeInteger(patch + 1)) {
     throw new Error('Library version components are too large.');
   }
-  return { minor, patch, text: `0.${minor}.${patch}` };
+  return { major: 0, minor, patch, text: `0.${minor}.${patch}` };
 }

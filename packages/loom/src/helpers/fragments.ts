@@ -1,13 +1,33 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
 
-function validateBody(name: string, body: string) {
+// Undefined for a name outside the grammar: a bare kind prefix, an empty slug, or another extension.
+function fragmentKind(name: string): FragmentKind | undefined {
+  if (!name.endsWith('.md') || name === '.md') {
+    return undefined;
+  }
+  const stem = name.slice(0, -'.md'.length);
+  for (const kind of ['breaking', 'feature'] satisfies FragmentKind[]) {
+    if (stem === kind) {
+      return undefined;
+    }
+    if (stem.startsWith(`${kind}.`)) {
+      return stem.length > kind.length + 1 ? kind : undefined;
+    }
+  }
+  return 'fix';
+}
+
+function validateBody(name: string, kind: FragmentKind, body: string) {
   requireClosedBlocks(body, `.changes/${name}`);
   const nodes = fromMarkdown(body).children;
   const migrationIndex = nodes.findIndex((node) => node.type === 'heading');
-  const breaking = name.startsWith('breaking.');
+  const breaking = kind === 'breaking';
   const bullets = breaking && migrationIndex !== -1 ? nodes.slice(0, migrationIndex) : nodes;
   if (
     bullets.length === 0 ||
@@ -54,21 +74,49 @@ function validateBody(name: string, body: string) {
   }
 }
 
+// One fragment, read and validated. An invalid entry throws the sentence that names it.
+function readFragment(
+  root: string,
+  entry: ReturnType<typeof readDirectory>[number],
+  ref: string | undefined,
+) {
+  const { name } = entry;
+  const kind = entry.isFile() ? fragmentKind(name) : undefined;
+  if (kind === undefined) {
+    throw new Error(
+      `.changes/${name}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`,
+    );
+  }
+  const body = readRegularFile(root, `.changes/${name}`, ref);
+  validateBody(name, kind, body);
+  return { body, kind, name };
+}
+
+/** A fragment's kind, read from its file name: `breaking.<slug>.md`, `feature.<slug>.md`, or `<slug>.md`. */
+export type FragmentKind = 'breaking' | 'feature' | 'fix';
+
+/**
+ * Every fragment in `.changes/` under the root, read from the working tree or from a revision.
+ * The regular file `README.md` is the guide, not a fragment, and a missing working-tree directory
+ * holds no fragments. One error names every invalid entry, so a single run reports them all.
+ */
 export function readFragments(root: string, ref?: string) {
-  return readDirectory(root, '.changes', ref)
+  if (ref === undefined && !existsSync(join(root, '.changes'))) {
+    return [];
+  }
+  const failures: string[] = [];
+  const fragments = readDirectory(root, '.changes', ref)
     .filter((entry) => entry.name !== 'README.md' || !entry.isFile())
-    .map((entry) => {
-      const { name } = entry;
-      if (
-        !entry.isFile() ||
-        !/^.+\.md$/u.test(name) ||
-        name === 'breaking.md' ||
-        name === 'breaking..md'
-      ) {
-        throw new Error(`.changes/${name}: expected <slug>.md or breaking.<slug>.md.`);
+    .flatMap((entry) => {
+      try {
+        return [readFragment(root, entry, ref)];
+      } catch (error) {
+        failures.push(error instanceof Error ? error.message : String(error));
+        return [];
       }
-      const body = readRegularFile(root, `.changes/${name}`, ref);
-      validateBody(name, body);
-      return { body, breaking: name.startsWith('breaking.'), name };
     });
+  if (failures.length > 0) {
+    throw new Error(failures.join('\n'));
+  }
+  return fragments;
 }

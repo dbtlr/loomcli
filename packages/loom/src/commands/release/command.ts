@@ -2,11 +2,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
-import type { Out } from '@loomcli/core';
 import { z } from 'zod';
 
 import { planRelease, planSchema, renderPlan } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
+import { report } from '../../helpers/report.js';
+import { cut } from './cut.js';
 
 const defaultRegistry = 'https://registry.npmjs.org';
 const defaultGitHubApi = 'https://api.github.com';
@@ -16,23 +17,11 @@ const count = z
   .regex(/^\d+$/u, 'Supply a whole number.')
   .transform((value) => Number(value));
 
-// Convert reconciliation failures to Loom's fatal channel and render the summary verbatim.
-async function report(out: Out, passthrough: string[], work: () => Promise<string>) {
-  try {
-    if (passthrough.length > 0) {
-      out.fatal('Arguments after -- are not supported.');
-    }
-    const summary = await work();
-    await out.render(summary, { render: (value) => value });
-  } catch (error) {
-    out.fatal(error instanceof Error ? error.message : String(error));
-  }
-}
-
 export const release = new Command('release', {
-  description: 'Plan and record a release.',
+  description: 'Cut, plan, and record a release.',
   hidden: true,
 })
+  .command(cut)
   .command(
     new Command('plan', {
       description: 'Reconcile the head with the registry and write a release plan.',

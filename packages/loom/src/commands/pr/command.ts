@@ -1,6 +1,7 @@
 import { Command } from '@loomcli/core';
 
 import { checkPullRequest } from '../../helpers/pr-check.js';
+import { report } from '../../helpers/report.js';
 
 export const pr = new Command('pr', { description: 'Check a pull request.', hidden: true }).command(
   new Command('check', {
@@ -27,19 +28,14 @@ export const pr = new Command('pr', { description: 'Check a pull request.', hidd
       type: 'string',
     })
     .action(async ({ host, options, out, passthrough }) => {
-      try {
-        if (passthrough.length > 0) {
-          out.fatal('Arguments after -- are not supported.');
-        }
+      await report(out, passthrough, () => {
         checkPullRequest(host.cwd, {
           base: options.base,
           head: options.head,
           labels: options.label,
           title: options.title,
         });
-        await out.render('PR checks passed.\n', { render: (value) => value });
-      } catch (error) {
-        out.fatal(error instanceof Error ? error.message : String(error));
-      }
+        return 'PR checks passed.\n';
+      });
     }),
 );

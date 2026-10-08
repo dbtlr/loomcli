@@ -64,3 +64,29 @@ export function repository(options: {
   }
   return { base, root };
 }
+
+// A breaking fragment body with the change bullet and the five migration labels.
+export const migration = `- Remove the old call.
+
+### Migration
+
+**Affected surface.** The call.
+
+**Why.** Remove ambiguity.
+
+**Before and after.**
+
+\`\`\`ts
+old();
+\`\`\`
+
+\`\`\`ts
+updated();
+\`\`\`
+
+**Steps.**
+
+1. Replace the call.
+
+**Validation.** Run the tests.
+`;
