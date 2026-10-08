@@ -16,10 +16,10 @@ import {
   UsageError,
 } from '@loomcli/core';
 
-const [scenario, build = 'none', ...argv] = process.argv.slice(2);
+const [scenario, build = 'source', ...argv] = process.argv.slice(2);
 
-/** The options every probe declares: its description, and no packet or one that reads the build. */
-const probe = { description: 'Probe a build.', ...(build === 'none' ? {} : { packet: { build } }) };
+/** The options every probe declares. A run reads the build a test names, or the source's facts. */
+const probe = { description: 'Probe a build.' };
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
@@ -404,10 +404,7 @@ if (scenario === 'captured-reader') {
   symlinkSync(real, linked);
   symlinkSync(join(outside, 'secret.js'), join(real, 'escape.js'));
   const captured = { reader: undefined };
-  const app = new Application('probe', {
-    description: 'Probe a build.',
-    packet: { build: 'development' },
-  }).action(({ host }) => {
+  const app = new Application('probe', { description: 'Probe a build.' }).action(({ host }) => {
     captured.reader = host.readSource;
   });
   await app.run({ host: { argv: [], cwd: linked } });
@@ -432,40 +429,8 @@ if (scenario === 'captured-reader') {
   );
   symlinkSync(real, linked);
   const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
-  const app = new Application('probe', {
-    description: 'Probe a build.',
-    packet: { build: 'development' },
-  }).action(fails);
+  const app = new Application('probe', { description: 'Probe a build.' }).action(fails);
   await app.run({ host: { argv: [], cwd: linked } });
-} else if (scenario === 'packet-mutation') {
-  const source = { build: 'development' };
-  const app = new Application('probe', { description: 'Probe a build.', packet: source }).action(
-    () => {
-      throw new TypeError('Boom.');
-    },
-  );
-  source.build = 'distributed';
-  await app.run({ host: { argv: [] } });
-} else if (scenario.startsWith('packet-')) {
-  const packets = {
-    'packet-extra': { build: 'distributed', channel: 'npm' },
-    'packet-missing': {},
-    'packet-not-object': 'development',
-    'packet-staging': { build: 'staging' },
-  };
-  try {
-    const app = new Application('probe', {
-      description: 'Probe a build.',
-      packet: packets[scenario],
-    }).action(() => {
-      throw new TypeError('Boom.');
-    });
-    await app.run({ host: { argv: [] } });
-  } catch (error) {
-    // Imported here, so the lines of the defect scenarios above keep the numbers their tests pin.
-    const { ruleText } = await import('./rule-text.mjs');
-    process.stdout.write(`thrown: ${ruleText(error)}\n`);
-  }
 } else if (scenario === 'inspect') {
   try {
     new Application('probe', probe).inspect();
@@ -474,7 +439,12 @@ if (scenario === 'captured-reader') {
   }
 } else {
   const { app, host = {}, signal } = scenarioRun();
-  const code = await app.run({ host: { argv, ...host }, ...(signal ? { signal } : {}) });
+  // A build the test names replaces the facts; a source run reads its own.
+  const release = build === 'source' ? {} : { release: { build } };
+  const code = await app.run({
+    host: { argv, ...release, ...host },
+    ...(signal ? { signal } : {}),
+  });
   process.stdout.write(`resolved:${code}\n`);
   if (asked.length > 0) {
     process.stdout.write(`asked:${asked.join(',')}\n`);

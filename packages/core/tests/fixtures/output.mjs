@@ -69,6 +69,7 @@ const app = new Application('output').action(async ({ out }) => {
 const code = await app.run({
   host: {
     argv: [],
+    release: { build: 'distributed' },
     stderr: scenario === 'diagnostic-write' ? destination : stderr,
     stdout: destination,
   },

@@ -311,15 +311,18 @@ function application() {
   return declaring.action(actions[process.env.LOOM_FIXTURE_ACTION ?? 'waiting']);
 }
 
+/** The release facts every run reads: a distributed build's. */
+const release = { build: 'distributed' };
+
 /** The host one scenario runs under, which is where a refusing or a slow destination enters. */
 function hostOf() {
   if (scenario === 'hostile-stderr') {
-    return { argv, stderr: hostile() };
+    return { argv, release, stderr: hostile() };
   }
   if (scenario === 'slow-flush') {
-    return { argv, stdout: slow(800) };
+    return { argv, release, stdout: slow(800) };
   }
-  return { argv };
+  return { argv, release };
 }
 
 /** The run options one scenario supplies, which is where a caller-owned signal enters. */
@@ -360,7 +363,7 @@ if (scenario === 'pre-aborted') {
     signal.addEventListener('abort', () => {
       void new Application('app', { plugins: [plugins.bracket()] })
         .action(holding)
-        .run({ host: { argv } });
+        .run({ host: { argv, release: { build: 'distributed' } } });
     });
     await out.print(counts('first'));
     await out.print('ready');
@@ -368,14 +371,14 @@ if (scenario === 'pre-aborted') {
   };
   await new Application('app', { plugins: [plugins.bracket()] })
     .action(branching)
-    .run({ host: { argv } });
+    .run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write('resolved\n');
 } else if (scenario === 'twice') {
   // One Application, run twice, so each run installs its own listeners and removes them.
   const app = application();
-  const first = await app.run({ host: { argv } });
+  const first = await app.run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write(`${counts('between')}\n`);
-  const second = await app.run({ host: { argv } });
+  const second = await app.run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write(`${counts('after')}\n`);
   process.stdout.write(`resolved:${first}:${second}\n`);
 } else if (scenario === 'not-a-signal-host') {
@@ -390,7 +393,10 @@ if (scenario === 'pre-aborted') {
       callback();
     },
   });
-  const code = await application().run({ host: { argv, stderr }, signal: 'not a signal' });
+  const code = await application().run({
+    host: { argv, release: { build: 'distributed' }, stderr },
+    signal: 'not a signal',
+  });
   process.stdout.write(`captured:${JSON.stringify(captured.join(''))}\n`);
   process.stdout.write(`resolved:${code}\n`);
 } else {

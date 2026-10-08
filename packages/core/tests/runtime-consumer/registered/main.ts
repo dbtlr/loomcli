@@ -24,4 +24,4 @@ const child = app.inspect().root.children[0];
 if (!child || readExtension(child, helpCommand)?.details !== 'Application details.') {
   throw new Error('The enriched library Command lost its typed help value.');
 }
-await app.run();
+await app.run({ host: { release: { build: 'distributed' } } });

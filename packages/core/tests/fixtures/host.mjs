@@ -27,7 +27,7 @@ if (scenario === 'capture') {
     });
   process.argv = [process.execPath, 'host.mjs', 'before run', 'two words'];
   process.env.LOOM_CAPTURE_TEST = 'at run';
-  await app.run();
+  await app.run({ host: { release: { build: 'distributed' } } });
 } else if (scenario === 'capture-once') {
   const first = [];
   const second = [];
@@ -54,6 +54,7 @@ if (scenario === 'capture') {
   let actionSawFirst = false;
   const overrides = {
     argv: [],
+    release: { build: 'distributed' },
     get stderr() {
       stderrReads++;
       return stderrReads === 1 ? firstStream : secondStream;
@@ -118,7 +119,16 @@ if (scenario === 'capture') {
         }),
       );
     });
-  await app.run({ host: { argv, cwd: 'virtual-workspace', env, stdin, terminal } });
+  await app.run({
+    host: {
+      argv,
+      cwd: 'virtual-workspace',
+      env,
+      release: { build: 'distributed' },
+      stdin,
+      terminal,
+    },
+  });
 } else if (scenario === 'build-output') {
   const chunks = [];
   const stderr = new Writable({
@@ -128,12 +138,12 @@ if (scenario === 'capture') {
     },
   });
   const app = new Application('bad');
-  const code = await app.run({ host: { stderr } });
+  const code = await app.run({ host: { release: { build: 'distributed' }, stderr } });
   process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);
 } else if (scenario === 'reuse') {
   const app = new Application('reuse')
     .argument('values', { required: true, variadic: true })
     .action(({ args, out }) => out.print(args.values.join(',')));
-  await app.run({ host: { argv: ['one'] } });
-  await app.run({ host: { argv: ['two'] } });
+  await app.run({ host: { argv: ['one'], release: { build: 'distributed' } } });
+  await app.run({ host: { argv: ['two'], release: { build: 'distributed' } } });
 }

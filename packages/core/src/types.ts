@@ -168,6 +168,31 @@ export interface OutputTerminal extends InputTerminal {
   columns: number | undefined;
   rows: number | undefined;
 }
+/**
+ * How the running application was built, released, and installed. The build bakes these facts into
+ * the artifact, and core fills `host.release` from them for every run; a run of the source, with
+ * nothing baked in, reads `{ build: 'source' }`.
+ */
+export interface ReleaseFacts {
+  /** `source` and `development` are development builds, and `distributed` is a distributed one. */
+  readonly build: 'source' | 'development' | 'distributed';
+  /** Present only when the artifact was built as a release. */
+  readonly release?: {
+    readonly version: string;
+    /** The first prerelease identifier of `version`, or `stable` when it has none. */
+    readonly lane: string;
+    /** The repository the release belongs to, as `owner/name`. */
+    readonly repository: string;
+    /** The release asset's name, present for a compiled binary alone. */
+    readonly asset?: string;
+  };
+  /** How the application was installed. Always absent until the installation record ships. */
+  readonly installation?: {
+    readonly method: string;
+    readonly path: string;
+    readonly digest: string;
+  };
+}
 export interface Host {
   platform: string;
   argv: string[];
@@ -185,6 +210,8 @@ export interface Host {
    * that exceeds 1 MiB.
    */
   readSource?: (path: string, cwd: string) => string | undefined;
+  /** The release facts the build baked in, or `{ build: 'source' }` when it baked none; frozen. */
+  release: ReleaseFacts;
 }
 export interface RunOptions {
   rendering?: RenderingPolicy;

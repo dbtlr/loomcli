@@ -49,7 +49,7 @@ if (mode === 'shared') {
     .action(({ options }) => {
       action = present(options.tags);
     });
-  await app.run({ host: { argv: [] } });
+  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
   const graph = present(app.inspect().root.options[0].default.value);
   process.stdout.write(`${JSON.stringify({ action, graph })}\n`);
 } else {
@@ -74,7 +74,7 @@ if (mode === 'shared') {
       validate: recording,
     })
     .action(() => undefined);
-  await app.run({ host: { argv: [] } });
+  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
   app.inspect();
   process.stdout.write(`${JSON.stringify(reads)}\n`);
 }

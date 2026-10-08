@@ -42,5 +42,7 @@ const app = new Application('app', { plugins: [profiles] })
   .command(named)
   .action(({ options, out }) => out.print(`root:${JSON.stringify(options)}`));
 
-const code = await app.run({ host: { argv: process.argv.slice(2) } });
+const code = await app.run({
+  host: { argv: process.argv.slice(2), release: { build: 'distributed' } },
+});
 process.stdout.write(`resolved:${code}\n`);

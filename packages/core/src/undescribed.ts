@@ -39,15 +39,16 @@ function commandGaps(command: BuiltCommand, path: readonly string[]): Finding[] 
 }
 
 /**
- * Every Command, the root included, every global option, every local option, and every argument
- * one built graph leaves without a description, in graph order: the global options, then each
- * Command, the root first and then depth first. A development run reports them as one fault; a
- * plugin's members, a hook's inputs, and a hidden or deprecated member answer the same rule.
+ * The one fault that lists every Command, the root included, every global option, every local
+ * option, and every argument one built graph leaves without a description, in graph order: the
+ * global options, then each Command, the root first and then depth first. It is `undefined` when
+ * nothing is left out. A plugin's members, a hook's inputs, and a hidden or deprecated member
+ * answer the same rule.
  */
-export function checkDescribed(
+export function undescribedFault(
   graph: BuiltGraph,
   application: { name: string; description: string | undefined },
-): void {
+): DeclarationError | undefined {
   // The sites hold every global option in table order, the application's and then each plugin's.
   const globalGaps = [...graph.globals.sites]
     .filter(([input]) => input.config.description === undefined)
@@ -65,10 +66,10 @@ export function checkDescribed(
       : [];
   const findings = [...globalGaps, ...root, ...commandGaps(graph.root, [])];
   if (findings.length === 0) {
-    return;
+    return undefined;
   }
   const count = findings.length;
-  throw new DeclarationError(undescribed, {
+  return new DeclarationError(undescribed, {
     correction: 'Give each one a description of one line.',
     findings,
     sentence:

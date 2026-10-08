@@ -13,8 +13,7 @@ import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extensio
 import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
 // A test that reads a declaration fault's own sentence runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 const dispatch = ({ out }) => out.print('dispatched');
 
@@ -141,7 +140,6 @@ function listing() {
   const bare = new Command('bare', { extensions: [mcpCommand({})] }).action(dispatch);
   const plain = new Command('plain', { description: 'Never a tool.' }).action(dispatch);
   return new Application('kit', {
-    ...packet,
     description: 'A fixture kit.',
     extensions: [mcpCommand({ annotations: { destructive: false, idempotent: true } })],
     plugins: [mcp()],
@@ -230,7 +228,6 @@ function calls() {
     .argument('label', { description: 'The label to report.', required: true })
     .action(waitForAbort);
   return new Application('calls', {
-    ...packet,
     ...(process.env.FIXTURE_BUILD === undefined ? {} : { description: 'Call each tool.' }),
     plugins: [mcp()],
     version: '2.0.0',
@@ -252,7 +249,7 @@ function calls() {
 
 /** One application for each build fault the plugin's hook raises. */
 /** The options every fault's application shares: the build, a description, and the plugin. */
-const faulty = { ...packet, description: 'A faulty fixture.', plugins: [mcp()] };
+const faulty = { description: 'A faulty fixture.', plugins: [mcp()] };
 
 const faults = {
   'property-name-taken': () =>
@@ -333,7 +330,7 @@ try {
     if (process.env.FIXTURE_CALLER_SIGNAL !== undefined) {
       process.once('SIGUSR2', () => caller.abort());
     }
-    process.exitCode = await application.run({ host: { argv }, signal: caller.signal });
+    process.exitCode = await application.run({ host: { argv, release }, signal: caller.signal });
   }
 } catch (error) {
   if (!(error instanceof DeclarationError)) {

@@ -76,6 +76,8 @@ if (mode === 'inspect') {
     process.stdout.write(`declaration:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
-  const code = await app.run({ host: { argv: scenario === 'root' ? [] : ['paths'] } });
+  const code = await app.run({
+    host: { argv: scenario === 'root' ? [] : ['paths'], release: { build: 'distributed' } },
+  });
   process.stdout.write(`resolved:${code}\n`);
 }

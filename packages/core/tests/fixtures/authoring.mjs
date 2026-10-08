@@ -25,4 +25,6 @@ const shared = new Application('empty')
   .action(report('root'));
 
 const declarations = { aliased, composed, forked, plain, root, shared };
-await declarations[process.argv[2]].run({ host: { argv: process.argv.slice(3) } });
+await declarations[process.argv[2]].run({
+  host: { argv: process.argv.slice(3), release: { build: 'distributed' } },
+});

@@ -63,13 +63,11 @@ const causeView = override(InternalError, {
 
 const app = new Application('format-views', {
   description: 'The format-views application.',
-  // A test that reads a defect's own sentence runs the fixture as a development build.
-  ...(process.env.FIXTURE_BUILD === undefined
-    ? {}
-    : { packet: { build: process.env.FIXTURE_BUILD } }),
   rendering: color === undefined ? {} : { color },
   views: scenario === 'jsonl-bigint-cause' ? [causeView] : [],
 }).action(({ out }) => out.render(value, view));
 
-const code = await app.run({ host: { argv: [] } });
+// A test that reads a defect's own sentence runs the fixture as a development build.
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+const code = await app.run({ host: { argv: [], release } });
 process.stdout.write(`resolved:${String(code)}\n`);

@@ -90,7 +90,8 @@ interface FailureScene {
  * once per run.
  */
 interface BuildReports {
-  readonly development: boolean;
+  /** Whether the run is a development build, set once its capture has read the release facts. */
+  development: boolean;
   /** Whether this run has written the generic defect message already. */
   generic: boolean;
   /** Whether this run has written a failure report already. */

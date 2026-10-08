@@ -261,11 +261,11 @@ const scenario = process.argv[2];
 
 if (scenario === 'root-undescribed') {
   // A gap waits for a development run, which reports it before routing.
-  const app = new Application('probe', { packet: { build: 'development' } }).action(act);
+  const app = new Application('probe').action(act);
   process.exitCode = await app.run({ host: { argv: [] } });
 } else if (scenario === 'root-group-option' || scenario === 'root-without-action') {
   // A root fault waits for build, which run() reports with the application name in a development build.
-  const app = new Application('probe', { packet: { build: 'development' } });
+  const app = new Application('probe');
   const faulty =
     scenario === 'root-group-option'
       ? app.option('verbose', { type: 'boolean' }).command(leaf('get'))

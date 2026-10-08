@@ -13,6 +13,7 @@ const cause = plugin('@fixture/cause', {
 
 /** The reader under jsonkit's translation, beside a hook the application itself does not install. */
 const application = new Application('jsonkit', {
+  description: 'Read one JSON document.',
   plugins: [cause],
   translators: [invalidJson],
 }).action(async ({ host, out, style }) => {

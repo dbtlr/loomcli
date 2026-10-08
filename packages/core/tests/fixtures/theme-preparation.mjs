@@ -22,4 +22,4 @@ const app = new Application('theme-preparation', {
 });
 // A root with neither children nor an action is final only at build, so both scenarios build and fail.
 const configured = scenario === 'hook' ? app.action(() => undefined) : app;
-await configured.run({ host: { argv: [], env: {} } });
+await configured.run({ host: { argv: [], env: {}, release: { build: 'distributed' } } });

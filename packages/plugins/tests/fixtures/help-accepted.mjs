@@ -148,4 +148,4 @@ const app = variadics.reduce(
   (built, command) => built.command(command),
   new Application('app', { plugins: [help()] }).command(shapes).command(pick),
 );
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

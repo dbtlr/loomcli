@@ -236,5 +236,7 @@ const stderr = new Writable({
   },
 });
 const app = declare(build);
-const code = await app.run({ host: { argv: process.argv.slice(3), stderr } });
+const code = await app.run({
+  host: { argv: process.argv.slice(3), release: { build: 'distributed' }, stderr },
+});
 process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);

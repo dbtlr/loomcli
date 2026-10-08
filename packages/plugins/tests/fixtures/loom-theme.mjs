@@ -61,6 +61,7 @@ await app.run({
   host: {
     argv: [],
     env: input.env ?? {},
+    release: { build: 'distributed' },
     terminal: {
       stderr: { isTTY: false },
       stdin: { isTTY: false },

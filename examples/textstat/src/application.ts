@@ -13,7 +13,6 @@ import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { integer, oneOf } from '@loomcli/validators';
 
-import packet from '../loom.packet.json' with { type: 'json' };
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
 import type { Row } from './row.js';
@@ -43,8 +42,6 @@ export const textstat = new Application('textstat', {
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
-  // The source tree reads development; the build writes distributed into the bundle.
-  packet,
   plugins: [
     help(),
     suggestions(),

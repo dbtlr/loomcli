@@ -125,5 +125,7 @@ function rooted() {
     .action(report([]));
 }
 
-const code = await (scenario === 'rooted' ? rooted() : kit()).run({ host: { argv } });
+const code = await (scenario === 'rooted' ? rooted() : kit()).run({
+  host: { argv, release: { build: 'distributed' } },
+});
 process.stdout.write(`resolved:${code}\n`);

@@ -110,6 +110,13 @@ const runOptions = registerRule('@loomcli/core/run-options', {
   headline: 'Invalid run options',
 });
 
+/** Release facts the build baked into `__LOOM_RELEASE__` that core cannot read. */
+const invalidReleaseFacts = registerRule('@loomcli/core/invalid-release-facts', {
+  explanation:
+    'The build bakes the release facts into __LOOM_RELEASE__: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.',
+  headline: 'Invalid release facts',
+});
+
 /** An `invoke()` call that holds a value of the wrong kind in one of its slots. */
 const invokeOptions = registerRule('@loomcli/core/invoke-options', {
   explanation:
@@ -201,6 +208,7 @@ export {
   foreignGraphCorrection,
   foreignThrow,
   foreignThrowCorrection,
+  invalidReleaseFacts,
   invokeOptions,
   invokeViewCorrection,
   nextMisuse,

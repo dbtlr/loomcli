@@ -1,13 +1,34 @@
 import { Application, DeclarationError, diagnosticRule, InternalError } from '@loomcli/core';
-import type { DiagnosticParts, DiagnosticRule, Finding, Host, Packet } from '@loomcli/core';
+import type { DiagnosticParts, DiagnosticRule, Finding, Host, ReleaseFacts } from '@loomcli/core';
 
-// A JSON module types its members as string, which is what Packet.build accepts.
-const imported: { build: string } = { build: 'development' };
-const packet: Packet = imported;
-new Application('app', { packet });
+// An action reads its run's release facts from its host, and narrows on the build.
+const about = new Application('app', { description: 'Print how this copy was built.' }).action(
+  ({ host, out }) => {
+    const { build, installation, release }: ReleaseFacts = host.release;
+    const development: boolean = build === 'source' || build === 'development';
+    const lane: string | undefined = release?.lane;
+    const asset: string | undefined = release?.asset;
+    const digest: string | undefined = installation?.digest;
+    return out.print(`${String(development)} ${lane ?? ''} ${asset ?? ''} ${digest ?? ''}`);
+  },
+);
 
-// @ts-expect-error TS2322: a packet's build is a string.
-new Application('app', { packet: { build: true } });
+// A test supplies the facts through the host override, of run() and app.invoke alike.
+const supplied: ReleaseFacts = {
+  build: 'distributed',
+  release: { lane: 'next', repository: 'acme/notes', version: '1.1.0-next.3' },
+};
+void about.run({ host: { release: supplied } });
+void about.invoke([], {}, { host: { release: supplied } });
+
+// @ts-expect-error TS2322: a build is source, development, or distributed.
+const staging: ReleaseFacts = { build: 'staging' };
+
+// @ts-expect-error TS2353: the Application reads no packet; the build bakes the release facts.
+new Application('app', { packet: { build: 'development' } });
+
+// Check returns every declaration fault as a value.
+const faults: readonly DeclarationError[] = about.check();
 
 const rule: DiagnosticRule = diagnosticRule('@acme/retry/retry-limit', {
   explanation: 'The plugin accepts from 0 through 10 retries.',
@@ -53,4 +74,4 @@ const host: Partial<Host> = { readSource: reader };
 // @ts-expect-error TS2322: a source reader answers a string or undefined.
 const wrongReader: Host['readSource'] = () => 1;
 
-export { defectFields, docs, fields, host, wrongReader };
+export { defectFields, docs, faults, fields, host, staging, wrongReader };

@@ -10,6 +10,9 @@ import { version } from '@loomcli/plugins/version';
 
 const [scenario, build, ...argv] = process.argv.slice(2);
 
+/** The release facts each run reads, whose build the test names. */
+const release = { build };
+
 /** Hook calls, so a scenario reports whether a hook ran. */
 const judged = [];
 
@@ -38,7 +41,6 @@ const tagger = plugin('@acme/tag', {
  */
 function gaps() {
   return new Application('store', {
-    packet: { build },
     plugins: [help(), completion(), doctor, tagger],
   })
     .globalOption('verbose', { type: 'boolean' })
@@ -55,7 +57,6 @@ function gaps() {
 function described() {
   return new Application('store', {
     description: 'Read stored values.',
-    packet: { build },
     plugins: [
       help(),
       version(),
@@ -87,7 +88,6 @@ function nested() {
   });
   return new Application('store', {
     description: 'Read stored values.',
-    packet: { build },
     plugins: [probe],
   }).command(
     new Command('config', { description: 'Manage settings.' }).command(
@@ -98,22 +98,22 @@ function nested() {
 
 /** One gap alone. */
 function single() {
-  return new Application('store', { packet: { build } }).action(({ out }) => out.print('ran'));
+  return new Application('store').action(({ out }) => out.print('ran'));
 }
 
 if (scenario === 'nested' || scenario === 'single') {
   const app = scenario === 'nested' ? nested() : single();
-  const code = await app.run({ host: { argv } });
+  const code = await app.run({ host: { argv, release } });
   process.stdout.write(`resolved:${code}\n`);
 } else if (scenario === 'run') {
-  const code = await gaps().run({ host: { argv } });
+  const code = await gaps().run({ host: { argv, release } });
   process.stdout.write(`resolved:${code} judged:${judged.length}\n`);
 } else if (scenario === 'described') {
-  const code = await described().run({ host: { argv } });
+  const code = await described().run({ host: { argv, release } });
   process.stdout.write(`resolved:${code}\n`);
 } else if (scenario === 'doors') {
   const app = gaps();
-  const outcome = await app.invoke(['get'], { args: { path: 'name' } });
+  const outcome = await app.invoke(['get'], { args: { path: 'name' } }, { host: { release } });
   const judgedByInvoke = judged.length;
   const inspected = app.inspect();
   process.stdout.write(

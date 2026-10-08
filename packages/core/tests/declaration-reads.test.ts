@@ -54,7 +54,6 @@ const unreadableReads: Record<Call, { subject: string; reads: Record<string, str
     reads: readsBySlot({
       description: [],
       extensions: nestedList('extensions'),
-      packet: nestedObject('packet', 'build'),
       plugins: nestedList('plugins'),
       rendering: nestedObject('rendering', 'color'),
       translators: nestedList('translators'),
@@ -149,24 +148,8 @@ const countedReads: Record<
   { slots: readonly string[]; nested: readonly string[] }
 > = {
   application: {
-    nested: [
-      'extensions.0',
-      'packet.build',
-      'plugins.0',
-      'rendering.color',
-      'translators.0',
-      'views.0',
-    ],
-    slots: [
-      'description',
-      'extensions',
-      'packet',
-      'plugins',
-      'rendering',
-      'translators',
-      'version',
-      'views',
-    ],
+    nested: ['extensions.0', 'plugins.0', 'rendering.color', 'translators.0', 'views.0'],
+    slots: ['description', 'extensions', 'plugins', 'rendering', 'translators', 'version', 'views'],
   },
   command: {
     nested: ['extensions.0'],
@@ -260,7 +243,7 @@ test.each(
       { call: 'plugin', path: '' },
       { call: 'application', path: '' },
       { call: 'command', path: '' },
-      { call: 'application', path: 'packet' },
+      { call: 'application', path: 'rendering' },
       { call: 'plugin', path: 'middleware' },
     ] as const
   ).flatMap(({ call, path }) =>
@@ -276,7 +259,7 @@ test.each(
 test('a plain verdict one declaring call reached answers no later declaring call', () => {
   expect(report('later', 'application', [])).toEqual({
     after: 'returned',
-    before: expect.objectContaining({ rule: '@loomcli/core/invalid-packet' }),
+    before: expect.objectContaining({ rule: '@loomcli/core/rendering-policy' }),
     reused: expect.objectContaining({ rule: '@loomcli/core/not-an-object' }),
   });
 });

@@ -45,5 +45,5 @@ const code = await new Application('app', { plugins: [config(), spelled(), neigh
   .globalOption('file', { short: 'F', type: 'string' })
   .option('local', { type: 'boolean' })
   .action(({ out }) => out.print('root'))
-  .run({ host: { argv: process.argv.slice(2) } });
+  .run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });
 process.stdout.write(`resolved:${code}\n`);

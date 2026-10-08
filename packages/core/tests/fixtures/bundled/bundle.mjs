@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
 /**
- * Bundles the application into one directory with the named bundler and no plugin, as an author's
+ * Bundles the application into one directory with the named bundler and no define, as an author's
  * build does with any bundler: `bun` runs `Bun.build` under Bun, and `rolldown` runs under Node.
  */
 const [bundler, outdir] = process.argv.slice(2);

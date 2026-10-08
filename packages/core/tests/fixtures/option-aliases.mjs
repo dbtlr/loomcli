@@ -75,7 +75,7 @@ const scenarios = {
     process.stdout.write(`${JSON.stringify(option?.aliases)}\n`);
   },
   run: async () => {
-    process.exitCode = await sizes().run({ host: { argv } });
+    process.exitCode = await sizes().run({ host: { argv, release: { build: 'distributed' } } });
   },
 };
 

@@ -448,4 +448,6 @@ await recordLoads();
 
 const [name, ...argv] = process.argv.slice(2);
 
-process.exitCode = await scenarios[name]().run({ host: { argv } });
+process.exitCode = await scenarios[name]().run({
+  host: { argv, release: { build: 'distributed' } },
+});

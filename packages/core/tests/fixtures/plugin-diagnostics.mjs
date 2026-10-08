@@ -49,6 +49,7 @@ const scenarios = {
     }),
   'application-failures': () => new Application('probe', { failures: {} }),
   'application-globals': () => new Application('probe', { globals: {} }),
+  'application-packet': () => new Application('probe', { packet: { build: 'development' } }),
   'application-view-declared': () =>
     new Application('probe', { views: [view('@acme/page', { render })] }),
   'attach-hook-returns': () =>
@@ -304,8 +305,6 @@ const scenarios = {
     plugin('@acme/brand', {
       views: [override(InputError, { render }), override(InputError, { render })],
     }),
-  'packet-build': () => new Application('probe', { packet: { build: 'staging' } }),
-  'packet-object': () => new Application('probe', { packet: 'development' }),
   'plugin-deep': () => plugin('@loomcli/plugins/help/page', {}),
   'plugin-definition': () => plugin('@acme/log', 'debug'),
   'plugin-empty-identity': () => plugin('', {}),
@@ -391,8 +390,8 @@ const scenarios = {
 const scenario = process.argv[2];
 
 if (scenario === 'run-rendering') {
-  // A fault run() meets reports with the application name in a development build.
-  const app = new Application('probe', { packet: { build: 'development' } }).action(act);
+  // A fault run() meets reports with the application name in a development build, as a source run is.
+  const app = new Application('probe').action(act);
   process.exitCode = await app.run({ host: { argv: [] }, rendering: { hyperlinks: 'maybe' } });
 } else {
   try {

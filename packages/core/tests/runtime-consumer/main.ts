@@ -55,6 +55,6 @@ const greeter = new Application('greeter', {
 
 const styled = process.env.LOOM_PACKED_STYLES === '1';
 await greeter.run({
-  host: { env: {} },
+  host: { env: {}, release: { build: 'distributed' } },
   rendering: { color: styled ? 'always' : 'never', modifiers: styled ? 'always' : 'never' },
 });

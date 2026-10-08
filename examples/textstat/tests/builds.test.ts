@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,14 +6,17 @@ import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
-/** The bundle the build writes, and the source entry, a development build only Bun runs directly. */
+/** The bundle the build writes, and the source entry, a source run only Bun runs directly. */
 const main = new URL('../dist/main.js', import.meta.url);
 const source = new URL('../src/main.ts', import.meta.url);
 
-test('the source packet reads development', () => {
-  expect(JSON.parse(readFileSync(new URL('../loom.packet.json', import.meta.url), 'utf8'))).toEqual(
-    { build: 'development' },
-  );
+/** The fixture that prints every fault `check()` returns for textstat's declarations. */
+const checked = new URL('fixtures/check.mjs', import.meta.url);
+
+test('textstat declares no fault check() returns, from the bundle and from source', () => {
+  const clean = { status: 0, stderr: '', stdout: '[]\n' };
+  expect(invoke(checked, ['bundle'])).toEqual(clean);
+  expect(invoke(checked, ['source'], { runtime: 'bun' })).toEqual(clean);
 });
 
 // A usage error is an operator failure, so the bundle and the source print the same bytes.

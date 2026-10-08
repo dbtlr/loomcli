@@ -43,4 +43,4 @@ const scenarios = {
       .action(action),
 };
 const app = declare(scenarios[scenario]);
-process.exitCode = await app.run({ host: { argv: [] } });
+process.exitCode = await app.run({ host: { argv: [], release: { build: 'distributed' } } });

@@ -36,4 +36,6 @@ const app = new Application('serve', {
   .option('mode', { type: 'string', validate: oneOf(['dev', 'prod']) })
   .action(({ options, out }) => out.print(`served ${String(options.workers)}`));
 
-process.exitCode = await app.run({ host: { argv: process.argv.slice(2) } });
+process.exitCode = await app.run({
+  host: { argv: process.argv.slice(2), release: { build: 'distributed' } },
+});

@@ -195,18 +195,11 @@ const brokenGraphHook = registerRule('@loomcli/core/broken-graph-hook', {
   headline: 'Broken graph hook',
 });
 
-/** The retired `globals` or `failures` Application option. */
+/** The retired `globals`, `failures`, or `packet` Application option. */
 const retiredApplicationOption = registerRule('@loomcli/core/retired-application-option', {
   explanation:
-    'The Application no longer reads globals or failures. A global option is declared with globalOption(), so its type reaches every action, and a failure view is an override under views.',
+    'The Application no longer reads globals, failures, or packet. A global option is declared with globalOption(), so its type reaches every action, a failure view is an override under views, and core reads the build from the release facts the build bakes in.',
   headline: 'Retired Application option',
-});
-
-/** A packet that is not an object, or whose build is neither value. */
-const invalidPacket = registerRule('@loomcli/core/invalid-packet', {
-  explanation:
-    'The packet says whether the application was built for development, which decides whether a defect shows the author its Developer Diagnostic or the operator one generic message. Its build reads development or distributed.',
-  headline: 'Invalid packet',
 });
 
 /** A rendering policy that is not an object, or holds a setting outside its closed set. */
@@ -242,7 +235,6 @@ export {
   foreignValue,
   invalidExtensionValue,
   invalidIdentity,
-  invalidPacket,
   middlewareActivation,
   notAFunction,
   notAList,

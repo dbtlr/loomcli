@@ -1,8 +1,8 @@
 import { Application } from '@loomcli/core';
 import { z } from 'zod';
 
-// A development build, so a fault only the author can fix prints its Developer Diagnostic.
-const development = { description: 'Validate options.', packet: { build: 'development' } };
+// A source run is a development build, so an author's fault prints its Developer Diagnostic.
+const development = { description: 'Validate options.' };
 
 const [scenario, ...argv] = process.argv.slice(2);
 const numberSchema = {

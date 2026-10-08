@@ -411,23 +411,35 @@ test.each([
   ['passthrough', 'invoke() received a passthrough that is not an array of strings.'],
   ['signal', 'invoke() received a signal that is not an AbortSignal.'],
   ['failure', 'invoke() received a failure handler that is not a function.'],
-  [
-    'host',
-    'invoke() received a host that holds a field other than env, cwd, platform, and readSource.',
-  ],
-])('a malformed %s reports invoke-options with exit 1, rendered by build', (slot, sentence) => {
-  const distributed: Shapes = JSON.parse(report('shape', 'distributed'));
-  const development: Shapes = JSON.parse(report('shape', 'development'));
-  expect(distributed[slot]).toMatchObject({
-    exitCode: 1,
-    failure: { sentence },
-    messages: 'probe: Something went wrong.\n',
-    status: 'failed',
-  });
-  expect(development[slot]?.messages).toMatch(
-    /^-- INVALID INVOKE OPTIONS -+ @loomcli\/core\/invoke-options\n\n/u,
-  );
-  expect(development[slot]?.messages).toContain(`\n\n${sentence}\n`);
+])(
+  'a malformed %s reports invoke-options with exit 1, rendered by the build the call names',
+  (slot, sentence) => {
+    const distributed: Shapes = JSON.parse(report('shape', 'distributed'));
+    const development: Shapes = JSON.parse(report('shape', 'development'));
+    expect(distributed[slot]).toMatchObject({
+      exitCode: 1,
+      failure: { sentence },
+      messages: 'probe: Something went wrong.\n',
+      status: 'failed',
+    });
+    expect(development[slot]?.messages).toMatch(
+      /^-- INVALID INVOKE OPTIONS -+ @loomcli\/core\/invoke-options\n\n/u,
+    );
+    expect(development[slot]?.messages).toContain(`\n\n${sentence}\n`);
+  },
+);
+
+test('a malformed host reports invoke-options by the baked facts, because its release facts are never read', () => {
+  const sentence =
+    'invoke() received a host that holds a field other than env, cwd, platform, readSource, and release.';
+  // The source reads { build: 'source' }, so the call that names a distributed build still shows the author.
+  for (const build of ['distributed', 'development']) {
+    const shapes: Shapes = JSON.parse(report('shape', build));
+    expect(shapes.host).toMatchObject({ exitCode: 1, failure: { sentence }, status: 'failed' });
+    expect(shapes.host?.messages).toMatch(
+      /^-- INVALID INVOKE OPTIONS -+ @loomcli\/core\/invoke-options\n\n/u,
+    );
+  }
 });
 
 /** The fixture's report of malformed calls that pass a failure handler. */

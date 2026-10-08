@@ -3,7 +3,10 @@ import { isAbsolute, relative, sep } from 'node:path';
 import type { Writable } from 'node:stream';
 
 import { WorkingDirectoryError } from './errors.js';
-import type { Host, RunOptions } from './types.js';
+import type { InternalError } from './errors.js';
+import { captureRelease } from './release.js';
+import type { CapturedRelease } from './release.js';
+import type { Host, ReleaseFacts, RunOptions } from './types.js';
 
 // Process stream declarations assume a terminal, but pipes omit isTTY at runtime.
 function isTerminal(stream: { isTTY?: boolean }): boolean {
@@ -75,30 +78,55 @@ export function captureWorkingDirectory(override: string | undefined): WorkingDi
   }
 }
 
-/** The facts a failure's report writes through: a host whose working directory may be unread. */
-export type ReportHost = Omit<Host, 'cwd'> & { readonly cwd: string | undefined };
+/**
+ * The facts a failure's report writes through: a host whose working directory may be unread, and
+ * whose release facts are `undefined` when the baked value was malformed.
+ */
+export type ReportHost = Omit<Host, 'cwd' | 'release'> & {
+  readonly cwd: string | undefined;
+  readonly release: ReleaseFacts | undefined;
+};
 
 /**
- * One host capture: the run's host, or the failure its working directory raised. Either way it
- * holds the facts a report writes through, so the failure path never captures the host again.
+ * One host capture: the run's host, or the failure its release facts or its working directory
+ * raised. Either way it holds the facts a report writes through, so the failure path never
+ * captures the host again.
  */
 export type HostCapture =
   | { readonly host: Host; readonly report: Host }
-  | { readonly failure: WorkingDirectoryError; readonly report: ReportHost };
+  | { readonly failure: InternalError | WorkingDirectoryError; readonly report: ReportHost };
 
-/** The capture one set of host facts makes around the working directory read beside them. */
-export function capturedHost(facts: Omit<Host, 'cwd'>, directory: WorkingDirectory): HostCapture {
-  if ('failure' in directory) {
-    return { failure: directory.failure, report: { ...facts, cwd: undefined } };
+/** What one capture read beside the host's other facts: the release facts and the working directory. */
+export interface CapturedFacts {
+  readonly directory: WorkingDirectory;
+  readonly release: CapturedRelease;
+}
+
+/**
+ * The capture one set of host facts makes around the release facts and the working directory read
+ * beside them. Malformed release facts are the author's defect and report first.
+ */
+export function capturedHost(
+  facts: Omit<Host, 'cwd' | 'release'>,
+  captured: CapturedFacts,
+): HostCapture {
+  const { directory, release } = captured;
+  const cwd = 'cwd' in directory ? directory.cwd : undefined;
+  if ('failure' in release) {
+    return { failure: release.failure, report: { ...facts, cwd, release: undefined } };
   }
-  const host: Host = { ...facts, cwd: directory.cwd };
+  if ('failure' in directory) {
+    return { failure: directory.failure, report: { ...facts, cwd, release: release.release } };
+  }
+  const host: Host = { ...facts, cwd: directory.cwd, release: release.release };
   return { host, report: host };
 }
 
 /** The host `run()` captures from the process at entry, each override replacing its whole field. */
 export function captureHost(overrides: RunOptions['host'], stderr: Writable): HostCapture {
-  const { argv, cwd, env, platform, readSource, stdin, stdout, terminal } = overrides ?? {};
-  const directory = captureWorkingDirectory(cwd);
+  const { argv, cwd, env, platform, readSource, release, stdin, stdout, terminal } =
+    overrides ?? {};
+  const captured = { directory: captureWorkingDirectory(cwd), release: captureRelease(release) };
   return capturedHost(
     {
       argv: [...(argv ?? process.argv.slice(2))],
@@ -128,6 +156,6 @@ export function captureHost(overrides: RunOptions['host'], stderr: Writable): Ho
             },
           },
     },
-    directory,
+    captured,
   );
 }

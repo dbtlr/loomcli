@@ -83,11 +83,6 @@ const explanations = {
     'segments, each after a / and each of lowercase letters and digits in words',
     'joined by single hyphens.',
   ],
-  'invalid-packet': [
-    'The packet says whether the application was built for development, which decides',
-    'whether a defect shows the author its Developer Diagnostic or the operator one',
-    'generic message. Its build reads development or distributed.',
-  ],
   'middleware-activation': [
     "Activation decides when core loads a plugin's middleware: on every run with",
     "'always', or only when an invocation supplies one of the plugin's own options",
@@ -131,9 +126,10 @@ const explanations = {
     'auto, always, or never, and terminalControls reads strip or preserve.',
   ],
   'retired-application-option': [
-    'The Application no longer reads globals or failures. A global option is declared',
-    'with globalOption(), so its type reaches every action, and a failure view is an',
-    'override under views.',
+    'The Application no longer reads globals, failures, or packet. A global option is',
+    'declared with globalOption(), so its type reaches every action, a failure view',
+    'is an override under views, and core reads the build from the release facts the',
+    'build bakes in.',
   ],
   'rule-docs': [
     "A diagnostic prints a rule's docs as a link the author follows, so it is an",
@@ -373,6 +369,18 @@ const cases: Record<string, Expected> = {
     headline: 'RETIRED APPLICATION OPTION',
     rule: 'retired-application-option',
     sentence: 'The Application options contain globals.',
+  },
+  'application-packet': {
+    correction: 'Remove it; core reads the build from the release facts loom build bakes in.',
+    findings: [
+      bare(
+        "new Application('probe', { packet: { build: 'development' } })",
+        "packet: { build: 'development' }",
+      ),
+    ],
+    headline: 'RETIRED APPLICATION OPTION',
+    rule: 'retired-application-option',
+    sentence: 'The Application options contain packet.',
   },
   'application-view-declared': {
     correction: 'Supply the value returned by override(key, view).',
@@ -796,24 +804,6 @@ const cases: Record<string, Expected> = {
     headline: 'KEY OVERRIDDEN TWICE',
     rule: 'override-twice',
     sentence: 'Plugin "@acme/brand" overrides the view for "InputError" twice.',
-  },
-  'packet-build': {
-    correction: 'Set build to "development" or "distributed".',
-    findings: [
-      bare("new Application('probe', { packet: { build: 'staging' } })", "build: 'staging'"),
-    ],
-    headline: 'INVALID PACKET',
-    rule: 'invalid-packet',
-    sentence: 'The packet\'s build is "staging".',
-  },
-  'packet-object': {
-    correction: 'Import loom.packet.json and pass it as packet.',
-    findings: [
-      bare("new Application('probe', { packet: 'development' })", "packet: 'development'"),
-    ],
-    headline: 'INVALID PACKET',
-    rule: 'invalid-packet',
-    sentence: 'The Application packet must be an object.',
   },
   'plugin-definition': {
     correction: 'Supply { options, middleware, extensions, views }.',

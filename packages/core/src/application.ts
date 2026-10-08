@@ -38,7 +38,6 @@ import type {
   CommandState,
   ResultMethod,
 } from './command.js';
-import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
 import { encoderRegistry } from './encoders.js';
 import type { EncoderRegistry } from './encoders.js';
@@ -89,10 +88,11 @@ import { lowerInvocation } from './lower.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { parseInvocation } from './parse.js';
-import { declaring, isPlainObject, shallowList, shallowRecord } from './plain.js';
-import { invalidPacket, notAnObject, retiredApplicationOption } from './plugin-rules.js';
+import { declaring, shallowList, shallowRecord } from './plain.js';
+import { notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
+import { bakedFacts, isDevelopment } from './release.js';
 import { plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
@@ -125,15 +125,15 @@ import type {
   RunOptions,
   ValidateOmittedConstraint,
 } from './types.js';
-import { checkDescribed } from './undescribed.js';
+import { undescribedFault } from './undescribed.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
 import { checkDeclarations, prepareDeclaredValues } from './validation.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
 /**
- * Every authoring call an Application can publish, beside `inspect()`, `run()`, `invoke()`, and
- * `name`, which always remain.
+ * Every authoring call an Application can publish, beside `inspect()`, `check()`, `run()`,
+ * `invoke()`, and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
  * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
  * to no bare token, so it has no name to alias.
@@ -155,6 +155,30 @@ interface PrepareStage {
   rendering: (policy: RenderingPolicy) => void;
   /** The built plugins, which carry the theme the view context resolves styles through. */
   plugins: (plugins: readonly BuiltPlugin[]) => void;
+}
+
+/** The stages `inspect()` and `check()` ignore, because they configure no output. */
+const unstaged: PrepareStage = {
+  plugins: () => undefined,
+  rendering: () => undefined,
+  views: () => undefined,
+};
+
+/**
+ * Which checks one build runs past the built graph, and what each fault they find does. A run and
+ * `inspect()` throw the first, which ends the build; `check()` keeps each and goes on.
+ */
+interface BuildChecks {
+  /** Whether every validated input's converter is asked at build, a development build's check. */
+  readonly converters: boolean;
+  /** Whether every member must carry a description, a development run's check. */
+  readonly descriptions: boolean;
+  readonly fault: (fault: DeclarationError) => void;
+}
+
+/** The fault handler of a run and of `inspect()`: the first fault ends the build. */
+function raise(fault: DeclarationError): never {
+  throw fault;
 }
 
 /**
@@ -238,15 +262,6 @@ function checkSignal(signal: unknown): AbortSignal | undefined {
 }
 
 /**
- * The build fact file, `loom.packet.json`, that the entry imports and hands to the Application.
- * `build` is typed `string`, because a JSON module types its members that way, and the Application
- * constructor accepts `development` or `distributed` alone. Core ignores every other member.
- */
-export interface Packet {
-  readonly build: string;
-}
-
-/**
  * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it. A
  * value that cannot be read, such as an Error whose `name` getter throws, counts as an echo, so
  * it keeps its cancellation code and no translator replaces it.
@@ -265,8 +280,6 @@ function echoesCancellation(thrown: unknown, controller: AbortController): boole
 
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
-  /** The packet that says whether this is a development build. With none, it is distributed. */
-  packet?: Packet;
   views?: readonly ViewOverride[];
   translators?: readonly Translation[];
   plugins?: Plugins;
@@ -282,8 +295,6 @@ export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly
 interface ApplicationConfig {
   /** Whether the application's own `command()` or `action()` has run, which closes `globalOption()`. */
   composed: boolean;
-  /** Whether the packet reads `development`, read once at construction. */
-  development: boolean;
   /** Each installed plugin's view contributions, in installation order. */
   contributors: readonly ViewContributions[];
   facts: ApplicationFacts;
@@ -539,46 +550,53 @@ class ApplicationBuilder<
 
   /**
    * The graph build, which applies the rules no earlier moment could know: the root's
-   * finished-Command rules, every lifecycle hook's contribution, and every `onGraphBuilt` judgment
-   * of the frozen graph. The application's own overrides are published first, so a build fault
-   * reports through them. The merged registry is published once the build has succeeded, so a
-   * build fault never resolves through a plugin's overrides. `inspected` is the frozen graph
-   * `inspect()` returns, built at most once, whoever reads it first. `run` is the run the build
-   * starts, with the graph an action's call reuses, or nothing for `inspect()`, which starts none
-   * and so runs no description check.
+   * finished-Command rules, every lifecycle hook's contribution, the checks `checks` names, and
+   * every `onGraphBuilt` judgment of the frozen graph. The application's own overrides are
+   * published first, so a build fault reports through them. The merged registry is published once
+   * the build has succeeded, so a build fault never resolves through a plugin's overrides.
+   * `inspected` is the frozen graph `inspect()` returns, built at most once, whoever reads it
+   * first. `reuse` is the graph an action's run built, which its call reuses.
    */
   private prepare(
     stage: PrepareStage,
-    run?: { reuse: Pick<BoundGraph, 'graph' | 'inspected'> | undefined },
+    checks: BuildChecks,
+    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
   ): {
     facts: ApplicationFacts;
     graph: BuiltGraph;
     inspected: () => CommandGraph;
     plugins: readonly BuiltPlugin[];
   } {
-    const { contributors, development, facts, plugins, rendering, views } = this.#config;
+    const { contributors, facts, plugins, rendering, views } = this.#config;
     stage.views([views]);
     stage.rendering(rendering);
     stage.plugins(plugins);
     // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
-    const reuse = run?.reuse;
     if (reuse) {
       stage.views([views, ...contributors]);
       return { facts, graph: reuse.graph, inspected: reuse.inspected, plugins };
     }
     const graph = buildGraph(this.#root, this.#globals, plugins);
     let frozen: CommandGraph | undefined = undefined;
-    const inspected = () => (frozen ??= inspectGraph(this.#name, graph, { ...facts, development }));
-    if (development) {
-      // A development build asks every converter at build, so its check runs on every run.
+    const converterFault = checks.converters ? checks.fault : undefined;
+    const inspected = () =>
+      (frozen ??= inspectGraph(this.#name, graph, { ...facts, converterFault }));
+    if (checks.converters) {
+      // A build that checks converters asks every one at build, so its check runs on every build.
       inspected();
     }
-    if (development && run !== undefined) {
-      // A development run fails on an undescribed member, after the converters and before a judge.
-      checkDescribed(graph, { description: facts.description, name: this.#name });
+    if (checks.descriptions) {
+      // A member left undescribed fails after the converters and before a judge.
+      const undescribed = undescribedFault(graph, {
+        description: facts.description,
+        name: this.#name,
+      });
+      if (undescribed !== undefined) {
+        checks.fault(undescribed);
+      }
     }
     if (judgesGraph(plugins)) {
-      judgeGraph(inspected(), plugins);
+      judgeGraph(inspected(), plugins, checks.fault);
     }
     stage.views([views, ...contributors]);
     return { facts, graph, inspected, plugins };
@@ -587,16 +605,45 @@ class ApplicationBuilder<
   /**
    * The built graph as plain, frozen data. It builds the graph as `run()` does and throws
    * `DeclarationError` for the same build faults. Validating a declared default through its schema
-   * can be asynchronous, so that one rule stays in `run()`. Nothing is cached: each call builds the
-   * graph anew.
+   * can be asynchronous, so that one rule stays in `run()`. It takes no host, so it learns its build
+   * from the release facts the build baked in, and malformed ones throw their `InternalError`.
+   * Nothing is cached: each call builds the graph anew.
    */
   inspect(): CommandGraph {
-    const built = this.prepare({
-      plugins: () => undefined,
-      rendering: () => undefined,
-      views: () => undefined,
+    const development = isDevelopment(bakedFacts());
+    const built = this.prepare(unstaged, {
+      converters: development,
+      descriptions: false,
+      fault: raise,
     });
     return built.inspected();
+  }
+
+  /**
+   * Every declaration fault a development run reports before routing, except a declared default or
+   * implied value its validator rejects, as values in the order a run meets them. It builds the
+   * graph as `inspect()` does and runs the development checks whatever the release facts read,
+   * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
+   * past a built graph, each failing converter, the undescribed fault, and each rejecting or broken
+   * `onGraphBuilt` hook is kept and the build goes on. Nothing is cached.
+   */
+  check(): readonly DeclarationError[] {
+    const faults: DeclarationError[] = [];
+    try {
+      this.prepare(unstaged, {
+        converters: true,
+        descriptions: true,
+        fault: (fault) => {
+          faults.push(fault);
+        },
+      });
+    } catch (error) {
+      if (error instanceof DeclarationError) {
+        return [...faults, error];
+      }
+      throw error;
+    }
+    return faults;
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
@@ -612,7 +659,7 @@ class ApplicationBuilder<
     path: readonly string[],
     values: InvocationValues,
     options?: InvokeOptions<Mapped> & {
-      readonly host?: Partial<Pick<Host, 'env' | 'cwd' | 'platform' | 'readSource'>>;
+      readonly host?: Partial<Pick<Host, 'env' | 'cwd' | 'platform' | 'readSource' | 'release'>>;
     },
   ): Promise<InvocationOutcome<Mapped>> {
     return this.#invoke({ options, path, values }, undefined);
@@ -634,7 +681,7 @@ class ApplicationBuilder<
     const read = readCall(call, action === undefined ? 'application' : 'action');
     const sinks = { stderr: captureSink(), stdout: captureSink() };
     const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
-    const overrides = 'call' in read ? read.call.host : {};
+    const overrides = read.host;
     const end = await this.#execute(
       nameDoor(read, {
         action,
@@ -697,7 +744,18 @@ class ApplicationBuilder<
      * Nothing captures the host a second time.
      */
     let reportHost: ReportHost | undefined = undefined;
-    const reportingHost = (): ReportHost => (reportHost ??= door.fallback(stderr));
+    /**
+     * What this run's build decides about its reports, shared by every report the run writes. The
+     * capture sets the build from the release facts it read. Malformed facts leave the build
+     * unknown, so the run stays a development build and the author reads their defect.
+     */
+    const build: BuildReports = { development: true, generic: false, reported: false };
+    const useReportHost = (host: ReportHost): ReportHost => {
+      reportHost = host;
+      build.development = host.release === undefined || isDevelopment(host.release);
+      return host;
+    };
+    const reportingHost = (): ReportHost => reportHost ?? useReportHost(door.fallback(stderr));
     const scene = (): FailureScene & { host: ReportHost } => ({
       application: this.#name,
       built: reached,
@@ -706,12 +764,6 @@ class ApplicationBuilder<
       path: walked,
       selection: selected(),
     });
-    // What this run's build decides about its reports, shared by every report the run writes.
-    const build: BuildReports = {
-      development: this.#config.development,
-      generic: false,
-      reported: false,
-    };
     // What broke the run's reporting: a destination's write error, or a throw while reporting.
     let reportingCause: unknown = undefined;
     // One private controller per run, subscribed to the caller's signal at run entry.
@@ -751,7 +803,7 @@ class ApplicationBuilder<
         const entered = door.enter();
         stderr = entered.stderr ?? stderr;
         const capture = entered.host(stderr);
-        reportHost = capture.report;
+        useReportHost(capture.report);
         if ('failure' in capture) {
           throw capture.failure;
         }
@@ -779,7 +831,8 @@ class ApplicationBuilder<
               invocationOutput.useViews(value);
             },
           },
-          { reuse: bound },
+          { converters: build.development, descriptions: build.development, fault: raise },
+          bound,
         );
         const { graph, inspected } = built;
         reached = { inspected, plugins: built.plugins };
@@ -998,7 +1051,7 @@ interface BoundGraph {
   places: InputPlaces;
 }
 
-/** What a call an action makes reads from its run: the graph, the four host fields, the signal. */
+/** What a call an action makes reads from its run: the graph, the five host fields, the signal. */
 interface ActionCall {
   bound: BoundGraph;
   fields: CapturedFields;
@@ -1079,7 +1132,7 @@ function argvDoor(options: RunOptions | undefined): RunDoor {
 
 /**
  * The door an invocation by name enters by: the call read where it entered, a host of capture
- * sinks around four fields, a signal derived from the call's own and an action's run, and no
+ * sinks around five fields, a signal derived from the call's own and an action's run, and no
  * process effect. A call that could not be read reports its defect from the entry.
  */
 function nameDoor<Mapped>(
@@ -1126,9 +1179,9 @@ function nameDoor<Mapped>(
 
 /**
  * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
- * `inspect()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new declaration
- * value, leaves its receiver unchanged, and publishes only the calls that are still valid after it.
- * `inspect()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
+ * `inspect()`, `check()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new
+ * declaration value, leaves its receiver unchanged, and publishes only the calls that are still
+ * valid after it. `inspect()`, `check()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
  * It defaults to the state after `action()`, which publishes the fewest calls, so
  * `Application<A, O, G>` accepts an application in any state, a finished one included.
  */
@@ -1143,6 +1196,7 @@ export type Application<
   ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>,
   | typeof applicationEnvironment
   | typeof declaredTypes
+  | 'check'
   | 'extend'
   | 'inspect'
   | 'invoke'
@@ -1175,6 +1229,7 @@ interface ApplicationFacts {
 const retired = [
   ['globals', 'Declare them with globalOption(name, config).'],
   ['failures', 'Declare view overrides under views with override(key, view).'],
+  ['packet', 'Remove it; core reads the build from the release facts loom build bakes in.'],
 ] as const;
 
 /** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
@@ -1226,44 +1281,12 @@ function checkOptions(
   };
 }
 
-/**
- * Whether the packet an Application received reads `development`. No packet is distributed, so an
- * application that never opted in cannot show an operator the author's detail. The build is read
- * once, here, so a later change to the imported object changes no run.
- */
-function readPacket(name: string, packet: unknown): boolean {
-  if (packet === undefined) {
-    return false;
-  }
-  const site = optionSite(name, 'packet', packet);
-  if (!isPlainObject(packet)) {
-    throw new DeclarationError(invalidPacket, {
-      correction: 'Import loom.packet.json and pass it as packet.',
-      findings: [partFinding(site, [])],
-      sentence: 'The Application packet must be an object.',
-    });
-  }
-  const { build } = packet;
-  if (build === 'development' || build === 'distributed') {
-    return build === 'development';
-  }
-  const found =
-    build === undefined
-      ? 'The packet has no build.'
-      : `The packet's build is ${typeof build === 'string' ? `"${escapeControlCharacters(build)}"` : 'not a string'}.`;
-  throw new DeclarationError(invalidPacket, {
-    correction: 'Set build to "development" or "distributed".',
-    findings: [partFinding(site, 'build' in packet ? ['build'] : [])],
-    sentence: found,
-  });
-}
-
 /** The parts of the Application options that are lists, each copied with its entries as built. */
 const optionLists = ['plugins', 'views', 'translators', 'extensions'] as const;
 
 /**
  * The one copy of the options that `new Application(name, options)` reads: the options object, its
- * packet and rendering policy, and each list it holds. An entry of a list is what its factory built
+ * rendering policy, and each list it holds. An entry of a list is what its factory built
  * and is not copied. A read that throws is the unreadable fault of the options, and a value that is
  * not a plain object is the not-an-object fault. An Application declared without options has none
  * to copy.
@@ -1275,7 +1298,6 @@ function captureOptions(name: string, options: unknown): Record<string, unknown>
   return captureDeclaration(
     options,
     (copy, read) => {
-      read.nested(copy, 'packet', shallowRecord);
       read.nested(copy, 'rendering', shallowRecord);
       for (const list of optionLists) {
         read.nested(copy, list, shallowList);
@@ -1332,7 +1354,6 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     optionSite(name, 'rendering', slot?.rendering),
   );
   const facts = checkOptions(name, slot);
-  const development = readPacket(name, slot?.packet);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>
@@ -1366,7 +1387,6 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     config: {
       composed: false,
       contributors,
-      development,
       facts,
       owners,
       plugins,

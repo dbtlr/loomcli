@@ -236,7 +236,7 @@ if (mode === 'catch') {
   declare(build);
   process.stdout.write('declared\n');
 } else if (mode === 'run') {
-  const code = await build().run({ host: { argv: [] } });
+  const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
   process.stdout.write(`${encode({ code })}\n`);
 } else if (mode === 'freeze') {
   const graph = build().inspect();

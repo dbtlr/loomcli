@@ -63,7 +63,7 @@ if (scenario === 'stores') {
   await new Application('probe')
     .result({ views: { json: { mediaType: 'application/json', render: () => 'not json\n' } } })
     .action(({ out }) => out.results({}))
-    .run({ host: { argv: [] } });
+    .run({ host: { argv: [], release: { build: 'distributed' } } });
 } else if (scenario === 'faults') {
   const faults = {};
   const attempts = {

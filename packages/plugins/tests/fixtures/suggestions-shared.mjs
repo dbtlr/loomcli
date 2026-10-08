@@ -23,6 +23,6 @@ for (const name of runs) {
       },
     });
   } else {
-    process.exitCode = await app.run({ host: { argv: [name] } });
+    process.exitCode = await app.run({ host: { argv: [name], release: { build: 'distributed' } } });
   }
 }

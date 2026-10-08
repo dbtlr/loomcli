@@ -14,6 +14,9 @@ import {
   view,
 } from '@loomcli/core';
 
+// A test that reads a defect's own sentence runs the fixture as a development build.
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+
 const scenario = process.argv[2];
 
 const rows = [{ source: 'one.txt' }, { source: 'two words.txt' }];
@@ -326,12 +329,8 @@ function routed() {
 
 /** The root answers one scenario itself; every other routes to a named child. */
 function build() {
-  // A test that reads a defect's own sentence runs the fixture as a development build.
   const options = {
     description: 'Render results.',
-    ...(process.env.FIXTURE_BUILD === undefined
-      ? {}
-      : { packet: { build: process.env.FIXTURE_BUILD } }),
     plugins: plugins(),
     views: views(),
   };
@@ -353,6 +352,7 @@ const code = await build().run({
     argv: argv(),
     env: { TERM: 'linux' },
     platform: 'linux',
+    release,
     stderr: shared ?? process.stderr,
     stdout: shared ?? process.stdout,
     terminal: {

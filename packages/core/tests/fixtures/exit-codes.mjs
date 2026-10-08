@@ -374,9 +374,12 @@ if (scenario === 'statics') {
     controller.abort();
     throw new RegistryUnavailableError(503);
   });
-  const code = await app.run({ host: { argv }, signal: controller.signal });
+  const code = await app.run({
+    host: { argv, release: { build: 'distributed' } },
+    signal: controller.signal,
+  });
   process.stdout.write(`resolved:${code}\n`);
 } else {
-  const code = await build().run({ host: { argv } });
+  const code = await build().run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write(`resolved:${code}\n`);
 }

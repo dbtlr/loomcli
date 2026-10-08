@@ -16,9 +16,7 @@ const timeout = 60_000;
  * The padded lines `measure` prints, the same bytes its source run prints: a wide pair, a letter
  * with a combining mark, an emoji sequence, a flag, and ASCII, each padded to six columns.
  */
-const measured = ['日本  |', 'é     |', '👩‍💻    |', '🇯🇵    |', 'abc   |', 'development', ''].join(
-  '\n',
-);
+const measured = ['日本  |', 'é     |', '👩‍💻    |', '🇯🇵    |', 'abc   |', 'source', ''].join('\n');
 
 /**
  * The copyright holders whose notices core's derived modules carry as legal comments: the Unicode
@@ -49,7 +47,7 @@ const bundlers = [
 ];
 
 test.each(bundlers)(
-  'an application $bundler bundles without a plugin measures text under Node and Bun',
+  'an application $bundler bundles with no define measures text and reads source under Node and Bun',
   ({ bundler, runtime }) => {
     const outdir = mkdtempSync(join(tmpdir(), `loom-${bundler}-`));
     roots.push(outdir);
@@ -57,6 +55,24 @@ test.each(bundlers)(
     const bundle = join(outdir, 'main.js');
     expect(run('node', [bundle, 'measure'])).toBe(measured);
     expect(run('bun', [bundle, 'measure'])).toBe(measured);
+  },
+);
+
+test.each(bundlers)(
+  'an application $bundler bundles with no define writes the Developer Diagnostic for a defect under Node and Bun',
+  ({ bundler, runtime }) => {
+    const outdir = mkdtempSync(join(tmpdir(), `loom-${bundler}-`));
+    roots.push(outdir);
+    run(runtime, [script, bundler, outdir]);
+    const bundle = join(outdir, 'main.js');
+    for (const command of ['node', 'bun']) {
+      const result = spawnSync(command, [bundle, 'fail'], { encoding: 'utf8', timeout });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toMatch(
+        /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nThe bundle failed\.\n/u,
+      );
+    }
   },
 );
 

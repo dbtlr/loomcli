@@ -135,6 +135,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/release.ts'],
+        rules: {
+          // A bundler's define replaces `__LOOM_RELEASE__`, the one identifier the release facts contract names.
+          'eslint/no-underscore-dangle': ['error', { allow: ['__LOOM_RELEASE__'] }],
+        },
+      },
+      {
         files: ['packages/plugins/src/mcp/**'],
         rules: {
           // A tool, its input schema, and a text item keep the member order the protocol writes them in.

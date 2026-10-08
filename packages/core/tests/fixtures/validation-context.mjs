@@ -141,5 +141,5 @@ switch (scenario) {
   }
 }
 if (app) {
-  await app.run({ host: { argv, cwd: '/loom/context' } });
+  await app.run({ host: { argv, cwd: '/loom/context', release: { build: 'distributed' } } });
 }

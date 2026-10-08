@@ -2,8 +2,8 @@ import { Application, Command, DeclarationError, FatalError, plugin, style } fro
 
 const [scenario, build = 'distributed'] = process.argv.slice(2);
 
-/** The packet one run reads, which decides whether a defect shows its Developer Diagnostic. */
-const packet = { packet: { build } };
+/** The release facts one run reads, which decide whether a defect shows its Developer Diagnostic. */
+const release = { build };
 
 /** A validator that accepts decimal digits alone. */
 const digits = {
@@ -28,7 +28,6 @@ function hinting(identity, answer) {
 /** An application whose action throws what `raise` returns. */
 function raising(raise, plugins = []) {
   return new Application('forms', {
-    ...packet,
     description: 'The forms application.',
     plugins,
   }).action(() => {
@@ -43,11 +42,10 @@ const scenarios = {
       throw new Error('Broken.');
     });
     const app = new Application('forms', {
-      ...packet,
       description: 'The forms application.',
       plugins: [breaking],
     }).command(new Command('get', { description: 'The get command.' }).action(() => undefined));
-    const outcome = await app.invoke(['nope'], {});
+    const outcome = await app.invoke(['nope'], {}, { host: { release } });
     print({ exitCode: outcome.exitCode, form: outcome.form });
   },
   /** A build fault runs no hook, so its form holds no hint. */
@@ -58,12 +56,20 @@ const scenarios = {
         throw new DeclarationError('The graph is rejected.');
       },
     });
-    const outcome = await raising(() => new FatalError('Never.'), [judging]).invoke([], {});
+    const outcome = await raising(() => new FatalError('Never.'), [judging]).invoke(
+      [],
+      {},
+      { host: { release } },
+    );
     print({ exitCode: outcome.exitCode, form: outcome.form });
   },
   /** A defect reads by build, and no form holds a stack frame. */
   defect: async () => {
-    const outcome = await raising(() => new TypeError('Cannot read the value.')).invoke([], {});
+    const outcome = await raising(() => new TypeError('Cannot read the value.')).invoke(
+      [],
+      {},
+      { host: { release } },
+    );
     print(outcome.form);
   },
   /** The form of a fatal failure, and the handler's form beside the outcome's. */
@@ -77,6 +83,7 @@ const scenarios = {
           handled = context.form;
           return failure;
         },
+        host: { release },
       },
     );
     print({
@@ -89,7 +96,11 @@ const scenarios = {
   },
   /** An assignment to a form's member throws in strict mode code. */
   frozen: async () => {
-    const outcome = await raising(() => new FatalError('Failed.')).invoke([], {});
+    const outcome = await raising(() => new FatalError('Failed.')).invoke(
+      [],
+      {},
+      { host: { release } },
+    );
     try {
       outcome.form.code = 'other';
       print('assigned');
@@ -105,7 +116,7 @@ const scenarios = {
         hinting('@fixture/first', () => 'First hint.'),
         hinting('@fixture/second', () => ['Second.', 'Third.']),
       ],
-    ).invoke([], {});
+    ).invoke([], {}, { host: { release } });
     print(outcome.form.hints);
   },
   /** A marked message and a marked hint read as plain text. */
@@ -116,16 +127,16 @@ const scenarios = {
     const outcome = await raising(
       () => new FatalError(`The ${style.bold('registry')} is down.`),
       [marking],
-    ).invoke([], {});
+    ).invoke([], {}, { host: { release } });
     print(outcome.form);
   },
   /** An input error that reports two problems holds both lines. */
   'two-problems': async () => {
-    const app = new Application('forms', { ...packet, description: 'The forms application.' })
+    const app = new Application('forms', { description: 'The forms application.' })
       .option('limit', { description: 'The limit.', type: 'string', validate: digits })
       .argument('path', { description: 'The path.', required: true })
       .action(() => undefined);
-    const outcome = await app.invoke([], { options: { limit: 'x' } });
+    const outcome = await app.invoke([], { options: { limit: 'x' } }, { host: { release } });
     print(outcome.form);
   },
 };

@@ -57,7 +57,7 @@ export { pad, style } from './style.js';
 export { reportedSpelling } from './inspect.js';
 export { issuePath } from './validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
-export type { ApplicationMethod, ApplicationOptions, Packet } from './application.js';
+export type { ApplicationMethod, ApplicationOptions } from './application.js';
 export type { ChainOutcome, MiddlewareContext } from './chain.js';
 export type { InputProblem, ResultFault } from './errors.js';
 export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
@@ -117,6 +117,7 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
+  ReleaseFacts,
   Request,
   ResultInput,
   ResultView,

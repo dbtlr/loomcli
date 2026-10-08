@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -206,11 +206,18 @@ try {
   // The override below would hide an unrewritten workspace spec that no registry consumer resolves.
   const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
   assert.equal(loomManifest.status, 0, loomManifest.output);
-  const loomCore = JSON.parse(loomManifest.stdout).dependencies?.['@loomcli/core'];
+  const loomPackage = JSON.parse(loomManifest.stdout);
+  const loomCore = loomPackage.dependencies?.['@loomcli/core'];
   assert.equal(
     loomCore,
     version,
     `The packed @loomcli/loom must depend on @loomcli/core ${version}, not "${loomCore}".`,
+  );
+  // The toolchain exports no ./build subpath; the build bakes the release facts through a define.
+  assert.equal(
+    loomPackage.exports?.['./build'],
+    undefined,
+    'The packed @loomcli/loom exports ./build.',
   );
   // The plugin pack inlines the private MCP protocol package, so no consumer installs it.
   const pluginsManifest = run('tar', ['-xzOf', 'plugins.tgz', 'package/package.json'], temporary);
@@ -504,26 +511,26 @@ try {
       );
     }
   }
-  // The packed writer bundles the fixture under Bun, the only bundler it serves.
-  // The bundle reads distributed under each runtime, and the source still reads development.
-  const packetSource = join(temporary, 'packet-app/loom.packet.json');
-  const bundled = run('bun', [join(temporary, 'bundle-packet.mjs')], temporary);
+  // A bundle that bakes a distributed build's release facts into the packed core reads them under
+  // Each runtime and writes the generic message for a defect.
+  const bundled = run('bun', [join(temporary, 'bundle-release.mjs')], temporary);
   assert.equal(bundled.status, 0, bundled.output);
-  const packetBundle = join(temporary, 'packet-dist/main.js');
+  const releaseBundle = join(temporary, 'release-dist/release.js');
   for (const name of selected) {
-    const built = run(runtimes.get(name), [packetBundle, 'build'], temporary);
+    const built = run(runtimes.get(name), [releaseBundle, 'build'], temporary);
     assert.equal(built.status, 0, built.output);
-    assert.equal(built.stdout, 'distributed\n', `${name}: the packed bundle's packet`);
-    const failed = run(runtimes.get(name), [packetBundle, 'fail'], temporary);
+    assert.equal(built.stdout, 'distributed\n', `${name}: the packed bundle's release facts`);
+    const failed = run(runtimes.get(name), [releaseBundle, 'fail'], temporary);
     assert.equal(failed.status, 1, failed.output);
     assert.equal(
       failed.output,
-      'packet-probe: Something went wrong.\n',
+      'release-probe: Something went wrong.\n',
       `${name}: the packed bundle's defect`,
     );
   }
-  // Core reads no file at run time, so any bundler bundles an application without packet().
-  // Each bundle measures text with the packed Unicode tables and reads the source packet.
+  // Core reads no file at run time, so any bundler bundles an application without a define.
+  // Each bundle measures text with the packed Unicode tables, reads source, and so writes the
+  // Developer Diagnostic for a defect.
   const plainSource = fileURLToPath(new URL('fixtures/bundled', import.meta.url));
   await cp(plainSource, join(temporary, 'bundled'), { recursive: true });
   const measured = [
@@ -532,7 +539,7 @@ try {
     '👩\u200d💻    |',
     '🇯🇵    |',
     'abc   |',
-    'development',
+    'source',
     '',
   ].join('\n');
   for (const [bundler, builder] of [
@@ -546,14 +553,26 @@ try {
       const measuring = run(runtimes.get(name), [join(outdir, 'main.js'), 'measure'], temporary);
       assert.equal(measuring.status, 0, measuring.output);
       assert.equal(measuring.stdout, measured, `${name}: the packed bundle ${bundler} built`);
+      const failed = run(runtimes.get(name), [join(outdir, 'main.js'), 'fail'], temporary);
+      assert.equal(failed.status, 1, failed.output);
+      assert.match(
+        failed.output,
+        /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nThe bundle failed\.\n/u,
+        `${name}: the packed bundle ${bundler} built reports a defect to its author`,
+      );
     }
   }
-  assert.deepEqual(JSON.parse(await readFile(packetSource, 'utf8')), { build: 'development' });
-  const sourced = run('bun', [join(temporary, 'packet-app/src/main.ts'), 'build'], temporary);
-  assert.equal(sourced.status, 0, sourced.output);
-  assert.equal(sourced.stdout, 'development\n', 'bun: the source packet');
+  // The probe's source, and its compile that no bundler baked, read source.
+  for (const [runtime, file] of [
+    ['bun', 'release.ts'],
+    [process.execPath, 'dist/release.js'],
+  ]) {
+    const sourced = run(runtime, [join(temporary, file), 'build'], temporary);
+    assert.equal(sourced.status, 0, sourced.output);
+    assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
+  }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a fixture bundled with the packed packet() that reads distributed while its source reads development, and a fixture Bun and Rolldown bundled without packet() that measures text and reads development.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a fixture bundled with a distributed build's release facts that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

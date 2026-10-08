@@ -114,13 +114,18 @@ function shared() {
     .action(dispatch);
 }
 
+/**
+ * Converters that fail, which a development build reports and a distributed one reads as `null`.
+ * `inspect()` learns its build from a bundle's baked facts, so the action prints the graph a
+ * distributed run reads.
+ */
 function failing() {
   return new Application('failing')
     .option('minimum', { type: 'string', validate: throwing.schema })
     .option('list', { type: 'string', validate: listing.schema })
     .option('lazy', { type: 'string', validate: lazy })
     .argument('files', { validate: nonObject.schema, variadic: true })
-    .action(dispatch);
+    .action(({ graph, out }) => out.print(encode(graph)));
 }
 
 /** The middleware prints the schema it reads on the routed Command's first option. */
@@ -145,14 +150,16 @@ const build = graphs[process.argv[2]];
 const mode = process.argv[3];
 
 if (mode === 'run') {
-  const code = await build().run({ host: { argv: process.argv.slice(4) } });
+  const code = await build().run({
+    host: { argv: process.argv.slice(4), release: { build: 'distributed' } },
+  });
   process.stdout.write(`${encode({ code })}\n`);
 } else if (mode === 'calls') {
   // One converter call per input on inspect(), and none on a run with no middleware.
   const before = nested.calls.length;
   build().inspect();
   const inspected = nested.calls.length - before;
-  const code = await build().run({ host: { argv: [] } });
+  const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
   const ran = nested.calls.length - before - inspected;
   process.stdout.write(`${encode({ code, inspected, options: nested.calls[0], ran })}\n`);
 } else if (mode === 'copies') {
@@ -173,6 +180,8 @@ if (mode === 'run') {
       rejected,
     })}\n`,
   );
+} else if (mode === 'distributed') {
+  await build().run({ host: { argv: [], release: { build: 'distributed' } } });
 } else {
   process.stdout.write(`${encode(build().inspect())}\n`);
 }

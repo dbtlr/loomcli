@@ -16,4 +16,4 @@ await new Application('terminal')
     process.stderr.rows = 40;
     out.print(JSON.stringify(host.terminal));
   })
-  .run({ host: { argv: [] } });
+  .run({ host: { argv: [], release: { build: 'distributed' } } });

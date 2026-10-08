@@ -65,5 +65,7 @@ if (name === 'inspect') {
     process.stdout.write(`${JSON.stringify({ notes, rule: rule?.identity, sentence })}\n`);
   }
 } else {
-  process.exitCode = await scenarios[name]().run({ host: { argv } });
+  process.exitCode = await scenarios[name]().run({
+    host: { argv, release: { build: 'distributed' } },
+  });
 }

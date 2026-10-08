@@ -48,4 +48,4 @@ const scenarios = {
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
-await scenarios[scenario]().run({ host: { argv } });
+await scenarios[scenario]().run({ host: { argv, release: { build: 'distributed' } } });

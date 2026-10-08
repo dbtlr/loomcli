@@ -9,6 +9,6 @@
     "allowImportingTsExtensions": false,
     "skipLibCheck": false
   },
-  "include": ["src/**/*.ts", "package.json", "loom.packet.json"],
+  "include": ["src/**/*.ts", "package.json"],
   "exclude": ["dist"]
 }

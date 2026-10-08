@@ -76,8 +76,8 @@ test('a validator with no converter reads null beside validated: true', () => {
   });
 });
 
-test('a converter that throws, on reach or on call, or returns anything but a plain object reads null', () => {
-  const graph = inspect('failing');
+test('a converter that throws, on reach or on call, or returns anything but a plain object reads null in a distributed build', () => {
+  const graph = inspect('failing', 'distributed');
   expect(graph.root.options[0]).toMatchObject({ name: 'minimum', schema: null, validated: true });
   expect(graph.root.options[1]).toMatchObject({ name: 'list', schema: null, validated: true });
   expect(graph.root.options[2]).toMatchObject({ name: 'lazy', schema: null, validated: true });

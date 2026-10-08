@@ -198,12 +198,16 @@ function publishesSchema(
 }
 
 /**
- * How one build treats a converter that fails, and where the inputs it reads sit. A development
- * build reports the failure as a declaration fault at the input's call; a distributed one reads the
- * input's schema as `null`.
+ * What a converter that fails is to one build. A build that checks converters hands the declaration
+ * fault at the input's call to it, which a run and `inspect()` throw and `check()` keeps, and the
+ * input's schema reads `null` when the build goes on. A distributed build checks none, so a failed
+ * converter's schema reads `null` alone.
  */
+type ConverterFault = ((fault: DeclarationError) => void) | undefined;
+
+/** How one build treats a converter that fails, and where the inputs it reads sit. */
 interface SchemaCheck {
-  readonly development: boolean;
+  readonly fault: ConverterFault;
   /** The call that declared one input, which a converter fault marks. */
   readonly siteOf: (input: InputDeclaration) => InputSite | undefined;
 }
@@ -232,8 +236,8 @@ function converterFault(
 /**
  * The input-side schema a declaration's validator publishes, snapshotted the way a declared
  * default is, or `null` where the graph holds no published shape: no validator, a validator with
- * no converter, or, in a distributed build, a converter that throws or returns anything but a plain
- * object. A development build reports that last case as a declaration fault instead.
+ * no converter, or a converter that throws or returns anything but a plain object. A build that
+ * checks converters reports that last case as a declaration fault first.
  */
 function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   const { config } = input;
@@ -251,21 +255,19 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
     const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
     copied = isPlainObject(published) ? snapshotRecord(published) : undefined;
   } catch (error) {
-    if (check.development) {
-      throw converterFault(input, check, {
-        cause: error,
-        failure: `failed for target "${schemaTarget.target}": ${asSentence(reasonOf(error))}`,
-      });
+    if (check.fault) {
+      const reason = asSentence(reasonOf(error));
+      const failure = `failed for target "${schemaTarget.target}": ${reason}`;
+      check.fault(converterFault(input, check, { cause: error, failure }));
     }
     return null;
   }
   if (copied !== undefined) {
     return copied;
   }
-  if (check.development) {
-    throw converterFault(input, check, {
-      failure: `answered target "${schemaTarget.target}" with a value that is not a plain object.`,
-    });
+  if (check.fault) {
+    const failure = `answered target "${schemaTarget.target}" with a value that is not a plain object.`;
+    check.fault(converterFault(input, check, { failure }));
   }
   return null;
 }
@@ -370,15 +372,15 @@ function commandNode(
   command: BuiltCommand,
   place: {
     description?: string | undefined;
-    development: boolean;
+    fault: ConverterFault;
     nodes: WeakMap<BuiltCommand, CommandNode>;
     path: readonly string[];
     records: ExtensionRecords;
   },
 ): CommandNode {
-  const { development, nodes, path, records } = place;
+  const { fault, nodes, path, records } = place;
   const check: SchemaCheck = {
-    development,
+    fault,
     siteOf: (input) => declaringSite(input, inputPlace(input, path)),
   };
   const node: CommandNode = {
@@ -388,7 +390,7 @@ function commandNode(
     ),
     children: Object.freeze(
       [...command.children].map(([name, child]) =>
-        commandNode(child, { development, nodes, path: Object.freeze([...path, name]), records }),
+        commandNode(child, { fault, nodes, path: Object.freeze([...path, name]), records }),
       ),
     ),
     deprecated: command.deprecated,
@@ -421,28 +423,28 @@ function resultNode(result: DeclaredResult | undefined): ResultNode | null {
 
 /**
  * Renders one built graph as frozen plain data. Nothing here reads a host fact; each validated
- * input's converter is asked for its input schema, and in a development build a converter that
- * fails is a declaration fault. The globals list holds every global option, the application's own
+ * input's converter is asked for its input schema, and in a build that checks converters, one that
+ * fails is a declaration fault handed to `converterFault`. The globals list holds every global option, the application's own
  * and then each installed plugin's in installation order, which is the order the table holds them.
  */
 function inspectGraph(
   name: string,
   graph: BuiltGraph,
-  facts: { description: string | undefined; development: boolean; version: string },
+  facts: { converterFault: ConverterFault; description: string | undefined; version: string },
 ): CommandGraph {
-  const { development } = facts;
+  const fault = facts.converterFault;
   const records = graph.extensions;
   const table = graph.globals.options;
   const nodes = new WeakMap<BuiltCommand, CommandNode>();
   const { sites } = graph.globals;
-  const check: SchemaCheck = { development, siteOf: (input) => sites.get(input) };
+  const check: SchemaCheck = { fault, siteOf: (input) => sites.get(input) };
   const inspected: CommandGraph = {
     description: facts.description,
     globals: Object.freeze(optionNodes(graph.globals.inputs, { check, records, table })),
     name,
     root: commandNode(graph.root, {
       description: facts.description,
-      development,
+      fault,
       nodes,
       path: Object.freeze([]),
       records,
@@ -512,5 +514,5 @@ function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
   return node;
 }
 
-export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode };
+export type { ArgumentNode, CommandGraph, CommandNode, ConverterFault, OptionNode, ResultNode };
 export { graphMismatch, inspectGraph, linkOf, nodeAt, resultNode };

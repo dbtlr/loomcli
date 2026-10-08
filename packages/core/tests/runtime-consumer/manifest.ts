@@ -26,4 +26,4 @@ const supplier = new Application('supplier', {
 
 const [read] = supplier.inspect().root.children;
 process.stdout.write(`${JSON.stringify(read ? readExtension(read, manifestCommand) : null)}\n`);
-await supplier.run({ host: { argv: ['read', '-M'] } });
+await supplier.run({ host: { argv: ['read', '-M'], release: { build: 'distributed' } } });

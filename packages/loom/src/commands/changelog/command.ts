@@ -43,31 +43,65 @@ async function output(out: Out, passthrough: string[], produce: () => string) {
   }
 }
 
-export const changelog = new Command('changelog', { hidden: true })
+export const changelog = new Command('changelog', {
+  description: 'Check, preview, and write the changelog.',
+  hidden: true,
+})
   .command(
-    new Command('check').action(async ({ host, out, passthrough }) => {
-      await output(out, passthrough, () => {
-        const fragments = readFragments(host.cwd);
-        return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
-      });
-    }),
+    new Command('check', { description: 'Check every changelog fragment and count them.' }).action(
+      async ({ host, out, passthrough }) => {
+        await output(out, passthrough, () => {
+          const fragments = readFragments(host.cwd);
+          return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
+        });
+      },
+    ),
   )
   .command(
-    new Command('preview')
-      .option('date', { type: 'string' })
-      .option('initial', { type: 'boolean' })
-      .option('since', { type: 'string' })
-      .option('narrative', { type: 'string' })
+    new Command('preview', {
+      description: 'Print the next release section without writing any file.',
+    })
+      .option('date', {
+        description: 'Date the release as YYYY-MM-DD instead of today.',
+        type: 'string',
+      })
+      .option('initial', {
+        description: 'Cut the first release from version 0.0.0.',
+        type: 'boolean',
+      })
+      .option('since', {
+        description: 'Name the revision whose changes the release covers.',
+        type: 'string',
+      })
+      .option('narrative', {
+        description: 'Read the release narrative from this Markdown file.',
+        type: 'string',
+      })
       .action(async ({ host, options, out, passthrough }) => {
         await output(out, passthrough, () => prepare(host.cwd, options).section);
       }),
   )
   .command(
-    new Command('write')
-      .option('date', { type: 'string' })
-      .option('initial', { type: 'boolean' })
-      .option('since', { type: 'string' })
-      .option('narrative', { type: 'string' })
+    new Command('write', {
+      description:
+        'Cut the next release: update the changelog, versions, and lockfile, and consume the fragments.',
+    })
+      .option('date', {
+        description: 'Date the release as YYYY-MM-DD instead of today.',
+        type: 'string',
+      })
+      .option('initial', {
+        description: 'Cut the first release from version 0.0.0.',
+        type: 'boolean',
+      })
+      .option('since', {
+        description: 'Name the revision whose changes the release covers.',
+        type: 'string',
+      })
+      .option('narrative', {
+        description: 'Read the release narrative from this Markdown file.',
+        type: 'string',
+      })
       .action(async ({ host, options, out, passthrough }) => {
         await output(out, passthrough, () => {
           const release = prepare(host.cwd, options);

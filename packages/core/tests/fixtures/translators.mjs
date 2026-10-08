@@ -19,8 +19,7 @@ import { ruleText } from './rule-text.mjs';
 const [scenario, ...argv] = process.argv.slice(2);
 
 // A test that reads a defect's own diagnostic runs the fixture as a development build.
-const packet =
-  process.env.FIXTURE_BUILD === undefined ? {} : { packet: { build: process.env.FIXTURE_BUILD } };
+const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 /** Every translator call and middleware observation, in order, printed ahead of the code. */
 const calls = [];
@@ -94,7 +93,6 @@ async function* undefinedRows() {
 function sequencing(emit, source, translators = [answering(SyntaxError, 'application')]) {
   return new Application('translators', {
     description: 'The translators application.',
-    ...packet,
     translators,
   })
     .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
@@ -124,7 +122,6 @@ function sourcing(resolver, options = {}) {
   });
   return new Application('translators', {
     description: 'The translators application.',
-    ...packet,
     ...options,
     plugins: [source, ...(options.plugins ?? [])],
   })
@@ -142,7 +139,6 @@ const catchAll = answering(Object, 'catch-all');
 function ending(action, options = {}) {
   return new Application('translators', {
     description: 'The translators application.',
-    ...packet,
     ...options,
   }).action(action);
 }
@@ -332,7 +328,6 @@ const unreached = {
   validator: () =>
     new Application('translators', {
       description: 'The translators application.',
-      ...packet,
       translators: [catchAll],
     })
       .option('level', {
@@ -352,7 +347,6 @@ const unreached = {
   'validator-output': () =>
     new Application('translators', {
       description: 'The translators application.',
-      ...packet,
       translators: [catchAll],
     })
       .option('doc', {
@@ -593,7 +587,6 @@ function build() {
     case 'sequence': {
       return new Application('translators', {
         description: 'The translators application.',
-        ...packet,
         translators: [answering(SyntaxError, 'application')],
       })
         .rows({ views: { lines: { row: (row) => `${row.name}\n` } } })
@@ -763,7 +756,7 @@ if (scenario in faults) {
   process.stdout.write(`${JSON.stringify(seen)}\n`);
 } else {
   const application = build();
-  const host = stdout === undefined ? { argv } : { argv, stdout };
+  const host = stdout === undefined ? { argv, release } : { argv, release, stdout };
   const code = await application.run({ host, signal: controller.signal });
   for (const call of calls) {
     process.stdout.write(`${call}\n`);

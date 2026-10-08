@@ -1,17 +1,18 @@
-import { readFileSync } from 'node:fs';
-
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { document, main, withDocuments } from './documents.js';
 
-/** The source entry, a development build, which only Bun runs directly. */
+/** The source entry, a source run, which only Bun runs directly. */
 const source = new URL('../src/main.ts', import.meta.url);
 
-test('the source packet reads development', () => {
-  expect(JSON.parse(readFileSync(new URL('../loom.packet.json', import.meta.url), 'utf8'))).toEqual(
-    { build: 'development' },
-  );
+/** The fixture that prints every fault `check()` returns for jsonkit's declarations. */
+const checked = new URL('fixtures/check.mjs', import.meta.url);
+
+test('jsonkit declares no fault check() returns, from the bundle and from source', () => {
+  const clean = { status: 0, stderr: '', stdout: '[]\n' };
+  expect(invoke(checked, ['bundle'])).toEqual(clean);
+  expect(invoke(checked, ['source'], { runtime: 'bun' })).toEqual(clean);
 });
 
 // A usage error is an operator failure, so the bundle and the source print the same bytes.
