@@ -37,7 +37,7 @@ The contract and the acceptance are in [The package changelog](../toolchain.md#t
 
 ## Consequences
 
-`loom changelog write --dry-run` replaces the repository's `preview` for a package. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain.md#loom-init) writes it into each package. This repository's guide admits `feature.` too, because the public `loom changelog check` validates its fragments. Its synchronized cut keeps ADR-0012's rule, where a feature fragment advances the patch as any fragment that is not breaking does, and renders it under `### Features`. The public command owns the `changelog` path, so the repository's hidden cut moved to `loom release cut`, and `loom release cut --dry-run` replaces its `changelog preview`.
+For a package, `loom changelog write --dry-run` previews the cut. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain.md#loom-init) writes it into each package. This repository's guide admits `feature.` too, because the public `loom changelog check` validates its fragments. Its synchronized cut keeps ADR-0012's rule, where a feature fragment advances the patch as any fragment that is not breaking does, and renders it under `### Features`. The public command owns the `changelog` path, so the repository's hidden cut moved to `loom release cut`, and `loom release cut --dry-run` replaces its `changelog preview`.
 
 ## Status
 

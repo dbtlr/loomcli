@@ -55,7 +55,7 @@ Git tags never determine the next version. The `--since` option changes only the
 
 ## Rendering and material changes
 
-The compiler copies fragment prose verbatim, adding blank lines between entries. It renders the groups `### Breaking Changes`, `### Features`, and `### Fixes`, in that order, with the same renderer as the public `loom changelog write`. Each group uses the commit date that added the fragment to first-parent history, then its filename as a tie-break. Later corrections preserve the original landing position.
+The compiler copies fragment prose verbatim, adding blank lines between entries. It renders the groups `### Breaking Changes`, `### Features`, and `### Fixes`, in that order, with the same renderer as the public `loom changelog write`. Each group follows the first-parent history in the order of the commits that added its fragments, with the filename as a tie-break within one commit. Commit dates never enter. Later corrections preserve the original landing position.
 
 The optional narrative appears first. Each breaking fragment retains its migration section once. Empty groups are omitted. A new section precedes existing release sections, preserving prior history and frontmatter. The changelog has no Unreleased section.
 

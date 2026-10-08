@@ -110,6 +110,6 @@ The [core reference](docs/core.md) defines invocation, output, and failure behav
 
 Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.
 
-The [changelog compiler reference](docs/changelog-compiler.md) describes fragment validation, release previews, and release-file preparation.
+The [changelog compiler reference](docs/changelog-compiler.md) describes this repository's synchronized release cut, its dry run, and release-file preparation. The [toolchain reference](docs/toolchain.md#the-package-changelog) describes `loom changelog check`, which validates the fragments.
 
 Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Merging the release PR is the only authorization to publish: the [release workflow](docs/release-workflow.md) reconciles npm, the version tag, and the GitHub Release with the manifest version on every push to `main`, without a stored credential.
