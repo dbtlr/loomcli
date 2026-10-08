@@ -94,6 +94,13 @@ test.each(runtimes)(
   },
 );
 
+test('a bundle that bakes a source build reads it as the source does', () => {
+  expect(printed(fromBundle(JSON.stringify({ build: 'source' }), 'node', 'facts'))).toEqual({
+    facts: { build: 'source' },
+    frozen: true,
+  });
+});
+
 test.each(runtimes)(
   'a bundle that bakes a development build reads it and writes the Developer Diagnostic under %s',
   (runtime) => {
@@ -232,8 +239,32 @@ test.each([
     '{"build":"distributed","release":{"version":"1.0.0","repository":"acme/probe","asset":""}}',
     'hold release asset ""',
   ],
+  [
+    '{"build":"distributed","release":{"version":"1.0.0","repository":"a/b/c"}}',
+    'hold release repository "a/b/c"',
+  ],
+  [
+    '{"build":"distributed","release":{"version":"1.0.0","repository":"a/b/"}}',
+    'hold release repository "a/b/"',
+  ],
+  [
+    '{"build":"distributed","release":{"version":"v1.0.0","repository":"acme/probe"}}',
+    'hold release version "v1.0.0"',
+  ],
+  [
+    '{"build":"distributed","release":{"version":"1.0.0garbage","repository":"acme/probe"}}',
+    'hold release version "1.0.0garbage"',
+  ],
+  [
+    '{"build":"distributed","release":{"version":"1.0.0","repository":"acme/probe","asset":null}}',
+    'hold release asset null',
+  ],
+  ['{"build":"distributed","release":null}', 'hold a release that is not an object'],
 ])('a bundle that bakes %s names the member at fault', (facts, found) => {
-  expect(fromBundle(facts, 'node', 'facts').stderr).toContain(
+  const failed = fromBundle(facts, 'node', 'facts');
+  expect(failed.status).toBe(1);
+  expect(failed.stderr.startsWith(invalidBanner)).toBe(true);
+  expect(failed.stderr).toContain(
     `\n\nThe release facts baked into __LOOM_RELEASE__ ${found}.\n\n`,
   );
 });

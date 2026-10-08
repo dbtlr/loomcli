@@ -116,9 +116,9 @@ export function capturedHost(
     return { failure: release.failure, report: { ...facts, cwd, release: undefined } };
   }
   if ('failure' in directory) {
-    return { failure: directory.failure, report: { ...facts, cwd, release: release.release } };
+    return { failure: directory.failure, report: { ...facts, cwd, release: release.facts } };
   }
-  const host: Host = { ...facts, cwd: directory.cwd, release: release.release };
+  const host: Host = { ...facts, cwd: directory.cwd, release: release.facts };
   return { host, report: host };
 }
 

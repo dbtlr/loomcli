@@ -222,7 +222,7 @@ function processFields(overrides: Partial<InvocationFields>): CapturedFields {
 /** The five fields an action's call reads from its run's host, which it never reads again. */
 function fieldsOf(host: Host): CapturedFields {
   const { cwd, env, platform, readSource } = host;
-  const captured = { directory: { cwd }, env, platform, release: { release: host.release } };
+  const captured = { directory: { cwd }, env, platform, release: { facts: host.release } };
   return readSource === undefined ? captured : { ...captured, readSource };
 }
 

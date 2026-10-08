@@ -638,8 +638,9 @@ class ApplicationBuilder<
         },
       });
     } catch (error) {
+      // A thrown fault is a build rule's, which ends the build, so it is returned alone.
       if (error instanceof DeclarationError) {
-        return [...faults, error];
+        return [error];
       }
       throw error;
     }
@@ -745,14 +746,21 @@ class ApplicationBuilder<
      */
     let reportHost: ReportHost | undefined = undefined;
     /**
-     * What this run's build decides about its reports, shared by every report the run writes. The
-     * capture sets the build from the release facts it read. Malformed facts leave the build
-     * unknown, so the run stays a development build and the author reads their defect.
+     * What this run's build decides about its reports, shared by every report the run writes. Its
+     * build reads the release facts of the recorded report host each time, so no reader sees a
+     * value from before the capture. Until a host is recorded, or when its facts were malformed,
+     * the build is unknown, so the run is a development build and the author reads their defect.
      */
-    const build: BuildReports = { development: true, generic: false, reported: false };
+    const build: BuildReports = {
+      get development() {
+        const release = reportHost?.release;
+        return release === undefined || isDevelopment(release);
+      },
+      generic: false,
+      reported: false,
+    };
     const useReportHost = (host: ReportHost): ReportHost => {
       reportHost = host;
-      build.development = host.release === undefined || isDevelopment(host.release);
       return host;
     };
     const reportingHost = (): ReportHost => reportHost ?? useReportHost(door.fallback(stderr));

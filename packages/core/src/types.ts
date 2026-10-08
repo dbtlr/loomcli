@@ -210,7 +210,10 @@ export interface Host {
    * that exceeds 1 MiB.
    */
   readSource?: (path: string, cwd: string) => string | undefined;
-  /** The release facts the build baked in, or `{ build: 'source' }` when it baked none; frozen. */
+  /**
+   * The release facts the build baked in, or `{ build: 'source' }` when it baked none, frozen when
+   * core read them. An override is taken as given, neither validated nor frozen.
+   */
   release: ReleaseFacts;
 }
 export interface RunOptions {

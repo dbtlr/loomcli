@@ -13,7 +13,7 @@ declare const __LOOM_RELEASE__: unknown;
 type ReleaseGroup = NonNullable<ReleaseFacts['release']>;
 
 /** The release facts one read found, or the defect a malformed baked value is in their place. */
-type CapturedRelease = { readonly release: ReleaseFacts } | { readonly failure: InternalError };
+type CapturedRelease = { readonly facts: ReleaseFacts } | { readonly failure: InternalError };
 
 /** The facts of a run with nothing baked in: the source run, or a bundle built without the define. */
 const sourceFacts: ReleaseFacts = Object.freeze({ build: 'source' });
@@ -97,16 +97,16 @@ function readFacts(value: unknown): CapturedRelease {
     return malformed(build === undefined ? 'hold no build' : `hold build ${quoted(build)}`);
   }
   if (release === undefined) {
-    return { release: Object.freeze({ build }) };
+    return { facts: Object.freeze({ build }) };
   }
   const read = releaseGroup(release);
-  return 'failure' in read ? read : { release: Object.freeze({ build, release: read.group }) };
+  return 'failure' in read ? read : { facts: Object.freeze({ build, release: read.group }) };
 }
 
 /** The release facts the build baked into this artifact, read afresh, or the source's own. */
 function readBaked(): CapturedRelease {
   return typeof __LOOM_RELEASE__ === 'undefined'
-    ? { release: sourceFacts }
+    ? { facts: sourceFacts }
     : readFacts(__LOOM_RELEASE__);
 }
 
@@ -119,7 +119,7 @@ function bakedFacts(): ReleaseFacts {
   if ('failure' in read) {
     throw read.failure;
   }
-  return read.release;
+  return read.facts;
 }
 
 /**
@@ -128,7 +128,7 @@ function bakedFacts(): ReleaseFacts {
  * is read.
  */
 function captureRelease(override: ReleaseFacts | undefined): CapturedRelease {
-  return override === undefined ? readBaked() : { release: override };
+  return override === undefined ? readBaked() : { facts: override };
 }
 
 /** Whether one run's facts make it a development build: any build but `distributed`. */

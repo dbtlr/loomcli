@@ -1,7 +1,7 @@
 - Remove the Application's `packet` option, the `Packet` type, and the `@loomcli/core/invalid-packet` rule. Core reads the build of every run from the [release facts](docs/core.md#release-facts) the build bakes into the `__LOOM_RELEASE__` identifier through a bundler `define`, and `new Application()` given `packet` throws under `@loomcli/core/retired-application-option`.
 - Change an application with no baked release facts, run from source or bundled without the define, to read `{ build: 'source' }`, a development build. Such a run shows a defect's Developer Diagnostic, checks every converter, and fails on an undescribed declaration, where an application given no packet was distributed before. A bundle that bakes `{ "build": "distributed" }` shows the operator `<application>: Something went wrong.` as before.
 - Change `inspect()` to learn its build from the baked release facts, so from source it checks every validated input's converter.
-- Add `release` to the five host fields `app.invoke` accepts under `host`. A malformed call reports by the release facts its `host` supplies, which the call now reads first.
+- Add `release` to the host fields `app.invoke` accepts under `host`, now five. A malformed call reports by the release facts its `host` supplies, which the call now reads first.
 
 ### Migration
 
