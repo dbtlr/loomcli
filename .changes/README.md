@@ -1,10 +1,10 @@
 ---
-description: Pull request rules and examples for ordinary and breaking library change fragments, skip decisions, and corrections to unreleased entries.
+description: Pull request rules and examples for fix, feature, and breaking library change fragments, skip decisions, and corrections to unreleased entries.
 ---
 
 # Change fragments
 
-This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes preview and release-file preparation. The [PR guard reference](../docs/pr-guards.md) describes automated fragment admission and version checks.
+This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes the synchronized release cut and its dry run. The [PR guard reference](../docs/pr-guards.md) describes automated fragment admission and version checks.
 
 ## Choose a fragment or a skip label
 
@@ -16,9 +16,9 @@ A documentation-only diff can describe changed behavior. Judge the consumer effe
 
 ## Name the fragment
 
-- Use `<slug>.md` for an ordinary change and `breaking.<slug>.md` for a breaking change.
-- Choose a unique, nonempty slug. Only the `breaking.` prefix carries meaning. A bare `breaking.md` is invalid.
-- Keep fragments directly in `.changes/`. Names are case-sensitive. Subdirectories and other file formats are invalid.
+- Use `<slug>.md` for a fix, `feature.<slug>.md` for a compatible addition, and `breaking.<slug>.md` for a breaking change.
+- Choose a unique, nonempty slug. Only the `feature.` and `breaking.` prefixes carry meaning. A bare `feature.md` or `breaking.md` is invalid.
+- Keep fragments directly in `.changes/`. Names are case-sensitive. Subdirectories and other file formats are invalid. A hidden entry, one whose name starts with `.`, is ignored.
 - Keep this `README.md` as the directory guide. It is not a fragment and does not satisfy the fragment requirement.
 
 ## Describe the consumer result
@@ -27,7 +27,7 @@ Write one or more Markdown bullets. Start each entry with a verb such as `Add`, 
 
 State what a consumer can do or what behavior changed. Use indented sub-bullets or fenced examples when adoption needs an explanation. Keep implementation history out of the entry.
 
-For example, an ordinary fragment named `hidden-command-aliases.md` could contain:
+For example, a feature fragment named `feature.hidden-command-aliases.md` could contain:
 
 ```markdown
 - Add aliases for named commands. Aliases route to the command while inspection and failures report its canonical name.
@@ -44,7 +44,7 @@ A change is breaking when an update forces a consumer application to change its 
 - A removed or renamed export, a required member added to a type that consumers implement, such as `Out`, and a raised minimum runtime version are breaking.
 - A declaration rule that rejects a default an earlier release accepted is breaking, even though the application compiles unchanged.
 - A required readonly field added to a type that core produces and consumers only read, such as `schema` on `OptionNode`, is not breaking.
-- A change to a template's text is never breaking. When the help page's bytes or a description's wording change, no application has to change its code, so the fragment is ordinary.
+- A change to a template's text is never breaking. When the help page's bytes or a description's wording change, no application has to change its code, so the fragment is a fix or a feature.
 
 After the change bullets, add one `### Migration` section with all five labels shown below. Give exact affected surfaces, a reason, before-and-after examples, ordered steps, and validation commands.
 
@@ -89,9 +89,9 @@ When a later PR changes or removes a result described by an earlier fragment, am
 
 ## Keep release versions separate from feature PRs
 
-All publishable first-party libraries share one exact version. The compiler increments from that current `package.json` version, and rejects mismatched library versions. During `0.x`, a breaking fragment advances the minor and resets the patch. Compatible additions and fixes advance the patch. The first release is `0.1.0`; manifests remain at `0.0.0` until that cut.
+All publishable first-party libraries share one exact version. The compiler increments from that current `package.json` version, and rejects mismatched library versions. During `0.x`, a breaking fragment advances the minor and resets the patch. Feature and fix fragments advance the patch. The release section lists them under `### Breaking Changes`, `### Features`, and `### Fixes`. The first release is `0.1.0`; manifests remain at `0.0.0` until that cut.
 
-Keep library manifest versions unchanged in ordinary PRs. Leave fragments pending for the release cut instead of editing release history or adding an Unreleased section. Only release preparation uses `pnpm loom changelog write`.
+Keep library manifest versions unchanged in ordinary PRs. Leave fragments pending for the release cut instead of editing release history or adding an Unreleased section. Only release preparation uses `pnpm loom release cut`.
 
 ## Finish the PR
 

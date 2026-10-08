@@ -1,112 +1,52 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { Command } from '@loomcli/core';
-import type { Out } from '@loomcli/core';
 
+import { readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { readFragments } from '../../helpers/fragments.js';
-import { prepareRelease, releaseDate, requireReleaseNotes } from '../../helpers/release.js';
-import { writeRelease } from './write.js';
-
-function prepare(
-  root: string,
-  options: {
-    date: string | undefined;
-    initial: boolean;
-    since: string | undefined;
-    narrative: string | undefined;
-  },
-) {
-  const release = prepareRelease(root, {
-    date: releaseDate(options.date),
-    initial: options.initial,
-    narrative:
-      options.narrative === undefined
-        ? undefined
-        : readFileSync(resolve(root, options.narrative), 'utf8'),
-    since: options.since,
-  });
-  requireReleaseNotes(release);
-  return release;
-}
-
-// Convert compiler failures to Loom's fatal channel; keep generated Markdown byte-for-byte.
-async function output(out: Out, passthrough: string[], produce: () => string) {
-  try {
-    if (passthrough.length > 0) {
-      out.fatal('Arguments after -- are not supported.');
-    }
-    const text = produce();
-    await out.render(text, { render: (value) => value });
-  } catch (error) {
-    out.fatal(error instanceof Error ? error.message : String(error));
-  }
-}
+import { preparePackageCut, writePackageCut } from '../../helpers/package-changelog.js';
+import { packageDirectory } from '../../helpers/package-directory.js';
+import { report } from '../../helpers/report.js';
 
 export const changelog = new Command('changelog', {
-  description: 'Check, preview, and write the changelog.',
-  hidden: true,
+  description: "Check the package's change fragments and cut its version from them.",
 })
   .command(
-    new Command('check', { description: 'Check every changelog fragment and count them.' }).action(
-      async ({ host, out, passthrough }) => {
-        await output(out, passthrough, () => {
-          const fragments = readFragments(host.cwd);
-          return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
-        });
-      },
-    ),
-  )
-  .command(
-    new Command('preview', {
-      description: 'Print the next release section without writing any file.',
-    })
-      .option('date', {
-        description: 'Date the release as YYYY-MM-DD instead of today.',
-        type: 'string',
-      })
-      .option('initial', {
-        description: 'Cut the first release from version 0.0.0.',
-        type: 'boolean',
-      })
-      .option('since', {
-        description: 'Name the revision whose changes the release covers.',
-        type: 'string',
-      })
-      .option('narrative', {
-        description: 'Read the release narrative from this Markdown file.',
-        type: 'string',
-      })
-      .action(async ({ host, options, out, passthrough }) => {
-        await output(out, passthrough, () => prepare(host.cwd, options).section);
-      }),
+    new Command('check', {
+      description: 'Check every fragment in .changes/ and count them.',
+    }).action(async ({ host, out, passthrough }) => {
+      await report(out, passthrough, () => {
+        const fragments = readFragments(packageDirectory(host.cwd));
+        return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
+      });
+    }),
   )
   .command(
     new Command('write', {
       description:
-        'Cut the next release: update the changelog, versions, and lockfile, and consume the fragments.',
+        'Cut the next version: prepend its section to CHANGELOG.md, set the package.json version, and delete the consumed fragments.',
     })
       .option('date', {
         description: 'Date the release as YYYY-MM-DD instead of today.',
         type: 'string',
       })
-      .option('initial', {
-        description: 'Cut the first release from version 0.0.0.',
+      .option('narrative', {
+        description: 'Copy the prose of this Markdown file above the entries.',
+        type: 'string',
+      })
+      .option('dry-run', {
+        description: 'Print the section and the next version, and write nothing.',
         type: 'boolean',
       })
-      .option('since', {
-        description: 'Name the revision whose changes the release covers.',
-        type: 'string',
-      })
-      .option('narrative', {
-        description: 'Read the release narrative from this Markdown file.',
-        type: 'string',
-      })
       .action(async ({ host, options, out, passthrough }) => {
-        await output(out, passthrough, () => {
-          const release = prepare(host.cwd, options);
-          writeRelease(host.cwd, release);
-          return release.section;
+        await report(out, passthrough, () => {
+          const directory = packageDirectory(host.cwd);
+          const cut = preparePackageCut(directory, {
+            date: releaseDate(options.date),
+            narrative: readNarrative(host.cwd, options.narrative),
+          });
+          if (!options['dry-run']) {
+            writePackageCut(directory, cut);
+          }
+          return `${cut.section}Next version: ${cut.version}\n`;
         });
       }),
   );

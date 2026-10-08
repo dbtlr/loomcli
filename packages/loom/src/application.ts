@@ -17,7 +17,7 @@ const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8
 const { version: packageVersion } = z.object({ version: z.string() }).parse(JSON.parse(manifest));
 
 export const loom = new Application('loom', {
-  description: "Run the Loom repository's changelog, pull request, and release tooling.",
+  description: 'The Loom toolchain. It acts on the package in the working directory.',
   plugins: [help(), version()],
   version: packageVersion,
 })

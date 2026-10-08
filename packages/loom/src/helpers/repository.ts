@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { z } from 'zod';
 
+import { parseVersion } from './version.js';
+
 const manifestSchema = z.looseObject({
   dependencies: z.record(z.string(), z.string()).optional(),
   devDependencies: z.record(z.string(), z.string()).optional(),
@@ -14,8 +16,14 @@ const manifestSchema = z.looseObject({
   version: z.string(),
 });
 
+/**
+ * Settings that change what history commands print. A signature printed before the format output,
+ * or a log that follows a fragment across a rename, would misplace it, so every call turns them off.
+ */
+const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=false'];
+
 function gitBytes(root: string, args: string[]) {
-  const result = spawnSync('git', ['--literal-pathspecs', ...args], {
+  const result = spawnSync('git', [...neutralSettings, '--literal-pathspecs', ...args], {
     cwd: root,
   });
   if (result.error) {
@@ -69,9 +77,22 @@ export function readRegularFile(root: string, path: string, ref?: string) {
   return readRegularFileBytes(root, path, ref).toString('utf8');
 }
 
+// Whether the root sits inside a git work tree; a missing git still fails.
+export function isRepository(root: string) {
+  const result = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: root });
+  if (result.error) {
+    throw result.error;
+  }
+  return result.status === 0;
+}
+
+export function isShallow(root: string) {
+  return git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
+}
+
 // A shallow clone hides the commits the material baseline and the release notes are derived from.
 export function requireFullHistory(root: string) {
-  if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
+  if (isShallow(root)) {
     throw new Error('Release preparation requires full Git history.');
   }
 }
@@ -125,16 +146,11 @@ export function readLibraries(root: string, ref?: string) {
   return requireCoherentLibraries([first, ...rest]);
 }
 
+// The synchronized version every participating library carries, a stable 0.x version.
 export function currentVersion(libraries: ReturnType<typeof readLibraries>) {
-  const version = libraries[0]?.manifest.version;
-  const match = /^0\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)$/u.exec(version ?? '');
-  if (!match) {
+  const version = parseVersion(libraries[0]?.manifest.version ?? '');
+  if (version?.major !== 0) {
     throw new Error('Library versions must be stable 0.x versions.');
   }
-  const minor = Number(match.groups?.minor);
-  const patch = Number(match.groups?.patch);
-  if (!Number.isSafeInteger(minor + 1) || !Number.isSafeInteger(patch + 1)) {
-    throw new Error('Library version components are too large.');
-  }
-  return { minor, patch, text: `0.${minor}.${patch}` };
+  return version;
 }

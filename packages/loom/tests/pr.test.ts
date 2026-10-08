@@ -52,7 +52,7 @@ function writeInitialRelease(root: string) {
   writeFileSync(narrative, `${narrativeProse}\n`);
   return invoke(
     cli,
-    ['changelog', 'write', '--initial', '--date', '2026-09-07', '--narrative', narrative],
+    ['release', 'cut', '--initial', '--date', '2026-09-07', '--narrative', narrative],
     { cwd: root },
   );
 }
@@ -76,7 +76,7 @@ test('a compiler-written release passes and unrelated code cannot enter the rele
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   commit(root);
   expect(releaseCheck(root, base, '0.4.8')).toEqual({
     status: 0,
@@ -145,7 +145,7 @@ function decisionCut(first = proposedRecord('0001'), index = decisionIndex) {
   put(root, 'docs/decisions/README.md', index);
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   return { base, root };
 }
 
@@ -354,7 +354,7 @@ test('a release check derives the material baseline at the base without a tag', 
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  const written = invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root });
+  const written = invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root });
   expect(written.status).toBe(0);
   expect(written.stdout).toContain('No material changes: other.\n');
   commit(root);
@@ -413,7 +413,7 @@ test('release validation checks generated entries and preserves earlier changelo
   );
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   const expected = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
   put(root, 'CHANGELOG.md', expected.replace('- Fix output.', '- Something else.'));
   commit(root);
@@ -539,7 +539,7 @@ test('an initial cut whose section lost its narrative carries no notes and fails
   const { base, root } = repository('0.0.0');
   expect(writeInitialRelease(root).status).toBe(0);
   const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
-  put(root, 'CHANGELOG.md', changelog.replace(`${narrativeProse}\n\n`, ''));
+  put(root, 'CHANGELOG.md', changelog.replace(`\n${narrativeProse}\n`, ''));
   commit(root);
   expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
 });
@@ -630,7 +630,7 @@ test('breaking cuts advance the minor and synchronize every library', () => {
 `,
   );
   const base = commit(root);
-  const written = invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root });
+  const written = invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root });
   expect(written.status).toBe(0);
   expect(written.stdout).toContain('## v0.5.0 - 2026-09-07');
   commit(root);
@@ -658,7 +658,7 @@ test('release cuts reject non-version manifest changes and replacement numbers',
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   const cut = commit(root);
   expect(releaseCheck(root, base, '0.4.9').stderr).toContain(
     'replacement overrides are not supported',
@@ -680,7 +680,7 @@ test('a release branch must include the current base and ordinary argument error
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['changelog', 'write', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   const cut = commit(root);
   git(root, ['checkout', '--detach', base]);
   put(root, 'docs/guide.md', '# Guide\n');
@@ -690,4 +690,16 @@ test('a release branch must include the current base and ordinary argument error
   expect(releaseCheck(root, base, '1.0.0').stderr).toContain('Expected release title');
   expect(check(root, base, '--', 'extra').stderr).toContain('Arguments after --');
   expect(invoke(cli, ['pr', 'check'], { cwd: root }).status).toBe(2);
+});
+
+test('a committed hidden entry in .changes/ is ignored, neither rejected nor counted as a fragment', () => {
+  const { base, root } = repository();
+  put(root, 'packages/core/index.js', 'export const value = 2;\n');
+  put(root, '.changes/.DS_Store', '\u0000binary');
+  put(root, '.changes/.output.md', '- Fix output.\n');
+  commit(root);
+  expect(check(root, base).stderr).toContain('fragment or skip-changelog');
+  put(root, '.changes/output.md', '- Fix output.\n');
+  commit(root);
+  expect(check(root, base)).toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
 });

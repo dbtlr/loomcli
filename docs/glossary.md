@@ -581,7 +581,7 @@ A change fragment, named `<slug>.md` with no kind prefix, for a compatible corre
 _Avoid_: Patch fragment, bugfix
 
 **Ordinary fragment**:
-A change fragment, named `<slug>.md`, that this repository's synchronized release uses for every change that is not breaking, under [ADR-0012](decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md). It advances the patch version. A package under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) splits it into the feature fragment and the fix fragment.
+A change fragment that is not breaking: a feature fragment or a fix fragment. This repository's synchronized release, under [ADR-0012](decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md), advances the patch version for either kind, so the two differ there only in the section they render under. From `1.0.0`, a package under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) bumps them differently.
 _Avoid_: Patch fragment, minor fragment
 
 **Release cut**:

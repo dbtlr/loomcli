@@ -8,7 +8,7 @@ The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog
 
 This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
 
-Command-specific code lives in `packages/loom/src/commands/changelog/` and `packages/loom/src/commands/pr/`. Both commands are hidden, so no listing advertises them. Both use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
+The PR guard lives in `packages/loom/src/commands/pr/`, and the synchronized cut in `packages/loom/src/commands/release/cut.ts`. Both are hidden, so no listing advertises them. The public `loom changelog` commands live in `packages/loom/src/commands/changelog/`. All three use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
 ```sh
 pnpm build
@@ -51,7 +51,7 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 - A decision acceptance marks a proposed record in `docs/decisions/` accepted and changes nothing else in it: the frontmatter `status` reads `accepted`, `modified` reads the release date from the changelog heading, and the Status section reads exactly `Accepted in <version>.` with the version number and no `v`, such as `Accepted in 0.4.8.` for `Release v0.4.8`. The index `docs/decisions/README.md` changes only the status cell of each accepted record's row, from `proposed` to `accepted`. The guard admits an acceptance and never requires one. Any other change to a record or the index, such as a Context edit, a Changelog entry, another row, or a new or deleted record, fails with a diagnostic that names the file and needs an ordinary PR.
 - The lockfile exactly matches the version writer's output from the base with bumped manifests. Unrelated dependency-resolution changes require an ordinary PR.
 
-The lockfile comparison uses the pinned pnpm in a temporary directory, with offline resolution and scripts and pnpmfile hooks disabled. Dependencies must be cached. This is the same preparation used by `loom changelog write`.
+The lockfile comparison uses the pinned pnpm in a temporary directory, with offline resolution and scripts and pnpmfile hooks disabled. Dependencies must be cached. This is the same preparation used by `loom release cut`.
 
 The material-change baseline is the first-parent commit at the base that set the current version. No tag enters this computation, so a version that was abandoned without a tag gives the same baseline as a published one. The guard needs the full first-parent history of the base, and still rejects an existing local tag for the new version.
 

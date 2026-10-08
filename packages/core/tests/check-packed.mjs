@@ -219,6 +219,12 @@ try {
     undefined,
     'The packed @loomcli/loom exports ./build.',
   );
+  // The toolchain ships its commands as the loom bin.
+  assert.deepEqual(
+    loomPackage.bin,
+    { loom: 'dist/main.js' },
+    'The packed @loomcli/loom must declare the loom bin.',
+  );
   // The plugin pack inlines the private MCP protocol package, so no consumer installs it.
   const pluginsManifest = run('tar', ['-xzOf', 'plugins.tgz', 'package/package.json'], temporary);
   assert.equal(pluginsManifest.status, 0, pluginsManifest.output);
@@ -562,6 +568,27 @@ try {
       );
     }
   }
+  // The installed loom bin checks the fragments of the package it runs in.
+  // It runs through the linked shim and under each runtime.
+  const notes = join(temporary, 'notes');
+  await mkdir(join(notes, '.changes'), { recursive: true });
+  await writeFile(join(notes, 'package.json'), '{"name":"notes","version":"1.4.7"}\n');
+  await writeFile(join(notes, '.changes/README.md'), '# Change fragments\n');
+  await writeFile(join(notes, '.changes/feature.tags.md'), '- Add tags.\n');
+  await writeFile(join(notes, '.changes/output.md'), '- Fix output.\n');
+  const linked = run(join(temporary, 'node_modules/.bin/loom'), ['changelog', 'check'], notes);
+  assert.equal(linked.status, 0, linked.output);
+  assert.equal(
+    linked.stdout,
+    'Checked 2 fragments.\n',
+    'the linked loom bin checked the fragments',
+  );
+  const bin = join(temporary, 'node_modules/@loomcli/loom', loomPackage.bin.loom);
+  for (const name of selected) {
+    const checked = run(runtimes.get(name), [bin, 'changelog', 'check'], notes);
+    assert.equal(checked.status, 0, checked.output);
+    assert.equal(checked.stdout, 'Checked 2 fragments.\n', `${name}: the packed loom bin checked`);
+  }
   // The probe's source, and its compile that no bundler baked, read source.
   for (const [runtime, file] of [
     ['bun', 'release.ts'],
@@ -572,7 +599,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a fixture bundled with a distributed build's release facts that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, the loom bin checking a package's fragments, a fixture bundled with a distributed build's release facts that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

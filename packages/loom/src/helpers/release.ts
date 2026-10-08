@@ -1,31 +1,7 @@
-import { fromMarkdown } from 'mdast-util-from-markdown';
-
-import { readFragments } from './fragments.js';
-import { requireClosedBlocks } from './markdown.js';
+import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
-import { currentVersion, git, readLibraries, requireFullHistory } from './repository.js';
-
-function compareNames(left: string, right: string) {
-  if (left < right) {
-    return -1;
-  }
-  if (left > right) {
-    return 1;
-  }
-  return 0;
-}
-
-export function releaseDate(input: string | undefined) {
-  const date = input ?? new Date().toISOString().slice(0, 10);
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/u.test(date) ||
-    Number.isNaN(Date.parse(date)) ||
-    new Date(date).toISOString().slice(0, 10) !== date
-  ) {
-    throw new Error('Expected a calendar date: YYYY-MM-DD.');
-  }
-  return date;
-}
+import { currentVersion, readLibraries } from './repository.js';
+import { nextVersion } from './version.js';
 
 export function prepareRelease(
   root: string,
@@ -37,33 +13,7 @@ export function prepareRelease(
   },
   ref?: string,
 ) {
-  requireFullHistory(root);
-  const head = ref ?? git(root, ['rev-parse', 'HEAD']).trim();
-  const fragments = readFragments(root, ref)
-    .map((fragment) => {
-      const added = git(root, [
-        'log',
-        '--first-parent',
-        '--diff-filter=A',
-        '-1',
-        '--format=%ct',
-        head,
-        '--',
-        `.changes/${fragment.name}`,
-      ]).trim();
-      if (!/^\d+$/u.test(added)) {
-        throw new Error(
-          `.changes/${fragment.name}: commit the fragment before preparing a release.`,
-        );
-      }
-      return {
-        added: Number(added),
-        body: fragment.body,
-        breaking: fragment.breaking,
-        name: fragment.name,
-      };
-    })
-    .toSorted((left, right) => left.added - right.added || compareNames(left.name, right.name));
+  const { fragments, head } = landedFragments(root, ref);
   const libraries = readLibraries(root, ref);
   const current = currentVersion(libraries);
   if (options.initial && current.text !== '0.0.0') {
@@ -72,39 +22,13 @@ export function prepareRelease(
   if (fragments.length === 0 && !options.initial) {
     throw new Error('No fragments to release.');
   }
-  const breaking = fragments.filter((fragment) => fragment.breaking);
-  const ordinary = fragments.filter((fragment) => !fragment.breaking);
-  let version = `0.${current.minor}.${current.patch + 1}`;
-  if (breaking.length > 0) {
-    version = `0.${current.minor + 1}.0`;
-  }
-  if (current.text === '0.0.0') {
-    version = '0.1.0';
-  }
-  let section = `## v${version} - ${options.date}\n\n`;
-  if (options.narrative !== undefined) {
-    requireClosedBlocks(options.narrative, 'Narrative');
-    if (
-      !options.narrative.trim() ||
-      fromMarkdown(options.narrative).children.some(
-        (node) => node.type === 'heading' && node.depth <= 2,
-      )
-    ) {
-      throw new Error('Narrative must contain prose without level-one or level-two headings.');
-    }
-    section += options.narrative + blankLine(options.narrative);
-  }
-  for (const [heading, entries] of [
-    ['Breaking Changes', breaking],
-    ['Changes', ordinary],
-  ] satisfies [string, typeof fragments][]) {
-    if (entries.length > 0) {
-      section += `### ${heading}\n\n`;
-      for (const entry of entries) {
-        section += entry.body + blankLine(entry.body);
-      }
-    }
-  }
+  const version = nextVersion(current, highestKind(fragments));
+  let section = renderSection({
+    date: options.date,
+    fragments,
+    narrative: options.narrative,
+    version,
+  });
   const unchanged =
     current.text === '0.0.0'
       ? []
@@ -129,14 +53,4 @@ export function requireReleaseNotes(release: ReturnType<typeof prepareRelease>) 
       `Release v${release.version} carries no entries, so it requires a narrative for its notes.`,
     );
   }
-}
-
-export function blankLine(text: string) {
-  if (text.endsWith('\n\n')) {
-    return '';
-  }
-  if (text.endsWith('\n')) {
-    return '\n';
-  }
-  return '\n\n';
 }

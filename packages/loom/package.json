@@ -7,6 +7,9 @@
     "type": "git",
     "url": "git+https://github.com/dbtlr/loomcli.git"
   },
+  "bin": {
+    "loom": "dist/main.js"
+  },
   "files": [
     "dist",
     "LICENSE"
