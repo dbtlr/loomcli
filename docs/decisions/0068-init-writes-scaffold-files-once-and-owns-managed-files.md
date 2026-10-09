@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0068 - init writes scaffold files once and owns managed files
 description: loom init acts on one package directory. Scaffold files and package.json keys are written once when missing, never overwritten, and never tracked, because they are the author's code. Managed files, the fragment guide and the changelog skill, carry a header with a checksum of their content; init re-renders a matching file, warns about a drifted one and leaves it unless --force, and treats a file without the header as the author's. loom check warns about drift and never fails for it.
-status: proposed
+status: accepted
 created: 2026-10-07
 modified: 2026-10-09
 ---
@@ -37,7 +37,7 @@ An author keeps a managed file current by re-running init after upgrading `@loom
 
 ## Status
 
-Proposed 2026-10-07 with the contract in [loom init](../toolchain.md#loom-init). It moves to accepted inside the release PR of the release that ships the implementation: scaffold files written once, managed files with their headers, the drift rules, and the acceptance in that section, under Node and Bun.
+Accepted in 0.10.0.
 
 ## Changelog
 

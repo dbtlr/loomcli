@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0066 - The toolchain acts on one package directory
 description: The loom bin of @loomcli/loom acts on the package whose directory it runs in, never on a repository as a set of packages, and reads no configuration file. loom build builds one target per call and bakes the release facts, which --facts and --define print for a custom build. loom check imports the application module, runs the package's own TypeScript, and reads every fault through Application.check(). Release orchestration is out of scope.
-status: proposed
+status: accepted
 created: 2026-10-07
 modified: 2026-10-09
 ---
@@ -47,7 +47,7 @@ Applications live in single-package repositories and in monorepos. A monorepo al
 
 ## Status
 
-Proposed 2026-10-07 with the contracts in [the toolchain reference](../toolchain.md) and [Checking the declarations](../core.md#checking-the-declarations). It moves to accepted inside the release PR of the release that ships the implementation: the `loom` bin acting on one package directory, `loom build` and `loom check` as specified, `Application.check()`, and the acceptance in those sections, under Node and Bun.
+Accepted in 0.10.0.
 
 ## Changelog
 
