@@ -12,7 +12,8 @@ const semanticVersion =
 /**
  * The `owner/name` a `repository` field's address names: the npm shorthands `owner/name` and
  * `github:owner/name`, or the path of a URL or an SSH address without its host, `.git`, or a
- * trailing slash. A path of more or fewer than two segments, such as a nested group or a path below
+ * trailing slash. A URL's host may end with a port, before a `/`, or with a `:` that opens the path,
+ * as `git+ssh://git@github.com:owner/name.git` writes an SSH address inside a URL. A path of more or fewer than two segments, such as a nested group or a path below
  * the repository, names no `owner/name`.
  */
 function repositoryFromAddress(address: string): string | undefined {
@@ -20,9 +21,10 @@ function repositoryFromAddress(address: string): string | undefined {
   if (shorthand?.groups?.path !== undefined) {
     return shorthand.groups.path.replace(/\.git$/u, '');
   }
-  const remote = /^(?:[\w+.-]+:\/\/[^/]+\/|[\w.-]+@[^:/]+:)(?<path>.+?)(?:\.git)?\/?$/u.exec(
-    address,
-  );
+  const remote =
+    /^(?:[\w+.-]+:\/\/(?:[^@/]+@)?[^@/:]+(?::\d+\/|:|\/)|[\w.-]+@[^:/]+:)(?<path>.+?)(?:\.git)?\/?$/u.exec(
+      address,
+    );
   const repository = remote?.groups?.path;
   return repository !== undefined && ownerName.test(repository) ? repository : undefined;
 }

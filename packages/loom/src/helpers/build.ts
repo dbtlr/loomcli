@@ -4,7 +4,7 @@ import { basename, dirname, join, relative } from 'node:path';
 import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
-import { endAs, superviseBun, watchBun } from './bun.js';
+import { holdingSignals, superviseBun, watchBun } from './bun.js';
 
 /**
  * The `bun build` arguments that write the plan's artifact to `out`. A bundle splits, so each
@@ -70,36 +70,45 @@ export interface BuildPlan {
  * system, and moves each file it wrote into place only once the whole build succeeded, replacing
  * the file of the same name. A failed build removes the temporary directory and any output
  * directory it created, so earlier output and every file the build does not write stay as they were.
- * A SIGINT or a SIGTERM stops Bun, cleans up as a failure does, and ends `loom` with that signal.
+ * SIGINT and SIGTERM are held from before the build creates anything until it has finished or
+ * undone its work. A signal stops Bun; one that arrives before the moves start cleans up as a failure
+ * does, and one that arrives during them lets them complete, so output is never partly replaced.
+ * Either way `loom` then ends with that signal.
  */
 export async function build(plan: BuildPlan): Promise<void> {
-  const outDirectory = plan.target.kind === 'compile' ? dirname(plan.out) : plan.out;
-  const created = mkdirSync(outDirectory, { recursive: true });
-  const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
-  try {
-    const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
-    const result = await superviseBun(bunArguments(plan, out), plan.directory, 'collect');
-    if (result.interrupted !== undefined) {
-      rmSync(created ?? staging, { force: true, recursive: true });
-      endAs(result.interrupted);
-      throw new Error(`Bun stopped on ${result.interrupted}, so no output changed.`);
-    }
-    if (result.status !== 0) {
-      throw new Error(
-        `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
+  await holdingSignals(async (signals) => {
+    const outDirectory = plan.target.kind === 'compile' ? dirname(plan.out) : plan.out;
+    const created = mkdirSync(outDirectory, { recursive: true });
+    const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
+    try {
+      const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
+      const result = await superviseBun(
+        bunArguments(plan, out),
+        plan.directory,
+        'collect',
+        signals,
       );
+      if (signals.received !== undefined) {
+        rmSync(created ?? staging, { force: true, recursive: true });
+        return;
+      }
+      if (result.status !== 0) {
+        throw new Error(
+          `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
+        );
+      }
+      for (const file of filesUnder(staging)) {
+        const target = plan.target.kind === 'compile' ? plan.out : join(outDirectory, file);
+        mkdirSync(dirname(target), { recursive: true });
+        renameSync(join(staging, file), target);
+      }
+    } catch (error) {
+      rmSync(created ?? staging, { force: true, recursive: true });
+      throw error;
+    } finally {
+      rmSync(staging, { force: true, recursive: true });
     }
-    for (const file of filesUnder(staging)) {
-      const target = plan.target.kind === 'compile' ? plan.out : join(outDirectory, file);
-      mkdirSync(dirname(target), { recursive: true });
-      renameSync(join(staging, file), target);
-    }
-  } catch (error) {
-    rmSync(created ?? staging, { force: true, recursive: true });
-    throw error;
-  } finally {
-    rmSync(staging, { force: true, recursive: true });
-  }
+  });
 }
 
 /**

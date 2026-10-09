@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, parse, resolve } from 'node:path';
 
 import { Command, InputError } from '@loomcli/core';
 import { z } from 'zod';
@@ -54,6 +54,19 @@ function applicationModule(
   }
   const conventional = join(paths.directory, 'src/application.ts');
   return existsSync(conventional) ? conventional : undefined;
+}
+
+/**
+ * Fails a bundle whose entry and application module share a base name before it builds, because
+ * each bundle entry point's file is named for its module alone, so the two would build to one file.
+ */
+function separateEntryFiles(cwd: string, entry: string, application: string | undefined) {
+  const file = `${parse(entry).name}.js`;
+  if (application !== undefined && `${parse(application).name}.js` === file) {
+    throw new Error(
+      `The entry ${shown(cwd, entry)} and the application module ${shown(cwd, application)} both build to ${file}, so rename one of them or name another module with --entry or --application.`,
+    );
+  }
 }
 
 /**
@@ -187,6 +200,7 @@ export const buildCommand = new Command('build', {
         'entry',
       );
       const application = applicationModule(paths, target, options.application);
+      separateEntryFiles(cwd, entry, application);
       const output = outputPath(paths, target, options.out, () =>
         applicationName(manifest, options.name),
       );

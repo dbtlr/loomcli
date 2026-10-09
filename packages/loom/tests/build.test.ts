@@ -1,12 +1,19 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  watch as watchDirectory,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import { start } from '../../../scripts/test-process.js';
+import { childEnvironment, start } from '../../../scripts/test-process.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { cli, execute, fixturePackage, loom, runtimes, snapshot } from './package.js';
 
@@ -200,6 +207,31 @@ await probe.run();
   expect(result.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
+
+test.each([
+  ['src/cli/application.ts', 'src/application.ts', [], 'application.js'],
+  ['src/cli/index.ts', 'src/index.ts', ['--application', 'src/index.ts'], 'index.js'],
+])(
+  'an entry, %s, that builds to the same file as the application module fails naming both',
+  (entryPath, applicationPath, options, file) => {
+    const root = fixturePackage({
+      'package.json': '{"name":"twins","type":"module","version":"1.0.0"}\n',
+      [applicationPath]: application,
+      [entryPath]: `#!/usr/bin/env node
+import { probe } from '../${applicationPath.slice('src/'.length).replace('.ts', '.js')}';
+
+await probe.run();
+`,
+    });
+    const result = loom(root, ['build', '--target', 'node', '--entry', entryPath, ...options]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(
+      `The entry ${entryPath} and the application module ${applicationPath} both build to ${file}, so rename one of them or name another module with --entry or --application.`,
+    );
+    expect(existsSync(join(root, 'dist'))).toBe(false);
+  },
+);
 
 test('a package without src/application.ts bundles its entry alone', () => {
   const root = fixturePackage({
@@ -430,6 +462,8 @@ test.each([
   ['the git+https form', 'git+https://github.com/acme/probe.git'],
   ['an https address', 'https://github.com/acme/probe'],
   ['the ssh form', 'git@github.com:acme/probe.git'],
+  ['a git+ssh address with a path after the host', 'git+ssh://git@github.com/acme/probe.git'],
+  ['a git+ssh address with an scp-style path', 'git+ssh://git@github.com:acme/probe.git'],
   ['the owner/name shorthand', 'acme/probe'],
   ['the github: shorthand', 'github:acme/probe'],
   ['an object with a url', { type: 'git', url: 'git+https://github.com/acme/probe.git' }],
@@ -627,6 +661,122 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
       readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
     ).toEqual([]);
     expect(spawnSync('kill', ['-0', bun]).status).not.toBe(0);
+  },
+  slow,
+);
+
+/**
+ * Runs `loom build --target node` in the package as its own process group and sends the signal to
+ * the group, as a terminal's Ctrl-C does, the moment the watched directory gains an entry the
+ * predicate names, so the signal lands as soon as the build has started writing, whatever the
+ * machine's speed. It resolves to the signal the build ended by.
+ */
+async function signalWhenWritten(
+  root: string,
+  signal: NodeJS.Signals,
+  watched: string,
+  written: (name: string) => boolean,
+): Promise<NodeJS.Signals | null> {
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  const watcher = watchDirectory(watched);
+  const child = spawn(runtime, [cli, 'build', '--target', 'node'], {
+    cwd: root,
+    detached: true,
+    env: childEnvironment(undefined),
+    stdio: 'ignore',
+  });
+  const ended = new Promise<NodeJS.Signals | null>((resolve) => {
+    child.on('close', (_status, received) => {
+      resolve(received);
+    });
+  });
+  watcher.on('change', (_event, name) => {
+    if (typeof name === 'string' && written(name)) {
+      watcher.close();
+      process.kill(-(child.pid ?? 0), signal);
+    }
+  });
+  try {
+    return await ended;
+  } finally {
+    watcher.close();
+  }
+}
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s that lands while held work runs without yielding, as the moves do, lets the work finish and then ends with it',
+  (signal) => {
+    const root = temporaryRoot('loom-held-');
+    const helpers = pathToFileURL(join(dirname(cli), 'helpers/bun.js')).href;
+    put(
+      root,
+      'held.mjs',
+      `import { writeFileSync } from 'node:fs';
+import { holdingSignals } from ${JSON.stringify(helpers)};
+
+await holdingSignals(async () => {
+  process.kill(process.pid, '${signal}');
+  writeFileSync('finished', '');
+});
+writeFileSync('carried-on', '');
+`,
+    );
+    const result = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['held.mjs'], { cwd: root });
+    expect(result.signal).toBe(signal);
+    expect(readdirSync(root).toSorted()).toEqual(['finished', 'held.mjs']);
+  },
+);
+
+/** Every file a complete build of the probe package writes, read from one uninterrupted build. */
+function completeBuild(root: string) {
+  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const built = snapshot(join(root, 'dist'));
+  rmSync(join(root, 'dist'), { recursive: true });
+  return built;
+}
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s the moment a first build creates its output removes the output, or ends once the build is complete',
+  async (signal) => {
+    const root = probePackage();
+    const built = completeBuild(root);
+    for (let round = 0; round < 3; round += 1) {
+      const received = await signalWhenWritten(root, signal, root, (name) => name === 'dist');
+      expect(received).toBe(signal);
+      const left = existsSync(join(root, 'dist')) ? snapshot(join(root, 'dist')) : undefined;
+      expect([undefined, built]).toContainEqual(left);
+      rmSync(join(root, 'dist'), { force: true, recursive: true });
+      expect(readdirSync(root).toSorted()).toEqual(['node_modules', 'package.json', 'src']);
+    }
+  },
+  slow,
+);
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s the moment a rebuild creates its staging directory leaves the earlier output whole, or the new output whole',
+  async (signal) => {
+    const root = probePackage();
+    const built = completeBuild(root);
+    const stale = () => {
+      for (const file of built.keys()) {
+        put(root, join('dist', file), `An earlier ${file}.\n`);
+      }
+      put(root, 'dist/notes.txt', 'Not the build’s.\n');
+      return snapshot(join(root, 'dist'));
+    };
+    const before = stale();
+    const rebuilt = new Map([...built, ['notes.txt', before.get('notes.txt') ?? '']]);
+    for (let round = 0; round < 3; round += 1) {
+      const received = await signalWhenWritten(root, signal, join(root, 'dist'), (name) =>
+        name.startsWith('.loom-build-'),
+      );
+      expect(received).toBe(signal);
+      expect([before, rebuilt]).toContainEqual(snapshot(join(root, 'dist')));
+      expect(
+        readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
+      ).toEqual([]);
+      stale();
+    }
   },
   slow,
 );
