@@ -289,6 +289,32 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(0, '127.0.0.1', () => {
+const retryableListenCodes = new Set(['ENOBUFS', 'EADDRNOTAVAIL', 'EADDRINUSE']);
+const maxListenAttempts = 5;
+
+// Listens on a free loopback port, announcing it on stdout once it is listening.
+// Socket pressure can make listen fail transiently, so retryable codes try again with a growing delay.
+// The last failed attempt, or any other error, goes to stderr with a non-zero exit so the harness reports it.
+let attemptNumber = 0;
+
+function onListenError(error) {
+  if (retryableListenCodes.has(error.code) && attemptNumber < maxListenAttempts) {
+    setTimeout(listen, 50 * attemptNumber);
+    return;
+  }
+  process.stderr.write(`${error.stack ?? error}\n`);
+  process.exit(1);
+}
+
+function listen() {
+  attemptNumber += 1;
+  server.once('error', onListenError);
+  server.listen(0, '127.0.0.1');
+}
+
+server.once('listening', () => {
+  server.removeListener('error', onListenError);
   process.stdout.write(`${JSON.stringify({ port: server.address().port })}\n`);
 });
+
+listen();
