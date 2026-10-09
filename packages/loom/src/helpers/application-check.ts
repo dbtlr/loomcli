@@ -29,12 +29,13 @@ export interface ApplicationCheck {
 }
 
 /**
- * Runs the graph checks of one application module under Bun, in a process of its own, and reads
- * its result from a file the process writes, so nothing the module prints while it loads can be
+ * Runs the graph checks of one application module under Bun, in a process of its own in the package
+ * directory, as a build and the type pass run, so the package's own `bunfig.toml` applies from any
+ * working directory. `path` is absolute, resolved against the working directory before the spawn.
+ * The process writes its result to a file, so nothing the module prints while it loads can be
  * mistaken for the result. A process that ends without a result fails with what it wrote.
  */
 export function checkApplication(options: {
-  cwd: string;
   directory: string;
   module: string;
   path: string;
@@ -44,7 +45,7 @@ export function checkApplication(options: {
     const resultFile = join(temporary, 'result.json');
     const run = runBun(
       [script, resultFile, options.directory, options.path, options.module],
-      options.cwd,
+      options.directory,
     );
     const written = run.output.trim();
     if (run.status !== 0 || !existsSync(resultFile)) {

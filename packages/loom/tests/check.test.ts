@@ -234,6 +234,34 @@ test('an Application exported as default and under a name counts once and is fou
   expect(loom(root, ['check']).status).toBe(0);
 });
 
+test('an Application exported as default alone is found', () => {
+  const root = checkPackage({
+    'src/application.ts': `${clean.replace('export const probe', 'const probe')}\nexport default probe;\n`,
+  });
+  expect(loom(root, ['check']).status).toBe(0);
+});
+
+test('the check runs in the package directory, so its bunfig.toml applies from any working directory', () => {
+  const root = checkPackage({
+    'bunfig.toml': 'preload = ["./preload.ts"]\n',
+    'preload.ts': 'Reflect.set(globalThis, "PRELOADED", true);\n',
+    'src/application.ts': `if (!Reflect.get(globalThis, 'PRELOADED')) {
+  throw new Error('The preload did not run.');
+}
+${clean}`,
+  });
+  const fromRoot = loom(root, ['check']);
+  expect(fromRoot.status).toBe(0);
+  expect(loom(join(root, 'src'), ['check'])).toEqual(fromRoot);
+});
+
+test('a module that keeps the event loop alive while it loads still ends the check', () => {
+  const root = checkPackage({
+    'src/application.ts': `${clean}\nsetInterval(() => undefined, 1000);\n`,
+  });
+  expect(loom(root, ['check']).status).toBe(0);
+});
+
 test('--application reads the module it names', () => {
   const root = checkPackage({ 'src/app.ts': faulty, 'src/application.ts': clean });
   const result = loom(root, ['check', '--application', 'src/app.ts']);

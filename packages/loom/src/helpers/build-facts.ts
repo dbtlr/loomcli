@@ -11,7 +11,9 @@ const semanticVersion =
 
 /**
  * The `owner/name` a `repository` field's address names: the npm shorthands `owner/name` and
- * `github:owner/name`, or the last two path segments of a URL or an SSH address, without `.git`.
+ * `github:owner/name`, or the path of a URL or an SSH address without its host, `.git`, or a
+ * trailing slash. A path of more or fewer than two segments, such as a nested group or a path below
+ * the repository, names no `owner/name`.
  */
 function repositoryFromAddress(address: string): string | undefined {
   const shorthand = /^(?:(?:github|gitlab|bitbucket):)?(?<path>[\w.-]+\/[\w.-]+)$/u.exec(address);
@@ -21,9 +23,8 @@ function repositoryFromAddress(address: string): string | undefined {
   const remote = /^(?:[\w+.-]+:\/\/[^/]+\/|[\w.-]+@[^:/]+:)(?<path>.+?)(?:\.git)?\/?$/u.exec(
     address,
   );
-  const segments = remote?.groups?.path?.split('/') ?? [];
-  const repository = segments.slice(-2).join('/');
-  return segments.length >= 2 && ownerName.test(repository) ? repository : undefined;
+  const repository = remote?.groups?.path;
+  return repository !== undefined && ownerName.test(repository) ? repository : undefined;
 }
 
 /** The repository a release names: `--repository`, else the `package.json` `repository` field. */

@@ -162,6 +162,45 @@ await probe.run();
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
+test('an entry outside src is named for its module beside the application module', () => {
+  const root = probePackage(
+    {},
+    {
+      'bin/cli.ts': `#!/usr/bin/env node
+import { probe } from '../src/application.js';
+
+await probe.run();
+`,
+    },
+  );
+  const result = loom(root, ['build', '--target', 'node', '--entry', 'bin/cli.ts']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  const files = readdirSync(join(root, 'dist'));
+  expect(files).toContain('cli.js');
+  expect(files).toContain('application.js');
+  expect(factsOf(join(root, 'dist/cli.js'), 'node')).toEqual({ build: 'distributed' });
+});
+
+test.each([
+  ['with an application module', 'application'],
+  ['without an application module', 'implementation'],
+])('a nested entry, src/cli/main.ts, writes dist/main.js %s', (_case, module) => {
+  const root = fixturePackage({
+    'package.json': '{"name":"nested","type":"module","version":"1.0.0"}\n',
+    [`src/${module}.ts`]: application,
+    'src/cli/main.ts': `#!/usr/bin/env node
+import { probe } from '../${module}.js';
+
+await probe.run();
+`,
+  });
+  const result = loom(root, ['build', '--target', 'node', '--entry', 'src/cli/main.ts']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
+});
+
 test('a package without src/application.ts bundles its entry alone', () => {
   const root = fixturePackage({
     'package.json': '{"name":"solo","type":"module","version":"1.0.0"}\n',
@@ -183,6 +222,17 @@ test('--application bundles the module it names, and one that does not exist fai
   expect(missing.status).toBe(1);
   expect(missing.stdout).toBe('');
   expect(missing.stderr).toContain('src/gone.ts');
+});
+
+test('--application with a compile target is an option error that says it applies to a bundle', () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' } });
+  for (const target of [['--target', 'bun-linux-x64'], []]) {
+    const result = loom(root, ['build', ...target, '--application', 'src/application.ts']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--application applies to a node or bun bundle');
+  }
+  expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
 test(
@@ -226,18 +276,65 @@ test(
   slow,
 );
 
+test(
+  'the host compile target, by name with no --out, writes dist/<name>',
+  () => {
+    const root = probePackage({ bin: { notes: 'dist/main.js' } });
+    const result = loom(root, ['build', '--target', hostTarget()]);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(`Built dist/notes for ${hostTarget()}.\n`);
+    expect(factsOf(join(root, 'dist/notes'))).toEqual({ build: 'distributed' });
+  },
+  slow,
+);
+
+test('a compile target whose output is an existing directory fails before building and names --out', () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' } });
+  put(root, 'dist/notes.txt', 'Not the build’s.\n');
+  const before = snapshot(join(root, 'dist'));
+  const result = loom(root, ['build', '--target', 'bun-linux-x64', '--out', 'dist']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('--out');
+  expect(result.stderr).not.toContain('EISDIR');
+  expect(result.stderr).not.toContain('.loom-build-');
+  expect(snapshot(join(root, 'dist'))).toEqual(before);
+});
+
+test("a windows target's default output is dist/<name>.exe", () => {
+  const root = probePackage({ bin: { notes: 'dist/main.js' } });
+  // A directory at the default path fails the build before Bun runs, naming the path it chose.
+  put(root, 'dist/notes.exe/keep.txt', 'A directory.\n');
+  const result = loom(root, ['build', '--target', 'bun-windows-x64']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('dist/notes.exe is a directory');
+});
+
 test.each([
   ['browser', /browser/u],
   ['bun-plan9-x64', /bun-plan9-x64/u],
   ['deno', /deno/u],
+  ['bun-linux-x64-foo', /bun-linux-x64-foo/u],
+  ['bun-darwin-arm64-musl', /bun-darwin-arm64-musl/u],
 ])('--target %s exits with an error that names the targets', (target, named) => {
-  const root = probePackage();
-  const result = loom(root, ['build', '--target', target]);
-  expect(result.status).toBe(2);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toMatch(named);
-  expect(result.stderr).toContain('node, bun, or a Bun compile target');
+  const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
+  for (const print of [[], ['--release', '--facts'], ['--define']]) {
+    const result = loom(root, ['build', '--target', target, ...print]);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(named);
+    expect(result.stderr).toContain('node, bun, or a Bun compile target');
+  }
   expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
+test('a Bun compile target with its variants names its asset with them', () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
+  const facts = printed(root, ['--target', 'bun-linux-x64-musl-baseline', '--release', '--facts']);
+  expect(JSON.parse(facts)).toMatchObject({
+    release: { asset: 'probe-linux-x64-musl-baseline' },
+  });
 });
 
 test('--build development writes an artifact that reads development and shows its author a defect', () => {
@@ -360,6 +457,26 @@ test('--release with a repository field it cannot read exits 1 and names --repos
   expect(result.stderr).toContain('--repository');
 });
 
+test.each([
+  ['a nested group', 'https://gitlab.com/group/sub/notes.git'],
+  ['a path below the repository', 'https://github.com/acme/notes/tree/main/x'],
+])('--release with a repository field naming %s exits 1 and names --repository', (_case, url) => {
+  const root = probePackage({ repository: url });
+  const result = loom(root, ['build', '--target', 'node', '--release', '--facts']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('--repository');
+});
+
+test('--repository without --release is an option error that says it applies to a release', () => {
+  const root = probePackage();
+  const result = loom(root, ['build', '--target', 'node', '--repository', 'acme/probe']);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('--repository applies to a --release build');
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
 test('--release with no version exits 1 and names the version field', () => {
   const root = probePackage({ repository: 'acme/probe', version: undefined });
   const result = loom(root, ['build', '--target', 'node', '--release']);
@@ -480,6 +597,39 @@ test('a syntax error in the entry exits 1 and leaves the earlier output byte-ide
   expect(snapshot(join(root, 'dist'))).toEqual(before);
   expect(readdirSync(root).toSorted()).toEqual(['dist', 'node_modules', 'package.json', 'src']);
 });
+
+test('a failed first build leaves no dist directory behind', () => {
+  const root = probePackage();
+  writeFileSync(join(root, 'src/main.ts'), 'const broken = ;\n');
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.status).toBe(1);
+  expect(readdirSync(root).toSorted()).toEqual(['node_modules', 'package.json', 'src']);
+});
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s to loom during a build stops Bun, removes the staging directory, and leaves the earlier output',
+  async (signal) => {
+    const root = probePackage({ bin: { probe: 'dist/main.js' } });
+    put(root, 'dist/probe', 'An earlier binary.\n');
+    put(root, 'dist/notes.txt', 'Not the build’s.\n');
+    const before = snapshot(join(root, 'dist'));
+    const build = start(pathToFileURL(cli), ['build', '--target', hostTarget()], { cwd: root });
+    const children = () =>
+      spawnSync('pgrep', ['-P', String(build.child.pid)], { encoding: 'utf8' }).stdout.trim();
+    await until(() => children() !== '');
+    const bun = children();
+    build.child.kill(signal);
+    const ended = await build.exit;
+    // A process that ends on the signal it received reads 128 plus the signal's number to its shell.
+    expect(ended.signal).toBe(signal);
+    expect(snapshot(join(root, 'dist'))).toEqual(before);
+    expect(
+      readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
+    ).toEqual([]);
+    expect(spawnSync('kill', ['-0', bun]).status).not.toBe(0);
+  },
+  slow,
+);
 
 test('a rebuild replaces the files it writes and leaves every other file alone', () => {
   const root = probePackage();

@@ -1,6 +1,7 @@
 import { Application, Command, plugin } from '@loomcli/core';
 
-// Prints, for each value, whether `instanceof Application` recognizes it.
+// Prints, for each value, whether `instanceof Application` recognizes it, and under `subclass`,
+// Whether `instanceof` an author's own subclass of Application recognizes each value.
 
 /** A plugin the Application installs, so a constructed value carries its globals. */
 const installed = plugin('@fixture/recognizing', {});
@@ -41,4 +42,12 @@ const recognized = Object.entries(values).map(([name, value]) => [
   name,
   value instanceof Application,
 ]);
-process.stdout.write(`${JSON.stringify(Object.fromEntries(recognized))}\n`);
+
+/** An author's own subclass, which `instanceof` reads by its prototype chain alone. */
+class Sub extends Application {}
+
+const subclass = {
+  aSubclassInstance: new Sub('y') instanceof Sub,
+  anApplication: new Application('y') instanceof Sub,
+};
+process.stdout.write(`${JSON.stringify({ ...Object.fromEntries(recognized), subclass })}\n`);

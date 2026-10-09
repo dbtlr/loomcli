@@ -26,7 +26,9 @@ export interface ManagedFile {
  * YAML frontmatter, the first line after the closing `---` line. The content without the header is
  * the file's whole text with exactly that line and its line ending, `\n` or `\r\n`, removed, so the
  * frontmatter and every byte after the header stay, the blank line that usually follows it
- * included. A file whose header line is not a managed header is not managed, and reads `undefined`.
+ * included. The checksum a header records covers that content with each CRLF read as LF, so a
+ * checkout that converts line endings, as `core.autocrlf=true` does, does not read as drift. A file
+ * whose header line is not a managed header is not managed, and reads `undefined`.
  */
 export function readManaged(text: string): ManagedFile | undefined {
   const start = frontmatter.exec(text)?.[0].length ?? 0;
@@ -40,9 +42,12 @@ export function readManaged(text: string): ManagedFile | undefined {
   return { checksum, content: text.slice(0, start) + text.slice(end) };
 }
 
-/** The checksum a header records for content: the SHA-256 of its UTF-8 bytes, in lowercase hex. */
+/**
+ * The checksum a header records for content: the SHA-256 of its UTF-8 bytes with each CRLF read as
+ * LF, in lowercase hex.
+ */
 export function managedChecksum(content: string): string {
-  return createHash('sha256').update(content, 'utf8').digest('hex');
+  return createHash('sha256').update(content.replaceAll('\r\n', '\n'), 'utf8').digest('hex');
 }
 
 /** Whether a managed file has drifted: its content no longer matches the checksum its header records. */

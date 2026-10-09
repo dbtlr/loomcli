@@ -525,6 +525,18 @@ try {
     temporary,
   );
   assert.equal(bundled.status, 0, bundled.output);
+  // The packed loom bin checks an application module against the packed core and finds no fault.
+  await writeFile(
+    join(temporary, 'checked.ts'),
+    "import { Application } from '@loomcli/core';\n\nexport const checked = new Application('checked', { description: 'Checked by the packed loom.' }).action(() => undefined);\n",
+  );
+  const applicationCheck = run(
+    join(temporary, 'node_modules/.bin/loom'),
+    ['check', '--application', 'checked.ts'],
+    temporary,
+  );
+  assert.equal(applicationCheck.status, 0, applicationCheck.output);
+  assert.equal(applicationCheck.stdout, '', 'the packed loom check prints nothing on stdout');
   const releaseBundle = join(temporary, 'release-dist/release.js');
   for (const name of selected) {
     const built = run(runtimes.get(name), [releaseBundle, 'build'], temporary);
@@ -603,7 +615,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, the loom bin checking a package's fragments, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} ran the installed tarballs and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

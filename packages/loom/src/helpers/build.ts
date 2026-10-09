@@ -4,12 +4,14 @@ import { basename, dirname, join, relative } from 'node:path';
 import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
-import { runBun, watchBun } from './bun.js';
+import { endAs, superviseBun, watchBun } from './bun.js';
 
 /**
  * The `bun build` arguments that write the plan's artifact to `out`. A bundle splits, so each
  * plugin's lazily loaded middleware stays in a chunk of its own, and its chunks are named as
- * `Bun.build` names them. A binary compiles the entry alone.
+ * `Bun.build` names them. Each bundle entry point is named for its module alone, whatever directory
+ * it lives in, so the entry writes `main.js` beside `application.js`. A binary compiles the entry
+ * alone.
  */
 function bunArguments(plan: BuildPlan, out: string): string[] {
   const define = ['--define', definePair(plan.facts)];
@@ -34,6 +36,8 @@ function bunArguments(plan: BuildPlan, out: string): string[] {
     '--target',
     plan.target.name,
     '--splitting',
+    '--entry-naming',
+    '[name].[ext]',
     '--chunk-naming',
     'chunk-[hash].[ext]',
     ...define,
@@ -49,8 +53,8 @@ function filesUnder(directory: string): string[] {
 
 /**
  * One build, every path absolute: the package directory Bun runs in, the entry, the application
- * module a bundle carries as a second entry, the target, the output, a bundle's directory or a
- * binary's file, and the facts it bakes.
+ * module a bundle carries as a second bundle entry point beside the entry, the target, the output,
+ * a bundle's directory or a binary's file, and the facts it bakes.
  */
 export interface BuildPlan {
   readonly application: string | undefined;
@@ -66,14 +70,20 @@ export interface BuildPlan {
  * system, and moves each file it wrote into place only once the whole build succeeded, replacing
  * the file of the same name. A failed build removes the temporary directory and any output
  * directory it created, so earlier output and every file the build does not write stay as they were.
+ * A SIGINT or a SIGTERM stops Bun, cleans up as a failure does, and ends `loom` with that signal.
  */
-export function build(plan: BuildPlan): void {
+export async function build(plan: BuildPlan): Promise<void> {
   const outDirectory = plan.target.kind === 'compile' ? dirname(plan.out) : plan.out;
   const created = mkdirSync(outDirectory, { recursive: true });
   const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
   try {
     const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
-    const result = runBun(bunArguments(plan, out), plan.directory);
+    const result = await superviseBun(bunArguments(plan, out), plan.directory, 'collect');
+    if (result.interrupted !== undefined) {
+      rmSync(created ?? staging, { force: true, recursive: true });
+      endAs(result.interrupted);
+      throw new Error(`Bun stopped on ${result.interrupted}, so no output changed.`);
+    }
     if (result.status !== 0) {
       throw new Error(
         `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,

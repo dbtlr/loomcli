@@ -11,7 +11,8 @@ import type { CheckResult } from './helpers/application-check.js';
  * The graph checks of `loom check`, run under Bun in a process of their own, so the application
  * module imports as source, TypeScript included, and nothing it loads stays in `loom`. The
  * arguments name the result file, the package directory, the module, and the module as the
- * operator reads it. The result file receives one `CheckResult` as JSON.
+ * operator reads it. The result file receives one `CheckResult` as JSON, and the process ends once
+ * it is written, whatever the module left running when it loaded, such as an interval.
  */
 
 /** A module that threw while it loaded, for a throw that is not a `DeclarationError`. */
@@ -117,3 +118,4 @@ if (
   );
 }
 writeFileSync(resultFile, JSON.stringify(await check(directory, path, module)));
+process.exit(0);

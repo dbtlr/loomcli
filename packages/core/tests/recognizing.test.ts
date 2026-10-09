@@ -37,3 +37,9 @@ test('instanceof Application is false for a Command, a plain object, a copy, nul
     aPrototypeCopy: false,
   });
 });
+
+test("instanceof an author's subclass of Application reads that subclass's prototype chain alone", () => {
+  expect(recognized()).toMatchObject({
+    subclass: { aSubclassInstance: true, anApplication: false },
+  });
+});

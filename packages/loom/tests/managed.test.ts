@@ -27,6 +27,11 @@ test('a header line ending in CRLF is removed with its whole line ending', () =>
   expect(file?.content).toBe('hello\n');
 });
 
+test('a file checked out with CRLF line endings has not drifted', () => {
+  const file = readManaged(`<!-- Managed by loom init. sha256:${hello} -->\r\nhello\r\n`);
+  expect(file && hasDrifted(file)).toBe(false);
+});
+
 test('an edited file has drifted', () => {
   const file = readManaged(`<!-- Managed by loom init. sha256:${hello} -->\nhello, edited\n`);
   expect(file && hasDrifted(file)).toBe(true);

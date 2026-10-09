@@ -7,6 +7,7 @@ import { checkApplication } from '../../helpers/application-check.js';
 import { hasDrifted, managedFiles, readManaged } from '../../helpers/managed.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
+import { report } from '../../helpers/report.js';
 import { typePass } from '../../helpers/type-pass.js';
 
 /** The warning a managed file draws once its content no longer matches its header. */
@@ -36,7 +37,7 @@ function runCheck(cwd: string, option: string | undefined) {
     'application',
   );
   const types = typePass(directory);
-  const { result, written } = checkApplication({ cwd, directory, module: shown(cwd, path), path });
+  const { result, written } = checkApplication({ directory, module: shown(cwd, path), path });
   const faults = 'faults' in result ? result.faults : [result.failure];
   const warnings = driftWarnings(directory);
   const blocks = [
@@ -58,20 +59,15 @@ export const checkCommand = new Command('check', {
     description: 'Check this module, which exports the Application, instead of src/application.ts.',
     type: 'string',
   })
-  .action(({ host, options, out, passthrough }) => {
-    if (passthrough.length > 0) {
-      out.fatal('Arguments after -- are not supported.');
-    }
-    let outcome = { failed: false, text: '' };
-    try {
-      outcome = runCheck(host.cwd, options.application);
-    } catch (error) {
-      out.fatal(error instanceof Error ? error.message : String(error));
-    }
-    if (outcome.failed) {
-      out.fatal(outcome.text);
-    }
-    if (outcome.text !== '') {
-      host.stderr.write(`${outcome.text}\n`);
-    }
+  .action(async ({ host, options, out, passthrough }) => {
+    await report(out, passthrough, () => {
+      const outcome = runCheck(host.cwd, options.application);
+      if (outcome.failed) {
+        throw new Error(outcome.text);
+      }
+      if (outcome.text !== '') {
+        host.stderr.write(`${outcome.text}\n`);
+      }
+      return '';
+    });
   });

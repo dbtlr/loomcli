@@ -1,11 +1,18 @@
 import { z } from 'zod';
 
-/** A Bun compile target: `bun-<os>-<arch>` and an optional variant, such as `bun-linux-x64-musl`. */
-const compileTarget = /^bun-(?<platform>(?:darwin|linux|windows)-(?:arm64|x64)(?:-[\da-z]+)*)$/u;
+/**
+ * A Bun compile target, as Bun 1.4.2 documents them: `bun-<os>-<arch>` for `linux`, `darwin`, or
+ * `windows` on `x64` or `arm64`, then `-musl` on Linux alone, then `-baseline` or `-modern` on x64
+ * alone, such as `bun-linux-x64-musl-baseline`. Bun itself also tolerates the variants in any
+ * order, repeated, or both CPU variants at once, and a CPU variant on arm64, which it ignores; each
+ * of those names a target above, so a build refuses it rather than give one binary two names.
+ */
+const compileTarget =
+  /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|(?:darwin|windows)-(?:x64(?:-baseline|-modern)?|arm64))$/u;
 
 /** The sentence every refused target ends with, naming the targets a build accepts. */
 const accepted =
-  'Use node, bun, or a Bun compile target bun-<os>-<arch>[-variant], such as bun-linux-x64.';
+  'Use node, bun, or a Bun compile target bun-<os>-<arch>, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
 
 /** Reads one `--target` value, or answers the sentence that refuses it. */
 function readTarget(value: string): BuildTarget | { readonly refused: string } {

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { Command, InputError } from '@loomcli/core';
@@ -38,7 +38,8 @@ function optionError(name: string, message: string): InputError {
 
 /**
  * The application module a bundle carries beside the entry: the one `--application` names, which
- * must exist, else `src/application.ts` when it exists. A binary compiles the entry alone.
+ * must exist, else `src/application.ts` when it exists. A binary compiles the entry alone, and the
+ * action refuses `--application` with one before it gets here.
  */
 function applicationModule(
   paths: { cwd: string; directory: string },
@@ -53,6 +54,26 @@ function applicationModule(
   }
   const conventional = join(paths.directory, 'src/application.ts');
   return existsSync(conventional) ? conventional : undefined;
+}
+
+/**
+ * The output path a build writes: `--out`, else its default. A binary is one file, so a binary's
+ * output that names an existing directory fails before anything builds, naming `--out`.
+ */
+function outputPath(
+  paths: { cwd: string; directory: string },
+  target: BuildTarget,
+  out: string | undefined,
+  name: () => string,
+): string {
+  const output =
+    out === undefined ? defaultOutput(paths.directory, target, name) : resolve(paths.cwd, out);
+  if (target.kind === 'compile' && statSync(output, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(
+      `${shown(paths.cwd, output)} is a directory, and a binary is one file, so name the binary's file with --out.`,
+    );
+  }
+  return output;
 }
 
 /**
@@ -123,6 +144,18 @@ export const buildCommand = new Command('build', {
     if (options.facts && options.define) {
       throw optionError('define', '--facts and --define exclude each other, so pass one of them.');
     }
+    if (options.application !== undefined && options.target?.kind !== 'bundle') {
+      throw optionError(
+        'application',
+        '--application applies to a node or bun bundle, so pass --target node or --target bun with it.',
+      );
+    }
+    if (options.repository !== undefined && !options.release) {
+      throw optionError(
+        'repository',
+        '--repository applies to a --release build, so pass --release with it.',
+      );
+    }
     if (options.watch && options.build === 'distributed') {
       throw optionError(
         'build',
@@ -154,16 +187,15 @@ export const buildCommand = new Command('build', {
         'entry',
       );
       const application = applicationModule(paths, target, options.application);
-      const output =
-        options.out === undefined
-          ? defaultOutput(directory, target, () => applicationName(manifest, options.name))
-          : resolve(cwd, options.out);
+      const output = outputPath(paths, target, options.out, () =>
+        applicationName(manifest, options.name),
+      );
       const plan = { application, directory, entry, facts, out: output, target };
       if (options.watch) {
         await watch(plan);
         return '';
       }
-      build(plan);
+      await build(plan);
       return `Built ${shown(cwd, output)} for ${target.name}.\n`;
     });
   });
