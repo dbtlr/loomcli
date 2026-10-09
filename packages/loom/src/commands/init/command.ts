@@ -4,35 +4,50 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { Command } from '@loomcli/core';
 import { z } from 'zod';
 
+import { changelogSkill } from '../../content/changelog-skill.js';
+import { fragmentGuide } from '../../content/fragment-guide.js';
+import { applicationModule, entryModule, newManifest } from '../../content/scaffold.js';
+import type { ApplicationImport } from '../../content/scaffold.js';
+import { checkApplication } from '../../helpers/application-check.js';
 import { readManifest, scaffoldName } from '../../helpers/build-facts.js';
 import { loomVersion } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
-import { addMissingKeys, applicationIdentifier, scaffoldKeys } from '../../helpers/scaffold.js';
-import { changelogSkill } from '../../templates/changelog-skill.js';
-import { fragmentGuide } from '../../templates/fragment-guide.js';
-import { applicationModule, entryModule, newManifest } from '../../templates/scaffold.js';
+import {
+  addMissingKeys,
+  applicationIdentifier,
+  isNewPackageName,
+  scaffoldKeys,
+} from '../../helpers/scaffold.js';
 
 /** The pieces init writes, in the order it writes them. */
 const pieces = ['package', 'application', 'entry', 'changes', 'skill'] as const;
 
 type Piece = (typeof pieces)[number];
 
-/** One `--only` value, read from the string the operator typed. */
+/**
+ * One `--only` value. A multiple option validates each value as the string the operator typed, so
+ * its validator must accept a string input, and the enum of pieces sits behind `z.string().pipe`.
+ */
 const pieceOption = z
   .string()
   .pipe(z.enum(pieces, { error: 'Use application, entry, package, changes, or skill.' }));
 
+/** The application module and the entry, by their conventional paths in the package directory. */
+const applicationPath = 'src/application.ts';
+const entryPath = 'src/main.ts';
+
 /**
- * Where one init run acts, and what it says as it goes. Every path a line names is relative to the
- * package directory, as `loom check` names a drifted managed file.
+ * Where one init run acts, and how it reports. Each line is written as the file or key lands, so a
+ * failure later in the run follows the lines of what was already written. Every path a line names
+ * is relative to the package directory, as `loom check` names a drifted managed file.
  */
 interface Run {
   readonly directory: string;
   readonly force: boolean;
-  readonly lines: string[];
-  readonly warnings: string[];
+  readonly line: (text: string) => void;
+  readonly warn: (text: string) => void;
 }
 
 /**
@@ -53,19 +68,22 @@ function initDirectory(cwd: string): { directory: string; fresh: boolean } {
   return { directory: nearest, fresh: false };
 }
 
-/** Writes a file, creating its directory, and records the line that says so. */
-function write(run: Run, path: string, text: string) {
+/** Writes a file under the package directory, creating its directory. A failure names the file. */
+function writeFile(run: Run, path: string, text: string) {
   const absolute = join(run.directory, path);
-  mkdirSync(dirname(absolute), { recursive: true });
-  writeFileSync(absolute, text);
-  run.lines.push(`Wrote ${path}.`);
+  try {
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot write ${path}: ${reason}.`, { cause: error });
+  }
 }
 
-/** Writes a scaffold file only when it is missing, because an existing one is the author's. */
-function writeScaffold(run: Run, path: string, text: () => string) {
-  if (!existsSync(join(run.directory, path))) {
-    write(run, path, text());
-  }
+/** Writes a file and the line that says so. */
+function write(run: Run, path: string, text: string) {
+  writeFile(run, path, text);
+  run.line(`Wrote ${path}.`);
 }
 
 /**
@@ -86,7 +104,7 @@ function writeManaged(run: Run, path: string, content: string) {
     return;
   }
   if (hasDrifted(file) && !run.force) {
-    run.warnings.push(driftWarning(path));
+    run.warn(driftWarning(path));
     return;
   }
   write(run, path, rendered);
@@ -94,55 +112,103 @@ function writeManaged(run: Run, path: string, content: string) {
 
 /** Adds the scaffold's `package.json` keys the package lacks, one line for each key added. */
 function writeKeys(run: Run) {
-  const path = join(run.directory, 'package.json');
-  const source = readFileSync(path, 'utf8');
+  const source = readFileSync(join(run.directory, 'package.json'), 'utf8');
   const name = scaffoldName(readManifest(run.directory));
   const { added, text } = addMissingKeys(source, scaffoldKeys(name, loomVersion));
   if (added.length > 0) {
-    writeFileSync(path, text);
+    writeFile(run, 'package.json', text);
   }
   for (const key of added) {
-    run.lines.push(`Added ${key} to package.json.`);
+    run.line(`Added ${key} to package.json.`);
   }
-}
-
-/** The application's name: from `package.json` when the package has one, else the directory's. */
-function nameOf(directory: string) {
-  return existsSync(join(directory, 'package.json'))
-    ? scaffoldName(readManifest(directory))
-    : basename(directory);
 }
 
 /**
- * One init run over the pieces it is limited to, all of them by default. It returns the lines for
- * stdout and the warnings for stderr.
+ * How the entry imports an application module the author already holds, learned by loading it as
+ * `loom check` does: the name it exports its one Application under, else its default export. A
+ * module that fails to load, or that exports no single Application, reads `undefined`.
  */
-function runInit(cwd: string, only: readonly Piece[], force: boolean) {
-  const { directory, fresh } = initDirectory(cwd);
-  const run: Run = { directory, force, lines: [], warnings: [] };
-  const selected = (piece: Piece) => only.length === 0 || only.includes(piece);
-  if (selected('package')) {
-    if (fresh) {
-      write(run, 'package.json', newManifest(basename(directory)));
-    }
-    writeKeys(run);
-  }
-  if (selected('application')) {
-    writeScaffold(run, 'src/application.ts', () => {
-      const name = nameOf(directory);
-      return applicationModule(name, applicationIdentifier(name));
+function authoredImport(run: Run, name: string): ApplicationImport | undefined {
+  try {
+    const { result } = checkApplication({
+      directory: run.directory,
+      module: applicationPath,
+      path: join(run.directory, applicationPath),
     });
+    const names = 'names' in result ? result.names : [];
+    const named = names.find((exported) => exported !== 'default');
+    if (named !== undefined) {
+      return { identifier: named, kind: 'named' };
+    }
+    return names.includes('default')
+      ? { identifier: applicationIdentifier(name), kind: 'default' }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Writes the entry when it is missing. It imports the Application by the scaffold's identifier
+ * when init writes the application module too, and by what the module exports when the author
+ * already holds one. An authored module init cannot read draws a warning and no entry.
+ */
+function writeEntry(run: Run, authored: boolean) {
+  if (existsSync(join(run.directory, entryPath))) {
+    return;
+  }
+  const name = scaffoldName(readManifest(run.directory));
+  const scaffolded: ApplicationImport = { identifier: applicationIdentifier(name), kind: 'named' };
+  const imported = authored ? authoredImport(run, name) : scaffolded;
+  if (imported === undefined) {
+    run.warn(
+      `warning: ${entryPath} was not written because ${applicationPath} exports no Application loom can read. Write the entry by hand.`,
+    );
+    return;
+  }
+  write(run, entryPath, entryModule(imported));
+}
+
+/**
+ * Starts a new application in an empty directory with its `package.json`, named for the directory,
+ * before any piece, so the application's name always comes from `package.json`. A directory name
+ * that npm or core would reject fails before anything is written.
+ */
+function writeNewManifest(run: Run) {
+  const name = basename(run.directory);
+  if (!isNewPackageName(name)) {
+    throw new Error(
+      `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
+    );
+  }
+  write(run, 'package.json', newManifest(name));
+}
+
+/** One init run over the pieces it is limited to, all of them by default. */
+function runInit(run: Omit<Run, 'directory'> & { cwd: string; only: readonly Piece[] }) {
+  const { directory, fresh } = initDirectory(run.cwd);
+  const context: Run = { directory, force: run.force, line: run.line, warn: run.warn };
+  const selected = (piece: Piece) => run.only.length === 0 || run.only.includes(piece);
+  if (fresh) {
+    writeNewManifest(context);
+  }
+  const authored = existsSync(join(directory, applicationPath));
+  if (selected('package')) {
+    writeKeys(context);
+  }
+  if (selected('application') && !authored) {
+    const name = scaffoldName(readManifest(directory));
+    write(context, applicationPath, applicationModule(name, applicationIdentifier(name)));
   }
   if (selected('entry')) {
-    writeScaffold(run, 'src/main.ts', () => entryModule(applicationIdentifier(nameOf(directory))));
+    writeEntry(context, authored);
   }
   if (selected('changes')) {
-    writeManaged(run, '.changes/README.md', fragmentGuide);
+    writeManaged(context, '.changes/README.md', fragmentGuide);
   }
   if (selected('skill')) {
-    writeManaged(run, '.agents/skills/loom-changelog/SKILL.md', changelogSkill);
+    writeManaged(context, '.agents/skills/loom-changelog/SKILL.md', changelogSkill);
   }
-  return run;
 }
 
 export const init = new Command('init', {
@@ -161,10 +227,13 @@ export const init = new Command('init', {
   })
   .action(async ({ host, options, out, passthrough }) => {
     await report(out, passthrough, () => {
-      const run = runInit(host.cwd, options.only, options.force);
-      if (run.warnings.length > 0) {
-        host.stderr.write(`${run.warnings.join('\n')}\n`);
-      }
-      return run.lines.map((line) => `${line}\n`).join('');
+      runInit({
+        cwd: host.cwd,
+        force: options.force,
+        line: (text) => host.stdout.write(`${text}\n`),
+        only: options.only,
+        warn: (text) => host.stderr.write(`${text}\n`),
+      });
+      return '';
     });
   });

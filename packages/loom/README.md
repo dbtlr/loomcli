@@ -19,6 +19,8 @@ pnpm install
 loom check
 ```
 
+In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`.
+
 - **Scaffold files.** `src/application.ts`, `src/main.ts`, and the `package.json` keys `bin`, `scripts.build`, `scripts.check`, and the Loom dependencies are written once, only when missing. Init never overwrites them, because they are your code from then on.
 - **Managed files.** `.changes/README.md`, the fragment guide, and `.agents/skills/loom-changelog/SKILL.md`, the changelog skill, carry a header with a checksum. Init re-renders an unedited one, so it follows the installed toolchain. An edited one draws a warning and is left alone, and `--force` restores it. Delete the header to keep the file as your own.
 - **Options.** `--only <piece>` limits init to `application`, `entry`, `package`, `changes`, or `skill`, and may repeat. Init installs nothing, so run your package manager afterward.

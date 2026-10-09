@@ -8,11 +8,12 @@ import { z } from 'zod';
 import { runBun } from './bun.js';
 
 /**
- * What the graph checks found: the message of every fault, each a whole Developer Diagnostic, or
- * the one sentence that says why no Application could be checked.
+ * What the graph checks found: the message of every fault, each a whole Developer Diagnostic, with
+ * each name the module exports its Application under, `default` included, and none when the module
+ * failed to load; or the one sentence that says why no Application could be checked.
  */
 const checkResult = z.union([
-  z.object({ faults: z.string().array() }),
+  z.object({ faults: z.string().array(), names: z.string().array() }),
   z.object({ failure: z.string() }),
 ]);
 

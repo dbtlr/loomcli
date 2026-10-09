@@ -42,3 +42,4 @@ Proposed 2026-10-07 with the contract in [loom init](../toolchain.md#loom-init).
 ## Changelog
 
 - 2026-10-07: Proposed with the toolchain contract.
+- 2026-10-09: A blank line may separate a skill's frontmatter from its header, because Markdown formatters insert one.

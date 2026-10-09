@@ -1,7 +1,12 @@
 import { expect, test } from 'vite-plus/test';
 
 import { applicationName, scaffoldName } from '../src/helpers/build-facts.js';
-import { addMissingKeys, applicationIdentifier, scaffoldKeys } from '../src/helpers/scaffold.js';
+import {
+  addMissingKeys,
+  applicationIdentifier,
+  isNewPackageName,
+  scaffoldKeys,
+} from '../src/helpers/scaffold.js';
 
 test.each([
   ['notes', 'notes'],
@@ -114,4 +119,34 @@ test('a file with every key comes back byte-identical', () => {
 test('a key whose parent is not an object is left out', () => {
   const { added } = addMissingKeys('{"name":"notes","scripts":"none"}', keys);
   expect(added).not.toContain('scripts.build');
+});
+
+/** U+FEFF, the byte-order mark, written by its decimal code point. */
+const byteOrderMark = String.fromCodePoint(65_279);
+
+test('a file that opens with a byte-order mark keeps it', () => {
+  const { text } = addMissingKeys(`${byteOrderMark}{\n  "name": "notes"\n}\n`, keys);
+  expect(text.startsWith(`${byteOrderMark}{\n  "name": "notes",\n`)).toBe(true);
+});
+
+test('a file with CRLF line endings keeps them on every line', () => {
+  const { text } = addMissingKeys('{\r\n  "name": "notes"\r\n}\r\n', keys);
+  expect(text.endsWith('}\r\n')).toBe(true);
+  expect(text.replaceAll('\r\n', '')).not.toContain('\n');
+});
+
+test.each([
+  ['notes', true],
+  ['notes.cli', true],
+  ['notes2', true],
+  ['my-notes_1', true],
+  ['My Notes', false],
+  ['notes cli', false],
+  ['@notes', false],
+  ['.notes', false],
+  ['_notes', false],
+  ['-notes', false],
+  ['n'.repeat(215), false],
+])('the directory name %j can name a new package: %s', (name, valid) => {
+  expect(isNewPackageName(name)).toBe(valid);
 });

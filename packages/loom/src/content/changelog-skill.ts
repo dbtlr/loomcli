@@ -1,16 +1,20 @@
 /**
  * The changelog skill `loom init` manages at `.agents/skills/loom-changelog/SKILL.md`, without its
- * header. A blank line follows the frontmatter, which separates the header init puts there from
- * the title.
+ * header. Two blank lines follow the frontmatter: init puts the header between them, so one blank
+ * line separates the header from the frontmatter and one from the title, as a Markdown formatter
+ * writes them.
  */
 export const changelogSkill = `---
 name: loom-changelog
-description: Keep this package's changelog. Add a change fragment in .changes/ for every consumer-visible change, validate it with loom changelog check, and cut a version with loom changelog write.
+description: Use when finishing a consumer-visible change to this package or cutting its version. Add a change fragment in .changes/ for every consumer-visible change, validate it with loom changelog check, and cut a version with loom changelog write.
 ---
+
 
 # Keep the changelog
 
 This package cuts its version from change fragments in \`.changes/\`. The fragment guide, \`.changes/README.md\`, holds the naming rules, the body grammar, and the version table. Read it before writing a fragment.
+
+The \`loom\` bin is installed in the package, so run it through the package manager, such as \`pnpm loom changelog check\` or \`npx loom changelog check\`, and the package's \`check\` script runs \`loom check\`.
 
 ## Record a change
 

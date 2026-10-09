@@ -205,7 +205,7 @@ In an empty directory nothing is installed yet, so the first run goes through th
 ```
 
 - **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory.
-- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first line after its frontmatter.
+- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first non-blank line after its frontmatter.
 - **Re-running init.** Init re-renders a managed file whose checksum matches, so an unedited file follows the running toolchain. A file whose content no longer matches its checksum has drifted. Init warns about it and leaves it alone, and `--force` re-renders it. `--force` never touches a scaffold file.
 - **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and `loom check` stops checking it.
 - **Drift is a warning.** `loom check` warns about a drifted managed file and never fails for one.

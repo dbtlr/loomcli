@@ -6,6 +6,9 @@ const header = /^<!-- Managed by loom init\. sha256:(?<checksum>[\da-f]{64}) -->
 /** YAML frontmatter at the start of a file: a `---` line, its body, and a closing `---` line. */
 const frontmatter = /^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/u;
 
+/** The empty lines at the start of a text. */
+const blankLines = /^(?:\r?\n)*/u;
+
 /**
  * The files `loom init` manages, by path under the package directory: the fragment guide and the
  * changelog skill.
@@ -23,15 +26,18 @@ export interface ManagedFile {
 
 /**
  * Reads a managed file's header. The header is the file's first line, or, when the file opens with
- * YAML frontmatter, the first line after the closing `---` line. The content without the header is
- * the file's whole text with exactly that line and its line ending, `\n` or `\r\n`, removed, so the
- * frontmatter and every byte after the header stay, the blank line that usually follows it
- * included. The checksum a header records covers that content with each CRLF read as LF, so a
- * checkout that converts line endings, as `core.autocrlf=true` does, does not read as drift. A file
- * whose header line is not a managed header is not managed, and reads `undefined`.
+ * YAML frontmatter, the first non-blank line after the closing `---` line, because a Markdown
+ * formatter separates the frontmatter from the next block with a blank line. The content without
+ * the header is the file's whole text with exactly that line and its line ending, `\n` or `\r\n`,
+ * removed, so the frontmatter, the blank lines before the header, and every byte after it stay. The
+ * checksum a header records covers that content with each CRLF read as LF, so a checkout that
+ * converts line endings, as `core.autocrlf=true` does, does not read as drift. A file whose header
+ * line is not a managed header is not managed, and reads `undefined`.
  */
 export function readManaged(text: string): ManagedFile | undefined {
-  const start = frontmatter.exec(text)?.[0].length ?? 0;
+  const opening = frontmatter.exec(text)?.[0].length;
+  const start =
+    opening === undefined ? 0 : opening + (blankLines.exec(text.slice(opening))?.[0].length ?? 0);
   const newline = text.indexOf('\n', start);
   const end = newline === -1 ? text.length : newline + 1;
   const line = text.slice(start, end).replace(/\r?\n$/u, '');
@@ -52,11 +58,15 @@ export function managedChecksum(content: string): string {
 
 /**
  * A managed file's text for its content: the header on the first line, or, when the content opens
- * with YAML frontmatter, on the first line after it. The header records the checksum of the content
- * itself, so `readManaged` reads the content back exactly and finds it undrifted.
+ * with YAML frontmatter, after the frontmatter and the one blank line that follows it in the
+ * content, so a Markdown formatter finds the blank line it would insert already there. The header
+ * records the checksum of the content itself, so `readManaged` reads the content back exactly and
+ * finds it undrifted.
  */
 export function renderManaged(content: string): string {
-  const start = frontmatter.exec(content)?.[0].length ?? 0;
+  const opening = frontmatter.exec(content)?.[0].length;
+  const start =
+    opening === undefined ? 0 : opening + (/^\r?\n/u.exec(content.slice(opening))?.[0].length ?? 0);
   const line = `<!-- Managed by loom init. sha256:${managedChecksum(content)} -->`;
   return `${content.slice(0, start)}${line}\n${content.slice(start)}`;
 }

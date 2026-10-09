@@ -16,10 +16,20 @@ export const ${identifier} = new Application(${quoted(name)}, {
 `;
 }
 
-/** The entry a new scaffold writes to `src/main.ts`, which runs the application module's Application. */
-export function entryModule(identifier: string): string {
+/**
+ * How the entry imports the Application: by the name the application module exports it under, or
+ * as the module's default export, bound to an identifier of the entry's own.
+ */
+export interface ApplicationImport {
+  readonly identifier: string;
+  readonly kind: 'default' | 'named';
+}
+
+/** The entry a scaffold writes to `src/main.ts`, which runs the application module's Application. */
+export function entryModule({ identifier, kind }: ApplicationImport): string {
+  const binding = kind === 'named' ? `{ ${identifier} }` : identifier;
   return `#!/usr/bin/env node
-import { ${identifier} } from './application.js';
+import ${binding} from './application.js';
 
 await ${identifier}.run();
 `;

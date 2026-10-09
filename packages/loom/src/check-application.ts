@@ -54,17 +54,16 @@ function loadFault(
 }
 
 /**
- * Imports the application module and reads every fault its one exported Application holds. The
- * Application class comes from the `@loomcli/core` the package itself resolves, which is the copy
- * the module's own declarations are instances of.
+ * Imports the application module and reads every fault its one exported Application holds, and
+ * the names it is exported under. The Application class comes from the `@loomcli/core` the package
+ * itself resolves, which is the copy the module's own declarations are instances of. Core resolves
+ * from the package's `package.json` as a path, because Bun does not decode a percent-encoded
+ * `file:` URL parent, so a package directory whose path holds a space would resolve nothing.
  */
 async function check(directory: string, path: string, module: string): Promise<CheckResult> {
   let coreAddress = '';
   try {
-    coreAddress = import.meta.resolve(
-      '@loomcli/core',
-      pathToFileURL(join(directory, 'package.json')).href,
-    );
+    coreAddress = import.meta.resolve('@loomcli/core', join(directory, 'package.json'));
   } catch {
     return {
       failure: `@loomcli/core does not resolve from the package, so install it before checking ${module}.`,
@@ -84,11 +83,14 @@ async function check(directory: string, path: string, module: string): Promise<C
   } catch (error) {
     return {
       faults: [loadFault(error, (value) => value instanceof declarationError, module)],
+      names: [],
     };
   }
   const exported =
-    typeof namespace === 'object' && namespace !== null ? Object.values(namespace) : [];
-  const found = [...new Set(exported.filter((value) => value instanceof application))];
+    typeof namespace === 'object' && namespace !== null ? Object.entries(namespace) : [];
+  const found = [
+    ...new Set(exported.map(([, value]) => value).filter((value) => value instanceof application)),
+  ];
   const [only] = found;
   if (found.length !== 1 || only === undefined) {
     return {
@@ -103,7 +105,10 @@ async function check(directory: string, path: string, module: string): Promise<C
     return { failure: `The Application ${module} exports has no check() to read its faults with.` };
   }
   const checked: unknown = Reflect.apply(method, only, []);
-  return { faults: faults.parse(checked).map((fault) => fault.message) };
+  return {
+    faults: faults.parse(checked).map((fault) => fault.message),
+    names: exported.filter(([, value]) => value === only).map(([name]) => name),
+  };
 }
 
 const [resultFile, directory, path, module] = process.argv.slice(2);

@@ -1,12 +1,13 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
+import { changelogSkill } from '../src/content/changelog-skill.js';
+import { fragmentGuide } from '../src/content/fragment-guide.js';
 import { renderManaged } from '../src/helpers/managed.js';
-import { changelogSkill } from '../src/templates/changelog-skill.js';
-import { fragmentGuide } from '../src/templates/fragment-guide.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { execute, fixturePackage, linkInstalled, loom, runtimes, snapshot } from './package.js';
 
@@ -25,11 +26,16 @@ const { version } = z
 const guidePath = '.changes/README.md';
 const skillPath = '.agents/skills/loom-changelog/SKILL.md';
 
-/** An empty directory named `notes`, where init scaffolds a new application. */
-function emptyNotes() {
-  const directory = join(temporaryRoot('loom-init-'), 'notes');
+/** An empty directory with the supplied name, where init scaffolds a new application. */
+function emptyDirectory(name: string) {
+  const directory = join(temporaryRoot('loom-init-'), name);
   mkdirSync(directory);
   return directory;
+}
+
+/** An empty directory named `notes`. */
+function emptyNotes() {
+  return emptyDirectory('notes');
 }
 
 /** The text of a file under a directory. */
@@ -262,4 +268,133 @@ test('--only with a piece init does not know is an option error that names the p
   const result = loom(emptyNotes(), ['init', '--only', 'nonsense']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('Use application, entry, package, changes, or skill.');
+});
+
+test(
+  'managed files a Markdown formatter rewrote stay managed: init prints nothing and check warns nothing',
+  (context) => {
+    const directory = emptyNotes();
+    loom(directory, ['init']);
+    linkInstalled(directory, ['core']);
+    const formatted = spawnSync('npx', ['-y', 'prettier@3', '--write', guidePath, skillPath], {
+      cwd: directory,
+      encoding: 'utf8',
+      timeout: slow,
+    });
+    if (formatted.error !== undefined || formatted.status !== 0) {
+      // Prettier comes from the registry through npx, so a machine without network skips this test.
+      context.skip();
+    }
+    expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: '', stdout: '' });
+    const check = loom(directory, ['check']);
+    expect(check.status).toBe(0);
+    expect(check.stderr).not.toContain('warning:');
+  },
+  slow,
+);
+
+/** An application module that exports its Application under the supplied export statement. */
+function authored(exported: string) {
+  return `import { Application } from '@loomcli/core';
+
+const application = new Application('probe', { description: 'Probe the entry.' }).action(
+  ({ out }) => out.print('authored'),
+);
+
+${exported}
+`;
+}
+
+test.each([
+  [
+    'a name of its own',
+    'export const cli = application;',
+    "import { cli } from './application.js';",
+  ],
+  ['a default export', 'export default application;', "import probe from './application.js';"],
+])(
+  'an authored application module exported under %s gets an entry that imports it and builds',
+  (_case, exported, imported) => {
+    const root = ownPackage({ 'src/application.ts': authored(exported) });
+    expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'Wrote src/main.ts.\n',
+    });
+    expect(read(root, 'src/main.ts')).toContain(imported);
+    expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+    expect(execute(join(root, 'dist/main.js'), [], { runtime: 'node' }).stdout).toBe('authored\n');
+  },
+  slow,
+);
+
+test('an authored application module that exports no Application draws a warning and no entry', () => {
+  const root = ownPackage({ 'src/application.ts': 'export const value = 1;\n' });
+  expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+    status: 0,
+    stderr:
+      'warning: src/main.ts was not written because src/application.ts exports no Application loom can read. Write the entry by hand.\n',
+    stdout: '',
+  });
+  expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
+});
+
+test.each(['My Notes', 'notes cli'])(
+  'an empty directory named %j is refused before anything is written',
+  (name) => {
+    const directory = emptyDirectory(name);
+    const result = loom(directory, ['init']);
+    expect(result).toEqual({
+      status: 1,
+      stderr: expect.stringContaining(
+        `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
+      ),
+      stdout: '',
+    });
+    expect(readdirSync(directory)).toEqual([]);
+  },
+);
+
+test.each(['notes.cli', 'notes2'])('an empty directory named %j scaffolds', (name) => {
+  const directory = emptyDirectory(name);
+  expect(loom(directory, ['init']).status).toBe(0);
+  expect(JSON.parse(read(directory, 'package.json'))).toMatchObject({ name });
+});
+
+test('a write that fails names the file after the lines of what was already written', () => {
+  const root = ownPackage({ '.agents': 'a file where a directory belongs\n' });
+  const result = loom(root, ['init', '--only', 'changes', '--only', 'skill']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe(`Wrote ${guidePath}.\n`);
+  expect(result.stderr).toContain(`Cannot write ${skillPath}: `);
+});
+
+test('--only skill in an empty directory writes package.json and the skill alone', () => {
+  const directory = emptyNotes();
+  expect(loom(directory, ['init', '--only', 'skill'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `Wrote package.json.\nWrote ${skillPath}.\n`,
+  });
+  expect([...snapshot(directory).keys()].toSorted()).toEqual([skillPath, 'package.json']);
+});
+
+test('an empty directory inside a package scaffolds there and leaves the outer package.json byte-identical', () => {
+  const root = ownPackage();
+  const outer = read(root, 'package.json');
+  const directory = join(root, 'tools', 'notes');
+  mkdirSync(directory, { recursive: true });
+  expect(loom(directory, ['init', '--only', 'package']).stdout).toBe(
+    [
+      'Wrote package.json.',
+      'Added bin to package.json.',
+      'Added scripts.build to package.json.',
+      'Added scripts.check to package.json.',
+      'Added dependencies.@loomcli/core to package.json.',
+      'Added devDependencies.@loomcli/loom to package.json.',
+      '',
+    ].join('\n'),
+  );
+  expect(existsSync(join(directory, 'package.json'))).toBe(true);
+  expect(read(root, 'package.json')).toBe(outer);
 });

@@ -97,6 +97,16 @@ function addKey(manifest: Record<string, unknown>, { path, value }: ManifestKey)
 }
 
 /**
+ * Whether a directory's name can name a new package and its Application unchanged. npm's unscoped
+ * rule allows lowercase letters, digits, `.`, `-`, and `_`, with no leading `.` or `_`, in at most
+ * 214 characters. Core's portable name rule, `@loomcli/core/portable-name`, which core does not
+ * export, also refuses a leading `-`. A name passes both, so it opens with a letter or a digit.
+ */
+export function isNewPackageName(name: string): boolean {
+  return name.length <= 214 && /^[\da-z][\da-z._-]*$/u.test(name);
+}
+
+/**
  * The identifier the application module exports its Application under: the application's name in
  * camel case, so `my-notes` reads as `myNotes`. Characters an identifier cannot hold separate the
  * words and are dropped. A result that is empty, opens with a digit, or is a reserved word gains the

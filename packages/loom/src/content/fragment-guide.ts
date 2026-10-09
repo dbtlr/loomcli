@@ -62,11 +62,11 @@ The highest kind present decides the next version.
 | \`1.4.7\`         | Feature              | \`1.5.0\`      |
 | \`1.4.7\`         | Fix                  | \`1.4.8\`      |
 
-A prerelease version, such as \`1.2.0-next.1\`, cannot be cut.
+A version that is not \`MAJOR.MINOR.PATCH\`, a prerelease such as \`1.2.0-next.1\` included, cannot be cut.
 
 ## Check and cut
 
-- \`loom changelog check\` validates every fragment and names each invalid one. It needs no git history, so CI can run it.
+- \`loom changelog check\` validates every fragment, exits 1 for an invalid one, and names it. It needs no git history, so CI can run it.
 - \`loom changelog write\` prepends the release section to \`CHANGELOG.md\`, sets \`version\` in \`package.json\`, and deletes the consumed fragments. It orders entries by the commit that added each fragment, so it needs full git history. \`--date YYYY-MM-DD\` dates the release, \`--narrative FILE\` copies prose above the entries, and \`--dry-run\` prints the section and the next version and writes nothing.
 - \`write\` refreshes no lockfile, so run your package manager after a cut.
 `;
