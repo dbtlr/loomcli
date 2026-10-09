@@ -696,40 +696,37 @@ test('a failed first build leaves no dist directory behind', () => {
 });
 
 test.each(['SIGINT', 'SIGTERM'] as const)(
-  'a %s to loom during a build stops Bun, removes the staging directory, and leaves the earlier output',
+  'a %s to loom alone while Bun compiles stops Bun, removes the staging directory, and leaves the earlier output',
   async (signal) => {
     const root = probePackage({ bin: { probe: 'dist/main.js' } });
     put(root, 'dist/probe', 'An earlier binary.\n');
     put(root, 'dist/notes.txt', 'Not the build’s.\n');
     const before = snapshot(join(root, 'dist'));
-    const build = start(pathToFileURL(cli), ['build', '--target', hostTarget()], { cwd: root });
-    const children = () =>
-      spawnSync('pgrep', ['-P', String(build.child.pid)], { encoding: 'utf8' }).stdout.trim();
-    await until(() => children() !== '');
-    const bun = children();
-    build.child.kill(signal);
-    const ended = await build.exit;
-    // A process that ends on the signal it received reads 128 plus the signal's number to its shell.
-    expect({ signal: ended.signal, status: ended.status, stderr: ended.stderr }).toEqual({
+    const received = await signalWhenWritten(
+      root,
       signal,
-      status: null,
-      stderr: '',
-    });
+      root,
+      (name) => name.endsWith('.bun-build'),
+      ['--target', hostTarget()],
+      true,
+    );
+    // A process that ends on the signal it received reads 128 plus the signal's number to its shell.
+    expect(received).toBe(signal);
     expect(snapshot(join(root, 'dist'))).toEqual(before);
-    expect(
-      readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
-    ).toEqual([]);
-    expect(spawnSync('kill', ['-0', bun]).status).not.toBe(0);
+    expect(temporaryLeftovers(root)).toEqual([]);
+    // Loom stops the Bun it runs, so no process still names the package.
+    await until(() => spawnSync('pgrep', ['-f', root]).status === 1);
   },
   slow,
 );
 
 /**
  * Runs `loom build` with the arguments, `--target node` unless told otherwise, in the package as its
- * own process group and sends the signal to the group, as a terminal's Ctrl-C does, the moment an
- * entry the predicate names appears anywhere under the watched directory, by its path relative to
- * that directory, so the signal lands as soon as the build has started writing, whatever the
- * machine's speed. It resolves to the signal the build ended by.
+ * own process group and sends the signal the moment an entry the predicate names appears anywhere
+ * under the watched directory, by its path relative to that directory, so the signal lands as soon
+ * as the build has started writing, whatever the machine's speed. The signal goes to the group, as
+ * a terminal's Ctrl-C sends it, or with `loomAlone` to `loom` alone, as `kill` or a task runner
+ * sends it. It resolves to the signal the build ended by.
  */
 async function signalWhenWritten(
   root: string,
@@ -737,6 +734,7 @@ async function signalWhenWritten(
   watched: string,
   written: (name: string) => boolean,
   args: readonly string[] = ['--target', 'node'],
+  loomAlone = false,
 ): Promise<NodeJS.Signals | null> {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
   const watcher = watchDirectory(watched, { recursive: true });
@@ -754,7 +752,7 @@ async function signalWhenWritten(
   watcher.on('change', (_event, name) => {
     if (typeof name === 'string' && written(name)) {
       watcher.close();
-      process.kill(-(child.pid ?? 0), signal);
+      process.kill(loomAlone ? (child.pid ?? 0) : -(child.pid ?? 0), signal);
     }
   });
   try {
