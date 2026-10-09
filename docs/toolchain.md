@@ -9,8 +9,9 @@ description: The public contract of the loom command, which acts on one package 
 ## One package directory
 
 ```text
-loom build [--target <target>] [--out <path>] [--entry <module>] [--build development|distributed]
-           [--watch] [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
+loom build [--target <target>] [--out <path>] [--entry <module>] [--application <module>]
+           [--build development|distributed] [--watch]
+           [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
 loom check [--application <module>]
 loom changelog check
 loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
@@ -44,12 +45,13 @@ The package directory is proven when process runs of the packed `loom` bin produ
 ## loom build
 
 ```text
-loom build [--target <target>] [--out <path>] [--entry <module>] [--build development|distributed]
-           [--watch] [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
+loom build [--target <target>] [--out <path>] [--entry <module>] [--application <module>]
+           [--build development|distributed] [--watch]
+           [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
 ```
 
 ```sh
-loom build --target node                          # dist/main.js, release facts { build: 'distributed' }
+loom build --target node                          # dist/main.js and dist/application.js, { build: 'distributed' }
 loom build --target bun-linux-arm64 --release     # dist/notes, with release and asset facts
 loom build --watch --target node                  # rebuilds on change, { build: 'development' }
 
@@ -62,6 +64,7 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 
 - **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>[-variant]`, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`, or `bun-linux-x64-musl`. The default is the compile target Bun names for the host. `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
 - **The entry.** `--entry` names the module that calls `run()`. The default is `src/main.ts`.
+- **The application module.** `--application` names the module that exports the Application, with the default [`loom check`](#loom-check) reads, `src/application.ts`. A `node` or `bun` bundle carries it as a second entry beside the entry, so an embedded caller or a test imports the built Application with its baked facts. Each entry's file is named for its module, such as `main.js` and `application.js`, beside the chunks they share. A bundle splits, so each plugin's lazily loaded middleware stays in a chunk of its own. When `src/application.ts` does not exist, the bundle carries the entry alone, and a module `--application` names that does not exist fails the build and names it. A compile target compiles the entry alone.
 - **The dependencies.** `loom build` bundles the package's dependencies, `@loomcli/core` included, so the define reaches core and the artifact reads the facts it bakes.
 - **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`. A `bun-windows-*` target's output and asset names end in `.exe`, such as `dist/notes.exe` and `notes-windows-x64.exe`.
 - **The name.** A binary's default path and its asset name read the application's name from `package.json` `bin`: a string `bin` gives the package name without its scope, and an object `bin` with one key gives that key. `--name` overrides it. With no `bin`, or a `bin` with several keys, and no `--name`, a build that needs the name fails and names `--name`.
@@ -76,6 +79,7 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 `loom build` is proven when process runs of the packed `loom` bin produce these results under Node and Bun, with the artifacts run under both:
 
 - **Targets.** `--target node` and `--target bun` each write a bundle that reads `{ build: 'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a binary that runs with no runtime installed. `--target browser` and an unknown target each exit with an error that names the targets.
+- **The application module.** A `--target node` build of a package that holds `src/application.ts` writes `dist/application.js`, which a caller imports to run the Application on the facts the build baked, and a package without it writes the entry alone. `--application` naming a module that does not exist exits 1 and names it.
 - **The build.** `--build development` writes an artifact that reads `development`, and `--watch` rebuilds after a source change into an artifact that reads `development`.
 - **A release.** `--release` in a package at `1.1.0-next.3` whose `repository` is the `git+https://` form reads version `1.1.0-next.3`, lane `next`, and repository `owner/name`, with an asset only for a compile target. `--repository` overrides the field. A package with no `repository` and no `--repository` exits 1 and names `--repository`. A compile target with no `bin` and no `--name` exits 1 and names `--name`.
 - **Composing.** `--facts` prints the facts JSON and `--define` the pair, and neither writes a file. A `bun build --define` with the printed pair, and a `Bun.build` call with the printed facts, each write an artifact that reads the same facts `loom build` bakes.

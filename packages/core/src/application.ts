@@ -1425,6 +1425,15 @@ function checkApplicationName(name: unknown): string {
 class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins> {
+  /**
+   * Each declaring call returns a new builder rather than an instance of this class, so
+   * `instanceof Application` reads the builder's prototype chain, and holds for an Application in
+   * every authoring state.
+   */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return value instanceof ApplicationBuilder;
+  }
+
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);

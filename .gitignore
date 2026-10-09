@@ -9,5 +9,7 @@ node_modules
 !.env.example
 
 build
+# The sources of the loom build command, which the rule above would otherwise ignore.
+!packages/loom/src/commands/build/
 
 dist

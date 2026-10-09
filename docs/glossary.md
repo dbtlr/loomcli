@@ -606,6 +606,14 @@ _Avoid_: Retry, rebuild, republish, repair
 The directory of the nearest `package.json` at or above where a `loom` command runs. Every command acts on that one package, never on a repository as a set of packages.
 _Avoid_: Project root, workspace, repository root
 
+**Entry**:
+The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and `loom check` never imports it, because importing it runs the application.
+_Avoid_: Main file, bin script
+
+**Application module**:
+The module that exports the Application, by default `src/application.ts`. `loom check` imports it to read every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
+_Avoid_: App file, application entry
+
 **Scaffold file**:
 A file or `package.json` key `loom init` writes once, when it is missing, and never overwrites or tracks, because it is the author's code from the moment it is written, such as `src/application.ts`.
 _Avoid_: Template, generated file, boilerplate

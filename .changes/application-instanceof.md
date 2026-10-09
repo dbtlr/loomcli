@@ -1,0 +1,1 @@
+- Fix `instanceof Application`, which now holds for an Application after a declaring call, such as `.action()`, `.command()`, or `.globalOption()`, as it did for a bare `new Application()`. A tool that finds an exported Application by class, as `loom check` does, recognizes it in every authoring state.

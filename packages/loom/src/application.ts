@@ -5,7 +5,9 @@ import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
+import { buildCommand } from './commands/build/command.js';
 import { changelog } from './commands/changelog/command.js';
+import { checkCommand } from './commands/check/command.js';
 import { pr } from './commands/pr/command.js';
 import { release } from './commands/release/command.js';
 
@@ -21,6 +23,8 @@ export const loom = new Application('loom', {
   plugins: [help(), version()],
   version: packageVersion,
 })
+  .command(buildCommand)
   .command(changelog)
+  .command(checkCommand)
   .command(pr)
   .command(release);
