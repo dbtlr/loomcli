@@ -67,6 +67,7 @@ async function check(directory: string, path: string, module: string): Promise<C
   } catch {
     return {
       failure: `@loomcli/core does not resolve from the package, so install it before checking ${module}.`,
+      loaded: false,
     };
   }
   const core: unknown = await import(coreAddress);
@@ -75,6 +76,7 @@ async function check(directory: string, path: string, module: string): Promise<C
   if (application === undefined || declarationError === undefined) {
     return {
       failure: `The @loomcli/core the package resolves exports no Application to check ${module} with.`,
+      loaded: false,
     };
   }
   let namespace: unknown = undefined;
@@ -98,11 +100,15 @@ async function check(directory: string, path: string, module: string): Promise<C
         found.length === 0
           ? `${module} exports no Application, so export the Application the entry runs.`
           : `${module} exports ${found.length} Applications, so export one Application from it.`,
+      loaded: true,
     };
   }
   const method = member(only, 'check');
   if (typeof method !== 'function') {
-    return { failure: `The Application ${module} exports has no check() to read its faults with.` };
+    return {
+      failure: `The Application ${module} exports has no check() to read its faults with.`,
+      loaded: true,
+    };
   }
   const checked: unknown = Reflect.apply(method, only, []);
   return {

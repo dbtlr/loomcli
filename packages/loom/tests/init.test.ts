@@ -339,6 +339,23 @@ test('an authored application module that exports no Application draws a warning
   expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
 });
 
+test('an authored application module that cannot be loaded draws the load warning naming why and no entry', () => {
+  const root = fixturePackage(
+    {
+      'package.json': ownManifest,
+      'src/application.ts': authored('export const cli = application;'),
+    },
+    [],
+  );
+  expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+    status: 0,
+    stderr:
+      'warning: src/main.ts was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before checking src/application.ts. Install the package and run loom init again, or write the entry by hand.\n',
+    stdout: '',
+  });
+  expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
+});
+
 test.each(['My Notes', 'notes cli'])(
   'an empty directory named %j is refused before anything is written',
   (name) => {

@@ -9,6 +9,7 @@ import { fragmentGuide } from '../../content/fragment-guide.js';
 import { applicationModule, entryModule, newManifest } from '../../content/scaffold.js';
 import type { ApplicationImport } from '../../content/scaffold.js';
 import { checkApplication } from '../../helpers/application-check.js';
+import type { ApplicationCheck } from '../../helpers/application-check.js';
 import { readManifest, scaffoldName } from '../../helpers/build-facts.js';
 import { loomVersion } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
@@ -49,6 +50,15 @@ interface Run {
   readonly line: (text: string) => void;
   readonly warn: (text: string) => void;
 }
+
+/**
+ * What init learned from an authored application module: how the entry imports its Application,
+ * that the module could not be loaded and why, or that it loaded and exports no single Application.
+ */
+type AuthoredImport =
+  | { readonly imported: ApplicationImport; readonly kind: 'read' }
+  | { readonly kind: 'unloaded'; readonly reason: string }
+  | { readonly kind: 'unexported' };
 
 /**
  * The package directory init acts on: the working directory when it is empty, so a new application
@@ -126,26 +136,42 @@ function writeKeys(run: Run) {
 /**
  * How the entry imports an application module the author already holds, learned by loading it as
  * `loom check` does: the name it exports its one Application under, else its default export. A
- * module that fails to load, or that exports no single Application, reads `undefined`.
+ * module that could not be loaded, because core does not resolve, Bun is missing, or the module
+ * throws, reads `unloaded` with the reason, and one that loads but exports no single Application
+ * reads `unexported`.
  */
-function authoredImport(run: Run, name: string): ApplicationImport | undefined {
+function authoredImport(run: Run, name: string): AuthoredImport {
+  let checked: ApplicationCheck | undefined = undefined;
   try {
-    const { result } = checkApplication({
+    checked = checkApplication({
       directory: run.directory,
       module: applicationPath,
       path: join(run.directory, applicationPath),
     });
-    const names = 'names' in result ? result.names : [];
-    const named = names.find((exported) => exported !== 'default');
-    if (named !== undefined) {
-      return { identifier: named, kind: 'named' };
-    }
-    return names.includes('default')
-      ? { identifier: applicationIdentifier(name), kind: 'default' }
-      : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
   }
+  const { result } = checked;
+  if ('failure' in result) {
+    return result.loaded ? { kind: 'unexported' } : { kind: 'unloaded', reason: result.failure };
+  }
+  const named = result.names.find((exported) => exported !== 'default');
+  if (named !== undefined) {
+    return { imported: { identifier: named, kind: 'named' }, kind: 'read' };
+  }
+  if (result.names.includes('default')) {
+    return { imported: { identifier: applicationIdentifier(name), kind: 'default' }, kind: 'read' };
+  }
+  return { kind: 'unloaded', reason: result.faults.join('\n') };
+}
+
+/**
+ * The reason a module could not be loaded, as one sentence for a warning: its first line that is
+ * not a Developer Diagnostic's banner, without a closing period.
+ */
+function reasonLine(reason: string) {
+  const line = reason.split('\n').find((text) => text.trim() !== '' && !text.startsWith('-- '));
+  return (line ?? 'it could not be read').trim().replace(/\.$/u, '');
 }
 
 /**
@@ -158,15 +184,24 @@ function writeEntry(run: Run, authored: boolean) {
     return;
   }
   const name = scaffoldName(readManifest(run.directory));
-  const scaffolded: ApplicationImport = { identifier: applicationIdentifier(name), kind: 'named' };
-  const imported = authored ? authoredImport(run, name) : scaffolded;
-  if (imported === undefined) {
+  const scaffolded: AuthoredImport = {
+    imported: { identifier: applicationIdentifier(name), kind: 'named' },
+    kind: 'read',
+  };
+  const outcome = authored ? authoredImport(run, name) : scaffolded;
+  if (outcome.kind === 'unloaded') {
+    run.warn(
+      `warning: ${entryPath} was not written because ${applicationPath} could not be loaded: ${reasonLine(outcome.reason)}. Install the package and run loom init again, or write the entry by hand.`,
+    );
+    return;
+  }
+  if (outcome.kind === 'unexported') {
     run.warn(
       `warning: ${entryPath} was not written because ${applicationPath} exports no Application loom can read. Write the entry by hand.`,
     );
     return;
   }
-  write(run, entryPath, entryModule(imported));
+  write(run, entryPath, entryModule(outcome.imported));
 }
 
 /**
