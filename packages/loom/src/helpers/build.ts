@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+} from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 
 import { definePair } from './build-facts.js';
@@ -8,8 +16,9 @@ import { holdingSignals, superviseBun } from './bun.js';
 
 /**
  * The argument that has Bun read the package's `bunfig.toml`, when the package holds one. Bun reads
- * only the `bunfig.toml` in its working directory, which is a directory loom owns rather than the
- * package. `--config` takes its value after `=`, because a value after a space reads as an entry.
+ * only the `bunfig.toml` in its working directory, which for a build is a directory loom owns rather
+ * than the package. `--config` takes its value after `=`, because a value after a space reads as an
+ * entry.
  */
 function configArguments(directory: string): string[] {
   const bunfig = join(directory, 'bunfig.toml');
@@ -64,6 +73,11 @@ function filesUnder(directory: string): string[] {
     .map((entry) => relative(directory, join(entry.parentPath, entry.name)));
 }
 
+/** The `.bun-build` files a compile has written into a directory, by name. */
+function bunBuildFiles(directory: string): Set<string> {
+  return new Set(readdirSync(directory).filter((name) => name.endsWith('.bun-build')));
+}
+
 /** The directory a plan's output lives in: a binary's parent directory, or a bundle's directory. */
 function outputDirectory(plan: BuildPlan): string {
   return plan.target.kind === 'compile' ? dirname(plan.out) : plan.out;
@@ -84,12 +98,33 @@ export interface BuildPlan {
 }
 
 /**
+ * Removes the directories a build or a watch created, from the deepest, `directory`, up to the
+ * topmost, `created`, as `mkdirSync` with `recursive` reports it, stopping at the first one that
+ * holds anything, because another build running at once in the package may have written into it.
+ */
+export function removeCreatedDirectories(directory: string, created: string | undefined): void {
+  if (created === undefined) {
+    return;
+  }
+  for (let current = directory; ; current = dirname(current)) {
+    if (!existsSync(current) || readdirSync(current).length > 0) {
+      return;
+    }
+    rmdirSync(current);
+    if (current === created || dirname(current) === current) {
+      return;
+    }
+  }
+}
+
+/**
  * Builds the plan's artifact into a temporary directory beside the output, on the same file
  * system, and moves each file it wrote into place only once the whole build succeeded, replacing
  * the file of the same name. Bun runs in that temporary directory, so the temporary file a binary's
  * compile writes into Bun's working directory lands there too, and builds that run at once in one
- * package never share one. A failed build removes the temporary directory and any output directory
- * it created, so earlier output and every file the build does not write stay as they were. SIGINT
+ * package never share one. A failed build removes the temporary directory and each output directory
+ * it created that nothing else has filled, so earlier output, every file the build does not write,
+ * and the work of a build running beside it stay as they were. SIGINT
  * and SIGTERM are held from before the build creates anything until it has finished or undone its
  * work. A signal stops Bun; one that arrives before the moves start cleans up as a failure does,
  * and one that arrives during them lets them complete, so output is never partly replaced. Either
@@ -104,7 +139,8 @@ export async function build(plan: BuildPlan): Promise<void> {
       const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
       const result = await superviseBun(bunArguments(plan, out), staging, 'collect', signals);
       if (signals.received !== undefined) {
-        rmSync(created ?? staging, { force: true, recursive: true });
+        rmSync(staging, { force: true, recursive: true });
+        removeCreatedDirectories(outDirectory, created);
         return;
       }
       if (result.status !== 0) {
@@ -118,7 +154,8 @@ export async function build(plan: BuildPlan): Promise<void> {
         renameSync(join(staging, file), target);
       }
     } catch (error) {
-      rmSync(created ?? staging, { force: true, recursive: true });
+      rmSync(staging, { force: true, recursive: true });
+      removeCreatedDirectories(outDirectory, created);
       throw error;
     } finally {
       rmSync(staging, { force: true, recursive: true });
@@ -128,26 +165,29 @@ export async function build(plan: BuildPlan): Promise<void> {
 
 /**
  * Runs `bun build --watch` for the plan, writing straight to the output as Bun writes, until it is
- * stopped. Bun runs in a temporary directory beside the output, on the same file system, so the
- * temporary file a binary's compile writes into Bun's working directory lands there, and the watch
- * removes that directory when it ends, and the output directory it created if Bun wrote nothing
- * into it. SIGINT and SIGTERM are held for the whole watch: a signal stops Bun, the watch removes
- * what it created, and `loom` then ends with that signal. A watcher Bun ends with a failure fails
- * the command.
+ * stopped. Bun runs in the package directory, because it follows a source file that an atomic save
+ * or a checkout replaces only under its working directory. A binary's compile writes a temporary
+ * file into that directory, so when the watch ends the `.bun-build` files that were not there
+ * before it began are removed, and so is each output directory it created that nothing has filled.
+ * A build never writes one there, because it runs Bun in its own temporary directory. SIGINT and
+ * SIGTERM are held for the whole watch: a signal stops Bun, the watch removes what it left, and
+ * `loom` then ends with that signal. A watcher Bun ends with a failure fails the command.
  */
 export async function watch(plan: BuildPlan): Promise<void> {
   const result = await holdingSignals(async (signals) => {
     const outDirectory = outputDirectory(plan);
     const created = mkdirSync(outDirectory, { recursive: true });
-    const workspace = mkdtempSync(join(outDirectory, '.loom-watch-'));
+    const earlier = bunBuildFiles(plan.directory);
     try {
       const args = [...bunArguments(plan, plan.out), '--watch'];
-      return await superviseBun(args, workspace, 'inherit', signals);
+      return await superviseBun(args, plan.directory, 'inherit', signals);
     } finally {
-      rmSync(workspace, { force: true, recursive: true });
-      if (created !== undefined && readdirSync(outDirectory).length === 0) {
-        rmSync(created, { force: true, recursive: true });
+      for (const name of bunBuildFiles(plan.directory)) {
+        if (!earlier.has(name)) {
+          rmSync(join(plan.directory, name), { force: true });
+        }
       }
+      removeCreatedDirectories(outDirectory, created);
     }
   });
   if (result.status !== 0 && result.status !== null) {

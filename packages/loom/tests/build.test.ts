@@ -3,6 +3,7 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   watch as watchDirectory,
   writeFileSync,
@@ -436,6 +437,44 @@ test(
   slow,
 );
 
+test(
+  '--watch rebuilds after a source file is replaced, as an atomic save or a checkout replaces it',
+  async () => {
+    const root = probePackage();
+    const main = join(root, 'dist/main.js');
+    const module = join(root, 'src/application.ts');
+    const watcher = start(pathToFileURL(cli), ['build', '--watch', '--target', 'node'], {
+      cwd: root,
+    });
+    const labelled = (text: string) => () =>
+      execute(main, ['facts'], { runtime: 'node' }).stdout.startsWith(text);
+    try {
+      await until(
+        () => existsSync(main) && execute(main, ['facts'], { runtime: 'node' }).status === 0,
+      );
+      writeFileSync(
+        join(root, 'src/saved.ts'),
+        application.replace("const label = '';", "const label = 'saved ';"),
+      );
+      renameSync(join(root, 'src/saved.ts'), module);
+      await until(labelled('saved '));
+      expect(execute(main, ['facts'], { runtime: 'node' }).stdout).toBe(
+        'saved {"build":"development"}\n',
+      );
+      rmSync(module);
+      writeFileSync(module, application.replace("const label = '';", "const label = 'checked ';"));
+      await until(labelled('checked '));
+      expect(execute(main, ['facts'], { runtime: 'node' }).stdout).toBe(
+        'checked {"build":"development"}\n',
+      );
+    } finally {
+      watcher.child.kill('SIGTERM');
+      await watcher.exit;
+    }
+  },
+  slow,
+);
+
 test('--watch with --build distributed is an option error', () => {
   const root = probePackage();
   const result = loom(root, ['build', '--watch', '--build', 'distributed', '--target', 'node']);
@@ -760,6 +799,26 @@ writeFileSync('carried-on', '');
     expect(readdirSync(root).toSorted()).toEqual(['finished', 'held.mjs']);
   },
 );
+
+test('undoing a build removes only the directories it created that nothing else has filled', () => {
+  const root = temporaryRoot('loom-undo-');
+  const helpers = pathToFileURL(join(dirname(cli), 'helpers/build.js')).href;
+  put(
+    root,
+    'undo.mjs',
+    `import { mkdirSync, writeFileSync } from 'node:fs';
+import { removeCreatedDirectories } from ${JSON.stringify(helpers)};
+
+// A build created out/dist/bin, and a build running beside it wrote into out/dist.
+const created = mkdirSync('out/dist/bin', { recursive: true });
+writeFileSync('out/dist/other.js', '');
+removeCreatedDirectories('out/dist/bin', created);
+`,
+  );
+  const result = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['undo.mjs'], { cwd: root });
+  expect(result.status).toBe(0);
+  expect(readdirSync(join(root, 'out/dist'))).toEqual(['other.js']);
+});
 
 /** Every file a complete build of the probe package writes, read from one uninterrupted build. */
 function completeBuild(root: string) {
