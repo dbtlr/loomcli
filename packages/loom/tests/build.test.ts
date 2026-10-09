@@ -7,7 +7,7 @@ import {
   watch as watchDirectory,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -682,9 +682,10 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
 );
 
 /**
- * Runs `loom build --target <target>`, node unless told otherwise, in the package as its own process group and sends the signal to
- * the group, as a terminal's Ctrl-C does, the moment the watched directory gains an entry the
- * predicate names, so the signal lands as soon as the build has started writing, whatever the
+ * Runs `loom build` with the arguments, `--target node` unless told otherwise, in the package as its
+ * own process group and sends the signal to the group, as a terminal's Ctrl-C does, the moment an
+ * entry the predicate names appears anywhere under the watched directory, by its path relative to
+ * that directory, so the signal lands as soon as the build has started writing, whatever the
  * machine's speed. It resolves to the signal the build ended by.
  */
 async function signalWhenWritten(
@@ -692,11 +693,11 @@ async function signalWhenWritten(
   signal: NodeJS.Signals,
   watched: string,
   written: (name: string) => boolean,
-  target = 'node',
+  args: readonly string[] = ['--target', 'node'],
 ): Promise<NodeJS.Signals | null> {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-  const watcher = watchDirectory(watched);
-  const child = spawn(runtime, [cli, 'build', '--target', target], {
+  const watcher = watchDirectory(watched, { recursive: true });
+  const child = spawn(runtime, [cli, 'build', ...args], {
     cwd: root,
     detached: true,
     env: childEnvironment(undefined),
@@ -718,6 +719,22 @@ async function signalWhenWritten(
   } finally {
     watcher.close();
   }
+}
+
+/**
+ * Every path under the package outside `node_modules`, files and directories alike, relative to
+ * it, that a build's or a watch's temporary work would leave: a `.bun-build` file, other than the
+ * test's own `unrelated.bun-build`, or a `.loom-build-` or `.loom-watch-` directory.
+ */
+function temporaryLeftovers(root: string) {
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .map((found) => relative(root, join(found.parentPath, found.name)))
+    .filter((path) => path !== 'node_modules' && !path.startsWith(`node_modules${sep}`))
+    .filter(
+      (path) =>
+        (path.endsWith('.bun-build') && path !== 'unrelated.bun-build') ||
+        /^\.loom-(?:build|watch)-/u.test(basename(path)),
+    );
 }
 
 test.each(['SIGINT', 'SIGTERM'] as const)(
@@ -811,10 +828,11 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
         signal,
         root,
         (name) => name.endsWith('.bun-build') && name !== 'unrelated.bun-build',
-        hostTarget(),
+        ['--target', hostTarget()],
       );
       expect(received).toBe(signal);
       expect(snapshot(join(root, 'dist'))).toEqual(before);
+      expect(temporaryLeftovers(root)).toEqual([]);
       expect(readdirSync(root).toSorted()).toEqual([
         'dist',
         'node_modules',
@@ -827,6 +845,77 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
   },
   slow,
 );
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s while a --watch compile writes its compile file leaves no .bun-build file and no watch directory in the package',
+  async (signal) => {
+    const root = probePackage({ bin: { probe: 'dist/main.js' } });
+    put(root, 'unrelated.bun-build', 'Not the build’s.\n');
+    for (let round = 0; round < 2; round += 1) {
+      const received = await signalWhenWritten(
+        root,
+        signal,
+        root,
+        (name) => name.endsWith('.bun-build') && name !== 'unrelated.bun-build',
+        ['--watch', '--target', hostTarget()],
+      );
+      expect(received).toBe(signal);
+      expect(temporaryLeftovers(root)).toEqual([]);
+      // The watch wrote nothing before the signal, so the dist directory it created goes too.
+      expect(readdirSync(root).toSorted()).toEqual([
+        'node_modules',
+        'package.json',
+        'src',
+        'unrelated.bun-build',
+      ]);
+      expect(readFileSync(join(root, 'unrelated.bun-build'), 'utf8')).toBe('Not the build’s.\n');
+    }
+  },
+  slow,
+);
+
+test(
+  'two host compiles in one package with different --out both succeed and both binaries run',
+  async () => {
+    const root = probePackage();
+    for (let round = 0; round < 3; round += 1) {
+      const builds = ['dist/a', 'dist/b'].map((out) =>
+        start(pathToFileURL(cli), ['build', '--target', hostTarget(), '--out', out], {
+          cwd: root,
+        }),
+      );
+      const ended = await Promise.all(builds.map((build) => build.exit));
+      for (const result of ended) {
+        expect(result.stderr).toBe('');
+        expect(result.status).toBe(0);
+      }
+      expect(factsOf(join(root, 'dist/a'))).toEqual({ build: 'distributed' });
+      expect(factsOf(join(root, 'dist/b'))).toEqual({ build: 'distributed' });
+      expect(temporaryLeftovers(root)).toEqual([]);
+      rmSync(join(root, 'dist'), { recursive: true });
+    }
+  },
+  slow,
+);
+
+test("a build reads the package's bunfig.toml, whose loader setting applies to the bundle", () => {
+  const root = fixturePackage({
+    'bunfig.toml': '[loader]\n".greeting" = "text"\n',
+    'package.json': '{"name":"greeter","type":"module","version":"1.0.0"}\n',
+    'src/hello.greeting': 'Hello from the loader.\n',
+    'src/main.ts': `// @ts-expect-error A .greeting file has no type declaration.
+import greeting from './hello.greeting';
+
+process.stdout.write(greeting);
+`,
+  });
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(execute(join(root, 'dist/main.js'), [], { runtime: 'node' }).stdout).toBe(
+    'Hello from the loader.\n',
+  );
+});
 
 test('a rebuild replaces the files it writes and leaves every other file alone', () => {
   const root = probePackage();

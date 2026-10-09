@@ -160,13 +160,3 @@ export async function superviseBun(
     stopForwarding();
   }
 }
-
-/**
- * Runs Bun from the PATH with the arguments until it ends, writing to this process's own streams,
- * as `bun build --watch` runs. A SIGINT or a SIGTERM that reaches this process reaches Bun, and
- * once Bun has ended, this process raises the same signal on itself, so it ends as Bun did.
- */
-export async function watchBun(args: readonly string[], cwd: string): Promise<number | null> {
-  const { status } = await holdingSignals((signals) => superviseBun(args, cwd, 'inherit', signals));
-  return status;
-}
