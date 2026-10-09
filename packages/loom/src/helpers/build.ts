@@ -5,6 +5,7 @@ import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
 import { holdingSignals, superviseBun, watchBun } from './bun.js';
+import type { HeldSignals } from './bun.js';
 
 /**
  * The `bun build` arguments that write the plan's artifact to `out`. A bundle splits, so each
@@ -44,6 +45,30 @@ function bunArguments(plan: BuildPlan, out: string): string[] {
   ];
 }
 
+/** The names of the `.bun-build` files in a directory, which Bun's compile writes there. */
+function bunBuildFiles(directory: string): string[] {
+  return readdirSync(directory).filter((name) => name.endsWith('.bun-build'));
+}
+
+/**
+ * Runs Bun for the plan. A binary's compile writes a temporary `.bun-build` file into Bun's working
+ * directory, the package, and leaves it there when Bun is stopped partway, so a compile removes each
+ * `.bun-build` file that was not in the package before it ran, whether Bun ended well, failed, or
+ * was stopped, and leaves every other file there alone.
+ */
+async function superviseBuild(plan: BuildPlan, out: string, signals: HeldSignals) {
+  const before = plan.target.kind === 'compile' ? bunBuildFiles(plan.directory) : [];
+  try {
+    return await superviseBun(bunArguments(plan, out), plan.directory, 'collect', signals);
+  } finally {
+    if (plan.target.kind === 'compile') {
+      for (const name of bunBuildFiles(plan.directory).filter((file) => !before.includes(file))) {
+        rmSync(join(plan.directory, name), { force: true });
+      }
+    }
+  }
+}
+
 /** Every file under a directory, by its path relative to that directory. */
 function filesUnder(directory: string): string[] {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -71,7 +96,7 @@ export interface BuildPlan {
  * the file of the same name. A failed build removes the temporary directory and any output
  * directory it created, so earlier output and every file the build does not write stay as they were.
  * SIGINT and SIGTERM are held from before the build creates anything until it has finished or
- * undone its work. A signal stops Bun; one that arrives before the moves start cleans up as a failure
+ * undone its work. A binary's compile also removes the temporary file Bun leaves in the package. A signal stops Bun; one that arrives before the moves start cleans up as a failure
  * does, and one that arrives during them lets them complete, so output is never partly replaced.
  * Either way `loom` then ends with that signal.
  */
@@ -82,12 +107,7 @@ export async function build(plan: BuildPlan): Promise<void> {
     const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
     try {
       const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
-      const result = await superviseBun(
-        bunArguments(plan, out),
-        plan.directory,
-        'collect',
-        signals,
-      );
+      const result = await superviseBuild(plan, out, signals);
       if (signals.received !== undefined) {
         rmSync(created ?? staging, { force: true, recursive: true });
         return;

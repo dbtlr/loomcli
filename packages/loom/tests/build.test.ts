@@ -233,6 +233,22 @@ await probe.run();
   },
 );
 
+test.each([
+  ['--entry src/application.ts', ['--entry', 'src/application.ts']],
+  [
+    '--entry and --application naming one module',
+    ['--entry', 'src/application.ts', '--application', 'src/application.ts'],
+  ],
+])('%s bundles that module once and builds dist/application.js', (_case, options) => {
+  const root = probePackage({}, { 'src/application.ts': `${application}\nawait probe.run();\n` });
+  const result = loom(root, ['build', '--target', 'node', ...options]);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(readdirSync(join(root, 'dist'))).toContain('application.js');
+  expect(readdirSync(join(root, 'dist'))).not.toContain('main.js');
+  expect(factsOf(join(root, 'dist/application.js'), 'node')).toEqual({ build: 'distributed' });
+});
+
 test('a package without src/application.ts bundles its entry alone', () => {
   const root = fixturePackage({
     'package.json': '{"name":"solo","type":"module","version":"1.0.0"}\n',
@@ -666,7 +682,7 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
 );
 
 /**
- * Runs `loom build --target node` in the package as its own process group and sends the signal to
+ * Runs `loom build --target <target>`, node unless told otherwise, in the package as its own process group and sends the signal to
  * the group, as a terminal's Ctrl-C does, the moment the watched directory gains an entry the
  * predicate names, so the signal lands as soon as the build has started writing, whatever the
  * machine's speed. It resolves to the signal the build ended by.
@@ -676,10 +692,11 @@ async function signalWhenWritten(
   signal: NodeJS.Signals,
   watched: string,
   written: (name: string) => boolean,
+  target = 'node',
 ): Promise<NodeJS.Signals | null> {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
   const watcher = watchDirectory(watched);
-  const child = spawn(runtime, [cli, 'build', '--target', 'node'], {
+  const child = spawn(runtime, [cli, 'build', '--target', target], {
     cwd: root,
     detached: true,
     env: childEnvironment(undefined),
@@ -776,6 +793,36 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
         readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
       ).toEqual([]);
       stale();
+    }
+  },
+  slow,
+);
+
+test.each(['SIGINT', 'SIGTERM'] as const)(
+  'a %s while Bun writes its compile file leaves no .bun-build file in the package and the earlier binary whole',
+  async (signal) => {
+    const root = probePackage({ bin: { probe: 'dist/main.js' } });
+    put(root, 'dist/probe', 'An earlier binary.\n');
+    put(root, 'unrelated.bun-build', 'Not the build’s.\n');
+    const before = snapshot(join(root, 'dist'));
+    for (let round = 0; round < 2; round += 1) {
+      const received = await signalWhenWritten(
+        root,
+        signal,
+        root,
+        (name) => name.endsWith('.bun-build') && name !== 'unrelated.bun-build',
+        hostTarget(),
+      );
+      expect(received).toBe(signal);
+      expect(snapshot(join(root, 'dist'))).toEqual(before);
+      expect(readdirSync(root).toSorted()).toEqual([
+        'dist',
+        'node_modules',
+        'package.json',
+        'src',
+        'unrelated.bun-build',
+      ]);
+      expect(readFileSync(join(root, 'unrelated.bun-build'), 'utf8')).toBe('Not the build’s.\n');
     }
   },
   slow,

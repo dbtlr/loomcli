@@ -199,7 +199,9 @@ export const buildCommand = new Command('build', {
         options.entry === undefined ? join(directory, 'src/main.ts') : resolve(cwd, options.entry),
         'entry',
       );
-      const application = applicationModule(paths, target, options.application);
+      const named = applicationModule(paths, target, options.application);
+      // A module that is both the entry and the application module is bundled once, as the entry.
+      const application = named === entry ? undefined : named;
       separateEntryFiles(cwd, entry, application);
       const output = outputPath(paths, target, options.out, () =>
         applicationName(manifest, options.name),
