@@ -710,7 +710,11 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
     build.child.kill(signal);
     const ended = await build.exit;
     // A process that ends on the signal it received reads 128 plus the signal's number to its shell.
-    expect(ended.signal).toBe(signal);
+    expect({ signal: ended.signal, status: ended.status, stderr: ended.stderr }).toEqual({
+      signal,
+      status: null,
+      stderr: '',
+    });
     expect(snapshot(join(root, 'dist'))).toEqual(before);
     expect(
       readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),

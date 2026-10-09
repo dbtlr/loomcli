@@ -38,7 +38,7 @@ loom build --watch --target node               # rebuilds on change, { build: 'd
 ```
 
 - **Targets.** `--target` takes `node`, `bun`, or a Bun compile target such as `bun-linux-x64`, by default the host's compile target. One call builds one target.
-- **The modules.** The entry is `src/main.ts`, or `--entry`. A bundle also carries the application module, `src/application.ts` or `--application`, as `application.js`, so a test imports the built Application with its baked facts.
+- **The modules.** The entry is `src/main.ts`, or `--entry`. A bundle also carries the application module, `src/application.ts` or `--application`, as a file named for the module, such as `application.js`, so a test imports the built Application with its baked facts. When `src/application.ts` does not exist, the bundle carries the entry alone.
 - **The release.** `--release` reads `version` and `repository` from `package.json`, and `--repository <owner/name>` overrides the field. A binary's path and asset name read the application's name from `bin`, or `--name`.
 - **A failed build changes nothing.** The build writes into a temporary directory and moves its files into place only once it succeeds.
 
