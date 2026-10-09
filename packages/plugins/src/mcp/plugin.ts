@@ -10,7 +10,7 @@ import type {
   Plugin,
 } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { isRecord } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
@@ -204,7 +204,7 @@ const mcpServeCommand = new Command('mcp', {
  * three extensions, and a hook that rejects a graph whose tools cannot be served.
  */
 export function mcp(): Plugin {
-  return plugin(`${Package.name}/mcp`, {
+  return plugin(`${packageName}/mcp`, {
     commands: [mcpServeCommand],
     extensions: [mcpCommand, mcpInput, mcpArgument],
     onGraphBuilt: judgeTools,

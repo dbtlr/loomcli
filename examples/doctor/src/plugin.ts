@@ -1,7 +1,7 @@
 import { Command, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
 // This package compiles outside any Application's registration, so the Command requires no globals.
 const doctorCommand = new Command('doctor', {
@@ -10,5 +10,5 @@ const doctorCommand = new Command('doctor', {
 
 /** A plugin that attaches one ordinary Command to the root of the Application that installs it. */
 export function doctor(): Plugin {
-  return plugin(Package.name, { commands: [doctorCommand] });
+  return plugin(packageName, { commands: [doctorCommand] });
 }

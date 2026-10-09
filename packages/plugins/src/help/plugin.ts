@@ -1,7 +1,7 @@
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { attachHelp } from './attach.js';
 import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpHint } from './hint.js';
@@ -21,7 +21,7 @@ export type HelpOptions = typeof options;
  * `load` names.
  */
 export function help(): Plugin<HelpOptions> {
-  return plugin(`${Package.name}/help`, {
+  return plugin(`${packageName}/help`, {
     extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,

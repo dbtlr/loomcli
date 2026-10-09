@@ -1,7 +1,7 @@
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { line, prose } from '../lines.js';
 
 /**
@@ -14,7 +14,7 @@ import { line, prose } from '../lines.js';
 const example = z.object({ command: line, note: line.optional() });
 const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
 
-export const helpCommand = extension(`${Package.name}/help/command`, {
+export const helpCommand = extension(`${packageName}/help/command`, {
   schema: z.object({
     commandSections: z.array(sectionPath).optional(),
     details: prose.optional(),
@@ -25,7 +25,7 @@ export const helpCommand = extension(`${Package.name}/help/command`, {
   target: 'command',
 });
 
-export const helpInput = extension(`${Package.name}/help/input`, {
+export const helpInput = extension(`${packageName}/help/input`, {
   schema: z.object({
     accepts: line.optional(),
     placeholder: z
@@ -41,7 +41,7 @@ export const helpInput = extension(`${Package.name}/help/input`, {
  * Help's one fact on an argument: the sentence its row prints as the values it accepts, in place of
  * any list help would derive from the schema. An argument's placeholder is its declared name.
  */
-export const helpArgument = extension(`${Package.name}/help/argument`, {
+export const helpArgument = extension(`${packageName}/help/argument`, {
   schema: z.object({ accepts: line.optional() }),
   target: 'argument',
 });

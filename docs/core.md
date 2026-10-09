@@ -2019,7 +2019,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 import { encodeFailure, plugin } from '@loomcli/core';
 import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { escapeControls } from '../encode.js';
 import { attachFormat } from './attach.js';
 
@@ -2032,7 +2032,7 @@ const errorLine: FailureEncoder = (form) => `${escapeControls(JSON.stringify({ e
 
 export function format(settings?: FormatSettings): Plugin<{}> {
   // ...the settings check under Plugin settings...
-  return plugin(`${Package.name}/format`, {
+  return plugin(`${packageName}/format`, {
     failureEncoders: [encodeFailure('application/json', errorLine), encodeFailure('application/jsonl', errorLine)],
     middleware: { activate: 'always', load: () => import('./middleware.js') },
     onCommandAttach: attachFormat(settings?.short),
@@ -2338,9 +2338,9 @@ class InternalError extends LoomError {
 import { DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
-const retryLimit = diagnosticRule(`${Package.name}/retry-limit`, {
+const retryLimit = diagnosticRule(`${packageName}/retry-limit`, {
   headline: 'Retry limit out of range',
   explanation:
     'Each retry repeats the request against the service, so a large limit can hold the terminal for minutes. The plugin accepts from 0 through 10 retries.',
@@ -2354,7 +2354,7 @@ export function retry(limit: number): Plugin {
       correction: 'Pass a whole number from 0 through 10.',
     });
   }
-  return plugin(Package.name, {
+  return plugin(packageName, {
     /* ... */
   });
 }
@@ -2731,7 +2731,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { attachHelp } from './attach.js';
 import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpHint } from './hint.js';
@@ -2743,7 +2743,7 @@ const options = {
 export type HelpOptions = typeof options;
 
 export function help(): Plugin<HelpOptions> {
-  return plugin(`${Package.name}/help`, {
+  return plugin(`${packageName}/help`, {
     extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
@@ -2754,13 +2754,13 @@ export function help(): Plugin<HelpOptions> {
 }
 ```
 
-A plugin package written outside this repository enables `resolveJsonModule` to import its manifest this way. The compiler copies the manifest into the output directory beside the compiled modules, so the package's `exports` targets stay relative to the package root, and a module inside the output must not import its own package by name. `Package.name` types as `string`, never as a literal, so nothing keys on an identity at the type level. A package that ships one plugin uses `Package.name` alone as the identity; the example above ships several, so it appends the plugin's own name, as [First-party plugins](#first-party-plugins) describes.
+A plugin package written outside this repository declares its package name once as a constant, as the pack does in `src/constants.ts`, and a test pins the constant to the `name` in its `package.json`. A published plugin is compiler output, one module per source file, so a module that imports `package.json` through `resolveJsonModule` makes the compiler copy the whole manifest into the output directory, and the tarball ships a second manifest that holds unpublished workspace specs and an `exports` map that some bundlers read. An application is different: `loom build` bundles it, so the bundler inlines what the application reads from its manifest, and the application examples in this document import `package.json` for their version. A module inside the output must not import its own package by name. Core takes every identity as a `string`, so nothing keys on an identity at the type level. A package that ships one plugin uses `packageName` alone as the identity; the example above ships several, so it appends the plugin's own name, as [First-party plugins](#first-party-plugins) describes.
 
 ### Identity and installation
 
 A plugin's, an extension's, and a view's identity follows one grammar: an npm package name, scoped or unscoped, of lowercase letters, digits, `-`, `.`, and `_` and at most 214 characters with its scope, then zero or more subpath segments, each after a `/` and each of lowercase letters and digits in words joined by single hyphens. `help`, `@acme/config`, `@loomcli/plugins/help`, and `@loomcli/core/lanes/stdout` are identities; `Help`, `@acme`, `@acme/`, `~x`, `x//y`, `@loomcli/plugins/Help`, and `x/under_score` are not, and neither is a package name of 215 characters. The subpath segments do not count toward the limit. The package part is the package part of a [rule identity](#developer-diagnostics), which adds a mandatory rule name, so every rule identity's prefix is an identity. `plugin()`, `extension()`, and `view()` check the identity at the call and throw `@loomcli/core/invalid-identity`, whose sentence names the declarer, for a value that is not a string or lies outside the grammar. A hand-built descriptor, a callable object with an `identity` and a `target` that `extension()` did not make, is checked where the plugin that lists it under `extensions` is declared, which also covers a source binding, since a binding is one of those extensions: `plugin()` reads its identity once and throws the same rule with the sentence `Plugin "@acme/notes" holds the extension identity "Not A Valid/ID_", which is not a package name with optional kebab-case subpath segments.`, and the finding marks the list entry. [ADR-0052](decisions/0052-a-plugin-extension-and-view-identity-follows-one-grammar.md) records the decision.
 
-For a plugin, the convention is the package name for a package that ships one plugin, and `<package name>/<plugin>` for a package that ships several, both read from the package manifest so the identity and the package stay in sync. An application-local plugin names itself the same way, under the application's own name. Identity is fixed where the plugin is defined and never changes at installation, because the extensions a plugin defines carry that identity in modules the plugin's consumers import statically.
+For a plugin, the convention is the package name for a package that ships one plugin, and `<package name>/<plugin>` for a package that ships several, both built from the package-name constant, which a test keeps equal to the `name` in `package.json`, so the identity and the package stay in sync. An application-local plugin names itself the same way, under the application's own name. Identity is fixed where the plugin is defined and never changes at installation, because the extensions a plugin defines carry that identity in modules the plugin's consumers import statically.
 
 An Application installs plugins through `plugins` in its options object. Installation order is the order every plugin contribution composes in, so the application source shows the precedence. The list is the only way in: there is no install call on the fluent chain, no default set, and no removal. Replacing a first-party behavior means omitting one plugin and installing another. The constructor rejects a `plugins` entry that is not a plugin value and an identity installed twice.
 
@@ -2792,7 +2792,7 @@ import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 import { oneOf } from '@loomcli/validators';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
 const options = {
   level: { description: 'Set the log level.', env: 'ACME_LOG', type: 'string', validate: oneOf(['debug', 'info', 'warn']) },
@@ -2800,7 +2800,7 @@ const options = {
 export type LogOptions = typeof options;
 
 export function log(): Plugin<LogOptions> {
-  return plugin(Package.name, { middleware: { activate: 'always', load: () => import('./middleware.js') }, options });
+  return plugin(packageName, { middleware: { activate: 'always', load: () => import('./middleware.js') }, options });
 }
 
 // Any action of an application that installs log() reads it typed:
@@ -2875,14 +2875,14 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 import { Command, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
 const doctorCommand = new Command('doctor', { description: 'Check the host this application runs on.' }).action(
   ({ out }) => out.print('All checks passed.'),
 );
 
 export function doctor(): Plugin {
-  return plugin(Package.name, { commands: [doctorCommand] });
+  return plugin(packageName, { commands: [doctorCommand] });
 }
 ```
 
@@ -3054,9 +3054,9 @@ type GraphBuiltHook = (graph: CommandGraph) => undefined;
 import { DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 import type { CommandNode, GraphBuiltHook, Plugin } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
-const sharedDescription = diagnosticRule(`${Package.name}/shared-description`, {
+const sharedDescription = diagnosticRule(`${packageName}/shared-description`, {
   explanation: 'An agent tells two Commands apart by their descriptions, so each Command describes its own job.',
   headline: 'Two Commands share one description',
 });
@@ -3081,7 +3081,7 @@ const distinctDescriptions: GraphBuiltHook = (graph) => {
 };
 
 export function distinct(): Plugin {
-  return plugin(Package.name, { onGraphBuilt: distinctDescriptions });
+  return plugin(packageName, { onGraphBuilt: distinctDescriptions });
 }
 ```
 
@@ -3131,7 +3131,7 @@ interface FailureHookContext {
 import { plugin, UnknownOptionError } from '@loomcli/core';
 import type { FailureHook, Plugin } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 import { nearest } from './nearest.js';
 
 const suggestOption: FailureHook = (failure, { command, graph, style }) => {
@@ -3147,7 +3147,7 @@ const suggestOption: FailureHook = (failure, { command, graph, style }) => {
 };
 
 export function suggest(): Plugin {
-  return plugin(Package.name, { onFailure: suggestOption });
+  return plugin(packageName, { onFailure: suggestOption });
 }
 ```
 
@@ -3196,18 +3196,19 @@ An extension is a typed fact a plugin defines and a declaration carries. `extens
 
 ```ts
 // src/help/extension.ts, abbreviated: the shipped module in First-party plugins adds the value rules
-import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-export const helpCommand = extension(`${Package.name}/help/command`, {
+import { packageName } from '../constants.js';
+
+export const helpCommand = extension(`${packageName}/help/command`, {
   schema: z.object({
     details: z.string().optional(),
     examples: z.array(z.object({ command: z.string(), note: z.string().optional() })).optional(),
   }),
   target: 'command',
 });
-export const helpInput = extension(`${Package.name}/help/input`, {
+export const helpInput = extension(`${packageName}/help/input`, {
   schema: z.object({ placeholder: z.string().optional() }),
   target: 'option',
 });
@@ -3280,7 +3281,7 @@ function readExtension<Target extends ExtensionTarget, Schema extends StandardSc
 
 ```ts
 // A plugin declares the extension in its declarations module.
-export const notesCommand = extension(`${Package.name}/command`, {
+export const notesCommand = extension(`${packageName}/command`, {
   collect: true,
   schema: z.object({ note: z.string() }),
   target: 'command',
@@ -3326,7 +3327,7 @@ import { helpHint } from './hint.js';
 import { helpPage } from './views.js';
 
 export function help(): Plugin<HelpOptions> {
-  return plugin(`${Package.name}/help`, {
+  return plugin(`${packageName}/help`, {
     extensions: [helpArgument, helpCommand, helpInput],
     middleware: { activate: ['help'], load: () => import('./middleware.js') },
     onCommandAttach: attachHelp,
@@ -3343,7 +3344,7 @@ Every run creates one private cancellation controller and exposes its signal to 
 
 ```ts
 export function signals() {
-  return plugin(Package.name, { signals: ['SIGINT', 'SIGTERM'] });
+  return plugin(packageName, { signals: ['SIGINT', 'SIGTERM'] });
 }
 ```
 
@@ -3437,7 +3438,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${Package.name}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -3545,15 +3546,15 @@ export const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0
 
 ```ts
 // src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
-import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
+import { packageName } from '../constants.js';
 import { line, prose } from '../lines.js';
 
 const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
 
-export const helpCommand = extension(`${Package.name}/help/command`, {
+export const helpCommand = extension(`${packageName}/help/command`, {
   schema: z.object({
     commandSections: z.array(sectionPath).optional(),
     details: prose.optional(),
@@ -3563,7 +3564,7 @@ export const helpCommand = extension(`${Package.name}/help/command`, {
   }),
   target: 'command',
 });
-export const helpInput = extension(`${Package.name}/help/input`, {
+export const helpInput = extension(`${packageName}/help/input`, {
   schema: z.object({
     accepts: line.optional(),
     placeholder: z.string().regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.').optional(),
@@ -3571,7 +3572,7 @@ export const helpInput = extension(`${Package.name}/help/input`, {
   }),
   target: 'option',
 });
-export const helpArgument = extension(`${Package.name}/help/argument`, {
+export const helpArgument = extension(`${packageName}/help/argument`, {
   schema: z.object({ accepts: line.optional() }),
   target: 'argument',
 });
@@ -4538,17 +4539,17 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 
 ```ts
 // src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
-import Package from '../../package.json' with { type: 'json' };
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
+import { packageName } from '../constants.js';
 // The pack's shared line and prose rules, which help's schema also uses.
 import { line, prose } from '../lines.js';
 // failureEntry accepts { failure, meaning }, where failure is a class that extends LoomError,
 // and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
 import { failureEntry } from './failures.js';
 
-export const manifestCommand = extension(`${Package.name}/manifest/command`, {
+export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
   schema: z.object({
     details: prose.optional(),
@@ -4650,7 +4651,7 @@ export declare function config(settings?: ConfigSettings): Plugin<ConfigOptions>
 
 // src/config/extension.ts, the declarations module of the @loomcli/plugins/config subpath.
 // configPath is the dotted-path schema the rules below state.
-export const configInput = extension(`${Package.name}/config/input`, {
+export const configInput = extension(`${packageName}/config/input`, {
   schema: z.object({ path: configPath }),
   target: 'option',
 });

@@ -4,7 +4,7 @@ title: ADR-0014 - Acceptance evidence runs against the packed package through th
 description: The example applications are the acceptance surface. They use only public core APIs, resolve core through the packed package, and run as real processes under every supported runtime. Passing tests alone do not accept a deliverable.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-07
+modified: 2026-10-09
 ---
 
 # ADR-0014 - Acceptance evidence runs against the packed package through the public API
@@ -37,3 +37,4 @@ Adding a runtime or platform to the support statement means adding it to the exe
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md), proposed, builds each example application with `Bun.build` and `packet()`, so the built examples this record runs as processes under Node and Bun are bundles, and adds a source run under Bun for the development case. `@loomcli/loom` joins the packed packages, and a runtime consumer bundles a fixture with `packet()` from its packed tarball. It binds when accepted.
 - 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds: `pnpm check:packed` packs `@loomcli/loom` beside the libraries, compiles the runtime consumer against its declarations, bundles a fixture with `packet()` from the tarball under Bun, and runs the bundle under Node and Bun.
 - 2026-10-07: [ADR-0065](0065-release-facts-on-the-host-say-how-the-running-application-was-built.md) and [ADR-0066](0066-the-toolchain-acts-on-one-package-directory.md), proposed, change what `pnpm check:packed` proves for `@loomcli/loom`: the packed consumer runs the packed `loom` bin's `loom build --target node` in its fixture package, and the bundle reads `distributed` under Node and Bun while the source reads `source`. A bundle built with no define reads `source`. `@loomcli/loom` exports no `./build` subpath. They bind when accepted.
+- 2026-10-09: `pnpm check:packed` also lints the four tarballs it packs. publint runs in strict mode on each, so a warning fails the check. `@arethetypeswrong/cli` resolves the declarations of `@loomcli/core`, `@loomcli/plugins`, and `@loomcli/validators` under its `esm-only` profile, because the packages are pure ESM and do not serve `node10` resolution or `require` from CommonJS. `@loomcli/loom` ships only its bin and exports no module, so it has no declarations to resolve. The decision is unchanged.

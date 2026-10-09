@@ -1,7 +1,7 @@
 import { view } from '@loomcli/core';
 import type { CommandGraph, CommandNode } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { renderPage } from './page.js';
 
 /**
@@ -25,6 +25,6 @@ export interface HelpPage {
  * node, and the variant alone. It escapes each raw fragment before styling and measuring it, and
  * ends the page with exactly one newline. A replacement owns both obligations.
  */
-export const helpPage = view<HelpPage>(`${Package.name}/help/page`, {
+export const helpPage = view<HelpPage>(`${packageName}/help/page`, {
   render: (page, context) => `${renderPage(page, context)}\n`,
 });

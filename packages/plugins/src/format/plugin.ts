@@ -1,11 +1,11 @@
 import { checkShortSetting, encodeFailure, plugin } from '@loomcli/core';
 import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { escapeControls } from '../encode.js';
 import { attachFormat } from './attach.js';
 
-const identity = `${Package.name}/format`;
+const identity = `${packageName}/format`;
 
 /**
  * One line on stderr: `{"error":{"code":…,"exitCode":…,"message":…,"hints":[…]}}` and a newline.

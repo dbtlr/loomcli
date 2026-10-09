@@ -1,0 +1,2 @@
+- Fix the `@loomcli/plugins` package shipping a second `package.json` under `dist/`. The copy held unpublished `workspace:*` specs and an `exports` map that Node ignores but some bundlers read.
+- Change the plugin authoring guidance in the [core reference](docs/core.md#plugins): a published plugin declares its package name as a constant instead of importing its `package.json`, because the compiler copies an imported manifest into the output directory. An application that `loom build` bundles still imports its manifest.

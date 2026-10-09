@@ -17,7 +17,7 @@ import type {
   Plugin,
 } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { nearest } from './match.js';
 
 /**
@@ -145,7 +145,7 @@ const unknownOption: FailureView<UnknownOptionError> = { render };
  * sentence, and write core's text when no name is near.
  */
 export function suggestions(): Plugin {
-  return plugin(`${Package.name}/suggestions`, {
+  return plugin(`${packageName}/suggestions`, {
     onFailure: suggest,
     views: [
       override(UnknownCommandError, unknownCommand),

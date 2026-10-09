@@ -1,7 +1,7 @@
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { line, prose } from '../lines.js';
 import { failure } from './failures.js';
 
@@ -27,7 +27,7 @@ const declaredFailure = z.object({ failure, meaning: line }).transform((entry) =
  * applies the pack's shared line and prose rules, which help's schema also uses, so every value
  * help supplies validates.
  */
-export const manifestCommand = extension(`${Package.name}/manifest/command`, {
+export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
   schema: z.object({
     details: prose.optional(),

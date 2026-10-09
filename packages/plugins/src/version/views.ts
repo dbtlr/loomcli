@@ -1,7 +1,7 @@
 import { view } from '@loomcli/core';
 import type { CommandGraph } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 
 /** What the version line reads: the graph, and the postfix the application gave `version()`. */
 export interface VersionLine {
@@ -15,7 +15,7 @@ export interface VersionLine {
  * is rendering alone, and `graph.version` keeps the declared string. A postfix follows after one
  * unstyled space, escaped and dim.
  */
-export const versionLine = view<VersionLine>(`${Package.name}/version/line`, {
+export const versionLine = view<VersionLine>(`${packageName}/version/line`, {
   render: ({ graph: { name, version }, postfix }, { style }) => {
     const line = `${style.highlight.bold(style.escape(name))} ${style.primary(style.escape(version.startsWith('v') ? version : `v${version}`))}`;
     return postfix === undefined ? `${line}\n` : `${line} ${style.dim(style.escape(postfix))}\n`;
