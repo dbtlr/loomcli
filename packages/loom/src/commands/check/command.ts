@@ -4,16 +4,11 @@ import { join, resolve } from 'node:path';
 import { Command } from '@loomcli/core';
 
 import { checkApplication } from '../../helpers/application-check.js';
-import { hasDrifted, managedFiles, readManaged } from '../../helpers/managed.js';
+import { driftWarning, hasDrifted, managedFiles, readManaged } from '../../helpers/managed.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
 import { typePass } from '../../helpers/type-pass.js';
-
-/** The warning a managed file draws once its content no longer matches its header. */
-function driftWarning(path: string) {
-  return `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.`;
-}
 
 /** One warning line for each managed file in the package whose content drifted from its header. */
 function driftWarnings(directory: string): string[] {

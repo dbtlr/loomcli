@@ -43,13 +43,21 @@ export function fixturePackage(
   for (const [path, body] of Object.entries(files)) {
     put(root, path, body);
   }
+  linkInstalled(root, links);
+  return root;
+}
+
+/**
+ * Links the supplied installed packages into an existing package directory's `node_modules`, as a
+ * package manager's install would.
+ */
+export function linkInstalled(root: string, links: readonly Link[]) {
   for (const link of links) {
     const { from, to } = installed[link];
     const target = join(root, 'node_modules', to);
     mkdirSync(dirname(target), { recursive: true });
     symlinkSync(realpathSync(join(repository, from)), target, 'dir');
   }
-  return root;
 }
 
 /** One run of the loom bin under the runtime the test run names, with a generous timeout. */

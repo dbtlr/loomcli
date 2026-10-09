@@ -29,6 +29,17 @@ function repositoryFromAddress(address: string): string | undefined {
   return repository !== undefined && ownerName.test(repository) ? repository : undefined;
 }
 
+/** The key of a `bin` that is an object with exactly one key, which names the application. */
+function singleBinKey(bin: unknown): string | undefined {
+  const keys = typeof bin === 'object' && bin !== null ? Object.keys(bin) : [];
+  return keys.length === 1 ? keys[0] : undefined;
+}
+
+/** A package name without its scope, so `@acme/notes` reads as `notes`, or `undefined` for none. */
+function unscopedName(name: unknown): string | undefined {
+  return typeof name === 'string' && name !== '' ? name.replace(/^@[^/]+\//u, '') : undefined;
+}
+
 /** The repository a release names: `--repository`, else the `package.json` `repository` field. */
 function releaseRepository(manifest: Manifest, option: string | undefined): string {
   if (option !== undefined) {
@@ -108,20 +119,30 @@ export const ownerName = /^[\w.-]+\/[\w.-]+$/u;
  * `bin`. Without one, a build that needs the name fails and names `--name`.
  */
 export function applicationName(manifest: Manifest, option: string | undefined): string {
-  if (option !== undefined) {
-    return option;
+  const name =
+    option ??
+    singleBinKey(manifest.bin) ??
+    (typeof manifest.bin === 'string' ? unscopedName(manifest.name) : undefined);
+  if (name === undefined) {
+    throw new Error(
+      'package.json names no application in bin, a string or an object with one key, so pass --name <name>.',
+    );
   }
-  const { bin, name } = manifest;
-  const keys = typeof bin === 'object' && bin !== null ? Object.keys(bin) : [];
-  if (keys.length === 1 && keys[0] !== undefined) {
-    return keys[0];
+  return name;
+}
+
+/**
+ * The application's name `loom init` scaffolds with: the key of an object `bin` with one key, else
+ * the package name without its scope. A package with neither fails and says to name it.
+ */
+export function scaffoldName(manifest: Manifest): string {
+  const name = singleBinKey(manifest.bin) ?? unscopedName(manifest.name);
+  if (name === undefined) {
+    throw new Error(
+      'package.json names no application in bin or name, so set its name field and run loom init again.',
+    );
   }
-  if (typeof bin === 'string' && typeof name === 'string' && name !== '') {
-    return name.replace(/^@[^/]+\//u, '');
-  }
-  throw new Error(
-    'package.json names no application in bin, a string or an object with one key, so pass --name <name>.',
-  );
+  return name;
 }
 
 /**
@@ -148,11 +169,14 @@ export function definePair(facts: BuildFacts): string {
   return `__LOOM_RELEASE__=${JSON.stringify(facts)}`;
 }
 
-/** Reads the standard fields of the `package.json` in a package directory. */
-export function readManifest(directory: string): Manifest {
+/**
+ * Parses a `package.json` source into its object, every key kept in its order. A source that is
+ * not JSON, or not a JSON object, fails and says so.
+ */
+export function parseManifest(source: string): Record<string, unknown> {
   let document: unknown = undefined;
   try {
-    document = JSON.parse(withoutByteOrderMark(readRegularFile(directory, 'package.json')));
+    document = JSON.parse(withoutByteOrderMark(source));
   } catch (error) {
     throw new Error('package.json: expected valid JSON.', { cause: error });
   }
@@ -160,6 +184,13 @@ export function readManifest(directory: string): Manifest {
   if (!parsed.success) {
     throw new Error('package.json: expected a JSON object.');
   }
-  const { bin, name, repository, version } = parsed.data;
+  return parsed.data;
+}
+
+/** Reads the standard fields of the `package.json` in a package directory. */
+export function readManifest(directory: string): Manifest {
+  const { bin, name, repository, version } = parseManifest(
+    readRegularFile(directory, 'package.json'),
+  );
   return { bin, name, repository, version };
 }

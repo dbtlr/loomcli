@@ -50,6 +50,25 @@ export function managedChecksum(content: string): string {
   return createHash('sha256').update(content.replaceAll('\r\n', '\n'), 'utf8').digest('hex');
 }
 
+/**
+ * A managed file's text for its content: the header on the first line, or, when the content opens
+ * with YAML frontmatter, on the first line after it. The header records the checksum of the content
+ * itself, so `readManaged` reads the content back exactly and finds it undrifted.
+ */
+export function renderManaged(content: string): string {
+  const start = frontmatter.exec(content)?.[0].length ?? 0;
+  const line = `<!-- Managed by loom init. sha256:${managedChecksum(content)} -->`;
+  return `${content.slice(0, start)}${line}\n${content.slice(start)}`;
+}
+
+/**
+ * The warning a managed file draws once its content no longer matches its header, which `loom
+ * check` and `loom init` print alike.
+ */
+export function driftWarning(path: string) {
+  return `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.`;
+}
+
 /** Whether a managed file has drifted: its content no longer matches the checksum its header records. */
 export function hasDrifted(file: ManagedFile): boolean {
   return managedChecksum(file.content) !== file.checksum;
