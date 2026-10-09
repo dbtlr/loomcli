@@ -211,17 +211,19 @@ try {
   for (const name of ['core', 'plugins', 'validators']) {
     pnpm(['exec', 'attw', join(temporary, `${name}.tgz`), '--profile', 'esm-only'], root);
   }
-  // The packed manifest must pin core at the synchronized version itself.
-  // The override below would hide an unrewritten workspace spec that no registry consumer resolves.
+  // The packed manifest must pin each first-party dependency at the synchronized version itself.
+  // The overrides below would hide an unrewritten workspace spec that no registry consumer resolves.
   const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
   assert.equal(loomManifest.status, 0, loomManifest.output);
   const loomPackage = JSON.parse(loomManifest.stdout);
-  const loomCore = loomPackage.dependencies?.['@loomcli/core'];
-  assert.equal(
-    loomCore,
-    version,
-    `The packed @loomcli/loom must depend on @loomcli/core ${version}, not "${loomCore}".`,
-  );
+  for (const name of ['@loomcli/core', '@loomcli/plugins']) {
+    const pinned = loomPackage.dependencies?.[name];
+    assert.equal(
+      pinned,
+      version,
+      `The packed @loomcli/loom must depend on ${name} ${version}, not "${pinned}".`,
+    );
+  }
   // The toolchain exports no ./build subpath; the build bakes the release facts through a define.
   assert.equal(
     loomPackage.exports?.['./build'],
@@ -259,11 +261,12 @@ try {
       type: 'module',
     }),
   );
-  // The packed toolchain depends on core at the synchronized version.
-  // The override resolves it to the packed core, so the check never reads core from the registry.
+  // The packed toolchain depends on core and the plugin pack at the synchronized version.
+  // The overrides resolve them to the packed tarballs, so the check never reads either from the
+  // Registry, where a release cut's version is not yet published.
   await writeFile(
     join(temporary, 'pnpm-workspace.yaml'),
-    "overrides:\n  '@loomcli/core': 'file:./core.tgz'\n",
+    "overrides:\n  '@loomcli/core': 'file:./core.tgz'\n  '@loomcli/plugins': 'file:./plugins.tgz'\n",
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
 
