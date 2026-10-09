@@ -1,7 +1,7 @@
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 
 /** The configuration plugin's identity, which its sentences name. */
-const configIdentity = `${Package.name}/config`;
+const configIdentity = `${packageName}/config`;
 
 /**
  * A path split at the last `.` of its last segment, where segments split on `/` and `\`: the stem

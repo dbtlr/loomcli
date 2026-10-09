@@ -1,7 +1,7 @@
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 import { explainCommand } from './extension.js';
 import { explainHint } from './hint.js';
 
@@ -22,7 +22,7 @@ export type ExplainOptions = typeof options;
  * between this module and the middleware module it names in `load`.
  */
 export function explain(): Plugin<ExplainOptions> {
-  return plugin(Package.name, {
+  return plugin(packageName, {
     extensions: [explainCommand],
     middleware: { activate: ['explain'], load: () => import('./middleware.js') },
     onFailure: explainHint,

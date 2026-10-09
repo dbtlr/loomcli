@@ -3,7 +3,7 @@ import type { Writable } from 'node:stream';
 import { Command, locate, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { answer } from './answer.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
@@ -54,5 +54,5 @@ const completionCommand = new Command('completion', {
  * contribution is the `completion` Command; it declares no option, middleware, or extension.
  */
 export function completion(): Plugin {
-  return plugin(`${Package.name}/completion`, { commands: [completionCommand] });
+  return plugin(`${packageName}/completion`, { commands: [completionCommand] });
 }

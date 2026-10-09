@@ -1,7 +1,7 @@
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-import Package from '../package.json' with { type: 'json' };
+import { packageName } from './constants.js';
 
 /**
  * The explanation one Command declaration carries. It is declarations alone, so an application that
@@ -10,7 +10,7 @@ import Package from '../package.json' with { type: 'json' };
  */
 const examples = z.array(z.string());
 
-export const explainCommand = extension(`${Package.name}/command`, {
+export const explainCommand = extension(`${packageName}/command`, {
   schema: z.object({ details: z.string(), examples: examples.optional() }),
   target: 'command',
 });

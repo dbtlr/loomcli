@@ -1,7 +1,7 @@
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { prose } from '../lines.js';
 
 /**
@@ -23,19 +23,19 @@ const annotations = z.object({
 });
 
 /** Opts a Command in as a tool, with its description for an agent and its effect hints. */
-export const mcpCommand = extension(`${Package.name}/mcp/command`, {
+export const mcpCommand = extension(`${packageName}/mcp/command`, {
   schema: z.object({ annotations: annotations.optional(), description: prose.optional() }),
   target: 'command',
 });
 
 /** An option's description for an agent, in place of its core description. */
-export const mcpInput = extension(`${Package.name}/mcp/input`, {
+export const mcpInput = extension(`${packageName}/mcp/input`, {
   schema: z.object({ description: z.string() }),
   target: 'option',
 });
 
 /** An argument's description for an agent, in place of its core description. */
-export const mcpArgument = extension(`${Package.name}/mcp/argument`, {
+export const mcpArgument = extension(`${packageName}/mcp/argument`, {
   schema: z.object({ description: z.string() }),
   target: 'argument',
 });

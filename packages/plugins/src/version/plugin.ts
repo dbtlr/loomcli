@@ -1,11 +1,11 @@
 import { checkPluginSettings, DeclarationError, isProseLine, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { versionPostfix } from '../rules.js';
 import { versionLine } from './views.js';
 
-const identity = `${Package.name}/version`;
+const identity = `${packageName}/version`;
 
 const options = {
   version: { control: true, description: 'Print the version.', short: 'V', type: 'boolean' },

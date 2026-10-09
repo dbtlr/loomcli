@@ -1,10 +1,10 @@
 import { checkShortSetting, plugin } from '@loomcli/core';
 import type { BooleanOption, Plugin, PluginOptions } from '@loomcli/core';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 import { manifestCommand } from './extension.js';
 
-const identity = `${Package.name}/manifest`;
+const identity = `${packageName}/manifest`;
 
 const options = {
   manifest: {

@@ -128,7 +128,7 @@ test('every rule the pack declares has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(settingsCases).map((expected) => expected.rule));
   const source = readFileSync(new URL('../src/rules.ts', import.meta.url), 'utf8');
   const declared = Array.from(
-    source.matchAll(/diagnosticRule\(`\$\{Package\.name\}\/(?<name>[a-z0-9/-]+)`/gu),
+    source.matchAll(/diagnosticRule\(`\$\{packageName\}\/(?<name>[a-z0-9/-]+)`/gu),
     (match) => match.groups?.name ?? '',
   );
   expect([...pinned].toSorted()).toEqual(Object.keys(explanations).toSorted());

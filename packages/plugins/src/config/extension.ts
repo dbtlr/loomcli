@@ -1,7 +1,7 @@
 import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
-import Package from '../../package.json' with { type: 'json' };
+import { packageName } from '../constants.js';
 
 /**
  * A dotted path of object keys. Each segment is nonempty and holds no control character and no
@@ -21,7 +21,7 @@ const configPath = z
  * carries it is configuration-bound, so core asks the plugin about it when argv and the
  * environment leave it unfilled.
  */
-export const configInput = extension(`${Package.name}/config/input`, {
+export const configInput = extension(`${packageName}/config/input`, {
   schema: z.object({ path: configPath }),
   target: 'option',
 });
