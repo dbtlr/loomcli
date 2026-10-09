@@ -4,7 +4,7 @@ title: ADR-0068 - init writes scaffold files once and owns managed files
 description: loom init acts on one package directory. Scaffold files and package.json keys are written once when missing, never overwritten, and never tracked, because they are the author's code. Managed files, the fragment guide and the changelog skill, carry a header with a checksum of their content; init re-renders a matching file, warns about a drifted one and leaves it unless --force, and treats a file without the header as the author's. loom check warns about drift and never fails for it.
 status: proposed
 created: 2026-10-07
-modified: 2026-10-07
+modified: 2026-10-09
 ---
 
 # ADR-0068 - init writes scaffold files once and owns managed files
@@ -16,7 +16,7 @@ A new Loom application needs an application module, an entry, the `package.json`
 ## Decision
 
 - **One package directory.** `loom init` in an empty directory scaffolds a new application there. In an existing package it adds only the missing pieces, under [ADR-0066](0066-the-toolchain-acts-on-one-package-directory.md). `--only <piece>` limits it.
-- **Scaffold files.** `src/application.ts`, `src/main.ts`, and the `package.json` keys `bin`, `scripts` for `build` and `check`, `dependencies` for `@loomcli/core`, and `devDependencies` for `@loomcli/loom`. Init writes each once, only when it is missing, never overwrites an existing file or key, and never tracks one, because each is the author's code.
+- **Scaffold files.** `src/application.ts`, `src/main.ts`, `tsconfig.json`, and the `package.json` keys `bin`, `scripts` for `build` and `check`, `dependencies` for `@loomcli/core`, and `devDependencies` for `@loomcli/loom` and `typescript`. Init writes each once, only when it is missing, never overwrites an existing file or key, and never tracks one, because each is the author's code.
 - **Managed files.** `.changes/README.md`, the fragment guide with the `feature.` kind, and an agent skill for keeping a changelog, at `.agents/skills/<name>/SKILL.md` in the package directory. Each carries a header holding a checksum of its content, a Markdown comment, and in a skill the line after its frontmatter.
 - **Re-running init.** Init re-renders a managed file whose checksum matches. A drifted managed file draws a warning and is left alone unless `--force`. Removing the header releases the file from management, and init treats it as the author's from then on.
 - **Drift never fails a check.** `loom check` warns about a drifted managed file and never fails for one.
@@ -43,3 +43,4 @@ Proposed 2026-10-07 with the contract in [loom init](../toolchain.md#loom-init).
 
 - 2026-10-07: Proposed with the toolchain contract.
 - 2026-10-09: A blank line may separate a skill's frontmatter from its header, because Markdown formatters insert one.
+- 2026-10-09: A new scaffold includes tsconfig.json and the typescript development dependency, so loom check runs its type pass.

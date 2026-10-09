@@ -6,12 +6,17 @@ import { z } from 'zod';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
 import { fragmentGuide } from '../../content/fragment-guide.js';
-import { applicationModule, entryModule, newManifest } from '../../content/scaffold.js';
+import {
+  applicationModule,
+  entryModule,
+  newManifest,
+  typescriptConfig,
+} from '../../content/scaffold.js';
 import type { ApplicationImport } from '../../content/scaffold.js';
 import { checkApplication } from '../../helpers/application-check.js';
 import type { ApplicationCheck } from '../../helpers/application-check.js';
 import { readManifest, scaffoldName } from '../../helpers/build-facts.js';
-import { loomVersion } from '../../helpers/loom-version.js';
+import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
@@ -23,7 +28,7 @@ import {
 } from '../../helpers/scaffold.js';
 
 /** The pieces init writes, in the order it writes them. */
-const pieces = ['package', 'application', 'entry', 'changes', 'skill'] as const;
+const pieces = ['package', 'application', 'entry', 'tsconfig', 'changes', 'skill'] as const;
 
 type Piece = (typeof pieces)[number];
 
@@ -33,11 +38,14 @@ type Piece = (typeof pieces)[number];
  */
 const pieceOption = z
   .string()
-  .pipe(z.enum(pieces, { error: 'Use application, entry, package, changes, or skill.' }));
+  .pipe(z.enum(pieces, { error: 'Use application, entry, tsconfig, package, changes, or skill.' }));
 
 /** The application module and the entry, by their conventional paths in the package directory. */
 const applicationPath = 'src/application.ts';
 const entryPath = 'src/main.ts';
+
+/** The compiler configuration `loom check` runs its type pass against. */
+const typescriptConfigPath = 'tsconfig.json';
 
 /**
  * Where one init run acts, and how it reports. Each line is written as the file or key lands, so a
@@ -124,7 +132,10 @@ function writeManaged(run: Run, path: string, content: string) {
 function writeKeys(run: Run) {
   const source = readFileSync(join(run.directory, 'package.json'), 'utf8');
   const name = scaffoldName(readManifest(run.directory));
-  const { added, text } = addMissingKeys(source, scaffoldKeys(name, loomVersion));
+  const { added, text } = addMissingKeys(
+    source,
+    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }),
+  );
   if (added.length > 0) {
     writeFile(run, 'package.json', text);
   }
@@ -238,6 +249,9 @@ function runInit(run: Omit<Run, 'directory'> & { cwd: string; only: readonly Pie
   if (selected('entry')) {
     writeEntry(context, authored);
   }
+  if (selected('tsconfig') && !existsSync(join(directory, typescriptConfigPath))) {
+    write(context, typescriptConfigPath, typescriptConfig);
+  }
   if (selected('changes')) {
     writeManaged(context, '.changes/README.md', fragmentGuide);
   }
@@ -251,7 +265,7 @@ export const init = new Command('init', {
     'Scaffold a new application in an empty directory, or add the pieces a package lacks.',
 })
   .option('only', {
-    description: 'Write only this piece: application, entry, package, changes, or skill.',
+    description: 'Write only this piece: application, entry, tsconfig, package, changes, or skill.',
     multiple: true,
     type: 'string',
     validate: pieceOption,

@@ -35,6 +35,26 @@ await ${identifier}.run();
 `;
 }
 
+/**
+ * The `tsconfig.json` a scaffold writes: a strict configuration for a Node ESM application that
+ * `loom build` bundles, so the compiler only type-checks, which `loom check` runs as its type pass.
+ */
+export const typescriptConfig = `${JSON.stringify(
+  {
+    compilerOptions: {
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: 'ES2022',
+    },
+    include: ['src'],
+  },
+  undefined,
+  2,
+)}\n`;
+
 /** The `package.json` init writes in an empty directory, before it adds the scaffold keys. */
 export function newManifest(name: string): string {
   return `${JSON.stringify({ name, type: 'module', version: '0.0.0' }, undefined, 2)}\n`;

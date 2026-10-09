@@ -46,7 +46,7 @@ test('a build still needs a bin to name its application', () => {
   expect(() => applicationName(manifest({ name: 'notes' }), undefined)).toThrow('--name');
 });
 
-const keys = scaffoldKeys('notes', '1.2.3');
+const keys = scaffoldKeys('notes', { loom: '1.2.3', typescript: '^7.0.0' });
 
 test('every missing key is added at the end of its object, in the scaffold order', () => {
   const { added, text } = addMissingKeys('{\n  "name": "notes",\n  "type": "module"\n}\n', keys);
@@ -56,6 +56,7 @@ test('every missing key is added at the end of its object, in the scaffold order
     'scripts.check',
     'dependencies.@loomcli/core',
     'devDependencies.@loomcli/loom',
+    'devDependencies.typescript',
   ]);
   expect(Object.keys(JSON.parse(text))).toEqual([
     'name',
@@ -68,7 +69,7 @@ test('every missing key is added at the end of its object, in the scaffold order
   expect(JSON.parse(text)).toMatchObject({
     bin: { notes: 'dist/main.js' },
     dependencies: { '@loomcli/core': '1.2.3' },
-    devDependencies: { '@loomcli/loom': '1.2.3' },
+    devDependencies: { '@loomcli/loom': '1.2.3', typescript: '^7.0.0' },
     scripts: { build: 'loom build --target node', check: 'loom check' },
   });
 });
@@ -89,6 +90,7 @@ test('an existing key keeps its value and its place, and new keys follow the exi
     'scripts.check',
     'dependencies.@loomcli/core',
     'devDependencies.@loomcli/loom',
+    'devDependencies.typescript',
   ]);
   const result = JSON.parse(text);
   expect(result.bin).toBe('dist/cli.js');

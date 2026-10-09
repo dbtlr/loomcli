@@ -127,14 +127,21 @@ export interface ManifestKey {
   readonly value: unknown;
 }
 
-/** The `package.json` keys a scaffold adds, for an application's name and the running loom version. */
-export function scaffoldKeys(name: string, version: string): ManifestKey[] {
+/** The versions a scaffold pins: the running loom's, and the TypeScript range loom declares. */
+export interface ScaffoldVersions {
+  readonly loom: string;
+  readonly typescript: string;
+}
+
+/** The `package.json` keys a scaffold adds, for an application's name and the versions it pins. */
+export function scaffoldKeys(name: string, versions: ScaffoldVersions): ManifestKey[] {
   return [
     { path: ['bin'], value: { [name]: 'dist/main.js' } },
     { path: ['scripts', 'build'], value: 'loom build --target node' },
     { path: ['scripts', 'check'], value: 'loom check' },
-    { path: ['dependencies', '@loomcli/core'], value: version },
-    { path: ['devDependencies', '@loomcli/loom'], value: version },
+    { path: ['dependencies', '@loomcli/core'], value: versions.loom },
+    { path: ['devDependencies', '@loomcli/loom'], value: versions.loom },
+    { path: ['devDependencies', 'typescript'], value: versions.typescript },
   ];
 }
 

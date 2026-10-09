@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { changelogSkill } from '../src/content/changelog-skill.js';
 import { fragmentGuide } from '../src/content/fragment-guide.js';
+import { typescriptConfig } from '../src/content/scaffold.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { execute, fixturePackage, linkInstalled, loom, runtimes, snapshot } from './package.js';
@@ -18,9 +19,15 @@ afterEach(() => {
 /** How long a test that checks or builds the scaffold may take. */
 const slow = 180_000;
 
-/** The version of the loom under test, which a scaffold pins its Loom dependencies to. */
-const { version } = z
-  .object({ version: z.string() })
+/**
+ * The version of the loom under test, which a scaffold pins its Loom dependencies to, and the
+ * TypeScript range it declares, which a scaffold pins its compiler to.
+ */
+const {
+  peerDependencies: { typescript },
+  version,
+} = z
+  .object({ peerDependencies: z.object({ typescript: z.string() }), version: z.string() })
   .parse(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')));
 
 const guidePath = '.changes/README.md';
@@ -51,6 +58,21 @@ const ownApplication = `import { Application } from '@loomcli/core';
 export const probe = new Application('probe', { description: 'Probe init.' }).action(() => {});
 `;
 
+/** A package of its own that also pins a compiler of its own. */
+const ownTypedManifest = `${JSON.stringify(
+  {
+    devDependencies: { typescript: '~5.9.0' },
+    name: 'probe',
+    scripts: { build: 'tsc' },
+    type: 'module',
+  },
+  undefined,
+  4,
+)}\n`;
+
+/** A compiler configuration of the package's own. */
+const ownTypescriptConfig = '{ "compilerOptions": { "strict": false } }\n';
+
 /** An existing package that holds its own manifest and application module, linking core. */
 function ownPackage(files: Record<string, string> = {}) {
   return fixturePackage({
@@ -63,7 +85,7 @@ function ownPackage(files: Record<string, string> = {}) {
 const warning = (path: string) =>
   `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.\n`;
 
-test('in an empty directory init writes package.json, both scaffold files, and both managed files, one line each', () => {
+test('in an empty directory init writes package.json, the scaffold files, and both managed files, one line each', () => {
   const directory = emptyNotes();
   expect(loom(directory, ['init'])).toEqual({
     status: 0,
@@ -75,8 +97,10 @@ test('in an empty directory init writes package.json, both scaffold files, and b
       'Added scripts.check to package.json.',
       'Added dependencies.@loomcli/core to package.json.',
       'Added devDependencies.@loomcli/loom to package.json.',
+      'Added devDependencies.typescript to package.json.',
       'Wrote src/application.ts.',
       'Wrote src/main.ts.',
+      'Wrote tsconfig.json.',
       `Wrote ${guidePath}.`,
       `Wrote ${skillPath}.`,
       '',
@@ -86,13 +110,13 @@ test('in an empty directory init writes package.json, both scaffold files, and b
   expect(read(directory, skillPath)).toBe(renderManaged(changelogSkill));
 });
 
-test("a new package.json is named for the directory and pins Loom at the running loom's version", () => {
+test("a new package.json is named for the directory, pins Loom at the running loom's version, and pins the TypeScript range loom declares", () => {
   const directory = emptyNotes();
   loom(directory, ['init']);
   expect(JSON.parse(read(directory, 'package.json'))).toEqual({
     bin: { notes: 'dist/main.js' },
     dependencies: { '@loomcli/core': version },
-    devDependencies: { '@loomcli/loom': version },
+    devDependencies: { '@loomcli/loom': version, typescript },
     name: 'notes',
     scripts: { build: 'loom build --target node', check: 'loom check' },
     type: 'module',
@@ -101,15 +125,12 @@ test("a new package.json is named for the directory and pins Loom at the running
 });
 
 test(
-  'a new scaffold, once installed, checks clean, builds, and its bundle keeps the shebang and runs under Node and Bun',
+  'a new scaffold, once installed, checks clean with its type pass, builds, and its bundle keeps the shebang and runs under Node and Bun',
   () => {
     const directory = emptyNotes();
     loom(directory, ['init']);
-    linkInstalled(directory, ['core']);
-    const check = loom(directory, ['check']);
-    expect(check.status).toBe(0);
-    expect(check.stdout).toBe('');
-    expect(check.stderr).not.toContain('warning:');
+    linkInstalled(directory, ['core', 'typescript']);
+    expect(loom(directory, ['check'])).toEqual({ status: 0, stderr: '', stdout: '' });
     expect(loom(directory, ['build', '--target', 'node']).status).toBe(0);
     const bundle = join(directory, 'dist/main.js');
     expect(readFileSync(bundle, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
@@ -132,8 +153,11 @@ test('a second run over an unedited scaffold writes nothing and prints nothing',
   expect(snapshot(directory)).toEqual(before);
 });
 
-test('in an existing package init writes the missing pieces and leaves its application module and build script byte-identical', () => {
-  const root = ownPackage();
+test('in an existing package init writes the missing pieces and leaves its application module, build script, tsconfig.json, and compiler byte-identical', () => {
+  const root = ownPackage({
+    'package.json': ownTypedManifest,
+    'tsconfig.json': ownTypescriptConfig,
+  });
   const result = loom(root, ['init']);
   expect(result).toEqual({
     status: 0,
@@ -150,12 +174,28 @@ test('in an existing package init writes the missing pieces and leaves its appli
     ].join('\n'),
   });
   expect(read(root, 'src/application.ts')).toBe(ownApplication);
+  expect(read(root, 'tsconfig.json')).toBe(ownTypescriptConfig);
   const manifest = read(root, 'package.json');
   expect(JSON.parse(manifest).scripts.build).toBe('tsc');
   expect(manifest).toContain(
     '\n    "scripts": {\n        "build": "tsc",\n        "check": "loom check"',
   );
+  expect(manifest).toContain('\n    "devDependencies": {\n        "typescript": "~5.9.0",\n');
   expect(read(root, 'src/main.ts')).toContain("import { probe } from './application.js';");
+});
+
+test('--only tsconfig writes tsconfig.json alone', () => {
+  const root = ownPackage();
+  const before = snapshot(root);
+  expect(loom(root, ['init', '--only', 'tsconfig'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Wrote tsconfig.json.\n',
+  });
+  const after = snapshot(root);
+  expect(after.get('tsconfig.json')).toBe(Buffer.from(typescriptConfig).toString('base64'));
+  after.delete('tsconfig.json');
+  expect(after).toEqual(before);
 });
 
 test('--only changes writes .changes/README.md alone', () => {
@@ -267,7 +307,7 @@ test('a directory that is neither empty nor inside a package fails with exit 1 a
 test('--only with a piece init does not know is an option error that names the pieces', () => {
   const result = loom(emptyNotes(), ['init', '--only', 'nonsense']);
   expect(result.status).toBe(2);
-  expect(result.stderr).toContain('Use application, entry, package, changes, or skill.');
+  expect(result.stderr).toContain('Use application, entry, tsconfig, package, changes, or skill.');
 });
 
 test(
@@ -409,6 +449,7 @@ test('an empty directory inside a package scaffolds there and leaves the outer p
       'Added scripts.check to package.json.',
       'Added dependencies.@loomcli/core to package.json.',
       'Added devDependencies.@loomcli/loom to package.json.',
+      'Added devDependencies.typescript to package.json.',
       '',
     ].join('\n'),
   );
