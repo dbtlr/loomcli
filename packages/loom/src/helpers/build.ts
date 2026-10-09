@@ -167,9 +167,10 @@ export async function build(plan: BuildPlan): Promise<void> {
  * Runs `bun build --watch` for the plan, writing straight to the output as Bun writes, until it is
  * stopped. Bun runs in the package directory, because it follows a source file that an atomic save
  * or a checkout replaces only under its working directory. A binary's compile writes a temporary
- * file into that directory, so when the watch ends the `.bun-build` files that were not there
- * before it began are removed, and so is each output directory it created that nothing has filled.
- * A build never writes one there, because it runs Bun in its own temporary directory. SIGINT and
+ * file into that directory, so when a compile target's watch ends the `.bun-build` files that were
+ * not there before it began are removed. A bundle's watch writes none and removes none. Either way,
+ * each output directory the watch created that nothing has filled is removed. A build never writes
+ * a `.bun-build` file there, because it runs Bun in its own temporary directory. SIGINT and
  * SIGTERM are held for the whole watch: a signal stops Bun, the watch removes what it left, and
  * `loom` then ends with that signal. A watcher Bun ends with a failure fails the command.
  */
@@ -177,12 +178,14 @@ export async function watch(plan: BuildPlan): Promise<void> {
   const result = await holdingSignals(async (signals) => {
     const outDirectory = outputDirectory(plan);
     const created = mkdirSync(outDirectory, { recursive: true });
-    const earlier = bunBuildFiles(plan.directory);
+    const compiles = plan.target.kind === 'compile';
+    const earlier = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
     try {
       const args = [...bunArguments(plan, plan.out), '--watch'];
       return await superviseBun(args, plan.directory, 'inherit', signals);
     } finally {
-      for (const name of bunBuildFiles(plan.directory)) {
+      const left = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
+      for (const name of left) {
         if (!earlier.has(name)) {
           rmSync(join(plan.directory, name), { force: true });
         }

@@ -934,6 +934,28 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
 );
 
 test(
+  'a bundle --watch leaves alone a .bun-build file another compile writes in the package while it watches',
+  async () => {
+    const root = probePackage();
+    const main = join(root, 'dist/main.js');
+    const watcher = start(pathToFileURL(cli), ['build', '--watch', '--target', 'node'], {
+      cwd: root,
+    });
+    try {
+      await until(() => existsSync(main));
+      put(root, '.other-00000000.bun-build', 'Another compile’s.\n');
+    } finally {
+      watcher.child.kill('SIGTERM');
+      await watcher.exit;
+    }
+    expect(readFileSync(join(root, '.other-00000000.bun-build'), 'utf8')).toBe(
+      'Another compile’s.\n',
+    );
+  },
+  slow,
+);
+
+test(
   'two host compiles in one package with different --out both succeed and both binaries run',
   async () => {
     const root = probePackage();
