@@ -99,6 +99,42 @@ test('an existing key keeps its value and its place, and new keys follow the exi
   expect(Object.keys(result.dependencies)).toEqual(['zod', '@loomcli/core']);
 });
 
+const dependencyKeys = [
+  'dependencies.@loomcli/core',
+  'devDependencies.@loomcli/loom',
+  'devDependencies.typescript',
+];
+
+test('typescript declared under dependencies stays there and gains no devDependencies.typescript', () => {
+  const source = '{\n  "name": "notes",\n  "dependencies": {\n    "typescript": "~5.9.0"\n  }\n}\n';
+  const { added, text } = addMissingKeys(source, keys);
+  expect(added).not.toContain('devDependencies.typescript');
+  const result = JSON.parse(text);
+  expect(result.dependencies.typescript).toBe('~5.9.0');
+  expect(result.devDependencies).toEqual({ '@loomcli/loom': '1.2.3' });
+});
+
+test('@loomcli/core declared under devDependencies gains no dependencies.@loomcli/core', () => {
+  const source = '{"name":"notes","devDependencies":{"@loomcli/core":"1.0.0"}}';
+  const { added, text } = addMissingKeys(source, keys);
+  expect(added).not.toContain('dependencies.@loomcli/core');
+  expect(JSON.parse(text).dependencies).toBeUndefined();
+});
+
+test.each(['peerDependencies', 'optionalDependencies'])(
+  'a dependency declared under %s counts as present',
+  (group) => {
+    const source = JSON.stringify({ name: 'notes', [group]: { '@loomcli/loom': '1.0.0' } });
+    expect(addMissingKeys(source, keys).added).not.toContain('devDependencies.@loomcli/loom');
+  },
+);
+
+test('a package that declares none of them gains all three dependency keys', () => {
+  const source = '{"name":"notes","dependencies":{"zod":"^4.0.0"},"devDependencies":{}}';
+  const { added } = addMissingKeys(source, keys);
+  expect(added.filter((key) => dependencyKeys.includes(key))).toEqual(dependencyKeys);
+});
+
 test.each([
   ['four spaces', '    '],
   ['a tab', '\t'],

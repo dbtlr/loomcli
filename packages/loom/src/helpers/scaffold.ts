@@ -75,11 +75,20 @@ function indentation(source: string): string {
   return indent.startsWith('\t') ? '\t' : indent;
 }
 
+/** Whether a manifest value is an object that holds the key. */
+function holdsKey(value: unknown, key: string): boolean {
+  const parsed = jsonObject.safeParse(value);
+  return parsed.success && Object.hasOwn(parsed.data, key);
+}
+
 /**
  * Adds one key to a manifest object when it is missing and says whether it did. A key whose parent
  * exists as something other than an object is never added.
  */
-function addKey(manifest: Record<string, unknown>, { path, value }: ManifestKey): boolean {
+function addKey(
+  manifest: Record<string, unknown>,
+  { declaredIn = [], path, value }: ManifestKey,
+): boolean {
   const [first, second] = path;
   const exists = Object.hasOwn(manifest, first);
   if (second === undefined) {
@@ -88,12 +97,28 @@ function addKey(manifest: Record<string, unknown>, { path, value }: ManifestKey)
     }
     return !exists;
   }
+  if (declaredIn.some((group) => holdsKey(manifest[group], second))) {
+    return false;
+  }
   const parent = exists ? jsonObject.safeParse(manifest[first]) : undefined;
   if (parent === undefined || (parent.success && !Object.hasOwn(parent.data, second))) {
     manifest[first] = { ...parent?.data, [second]: value };
     return true;
   }
   return false;
+}
+
+/** The `package.json` groups that declare a dependency, any one of which declares it for good. */
+const dependencyGroups = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+] as const;
+
+/** A dependency a scaffold adds to its group unless the package declares it in any group. */
+function dependencyKey(group: string, name: string, value: string): ManifestKey {
+  return { declaredIn: dependencyGroups, path: [group, name], value };
 }
 
 /**
@@ -121,8 +146,12 @@ export function applicationIdentifier(name: string): string {
   return `app${capitalized(joined)}`;
 }
 
-/** One `package.json` key init writes when it is missing: a top-level key or a key one level down. */
+/**
+ * One `package.json` key init writes when it is missing: a top-level key or a key one level down. A
+ * key one level down counts as present when any object named in `declaredIn` holds it too.
+ */
 export interface ManifestKey {
+  readonly declaredIn?: readonly string[];
   readonly path: readonly [string] | readonly [string, string];
   readonly value: unknown;
 }
@@ -139,16 +168,18 @@ export function scaffoldKeys(name: string, versions: ScaffoldVersions): Manifest
     { path: ['bin'], value: { [name]: 'dist/main.js' } },
     { path: ['scripts', 'build'], value: 'loom build --target node' },
     { path: ['scripts', 'check'], value: 'loom check' },
-    { path: ['dependencies', '@loomcli/core'], value: versions.loom },
-    { path: ['devDependencies', '@loomcli/loom'], value: versions.loom },
-    { path: ['devDependencies', 'typescript'], value: versions.typescript },
+    dependencyKey('dependencies', '@loomcli/core', versions.loom),
+    dependencyKey('devDependencies', '@loomcli/loom', versions.loom),
+    dependencyKey('devDependencies', 'typescript', versions.typescript),
   ];
 }
 
 /**
  * Adds each key a `package.json` source lacks and returns the new source with the dotted path of
  * each key added. A key that exists is never changed, whatever it holds, and a key whose parent
- * exists as something other than an object is left out. A source that gains no key comes back
+ * exists as something other than an object is left out. A dependency key counts as present when
+ * the package declares that dependency in any of `dependencies`, `devDependencies`,
+ * `peerDependencies`, or `optionalDependencies`, so a dependency stays in the group that declares it. A source that gains no key comes back
  * byte-identical. One that gains a key is serialized again with its own indentation, line endings,
  * byte-order mark, and trailing newline, its keys in their order and each new key at the end of its
  * object.
