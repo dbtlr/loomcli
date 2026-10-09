@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -394,43 +394,52 @@ if (scenario === 'captured-reader') {
   // The captured reader answers for a link under cwd that points outside it, with cwd itself reached through a link.
   const root = mkdtempSync(join(tmpdir(), 'loom-reader-'));
   const outside = mkdtempSync(join(tmpdir(), 'loom-outside-'));
-  const real = join(root, 'real');
-  const linked = join(root, 'linked');
-  writeFileSync(join(outside, 'secret.js'), 'secret\n');
-  mkdirSync(real);
-  writeFileSync(join(real, 'own.js'), 'throw new Error("own");\n');
-  writeFileSync(join(real, 'large.js'), 'x'.repeat(1024 * 1024 + 1));
-  spawnSync('mkfifo', [join(real, 'pipe')]);
-  symlinkSync(real, linked);
-  symlinkSync(join(outside, 'secret.js'), join(real, 'escape.js'));
-  const captured = { reader: undefined };
-  const app = new Application('probe', { description: 'Probe a build.' }).action(({ host }) => {
-    captured.reader = host.readSource;
-  });
-  await app.run({ host: { argv: [], cwd: linked } });
-  const read = (path) => captured.reader(path, linked) ?? null;
-  const answers = {
-    escape: read(join(linked, 'escape.js')),
-    large: read(join(linked, 'large.js')),
-    outside: read(join(outside, 'secret.js')),
-    own: read(join(linked, 'own.js')),
-    pipe: read(join(linked, 'pipe')),
-  };
-  process.stdout.write(`${JSON.stringify(answers)}\n`);
+  try {
+    const real = join(root, 'real');
+    const linked = join(root, 'linked');
+    writeFileSync(join(outside, 'secret.js'), 'secret\n');
+    mkdirSync(real);
+    writeFileSync(join(real, 'own.js'), 'throw new Error("own");\n');
+    writeFileSync(join(real, 'large.js'), 'x'.repeat(1024 * 1024 + 1));
+    spawnSync('mkfifo', [join(real, 'pipe')]);
+    symlinkSync(real, linked);
+    symlinkSync(join(outside, 'secret.js'), join(real, 'escape.js'));
+    const captured = { reader: undefined };
+    const app = new Application('probe', { description: 'Probe a build.' }).action(({ host }) => {
+      captured.reader = host.readSource;
+    });
+    await app.run({ host: { argv: [], cwd: linked } });
+    const read = (path) => captured.reader(path, linked) ?? null;
+    const answers = {
+      escape: read(join(linked, 'escape.js')),
+      large: read(join(linked, 'large.js')),
+      outside: read(join(outside, 'secret.js')),
+      own: read(join(linked, 'own.js')),
+      pipe: read(join(linked, 'pipe')),
+    };
+    process.stdout.write(`${JSON.stringify(answers)}\n`);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+    rmSync(outside, { force: true, recursive: true });
+  }
 } else if (scenario === 'linked-cwd') {
   // The author's module lies under a directory the host names through a symbolic link.
   const root = mkdtempSync(join(tmpdir(), 'loom-linked-'));
-  const real = join(root, 'real');
-  const linked = join(root, 'linked');
-  mkdirSync(real);
-  writeFileSync(
-    join(real, 'fails.mjs'),
-    'export function fails() {\n  throw new Error("Linked.");\n}\n',
-  );
-  symlinkSync(real, linked);
-  const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
-  const app = new Application('probe', { description: 'Probe a build.' }).action(fails);
-  await app.run({ host: { argv: [], cwd: linked } });
+  try {
+    const real = join(root, 'real');
+    const linked = join(root, 'linked');
+    mkdirSync(real);
+    writeFileSync(
+      join(real, 'fails.mjs'),
+      'export function fails() {\n  throw new Error("Linked.");\n}\n',
+    );
+    symlinkSync(real, linked);
+    const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
+    const app = new Application('probe', { description: 'Probe a build.' }).action(fails);
+    await app.run({ host: { argv: [], cwd: linked } });
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 } else if (scenario === 'inspect') {
   try {
     new Application('probe', probe).inspect();
