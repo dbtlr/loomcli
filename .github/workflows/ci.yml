@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
           node-version: 22.23.2
 
-      # The examples are bundled with Bun.build, and their source runs under Bun.
+      # The examples are bundled with loom build, which runs bun build, and their source runs under Bun.
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

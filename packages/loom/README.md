@@ -1,6 +1,6 @@
 # @loomcli/loom
 
-The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build`, `loom check`, and `loom init` ship in a later release, as the [toolchain reference](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md) describes.
+The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build` and `loom check` do their work under [Bun](https://bun.sh), so Bun must be on the `PATH`. `loom init` ships in a later release, as the [toolchain reference](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md) describes.
 
 ## Install
 
@@ -29,16 +29,33 @@ loom changelog write --date 2026-10-07
 
 ## Build
 
-Core fills `host.release` from the release facts the build bakes into the `__LOOM_RELEASE__` identifier through a bundler `define`. Until `loom build` ships, bake them with your bundler:
+`loom build` bundles the package's application for one target and bakes its release facts into the `__LOOM_RELEASE__` identifier, which core reads into `host.release`.
 
-```ts
-// scripts/build.ts, run as `bun scripts/build.ts`; the bundle reads { build: 'distributed' }.
-await Bun.build({
-  define: { __LOOM_RELEASE__: JSON.stringify({ build: 'distributed' }) },
-  entrypoints: ['src/main.ts'],
-  outdir: 'dist',
-  target: 'node',
-});
+```sh
+loom build --target node                       # dist/main.js and dist/application.js, { build: 'distributed' }
+loom build --target bun-linux-x64 --release    # dist/<name>, a binary with its version, repository, and asset
+loom build --watch --target node               # rebuilds on change, { build: 'development' }
 ```
 
-The define reaches core only when the bundle includes `@loomcli/core`. A bundle built without it reads `{ build: 'source' }`, as the source run does, so a defect prints its Developer Diagnostic. See [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#release-facts) for the contract.
+- **Targets.** `--target` takes `node`, `bun`, or a Bun compile target such as `bun-linux-x64`, by default the host's compile target. One call builds one target.
+- **The modules.** The entry is `src/main.ts`, or `--entry`. A bundle also carries the application module, `src/application.ts` or `--application`, as a file named for the module, such as `application.js`, so a test imports the built Application with its baked facts. When `src/application.ts` does not exist, the bundle carries the entry alone.
+- **The release.** `--release` reads `version` and `repository` from `package.json`, and `--repository <owner/name>` overrides the field. A binary's path and asset name read the application's name from `bin`, or `--name`.
+- **A failed build changes nothing.** The build writes into a temporary directory and moves its files into place only once it succeeds.
+
+A custom build composes the same facts into its own bundler call:
+
+```sh
+bun build src/main.ts --outdir dist --target node --define "$(loom build --target node --define)"
+```
+
+`--facts` prints the facts JSON instead, for a bundler's `define` option. See [loom build](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-build) and [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#release-facts) for the contracts.
+
+## Check
+
+`loom check` reports every fault the package's application and code hold before anything runs.
+
+```sh
+loom check && loom build --target node
+```
+
+It runs the package's own TypeScript against its `tsconfig.json`, then imports `src/application.ts`, or the module `--application` names, and prints each fault `Application.check()` returns as its Developer Diagnostic on stderr. It never imports the entry. Any fault exits 1. A managed file that `loom init` wrote and you edited draws a warning, which never fails the check. See [loom check](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-check) for the contract.

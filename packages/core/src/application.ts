@@ -1224,6 +1224,12 @@ interface ApplicationConstructor {
     name: string,
     options: ApplicationOptions<Plugins>,
   ): Application<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins>;
+  /**
+   * Holds for an Application in every authoring state, and narrows to the default `Application`,
+   * which publishes `check()`, `inspect()`, `run()`, `invoke()`, `extend()`, and `name` and no
+   * authoring call, since a recognized value may be past any of them.
+   */
+  [Symbol.hasInstance](value: unknown): value is Application;
 }
 
 /** The core facts one Application declares, validated at construction and reported by `inspect()`. */
@@ -1425,6 +1431,20 @@ function checkApplicationName(name: unknown): string {
 class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
 > extends ApplicationBuilder<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins> {
+  /**
+   * Each declaring call returns a new builder rather than an instance of this class, so
+   * `instanceof Application` reads the builder's prototype chain, and holds for an Application in
+   * every authoring state. It narrows to the default `Application`, which publishes only what every
+   * state keeps. An author's subclass inherits this method, and `instanceof` that subclass reads
+   * the subclass's own prototype chain, as `instanceof` reads any class.
+   */
+  static [Symbol.hasInstance](value: unknown): value is Application {
+    if (this !== ApplicationDeclaration) {
+      return Function.prototype[Symbol.hasInstance].call(this, value);
+    }
+    return value instanceof ApplicationBuilder;
+  }
+
   constructor(name: string, options?: ApplicationOptions<Plugins>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);

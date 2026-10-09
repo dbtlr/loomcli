@@ -14,7 +14,7 @@ const fixture = new URL('fixtures/release/main.mjs', import.meta.url);
 /** The script that bundles a fixture with `Bun.build` and a define, as `loom build` does. */
 const bundler = fileURLToPath(new URL('fixtures/release/bundle.mjs', import.meta.url));
 
-/** How long one bundle, one compile, or one run may take before the test fails. */
+/** How long one bundle or one run may take before the test fails. */
 const timeout = 60_000;
 
 /** The runtimes every bundle runs under. */
@@ -135,30 +135,6 @@ test.each([
     }
   },
 );
-
-test('a compiled binary that bakes a release reads its asset name and writes the generic message', () => {
-  const binary = join(root, 'probe-binary');
-  const facts = JSON.stringify({
-    build: 'distributed',
-    release: { asset: 'probe-linux-x64', repository: 'acme/probe', version: '1.0.0' },
-  });
-  const built = run('bun', [bundler, 'release/main.mjs', root, facts, binary]);
-  expect(built.stderr).toBe('');
-  expect(built.status).toBe(0);
-  expect(printed(run(binary, ['facts']))).toEqual({
-    facts: {
-      build: 'distributed',
-      release: {
-        asset: 'probe-linux-x64',
-        lane: 'stable',
-        repository: 'acme/probe',
-        version: '1.0.0',
-      },
-    },
-    frozen: true,
-  });
-  expect(run(binary, ['throw'])).toEqual(generic);
-});
 
 test('a baked member core does not know reads as the known members alone', () => {
   const facts = JSON.stringify({

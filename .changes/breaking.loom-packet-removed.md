@@ -1,4 +1,4 @@
-- Remove `packet()` and the `@loomcli/loom/build` subpath. `@loomcli/loom` exports no module. Bake the [release facts](docs/core.md#release-facts) through a bundler `define` instead.
+- Remove `packet()` and the `@loomcli/loom/build` subpath. `@loomcli/loom` exports no module. Build with `loom build`, which bakes the [release facts](docs/core.md#release-facts), or bake them through a bundler `define` instead.
 
 ### Migration
 
@@ -30,6 +30,6 @@ await Bun.build({
 **Steps.**
 
 1. Remove the `@loomcli/loom/build` import and the `packet()` plugin from each build script.
-2. Add the `__LOOM_RELEASE__` define to each build, as the core migration for the release facts describes.
+2. Replace each build script with `loom build --target node`, or add the `__LOOM_RELEASE__` define to it, as the core migration for the release facts describes.
 
 **Validation.** Run each build script, then run the bundle with a command that throws and confirm it prints `<application>: Something went wrong.`.
