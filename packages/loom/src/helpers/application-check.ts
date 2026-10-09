@@ -8,12 +8,14 @@ import { z } from 'zod';
 import { runBun } from './bun.js';
 
 /**
- * What the graph checks found: the message of every fault, each a whole Developer Diagnostic, or
- * the one sentence that says why no Application could be checked.
+ * What the graph checks found: the message of every fault, each a whole Developer Diagnostic, with
+ * each name the module exports its Application under, `default` included, and none when the module
+ * failed to load; or the one sentence that says why no Application could be checked, and whether
+ * the module loaded before the check stopped.
  */
 const checkResult = z.union([
-  z.object({ faults: z.string().array() }),
-  z.object({ failure: z.string() }),
+  z.object({ faults: z.string().array(), names: z.string().array() }),
+  z.object({ failure: z.string(), loaded: z.boolean() }),
 ]);
 
 /** The script the checking process runs, shipped beside this module in `dist`. */
@@ -33,7 +35,9 @@ export interface ApplicationCheck {
  * directory, as a build and the type pass run, so the package's own `bunfig.toml` applies from any
  * working directory. `path` is absolute, resolved against the working directory before the spawn.
  * The process writes its result to a file, so nothing the module prints while it loads can be
- * mistaken for the result. A process that ends without a result fails with what it wrote.
+ * mistaken for the result. A process that ends without a result fails with what it wrote. Bun runs
+ * with `--no-install`, because a package with no `node_modules` would otherwise resolve core and
+ * the module's imports from Bun's global cache, which the package never installed.
  */
 export function checkApplication(options: {
   directory: string;
@@ -44,7 +48,7 @@ export function checkApplication(options: {
   try {
     const resultFile = join(temporary, 'result.json');
     const run = runBun(
-      [script, resultFile, options.directory, options.path, options.module],
+      ['--no-install', script, resultFile, options.directory, options.path, options.module],
       options.directory,
     );
     const written = run.output.trim();

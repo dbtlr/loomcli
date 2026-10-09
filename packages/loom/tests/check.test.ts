@@ -7,8 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { removeRoots, temporaryRoot } from './fixture.js';
-import { execute, fixturePackage, loom, runtimes } from './package.js';
+import { put, removeRoots, temporaryRoot } from './fixture.js';
+import { execute, fixturePackage, linkInstalled, loom, runtimes } from './package.js';
 import type { Link } from './package.js';
 
 afterEach(() => {
@@ -302,6 +302,23 @@ test('a package with no TypeScript installed prints the note and still reports i
     /^note: No TypeScript compiler resolves from the package, so the type pass was skipped\.\n\n/u,
   );
   expect(rules(result.stderr)).toHaveLength(4);
+});
+
+test('a package whose path holds a space resolves its core and passes a clean graph', () => {
+  const root = join(temporaryRoot('loom-check-'), 'with space');
+  for (const [path, body] of Object.entries({
+    'package.json': manifest,
+    'src/application.ts': clean,
+    'src/main.ts': entry,
+  })) {
+    put(root, path, body);
+  }
+  linkInstalled(root, ['core']);
+  expect(loom(root, ['check'])).toEqual({
+    status: 0,
+    stderr: 'note: The package has no tsconfig.json, so the type pass was skipped.\n',
+    stdout: '',
+  });
 });
 
 test('a package with no tsconfig.json prints the note and passes a clean graph', () => {

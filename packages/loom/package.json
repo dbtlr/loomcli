@@ -23,13 +23,18 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "pnpm": "12.8.1"
+    "pnpm": "12.8.1",
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "pnpm": "12.8.1"
+    "pnpm": "12.8.1",
+    "typescript": "^7.0.2"
   },
   "peerDependenciesMeta": {
     "pnpm": {
+      "optional": true
+    },
+    "typescript": {
       "optional": true
     }
   },

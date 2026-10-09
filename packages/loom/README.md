@@ -1,12 +1,31 @@
 # @loomcli/loom
 
-The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build` and `loom check` do their work under [Bun](https://bun.sh), so Bun must be on the `PATH`. `loom init` ships in a later release, as the [toolchain reference](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md) describes.
+The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build` and `loom check` do their work under [Bun](https://bun.sh), so Bun must be on the `PATH`.
 
 ## Install
 
 ```sh
 pnpm add -D @loomcli/loom
 ```
+
+## Init
+
+`loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks.
+
+```sh
+mkdir notes && cd notes
+bunx @loomcli/loom init   # package.json, src/, tsconfig.json, .changes/README.md, and the changelog skill
+pnpm install
+loom check
+```
+
+In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`.
+
+- **Scaffold files.** `src/application.ts`, `src/main.ts`, `tsconfig.json`, and the `package.json` keys `bin`, `scripts.build`, `scripts.check`, the Loom dependencies, and `typescript` at the range `@loomcli/loom` declares are written once, only when missing. Init never overwrites them, because they are your code from then on.
+- **Managed files.** `.changes/README.md`, the fragment guide, and `.agents/skills/loom-changelog/SKILL.md`, the changelog skill, carry a header with a checksum. Init re-renders an unedited one, so it follows the installed toolchain. An edited one draws a warning and is left alone, and `--force` restores it. Delete the header to keep the file as your own.
+- **Options.** `--only <piece>` limits init to `application`, `entry`, `tsconfig`, `package`, `changes`, or `skill`, and may repeat. Init installs nothing, so run your package manager afterward.
+
+See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-init) for the contract.
 
 ## Changelog
 

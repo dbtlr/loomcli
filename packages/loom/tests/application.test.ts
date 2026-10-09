@@ -7,12 +7,13 @@ import { invoke } from '../../../scripts/test-process.js';
 import { loom } from '../src/application.js';
 import { pnpmManifestPath } from '../src/helpers/release-files.js';
 
-test('build, check, and the changelog are public while the release commands stay hidden', () => {
+test('build, check, init, and the changelog are public while the release commands stay hidden', () => {
   const children = loom.inspect().root.children.map(({ hidden, name }) => ({ hidden, name }));
   expect(children).toEqual([
     { hidden: false, name: 'build' },
     { hidden: false, name: 'changelog' },
     { hidden: false, name: 'check' },
+    { hidden: false, name: 'init' },
     { hidden: true, name: 'pr' },
     { hidden: true, name: 'release' },
   ]);
@@ -20,12 +21,13 @@ test('build, check, and the changelog are public while the release commands stay
 
 const cli = new URL('../dist/main.js', import.meta.url);
 
-test('--help lists build, check, and the changelog and advertises no release command', () => {
+test('--help lists build, check, init, and the changelog and advertises no release command', () => {
   const result = invoke(cli, ['--help']);
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/^ {2}build +/mu);
   expect(result.stdout).toMatch(/^ {2}changelog +/mu);
   expect(result.stdout).toMatch(/^ {2}check +/mu);
+  expect(result.stdout).toMatch(/^ {2}init +/mu);
   expect(result.stdout).not.toMatch(/^ {2}(?:pr|release) +/mu);
 });
 

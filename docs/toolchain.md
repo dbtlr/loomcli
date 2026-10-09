@@ -175,7 +175,7 @@ loom init [--only <piece>]... [--force]
 
 ```sh
 mkdir notes && cd notes
-bunx @loomcli/loom init   # a new application: package.json, src/, .changes/README.md, and the skill
+bunx @loomcli/loom init   # a new application: package.json, src/, tsconfig.json, .changes/README.md, and the skill
 pnpm install
 loom check
 ```
@@ -185,14 +185,14 @@ In an empty directory nothing is installed yet, so the first run goes through th
 `loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks. It writes two sorts of files: scaffold files, which become the author's at once, and managed files, which init keeps current.
 
 - **Where.** In an empty working directory, init scaffolds a new application there, whatever lies above it. Otherwise it acts on the package directory. A directory that is neither empty nor inside a package fails with exit 1.
-- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, and `skill` is the changelog skill. `--only <piece>` limits init to the pieces it names, and it may repeat.
+- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `tsconfig` is `tsconfig.json`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, and `skill` is the changelog skill. `--only <piece>` limits init to the pieces it names, and it may repeat.
 - **Output.** Init prints one line for each file or key it writes and each warning it raises, and it installs nothing. The author runs the package manager afterward.
 - **Later pieces.** The release-cut skill, workflows, and installer scripts join init with the release orchestration design.
 
 ### Scaffold files
 
-- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps.
-- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, `loom check`. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
+- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps. `tsconfig.json` is a strict configuration for a Node ESM application that emits nothing, because `loom build` bundles it, so `loom check` runs its type pass against it.
+- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, `loom check`. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. `devDependencies` also gains `typescript`, at the compiler range `@loomcli/loom` declares as its optional peer dependency. A dependency the package already declares in any of `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies` is left where it is and not added again. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
 - **The application's name.** It is the `bin` key when `bin` is an object with one key, else the package name without its scope.
 - **Written once.** Init writes a scaffold file or key only when it is missing. It never overwrites an existing file or key and never tracks one afterward, because each is the author's code from the moment it is written.
 
@@ -205,7 +205,7 @@ In an empty directory nothing is installed yet, so the first run goes through th
 ```
 
 - **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory.
-- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first line after its frontmatter.
+- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first non-blank line after its frontmatter.
 - **Re-running init.** Init re-renders a managed file whose checksum matches, so an unedited file follows the running toolchain. A file whose content no longer matches its checksum has drifted. Init warns about it and leaves it alone, and `--force` re-renders it. `--force` never touches a scaffold file.
 - **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and `loom check` stops checking it.
 - **Drift is a warning.** `loom check` warns about a drifted managed file and never fails for one.
@@ -214,8 +214,8 @@ In an empty directory nothing is installed yet, so the first run goes through th
 
 `loom init` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
 
-- **A new application.** In an empty directory, init writes `package.json`, both scaffold files, and both managed files. After the package manager installs, `loom check` exits 0, `loom build --target node` builds, and the bundle runs under Node and Bun.
-- **An existing package.** In a package with its own `src/application.ts` and a `scripts.build`, init writes the missing pieces and leaves both byte-identical. `--only changes` writes `.changes/README.md` alone.
+- **A new application.** In an empty directory, init writes `package.json`, the scaffold files, and both managed files. After the package manager installs, `loom check` exits 0 and runs the type pass, `loom build --target node` builds, and the bundle runs under Node and Bun.
+- **An existing package.** In a package with its own `src/application.ts`, `scripts.build`, `tsconfig.json`, and `devDependencies.typescript`, init writes the missing pieces and leaves all four byte-identical. `--only changes` writes `.changes/README.md` alone, and `--only tsconfig` writes `tsconfig.json` alone.
 - **Managed files.** Re-running init on an unedited managed file re-renders it. An edited one draws one warning and stays byte-identical, and `--force` re-renders it. A file whose header was deleted stays byte-identical under `--force`, and `loom check` raises no warning for it.
 
 ## This repository's release

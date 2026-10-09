@@ -1,6 +1,12 @@
 import { expect, test } from 'vite-plus/test';
 
-import { hasDrifted, readManaged } from '../src/helpers/managed.js';
+import {
+  driftWarning,
+  hasDrifted,
+  managedChecksum,
+  readManaged,
+  renderManaged,
+} from '../src/helpers/managed.js';
 
 /** The SHA-256 of `hello\n`, a known value independent of the code under test. */
 const hello = '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03';
@@ -47,4 +53,52 @@ test.each([
   ],
 ])('a file with %s is not managed', (_case, text) => {
   expect(readManaged(text)).toBeUndefined();
+});
+
+test('rendering puts the header on the first line with the checksum of the content', () => {
+  expect(renderManaged('hello\n')).toBe(`<!-- Managed by loom init. sha256:${hello} -->\nhello\n`);
+});
+
+test('rendering content with frontmatter puts the header on the first line after it', () => {
+  expect(renderManaged('---\nname: x\n---\nhello\n')).toBe(
+    `---\nname: x\n---\n<!-- Managed by loom init. sha256:${skill} -->\nhello\n`,
+  );
+});
+
+test('rendering content with frontmatter and a blank line puts the header after the blank line', () => {
+  const content = '---\nname: x\n---\n\n\n# Keep\n';
+  expect(renderManaged(content)).toBe(
+    `---\nname: x\n---\n\n<!-- Managed by loom init. sha256:${managedChecksum(content)} -->\n\n# Keep\n`,
+  );
+});
+
+test.each([
+  ['one blank line', '\n'],
+  ['two blank lines', '\n\n'],
+])('a header after frontmatter and %s is read, and its content keeps them', (_case, blank) => {
+  const content = `---\nname: x\n---\n${blank}hello\n`;
+  const file = readManaged(
+    `---\nname: x\n---\n${blank}<!-- Managed by loom init. sha256:${managedChecksum(content)} -->\nhello\n`,
+  );
+  expect(file?.content).toBe(content);
+  expect(file && hasDrifted(file)).toBe(false);
+});
+
+test.each([
+  ['no frontmatter', '\n# Change fragments\n\nName each fragment.\n'],
+  ['frontmatter', '---\nname: loom-changelog\n---\n\n# Keep the changelog\n'],
+  ['frontmatter and two blank lines', '---\nname: loom-changelog\n---\n\n\n# Keep the changelog\n'],
+])(
+  'content with %s reads back exactly from its rendering and has not drifted',
+  (_case, content) => {
+    const file = readManaged(renderManaged(content));
+    expect(file?.content).toBe(content);
+    expect(file && hasDrifted(file)).toBe(false);
+  },
+);
+
+test('the drift warning names the file and both ways out', () => {
+  expect(driftWarning('.changes/README.md')).toBe(
+    'warning: .changes/README.md differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.',
+  );
 });
