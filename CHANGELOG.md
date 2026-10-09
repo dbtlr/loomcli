@@ -6,6 +6,163 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.10.0 - 2026-10-09
+
+0.10.0 makes `@loomcli/loom` the public toolchain for a Loom application. Its `loom` bin acts on the package whose directory it runs in: `loom init` scaffolds a new application or adds the pieces an existing package lacks, `loom build` bundles the application for Node, Bun, or a compiled binary, `loom check` runs the package's TypeScript and reports every declaration fault without running the application, and `loom changelog` checks the package's change fragments and cuts its version from them.
+
+The release facts replace the packet. The build bakes them into the artifact, core reads them into `host.release` for every run, and `Application.check()` returns every declaration fault a development run reports. An application keeps no `loom.packet.json` and passes nothing to the Application. A run with no baked facts, such as a run from source, is now a development build, so a bundle shipped as a distributed build must bake `{ "build": "distributed" }`, which `loom build` does by default.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.10.0`. Two of the three migrations below share one step: delete the packet and its import, then build through `loom build` or bake `__LOOM_RELEASE__` through the bundler's `define`. The third affects only code that calls an authoring method on a value narrowed with `instanceof Application`.
+
+### Breaking Changes
+
+- Remove `packet()` and the `@loomcli/loom/build` subpath. `@loomcli/loom` exports no module. Build with `loom build`, which bakes the [release facts](docs/core.md#release-facts), or bake them through a bundler `define` instead.
+
+### Migration
+
+**Affected surface.** Build scripts that import `packet` from `@loomcli/loom/build` and pass `packet()` to `Bun.build`.
+
+**Why.** Core reads the build from the release facts a `define` bakes in, which any bundler and the `bun build` command line accept, so no plugin answers a facts file any longer.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { packet } from '@loomcli/loom/build';
+
+await Bun.build({ entrypoints: ['src/main.ts'], outdir: 'dist', plugins: [packet()], target: 'node' });
+```
+
+After:
+
+```ts
+await Bun.build({
+  define: { __LOOM_RELEASE__: JSON.stringify({ build: 'distributed' }) },
+  entrypoints: ['src/main.ts'],
+  outdir: 'dist',
+  target: 'node',
+});
+```
+
+**Steps.**
+
+1. Remove the `@loomcli/loom/build` import and the `packet()` plugin from each build script.
+2. Replace each build script with `loom build --target node`, or add the `__LOOM_RELEASE__` define to it, as the core migration for the release facts describes.
+
+**Validation.** Run each build script, then run the bundle with a command that throws and confirm it prints `<application>: Something went wrong.`.
+
+- Remove the Application's `packet` option, the `Packet` type, and the `@loomcli/core/invalid-packet` rule. Core reads the build of every run from the [release facts](docs/core.md#release-facts) the build bakes into the `__LOOM_RELEASE__` identifier through a bundler `define`, and `new Application()` given `packet` throws under `@loomcli/core/retired-application-option`.
+- Change an application with no baked release facts, run from source or bundled without the define, to read `{ build: 'source' }`, a development build. Such a run shows a defect's Developer Diagnostic, checks every converter, and fails on an undescribed declaration, where an application given no packet was distributed before. A bundle that bakes `{ "build": "distributed" }` shows the operator `<application>: Something went wrong.` as before.
+- Change `inspect()` to learn its build from the baked release facts, so from source it checks every validated input's converter.
+- Add `release` to the host fields `app.invoke` accepts under `host`, now five. A malformed call reports by the release facts its `host` supplies, which the call now reads first.
+
+### Migration
+
+**Affected surface.** Applications that import `loom.packet.json` and pass it as the Application's `packet` option, code that imports the `Packet` type from `@loomcli/core`, and applications that shipped a bundle with no packet as a distributed build.
+
+**Why.** The release facts say how the running application was built and released, and the build bakes them in, so an author keeps no facts file and wires nothing into the Application. A bundle built without them is unbuilt, so it shows its author the detail of a defect.
+
+**Before and after.**
+
+Before, the entry imported the packet and the build ran the `packet()` plugin:
+
+```ts
+// src/application.ts
+import packet from '../loom.packet.json' with { type: 'json' };
+
+export const notes = new Application('notes', { description: 'Keep notes.', packet });
+```
+
+```ts
+// scripts/build.ts
+import { packet } from '@loomcli/loom/build';
+
+await Bun.build({ entrypoints: ['src/main.ts'], outdir: 'dist', plugins: [packet()], target: 'node' });
+```
+
+After, the Application takes no packet, and the build bakes the release facts through a define:
+
+```ts
+// src/application.ts
+export const notes = new Application('notes', { description: 'Keep notes.' });
+```
+
+```ts
+// scripts/build.ts
+await Bun.build({
+  define: { __LOOM_RELEASE__: JSON.stringify({ build: 'distributed' }) },
+  entrypoints: ['src/main.ts'],
+  outdir: 'dist',
+  target: 'node',
+});
+```
+
+**Steps.**
+
+1. Delete `loom.packet.json`, its import, the `packet` option, and any `loom.packet.json` entry in `tsconfig.json`.
+2. Bake `__LOOM_RELEASE__` into every bundle you ship with your bundler's `define`, `{ "build": "distributed" }` for a distributed build. The bundle must include `@loomcli/core`, so the define reaches it.
+3. Run the application from source and describe every member the `@loomcli/core/undescribed` diagnostic lists, because a source run is a development build.
+4. In a test that needs a distributed build from source, pass `host: { release: { build: 'distributed' } }` to `run()` or `app.invoke`.
+
+**Validation.** Run the bundle with a command that throws and confirm it prints `<application>: Something went wrong.`. Run the source with `--help` and confirm it prints no diagnostic. Run the application's tests.
+
+- Fix `instanceof Application`, which now holds for an Application after a declaring call, such as `.action()`, `.command()`, or `.globalOption()`, as it did for a bare `new Application()`. A tool that finds an exported Application by class, as `loom check` does, recognizes it in every authoring state. It narrows the value to an `Application` that publishes `check()`, `inspect()`, `run()`, `invoke()`, `extend()`, and `name`, the members every authoring state keeps.
+
+### Migration
+
+**Affected surface.** Code that narrows a value with `instanceof Application` and then calls an authoring method on it, such as `globalOption()`, `argument()`, `option()`, `command()`, or `action()`.
+
+**Why.** `instanceof` now holds in every authoring state, and most states no longer accept those calls, so the narrowed type publishes only the members every state keeps. Before, it narrowed to a fresh Application, which was correct only because `instanceof` held for a fresh Application alone.
+
+**Before and after.**
+
+Before:
+
+```ts
+if (value instanceof Application) {
+  value.globalOption('verbose', { description: 'Print more.', type: 'boolean' });
+}
+```
+
+After, declare on the Application value where it is authored, and narrow only to read it:
+
+```ts
+const app = new Application('notes', { description: 'Keep notes.' }).globalOption('verbose', {
+  description: 'Print more.',
+  type: 'boolean',
+});
+
+if (value instanceof Application) {
+  const faults = value.check();
+}
+```
+
+**Steps.**
+
+1. Find each `instanceof Application` check in the application and its tools.
+2. Move any authoring call made on the narrowed value to the place the Application is declared.
+
+**Validation.** Run the application's type check, such as `loom check`, and confirm it reports no error at the narrowed calls.
+
+### Features
+
+- Add the `loom` bin to `@loomcli/loom`, with `loom changelog check` and `loom changelog write`. They act on the package of the nearest `package.json`: `check` validates its breaking, `feature.`, and fix fragments in `.changes/`, and `write` cuts its `package.json` version from them, prepends the release section to its `CHANGELOG.md`, and consumes the fragments. See [The package changelog](docs/toolchain.md#the-package-changelog).
+
+- Add `host.release`, the [release facts](docs/core.md#release-facts) of the running application, and export their `ReleaseFacts` type. An action reads `build`, which is `source`, `development`, or `distributed`, and, for a release, the `version`, the `lane` core derives from it, the `repository` as `owner/name`, and a compiled binary's `asset`. `run({ host: { release } })` and `app.invoke`'s `host: { release }` replace them, which is how a test supplies facts.
+- Add `@loomcli/core/invalid-release-facts`, the defect a malformed baked value reports before the graph builds, as its Developer Diagnostic in every build.
+- Add `Application.check()`, which builds the graph with nothing run and returns every declaration fault a development run reports before routing, a declared default or implied value its validator rejects aside, as a list of `DeclarationError` values. It runs the converter, undescribed, and `onGraphBuilt` checks whatever the build, and continues past each fault. See [Checking the declarations](docs/core.md#checking-the-declarations).
+
+- Add `loom build` to the `loom` bin. It bundles the package's application for one target, `node`, `bun`, or a Bun compile target such as `bun-linux-x64`, and bakes its [release facts](docs/core.md#release-facts) into the artifact: `{ build: 'distributed' }` by default, `development` under `--build development` or `--watch`, and with `--release` the package's version, its repository, and a binary's asset name. A bundle carries `src/application.ts`, or the module `--application` names, beside the entry, so a test imports the built Application. `--facts` and `--define` print the same facts for a custom build, and a failed build leaves earlier output in place. See [loom build](docs/toolchain.md#loom-build).
+- Add `loom check` to the `loom` bin. It runs the package's own TypeScript against its `tsconfig.json`, imports the application module without running the entry, and prints every fault `Application.check()` returns, and every fault the module throws while it loads, as its Developer Diagnostic, exiting 1 for any fault. An edited managed file draws a warning that never fails the check. See [loom check](docs/toolchain.md#loom-check). Both commands do their work under Bun, so Bun must be on the `PATH`.
+
+- Add `loom init` to the `loom` bin. In an empty directory it scaffolds a new application: a `package.json` with `bin`, `build` and `check` scripts, and `@loomcli/core` and `@loomcli/loom` pinned at the running version, `typescript` at the range `@loomcli/loom` declares and a `tsconfig.json` so `loom check` runs its type pass, an application module that passes `loom check`, an entry, the fragment guide `.changes/README.md`, and the changelog skill `.agents/skills/loom-changelog/SKILL.md`. In an existing package it adds only the pieces the package lacks. Scaffold files and keys are written once and never overwritten. The fragment guide and the skill are managed files with a checksum header: init re-renders an unedited one, warns about an edited one and leaves it unless `--force`, and leaves one whose header was deleted to the author. `--only <piece>` limits init to the pieces it names. See [loom init](docs/toolchain.md#loom-init).
+
+### Fixes
+
+- Fix the `@loomcli/plugins` package shipping a second `package.json` under `dist/`. The copy held unpublished `workspace:*` specs and an `exports` map that Node ignores but some bundlers read.
+- Change the plugin authoring guidance in the [core reference](docs/core.md#plugins): a published plugin declares its package name as a constant instead of importing its `package.json`, because the compiler copies an imported manifest into the output directory. An application that `loom build` bundles still imports its manifest.
+
 ## v0.9.0 - 2026-10-06
 
 0.9.0 lets an agent drive a Loom application without its command line. `invoke` runs a Command by name with named values, as `run()` runs the argv that spells them, and returns a structured outcome with no process effects. The MCP plugin, `mcp()`, serves every Command that opts in as one Model Context Protocol tool over stdio, each call run through `invoke`. Every failure now carries a stable code and a plain-data form, `{ code, exitCode, message, hints }`, which a tool error, an `invoke` outcome, and the formatter's one-line JSON failure output under `--format json` all report.

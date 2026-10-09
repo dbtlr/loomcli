@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0065 - Release facts on the host say how the running application was built
 description: Core fills host.release for every run from one define, __LOOM_RELEASE__, that the build bakes into the artifact. The facts hold the build, source, development, or distributed, an optional release group with a lane core derives from the version, and an installation group whose source a later contract specifies. No baked facts reads as source. Authors import and pass nothing, and the packet, its option, its type, its file, and its writer are removed. This supersedes ADR-0050.
-status: proposed
+status: accepted
 created: 2026-10-07
-modified: 2026-10-07
+modified: 2026-10-09
 ---
 
 # ADR-0065 - Release facts on the host say how the running application was built
@@ -48,7 +48,7 @@ The example applications drop `loom.packet.json` and build with `loom build --ta
 
 ## Status
 
-Proposed 2026-10-07 with the contract in [Release facts](../core.md#release-facts). It moves to accepted inside the release PR of the release that ships the implementation: core fills `host.release` from the define, a run without the define reads `source`, the malformed-value defect, the packet removed, and the acceptance in that section, under Node and Bun. ADR-0050 moves to superseded in the same PR.
+Accepted in 0.10.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0067 - A package's changelog cuts its version from three fragment kinds
 description: Any package keeps its own .changes/ and CHANGELOG.md in its package directory and reads its version from package.json, never from tags. Fragments are breaking, feature, or fix, and the highest kind present decides the bump, major, minor, or patch from 1.0, and minor or patch below it. loom changelog check validates the fragments, and loom changelog write cuts the version, renders the section, and consumes the fragments atomically. ADR-0012 keeps governing this repository's synchronized release.
-status: proposed
+status: accepted
 created: 2026-10-07
-modified: 2026-10-08
+modified: 2026-10-09
 ---
 
 # ADR-0067 - A package's changelog cuts its version from three fragment kinds
@@ -41,7 +41,7 @@ For a package, `loom changelog write --dry-run` previews the cut. The fragment g
 
 ## Status
 
-Proposed 2026-10-07 with the contract in [The package changelog](../toolchain.md#the-package-changelog). It moves to accepted inside the release PR of the release that ships the implementation: both commands as specified, the bump table, and the acceptance in that section, under Node and Bun.
+Accepted in 0.10.0.
 
 ## Changelog
 
