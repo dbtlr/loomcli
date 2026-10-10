@@ -294,7 +294,8 @@ const scenarios = {
   'stdout-broken-after-failure': () =>
     new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
       async ({ out }) => {
-        // The action catches the failed write and fails on its own, so the run reports both.
+        // The action catches the failed write and fails on its own.
+        // A run whose output failed reports only the destination.
         await out.print('lost').catch(() => undefined);
         throw new FatalError('The action failed.');
       },

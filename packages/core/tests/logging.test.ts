@@ -266,6 +266,7 @@ test('a stdout that fails a write logs the destination defect at fatal with the 
   const result = run('stdout-broken', [], { FIXTURE_BUILD: 'development' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
+  expect(event.message).toBe('Could not write invocation output.');
   expect(event.defect).toEqual({
     message: 'write EPIPE',
     name: 'Error',
