@@ -358,6 +358,7 @@ test('two processes that append and rotate one file at once write every line who
   );
   // A simultaneous rotation may lose records from a copy, but no line is torn or written twice.
   const messages: string[] = written.map((line) => JSON.parse(line).message);
+  expect(messages.length).toBeGreaterThan(0);
   expect(messages.every((message) => /^[ab]-\d+-\d+$/u.test(message))).toBe(true);
   expect(new Set(messages).size).toBe(messages.length);
 });
