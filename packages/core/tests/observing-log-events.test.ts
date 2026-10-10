@@ -110,6 +110,12 @@ test.each(broken)(
   },
 );
 
+test('a stdout that fails and a hook that breaks write two diagnostics with one blank line between', () => {
+  const result = run('stdout-and-hook-broken', 'development');
+  expect(result.resolved).toBe('1');
+  expect(result.written).toMatch(/\n\n-- BROKEN LOG HOOK -+ @loomcli\/core\/broken-log-hook\n/u);
+});
+
 test('a broken hook in a run a caller cancelled keeps 130 and still writes the report', () => {
   const result = run('cancelled-broken', 'development');
   expect(result.resolved).toBe('130');

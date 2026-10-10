@@ -1,7 +1,7 @@
 import type { Writable } from 'node:stream';
 
 import { defectDetail } from './defect.js';
-import type { DefectDetail } from './defect.js';
+import type { LogDefect } from './defect.js';
 import { InternalError, isAuthorFault, reasonOf } from './errors.js';
 import type { LoomError } from './errors.js';
 import type { FailureForm } from './form.js';
@@ -26,9 +26,6 @@ type JsonValue =
 
 /** The fields of a `log` call: any values, which the copy turns into JSON. */
 type LogFields = Readonly<Record<string, unknown>>;
-
-/** The name, message, and stack a fatal event carries for the defect the run caught. */
-type LogDefect = DefectDetail;
 
 /** One log event as an `onLog` hook receives it, frozen with everything it holds. */
 interface LogEvent {
@@ -443,7 +440,6 @@ export type {
   JsonValue,
   Log,
   LogBinder,
-  LogDefect,
   LogDestination,
   LogEvent,
   LogFields,
@@ -452,3 +448,4 @@ export type {
   LogScene,
 };
 export { brokenLogHookDefect, RunLog, silentLog };
+export type { LogDefect } from './defect.js';

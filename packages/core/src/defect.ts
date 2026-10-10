@@ -316,8 +316,8 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
   return [...(source === undefined ? [] : [source]), causeChain(cause)];
 }
 
-/** The name, message, and stack a log event carries for a defect. */
-interface DefectDetail {
+/** The name, message, and stack a fatal log event carries for the defect the run caught. */
+interface LogDefect {
   readonly name: string;
   readonly message: string;
   readonly stack?: string;
@@ -325,11 +325,16 @@ interface DefectDetail {
 
 /**
  * What a log event carries of the value a run caught for a defect: the name and message of the
- * cause of an `InternalError` that holds an Error, read as a diagnostic reads a cause, and of the
- * failure itself otherwise. The stack is the runtime's own, absent when the value has none.
+ * cause of an `InternalError` that holds an Error, read as a diagnostic reads a cause, and its
+ * stack as the runtime formats it. A cause that is not an Error is the thrown value, which the
+ * message renders as a Developer Diagnostic does, under the name `InternalError` and with no
+ * stack. Any other failure is read as itself.
  */
-function defectDetail(failure: DeclarationError | InternalError): DefectDetail {
+function defectDetail(failure: DeclarationError | InternalError): LogDefect {
   const cause: unknown = failure instanceof InternalError ? failure.cause : undefined;
+  if (cause !== undefined && !isError(cause)) {
+    return { message: valueCode(cause), name: 'InternalError' };
+  }
   const caught = isError(cause) ? cause : failure;
   const stack = readText(caught, 'stack');
   return {
@@ -339,5 +344,5 @@ function defectDetail(failure: DeclarationError | InternalError): DefectDetail {
   };
 }
 
-export type { DefectDetail, SourceAccess };
+export type { LogDefect, SourceAccess };
 export { defectDetail, defectEvidence };

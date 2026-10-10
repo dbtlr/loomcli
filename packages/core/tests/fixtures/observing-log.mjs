@@ -18,6 +18,15 @@ const stderr = new Writable({
   },
 });
 
+/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
+function brokenPipe() {
+  return new Writable({
+    write(_chunk, _encoding, callback) {
+      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    },
+  });
+}
+
 /** Extra lines a scenario prints, keyed for the test to read. */
 const printed = [];
 
@@ -131,6 +140,15 @@ const scenarios = {
       description: 'Probe a hook that returns true.',
       plugins: [breaking('true'), keeping],
     }).action(twoLogs),
+  // The run's stdout refuses a write and a hook breaks, so two plain fallback reports follow.
+  'stdout-and-hook-broken': () =>
+    new Application('probe', {
+      description: 'Probe two plain fallback reports.',
+      plugins: [breaking('throws'), keeping],
+    }).action(({ log, out }) => {
+      log.info('one');
+      out.print('rows');
+    }),
   'throws-on-event': () =>
     new Application('probe', {
       description: 'Probe a throwing hook.',
@@ -154,7 +172,14 @@ const app = declare(build);
 const release =
   process.env.FIXTURE_BUILD === undefined ? {} : { release: { build: process.env.FIXTURE_BUILD } };
 const code = await app.run({
-  host: { argv, env: { PROBE: 'run' }, platform: 'probe-os', stderr, ...release },
+  host: {
+    argv,
+    env: { PROBE: 'run' },
+    platform: 'probe-os',
+    stderr,
+    ...(scenario === 'stdout-and-hook-broken' ? { stdout: brokenPipe() } : {}),
+    ...release,
+  },
   signal: controller.signal,
 });
 if (scenario === 'app-invoke') {

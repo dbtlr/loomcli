@@ -244,6 +244,14 @@ test('a distributed build logs the defect with its stack while stderr holds the 
   expect(result.stderr).toBe('probe: Something went wrong.\n');
 });
 
+test('a thrown string logs the value as the defect message, with no core stack', () => {
+  const result = run('throw-string', [], { FIXTURE_BUILD: 'distributed' });
+  const { event } = only(result.events);
+  expect(event.level).toBe('fatal');
+  expect(event.defect).toEqual({ message: "'boom'", name: 'InternalError' });
+  expect(event.defect).not.toHaveProperty('stack');
+});
+
 test('a defect without a thrown Error cause reads the failure itself', () => {
   const result = run('internal-error', [], { FIXTURE_BUILD: 'distributed' });
   const { event } = only(result.events);
@@ -313,27 +321,41 @@ test('a log call during delivery reports the log-in-log-hook defect once and exi
   expect(distributed.stderr).toBe('probe: Something went wrong.\n');
 });
 
+/** Bundles the logging fixture, then runs one scenario of the bundle under a runtime. */
+function bundledRun(runtime: string, scenario: string) {
+  const outdir = join(root, `${runtime}-${scenario}`);
+  const built = spawnSync(
+    'bun',
+    [bundler, 'logging.mjs', outdir, JSON.stringify({ build: 'distributed' })],
+    { encoding: 'utf8', timeout: 60_000 },
+  );
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  return read(
+    spawnSync(runtime, [join(outdir, 'logging.js'), scenario], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    }),
+  );
+}
+
 test.each(['node', 'bun'])(
   'a distributed bundle run under %s logs the defect at fatal with its stack and writes the generic sentence',
   (runtime) => {
-    const outdir = join(root, runtime);
-    const built = spawnSync(
-      'bun',
-      [bundler, 'logging.mjs', outdir, JSON.stringify({ build: 'distributed' })],
-      { encoding: 'utf8', timeout: 60_000 },
-    );
-    expect(built.stderr).toBe('');
-    expect(built.status).toBe(0);
-    const result = read(
-      spawnSync(runtime, [join(outdir, 'logging.js'), 'type-error'], {
-        encoding: 'utf8',
-        timeout: 60_000,
-      }),
-    );
+    const result = bundledRun(runtime, 'type-error');
     const { event } = only(result.events);
     expect(event.level).toBe('fatal');
     expect(event.defect?.name).toBe('TypeError');
     expect(event.defect?.stack).toContain('The probe failed.');
+    expect(result.stderr).toBe('probe: Something went wrong.\n');
+  },
+);
+
+test.each(['node', 'bun'])(
+  'a log call during delivery in a distributed bundle under %s writes the generic defect message once and exits 1',
+  (runtime) => {
+    const result = bundledRun(runtime, 'log-in-hook');
+    expect(result.status).toBe(1);
     expect(result.stderr).toBe('probe: Something went wrong.\n');
   },
 );

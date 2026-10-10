@@ -276,6 +276,10 @@ const scenarios = {
         await invoke(['inner'], {});
         log.info('outer again');
       }),
+  'throw-string': () =>
+    failing([collector], () => {
+      throw 'boom';
+    }),
   'type-error': () =>
     failing([collector], () => {
       throw new TypeError('The probe failed.');

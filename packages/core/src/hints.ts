@@ -317,15 +317,7 @@ function brokenLogReport(
   scene: DeveloperScene,
 ): string {
   return broken
-    .map((entry) => {
-      if (!build.development) {
-        return genericOnce(build, scene.application);
-      }
-      const text = developerPlainText(brokenLogHookDefect(entry), scene);
-      const written = build.reported ? `\n${text}` : text;
-      build.reported = true;
-      return written;
-    })
+    .map((entry) => plainDefectReport(build, brokenLogHookDefect(entry), scene))
     .join('');
 }
 
@@ -587,15 +579,31 @@ interface FailureReported {
 }
 
 /**
+ * What the plain fallback path writes for one defect: its Developer Diagnostic in a development
+ * build, opening with a blank line after an earlier report, and the generic defect message, at
+ * most once per run, in a distributed one.
+ */
+function plainDefectReport(
+  build: BuildReports,
+  defect: InternalError,
+  scene: DeveloperScene,
+): string {
+  if (!build.development) {
+    return genericOnce(build, scene.application);
+  }
+  const text = developerPlainText(defect, scene);
+  const written = build.reported ? `\n${text}` : text;
+  build.reported = true;
+  return written;
+}
+
+/**
  * What a run writes on the plain fallback path when a destination failed a write or reporting
  * itself failed: the Developer Diagnostic of the broken destination in a development build, and
  * the generic defect message, at most once per run, in a distributed one.
  */
 function destinationReport(build: BuildReports, cause: unknown, scene: DeveloperScene): string {
-  if (!build.development) {
-    return genericOnce(build, scene.application);
-  }
-  return `${build.reported ? '\n' : ''}${developerPlainText(destinationDefect(cause), scene)}`;
+  return plainDefectReport(build, destinationDefect(cause), scene);
 }
 
 /** The defect a destination that failed a write the run owed it is. */
