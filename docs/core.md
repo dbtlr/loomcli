@@ -3299,7 +3299,7 @@ A plugin observes the run's [log events](#logging) through `onLog`, and decides 
 
 - **When.** Core calls each installed plugin's hook, in installation order, inside the `log` call or the failure report that created the event, before that call returns. Every hook receives the same frozen event and never another hook's work. Events of an action's `invoke` reach the same hooks.
 - **What it receives.** The event, and the destination of the outermost run. Under `run()` that is its host's `env`, `platform`, and `stderr`. Under an action's `invoke`, every [MCP](#mcp) tool call included, it is the parent run's, because a nested run's stderr is a capture sink. Under [`app.invoke`](#invocation-by-name) it is the `env` and `platform` the call captured or its `host` replaced, and `stderr` is `null`, because an invocation by name writes to no process stream. A hook writes to `destination.stderr`, never to `process.stderr` or into a run's captured output, so an invocation's captured `messages` and an MCP tool result never hold a record. A hook reads `destination.env`, never `process.env`, so a `run({ host })` override reaches it.
-- **What it returns.** `undefined`. A hook observes: it cannot change the event, stop its delivery to a later hook, or change the run's outcome. Work it starts, a promise included, is its own, and core neither waits for it nor tracks it.
+- **What it returns.** `undefined`. A hook observes: it cannot change the event or stop its delivery to a later hook, and a working hook cannot change the run's outcome; a broken one fails the run, below. Work it starts, a promise included, is its own, and core neither waits for it nor tracks it.
 - **A broken hook.** A hook that throws or returns a value, a promise included, is broken, and a returned promise receives a rejection handler and is otherwise ignored. Core stops calling that hook for the rest of the run and reports it once, after the outcome, through the plain fallback path, which calls no override and runs no hook: a distributed build writes the generic defect message, at most once per run, and a development build writes one Developer Diagnostic of `@loomcli/core/broken-log-hook`, whose sentence is `Plugin "@acme/stacks" failed in onLog: <reason>`, the reason read as a broken [`onFailure`](#failure-hints) hook's is, with `The hook returned a promise.` and `The hook returned a value.` for the two returns. A hook that threw the `@loomcli/core/log-in-log-hook` fault of [Logging](#logging) reports that rule's Developer Diagnostic instead. The run returns 1, whichever code it would have returned, except a cancelled run, which keeps its signal's code and still writes the report. Core logs no event for the report, so a hook that throws on core's own failure event is reported once and never called again.
 - **Types.** The return type is `undefined`, so a hook written as an arrow with no `return` compiles, and one that returns a value or a promise is a compile error.
 - **Plugins alone.** The hook is on the plugin definition alone. An application that wants to observe its own events installs a small local plugin.
@@ -5124,14 +5124,14 @@ export type LoggingSettings =
       readonly to?: 'file';
       /** The log file: a name inside the default directory, an absolute path, or a path under ~/. */
       readonly file?: string;
-      /** The lowest level written, info by default. A fatal event is always written. */
+      /** The lowest level written, info by default. A fatal event is never filtered by level. */
       readonly level?: WrittenLevel;
       /** The size in bytes past which the file rotates, 10_000_000 by default. */
       readonly maxBytes?: number;
       /** How many rotated copies are kept, 5 by default. */
       readonly keep?: number;
       /** Called for each failure to resolve, create, append to, or rotate the file. Absent, a failure is ignored. */
-      readonly onError?: (error: LoggingError) => void;
+      readonly onError?: (error: LoggingError) => undefined;
     }
   | {
       readonly to: 'console';
@@ -5141,7 +5141,7 @@ export declare class LoggingError extends Error {
   readonly kind: 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
   readonly path: string | null; // the file or directory; null for unresolved-directory
   readonly variable?: string; // unresolved-directory: the unset variable, such as HOME
-  // cause: the runtime's error, for create-directory, append, and rotate
+  readonly cause?: unknown; // the runtime's error for create-directory, append, and rotate; absent for unresolved-directory
 }
 export declare function logging(settings?: LoggingSettings): Plugin;
 ```
@@ -5166,7 +5166,7 @@ The logging plugin writes each [log event](#logging) as one JSON record, appende
 
 - **Settings.** `logging()` judges its settings at the call under `checkPluginSettings`, then its own keys, and throws a `DeclarationError` of `@loomcli/plugins/logging/settings` for the first key at fault: `to` other than `file` or `console`; `file` that is not a string, is empty, or holds a control character; `level` other than one of the five written levels; `maxBytes` or `keep` that is not a positive safe integer; `onError` that is not a function; and `file`, `maxBytes`, `keep`, or `onError` beside `to: 'console'`, which the types reject. Its sentence names the plugin and the key, such as `Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.`, and its correction states the accepted values, such as `Supply a whole number of 1 or more.`
 - **The record.** One event is one line: the event as `JSON.stringify` writes it, with its keys in the order `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, `defect`, an absent key omitted, followed by one newline. Both destinations write the same bytes.
-- **The level.** An event below `level` is skipped. A `fatal` event is always written.
+- **The level.** An event below `level` is skipped. A `fatal` event is never skipped by `level`; the destination and failed-write rules still apply to it.
 - **The file.** With `to: 'file'`, the default, the plugin writes to a file in the default directory, which it reads from `destination.env` and `destination.platform` alone:
 
   | Platform | Default directory |
@@ -5175,11 +5175,11 @@ The logging plugin writes each [log event](#logging) as one JSON record, appende
   | `win32` | `%LOCALAPPDATA%\<app>\Logs\`, unverified under ADR-0011 |
   | any other | `$XDG_STATE_HOME/<app>/`, or `$HOME/.local/state/<app>/` when `XDG_STATE_HOME` is unset or not absolute |
 
-  `<app>` is the application's name. The file is `<app>.jsonl` with no `file` setting. A `file` that is a bare or relative name resolves inside the default directory, an absolute one is used as written, and one that starts with `~/` resolves from `destination.env.HOME`. A relative `file` never resolves against the working directory. The plugin creates a missing directory and its parents.
+  `<app>` is the application's name. The file is `<app>.jsonl` with no `file` setting. A `file` that is a bare or relative name resolves inside the default directory, an absolute one is used as written, and one that starts with `~/` resolves from `destination.env.HOME`, or from `USERPROFILE` on `win32` when `HOME` is unset. A relative `file` never resolves against the working directory. The plugin creates a missing directory and its parents.
 - **Appending.** The plugin appends each record with one synchronous write before its hook returns, so a record survives a `process.exit()` or a kill that follows the call. Several processes may append to one file, and on a local file system each record lands whole.
-- **Rotation.** Before a write that would take the file past `maxBytes`, the plugin renames the file to its first copy, shifting each older copy up one, deletes the copy past `keep`, and starts a new file, with no timer. A copy's name puts its number before the file's last extension, `collector.1.jsonl`, or after a name with none, `hub.1`. A record larger than `maxBytes` is written whole to the new file. When a rename fails because another process rotated first, the plugin appends to the file now at the path.
+- **Rotation.** Before a write that would take the file past `maxBytes`, the plugin renames the file to its first copy, shifting each older copy up one, deletes the copy past `keep`, and starts a new file, with no timer. A copy's name puts its number before the file's last extension, `collector.1.jsonl`, or after a name with none, `hub.1`. A record larger than `maxBytes` is written whole to the new file. When a rename fails because another process rotated first, the plugin appends to the file now at the path. The plugin takes no lock: two processes that rotate one file at once may each rotate it, which deletes the oldest copy sooner than `keep` implies, and every record still lands whole in the file or a copy until its copy passes `keep`.
 - **The console.** With `to: 'console'`, the plugin writes each record to `destination.stderr`, and writes nothing when it is `null`. It never writes to stdout, which carries the run's output and, under MCP, the protocol.
-- **A failed write.** When the default directory cannot be resolved because a variable it needs is unset, or creating the directory, an append, or a rename fails, the plugin calls `onError` with a `LoggingError`: `kind` names the step, `path` the file or directory, `variable` the unset variable, and `cause` the runtime's error. It calls `onError` synchronously, once for each failure, every record included, and the next record tries the file again. With no `onError`, the failure is ignored: the record is lost and the run continues. The plugin writes nothing to stderr of its own. An `onError` that ends the process ends it; one that throws throws from the plugin's hook, which core reports as a broken hook under [Observing log events](#observing-log-events).
+- **A failed write.** When the default directory cannot be resolved because a variable it needs is unset, or creating the directory, an append, or a rename fails, the plugin calls `onError` with a `LoggingError`: `kind` names the step, `path` the file or directory, `variable` the unset variable, and `cause` the runtime's error. It calls `onError` synchronously, once for each failure, every record included, ignores what it returns, and the next record tries the file again. With no `onError`, the failure is ignored: the record is lost and the run continues. The plugin writes nothing to stderr of its own. An `onError` that ends the process ends it; one that throws throws from the plugin's hook, which core reports as a broken hook under [Observing log events](#observing-log-events).
 - **Invocation by name.** Events of an action's `invoke`, MCP tool calls included, reach the outermost run's file or stderr. An `app.invoke` writes the file from the `env` the call captured or its `host` replaced, and nothing to stderr.
 - **Names.** `logging`, `LoggingSettings`, and `LoggingError` are exported from `@loomcli/plugins/logging`.
 
@@ -5188,8 +5188,8 @@ The logging plugin writes each [log event](#logging) as one JSON record, appende
 The plugin is proven when process tests under Node and Bun, each with a temporary home and state directory, produce these results:
 
 - **Records.** An application that installs `logging()` and logs at each level appends one pinned line per event at or above `info` to `$XDG_STATE_HOME/<app>/<app>.jsonl`, with the keys in the record order, and, with `level: 'error'`, a defect's `fatal` record still written with its stack.
-- **The file.** `file: 'collector.jsonl'` writes inside the default directory, an absolute `file` writes where it names, `~/x.jsonl` resolves from the test's `HOME`, a missing directory is created, and `darwin` and `win32` fixtures resolve their table rows from an overridden `env` and `platform`.
-- **Rotation.** With `maxBytes: 200` and `keep: 2`, writes past the size leave the file, `.1`, and `.2`, the oldest copy deleted; a record larger than `maxBytes` lands whole in a new file; and two processes appending and rotating one file lose no record either wrote whole.
+- **The file.** `file: 'collector.jsonl'` writes inside the default directory, an absolute `file` writes where it names, `~/x.jsonl` resolves from the test's `HOME`, and from `USERPROFILE` in a `win32` fixture with no `HOME`, a missing directory is created, and `darwin` and `win32` fixtures resolve their table rows from an overridden `env` and `platform`.
+- **Rotation.** With `maxBytes: 200` and `keep: 2`, writes past the size leave the file, `.1`, and `.2`, the oldest copy deleted; a record larger than `maxBytes` lands whole in a new file; and two processes appending and rotating one file each write every record whole into the file or a copy.
 - **The console.** `to: 'console'` writes the same bytes to stderr and none to stdout, and an `app.invoke` writes nothing to stderr while the file destination still writes.
 - **A failed write.** A read-only directory calls `onError` with `kind` `create-directory` or `append` and the path for each record that fails, and an unset `HOME` with `unresolved-directory` and `variable` `HOME`; with no `onError`, each run exits with its own code and writes nothing to stderr; a later record lands once the directory is writable; and an `onError` that throws is reported as a broken hook with exit 1.
 - **Settings.** Each settings fault throws its pinned diagnostic at the `logging()` call.
