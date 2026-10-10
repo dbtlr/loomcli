@@ -262,6 +262,35 @@ test('a defect without a thrown Error cause reads the failure itself', () => {
   });
 });
 
+test('a stdout that fails a write logs the destination defect at fatal with the write error', () => {
+  const result = run('stdout-broken', [], { FIXTURE_BUILD: 'development' });
+  const { event } = only(result.events);
+  expect(event.level).toBe('fatal');
+  expect(event.defect).toEqual({
+    message: 'write EPIPE',
+    name: 'Error',
+    stack: expect.stringContaining('write EPIPE'),
+  });
+  expect(event.failure).toMatchObject({ code: 'internal', exitCode: 1 });
+  expect(result.resolved).toBe('resolved:1');
+});
+
+test('a distributed build logs the destination defect while stderr holds the generic sentence', () => {
+  const result = run('stdout-broken', [], { FIXTURE_BUILD: 'distributed' });
+  const { event } = only(result.events);
+  expect(event.level).toBe('fatal');
+  expect(event.message).toBe('Something went wrong.');
+  expect(event.defect?.message).toBe('write EPIPE');
+  expect(result.stderr).toBe('probe: Something went wrong.\n');
+});
+
+test('a run whose stdout failed before its own failure logs the destination defect alone', () => {
+  // A run whose output failed reports no other failure, so the action's own logs no event.
+  expect(summary('stdout-broken-after-failure')).toEqual([
+    ['fatal', 'Something went wrong.', null],
+  ]);
+});
+
 test('a fault reported after the outcome logs its own event', () => {
   const result = run('after-primary', [], { FIXTURE_BUILD: 'distributed' });
   expect(result.events.map(({ event }) => [event.level, event.message])).toEqual([
@@ -347,6 +376,17 @@ test.each(['node', 'bun'])(
     expect(event.level).toBe('fatal');
     expect(event.defect?.name).toBe('TypeError');
     expect(event.defect?.stack).toContain('The probe failed.');
+    expect(result.stderr).toBe('probe: Something went wrong.\n');
+  },
+);
+
+test.each(['node', 'bun'])(
+  'a distributed bundle run under %s logs a failed stdout write at fatal with the write error',
+  (runtime) => {
+    const result = bundledRun(runtime, 'stdout-broken');
+    const { event } = only(result.events);
+    expect(event.level).toBe('fatal');
+    expect(event.defect?.message).toBe('write EPIPE');
     expect(result.stderr).toBe('probe: Something went wrong.\n');
   },
 );
