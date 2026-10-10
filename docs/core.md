@@ -1,5 +1,5 @@
 ---
-description: Public SDK, invocation phases, invocation by name, host capture and release facts, checking the declarations, rendered and semantic output, the view registry and media types, the failure classes, their codes, views, and failure form, failure encoders, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
+description: Public SDK, invocation phases, invocation by name, host capture and release facts, checking the declarations, rendered and semantic output, the view registry and media types, the failure classes, their codes, views, and failure form, failure encoders, log events, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
 ---
 
 # Core reference
@@ -729,6 +729,7 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly out: Out;
   readonly style: ContextualStyle;
   readonly invokedBy: 'argv' | 'name'; // new: see Invocation by name
+  readonly log: Log; // new: see Logging
 }
 interface SourceAnswer {
   readonly value: string | boolean | number | readonly string[]; // a number for a counted option
@@ -1282,7 +1283,7 @@ Each invocation follows this order:
 
 Error precedence follows these phases. An unknown command comes first and is raised before the chain. Then the first structural fault in word order, then a group's missing subcommand, then a validator issue. Unknown-command, misplaced-option, missing-value, repetition, and unexpected-argument diagnostics return code 2. Parsing, the input-source stage, and invocation validation run ahead of the chain so middleware can read the invocation. Core holds their faults until the dispatch boundary, and a takeover never observes them. A run cancelled before the chain starts, an abort landing inside a validator included, resolves its cancellation code under [Signals and cancellation](#signals-and-cancellation), and the held fault is never raised; core awaits the validator in flight and starts no further one. A run cancelled while the chain is running and before it reaches the dispatch boundary never reaches it: the `next()` that would have reached it resolves `'cancelled'`, the held fault and any bad `view` assignment stay unobserved, and the code is the signal's; a cancellation that lands after the action dispatched changes nothing here, and `next()` still resolves `'dispatched'`. The held fault is what the run would have raised before this contract: the input error carrying every issue collected in authoring order, or a validator's developer error, which stops validation where it happens and takes the place of anything collected before it, as [Issues and validator failures](#issues-and-validator-failures) states, or a configuration source's plugin fault or the failure it threw, which [Input sources](#input-sources) ranks. The consequence is that a validator runs on an invocation a middleware then takes over, `app get --help` included: this contract requires nothing of a validator it did not require before, so a validator that reads the host or awaits a network still does so on such an invocation, and one with a side effect performs it there. A takeover skips neither invocation validation nor its effects. A declared default or implied value validates before tokens are parsed. A validator rejection, throw, or malformed result there fails before middleware can take over.
 
-An action receives `{ args, options, passthrough, graph, command, out, host, signal, style, invoke }`. Core attaches no input-source or token-spelling metadata to the action's input values. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns, built for this run, and `command` is the routed node inside it: the same two values the run's [middleware](#middleware) receive, under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md). An application's action and a plugin Command's action receive them alike, so a Command whose job is to project the graph, such as [completion](#completion), does it in its own action. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals. `invoke` runs another Command of the same graph by name, under [Invocation by name](#invocation-by-name).
+An action receives `{ args, options, passthrough, graph, command, out, host, signal, style, invoke, log }`, where `log` records [log events](#logging). Core attaches no input-source or token-spelling metadata to the action's input values. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns, built for this run, and `command` is the routed node inside it: the same two values the run's [middleware](#middleware) receive, under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md). An application's action and a plugin Command's action receive them alike, so a Command whose job is to project the graph, such as [completion](#completion), does it in its own action. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; it never aborts unless a caller supplied a signal or an installed plugin owns the process signals. `invoke` runs another Command of the same graph by name, under [Invocation by name](#invocation-by-name).
 
 The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()`, consume stdin, or track unrelated background work. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
 
@@ -1398,7 +1399,7 @@ export const report = new Command('report').action(async ({ invoke, out, style }
 - **No encoded line.** The [failure-encoding stage](#failure-encoders) runs under `run()` alone. Under `invoke`, a failure's view renders into `messages` whatever media type the selected view declares, so `invoke(['paths'], …, { view: 'json' })` captures the failure's text, and the caller reads the form from the outcome and from its handler's context.
 - **Spellings.** A value lowered by name is recorded in a middleware's [`spellings`](#middleware) under the option's reported spelling, its long form, else its negative or short form, so [help](#help-variants) renders the extended page for `help: true`, as it does for `--help`.
 - **Where the run was.** A run `invoke` started reads `invokedBy: 'name'` on the [failure view context](#failure-view-context) and the [failure hook context](#failure-hints), and every other run reads `'argv'`. A hint that points at a command line skips an invocation by name: [help's hint](#helps-failure-hint) and the example `--explain` hint return none for it, and the [suggestions](#suggestions) plugin offers declared names in place of spellings.
-- **No process effects.** An invocation by name installs no process listener, even when an installed plugin holds the signals slot. It sets no `process.exitCode`, writes to no real stdout or stderr, reads no real stdin, and calls no `process.exit()`. An action's `invoke` reads nothing from the process: the call's `env`, `cwd`, `platform`, `readSource`, and [`release`](#release-facts) are its run's host fields. `app.invoke` captures those five at entry, as `run()` does, unless `host` replaces a whole field, and it accepts no other host field and neither `argv` nor `rendering`. A working directory that capture cannot read resolves `failed`, under [An unreadable working directory](#an-unreadable-working-directory).
+- **No process effects.** An invocation by name installs no process listener, even when an installed plugin holds the signals slot. It sets no `process.exitCode`, writes to no real stdout or stderr, reads no real stdin, and calls no `process.exit()`. An action's `invoke` reads nothing from the process: the call's `env`, `cwd`, `platform`, `readSource`, and [`release`](#release-facts) are its run's host fields. `app.invoke` captures those five at entry, as `run()` does, unless `host` replaces a whole field, and it accepts no other host field and neither `argv` nor `rendering`. A working directory that capture cannot read resolves `failed`, under [An unreadable working directory](#an-unreadable-working-directory). A log event of the call reaches each `onLog` with the outermost run's destination, under [Observing log events](#observing-log-events): the parent run's for an action's `invoke`, and a `null` stderr for `app.invoke`, so no log record enters the captured output.
 - **The graph.** An action's `invoke` reuses the graph its run built and validated, and that run's declared-value checks: no lifecycle hook runs again, and each declared default and implied value is the run's validated output, an array default copied for the call. `app.invoke` builds the graph for each call, as `run()` does, so every `onCommandAttach` and [`onGraphBuilt`](#judging-the-built-graph) hook runs and every declared default and implied value validates, and a build fault is a `failed` outcome with exit 1. Both render by the run's [release facts](#release-facts).
 - **Cancellation.** Each call has its own run signal. An action's `invoke` derives it from its run's signal and the call's `signal`, and the first to abort fixes the reason. A parent's abort carries the parent's reason, so the call reads `cancelled` with 130 or 143 as the parent's cause does, and an abort of the call's own `signal` reads 130 as a caller abort. `app.invoke` derives it from the call's `signal` alone. A signal already aborted at the call resolves `cancelled` having run no middleware and no action. Inside the call, the rules of [Signals and cancellation](#signals-and-cancellation) hold.
 - **Concurrency.** Calls may overlap, from one action or from many. Each is its own run and shares nothing mutable with another, and Loom adds no queue, limit, or timer. An application whose actions cannot overlap serializes the calls itself.
@@ -2045,7 +2046,7 @@ A failure encoder writes a failed run's [failure form](#the-failure-form) in the
 - **Registration.** `encodeFailure(mediaType, encoder)` pairs a media type with a function and returns a `FailureEncoding`. A plugin lists its encodings under `failureEncoders`, as it lists [translations](#translators) under `translators`. The Application registers none; an application that wants its own encoder installs a small local plugin.
 - **One encoder per media type.** Media types compare as the exact strings core stores, under [Media types](#media-types), which holds no grammar. Two encodings for one media type in one plugin are a `DeclarationError` from `plugin()`, and two plugins that register one media type are a `DeclarationError` from the Application constructor, both under `@loomcli/core/failure-encoder-taken`.
 - **When it answers.** When `run()` reports a failure whose [failure view context](#failure-view-context) reads a `mediaType` that an installed plugin registered, core calls that encoder once with the failure's form and writes the returned text to stderr as it is: it resolves no markup, escapes nothing, and appends nothing, so the encoder owns its newline. No failure view resolves for that failure, an application's override included. A failure whose `mediaType` is `undefined`, or that no encoder answers, renders through its view as before.
-- **The only failure text.** When an encoder writes a failed `run()`'s failure, its line is the only failure text the run writes to stderr: core writes no [incomplete-result](#a-sequence-that-stops-early) line for that run either. Core holds the line until the run settles and writes it unless the failure went out through an encoder, so a run whose failure no encoder writes keeps it: a stream cancelled mid-sequence under `--format jsonl`, which fails nothing, a stdout write that fails with `EPIPE`, whose report takes the plain fallback path, and a broken encoder, whose fallback text follows the line. A development build still writes a defect's Developer Diagnostic first, as the next rule states.
+- **The only failure text.** When an encoder writes a failed `run()`'s failure, its line is the only failure text the run writes to stderr: core writes no [incomplete-result](#a-sequence-that-stops-early) line for that run either. Core holds the line until the run settles and writes it unless the failure went out through an encoder, so a run whose failure no encoder writes keeps it: a stream cancelled mid-sequence under `--format jsonl`, which fails nothing, a stdout write that fails with `EPIPE`, whose report takes the plain fallback path, and a broken encoder, whose fallback text follows the line. A development build still writes a defect's Developer Diagnostic first, as the next rule states. A log record is not failure text: a [logging plugin](#logging-plugin) that writes to the console writes its records beside the encoded line, as its author chose.
 - **Defects by build.** In a [development build](#development-builds), a defect or a declaration fault writes its [Developer Diagnostic](#developer-diagnostics) and the hints under it first, as today, and then, after one blank line, the encoder's line. In a distributed build the encoder's line takes the place of the generic defect message, and its form reads `internal` and `Something went wrong.`
 - **Each reported failure.** The stage takes the place of the view wherever core resolves a failure's view: the primary failure and each fault reported after it, each with a line of its own. A report core writes through the plain fallback path of the [Failure contract](#failure-contract), such as a broken failure view's or a broken hook's, stays text, and the at-most-once rule of the generic defect message applies to that text alone.
 - **Stdout is untouched.** The stage writes to stderr alone. Rows a row view wrote before the failure stay on stdout, and the encoded line, with no incomplete-result line ahead of it, tells a reader the result is incomplete. A whole view, such as the formatter's `jsonl()`, wrote nothing of a sequence that stopped.
@@ -2398,6 +2399,8 @@ A Developer Diagnostic teaches the author what broke, where, why the rule exists
   | `@loomcli/core/broken-failure-view`     | A failure view threw or returned a non-string                                                |
   | `@loomcli/core/broken-output-view`      | An output or lane view threw or returned a non-string                                        |
   | `@loomcli/core/broken-failure-hook`     | An `onFailure` hook threw or returned a value that is not hints                              |
+  | `@loomcli/core/broken-log-hook`         | An [`onLog`](#observing-log-events) hook threw or returned a value                            |
+  | `@loomcli/core/log-in-log-hook`         | A `log` call ran while core was delivering a log event, under [Logging](#logging)            |
   | `@loomcli/core/broken-failure-encoder`  | A [failure encoder](#failure-encoders) threw or returned a value that is not a string        |
   | `@loomcli/core/plugin-loader-failed`    | A plugin's middleware or source loader rejected or exported no default                       |
   | `@loomcli/core/next-misuse`             | A middleware called `next()` twice or after it returned                                      |
@@ -2694,9 +2697,88 @@ Each rule below is a `DeclarationError` with exit 1 under [Command declaration e
 
 The results increment is proven when [textstat](../examples/textstat/src/application.ts) declares its table as a result with one whole view under the key `table` and prints the table bytes the [table and records coverage](#table-and-records-example-coverage) pins, with its `--timing` line still on stderr, and when a hidden jsonkit Command declares `rows<Entry>` over the document's paths with an application-authored row view as its default and a whole view under a second key, writes each row as an async generator yields it, and leaves a partial list and the incomplete line behind when the generator throws. The acceptance tests cover both shapes of `out.render` with a row view under a synchronous and an asynchronous iterable, `out.results` under each declaration with an array, a generator, and an async generator, back-pressure observed through a destination that delays its write callback and a source that records each request, so no second request precedes the first callback, a later `print` to the same destination landing after an unawaited sequence's last piece under a row view and under a whole view, an invocation that stays open while an unawaited sequence waits on a slow source and completes after it, `print` and `render` reaching stderr with stderr's capabilities on a result Command and stdout on a plain one, a middleware's `print` keeping stdout on a result Command, each `ResultError` kind with its exit code, its prefix, and an `undefined` cause, an `InternalError` override reaching a `ResultError`, a cancelled run with an unemitted result returning the signal's code and no missing-result diagnostic, each early stop of the previous section under a row view and under a whole view with the incomplete line carrying both counts before the report, a whole view that throws after a finite source ended, a cancelled source that returns leaving the line alone, an override of `incompleteResult` silencing it and one that throws leaving the primary report intact, an empty sequence under each view shape, `views()` replacing a key in place, appending a key, moving the default, and keeping a moved default through a later call, `inspect()` publishing the fact, and each build rule above. The positive type checks cover a declared row view in a plugin's `views` list and a library's neutral annotation and `command()` attachment of a declaration with a result. The negative type checks cover an iterable that is not the declared value passed under `result`, a value passed under `rows`, `out.results` on a Command with no result and on a middleware's `out`, a column that names a missing field through the declaration and through `out.render`, a value with both `render` and `row` in a declaration and in `views()`, a row view under `result` in a declaration and in `views()`, `result()` or `rows()` called after `action()`, and `views()` on a declaration with no result. Editor latency on `ActionHandler` over a declaration with a result is measured against the current baseline before the increment merges. Each case runs under Node and Bun.
 
+## Logging
+
+```ts
+interface ActionContext<Args, Options = {}, Result = unknown> {
+  readonly log: Log; // new
+  // ...
+}
+// MiddlewareContext, SourceContext, and FailureHookContext gain the same member.
+
+interface Log {
+  trace(message: string, fields?: LogFields): void;
+  debug(message: string, fields?: LogFields): void;
+  info(message: string, fields?: LogFields): void;
+  warn(message: string, fields?: LogFields): void;
+  error(message: string, fields?: LogFields): void;
+}
+type LogFields = Readonly<Record<string, LogValue>>;
+type LogValue = null | boolean | number | string | Error | readonly LogValue[] | { readonly [key: string]: LogValue };
+type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+interface LogEvent {
+  readonly time: string; // ISO 8601 UTC with milliseconds, read at the call
+  readonly level: LogLevel; // fatal is core's alone
+  readonly message: string;
+  readonly fields: Readonly<Record<string, JsonValue>>; // the frozen copy
+  readonly application: { readonly name: string; readonly version: string };
+  readonly run: string; // 32 lowercase hex characters, one per run
+  readonly path: readonly string[];
+  readonly plugin: string | null;
+  readonly failure?: FailureForm; // core's failure events alone
+  readonly defect?: LogDefect; // fatal events alone
+}
+interface LogDefect {
+  readonly name: string;
+  readonly message: string;
+  readonly stack?: string;
+}
+```
+
+```ts
+// src/commands/index.ts, a Command whose action records what it did
+import { Command } from '@loomcli/core';
+
+import { readTranscripts } from '../transcripts.js';
+
+export const index = new Command('index')
+  .argument('harness', { description: 'Name the harness whose transcripts to index.' })
+  .action(async ({ args, log }) => {
+    const { sessions, skipped } = await readTranscripts(args.harness);
+    for (const path of skipped) {
+      log.debug('Skipped a transcript with no session id.', { path });
+    }
+    log.info('Indexed sessions.', { count: sessions.length, harness: args.harness });
+  });
+```
+
+Core gives author and plugin code a `log` and delivers each call as a frozen log event to every installed plugin's [`onLog`](#observing-log-events) hook. Core writes no log record of its own: with no plugin that declares `onLog`, a call does nothing, and the [logging plugin](#logging-plugin) is the first-party plugin that writes records. `out` writes for the person at the terminal and `log` records for whoever reads later, and neither routes through the other. [ADR-0069](decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) records the decision.
+
+- **Where.** The action, middleware, [configuration source](#input-sources), and [`onFailure`](#failure-hints) contexts carry `log`, in every run, an action's `invoke` and `app.invoke` included. `onCommandAttach` and `onGraphBuilt` receive none: they run at graph build, under `inspect()` and `check()` as well, where no run exists. Each context's `log` is bound to it: a middleware's, a source's, and an `onFailure` hook's name the plugin core is calling, and an action's names none, a [plugin Command](#plugin-commands)'s action included, because nothing records which plugin attached a Command.
+- **A call.** `log.info(message, fields)` and its siblings create one event and deliver it to every installed `onLog` before they return. A call returns `undefined` and never throws to its caller, except during delivery, below. A message that is not a string is converted with `String()`. With no installed plugin that declares `onLog`, core creates no event and reads nothing from the call, `fields` included.
+- **The copy.** Core copies `fields` at the call into plain JSON data and freezes the copy, so a later change to the caller's object changes nothing. The copy is the value `JSON.stringify` produces, `toJSON()` included, so a `Date` reads its ISO string, `undefined`, a function, and a symbol are omitted from an object and read `null` inside an array, a number that is not finite reads `null`, and a class instance keeps its own enumerable properties. Three values differ: an `Error` reads `{ name, message, stack, cause }` with whichever of them it holds, its `cause` copied by the same rule; a `bigint` reads its decimal string; and a value that holds itself reads `"[Circular]"` where it repeats. A property whose read throws reads `"[Unreadable]"`, so a call never throws on its fields. Omitted fields read `{}`.
+- **The event.** `time` is `new Date().toISOString()` at the call. `application` is the graph's `name` and `version`, `0.0.0` when the Application declares none. `run` is 16 random bytes from `crypto.getRandomValues`, written as 32 lowercase hex characters: the same on every event of one run and new for each run, each `invoke` and `app.invoke` included, in the format of an OpenTelemetry trace id. `path` is the path a [failure view](#failure-view-context) reads: `[]` before routing, the partial path before an unknown Command, and the routed Command's path after. `plugin` is the identity of the plugin whose `log` it is, or `null`. The event and everything it holds are frozen.
+- **Failure events.** Core logs one event for each failure it reports in a run, the primary failure and each fault reported after the outcome, once translators and `onFailure` hooks have run: `message` is the failure form's `message`, `failure` is the [failure form](#the-failure-form) the run reports, and `plugin` is `null`. A defect, which is an `InternalError`, a `ResultError`, or a `DeclarationError` met during a run, logs at `fatal` and also carries `defect`, in both builds: the name and message of the value the run caught, read as a [Developer Diagnostic](#developer-diagnostics) reads a cause, from an `InternalError`'s `cause` or from the failure itself, and its `stack` as the runtime formats it, absent when the value has none. Every other failure logs at `error`. What the run writes to stderr is unchanged, so a distributed build still prints the generic defect message. A cancelled run that reports its cancellation silently logs no failure event, and a failure a cancelled run still renders logs like any other. A declaration fault raised at graph build logs none, as no hook runs for it, and neither does a broken `onLog`'s own report. `fatal` is a level core alone logs: `Log` has no `fatal`, because `out.fatal()` throws and ends the run.
+- **During delivery.** While core delivers an event to an `onLog` hook, a `log` call on any context throws an `InternalError` of `@loomcli/core/log-in-log-hook`, whose sentence is `A log call ran while core was delivering a log event.` and whose correction is `Remove the log call from the onLog hook: an onLog hook observes events and never logs.` The throw surfaces in the hook, which core reports as a broken hook under [Observing log events](#observing-log-events).
+- **Names.** `Log`, `LogFields`, `LogValue`, `JsonValue`, `LogLevel`, `LogEvent`, and `LogDefect` are exported.
+
+### Logging acceptance
+
+Core's log events are proven when public APIs alone, with fixture applications and a fixture plugin whose `onLog` collects events, produce these results under Node and Bun:
+
+- **Reach.** An action, a middleware, a configuration source, and an `onFailure` hook each log one event, which the collector receives in call order: the middleware's, source's, and hook's name the fixture plugin, and the action's, a plugin Command's action included, read `null`. The negative type checks find no `log` in `onCommandAttach` or `onGraphBuilt`.
+- **The copy.** Fields holding a `Date`, an `Error` with a `cause`, a `bigint`, an object that holds itself, `undefined`, a function, an array holding `undefined`, `NaN`, a class instance, and a getter that throws each read their pinned JSON; changing the caller's object after the call leaves the event unchanged, and writing to the event throws in strict mode.
+- **Facts.** `time` matches the ISO 8601 UTC form with milliseconds. `run` is 32 lowercase hex characters, equal across one run's events, and different across two runs, an action's `invoke`, and an `app.invoke`. `path` reads `[]` for a structural fault before routing, the partial path for an unknown Command under a group, and the routed path in an action. `application` reads the graph's name and version, and `0.0.0` for an Application that declares none.
+- **Failure events.** An `InputError` logs at `error` with its form, exit code 2. An action that throws a `TypeError` logs at `fatal` with `defect` holding its name, message, and stack from source and from a bundle, while the bundle's stderr holds the generic defect message alone. A fault reported after the outcome logs its own event. A run a caller cancels whose action rejects with the signal's reason logs no failure event, a failure a cancelled run still renders logs one, and a build fault logs none.
+- **No listener.** With no plugin that declares `onLog`, a call returns `undefined` and a getter on its fields is never read.
+- **During delivery.** A fixture plugin that keeps its middleware's `log` and calls it from its `onLog` reports `@loomcli/core/log-in-log-hook` once, its Developer Diagnostic from source and the generic defect message from a bundle, and exits 1.
+- **Types.** The negative type checks reject `log.fatal`, a field holding a function, and a field holding a `Map`, and accept a field holding an `Error`.
+
 ## Plugins
 
-Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds the options it contributes, one middleware with its activation and a loader, the extensions it defines, the views it declares and overrides, the [translators](#translators) and [failure encoders](#failure-encoders) it registers, one optional claim on the signals slot, one optional [configuration source](#input-sources), the [Commands](#plugin-commands) it attaches to the root, and its [lifecycle hooks](#lifecycle-hooks), the functions core calls at named points of an Application's life. Creating and installing the value runs none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when `run()` renders a failure, and the middleware runs inside an invocation. An installed plugin costs its entry module and the declarations that module imports on an invocation that never reaches it, plus one call of each hook it implements at every point core calls it: `onCommandAttach` once per Command and `onGraphBuilt` once per build, since the graph builds on every invocation, and `onFailure` once per rendered failure. Its middleware module loads only when the chain reaches it.
+Core installs no plugins. Every capability beyond authoring, graph build, invocation, host capture, output, and failures is a plugin that an Application installs explicitly, and a first-party plugin uses the same public contract as a third-party one. A plugin is a frozen value that `plugin(identity, definition)` returns. It holds the options it contributes, one middleware with its activation and a loader, the extensions it defines, the views it declares and overrides, the [translators](#translators) and [failure encoders](#failure-encoders) it registers, one optional claim on the signals slot, one optional [configuration source](#input-sources), the [Commands](#plugin-commands) it attaches to the root, and its [lifecycle hooks](#lifecycle-hooks), the functions core calls at named points of an Application's life. Creating and installing the value runs none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when `run()` renders a failure, `onLog` runs when a run logs an event, and the middleware runs inside an invocation. An installed plugin costs its entry module and the declarations that module imports on an invocation that never reaches it, plus one call of each hook it implements at every point core calls it: `onCommandAttach` once per Command and `onGraphBuilt` once per build, since the graph builds on every invocation, `onFailure` once per rendered failure, and `onLog` once per log event. Its middleware module loads only when the chain reaches it.
 
 The optional [theme contribution](#plugindefinitiontheme-field) claims the single theme slot.
 
@@ -2711,6 +2793,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
   onCommandAttach?: CommandAttachHook;
   onGraphBuilt?: GraphBuiltHook; // new: see Judging the built graph
   onFailure?: FailureHook;
+  onLog?: LogHook; // new: see Observing log events
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
@@ -2913,6 +2996,7 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly host: Host;
   readonly out: Out;
   readonly signal: AbortSignal;
+  readonly log: Log; // new: see Logging
   readonly next: () => Promise<ChainOutcome>;
 }
 interface Request {
@@ -2980,7 +3064,7 @@ An activation name that is not one of the plugin's declared options is a compile
 
 ### Lifecycle hooks
 
-A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach`, [`onGraphBuilt`](#judging-the-built-graph), and [`onFailure`](#failure-hints) now, `onLog` later. A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context and a hook after an action that succeeds are direction, not contract, and wait for a plugin that needs them.
+A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach`, [`onGraphBuilt`](#judging-the-built-graph), [`onFailure`](#failure-hints), and [`onLog`](#observing-log-events). A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context and a hook after an action that succeeds are direction, not contract, and wait for a plugin that needs them.
 
 ```ts
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
@@ -3123,6 +3207,7 @@ interface FailureHookContext {
   readonly style: ContextualStyle;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
+  readonly log: Log; // new: see Logging
 }
 ```
 
@@ -3174,6 +3259,59 @@ Run "jsonkit get --explain" to explain this command.
 `textstat --bogus` exits 2 with the same sentence and `Run "textstat --explain" to explain this command.`, because the fault is raised on the root and `path` is empty. Once [help's failure hint](#helps-failure-hint) lands, `Run "jsonkit get --help" to see the usage.` and `Run "textstat --help" to see the usage.` print above the explain line, because `help()` is installed first.
 
 The acceptance tests cover, through public APIs with fixture applications and fixture plugins: an override reading `application` and `path` for a structural fault on a global option before any child name, `[]`; for a local-option fault on a nested Command, its routed path; for an unknown Command under a group, the partial path to the group; and for a build fault, the application name, `[]`, and no hints; a declared default or implied value its validator rejects, for which the hook runs with `path` `[]` and `command` the root; a fault reported after the primary outcome, such as a plugin's `next()` fault, receiving hook calls of its own; two plugins' hints under core's default text in installation order, with a line both return printed twice; an override receiving the hints and printing them in its own form; a hook returning `undefined`, and one returning `[]`, beside which the default text is unchanged byte for byte; a hook that throws, one that returns a number, one that returns an array holding a number, and one that returns a promise, each losing its own hints while a second plugin's hint still prints, writing its one line, and returning 1 for a usage error that carried 2; a hook that throws a value whose message cannot be read, such as an Error whose `message` getter throws, a Symbol message, or a Proxy whose prototype trap throws, writing the fixed reason while the failure and the other hints still print; a hook whose reason holds a line break or control characters, and a broken failure view whose reason does, each writing one escaped line; a hook returning an array with a hole, an array subclass or Proxy whose `filter` lies, each contributing only the strings it holds or counting as broken, never a non-string hint; a JavaScript hook assigning `exitCode` leaving the resolved code unchanged; two broken hooks writing their lines in installation order; a broken hook beside a broken failure view, writing core's default text, then the rendering-failure line, then the hook's line; an `onFailure` that is not a function rejected by `plugin()` with its diagnostic; a broken hook in a run a caller cancelled whose failure still renders, returning 130; no hook call for a build fault, for a run a caller cancelled whose action rejects with the signal's reason, or for `--help` taking over a held unknown-option fault; the plain fallback under a broken failure view writing no hints; an issue with an extra `code` field on the second value of a variadic argument reaching an `InputError` override with `code` intact and `path` `[1]`, and the same on the second value of a multiple option; and a hook reading `graph` and `command`, which for an unknown option on a nested Command suggests a visible global or local spelling and never a hidden or deprecated one, and for an unknown Command under a group suggests a visible child by its canonical name and never an alias. Each case runs under Node and Bun.
+
+#### Observing log events
+
+```ts
+interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
+  onLog?: LogHook; // new
+  // ...
+}
+type LogHook = (event: LogEvent, destination: LogDestination) => undefined;
+
+interface LogDestination {
+  readonly env: Readonly<Record<string, string | undefined>>; // the outermost run's host.env
+  readonly platform: string; // the outermost run's host.platform
+  readonly stderr: Writable | null; // the outermost run's host.stderr; null under app.invoke
+}
+```
+
+```ts
+// src/plugin.ts, a plugin that prints the stack of each defect a run logs
+import { plugin } from '@loomcli/core';
+import type { LogHook, Plugin } from '@loomcli/core';
+
+import { packageName } from './constants.js';
+
+const printStack: LogHook = (event, destination) => {
+  if (event.defect?.stack !== undefined && destination.stderr !== null) {
+    destination.stderr.write(`${event.defect.stack}\n`);
+  }
+  return undefined;
+};
+
+export function stacks(): Plugin {
+  return plugin(packageName, { onLog: printStack });
+}
+```
+
+A plugin observes the run's [log events](#logging) through `onLog`, and decides what becomes of them: the [logging plugin](#logging-plugin) writes them as records, and another plugin may forward, count, or drop them. [ADR-0069](decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) records the decision.
+
+- **When.** Core calls each installed plugin's hook, in installation order, inside the `log` call or the failure report that created the event, before that call returns. Every hook receives the same frozen event and never another hook's work. Events of an action's `invoke` reach the same hooks.
+- **What it receives.** The event, and the destination of the outermost run. Under `run()` that is its host's `env`, `platform`, and `stderr`. Under an action's `invoke`, every [MCP](#mcp) tool call included, it is the parent run's, because a nested run's stderr is a capture sink. Under [`app.invoke`](#invocation-by-name) it is the `env` and `platform` the call captured or its `host` replaced, and `stderr` is `null`, because an invocation by name writes to no process stream. A hook writes to `destination.stderr`, never to `process.stderr` or into a run's captured output, so an invocation's captured `messages` and an MCP tool result never hold a record. A hook reads `destination.env`, never `process.env`, so a `run({ host })` override reaches it.
+- **What it returns.** `undefined`. A hook observes: it cannot change the event, stop its delivery to a later hook, or change the run's outcome. Work it starts, a promise included, is its own, and core neither waits for it nor tracks it.
+- **A broken hook.** A hook that throws or returns a value, a promise included, is broken, and a returned promise receives a rejection handler and is otherwise ignored. Core stops calling that hook for the rest of the run and reports it once, after the outcome, through the plain fallback path, which calls no override and runs no hook: a distributed build writes the generic defect message, at most once per run, and a development build writes one Developer Diagnostic of `@loomcli/core/broken-log-hook`, whose sentence is `Plugin "@acme/stacks" failed in onLog: <reason>`, the reason read as a broken [`onFailure`](#failure-hints) hook's is, with `The hook returned a promise.` and `The hook returned a value.` for the two returns. A hook that threw the `@loomcli/core/log-in-log-hook` fault of [Logging](#logging) reports that rule's Developer Diagnostic instead. The run returns 1, whichever code it would have returned, except a cancelled run, which keeps its signal's code and still writes the report. Core logs no event for the report, so a hook that throws on core's own failure event is reported once and never called again.
+- **Types.** The return type is `undefined`, so a hook written as an arrow with no `return` compiles, and one that returns a value or a promise is a compile error.
+- **Plugins alone.** The hook is on the plugin definition alone. An application that wants to observe its own events installs a small local plugin.
+- **Names.** `LogHook` and `LogDestination` are exported. `plugin()` rejects an `onLog` that is not a function, under [Plugin declaration errors](#plugin-declaration-errors).
+
+##### Observing log events acceptance
+
+The hook is proven when public APIs alone produce these results under Node and Bun:
+
+- **Order and reach.** Two fixture plugins receive each event in installation order, the same frozen object. Events of an action's `invoke` reach both with the parent run's destination, and the nested run's captured `messages` hold nothing either wrote to `destination.stderr`. An `app.invoke` passes `stderr` `null` and the `env` its `host` replaced, and a `run({ host: { env } })` override reaches `destination.env`.
+- **Broken hooks.** A hook that throws a `TypeError`, one that returns `true`, and one that returns a promise are each reported once, receive no later event of the run, leave a second plugin's hook receiving every event, and make a run that would exit 0 exit 1; a broken hook in a run a caller cancelled keeps 130. A hook that throws on core's `fatal` event is reported once, and the run logs no further event for it. An `onLog` that is not a function is rejected by `plugin()`.
+- **Types.** The negative type checks reject a hook that returns a value.
 
 ### Extensions
 
@@ -3422,6 +3560,7 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 | A hook that is not a function                    | `Plugin "@loomcli/plugins/format" declares onCommandAttach that is not a function. Supply a function of the Command.`                                                                                    | `@loomcli/core/not-a-function` |
 | An `onFailure` that is not a function            | `Plugin "@acme/suggest" declares onFailure that is not a function. Supply a function of the failure and its context.` | `@loomcli/core/not-a-function` |
 | A hook that returns something else               | `Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.`                  | `@loomcli/core/broken-attach-hook` |
+| An `onLog` that is not a function                | `Plugin "@acme/stacks" declares onLog that is not a function. Supply a function of the log event and its destination.` | `@loomcli/core/not-a-function` |
 | An `onGraphBuilt` that is not a function         | `Plugin "@loomcli/plugins/mcp" declares onGraphBuilt that is not a function. Supply a function of the built graph.` | `@loomcli/core/not-a-function` |
 | An `onGraphBuilt` that returns a value           | `Plugin "@loomcli/plugins/mcp" returned a value from onGraphBuilt. Return nothing from the hook; it judges the graph and cannot change it.` A returned promise reads the same sentence. | `@loomcli/core/broken-graph-hook` |
 | An `onGraphBuilt` that throws                    | `Plugin "@loomcli/plugins/mcp" failed in onGraphBuilt: <reason>. Return nothing from the hook, and throw only a DeclarationError to reject the graph.` The reason is the thrown value's, escaped, with a full stop added when it carries none, and the thrown value is the fault's `cause`. A thrown `DeclarationError` reports as itself instead. | `@loomcli/core/broken-graph-hook` |
@@ -4865,7 +5004,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 - **Discovery.** `server/discover` answers `supportedVersions: ['2026-07-28']`, `capabilities: { tools: {} }`, with no `listChanged` because the tool list never changes while the process runs, and no `logging`, `prompts`, `resources`, or `completions` capability. The application's identity is the server's: every result's `_meta` carries `io.modelcontextprotocol/serverInfo` as `{ name, version, description }`, the graph's `name` and `version` and the Application's description, which is left out when it declares none. The result carries no `instructions`, because Loom holds no fact that guides a model beyond the descriptions.
 - **The listing.** `tools/list` answers every tool in one page, in graph order: the root first, then each Command depth first in authoring order. It carries no `nextCursor`. `server/discover` and `tools/list` each carry `ttlMs: 0` and `cacheScope: 'private'`, so a client caches neither: a client may outlive the server process, and the next process may serve a newer application whose tools differ.
 - **Concurrency.** Calls may overlap. Each runs through its own `invoke`, and the server writes each response when its call settles. Loom adds no queue, limit, or timer, so an application whose actions cannot overlap serializes its own work.
-- **The server's life.** The `mcp` action reads `host.stdin` and writes `host.stdout`, and stdout carries protocol messages alone, each written whole. The server writes no log of its own, and stderr carries only a fault the `mcp` run itself reports. When stdin ends, the server aborts every call in flight and answers none of them, waits for each to settle, ends each open subscription with its closing response, and returns, so the run exits 0. When the run's signal aborts, through a caller or a [signals owner](#signals-and-cancellation), every call's signal aborts with it, the server answers nothing more, and the run resolves its cancellation code. A plugin that writes to stdout on a run it does not own breaks the stream, as it breaks [completion](#completion)'s answer.
+- **The server's life.** The `mcp` action reads `host.stdin` and writes `host.stdout`, and stdout carries protocol messages alone, each written whole. The server writes no log of its own, and stderr carries only a fault the `mcp` run itself reports and the records a [logging plugin](#logging-plugin) the author installed writes to the console. When stdin ends, the server aborts every call in flight and answers none of them, waits for each to settle, ends each open subscription with its closing response, and returns, so the run exits 0. When the run's signal aborts, through a caller or a [signals owner](#signals-and-cancellation), every call's signal aborts with it, the server answers nothing more, and the run resolves its cancellation code. A plugin that writes to stdout on a run it does not own breaks the stream, as it breaks [completion](#completion)'s answer.
 - **Names.** `mcp` is exported from `@loomcli/plugins/mcp`, and `mcpCommand`, `mcpInput`, and `mcpArgument` from `@loomcli/plugins/mcp/extension`, whose identities are `@loomcli/plugins/mcp/command`, `@loomcli/plugins/mcp/input`, and `@loomcli/plugins/mcp/argument`. `mcpCommand` is an ordinary extension, so a later value replaces an earlier one. The pack's public declarations name no protocol type.
 
 #### MCP build faults
@@ -4972,6 +5111,81 @@ Both example applications install `suggestions()`. jsonkit drops its `unknownCom
 | `textstat --timin one.txt`              | Core's text, because `--timing` is hidden                                                           | 2    |
 
 The acceptance tests cover, through public APIs with fixture applications and fixture plugins: the distance of each edit kind, an insertion, a deletion, a substitution, and an adjacent transposition, and that a non-adjacent transposition costs 2; the budget at 4, 5, 8, and 9 code points, with a token one edit past its budget matching nothing; a token of one code point after the hyphens are removed matching nothing; NFC normalization and lowercasing, with a token that differs only in case matching at distance 0; code points counted rather than code units, with a candidate that holds no astral character beside a token that does; leading hyphens left out for an option, with `---format` treated as `format`; ranking by distance then graph order, with two candidates at one distance printed in authoring order; the cap of three with four matches; a negative spelling suggested for its own typo and never for the positive spelling's, a positive spelling never suggested for the negative spelling's, and both suggested for a typo as near to each; a plugin's option suggested; a hidden child, a deprecated child, a hidden option, a deprecated option, and an alias never suggested, each with the typo one edit from the excluded name; the plugin's hook adding no hint line, so a second plugin's hint is the only line under the plugin's sentence; the view's bytes equal to core's default text, hints included, when nothing matches; the escaped token in the sentence for a token that holds a control character or a bidirectional control; hints printed under the plugin's sentence in installation order; an application override of `UnknownCommandError` winning over the plugin's, and an earlier-installed plugin's override winning too; a later-installed plugin's override losing; the plugin installed before `help()` changing neither the help takeover nor the hint order of the other plugins; help's hint on each `UsageError` class, an `InputError` an action throws included, with the command line of the root, of a group, and of a nested Command; help's hint absent on a `FatalError`, an `InternalError`, and a `DeclarationError` a run reports; and the example rows above. Each case runs under Node and Bun. A consumer installs the packed pack, imports `@loomcli/plugins/suggestions`, compiles against its declaration, and prints a suggestion.
+
+### Logging plugin
+
+```ts
+// @loomcli/plugins/logging
+import type { LogLevel, Plugin } from '@loomcli/core';
+
+type WrittenLevel = Exclude<LogLevel, 'fatal'>;
+export type LoggingSettings =
+  | {
+      readonly to?: 'file';
+      /** The log file: a name inside the default directory, an absolute path, or a path under ~/. */
+      readonly file?: string;
+      /** The lowest level written, info by default. A fatal event is always written. */
+      readonly level?: WrittenLevel;
+      /** The size in bytes past which the file rotates, 10_000_000 by default. */
+      readonly maxBytes?: number;
+      /** How many rotated copies are kept, 5 by default. */
+      readonly keep?: number;
+    }
+  | {
+      readonly to: 'console';
+      readonly level?: WrittenLevel;
+    };
+export declare function logging(settings?: LoggingSettings): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { logging } from '@loomcli/plugins/logging';
+
+export const heimdall = new Application('heimdall', {
+  plugins: [help(), logging({ file: 'collector.jsonl', level: 'debug' })],
+});
+```
+
+A `log.info('Indexed sessions.', { count: 3 })` in that application's `serve` action appends one line to `~/.local/state/heimdall/collector.jsonl` on Linux:
+
+```json
+{"time":"2026-10-10T14:03:22.418Z","level":"info","message":"Indexed sessions.","fields":{"count":3},"application":{"name":"heimdall","version":"0.0.0"},"run":"4bf92f3577b34da6a3ce929d0e0e4736","path":["serve"],"plugin":null}
+```
+
+The logging plugin writes each [log event](#logging) as one JSON record, appended to a file that rotates by size, or written to stderr for a system that captures its own logs. It is an `onLog` hook and nothing else: no option, middleware, view, or slot. [ADR-0070](decisions/0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md) records the decision.
+
+- **Settings.** `logging()` judges its settings at the call under `checkPluginSettings`, then its own keys, and throws a `DeclarationError` of `@loomcli/plugins/logging/settings` for the first key at fault: `to` other than `file` or `console`; `file` that is not a string, is empty, or holds a control character; `level` other than one of the five written levels; `maxBytes` or `keep` that is not a positive safe integer; and `file`, `maxBytes`, or `keep` beside `to: 'console'`, which the types reject. Its sentence names the plugin and the key, such as `Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.`, and its correction states the accepted values, such as `Supply a whole number of 1 or more.`
+- **The record.** One event is one line: the event as `JSON.stringify` writes it, with its keys in the order `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, `defect`, an absent key omitted, followed by one newline. Both destinations write the same bytes.
+- **The level.** An event below `level` is skipped. A `fatal` event is always written.
+- **The file.** With `to: 'file'`, the default, the plugin writes to a file in the default directory, which it reads from `destination.env` and `destination.platform` alone:
+
+  | Platform | Default directory |
+  | --- | --- |
+  | `darwin` | `$HOME/Library/Logs/<app>/` |
+  | `win32` | `%LOCALAPPDATA%\<app>\Logs\`, unverified under ADR-0011 |
+  | any other | `$XDG_STATE_HOME/<app>/`, or `$HOME/.local/state/<app>/` when `XDG_STATE_HOME` is unset or not absolute |
+
+  `<app>` is the application's name. The file is `<app>.jsonl` with no `file` setting. A `file` that is a bare or relative name resolves inside the default directory, an absolute one is used as written, and one that starts with `~/` resolves from `destination.env.HOME`. A relative `file` never resolves against the working directory. The plugin creates a missing directory and its parents.
+- **Appending.** The plugin appends each record with one synchronous write before its hook returns, so a record survives a `process.exit()` or a kill that follows the call. Several processes may append to one file, and on a local file system each record lands whole.
+- **Rotation.** Before a write that would take the file past `maxBytes`, the plugin renames the file to its first copy, shifting each older copy up one, deletes the copy past `keep`, and starts a new file, with no timer. A copy's name puts its number before the file's last extension, `collector.1.jsonl`, or after a name with none, `hub.1`. A record larger than `maxBytes` is written whole to the new file. When a rename fails because another process rotated first, the plugin appends to the file now at the path.
+- **The console.** With `to: 'console'`, the plugin writes each record to `destination.stderr`, and writes nothing when it is `null`. It never writes to stdout, which carries the run's output and, under MCP, the protocol.
+- **A failed write.** When the default directory cannot be resolved because a variable it needs is unset, or creating the directory, a write, or a rename fails, the plugin writes one line to `destination.stderr`, at most once per run, and the run continues: `heimdall: Could not find the log directory because HOME is not set. Set HOME to keep the log.` for a missing variable, and `heimdall: Could not write the log file /home/ada/.local/state/heimdall/collector.jsonl. Check that its directory exists, can be written, and has free space.` otherwise, with the path's control characters escaped as [`escapeControlCharacters`](#strings-and-composition) writes them. The plugin skips each record it cannot write and writes again once a write succeeds. With `destination.stderr` `null`, it writes no warning.
+- **Invocation by name.** Events of an action's `invoke`, MCP tool calls included, reach the outermost run's file or stderr. An `app.invoke` writes the file from the `env` the call captured or its `host` replaced, and nothing to stderr.
+- **Names.** `logging` and `LoggingSettings` are exported from `@loomcli/plugins/logging`.
+
+#### Logging plugin acceptance
+
+The plugin is proven when process tests under Node and Bun, each with a temporary home and state directory, produce these results:
+
+- **Records.** An application that installs `logging()` and logs at each level appends one pinned line per event at or above `info` to `$XDG_STATE_HOME/<app>/<app>.jsonl`, with the keys in the record order, and, with `level: 'error'`, a defect's `fatal` record still written with its stack.
+- **The file.** `file: 'collector.jsonl'` writes inside the default directory, an absolute `file` writes where it names, `~/x.jsonl` resolves from the test's `HOME`, a missing directory is created, and `darwin` and `win32` fixtures resolve their table rows from an overridden `env` and `platform`.
+- **Rotation.** With `maxBytes: 200` and `keep: 2`, writes past the size leave the file, `.1`, and `.2`, the oldest copy deleted; a record larger than `maxBytes` lands whole in a new file; and two processes appending and rotating one file lose no record either wrote whole.
+- **The console.** `to: 'console'` writes the same bytes to stderr and none to stdout, and an `app.invoke` writes nothing to stderr while the file destination still writes.
+- **A failed write.** A read-only directory and an unset `HOME` each write their one warning line once, the run's exit code unchanged, and a later write succeeds once the directory is writable.
+- **Settings.** Each settings fault throws its pinned diagnostic at the `logging()` call.
+- **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/logging` from the packed tarball under Node and Bun.
 
 ### Example coverage
 

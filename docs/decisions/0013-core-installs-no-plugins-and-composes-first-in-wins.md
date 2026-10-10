@@ -4,7 +4,7 @@ title: ADR-0013 - Core installs no plugins by default, and contributions compose
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-03
+modified: 2026-10-10
 ---
 
 # ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots
@@ -46,3 +46,4 @@ An application that wants help output installs the help plugin. Core stays small
 - 2026-09-30: [ADR-0052](0052-a-plugin-extension-and-view-identity-follows-one-grammar.md), proposed, makes the identity convention in the entries above a rule: a plugin identity is an npm package name followed by zero or more kebab-case subpath segments, and `plugin()` rejects any other value at the call under `@loomcli/core/invalid-identity`. The convention for which name a plugin takes stands. It binds when that record is accepted.
 - 2026-09-30: [ADR-0052](0052-a-plugin-extension-and-view-identity-follows-one-grammar.md) is accepted, so the entry above binds.
 - 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, ends plugin options as a contribution kind of their own. A plugin's options are global options, validated with the application's and reaching every action and every middleware. Composition order and the single-owner slots are unchanged. It binds when that record is accepted.
+- 2026-10-10: [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md), proposed, adds `onLog`, an observing hook: core calls every installed plugin's hook with the same frozen log event, and none receives what another returned, as [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md) and [ADR-0060](0060-ongraphbuilt-judges-the-built-graph-and-never-contributes.md) already narrowed the sequential composition for `onFailure` and `onGraphBuilt`. Core gains `log`, which creates and delivers events and writes no record, so writing stays a plugin's capability. It binds when accepted.

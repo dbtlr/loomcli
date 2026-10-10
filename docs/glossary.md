@@ -273,7 +273,7 @@ _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
 A message written through one of the five purpose-named methods: `print`, `info`, `success`, `warn`, and `error`. Each has a fixed default destination and appends one newline.
-_Avoid_: Log level, styled output
+_Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
@@ -321,7 +321,7 @@ _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
 The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
-_Avoid_: Channel, log level, stream (for the lane view)
+_Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Token**:
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
@@ -383,7 +383,7 @@ _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
 The text core writes to stderr for one failure: the prefix the view chooses, which is the application name on every problem line of a usage failure and on a `WorkingDirectoryError`'s line, and nothing for a `FatalError`, whose authored sentence stands alone, then the sentence, its correction, and the hints the view prints. A defect or declaration fault writes the generic defect message or a Developer Diagnostic instead, by build.
-_Avoid_: Error message (when the class is meant), log line
+_Avoid_: Error message (when the class is meant), log line, log record
 
 **Developer Diagnostic**:
 The author-facing report of a declaration fault or a defect: a banner with the rule's headline and identity, the sentence, the findings, an explanation of why the rule exists, the correction, and an optional docs link. It is not a view, and in a development build core renders it before consulting any override. Findings rebuild the declaration from graph facts, and a defect's findings show the author's own source lines.
@@ -439,6 +439,34 @@ _Avoid_: Error code, message key, validation code
 
 **Problem**:
 One entry in an input error: an omitted required input or a rejected value together with its issues.
+
+## Logging
+
+Log, Log event, and Log destination follow the [logging contract](core.md#logging) and the [`onLog` hook](core.md#observing-log-events); Log record follows the [logging plugin](core.md#logging-plugin).
+
+**Log**:
+The member of the action, middleware, source, and `onFailure` contexts that records what happened for a reader later, with the methods `trace`, `debug`, `info`, `warn`, and `error`. It writes nothing: each call becomes a log event, and with no `onLog` installed it does nothing. It is separate from Out, which renders for the person at the terminal.
+_Avoid_: Logger, console, out (for the log)
+
+**Log event**:
+The frozen value one `log` call or one failure core reports creates: its time, level, message, fields copied as JSON, application, run id, path, the plugin that logged it, and, on core's failure events, the failure form and a defect's detail. Core hands it to every `onLog` hook.
+_Avoid_: Log entry, log message, log line (for the event)
+
+**Log level**:
+The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`, the OpenTelemetry severity names. `fatal` is core's alone, for a defect; `log` has no `fatal`.
+_Avoid_: Severity class, verbosity (for the level)
+
+**Log destination**:
+The outermost run's `env`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
+_Avoid_: Sink, transport, target
+
+**Log record**:
+One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.
+_Avoid_: Log line, log entry
+
+**Logging plugin**:
+The first-party plugin `@loomcli/plugins/logging`, an `onLog` hook that writes each event as a log record, appended to a size-rotated file in the platform's state or log directory or written to stderr.
+_Avoid_: Logger, log sink
 
 ## Product surface
 
@@ -507,7 +535,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. `onLog` is the fourth: it receives each log event and its log destination during a run, and it observes and returns nothing. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
