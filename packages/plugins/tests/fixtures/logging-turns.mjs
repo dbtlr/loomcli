@@ -34,4 +34,4 @@ const app = new Application('heimdall', {
   }
 });
 
-process.exitCode = await app.run({ host: { argv: [] } });
+process.exitCode = await app.run({ host: { argv: [], platform: 'linux' } });

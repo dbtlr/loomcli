@@ -38,12 +38,21 @@ test('textstat logs one record for each run through the logging plugin, and prin
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-logged-'));
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
+    const home = join(directory, 'home');
+    const state = join(directory, 'state');
+    // The directory the plugin picks on the platform the child runs on.
+    let logDirectory = join(state, 'textstat');
+    if (process.platform === 'darwin') {
+      logDirectory = join(home, 'Library', 'Logs', 'textstat');
+    } else if (process.platform === 'win32') {
+      logDirectory = join(home, 'local', 'textstat', 'Logs');
+    }
     const result = invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
       cwd: directory,
-      env: { XDG_STATE_HOME: join(directory, 'state') },
+      env: { HOME: home, LOCALAPPDATA: join(home, 'local'), XDG_STATE_HOME: state },
     });
     expect(result).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
-    const records = readFileSync(join(directory, 'state', 'textstat', 'textstat.jsonl'), 'utf8')
+    const records = readFileSync(join(logDirectory, 'textstat.jsonl'), 'utf8')
       .trimEnd()
       .split('\n')
       .map((line) => JSON.parse(line));

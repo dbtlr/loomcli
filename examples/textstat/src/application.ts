@@ -50,7 +50,7 @@ export const textstat = new Application('textstat', {
     format({ short: 'f' }),
     manifest({ short: 'M' }),
     config({ file: '.textstat.{toml,json}', short: 'c' }),
-    // Each run appends its records to textstat.jsonl in the platform's state directory.
+    // Each run appends its records to textstat.jsonl in the platform's state or log directory.
     logging(),
     loomTheme(),
     explain(),

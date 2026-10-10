@@ -77,6 +77,9 @@ function run(
   return invoke(fixture, argv, {
     cwd: box.work,
     env: {
+      // The platform is pinned so a test reads the same row on every machine.
+      // The darwin and win32 cases name their own.
+      FIXTURE_PLATFORM: 'linux',
       HOME: box.home,
       USERPROFILE: box.home,
       XDG_STATE_HOME: box.state,
@@ -579,6 +582,23 @@ test.each([
   [
     { onError: 'ignore' },
     fault('onError', 'is not a function.', 'Supply a function, or omit the setting.'),
+  ],
+  [
+    // The first key at fault in the contract's order is reported, not the first fault class.
+    { keep: 2, level: 'x', to: 'console' },
+    fault(
+      'level',
+      'is not a written level.',
+      'Supply "trace", "debug", "info", "warn", or "error", or omit the setting.',
+    ),
+  ],
+  [
+    { file: 5, to: 'console' },
+    fault(
+      'file',
+      'is not accepted when "to" is "console".',
+      'Remove the setting, or set "to" to "file".',
+    ),
   ],
   [
     { file: 'a.jsonl', to: 'console' },

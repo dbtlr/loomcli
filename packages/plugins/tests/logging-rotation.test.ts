@@ -6,8 +6,9 @@ import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { writeRecord } from '../src/logging/file.js';
 
-// The rename that loses a race cannot be forced from outside a process, so this file stands in for
-// The other process: it runs the real rename, then lets the plugin's own rename find nothing to move.
+// The rename that loses a race cannot be forced from outside a process.
+// This file stands in for the other process: it runs the real rename.
+// The plugin's own rename then finds nothing to move.
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<{ renameSync: typeof renameSync }>();
   return { ...actual, renameSync: vi.fn(actual.renameSync) };

@@ -71,7 +71,7 @@ const wholeNumber: Omit<KeyRule, 'key'> = {
   problem: 'is not a positive whole number.',
 };
 
-/** The destination's rule, judged before every other key because the console limits them. */
+/** The destination's rule, judged first because the console limits the keys after it. */
 const destinationRule: KeyRule = {
   accepts: (value) => value === 'file' || value === 'console',
   correction: 'Supply "file" or "console", or omit the setting.',
@@ -104,7 +104,7 @@ const keyRules: readonly KeyRule[] = [
 ];
 
 /** The keys the console destination cannot use, because they describe the file. */
-const fileOnlyKeys = ['file', 'maxBytes', 'keep', 'onError'];
+const fileOnlyKeys = new Set(['file', 'maxBytes', 'keep', 'onError']);
 
 /** The fault in one key of the `logging()` call's settings. */
 function settingFault(
@@ -127,23 +127,20 @@ function judgeKey(settings: Readonly<Record<string, unknown>>, rule: KeyRule): v
 }
 
 /**
- * Throws the fault for the first key at fault. The destination comes first, so a key the console
- * cannot use is judged by that, and every other key is judged by its own rule, in the order the
- * contract lists them. An omitted key, or one that is `undefined`, is not set.
+ * Throws the fault for the first key at fault, walking the keys in the order the contract lists
+ * them. Beside `to: 'console'`, a key that describes the file is judged by that conflict before
+ * its own rule. An omitted key, or one that is `undefined`, is not set.
  */
 function judgeKeys(settings: Readonly<Record<string, unknown>>): void {
-  judgeKey(settings, destinationRule);
-  if (settings.to === 'console') {
-    const key = fileOnlyKeys.find((name) => settings[name] !== undefined);
-    if (key !== undefined) {
+  const toConsole = settings.to === 'console';
+  for (const rule of [destinationRule, ...keyRules]) {
+    if (toConsole && fileOnlyKeys.has(rule.key) && settings[rule.key] !== undefined) {
       throw settingFault(settings, {
         correction: 'Remove the setting, or set "to" to "file".',
-        key,
+        key: rule.key,
         problem: 'is not accepted when "to" is "console".',
       });
     }
-  }
-  for (const rule of keyRules) {
     judgeKey(settings, rule);
   }
 }
