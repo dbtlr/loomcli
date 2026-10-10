@@ -17,6 +17,8 @@ import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
+import { brokenLogHookDefect } from './log.js';
+import type { BrokenLogHook, Log, RunLog } from './log.js';
 import { reportPlainly } from './output.js';
 import type { Output } from './output.js';
 import { pluginSentence } from './plugin.js';
@@ -37,7 +39,8 @@ import type { FailureReport, FailureViewContext, ViewRegistry } from './view.js'
  * and `mediaType` are the values the failure view reads, so a hook that points at a command line returns no hint for an
  * invocation by name, and `style` is the contextual style for stderr, so a hook escapes text the
  * operator typed. `graph` is the frozen graph `inspect()` returns for the run, and `command` is the
- * node at `path` inside it; reading either builds the run's graph once.
+ * node at `path` inside it; reading either builds the run's graph once. `log` records a log event
+ * under the identity of the plugin whose hook is running.
  */
 interface FailureHookContext {
   readonly application: string;
@@ -48,6 +51,7 @@ interface FailureHookContext {
   /** The media type that view declares. */
   readonly mediaType: string | undefined;
   readonly style: ContextualStyle;
+  readonly log: Log;
   readonly graph: CommandGraph;
   readonly command: CommandNode;
 }
@@ -115,6 +119,7 @@ function genericOnce(build: BuildReports, application: string): string {
  * failure encoders a `run()` writes through, which an invocation by name never has.
  */
 interface FailureSink {
+  logging: RunLog;
   output: Output;
   registry: ViewRegistry;
   stderr: Writable;
@@ -212,9 +217,10 @@ function callHook(hook: FailureHook, failure: LoomError, context: FailureHookCon
  */
 function hookContext(
   scene: FailureScene & { built: BuiltRun },
-  style: ContextualStyle,
+  shared: { log: Log; style: ContextualStyle },
 ): FailureHookContext {
   const { application, built, invokedBy, path, selection } = scene;
+  const { log, style } = shared;
   let command: CommandNode | undefined = undefined;
   return Object.freeze({
     application,
@@ -226,6 +232,7 @@ function hookContext(
       return built.inspected();
     },
     invokedBy,
+    log,
     mediaType: selection.mediaType,
     path,
     style,
@@ -248,17 +255,21 @@ interface BrokenHook {
 function collectHints(
   scene: FailureScene,
   failure: LoomError,
-  style: ContextualStyle,
+  shared: { logging: RunLog; style: ContextualStyle },
 ): { broken: readonly BrokenHook[]; hints: readonly string[] } {
   const { built } = scene;
   if (built === undefined) {
     return { broken: [], hints: Object.freeze([]) };
   }
-  const context = hookContext({ ...scene, built }, style);
+  const { logging, style } = shared;
   // Every hook runs here, in installation order, before any answer is read.
-  const answers = built.plugins.flatMap(({ identity, onFailure }) =>
-    onFailure === undefined ? [] : [{ answer: callHook(onFailure, failure, context), identity }],
-  );
+  const answers = built.plugins.flatMap(({ identity, onFailure }) => {
+    if (onFailure === undefined) {
+      return [];
+    }
+    const context = hookContext({ ...scene, built }, { log: logging.bind(identity), style });
+    return [{ answer: callHook(onFailure, failure, context), identity }];
+  });
   const hints = answers.flatMap(({ answer }) => (answer.kind === 'hints' ? answer.hints : []));
   const broken = answers.flatMap(({ answer, identity }) =>
     answer.kind === 'broken' ? [{ cause: answer.cause, identity, reason: answer.reason }] : [],
@@ -293,6 +304,21 @@ function brokenContract(defect: InternalError, build: BuildReports, scene: Devel
   return build.development
     ? `\n${developerPlainText(defect, scene)}`
     : genericOnce(build, scene.application);
+}
+
+/**
+ * What the plain fallback path writes for the `onLog` hooks that broke in a run: each one's
+ * Developer Diagnostic in a development build, opening with one blank line after an earlier
+ * report, and the generic defect message, at most once per run, in a distributed one.
+ */
+function brokenLogReport(
+  broken: readonly BrokenLogHook[],
+  build: BuildReports,
+  scene: DeveloperScene,
+): string {
+  return broken
+    .map((entry) => plainDefectReport(build, brokenLogHookDefect(entry), scene))
+    .join('');
 }
 
 /**
@@ -476,6 +502,26 @@ async function settleIncomplete(output: Output, answer: EncoderAnswer): Promise<
 }
 
 /**
+ * The form of one failure, built after the hooks, which is also the failure the run logs. No hook
+ * runs for a failure raised before the graph built, and no event is logged for it either.
+ */
+function loggedForm(
+  sink: FailureSink,
+  failure: LoomError,
+  answered: { built: BuiltRun | undefined; hints: readonly string[] },
+): FailureForm {
+  const form = failureForm(failure, {
+    development: sink.build.development,
+    hints: answered.hints,
+    plain: (text) => sink.output.plain(text),
+  });
+  if (answered.built !== undefined) {
+    sink.logging.failure(failure, form);
+  }
+  return form;
+}
+
+/**
  * Reports one failure. The hooks run first, so the diagnostic, the view, or the encoder receives
  * their hints and their form. A failure whose selection an installed plugin encodes passes through
  * the encoding stage in place of its view. What a broken view or encoder leaves the plain fallback
@@ -488,12 +534,11 @@ async function reportFailure(
   failure: LoomError,
   scene: FailureScene & { host: DeveloperScene['host'] },
 ): Promise<FailureReported> {
-  const { broken, hints } = collectHints(scene, failure, sink.output.context('stderr').style);
-  const form = failureForm(failure, {
-    development: sink.build.development,
-    hints,
-    plain: (text) => sink.output.plain(text),
+  const { broken, hints } = collectHints(scene, failure, {
+    logging: sink.logging,
+    style: sink.output.context('stderr').style,
   });
+  const form = loggedForm(sink, failure, { built: scene.built, hints });
   const developer: DeveloperScene = { application: scene.application, host: scene.host };
   const own = await reportOwn(sink, failure, { ...scene, developer, form, hints });
   const hooks = broken.map((hook) => brokenContract(hookDefect(hook), sink.build, developer));
@@ -534,15 +579,31 @@ interface FailureReported {
 }
 
 /**
+ * What the plain fallback path writes for one defect: its Developer Diagnostic in a development
+ * build, opening with a blank line after an earlier report, and the generic defect message, at
+ * most once per run, in a distributed one.
+ */
+function plainDefectReport(
+  build: BuildReports,
+  defect: InternalError,
+  scene: DeveloperScene,
+): string {
+  if (!build.development) {
+    return genericOnce(build, scene.application);
+  }
+  const text = developerPlainText(defect, scene);
+  const written = build.reported ? `\n${text}` : text;
+  build.reported = true;
+  return written;
+}
+
+/**
  * What a run writes on the plain fallback path when a destination failed a write or reporting
  * itself failed: the Developer Diagnostic of the broken destination in a development build, and
  * the generic defect message, at most once per run, in a distributed one.
  */
 function destinationReport(build: BuildReports, cause: unknown, scene: DeveloperScene): string {
-  if (!build.development) {
-    return genericOnce(build, scene.application);
-  }
-  return `${build.reported ? '\n' : ''}${developerPlainText(destinationDefect(cause), scene)}`;
+  return plainDefectReport(build, destinationDefect(cause), scene);
 }
 
 /** The defect a destination that failed a write the run owed it is. */
@@ -555,4 +616,4 @@ function destinationDefect(cause: unknown): InternalError {
 }
 
 export type { BuildReports, BuiltRun, FailureHook, FailureHookContext, FailureScene };
-export { destinationDefect, destinationReport, reportFailure };
+export { brokenLogReport, destinationDefect, destinationReport, reportFailure };

@@ -67,7 +67,7 @@ import type { FailureForm } from './form.js';
 import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
-import { destinationDefect, destinationReport, reportFailure } from './hints.js';
+import { brokenLogReport, destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost } from './host.js';
 import type { HostCapture, ReportHost } from './host.js';
@@ -84,6 +84,8 @@ import {
 } from './invoke.js';
 import type { CapturedFields, ReadCall } from './invoke.js';
 import { coreViews } from './lanes.js';
+import { brokenLogHookDefect, RunLog } from './log.js';
+import type { LogDestination } from './log.js';
 import { lowerInvocation } from './lower.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
@@ -763,6 +765,27 @@ class ApplicationBuilder<
       return host;
     };
     const reportingHost = (): ReportHost => reportHost ?? useReportHost(door.fallback(stderr));
+    /**
+     * This run's log events, created when the first context asks. The destination is the
+     * outermost run's, which the door decides, and the path is the one routing published.
+     */
+    const logged: { current: RunLog | undefined } = { current: undefined };
+    const logs = (): RunLog => {
+      logged.current ??= new RunLog(
+        {
+          application: Object.freeze({
+            name: this.#name,
+            version: this.#config.facts.version,
+          }),
+          destination: door.destination(reportingHost()),
+          path: () => walked,
+        },
+        this.#config.plugins.flatMap(({ identity, onLog }) =>
+          onLog === undefined ? [] : [{ hook: onLog, identity }],
+        ),
+      );
+      return logged.current;
+    };
     const scene = (): FailureScene & { host: ReportHost } => ({
       application: this.#name,
       built: reached,
@@ -862,6 +885,7 @@ class ApplicationBuilder<
           // An action's own call reuses this run's graph, host fields, and signal.
           const action: ActionCall = {
             bound: { declaredValues, graph, inspected, places },
+            destination: logs().destination,
             fields: fieldsOf(host),
             parent: { reason: () => run.reason(), signal: controller.signal },
           };
@@ -873,6 +897,7 @@ class ApplicationBuilder<
             inspected,
             invoke: (path, values, options) => this.#invoke({ options, path, values }, action),
             invokedBy: door.invokedBy,
+            logFor: (plugin) => logs().bind(plugin),
             offer,
             out: output.out,
             places,
@@ -910,7 +935,14 @@ class ApplicationBuilder<
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
-            const sink = { build, encoders, output, registry: registry ?? noViews, stderr };
+            const sink = {
+              build,
+              encoders,
+              logging: logs(),
+              output,
+              registry: registry ?? noViews,
+              stderr,
+            };
             const reported = await reportFailure(sink, failure, scene());
             forms.set(failure, reported.form);
             if (reported.broken) {
@@ -958,6 +990,7 @@ class ApplicationBuilder<
             const sink = output && {
               build,
               encoders,
+              logging: logs(),
               output,
               registry: registry ?? noViews,
               stderr,
@@ -1004,8 +1037,23 @@ class ApplicationBuilder<
         }
       }
       /**
+       * An `onLog` hook that broke is reported once, after every event of the run, through the
+       * plain fallback path. It turns a would-be 0 into 1, and it decides the failure of such a run.
+       */
+      const brokenHooks = logged.current?.broken ?? [];
+      if (brokenHooks.length > 0) {
+        const { application, host } = scene();
+        const text = brokenLogReport(brokenHooks, build, { application, host });
+        if (text !== '') {
+          await reportPlainly(stderr, text);
+        }
+        const [first] = brokenHooks;
+        decisive = code === 0 && first ? brokenLogHookDefect(first) : decisive;
+        code = 1;
+      }
+      /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
-       * failure view, onFailure hook, or destination in that run is reported as text without
+       * failure view, onFailure hook, onLog hook, or destination in that run is reported as text without
        * changing it. The signal decides the code whatever the action did afterward, so this
        * reading comes last.
        */
@@ -1058,9 +1106,14 @@ interface BoundGraph {
   places: InputPlaces;
 }
 
-/** What a call an action makes reads from its run: the graph, the five host fields, the signal. */
+/**
+ * What a call an action makes reads from its run: the graph, the five host fields, the signal, and
+ * the destination its log events reach.
+ */
 interface ActionCall {
   bound: BoundGraph;
+  /** Where the run's log events are delivered, which its nested runs deliver to as well. */
+  destination: LogDestination;
   fields: CapturedFields;
   parent: ParentRun;
 }
@@ -1100,6 +1153,11 @@ interface RunDoor {
   fallback: (stderr: Writable) => ReportHost;
   /** The run's output, before the build hands it the declared policy. */
   output: (host: ReportHost, signal: AbortSignal) => Output;
+  /**
+   * Where the run's log events are delivered: the outermost run's destination, which this run's
+   * host names under `run()` and an action's call takes from its parent.
+   */
+  destination: (host: ReportHost) => LogDestination;
   /** The policy the run resolves its output by, from the Application's declared one. */
   rendering: (declared: RenderingPolicy) => RenderingPolicy;
   /** The graph an action's run built, which this run reuses, or none for a run that builds. */
@@ -1112,6 +1170,7 @@ interface RunDoor {
 function argvDoor(options: RunOptions | undefined): RunDoor {
   return {
     bound: undefined,
+    destination: ({ env, platform, stderr }) => Object.freeze({ env, platform, stderr }),
     encodes: true,
     enter: () => {
       const overrides = options?.host;
@@ -1155,6 +1214,9 @@ function nameDoor<Mapped>(
   const host = () => invocationHost(setup.fields(), streams);
   return {
     bound: action?.bound,
+    // An invocation by name writes to no process stream, so a call of the application has no stderr.
+    destination: ({ env, platform }) =>
+      action?.destination ?? Object.freeze({ env, platform, stderr: null }),
     encodes: false,
     enter: () => {
       if ('fault' in read) {

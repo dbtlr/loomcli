@@ -280,6 +280,7 @@ const scenarios = {
   'middleware-load': () => plugin('@acme/help', { middleware: { activate: 'always' } }),
   'middleware-object': () => plugin('@acme/help', { middleware: 'help' }),
   'on-failure': () => plugin('@acme/suggest', { onFailure: 'hint' }),
+  'on-log': () => plugin('@acme/stacks', { onLog: 'stacks' }),
   'option-config': () => plugin('@acme/log', { options: { level: 'debug' } }),
   'option-presence': () =>
     plugin('@acme/log', { options: { level: { required: true, type: 'string' } } }),

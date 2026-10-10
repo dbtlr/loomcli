@@ -64,6 +64,16 @@ export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { FailureEncoder, FailureEncoding } from './encoders.js';
 export type { FailureForm } from './form.js';
 export type { FailureHook, FailureHookContext } from './hints.js';
+export type {
+  JsonValue,
+  Log,
+  LogDefect,
+  LogDestination,
+  LogEvent,
+  LogFields,
+  LogHook,
+  LogLevel,
+} from './log.js';
 export type { CommandMethod, CommandOptions } from './command.js';
 export type { CancellationReason } from './signals.js';
 export type { ErrorClass, Translation, Translator } from './translators.js';

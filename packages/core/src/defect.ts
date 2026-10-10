@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { escapeControlCharacters } from './controls.js';
 import { valueCode } from './diagnostic-text.js';
-import { DeclarationError } from './errors.js';
+import { DeclarationError, InternalError } from './errors.js';
 
 /**
  * What a development build reads a defect's source through: the roots a frame may lie under, and
@@ -316,5 +316,33 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
   return [...(source === undefined ? [] : [source]), causeChain(cause)];
 }
 
-export type { SourceAccess };
-export { defectEvidence };
+/** The name, message, and stack a fatal log event carries for the defect the run caught. */
+interface LogDefect {
+  readonly name: string;
+  readonly message: string;
+  readonly stack?: string;
+}
+
+/**
+ * What a log event carries of the value a run caught for a defect: the name and message of the
+ * cause of an `InternalError` that holds an Error, read as a diagnostic reads a cause, and its
+ * stack as the runtime formats it. A cause that is not an Error is the thrown value, which the
+ * message renders as a Developer Diagnostic does, under the name `InternalError` and with no
+ * stack. Any other failure is read as itself.
+ */
+function defectDetail(failure: DeclarationError | InternalError): LogDefect {
+  const cause: unknown = failure instanceof InternalError ? failure.cause : undefined;
+  if (cause !== undefined && !isError(cause)) {
+    return { message: valueCode(cause), name: 'InternalError' };
+  }
+  const caught = isError(cause) ? cause : failure;
+  const stack = readText(caught, 'stack');
+  return {
+    message: causeReason(caught) ?? '',
+    name: readText(caught, 'name') ?? 'Error',
+    ...(stack === undefined ? {} : { stack }),
+  };
+}
+
+export type { LogDefect, SourceAccess };
+export { defectDetail, defectEvidence };

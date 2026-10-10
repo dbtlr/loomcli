@@ -81,6 +81,7 @@ import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
+import type { Log, LogBinder } from './log.js';
 import {
   checkOptionName,
   compileOptions,
@@ -176,6 +177,8 @@ export interface DispatchInput {
   host: Host;
   /** Runs another Command of this run's graph by name, which the action receives as `invoke`. */
   invoke: ActionContext<unknown>['invoke'];
+  /** The action's `log`, bound to no plugin. */
+  log: Log;
   /** The action's channel, whose `results` accepts whatever the routed declaration named. */
   out: Out<OpenResult>;
   passthrough: string[];
@@ -980,6 +983,7 @@ export function declareAction<Args, Options, Globals, Result>(
       },
       host: context.host,
       invoke: context.invoke,
+      log: context.log,
       options: context.options,
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
@@ -2223,6 +2227,7 @@ function bindDispatch<Args, Options, Globals>(
     graph,
     host,
     invoke,
+    log,
     out,
     passthrough,
     signal,
@@ -2247,6 +2252,7 @@ function bindDispatch<Args, Options, Globals>(
       },
       host,
       invoke,
+      log,
       options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
@@ -2672,6 +2678,8 @@ export interface DispatchInvocation {
   invokedBy: InvokedBy;
   /** Runs another Command of this run's graph by name, which the action receives. */
   invoke: DispatchInput['invoke'];
+  /** Gives a context of the run its `log`, bound to the plugin core is calling, or to none. */
+  logFor: LogBinder;
   /** Offers a configuration source's foreign throw to the translators where its call settles. */
   offer: (thrown: unknown) => LoomError | undefined;
   signal: AbortSignal;
@@ -2827,6 +2835,7 @@ async function fillScope(
       local.kind === 'parsed'
         ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
         : undefined,
+    log: invocation.logFor,
     offer: invocation.offer,
     out: invocation.sourceOut,
     plugins: graph.globals.plugins,
@@ -2983,6 +2992,7 @@ function readyDispatch(
           graph: invocation.inspected,
           host: invocation.host,
           invoke: invocation.invoke,
+          log: invocation.logFor(null),
           out: channel.out,
           passthrough: local.passthrough,
           signal: invocation.signal,
