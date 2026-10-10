@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -29,6 +29,41 @@ test('textstat prints one table for the counted files, with the total only when 
       stderr: '',
       stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n    8  total\n',
     });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('textstat logs one record for each run through the logging plugin, and prints nothing more', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-logged-'));
+  try {
+    writeFileSync(join(directory, 'one.txt'), 'hello\n');
+    const home = join(directory, 'home');
+    const state = join(directory, 'state');
+    // The directory the plugin picks on the platform the child runs on.
+    let logDirectory = join(state, 'textstat');
+    if (process.platform === 'darwin') {
+      logDirectory = join(home, 'Library', 'Logs', 'textstat');
+    } else if (process.platform === 'win32') {
+      logDirectory = join(home, 'local', 'textstat', 'Logs');
+    }
+    const result = invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
+      cwd: directory,
+      env: { HOME: home, LOCALAPPDATA: join(home, 'local'), XDG_STATE_HOME: state },
+    });
+    expect(result).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
+    const records = readFileSync(join(logDirectory, 'textstat.jsonl'), 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(records).toMatchObject([
+      {
+        fields: { kept: 1, metric: 'bytes', sources: 1 },
+        level: 'info',
+        message: 'Counted the sources.',
+        path: [],
+      },
+    ]);
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

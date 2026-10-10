@@ -47,6 +47,10 @@
       "types": "./dist/src/help/views.d.ts",
       "import": "./dist/src/help/views.js"
     },
+    "./logging": {
+      "types": "./dist/src/logging/plugin.d.ts",
+      "import": "./dist/src/logging/plugin.js"
+    },
     "./manifest": {
       "types": "./dist/src/manifest/plugin.d.ts",
       "import": "./dist/src/manifest/plugin.js"

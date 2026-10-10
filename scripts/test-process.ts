@@ -35,9 +35,24 @@ function runtimeExecutable(runtime: string): string {
 }
 
 /**
+ * The state directory every fixture shares unless a test names its own, under the temporary
+ * directory, so an application that logs through the logging plugin writes its file here. The
+ * plugin rotates the file, so it stays small.
+ */
+const sharedState = join(tmpdir(), 'loom-test-state');
+
+/**
+ * The home directory every fixture shares unless a test names its own. The plugin writes under the
+ * home on macOS (`Library/Logs`) and Windows (`LOCALAPPDATA`), where `XDG_STATE_HOME` does not
+ * apply, so a fixture's home is a temporary directory on every platform, never the developer's own.
+ */
+const sharedHome = join(tmpdir(), 'loom-test-home');
+
+/**
  * The environment a fixture starts from: the parent's, minus every variable an example binds.
  * A binding set in the developer's shell would otherwise fill an option the test never set.
- * The test's own variables and the capture marker apply on top.
+ * The state and home directories are temporary ones, so a fixture writes nothing under the
+ * developer's own home. The test's own variables and the capture marker apply on top.
  */
 export function childEnvironment(env: Record<string, string | undefined> | undefined) {
   const inherited = Object.fromEntries(
@@ -45,7 +60,15 @@ export function childEnvironment(env: Record<string, string | undefined> | undef
       ([name]) => !exampleBindings.some((prefix) => name.startsWith(prefix)),
     ),
   );
-  return { ...inherited, LOOM_CAPTURE_TEST: 'present', ...env };
+  return {
+    ...inherited,
+    HOME: sharedHome,
+    LOCALAPPDATA: join(sharedHome, 'AppData', 'Local'),
+    LOOM_CAPTURE_TEST: 'present',
+    USERPROFILE: sharedHome,
+    XDG_STATE_HOME: sharedState,
+    ...env,
+  };
 }
 
 /**

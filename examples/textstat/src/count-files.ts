@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 
 import { FatalError } from '@loomcli/core';
-import type { ActionHandler, ActionOptions, Host } from '@loomcli/core';
+import type { ActionHandler, ActionOptions, Host, Log } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
@@ -62,6 +62,7 @@ interface Counted {
 async function countAll(
   options: ActionOptions<typeof textstat>,
   selected: readonly Source[],
+  log: Log,
 ): Promise<Counted> {
   const rows: Row[] = [];
   const minimum = options['min-bytes'];
@@ -75,15 +76,32 @@ async function countAll(
     if (counts.bytes >= minimum) {
       total += counts.counted;
       rows.push({ count: counts.counted, source: source.name });
+    } else {
+      log.debug('Dropped a source below the byte threshold.', {
+        bytes: counts.bytes,
+        minimum,
+        source: source.name,
+      });
     }
   }
   return { rows, total };
 }
 
 /** The counted rows are emitted at once as the result, and the hidden timing line follows it. */
-export const countFiles: ActionHandler<typeof textstat> = async ({ args, options, host, out }) => {
+export const countFiles: ActionHandler<typeof textstat> = async ({
+  args,
+  host,
+  log,
+  options,
+  out,
+}) => {
   const started = performance.now();
-  const counted = await countAll(options, sources(args.files, host));
+  const counted = await countAll(options, sources(args.files, host), log);
+  log.info('Counted the sources.', {
+    kept: counted.rows.length,
+    metric: options.metric,
+    sources: args.files.length,
+  });
   const rows: Row[] = options.total
     ? [...counted.rows, { count: counted.total, source: 'total', [totalRow]: true }]
     : counted.rows;
