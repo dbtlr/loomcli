@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "@types/node": "22.20.5"
+    "@types/node": "26.6.4"
   },
   "devDependencies": {
     "@rockorager/uucode": "2.2.1"
