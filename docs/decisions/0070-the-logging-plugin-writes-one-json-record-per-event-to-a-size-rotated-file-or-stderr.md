@@ -30,7 +30,7 @@ modified: 2026-10-10
 - **Asynchronous writes.** Deferred. They can lose the last records before a crash, which are the ones that matter; an asynchronous mode can come as a setting for a high-volume application.
 - **A readable line on the console.** Rejected for logging. Log-capturing systems parse JSON lines, and one format keeps one rule; a readable rendering belongs to whatever a verbose mode becomes.
 - **Withholding defect detail or failure events from the console.** Rejected. The console destination exists for the deployments where that detail is read, and the author chooses it.
-- **A lock file around rotation.** Rejected. Many processes of one application share its file, a daemon beside its own commands included, but two of them reach `maxBytes` within the same few system calls rarely at a useful size, the loss stays in the copies, and a lock brings a rule for the lock a crashed process leaves behind.
+- **A lock file around rotation.** Rejected. Many processes of one application share its file, a daemon beside its own commands included, but two of them rarely reach `maxBytes` within the same few system calls at a useful size, the loss stays in the copies, and a lock brings a rule for the lock a crashed process leaves behind.
 - **Failing the run, or warning on stderr, on a failed write.** Rejected. Whether a process may continue unlogged depends on the application, so neither is a default; a warning per run also has no natural scope in a long-lived process.
 
 ## Consequences

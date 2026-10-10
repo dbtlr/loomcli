@@ -339,7 +339,7 @@ test('two processes that take turns appending and rotating one file lose no reco
   expect(messages.toSorted(compare)).toEqual(expected.toSorted(compare));
 });
 
-test('two processes that append and rotate one file at once write every line whole', async () => {
+test('two processes that append and rotate one file at once write every line whole, none twice', async () => {
   const box = sandbox();
   const env = { HOME: box.home, XDG_STATE_HOME: box.state };
   // With no baton both processes rotate the small file over and over, so their rotations collide.
