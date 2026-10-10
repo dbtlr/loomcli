@@ -339,6 +339,30 @@ test('two processes that take turns appending and rotating one file lose no reco
   expect(messages.toSorted(compare)).toEqual(expected.toSorted(compare));
 });
 
+test('two processes that append and rotate one file at once write every line whole, none twice', async () => {
+  const box = sandbox();
+  const env = { HOME: box.home, XDG_STATE_HOME: box.state };
+  // With no baton both processes rotate the small file over and over, so their rotations collide.
+  const first = start(turns, ['a', 'b', '-', '20', '10'], { cwd: box.work, env });
+  const second = start(turns, ['b', 'a', '-', '20', '10'], { cwd: box.work, env });
+  const results = await Promise.all([first.exit, second.exit]);
+  expect(results.map(({ status, stderr }) => ({ status, stderr }))).toEqual([
+    { status: 0, stderr: '' },
+    { status: 0, stderr: '' },
+  ]);
+  const directory = join(box.state, 'heimdall');
+  const written = readdirSync(directory).flatMap((name) =>
+    readFileSync(join(directory, name), 'utf8')
+      .split('\n')
+      .filter((line) => line !== ''),
+  );
+  // A simultaneous rotation may lose records from a copy, but no line is torn or written twice.
+  const messages: string[] = written.map((line) => JSON.parse(line).message);
+  expect(messages.length).toBeGreaterThan(0);
+  expect(messages.every((message) => /^[ab]-\d+-\d+$/u.test(message))).toBe(true);
+  expect(new Set(messages).size).toBe(messages.length);
+});
+
 // The console
 
 test('to console writes the same bytes to stderr as the file, and none to stdout', () => {

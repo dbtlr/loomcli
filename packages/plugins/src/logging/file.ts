@@ -123,7 +123,7 @@ function append(path: string, record: string): LoggingError | undefined {
 /**
  * Writes one record to the file before returning: it rotates first when the record would pass
  * `maxBytes`, then appends. A failed step goes to the sink's `report`, and the next record tries
- * again. A failed rotation still appends, so a record is lost only when the append itself fails.
+ * again. A failed rotation still appends, so a record goes unwritten only when the append itself fails.
  */
 function writeRecord(sink: FileSink, record: string): void {
   rotateWhenFull(sink, Buffer.byteLength(record));
