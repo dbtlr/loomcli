@@ -61,7 +61,7 @@ The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not appl
 
 ## 7. A defect shows one generic message
 
-A defect is a failure only the author can fix: an unexpected exception no [translator](core.md#translators) answered, a broken view, `onFailure` hook, or translator, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. In a distributed build the operator sees one generic message with no reason, no class name, and no code detail:
+A defect is a failure only the author can fix: an unexpected exception no [translator](core.md#translators) answered, a broken view, `onFailure` or `onLog` hook, or translator, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. A log record that a logging plugin the author installed writes to the console is not an operator message, and may carry the defect's detail. In a distributed build the operator sees one generic message with no reason, no class name, and no code detail:
 
 ```text
 jsonkit: Something went wrong.

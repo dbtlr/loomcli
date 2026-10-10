@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
-description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failed write warns once and the run continues.
+description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failure to write the file goes to the author's onError, and is ignored without one.
 status: proposed
 created: 2026-10-10
 modified: 2026-10-10
@@ -21,7 +21,7 @@ modified: 2026-10-10
 - **Synchronous appends.** Each record is appended with one write before the hook returns, so the record of a crash survives whatever follows it, and order needs no queue.
 - **Rotation by size, with no timer.** Before a write that would pass `maxBytes`, 10 MB by default, the file becomes its first numbered copy, older copies shift up, the copy past `keep`, 5 by default, is deleted, and a new file starts. The process owns its file, so it renames rather than copying and truncating.
 - **The console as the author's choice.** `to: 'console'` writes records to the destination's stderr, never stdout, and writes nothing under `app.invoke`, whose stderr is `null`. It writes the full record, defect detail included, beside any failure encoder's line; the author who chose it chose that.
-- **A failed write warns once.** When the directory cannot be resolved or created, or a write or rename fails, the plugin writes one line to stderr naming the file or the missing variable, at most once per run, skips the records it cannot write, and the run continues. Logging observes; a full disk does not end a daemon's work.
+- **A failed write goes to the author.** When the directory cannot be resolved or created, or an append or a rename fails, the plugin calls the author's `onError` with a typed `LoggingError` naming the step, the path, the unset variable, and the runtime's cause, once for each failure, and the next record tries again. With no `onError` the failure is ignored and the run continues. Whether a process may continue unlogged has no single answer, so the author decides: ignore, count, alert, or end the process. An `onError` that throws throws from the plugin's hook, which [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) reports as a broken `onLog` hook.
 
 ## Considered options
 
@@ -30,7 +30,7 @@ modified: 2026-10-10
 - **Asynchronous writes.** Deferred. They can lose the last records before a crash, which are the ones that matter; an asynchronous mode can come as a setting for a high-volume application.
 - **A readable line on the console.** Rejected for logging. Log-capturing systems parse JSON lines, and one format keeps one rule; a readable rendering belongs to whatever a verbose mode becomes.
 - **Withholding defect detail or failure events from the console.** Rejected. The console destination exists for the deployments where that detail is read, and the author chooses it.
-- **Failing the run on a failed write.** Rejected. The run's work did not fail.
+- **Failing the run, or warning on stderr, on a failed write.** Rejected. Whether a process may continue unlogged depends on the application, so neither is a default; a warning per run also has no natural scope in a long-lived process.
 
 ## Consequences
 

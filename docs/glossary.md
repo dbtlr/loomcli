@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, and `invoke`, which runs another Command of the same graph by name.
+The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -378,7 +378,7 @@ A failure core wraps around an unexpected exception no translator answered, a br
 _Avoid_: Unhandled error, bug (in output)
 
 **Defect**:
-A failure only the author can fix: an unexpected exception no translator answered, a broken view, hook, translator, or result contract, or an author fault that reached a run. It is the application's equivalent of an HTTP 500. In a distributed build the operator sees one generic message, `<application>: Something went wrong.`, with no reason, class name, or code detail; in a development build the author sees its Developer Diagnostic.
+A failure only the author can fix: an unexpected exception no translator answered, a broken view, hook, translator, or result contract, or an author fault that reached a run. It is the application's equivalent of an HTTP 500. In a distributed build the operator sees one generic message, `<application>: Something went wrong.`, with no reason, class name, or code detail; in a development build the author sees its Developer Diagnostic. A log record that a logging plugin the author installed writes to the console is not an operator message, and may carry the defect's detail.
 _Avoid_: Bug, crash, internal error (for the concept rather than the class)
 
 **Diagnostic**:
