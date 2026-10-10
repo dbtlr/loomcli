@@ -1,3 +1,5 @@
+import { Writable } from 'node:stream';
+
 import { Application, Command, extension, FatalError, InternalError, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -28,6 +30,15 @@ const collector = plugin('fixture/collector', { onLog: record });
 const silent = plugin('fixture/silent', {});
 
 const dispatch = ({ out }) => out.print('dispatched');
+
+/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
+function brokenPipe() {
+  return new Writable({
+    write(_chunk, _encoding, callback) {
+      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    },
+  });
+}
 
 /** The key a source binds, so the source below is asked about an option that carries it. */
 const key = extension('@fixture/logging/key', { schema: z.string(), target: 'option' });
@@ -276,6 +287,19 @@ const scenarios = {
         await invoke(['inner'], {});
         log.info('outer again');
       }),
+  'stdout-broken': () =>
+    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+      ({ out }) => out.print('lost'),
+    ),
+  'stdout-broken-after-failure': () =>
+    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+      async ({ out }) => {
+        // The action catches the failed write and fails on its own.
+        // A run whose output failed reports only the destination.
+        await out.print('lost').catch(() => undefined);
+        throw new FatalError('The action failed.');
+      },
+    ),
   'throw-string': () =>
     failing([collector], () => {
       throw 'boom';
@@ -316,8 +340,10 @@ const app = build();
 /** The build a test names, or the facts a bundle bakes in when none is named. */
 const release =
   process.env.FIXTURE_BUILD === undefined ? {} : { release: { build: process.env.FIXTURE_BUILD } };
+/** A stdout that fails every write, for the scenarios whose destination breaks. */
+const stdout = scenario.startsWith('stdout-broken') ? { stdout: brokenPipe() } : {};
 const code = await app.run({
-  host: { argv, ...release },
+  host: { argv, ...release, ...stdout },
   signal: controller.signal,
 });
 if (scenario === 'runs') {

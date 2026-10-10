@@ -1029,11 +1029,31 @@ class ApplicationBuilder<
         }
         output.dispose();
       }
-      if (reportingFailed) {
+      /**
+       * A failure no report reached, such as one whose stderr had failed, ran no hook, so its form
+       * holds no hint.
+       */
+      const unhintedForm = (failure: LoomError): FailureForm =>
+        failureForm(failure, {
+          development: build.development,
+          hints: [],
+          plain: (text) => output?.plain(text) ?? text,
+        });
+      /**
+       * A destination that failed a write, or a report that threw, is a defect the run reports on
+       * the plain fallback path, so it logs like any reported failure once the graph has built.
+       */
+      const destinationFault = reportingFailed ? destinationDefect(reportingCause) : undefined;
+      if (destinationFault) {
         const { application, host } = scene();
-        const text = destinationReport(build, reportingCause, { application, host });
+        const text = destinationReport(build, destinationFault, { application, host });
         if (text !== '') {
           await reportPlainly(stderr, text);
+        }
+        const form = unhintedForm(destinationFault);
+        forms.set(destinationFault, form);
+        if (reached !== undefined) {
+          logs().failure(destinationFault, form);
         }
       }
       /**
@@ -1067,15 +1087,8 @@ class ApplicationBuilder<
         return { exitCode: code, kind: 'completed' };
       }
       // A run whose destination alone failed reports that defect, which is its failure.
-      const failure = decisive ?? destinationDefect(reportingCause);
-      // A failure no report reached, such as one whose stderr had failed, ran no hook, so it holds no hint.
-      const form =
-        forms.get(failure) ??
-        failureForm(failure, {
-          development: build.development,
-          hints: [],
-          plain: (text) => output?.plain(text) ?? text,
-        });
+      const failure = decisive ?? destinationFault ?? destinationDefect(reportingCause);
+      const form = forms.get(failure) ?? unhintedForm(failure);
       return { exitCode: code, failure, form, kind: 'failed', path: walked };
     } finally {
       signals?.finish();

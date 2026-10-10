@@ -602,8 +602,12 @@ function plainDefectReport(
  * itself failed: the Developer Diagnostic of the broken destination in a development build, and
  * the generic defect message, at most once per run, in a distributed one.
  */
-function destinationReport(build: BuildReports, cause: unknown, scene: DeveloperScene): string {
-  return plainDefectReport(build, destinationDefect(cause), scene);
+function destinationReport(
+  build: BuildReports,
+  defect: InternalError,
+  scene: DeveloperScene,
+): string {
+  return plainDefectReport(build, defect, scene);
 }
 
 /** The defect a destination that failed a write the run owed it is. */
