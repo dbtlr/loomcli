@@ -10,16 +10,23 @@ function pause() {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
 }
 
+/** Free-running processes pass `-` for the baton, and neither waits for the other. */
+const freeRunning = baton === '-';
+
 /** Waits until the baton file names this process's turn. */
 function awaitTurn() {
+  if (freeRunning) {
+    return;
+  }
   while (!existsSync(baton) || readFileSync(baton, 'utf8') !== turn) {
     pause();
   }
 }
 
 /**
- * Two of these run at once against one file. They hand a baton file to each other, so the
- * processes append and rotate in a fixed order that real concurrency would not give.
+ * Two of these run at once against one file. With a baton file they hand it to each other, so the
+ * processes append and rotate in a fixed order that real concurrency would not give; without one
+ * they append and rotate at once.
  */
 const app = new Application('heimdall', {
   description: 'A fixture application.',
@@ -30,7 +37,9 @@ const app = new Application('heimdall', {
     for (let number = 1; number <= Number(batch); number += 1) {
       log.info(`${turn}-${round}-${number}`);
     }
-    writeFileSync(baton, other);
+    if (!freeRunning) {
+      writeFileSync(baton, other);
+    }
   }
 });
 
