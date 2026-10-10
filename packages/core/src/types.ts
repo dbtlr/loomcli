@@ -8,6 +8,7 @@ import type { FailureExitCode } from './exit-codes.js';
 import type { ExtensionValue } from './extension.js';
 import type { FailureForm } from './form.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
+import type { Log } from './log.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
@@ -694,6 +695,8 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
   passthrough: string[];
   out: Out<Result>;
   host: Host;
+  /** Records a log event for every installed plugin's `onLog` hook, under no plugin. */
+  readonly log: Log;
   /** The run's cancellation signal, which a caller or an installed signals owner aborts. */
   signal: AbortSignal;
   /** Runs another Command of the graph this run built, by name, and captures what it writes. */

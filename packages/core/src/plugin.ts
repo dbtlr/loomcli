@@ -27,6 +27,7 @@ import type { FailureHook } from './hints.js';
 import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import { coreViews } from './lanes.js';
+import type { Log, LogHook } from './log.js';
 import { compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import {
@@ -113,6 +114,7 @@ interface DeclaredPlugin {
   onCommandAttach?: unknown;
   onGraphBuilt?: unknown;
   onFailure?: unknown;
+  onLog?: unknown;
   extensions?: unknown;
   views?: unknown;
   translators?: unknown;
@@ -203,6 +205,8 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly out: Out;
   readonly style: ContextualStyle;
   readonly invokedBy: 'argv' | 'name';
+  /** Records a log event under the plugin's identity, as a middleware's `log` does. */
+  readonly log: Log;
 }
 
 /**
@@ -227,7 +231,7 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
  * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
  * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when `run()` renders a
- * failure, the middleware runs inside an invocation, the configuration source runs in the
+ * failure, `onLog` runs when a run logs an event, the middleware runs inside an invocation, the configuration source runs in the
  * input-source stage when an unfilled option carries its binding, and a translator runs when a
  * foreign throw its key matches leaves the application's work.
  */
@@ -244,6 +248,7 @@ interface PluginDefinition<
   onCommandAttach?: CommandAttachHook;
   onGraphBuilt?: GraphBuiltHook;
   onFailure?: FailureHook;
+  onLog?: LogHook;
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
@@ -260,7 +265,7 @@ interface PluginDefinition<
 /**
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
  * none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when
- * `run()` renders a failure, and the middleware runs inside an invocation, so an installed plugin
+ * `run()` renders a failure, `onLog` runs when a run logs an event, and the middleware runs inside an invocation, so an installed plugin
  * an invocation never reaches costs that invocation its hooks alone. The definition is read once,
  * after the identity, and every rule that one definition carries on its own throws here, before
  * the value exists.
@@ -884,6 +889,26 @@ function readFailureHook(identity: string, declared: unknown): FailureHook | und
   return declared;
 }
 
+/** Being callable is the whole claim; core checks what a hook returns each time it calls one. */
+function isLogHook(value: unknown): value is LogHook {
+  return typeof value === 'function';
+}
+
+/** One plugin's `onLog` hook, or `undefined` for a plugin that declares none. */
+function readLogHook(identity: string, declared: unknown): LogHook | undefined {
+  if (declared === undefined) {
+    return undefined;
+  }
+  if (!isLogHook(declared)) {
+    throw new DeclarationError(notAFunction, {
+      correction: 'Supply a function of the log event and its destination.',
+      findings: [partFinding(pluginSlot(identity, 'onLog', declared), [])],
+      sentence: `${pluginSentence(identity)} declares onLog that is not a function.`,
+    });
+  }
+  return declared;
+}
+
 /**
  * One plugin's configuration source: the identity of the binding that marks an option as
  * configuration-bound, and the loader that fetches the resolver's module.
@@ -969,6 +994,8 @@ interface BuiltPlugin {
   onGraphBuilt: GraphBuiltHook | undefined;
   /** The hook core calls for each failure `run()` renders after graph build, or nothing. */
   onFailure: FailureHook | undefined;
+  /** The hook core calls for each log event of a run, or nothing. */
+  onLog: LogHook | undefined;
   /** The copy of the plugin's own `views` list, which the Application reads again. */
   views: unknown;
   /** The translations the plugin registers, which resolve after the application's. */
@@ -1047,6 +1074,7 @@ function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
   const onCommandAttach = readHook(named, declaration.onCommandAttach);
   const onGraphBuilt = readGraphHook(named, declaration.onGraphBuilt);
   const onFailure = readFailureHook(named, declaration.onFailure);
+  const onLog = readLogHook(named, declaration.onLog);
   buildViews(pluginViews(named), declaration.views, viewIdentities(coreViews));
   const translators = readTranslations(
     pluginSlot(named, 'translators', declaration.translators),
@@ -1066,6 +1094,7 @@ function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
     onCommandAttach,
     onFailure,
     onGraphBuilt,
+    onLog,
     records: build.records,
     signals,
     source,

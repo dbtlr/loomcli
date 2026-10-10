@@ -61,6 +61,20 @@ const brokenFailureHook = registerRule('@loomcli/core/broken-failure-hook', {
   headline: 'Broken failure hook',
 });
 
+/** An `onLog` hook that threw or returned a value. */
+const brokenLogHook = registerRule('@loomcli/core/broken-log-hook', {
+  explanation:
+    'An onLog hook observes the log events of a run, synchronously and without throwing, and returns nothing. Core stopped calling this hook for the rest of the run, and every other plugin kept receiving the events.',
+  headline: 'Broken log hook',
+});
+
+/** A `log` call made while core was delivering a log event to an `onLog` hook. */
+const logInLogHook = registerRule('@loomcli/core/log-in-log-hook', {
+  explanation:
+    'An onLog hook observes the events core delivers to it. A log call made during that delivery would create an event inside the delivery of another, so core throws instead of delivering it.',
+  headline: 'Log call in a log hook',
+});
+
 /** A plugin's middleware or source loader that rejected or exported no default function. */
 const pluginLoaderFailed = registerRule('@loomcli/core/plugin-loader-failed', {
   explanation:
@@ -199,6 +213,7 @@ export {
   brokenFailureEncoder,
   brokenFailureHook,
   brokenFailureView,
+  brokenLogHook,
   brokenOutputView,
   brokenTranslator,
   brokenTranslatorCorrection,
@@ -211,6 +226,7 @@ export {
   invalidReleaseFacts,
   invokeOptions,
   invokeViewCorrection,
+  logInLogHook,
   nextMisuse,
   pluginLoaderFailed,
   resultContract,

@@ -72,7 +72,7 @@ const middlewareActivation = registerRule('@loomcli/core/middleware-activation',
 /** A loader, a hook, or a translator that core cannot call. */
 const notAFunction = registerRule('@loomcli/core/not-a-function', {
   explanation:
-    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph build, onFailure when a failure renders, a translator when a foreign throw reaches it, and a failure encoder when a failed run selected its media type. A value core cannot call leaves it nothing to run.',
+    'Core calls each of these values at a point of its own: load when a run first reaches a middleware or a source, onCommandAttach and onGraphBuilt at graph build, onFailure when a failure renders, onLog when a run logs an event, a translator when a foreign throw reaches it, and a failure encoder when a failed run selected its media type. A value core cannot call leaves it nothing to run.',
   headline: 'Not a function',
 });
 

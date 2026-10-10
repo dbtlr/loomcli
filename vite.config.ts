@@ -149,6 +149,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/log.ts'],
+        rules: {
+          // The log contract spells a missing plugin and a missing stderr `null`, and JSON data holds `null`.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/form.ts'],
         rules: {
           // The failure form's key order is part of its contract: code, exitCode, message, hints.

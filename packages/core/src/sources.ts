@@ -11,6 +11,7 @@ import type { ExtensionRecords } from './extension.js';
 import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
+import type { LogBinder } from './log.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
@@ -44,6 +45,8 @@ interface SourceStage {
   host: Host;
   /** The graph `inspect()` would return for the run, built on its first read. */
   inspected: () => CommandGraph;
+  /** Gives the source its `log`, bound to the plugin that declared it. */
+  log: LogBinder;
   /** How the run received its inputs, which the source reads to name an option as core does. */
   invokedBy: InvokedBy;
   /** The routed Command's own options, or `undefined` while local parsing holds a fault. */
@@ -310,6 +313,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
     graph: stage.inspected(),
     host: stage.host,
     invokedBy: stage.invokedBy,
+    log: stage.log(owner.identity),
     // Validation produced the record the plugin's option types describe.
     options,
     out: stage.out,

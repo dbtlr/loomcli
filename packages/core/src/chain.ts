@@ -4,6 +4,7 @@ import { foreignFailure, InternalError, routedSubject } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
+import type { Log, LogBinder } from './log.js';
 import { isSupplied } from './options.js';
 import type { OptionValues } from './options.js';
 import type { ParsedInvocation } from './parse.js';
@@ -69,6 +70,8 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   set view(name: string);
   readonly host: Host;
   readonly out: Out;
+  /** Records a log event under the plugin's identity. */
+  readonly log: Log;
   readonly signal: AbortSignal;
   readonly next: () => Promise<ChainOutcome>;
 }
@@ -334,6 +337,8 @@ interface Invocation {
   select: (read: () => FailureSelection) => void;
   /** Runs another Command of this run's graph by name, which the action receives. */
   invoke: DispatchInput['invoke'];
+  /** Gives a context of the run its `log`, bound to the plugin core is calling, or to none. */
+  logFor: LogBinder;
 }
 
 /** The state one chain shares: what it reached, what it raised, and how it continues. */
@@ -537,6 +542,7 @@ async function runChain(
       command,
       graph,
       host: invocation.host,
+      log: invocation.logFor(entry.identity),
       next,
       options: prepared.options,
       out: invocation.out,
