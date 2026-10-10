@@ -106,13 +106,8 @@ const app = new Application('heimdall', {
   .action(() => undefined);
 
 if (scenario === 'invoke') {
-  // An invocation by name writes to no process stream; its host may replace the env it captured.
-  const replaced = host();
-  const outcome = await app.invoke(
-    argv,
-    {},
-    replaced.env === undefined ? {} : { host: { env: replaced.env } },
-  );
+  // An invocation by name writes to no process stream. Its host may replace the captured env and platform.
+  const outcome = await app.invoke(argv, {}, { host: host() });
   process.stdout.write(`invoked:${outcome.status}\n`);
 } else {
   process.exitCode = await app.run({ host: { argv: [scenario, ...argv], ...host() } });
