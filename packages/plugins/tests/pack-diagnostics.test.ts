@@ -16,6 +16,13 @@ const explanations = {
     'glob syntax only as the whole extension of its name: * for any format the plugin',
     'reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.',
   ],
+  'logging/settings': [
+    'The logging plugin writes records to a file or to the console, so to is file or',
+    'console; a file is a nonempty name, absolute path, or path under ~/ with no',
+    'control character; level is one of the five written levels; maxBytes and keep',
+    'are whole numbers of 1 or more; onError is a function; and the console',
+    'destination takes only a level.',
+  ],
   'version/postfix': [
     'The version plugin prints the postfix after the version on its one line, so the',
     'postfix holds a character other than whitespace and no line terminator.',
@@ -96,6 +103,21 @@ const settingsCases: Record<string, Expected> = {
     headline: 'INVALID CONFIGURATION FILE PATH',
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
+  },
+  'logging-console': {
+    correction: 'Remove the setting, or set "to" to "file".',
+    finding: marked("logging({ file: 'a.jsonl', to: 'console' })", "file: 'a.jsonl'"),
+    headline: 'INVALID LOGGING SETTING',
+    rule: 'logging/settings',
+    sentence:
+      'Plugin "@loomcli/plugins/logging" setting "file" is not accepted when "to" is "console".',
+  },
+  'logging-keep': {
+    correction: 'Supply a whole number of 1 or more.',
+    finding: marked('logging({ keep: 0 })', 'keep: 0'),
+    headline: 'INVALID LOGGING SETTING',
+    rule: 'logging/settings',
+    sentence: 'Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.',
   },
   'version-blank': postfixFault("version({ postfix: ' ' })", "postfix: ' '"),
   'version-lines': postfixFault(

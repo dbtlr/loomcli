@@ -170,6 +170,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/logging/directory.ts'],
+        rules: {
+          // A logging error with no directory to name reads `null` for its path, as the contract states.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/*/tests/**', 'examples/*/tests/**', 'scripts/**'],
         rules: {
           // Fixtures use literal expectations, stream sentinels, and callback failures.

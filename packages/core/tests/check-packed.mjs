@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -517,6 +517,32 @@ try {
       `${name}: packed suggestion`,
     );
   }
+  // The packed logging plugin appends one record to the file under the state directory it is given.
+  const logged = join(temporary, 'dist/logging.js');
+  for (const name of selected) {
+    const state = join(temporary, `state-${name}`);
+    const written = run(runtimes.get(name), [logged], temporary, { XDG_STATE_HOME: state });
+    assert.equal(written.status, 0, written.output);
+    assert.equal(written.output, 'failures:0\n', `${name}: packed logging run`);
+    const file = await readFile(join(state, 'packed-logging', 'packed-logging.jsonl'), 'utf8');
+    const records = file
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(records.length, 1, `${name}: packed logging wrote one record`);
+    assert.deepEqual(
+      records.map(({ level, message, fields, plugin }) => ({ fields, level, message, plugin })),
+      [
+        {
+          fields: { count: 3 },
+          level: 'info',
+          message: 'Logged from the packed plugin.',
+          plugin: null,
+        },
+      ],
+      `${name}: packed logging record`,
+    );
+  }
   const entry = join(temporary, 'dist/main.js');
   for (const name of selected) {
     for (const { argv, expected, reads, env } of invocations) {
@@ -627,7 +653,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

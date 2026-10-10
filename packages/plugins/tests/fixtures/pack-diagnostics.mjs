@@ -1,5 +1,6 @@
 import { DeclarationError } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
+import { logging } from '@loomcli/plugins/logging';
 import { version } from '@loomcli/plugins/version';
 
 /**
@@ -10,6 +11,8 @@ const scenarios = {
   'config-glob': () => config({ file: '*.json' }),
   'config-list': () => config({ file: '.textstat.{toml,ini}' }),
   'config-path': () => config({ file: '/etc/textstat.json' }),
+  'logging-console': () => logging({ file: 'a.jsonl', to: 'console' }),
+  'logging-keep': () => logging({ keep: 0 }),
   'version-blank': () => version({ postfix: ' ' }),
   'version-lines': () => version({ postfix: 'schema\nv1' }),
   'version-number': () => version({ postfix: 1 }),

@@ -6,6 +6,7 @@ import { configInput } from '@loomcli/plugins/config/extension';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
+import { logging } from '@loomcli/plugins/logging';
 import { manifest } from '@loomcli/plugins/manifest';
 import { suggestions } from '@loomcli/plugins/suggestions';
 import { table } from '@loomcli/plugins/table';
@@ -49,6 +50,8 @@ export const textstat = new Application('textstat', {
     format({ short: 'f' }),
     manifest({ short: 'M' }),
     config({ file: '.textstat.{toml,json}', short: 'c' }),
+    // Each run appends its records to textstat.jsonl in the platform's state directory.
+    logging(),
     loomTheme(),
     explain(),
   ],
