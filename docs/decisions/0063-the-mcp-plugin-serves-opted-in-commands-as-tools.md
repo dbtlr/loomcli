@@ -4,7 +4,7 @@ title: ADR-0063 - The MCP plugin serves opted-in Commands as tools
 description: '@loomcli/plugins/mcp installs a plugin Command, app mcp, whose action serves every Command that carries an mcpCommand value as one MCP tool over stdio, each call run through invoke. Tool names flatten the path, annotations are hints the author owns and Loom never infers, and the protocol is written in a private workspace package pinned to revision 2026-07-28 and compiled into the plugin pack.'
 status: accepted
 created: 2026-10-05
-modified: 2026-10-06
+modified: 2026-10-10
 ---
 
 # ADR-0063 - The MCP plugin serves opted-in Commands as tools
@@ -54,3 +54,4 @@ Accepted in 0.9.0.
 
 - 2026-10-05: Proposed with the contract.
 - 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, supplies the failure identity this record waited for. A failed call's `structuredContent` is `{ exitCode, failure }`, where `failure` is the failure form, `{ code, exitCode, message, hints }`, which the plugin's handler reads from its context. The form follows the build and carries no cause. It binds with this record and ADR-0064.
+- 2026-10-10: [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) and [ADR-0070](0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md), proposed, narrow the rule that stderr carries only a fault the `mcp` run reports: stderr also carries what an installed `onLog` hook writes to its destination's stderr, such as the logging plugin's console records. A tool call's log events reach the `mcp` run's destination and never the tool's captured output, so a tool result holds no record. Stdout stays the protocol's alone. Both bind when accepted.
