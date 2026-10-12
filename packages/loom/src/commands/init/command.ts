@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
@@ -6,6 +13,7 @@ import { z } from 'zod';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
 import { fragmentGuide } from '../../content/fragment-guide.js';
+import { installerScript } from '../../content/installer-script.js';
 import {
   applicationModule,
   entryModule,
@@ -15,7 +23,7 @@ import {
 import type { ApplicationImport } from '../../content/scaffold.js';
 import { checkApplication } from '../../helpers/application-check.js';
 import type { ApplicationCheck } from '../../helpers/application-check.js';
-import { readManifest, scaffoldName } from '../../helpers/build-facts.js';
+import { githubRepository, readManifest, scaffoldName } from '../../helpers/build-facts.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
@@ -28,7 +36,15 @@ import {
 } from '../../helpers/scaffold.js';
 
 /** The pieces init writes, in the order it writes them. */
-const pieces = ['package', 'application', 'entry', 'tsconfig', 'changes', 'skill'] as const;
+const pieces = [
+  'package',
+  'application',
+  'entry',
+  'tsconfig',
+  'changes',
+  'skill',
+  'install',
+] as const;
 
 type Piece = (typeof pieces)[number];
 
@@ -36,9 +52,11 @@ type Piece = (typeof pieces)[number];
  * One `--only` value. A multiple option validates each value as the string the operator typed, so
  * its validator must accept a string input, and the enum of pieces sits behind `z.string().pipe`.
  */
-const pieceOption = z
-  .string()
-  .pipe(z.enum(pieces, { error: 'Use application, entry, tsconfig, package, changes, or skill.' }));
+const pieceOption = z.string().pipe(
+  z.enum(pieces, {
+    error: 'Use application, entry, tsconfig, package, changes, skill, or install.',
+  }),
+);
 
 /** The application module and the entry, by their conventional paths in the package directory. */
 const applicationPath = 'src/application.ts';
@@ -46,6 +64,10 @@ const entryPath = 'src/main.ts';
 
 /** The compiler configuration `loom check` runs its type pass against. */
 const typescriptConfigPath = 'tsconfig.json';
+
+/** The installer script, and the mode init writes it with, so an operator can run it directly. */
+const installerPath = 'install.sh';
+const executableMode = 0o755;
 
 /**
  * Where one init run acts, and how it reports. Each line is written as the file or key lands, so a
@@ -86,12 +108,18 @@ function initDirectory(cwd: string): { directory: string; fresh: boolean } {
   return { directory: nearest, fresh: false };
 }
 
-/** Writes a file under the package directory, creating its directory. A failure names the file. */
-function writeFile(run: Run, path: string, text: string) {
+/**
+ * Writes a file under the package directory, creating its directory, and sets its mode when one is
+ * given, whether the file is new or rewritten. A failure names the file.
+ */
+function writeFile(run: Run, path: string, text: string, mode?: number) {
   const absolute = join(run.directory, path);
   try {
     mkdirSync(dirname(absolute), { recursive: true });
     writeFileSync(absolute, text);
+    if (mode !== undefined) {
+      chmodSync(absolute, mode);
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`Cannot write ${path}: ${reason}.`, { cause: error });
@@ -99,21 +127,21 @@ function writeFile(run: Run, path: string, text: string) {
 }
 
 /** Writes a file and the line that says so. */
-function write(run: Run, path: string, text: string) {
-  writeFile(run, path, text);
+function write(run: Run, path: string, text: string, mode?: number) {
+  writeFile(run, path, text, mode);
   run.line(`Wrote ${path}.`);
 }
 
 /**
  * Keeps a managed file current: writes it when it is missing, re-renders it while its checksum
  * matches, and warns about a drifted one, re-rendering it under `--force`. A file without a header
- * is the author's, so init never writes it.
+ * is the author's, so init never writes it. A mode, when given, applies on every write.
  */
-function writeManaged(run: Run, path: string, content: string) {
+function writeManaged(run: Run, path: string, content: string, mode?: number) {
   const absolute = join(run.directory, path);
   const rendered = renderManaged(content);
   if (!existsSync(absolute)) {
-    write(run, path, rendered);
+    write(run, path, rendered, mode);
     return;
   }
   const text = readFileSync(absolute, 'utf8');
@@ -125,7 +153,29 @@ function writeManaged(run: Run, path: string, content: string) {
     run.warn(driftWarning(path));
     return;
   }
-  write(run, path, rendered);
+  write(run, path, rendered, mode);
+}
+
+/**
+ * Keeps the installer script current, executable, for the application's name and the package's
+ * GitHub repository. A package that names no GitHub repository gets no script and a warning, so an
+ * author who sets `repository` gets the script on the next run.
+ */
+function writeInstaller(run: Run) {
+  const manifest = readManifest(run.directory);
+  const repository = githubRepository(manifest);
+  if (repository === undefined) {
+    run.warn(
+      `warning: ${installerPath} was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.`,
+    );
+    return;
+  }
+  writeManaged(
+    run,
+    installerPath,
+    installerScript(scaffoldName(manifest), repository),
+    executableMode,
+  );
 }
 
 /** Adds the scaffold's `package.json` keys the package lacks, one line for each key added. */
@@ -258,6 +308,9 @@ function runInit(run: Omit<Run, 'directory'> & { cwd: string; only: readonly Pie
   if (selected('skill')) {
     writeManaged(context, '.agents/skills/loom-changelog/SKILL.md', changelogSkill);
   }
+  if (selected('install')) {
+    writeInstaller(context);
+  }
 }
 
 export const init = new Command('init', {
@@ -265,7 +318,8 @@ export const init = new Command('init', {
     'Scaffold a new application in an empty directory, or add the pieces a package lacks.',
 })
   .option('only', {
-    description: 'Write only this piece: application, entry, tsconfig, package, changes, or skill.',
+    description:
+      'Write only this piece: application, entry, tsconfig, package, changes, skill, or install.',
     multiple: true,
     type: 'string',
     validate: pieceOption,

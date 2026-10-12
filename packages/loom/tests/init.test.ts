@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { changelogSkill } from '../src/content/changelog-skill.js';
 import { fragmentGuide } from '../src/content/fragment-guide.js';
+import { installerScript } from '../src/content/installer-script.js';
 import { typescriptConfig } from '../src/content/scaffold.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
@@ -82,14 +83,18 @@ function ownPackage(files: Record<string, string> = {}) {
   });
 }
 
+/** The warning init prints when it writes no installer script. */
+const noRepository =
+  'warning: install.sh was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.\n';
+
 const warning = (path: string) =>
   `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.\n`;
 
-test('in an empty directory init writes package.json, the scaffold files, and both managed files, one line each', () => {
+test('in an empty directory init writes package.json, the scaffold files, the fragment guide, and the skill, one line each, and warns that install.sh was not written', () => {
   const directory = emptyNotes();
   expect(loom(directory, ['init'])).toEqual({
     status: 0,
-    stderr: '',
+    stderr: noRepository,
     stdout: [
       'Wrote package.json.',
       'Added bin to package.json.',
@@ -108,6 +113,7 @@ test('in an empty directory init writes package.json, the scaffold files, and bo
   });
   expect(read(directory, guidePath)).toBe(renderManaged(fragmentGuide));
   expect(read(directory, skillPath)).toBe(renderManaged(changelogSkill));
+  expect(existsSync(join(directory, 'install.sh'))).toBe(false);
 });
 
 test("a new package.json is named for the directory, pins Loom at the running loom's version, and pins the TypeScript range loom declares", () => {
@@ -145,11 +151,11 @@ test(
   slow,
 );
 
-test('a second run over an unedited scaffold writes nothing and prints nothing', () => {
+test('a second run over an unedited scaffold writes nothing and prints only the missing-repository warning', () => {
   const directory = emptyNotes();
   loom(directory, ['init']);
   const before = snapshot(directory);
-  expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: '', stdout: '' });
+  expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
   expect(snapshot(directory)).toEqual(before);
 });
 
@@ -161,7 +167,7 @@ test('in an existing package init writes the missing pieces and leaves its appli
   const result = loom(root, ['init']);
   expect(result).toEqual({
     status: 0,
-    stderr: '',
+    stderr: noRepository,
     stdout: [
       'Added bin to package.json.',
       'Added scripts.check to package.json.',
@@ -239,7 +245,7 @@ test('--force never overwrites a scaffold file or key', () => {
   const root = ownPackage({ 'src/main.ts': 'export {};\n' });
   loom(root, ['init']);
   const before = snapshot(root);
-  expect(loom(root, ['init', '--force'])).toEqual({ status: 0, stderr: '', stdout: '' });
+  expect(loom(root, ['init', '--force'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
   expect(snapshot(root)).toEqual(before);
   expect(read(root, 'src/main.ts')).toBe('export {};\n');
 });
@@ -307,11 +313,13 @@ test('a directory that is neither empty nor inside a package fails with exit 1 a
 test('--only with a piece init does not know is an option error that names the pieces', () => {
   const result = loom(emptyNotes(), ['init', '--only', 'nonsense']);
   expect(result.status).toBe(2);
-  expect(result.stderr).toContain('Use application, entry, tsconfig, package, changes, or skill.');
+  expect(result.stderr).toContain(
+    'Use application, entry, tsconfig, package, changes, skill, or install.',
+  );
 });
 
 test(
-  'managed files a Markdown formatter rewrote stay managed: init prints nothing and check warns nothing',
+  'managed files a Markdown formatter rewrote stay managed: init writes nothing and check warns nothing',
   (context) => {
     const directory = emptyNotes();
     loom(directory, ['init']);
@@ -325,7 +333,7 @@ test(
       // Prettier comes from the registry through npx, so a machine without network skips this test.
       context.skip();
     }
-    expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: '', stdout: '' });
+    expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
     const check = loom(directory, ['check']);
     expect(check.status).toBe(0);
     expect(check.stderr).not.toContain('warning:');
@@ -456,3 +464,93 @@ test('an empty directory inside a package scaffolds there and leaves the outer p
   expect(existsSync(join(directory, 'package.json'))).toBe(true);
   expect(read(root, 'package.json')).toBe(outer);
 });
+
+/** A package named `notes` whose `repository` is the supplied address, linking core. */
+function repositoryPackage(repository?: unknown) {
+  return fixturePackage({
+    'package.json': `${JSON.stringify({ name: 'notes', repository, type: 'module' }, undefined, 2)}\n`,
+    'src/application.ts': ownApplication,
+  });
+}
+
+/** Whether a file's mode is 755. */
+function isExecutable(path: string) {
+  return (statSync(path).mode & 0o777) === 0o755;
+}
+
+test('--only install writes install.sh alone, executable, with the shell header, the name, and the repository', () => {
+  const root = repositoryPackage('me/notes');
+  const before = snapshot(root);
+  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Wrote install.sh.\n',
+  });
+  const script = read(root, 'install.sh');
+  expect(script).toBe(renderManaged(installerScript('notes', 'me/notes')));
+  expect(script).toMatch(/^#!\/bin\/sh\n# Managed by loom init\. sha256:[\da-f]{64}\n/u);
+  expect(script).toContain("app='notes'");
+  expect(script).toContain("repository='me/notes'");
+  expect(isExecutable(join(root, 'install.sh'))).toBe(true);
+  const after = snapshot(root);
+  after.delete('install.sh');
+  expect(after).toEqual(before);
+});
+
+test('a full init in a package with a GitHub repository writes install.sh after the skill', () => {
+  const root = repositoryPackage('git+https://github.com/me/notes.git');
+  const { stdout } = loom(root, ['init']);
+  expect(stdout.endsWith(`Wrote ${skillPath}.\nWrote install.sh.\n`)).toBe(true);
+});
+
+test('after repository changes, init re-renders an unedited install.sh with the new repository and keeps it executable', () => {
+  const root = repositoryPackage('me/notes');
+  loom(root, ['init', '--only', 'install']);
+  writeFileSync(
+    join(root, 'package.json'),
+    `${JSON.stringify({ name: 'notes', repository: 'me/jot', type: 'module' })}\n`,
+  );
+  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Wrote install.sh.\n',
+  });
+  expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/jot')));
+  expect(isExecutable(join(root, 'install.sh'))).toBe(true);
+});
+
+test('an edited install.sh draws the drift warning from init and from loom check, and --force re-renders it executable', () => {
+  const root = repositoryPackage('me/notes');
+  const edited = `${renderManaged(installerScript('notes', 'me/notes'))}# An edit.\n`;
+  put(root, 'install.sh', edited);
+  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+    status: 0,
+    stderr: warning('install.sh'),
+    stdout: '',
+  });
+  expect(read(root, 'install.sh')).toBe(edited);
+  const check = loom(root, ['check']);
+  expect(check.status).toBe(0);
+  expect(check.stderr.split('\n')).toContain(warning('install.sh').trimEnd());
+  expect(loom(root, ['init', '--only', 'install', '--force']).stdout).toBe('Wrote install.sh.\n');
+  expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
+  expect(isExecutable(join(root, 'install.sh'))).toBe(true);
+});
+
+test.each([
+  ['no repository', undefined],
+  ['a repository on another host', 'gitlab:me/notes'],
+  ['a GitLab URL', 'https://gitlab.com/me/notes.git'],
+  ['a repository that cannot be read', 'https://example.com/'],
+])(
+  'with %s, init writes no install.sh, prints the warning that names repository, and exits 0',
+  (_case, repository) => {
+    const root = repositoryPackage(repository);
+    expect(loom(root, ['init', '--only', 'install'])).toEqual({
+      status: 0,
+      stderr: noRepository,
+      stdout: '',
+    });
+    expect(existsSync(join(root, 'install.sh'))).toBe(false);
+  },
+);

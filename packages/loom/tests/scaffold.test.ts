@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { applicationName, scaffoldName } from '../src/helpers/build-facts.js';
+import { applicationName, githubRepository, scaffoldName } from '../src/helpers/build-facts.js';
 import {
   addMissingKeys,
   applicationIdentifier,
@@ -187,4 +187,38 @@ test.each([
   ['n'.repeat(215), false],
 ])('the directory name %j can name a new package: %s', (name, valid) => {
   expect(isNewPackageName(name)).toBe(valid);
+});
+
+/** A manifest whose only field is the supplied `repository`. */
+function withRepository(repository: unknown) {
+  return { bin: undefined, name: undefined, repository, version: undefined };
+}
+
+test.each([
+  ['the owner/name shorthand', 'me/notes'],
+  ['the github: shorthand', 'github:me/notes'],
+  ['the git+https form', 'git+https://github.com/me/notes.git'],
+  ['an https address', 'https://github.com/me/notes'],
+  ['an https address with a trailing slash', 'https://github.com/me/notes/'],
+  ['the ssh form', 'git@github.com:me/notes.git'],
+  ['a git+ssh address with a path after the host', 'git+ssh://git@github.com/me/notes.git'],
+  ['a git+ssh address with an scp-style path', 'git+ssh://git@github.com:me/notes.git'],
+  ['an object with a url', { type: 'git', url: 'git+https://github.com/me/notes.git' }],
+])('the GitHub repository reads from %s', (_form, repository) => {
+  expect(githubRepository(withRepository(repository))).toBe('me/notes');
+});
+
+test.each([
+  ['no repository', undefined],
+  ['a repository that is a number', 7],
+  ['an object with no url', { type: 'git' }],
+  ['the gitlab: shorthand', 'gitlab:me/notes'],
+  ['the bitbucket: shorthand', 'bitbucket:me/notes'],
+  ['a GitLab URL', 'https://gitlab.com/me/notes.git'],
+  ['a GitLab ssh address', 'git@gitlab.com:me/notes.git'],
+  ['a host that only starts with github.com', 'https://github.com.example.org/me/notes'],
+  ['a nested group', 'https://github.com/me/sub/notes'],
+  ['an address with no path', 'https://github.com/'],
+])('%s names no GitHub repository', (_case, repository) => {
+  expect(githubRepository(withRepository(repository))).toBeUndefined();
 });

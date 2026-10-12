@@ -9,24 +9,56 @@ import { readRegularFile } from './repository.js';
 const semanticVersion =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][\dA-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][\dA-Za-z-]*))*)?(?:\+[\dA-Za-z-]+(?:\.[\dA-Za-z-]+)*)?$/u;
 
+/** The host each npm shorthand prefix names, and the host a bare `owner/name` names. */
+const shorthandHosts: Readonly<Record<string, string>> = {
+  '': 'github.com',
+  bitbucket: 'bitbucket.org',
+  github: 'github.com',
+  gitlab: 'gitlab.com',
+};
+
+/** A repository address read apart: the host it names, in lower case, and its `owner/name`. */
+interface RepositoryAddress {
+  readonly host: string;
+  readonly repository: string;
+}
+
 /**
- * The `owner/name` a `repository` field's address names: the npm shorthands `owner/name` and
- * `github:owner/name`, or the path of a URL or an SSH address without its host, `.git`, or a
- * trailing slash. A URL's host may end with a port, before a `/`, or with a `:` that opens the path,
- * as `git+ssh://git@github.com:owner/name.git` writes an SSH address inside a URL. A path of more or fewer than two segments, such as a nested group or a path below
- * the repository, names no `owner/name`.
+ * The host and `owner/name` a `repository` field's address names: the npm shorthands `owner/name`
+ * and `github:owner/name`, which name GitHub, `gitlab:` and `bitbucket:`, or the host and the path
+ * of a URL or an SSH address without `.git` or a trailing slash. A URL's host may end with a port,
+ * before a `/`, or with a `:` that opens the path, as `git+ssh://git@github.com:owner/name.git`
+ * writes an SSH address inside a URL. A path of more or fewer than two segments, such as a nested
+ * group or a path below the repository, names no `owner/name`.
  */
-function repositoryFromAddress(address: string): string | undefined {
-  const shorthand = /^(?:(?:github|gitlab|bitbucket):)?(?<path>[\w.-]+\/[\w.-]+)$/u.exec(address);
-  if (shorthand?.groups?.path !== undefined) {
-    return shorthand.groups.path.replace(/\.git$/u, '');
+function addressOf(address: string): RepositoryAddress | undefined {
+  const shorthand = /^(?:(?<prefix>github|gitlab|bitbucket):)?(?<path>[\w.-]+\/[\w.-]+)$/u.exec(
+    address,
+  )?.groups;
+  if (shorthand?.path !== undefined) {
+    return {
+      host: shorthandHosts[shorthand.prefix ?? ''] ?? '',
+      repository: shorthand.path.replace(/\.git$/u, ''),
+    };
   }
   const remote =
-    /^(?:[\w+.-]+:\/\/(?:[^@/]+@)?[^@/:]+(?::\d+\/|:|\/)|[\w.-]+@[^:/]+:)(?<path>.+?)(?:\.git)?\/?$/u.exec(
+    /^(?:[\w+.-]+:\/\/(?:[^@/]+@)?(?<urlHost>[^@/:]+)(?::\d+\/|:|\/)|[\w.-]+@(?<sshHost>[^:/]+):)(?<path>.+?)(?:\.git)?\/?$/u.exec(
       address,
-    );
-  const repository = remote?.groups?.path;
-  return repository !== undefined && ownerName.test(repository) ? repository : undefined;
+    )?.groups;
+  const host = remote?.urlHost ?? remote?.sshHost;
+  const repository = remote?.path;
+  return host !== undefined && repository !== undefined && ownerName.test(repository)
+    ? { host: host.toLowerCase(), repository }
+    : undefined;
+}
+
+/**
+ * The address a `package.json` `repository` field holds: the string itself, or the `url` of an
+ * object, else `undefined` for a field that is missing or holds neither.
+ */
+function repositoryField(field: unknown): string | undefined {
+  const address = z.union([z.string(), z.object({ url: z.string() })]).safeParse(field).data;
+  return typeof address === 'string' ? address : address?.url;
 }
 
 /** The key of a `bin` that is an object with exactly one key, which names the application. */
@@ -51,10 +83,7 @@ function releaseRepository(manifest: Manifest, option: string | undefined): stri
       'package.json has no repository field, so pass --repository <owner/name> to name the repository the release belongs to.',
     );
   }
-  const address = z.union([z.string(), z.object({ url: z.string() })]).safeParse(field).data;
-  const repository = repositoryFromAddress(
-    typeof address === 'string' ? address : (address?.url ?? ''),
-  );
+  const repository = addressOf(repositoryField(field) ?? '')?.repository;
   if (repository === undefined) {
     throw new Error(
       'The package.json repository field does not read as owner/name, so pass --repository <owner/name>.',
@@ -112,6 +141,16 @@ export interface FactsRequest {
 
 /** A repository as `owner/name`, as core reads it. */
 export const ownerName = /^[\w.-]+\/[\w.-]+$/u;
+
+/**
+ * The GitHub repository a package names, as `owner/name`: its `package.json` `repository` field
+ * read with the rule `loom build --release` uses, when the address names the host `github.com`.
+ * A field that is missing, cannot be read, or names another host reads `undefined`.
+ */
+export function githubRepository(manifest: Manifest): string | undefined {
+  const address = addressOf(repositoryField(manifest.repository) ?? '');
+  return address?.host === 'github.com' ? address.repository : undefined;
+}
 
 /**
  * The application's name, which a binary's default path and its asset name carry: `--name`, else
