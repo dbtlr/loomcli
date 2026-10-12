@@ -246,6 +246,37 @@ test.each([
   },
 );
 
+test.each([
+  ['not absolute', (_box: Box) => ['notes/SKILL.md'], 'is not absolute'],
+  ['not normalized', (box: Box) => [`${box.skills}/x/../notes/SKILL.md`], 'is not normalized'],
+  ['ending in a separator', (box: Box) => [`${box.directory}/`], 'is not normalized'],
+  ['listed twice', (box: Box) => [box.first, box.first], 'is listed twice'],
+])(
+  'a target path %s throws a TypeError before the module reads or writes',
+  (_case, paths, rule) => {
+    const box = sandbox();
+    installed(box, [{ content: 'test', path: box.second }]);
+    const before = ownerText(box);
+    const [path = ''] = paths(box).slice(-1);
+    const files = paths(box).map((target) => ({ content: 'new', path: target }));
+    expect(() => installed(box, files)).toThrow(
+      new TypeError(`Installed file path "${path}" ${rule}.`),
+    );
+    expect(ownerText(box)).toBe(before);
+    expect(readdirSync(box.directory)).toEqual(['reference.md']);
+    expect(readdirSync(box.record)).toEqual(['skill.json']);
+  },
+);
+
+test('an install removes leftover staging files of the plugin file', () => {
+  const box = sandbox();
+  installed(box, [{ content: 'test', path: box.first }]);
+  const leftover = join(box.record, '.skill.json.0123456789abcdef.loom-staging');
+  writeFileSync(leftover, '{"format":1,');
+  installed(box, [{ content: 'test', path: box.first }]);
+  expect(readdirSync(box.record)).toEqual(['skill.json']);
+});
+
 test('an install reports every path it refuses', () => {
   const box = sandbox();
   mkdirSync(box.directory);
@@ -395,6 +426,14 @@ test('uninstall with no plugin file records nothing and removes nothing', () => 
   const box = sandbox();
   expect(uninstalled(box)).toEqual({ kept: [], removed: [], status: 'uninstalled' });
   expect(existsSync(box.record)).toBe(false);
+});
+
+test('uninstall removes leftover staging files of the plugin file', () => {
+  const box = sandbox();
+  installed(box, [{ content: 'test', path: box.first }]);
+  writeFileSync(join(box.record, '.skill.json.0123456789abcdef.loom-staging'), '{"format":1,');
+  uninstalled(box);
+  expect(readdirSync(box.record)).toEqual([]);
 });
 
 test('uninstall refuses a damaged plugin file and reports its path', () => {

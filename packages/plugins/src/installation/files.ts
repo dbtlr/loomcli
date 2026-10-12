@@ -5,6 +5,7 @@
  * over a file it did not record. The module is internal to the pack: no subpath exports it.
  */
 import { rmSync } from 'node:fs';
+import { isAbsolute, normalize, sep } from 'node:path';
 
 import {
   createDirectory,
@@ -108,17 +109,19 @@ function recoveredFile(entry: PendingFile): CommittedFile[] {
 
 /**
  * What the plugin's file records, a missing one recording nothing and a pending one recovered
- * first, or the refusal of a file the module cannot read.
+ * first, or the refusal of a file the module cannot read. Leftover staging files of a plugin's file
+ * it can read are removed.
  */
 function recorded(
   path: string,
 ): { readonly committed: Committed } | { readonly refused: Refusal<RecordRefusalReason> } {
   const read = readPluginFile(path);
-  if (read.kind === 'missing') {
-    return { committed: nothingRecorded };
-  }
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason } };
+  }
+  removeStagingFiles(path);
+  if (read.kind === 'missing') {
+    return { committed: nothingRecorded };
   }
   return { committed: read.file.state === 'pending' ? recover(path, read.file) : read.file };
 }
@@ -195,8 +198,35 @@ function planInstall(
   };
 }
 
+/** The rule a target path breaks, or none for an absolute, normalized path not yet listed. */
+function targetPathFault(path: string, listed: ReadonlySet<string>): string | undefined {
+  if (!isAbsolute(path)) {
+    return 'is not absolute';
+  }
+  if (path !== normalize(path) || path.endsWith(sep)) {
+    return 'is not normalized';
+  }
+  return listed.has(path) ? 'is listed twice' : undefined;
+}
+
 /**
- * Installs the plugin's files. It recovers a pending plugin's file first, then checks every
+ * Throws a TypeError for the first target path that is not absolute, not normalized, or listed
+ * twice: a first-party plugin's bug, which the module never repairs by normalizing or merging.
+ */
+function checkTargetPaths(files: readonly InstalledFile[]): void {
+  const listed = new Set<string>();
+  for (const { path } of files) {
+    const fault = targetPathFault(path, listed);
+    if (fault !== undefined) {
+      throw new TypeError(`Installed file path "${path}" ${fault}.`);
+    }
+    listed.add(path);
+  }
+}
+
+/**
+ * Installs the plugin's files. A target path that is not absolute, not normalized, or listed twice
+ * throws a TypeError before anything is read or written. It recovers a pending plugin's file first, then checks every
  * target: a target that is absent, or a regular file the plugin recorded with its digest
  * unchanged, may be written, and any other refuses the whole install, which writes nothing. It
  * reads the run signal before the pending write and, once it has begun, does not stop between
@@ -204,6 +234,7 @@ function planInstall(
  * install no longer lists is removed when no one changed it.
  */
 function install(request: InstallRequest): InstallOutcome {
+  checkTargetPaths(request.files);
   const path = pluginFilePath(request.record, request.plugin);
   const prepared = prepareInstall(path, request.files);
   if ('refused' in prepared) {
@@ -282,6 +313,7 @@ function uninstall(request: UninstallRequest): UninstallOutcome {
   const { kept, removed } = removeRecorded(found.committed.files);
   removeDirectories(found.committed.directories);
   rmSync(path, { force: true });
+  removeStagingFiles(path);
   return { kept, removed, status: 'uninstalled' };
 }
 
