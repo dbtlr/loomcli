@@ -54,4 +54,4 @@ Proposed. It moves to accepted in the release that ships the installation record
 ## Changelog
 
 - 2026-10-12: Proposed with the contract.
-- 2026-10-12: The shell recipe sets `record` before a marked comment, and the lines above the comment write nothing, so [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md)'s installer script resolves the record's directory before it downloads the binary and writes `install.json` after the rename. The bytes it writes are unchanged.
+- 2026-10-12: The shell recipe sets `record` and creates the record's directory before a marked comment, and the lines above the comment write no file, so [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md)'s installer script resolves the record's directory before it downloads the binary and writes `install.json` after the rename. The bytes it writes are unchanged.
