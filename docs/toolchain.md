@@ -31,7 +31,7 @@ Every `loom` command acts on one package: the package whose directory it runs in
 - **Paths.** A path an option names resolves against the working directory, as any command-line path does. A conventional path, such as `src/main.ts`, resolves against the package directory.
 - **Bun.** `loom build` and `loom check` do their work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
 - **Exit codes.** 0 is success. 1 is a failed build, a failed check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
-- **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease lanes, release workflows, and cuts across several packages. The [installer script](#the-installer-script) reads the [release shape](#the-release-shape) those workflows publish.
+- **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease channels, release workflows, and cuts across several packages. The [installer script](#the-installer-script) reads the [release shape](#the-release-shape) those workflows publish.
 
 ### One package directory acceptance
 
@@ -151,7 +151,7 @@ A package's changelog cuts its version from its pending fragments. `.changes/` a
   | `1.4.7`         | Feature              | `1.5.0`      |
   | `1.4.7`         | Fix                  | `1.4.8`      |
 
-  A current version that is not `MAJOR.MINOR.PATCH`, a prerelease included, fails the cut, because prerelease lanes belong to release orchestration.
+  A current version that is not `MAJOR.MINOR.PATCH`, a prerelease included, fails the cut, because prerelease channels belong to release orchestration.
 - **`check`.** It validates every fragment in `.changes/` and exits 1 for any invalid one, naming it. It accepts an empty set and a missing `.changes/`, and it needs no git history, so it runs in CI.
 - **`write`.** It validates the fragments, computes the next version, and renders one section: `## v<version> - <date>`, the narrative when given, then `### Breaking Changes`, `### Features`, and `### Fixes`, each omitted when empty. Each breaking fragment keeps its migration section beside its entries. Within a group, fragments sort by the first-parent commit that added each one and then by file name, so `write` needs full git history, and a shallow clone or a fragment no commit added fails it. It prepends the section above the earlier release sections of `CHANGELOG.md`, keeping its frontmatter, title, and history, and creates the file with a `# Changelog` title when it is missing. An existing `CHANGELOG.md` without a level-one title, with an `Unreleased` section, or that already holds a section for the next version fails the cut and changes no file. It sets `version` in `package.json`, changing nothing else in the file, and deletes the consumed fragments. It writes every file through a temporary copy and replaces them together, so a failure before the replacement changes nothing.
 - **Options.** `--date` is the release date, by default the current UTC date, and an invalid calendar date fails. `--narrative` copies the prose of a Markdown file above the entries, and the file cannot be empty or hold a level-one or level-two heading. `--dry-run` prints the section and the next version and writes nothing.

@@ -238,7 +238,7 @@ _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
 **Release channel**:
 The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, the release facts name the field `channel`, and self-update follows the running binary's channel unless the operator names another.
-_Avoid_: Lane (a lane is an output area), track, dist-tag
+_Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation record**:
 The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps its installed files, with their digests, in its own file there.
