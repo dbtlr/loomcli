@@ -19,7 +19,7 @@ Established installers differ on three questions. rustup, deno, and bun scripts 
 
 ## Decision
 
-- **A managed piece of init.** `loom init` renders `install.sh` in the package directory as a [managed file](../toolchain.md#managed-files), the piece `install`. It is rendered from the application's name and the GitHub repository, which init reads from `package.json` `repository` with the rule `loom build --release` uses. When the field is missing, cannot be read, or names another host, init writes no script and warns, so an author who adds the field gets the script on the next run. A shell file's header is a `#` comment on the line after its `#!/bin/sh` line.
+- **A managed piece of init.** `loom init` renders `install.sh` in the package directory as a [managed file](../toolchain.md#managed-files), the piece `install`. It is rendered from the application's name and the GitHub repository, which init reads from `package.json` `repository` with the rule `loom build --release` uses. When the field is missing, cannot be read, or names another host, init writes no script and warns, so an author who adds the field gets the script on the next run. A shell file's header is a `#` comment on the line after its `#!` line.
 - **One interface: arguments.** `install.sh [--dir <directory>] [<version>]`. With no version, the script installs the repository's latest release, which GitHub never resolves to a prerelease. A named version installs that release, so a prerelease is installed by naming it. Following a lane after install belongs to self-update. `--dir` names an absolute directory, by default `~/.local/bin`. The script reads no environment variable of its own.
 - **The release shape.** A release is the GitHub Release of the tag `v<version>`, published as a GitHub prerelease when its version has a prerelease part, and the latest release is the highest stable version. It carries one asset per platform, `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and `SHA256SUMS`, the output of `sha256sum` over the assets. `loom build --release --target bun-<os>-<arch>` names the same asset in the release facts.
 - **The platform.** The script picks `darwin` or `linux`, and `x64` or `arm64`, from `uname`. Under Rosetta it picks `arm64`, and on a Linux whose `ldd` reports musl it picks the `-musl` asset. A platform it cannot name, and an asset `SHA256SUMS` does not list, fail with a sentence that names them.
@@ -50,3 +50,4 @@ Proposed. It moves to accepted in the release that ships the installer script.
 ## Changelog
 
 - 2026-10-12: Proposed with the installer contract.
+- 2026-10-12: A shell file's header follows any `#!` line, so an edited `#!` line reads as drift rather than releasing the file.

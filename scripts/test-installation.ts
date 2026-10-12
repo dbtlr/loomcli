@@ -1,6 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+/** The comment that splits the recipe into the part an installer runs first and the part it runs last. */
+const splitPoint = '# Once the verified binary is at $target:\n';
+
 /**
  * The installer script's recipe for `install.json`, read from the contract's own block in
  * docs/core.md, so a test runs the bytes an installer author copies. The block sits in a list item,
@@ -16,6 +19,20 @@ export function installationRecipe(): string {
     }
   }
   throw new Error('docs/core.md holds no install.json recipe.');
+}
+
+/**
+ * The recipe's two parts, split at its `# Once the verified binary is at $target:` line: `prepare`,
+ * the lines above it, which an installer runs before it downloads, and `record`, that line and the
+ * rest, which it runs once the verified binary is in place. Together they are the whole recipe.
+ */
+export function installationRecipeParts(): { prepare: string; record: string } {
+  const recipe = installationRecipe();
+  const split = recipe.indexOf(splitPoint);
+  if (split === -1 || recipe.includes(splitPoint, split + 1)) {
+    throw new Error('The install.json recipe in docs/core.md holds no single split point.');
+  }
+  return { prepare: recipe.slice(0, split), record: recipe.slice(split) };
 }
 
 /**

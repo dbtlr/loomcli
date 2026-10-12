@@ -2344,7 +2344,7 @@ The installation record is one directory per application and per user that says 
     case ${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
   fi
   record="$state/$app/installation"
-  mkdir -p "$record"
+  mkdir -p "$record" 2>/dev/null || { echo "$app: The installation record's directory $record cannot be created. Make it a directory you can write to, then run the installer again." >&2; exit 1; }
   # Once the verified binary is at $target:
   if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$target"); else digest=$(shasum -a 256 "$target"); fi
   staging=$(mktemp "$record/.install.json.XXXXXX")

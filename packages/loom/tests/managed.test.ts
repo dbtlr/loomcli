@@ -102,3 +102,58 @@ test('the drift warning names the file and both ways out', () => {
     'warning: .changes/README.md differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.',
   );
 });
+
+/** The SHA-256 of `#!/bin/sh\nhello\n`, computed apart from the code under test. */
+const script = '3fa875036b183dfa8c4a5b748965dc9598202ad8f3c4fd0e8908c11e8289672e';
+
+test('a shell file carries its header as a # comment on the line after #!/bin/sh', () => {
+  expect(renderManaged('#!/bin/sh\nhello\n')).toBe(
+    `#!/bin/sh\n# Managed by loom init. sha256:${script}\nhello\n`,
+  );
+});
+
+test('a shell header records the checksum of the file without the header line', () => {
+  const file = readManaged(`#!/bin/sh\n# Managed by loom init. sha256:${script}\nhello\n`);
+  expect(file).toEqual({ checksum: script, content: '#!/bin/sh\nhello\n' });
+  expect(file && hasDrifted(file)).toBe(false);
+});
+
+test('a shell file checked out with CRLF line endings has not drifted', () => {
+  const file = readManaged(`#!/bin/sh\r\n# Managed by loom init. sha256:${script}\r\nhello\r\n`);
+  expect(file?.content).toBe('#!/bin/sh\r\nhello\r\n');
+  expect(file && hasDrifted(file)).toBe(false);
+});
+
+test('an edited shell file has drifted', () => {
+  const file = readManaged(`#!/bin/sh\n# Managed by loom init. sha256:${script}\nhello, edited\n`);
+  expect(file && hasDrifted(file)).toBe(true);
+});
+
+test.each([
+  ['no header', '#!/bin/sh\nhello\n'],
+  ['a shell header on the first line', `# Managed by loom init. sha256:${script}\nhello\n`],
+  [
+    'a shell header below the second line',
+    `#!/bin/sh\nhello\n# Managed by loom init. sha256:${script}\n`,
+  ],
+  [
+    'a Markdown header after #!/bin/sh',
+    `#!/bin/sh\n<!-- Managed by loom init. sha256:${script} -->\nhello\n`,
+  ],
+  ['a shell header in a Markdown file', `# Managed by loom init. sha256:${hello}\nhello\n`],
+])('a shell file with %s is not managed', (_case, text) => {
+  expect(readManaged(text)).toBeUndefined();
+});
+
+test.each([
+  ['#!/bin/sh -e', '#!/bin/sh -e\nhello\n'],
+  ['#!/usr/bin/env sh', '#!/usr/bin/env sh\nhello\n'],
+])(
+  'a shell file whose first line was edited to %s keeps its header and reads as drift',
+  (_line, content) => {
+    const [first] = content.split('\n');
+    const file = readManaged(`${first}\n# Managed by loom init. sha256:${script}\nhello\n`);
+    expect(file).toEqual({ checksum: script, content });
+    expect(file && hasDrifted(file)).toBe(true);
+  },
+);
