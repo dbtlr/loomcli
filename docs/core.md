@@ -2343,14 +2343,16 @@ The installation record is one directory per application and per user that says 
   if [ -n "$home_needed" ]; then
     case ${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
   fi
-  if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$target"); else digest=$(shasum -a 256 "$target"); fi
   record="$state/$app/installation"
   mkdir -p "$record"
+  # Once the verified binary is at $target:
+  if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$target"); else digest=$(shasum -a 256 "$target"); fi
   staging=$(mktemp "$record/.install.json.XXXXXX")
   printf '{"format":1,"method":"script","path":"%s","digest":"sha256:%s"}\n' "$target" "${digest%% *}" >"$staging"
   mv -f "$staging" "$record/install.json"
   ```
 
+  The lines above the `# Once the verified binary is at $target:` comment check the path and the environment, set `record`, and create the record's directory, and they write no file, so an installer runs them before it downloads the binary, where a directory it cannot create fails with nothing installed, and the rest once the binary is in place. The [installer script](toolchain.md#the-installer-script) runs it that way.
 - **Names.** `applicationDirectory`, `ApplicationDirectory`, and `DirectoryLookup` are exported from `@loomcli/core`.
 
 #### Reading the installation
