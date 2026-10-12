@@ -313,7 +313,6 @@ function uninstall(request: UninstallRequest): UninstallOutcome {
   const { kept, removed } = removeRecorded(found.committed.files);
   removeDirectories(found.committed.directories);
   rmSync(path, { force: true });
-  removeStagingFiles(path);
   return { kept, removed, status: 'uninstalled' };
 }
 

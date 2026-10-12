@@ -316,11 +316,14 @@ test.each([
     const box = sandbox();
     mkdirSync(box.record);
     writeFileSync(box.owner, text);
+    const leftover = join(box.record, '.skill.json.0123456789abcdef.loom-staging');
+    writeFileSync(leftover, '{"format":1,');
     expect(installed(box, [{ content: 'test', path: box.first }])).toEqual({
       refused: [{ path: box.owner, reason }],
       status: 'refused',
     });
     expect(ownerText(box)).toBe(text);
+    expect(existsSync(leftover)).toBe(true);
     expect(existsSync(box.directory)).toBe(false);
   },
 );
