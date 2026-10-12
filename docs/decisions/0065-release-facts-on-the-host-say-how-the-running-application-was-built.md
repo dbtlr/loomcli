@@ -54,3 +54,4 @@ Accepted in 0.10.0.
 
 - 2026-10-07: Proposed with the release facts contract.
 - 2026-10-12: [ADR-0071](0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md), proposed, is the installation-record contract the decision above defers. Core reads the installation group from the record's `install.json` during host capture, never from the build, for a compiled binary built with `--release`, and only when the recorded path, resolved through symbolic links, is the running executable. The group's shape is unchanged. It binds when that record is accepted; until then the group stays absent.
+- 2026-10-12: [ADR-0073](0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md), proposed, renames the release lane the release channel: the release group's `lane` member becomes `channel`, derived from the version as above. It binds when that record is accepted.
