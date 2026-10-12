@@ -1,9 +1,10 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, sep } from 'node:path';
 import type { Writable } from 'node:stream';
 
 import { WorkingDirectoryError } from './errors.js';
 import type { InternalError } from './errors.js';
+import { readSmallFile } from './files.js';
 import { captureRelease } from './release.js';
 import type { CapturedRelease } from './release.js';
 import type { Host, ReleaseFacts, RunOptions } from './types.js';
@@ -16,9 +17,6 @@ function isTerminal(stream: { isTTY?: boolean }): boolean {
 function dimension(value: number | undefined): number | undefined {
   return value === 0 ? undefined : value;
 }
-
-/** The largest source file the captured reader reads, so a frame cannot make it read without end. */
-const sourceLimit = 1_048_576;
 
 /**
  * The reader process capture supplies: one UTF-8 file, read synchronously, whose path lies under
@@ -33,11 +31,7 @@ export function readSourceFile(path: string, cwd: string): string | undefined {
     if (within === '' || within === '..' || within.startsWith(`..${sep}`) || isAbsolute(within)) {
       return undefined;
     }
-    const stats = statSync(file);
-    if (!stats.isFile() || stats.size > sourceLimit) {
-      return undefined;
-    }
-    return readFileSync(file, 'utf8');
+    return readSmallFile(file);
   } catch {
     return undefined;
   }
@@ -122,16 +116,27 @@ export function capturedHost(
   return { host, report: host };
 }
 
-/** The host `run()` captures from the process at entry, each override replacing its whole field. */
-export function captureHost(overrides: RunOptions['host'], stderr: Writable): HostCapture {
-  const { argv, cwd, env, platform, readSource, release, stdin, stdout, terminal } =
-    overrides ?? {};
-  const captured = { directory: captureWorkingDirectory(cwd), release: captureRelease(release) };
+/**
+ * The host `run()` captures from the process at entry, each override replacing its whole field.
+ * The application's name finds its installation record.
+ */
+export function captureHost(
+  application: string,
+  overrides: RunOptions['host'],
+  stderr: Writable,
+): HostCapture {
+  const { argv, cwd, readSource, release, stdin, stdout, terminal } = overrides ?? {};
+  const env = { ...(overrides?.env ?? process.env) };
+  const platform = overrides?.platform ?? process.platform;
+  const captured = {
+    directory: captureWorkingDirectory(cwd),
+    release: captureRelease(release, { application, env, platform }),
+  };
   return capturedHost(
     {
       argv: [...(argv ?? process.argv.slice(2))],
-      env: { ...(env ?? process.env) },
-      platform: platform ?? process.platform,
+      env,
+      platform,
       readSource: readSource ?? readSourceFile,
       stderr,
       stdin: stdin ?? process.stdin,

@@ -1,4 +1,6 @@
 import { InternalError, quoted } from './errors.js';
+import { readInstallation } from './installation.js';
+import type { InstallationLookup } from './installation.js';
 import { isPlainObject } from './plain.js';
 import { invalidReleaseFacts } from './rules.js';
 import type { ReleaseFacts } from './types.js';
@@ -123,12 +125,32 @@ function bakedFacts(): ReleaseFacts {
 }
 
 /**
- * The one step `run()` and `app.invoke` read the release facts through, once per run, beside the
- * working directory. An override replaces the whole field and is taken as given, so no baked value
- * is read.
+ * The baked facts with the installation the record holds, which core reads only for a release
+ * that carries an asset, as a compiled binary's alone does.
  */
-function captureRelease(override: ReleaseFacts | undefined): CapturedRelease {
-  return override === undefined ? readBaked() : { facts: override };
+function withInstallation(facts: ReleaseFacts, lookup: InstallationLookup): ReleaseFacts {
+  if (facts.release?.asset === undefined) {
+    return facts;
+  }
+  const installation = readInstallation(lookup);
+  return installation === undefined ? facts : Object.freeze({ ...facts, installation });
+}
+
+/**
+ * The one step `run()` and `app.invoke` read the release facts through, once per run, beside the
+ * working directory: the baked facts and, for a compiled binary, the installation `lookup` finds.
+ * An override replaces the whole field and is taken as given, so no baked value and no
+ * installation record is read.
+ */
+function captureRelease(
+  override: ReleaseFacts | undefined,
+  lookup: InstallationLookup,
+): CapturedRelease {
+  if (override !== undefined) {
+    return { facts: override };
+  }
+  const read = readBaked();
+  return 'failure' in read ? read : { facts: withInstallation(read.facts, lookup) };
 }
 
 /**
