@@ -25,7 +25,7 @@ Established installers keep one record per installed thing, never separate recor
 - **Core reads it, and trusts it only for the running executable.** Core reads the installation during host capture for a compiled binary built with `--release`, and sets `host.release.installation` only when the recorded path, resolved through symbolic links, is the running executable. A copy of the same application run from elsewhere, through Node, or from source reads no installation. A missing, unreadable, or malformed file never fails a run: it reads as no installation. Core never hashes the binary at startup; a plugin that replaces the binary compares the digest first.
 - **Installed files are written before and after the plugin acts.** Before an installer touches any target, its file records each path as pending with the digest the path held and the digest it will hold. After every target is in place, the file records the committed digests. Each target is written through a staging file in its own directory and a rename. The installer never takes over a path it did not record, and never replaces or removes a recorded file whose digest changed, because someone else changed it.
 - **Recovery by observation.** A run that finds its installer's file pending resolves each path by its digest before doing anything else: the intended digest means the write landed, the prior digest means it did not, and any other means someone changed the file, which is left alone. No backup is kept. The binary can always write the intended content again, so an interrupted operation rolls forward.
-- **No lock.** Two runs of one installer at once each write every file whole, and the last commit wins.
+- **No lock.** Two runs of one installer at once may each recover the other's pending file, so one can fail. Each target still holds whole content, the last commit wins, and the next run recovers.
 - **Core resolves, plugins write.** Core exports `applicationDirectory`, which resolves an application's installation or log directory from a run's `env` and `platform` alone, so core, the logging plugin, and every installer compute one path. The writer of installed files is an internal module of `@loomcli/plugins` that the first-party installers share. Core writes no file.
 
 The contract, the file formats, the shell recipe, and the acceptance are in [Installation record](../core.md#installation-record).
@@ -33,14 +33,14 @@ The contract, the file formats, the shell recipe, and the acceptance are in [Ins
 ## Considered options
 
 - **Two records, a receipt beside the binary and a ledger of files.** Rejected. Both answer what was put on the machine, and an application installed from npm has no binary to put a receipt beside but may still install completions.
-- **Only the installation now, and the ledger later.** Rejected. Every installer would wait for it or keep a private record in the meantime.
+- **Only the installation now, and the installed files later.** Rejected. Every installer would wait for it or keep a private record in the meantime.
 - **One JSON file per application.** Rejected. The installer script would have to merge into it without a parser, or rewrite it and erase every plugin's entries.
 - **A command in the binary that records its own installation.** Rejected. Loom adds no command to an application's binary whose only caller is an installer.
 - **A published format that any installer writes.** Rejected for now. The installer script and self-update are the writers, both Loom's, and the reader accepts every format version Loom has written.
 - **Hashing the binary at startup.** Rejected. It adds tens of milliseconds to every command of a large binary to protect the one command that replaces it, which compares the digest itself.
 - **A durable journal with backups, as dpkg keeps.** Rejected. It restores the prior version of a half-updated file set, which a completion script, a manual page, a skill, or a unit file does not need, because the binary writes the intended content again. Self-update keeps its own copy of the binary it replaces.
 - **Rolling back in memory alone.** Rejected. It covers a failed write but not a killed process, which leaves files the record does not list, and the next install would refuse them.
-- **A lock file.** Rejected, as [ADR-0070](0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md) rejected one: two runs of one installer rarely overlap, and a lock brings a rule for the lock a killed process leaves behind.
+- **A lock file.** Rejected, as [ADR-0070](0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md) rejected one: two runs of one installer rarely overlap, the run that fails says so and the next run recovers, and a lock brings a rule for the lock a killed process leaves behind.
 - **An exported writer.** Deferred. Every installer that needs it today is first-party; exporting it later adds to the API without breaking it.
 
 ## Consequences
