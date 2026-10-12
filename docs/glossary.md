@@ -632,6 +632,10 @@ _Avoid_: Direct change, visible change
 The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes the next version and never rewrites, republishes, or retags the version it supersedes.
 _Avoid_: Retry, rebuild, republish, repair
 
+**Release asset**:
+One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
+_Avoid_: Artifact, download, release binary
+
 ## Toolchain
 
 **Package directory**:
@@ -653,3 +657,7 @@ _Avoid_: Template, generated file, boilerplate
 **Managed file**:
 A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches and warns once it drifts; deleting the header makes it the author's file.
 _Avoid_: Generated file, owned file, vendored file
+
+**Installer script**:
+The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary.
+_Avoid_: Installer (alone), bootstrap script, setup script

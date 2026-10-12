@@ -4,7 +4,7 @@ title: ADR-0068 - init writes scaffold files once and owns managed files
 description: loom init acts on one package directory. Scaffold files and package.json keys are written once when missing, never overwritten, and never tracked, because they are the author's code. Managed files, the fragment guide and the changelog skill, carry a header with a checksum of their content; init re-renders a matching file, warns about a drifted one and leaves it unless --force, and treats a file without the header as the author's. loom check warns about drift and never fails for it.
 status: accepted
 created: 2026-10-07
-modified: 2026-10-09
+modified: 2026-10-12
 ---
 
 # ADR-0068 - init writes scaffold files once and owns managed files
@@ -44,3 +44,4 @@ Accepted in 0.10.0.
 - 2026-10-07: Proposed with the toolchain contract.
 - 2026-10-09: A blank line may separate a skill's frontmatter from its header, because Markdown formatters insert one.
 - 2026-10-09: A new scaffold includes tsconfig.json and the typescript development dependency, so loom check runs its type pass.
+- 2026-10-12: Installer scripts no longer wait for release orchestration. [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md), proposed, adds `install.sh` as the managed piece `install`, written only when `package.json` names a GitHub repository, and a shell file's header is a `#` comment on the line after `#!/bin/sh`. The release-cut skill and workflows are not pieces.

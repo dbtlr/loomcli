@@ -4,7 +4,7 @@ title: ADR-0066 - The toolchain acts on one package directory
 description: The loom bin of @loomcli/loom acts on the package whose directory it runs in, never on a repository as a set of packages, and reads no configuration file. loom build builds one target per call and bakes the release facts, which --facts and --define print for a custom build. loom check imports the application module, runs the package's own TypeScript, and reads every fault through Application.check(). Release orchestration is out of scope.
 status: accepted
 created: 2026-10-07
-modified: 2026-10-09
+modified: 2026-10-12
 ---
 
 # ADR-0066 - The toolchain acts on one package directory
@@ -53,3 +53,4 @@ Accepted in 0.10.0.
 
 - 2026-10-07: Proposed with the toolchain contract.
 - 2026-10-09: A `node` or `bun` bundle carries the application module as a second bundle entry point beside the entry, split into shared chunks, and `loom build` gains `--application`, with the default `loom check` reads, so an embedded caller or a test imports the built Application with its baked facts. A missing `src/application.ts` leaves the entry alone, a missing module `--application` names fails the build, and a compile target compiles the entry alone. The record stays proposed.
+- 2026-10-12: Installer scripts leave the out-of-scope list. [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md), proposed, has `loom init` render one from the release shape each repository's own workflow publishes. The rest of release orchestration stays out of scope.

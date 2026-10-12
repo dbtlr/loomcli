@@ -4,7 +4,7 @@ description: The public contract of the loom command, which acts on one package 
 
 # Toolchain reference
 
-`@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, checks, versions, and scaffolds that application. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), and [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
+`@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, checks, versions, and scaffolds that application, and the installer script `loom init` renders installs its release binary. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md), and [ADR-0072](decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
 
 ## One package directory
 
@@ -31,7 +31,7 @@ Every `loom` command acts on one package: the package whose directory it runs in
 - **Paths.** A path an option names resolves against the working directory, as any command-line path does. A conventional path, such as `src/main.ts`, resolves against the package directory.
 - **Bun.** `loom build` and `loom check` do their work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
 - **Exit codes.** 0 is success. 1 is a failed build, a failed check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
-- **Out of this contract.** Release orchestration is designed separately: PR guards, publishing to npm or GitHub, prerelease lanes, release workflows, installer scripts, and cuts across several packages.
+- **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease lanes, release workflows, and cuts across several packages. The [installer script](#the-installer-script) reads the [release shape](#the-release-shape) those workflows publish.
 
 ### One package directory acceptance
 
@@ -185,9 +185,9 @@ In an empty directory nothing is installed yet, so the first run goes through th
 `loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks. It writes two sorts of files: scaffold files, which become the author's at once, and managed files, which init keeps current.
 
 - **Where.** In an empty working directory, init scaffolds a new application there, whatever lies above it. Otherwise it acts on the package directory. A directory that is neither empty nor inside a package fails with exit 1.
-- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `tsconfig` is `tsconfig.json`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, and `skill` is the changelog skill. `--only <piece>` limits init to the pieces it names, and it may repeat.
+- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `tsconfig` is `tsconfig.json`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, `skill` is the changelog skill, and `install` is the [installer script](#the-installer-script), `install.sh`. `--only <piece>` limits init to the pieces it names, and it may repeat.
 - **Output.** Init prints one line for each file or key it writes and each warning it raises, and it installs nothing. The author runs the package manager afterward.
-- **Later pieces.** The release-cut skill, workflows, and installer scripts join init with the release orchestration design.
+- **Later pieces.** A release-cut skill and release workflows are not pieces, because release orchestration stays with each repository.
 
 ### Scaffold files
 
@@ -204,8 +204,8 @@ In an empty directory nothing is installed yet, so the first run goes through th
 # Change fragments
 ```
 
-- **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory.
-- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first non-blank line after its frontmatter.
+- **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory. `install.sh` is the [installer script](#the-installer-script), written only when the package names a GitHub repository.
+- **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first non-blank line after its frontmatter, and in `install.sh` a `#` comment on the line after `#!/bin/sh`.
 - **Re-running init.** Init re-renders a managed file whose checksum matches, so an unedited file follows the running toolchain. A file whose content no longer matches its checksum has drifted. Init warns about it and leaves it alone, and `--force` re-renders it. `--force` never touches a scaffold file.
 - **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and `loom check` stops checking it.
 - **Drift is a warning.** `loom check` warns about a drifted managed file and never fails for one.
@@ -214,9 +214,85 @@ In an empty directory nothing is installed yet, so the first run goes through th
 
 `loom init` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
 
-- **A new application.** In an empty directory, init writes `package.json`, the scaffold files, and both managed files. After the package manager installs, `loom check` exits 0 and runs the type pass, `loom build --target node` builds, and the bundle runs under Node and Bun.
+- **A new application.** In an empty directory, init writes `package.json`, the scaffold files, the fragment guide, and the skill, and prints the warning that `install.sh` was not written, because the new `package.json` names no repository. After the package manager installs, `loom check` exits 0 and runs the type pass, `loom build --target node` builds, and the bundle runs under Node and Bun.
 - **An existing package.** In a package with its own `src/application.ts`, `scripts.build`, `tsconfig.json`, and `devDependencies.typescript`, init writes the missing pieces and leaves all four byte-identical. `--only changes` writes `.changes/README.md` alone, and `--only tsconfig` writes `tsconfig.json` alone.
 - **Managed files.** Re-running init on an unedited managed file re-renders it. An edited one draws one warning and stays byte-identical, and `--force` re-renders it. A file whose header was deleted stays byte-identical under `--force`, and `loom check` raises no warning for it.
+- **The installer script.** In a package whose `repository` reads as `me/notes`, init writes `install.sh` with the shell header, the application's name, and `me/notes`, and the file is executable. After `repository` changes to `me/jot`, init re-renders an unedited script with `me/jot`. An edited script draws the drift warning from init and from `loom check`. With no `repository`, init writes no `install.sh`, prints the warning that names `repository`, and exits 0, and `--only install` writes the script alone.
+
+## The installer script
+
+```text
+install.sh [--dir <directory>] [<version>]
+install.sh --help
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/me/notes/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/me/notes/main/install.sh | sh -s -- --dir /opt/notes/bin 1.4.0
+```
+
+```text
+notes: Downloading notes-linux-x64 from the latest release of me/notes.
+notes: Installed /home/me/.local/bin/notes.
+notes: /home/me/.local/bin is not on PATH. Add it to your shell's PATH to run notes:
+  export PATH="/home/me/.local/bin:$PATH"
+```
+
+`install.sh` installs the application's binary from a GitHub Release, verified against the release's `SHA256SUMS`, and records the installation in the [installation record](core.md#installation-record), so self-update may later replace the binary. `loom init` renders it as a [managed file](#managed-files). It runs under POSIX `sh` on Linux and macOS. [ADR-0072](decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) records the decision.
+
+- **What init renders.** The piece `install` writes `install.sh` in the package directory, executable, from the application's name, under [the application's name](#scaffold-files), and the GitHub repository, read from `package.json` `repository` with the rule `loom build --release` uses. When `repository` is missing or cannot be read, init writes no script and prints `warning: install.sh was not written because package.json has no GitHub repository loom can read. Add the repository field, then run loom init again.` The script records the installation under that name, and core reads the record under the Application's name, so the two must match, as a scaffold keeps them.
+- **The header.** A shell file's managed header is `# Managed by loom init. sha256:<hex>` on the line after its `#!/bin/sh` line, and the checksum covers the file without that line.
+- **The version.** An optional argument, such as `1.4.0` or `1.5.0-next.2`, with or without a leading `v`, names the release `v<version>`. With no version, the script installs the repository's latest release, which GitHub never resolves to a draft or a prerelease. A version holding any character other than a letter, a digit, `.`, `-`, or `+` is an argument error.
+- **The directory.** `--dir <directory>` names the install directory, by default `$HOME/.local/bin`. It must be an absolute path, and like every installed path it holds no quote, backslash, or control character. The script creates it when it is missing. The binary is `<directory>/<name>`, and a directory at that path fails the install.
+- **Arguments.** `--help` and `-h` print the usage to stdout and exit 0. An unknown option, a `--dir` without a value or with a relative path, a second version, and a malformed version each print one sentence and the usage line to stderr and exit 2. The script reads no environment variable of its own.
+- **The platform.** `uname -s` gives the operating system and `uname -m` the architecture:
+
+  | `uname -s` | `uname -m` | Asset |
+  | --- | --- | --- |
+  | `Darwin` | `arm64`, or `x86_64` under Rosetta | `<name>-darwin-arm64` |
+  | `Darwin` | `x86_64` | `<name>-darwin-x64` |
+  | `Linux` | `x86_64` or `amd64` | `<name>-linux-x64` |
+  | `Linux` | `aarch64` or `arm64` | `<name>-linux-arm64` |
+
+  Rosetta reads as `sysctl -n sysctl.proc_translated` printing `1`. On Linux, a file matching `/lib/ld-musl-*.so.1` means the C library is musl, and the asset gains `-musl`, such as `notes-linux-x64-musl`. Any other operating system or architecture fails and names what `uname` printed.
+- **Before downloading.** The script checks, in order, its arguments, a downloader, a digest tool, the install directory, and the installation record's directory, through the first part of the [installation record's recipe](core.md#installation-record). A failure in any of them downloads nothing and changes nothing.
+- **Downloading.** The asset and `SHA256SUMS` come from `https://github.com/<owner>/<name>/releases/download/v<version>/`, or from `https://github.com/<owner>/<name>/releases/latest/download/` with no version. `curl` runs with `--proto '=https' --proto-redir '=https' --tlsv1.2`, so no redirect leaves HTTPS. With no `curl`, the script uses a `wget` whose `--help` lists `--https-only`, and runs it with `--https-only`. BusyBox `wget` lists no such option, so it counts as no downloader. A digest tool is `sha256sum`, else `shasum -a 256`. A missing downloader or digest tool fails and names what to install.
+- **Verifying.** The script reads the asset's digest from `SHA256SUMS` under [the release shape](#the-release-shape). A `SHA256SUMS` that lists no line for the asset, or two lines for it with different digests, fails and names the asset and the release. A download whose SHA-256 digest differs fails and names the asset.
+- **Placing.** The download lands in a staging file that `mktemp` creates in the install directory, `.<name>.XXXXXX`. Once verified, the script makes it executable with mode `755` and renames it to `<directory>/<name>` with `mv -f`, which replaces an existing file or symbolic link of that name whole. A running copy of the old binary keeps running.
+- **Recording.** After the rename, the second part of the installation record's recipe writes `install.json` with the method `script`, the path `<directory>/<name>`, and the digest of the binary in place. Installing again replaces the record, so the last install wins.
+- **Cleanup.** A trap removes the staging file and the downloaded `SHA256SUMS` when the script exits. `SIGHUP`, `SIGINT`, and `SIGTERM` end the script with exit 1 through the same trap, because `dash` runs no exit trap when a signal ends it.
+- **PATH.** After the install, when no `:`-separated entry of `PATH` is exactly the install directory, the script prints that the directory is not on `PATH` and the `export` line that adds it. When `command -v <name>` finds a file other than the installed binary, the script names the file that runs first and says to remove it or move the install directory earlier on `PATH`. It never edits a shell profile.
+- **Output.** Every line, other than `--help`, goes to stderr and opens with `<name>: `. A failure is one sentence that says what went wrong and one that says what to do, under [ADR-0047](decisions/0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), and exits 1, or 2 for an argument error.
+- **What it never does.** The script never runs the downloaded binary, never asks for elevated rights, never writes outside the install directory and the installation record, and takes no input that exists only for tests. It does not run on Windows.
+
+### The release shape
+
+```sh
+# A repository's own release workflow, for version 1.4.0 of notes:
+for target in darwin-arm64 linux-x64 linux-arm64; do
+  loom build --release --target "bun-$target" --out "dist/notes-$target"
+done
+(cd dist && sha256sum notes-* > SHA256SUMS)
+gh release create v1.4.0 dist/notes-* dist/SHA256SUMS
+```
+
+The installer script and self-update read a release in one shape, which each repository's own release workflow publishes:
+
+- **The tag.** A release is the GitHub Release of the tag `v<version>`, where `<version>` is the package's `version`. The latest release is the one GitHub's `releases/latest` resolves, which is never a draft or a prerelease.
+- **The assets.** One binary per platform, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, and `linux-arm64-musl`. A release carries the ones it supports. Each is the binary `loom build --release --target bun-<os>-<arch>` compiles, whose release facts name the same asset. An `x64` build with the `-baseline` or `-modern` variant is not an asset the script fetches.
+- **`SHA256SUMS`.** One line per asset: 64 lowercase hexadecimal digits, two spaces or a space and `*`, and the asset's file name, then a newline. This is what `sha256sum` and `shasum -a 256` print in the directory that holds the assets. A reader matches the file name exactly and ignores every other line.
+
+### Installer script acceptance
+
+The installer script is proven when process runs of a rendered `install.sh` under `/bin/sh` on Linux and macOS produce these results, with a fake `uname`, `sysctl`, `curl`, and `wget` first on `PATH` that serve a fixture release and record each URL they are asked for:
+
+- **Installing.** With no arguments, the script fetches `releases/latest/download/` URLs, writes a binary with mode `755` and the fixture's bytes to `$HOME/.local/bin/<name>`, and writes `install.json` with the bytes the recipe pins. `1.4.0`, `v1.4.0`, and `--dir` with an absolute directory each fetch the `releases/download/v1.4.0/` URLs or install into that directory. A second install replaces the binary and the record.
+- **Refusing.** A digest mismatch, an asset `SHA256SUMS` does not list or lists twice with different digests, a failed download, an unknown operating system or architecture, and a directory at the binary's path each exit 1. An unknown option, a relative `--dir`, a second version, and a version holding `/` each exit 2. Each leaves the install directory as it was, writes no `install.json`, and leaves no staging file. A run ended by `SIGTERM` during the download leaves no staging file.
+- **The platform.** Each `uname` row fetches its asset. `sysctl.proc_translated` printing `1` on `Darwin` `x86_64` fetches `darwin-arm64`. A musl loader file fetches the `-musl` asset.
+- **Downloaders.** With no `curl`, a `wget` that lists `--https-only` downloads with it. A `wget` that does not list it, and no downloader at all, exit 1 and name `curl`.
+- **PATH.** An install directory that is not on `PATH` prints the `export` line. One that is on `PATH` prints none. Another file of the same name earlier on `PATH` is named.
+- **The record.** For each case of the [directory acceptance](core.md#installation-record-acceptance), unset, empty, relative, and absolute `XDG_STATE_HOME` and `HOME`, the directory the script writes `install.json` into is the one `applicationDirectory('installation', name, host)` gives for that `env` on the running platform, and a case the resolver answers with `{ variable }` exits 1 with nothing downloaded. The rendered script holds both parts of the recipe in `docs/core.md` byte for byte.
+- **Init.** The [loom init acceptance](#loom-init-acceptance) covers rendering, drift, and the missing repository.
 
 ## This repository's release
 
