@@ -39,7 +39,7 @@ The contract and its acceptance are in [Self-update](../core.md#self-update).
 
 - **Mimir's `--next` and `--tag <tag>`.** Rejected. `--next` serves one channel and no other, and `--tag` exposes the `v` that every other Loom surface leaves out. A positional version matches `install.sh [<version>]`, and `--version` belongs to the version plugin.
 - **Configuring the repository and asset names on the plugin.** Rejected. The build already bakes both into the release facts, and two sources for one fact can disagree.
-- **The REST API for prereleases.** Rejected. Its unauthenticated rate limit is shared by every program on the operator's address, and a token is one more secret to configure. The feed lists only the newest releases, so a channel with no release among them resolves nothing, and a named version still installs.
+- **The REST API for prereleases.** Rejected. Its unauthenticated rate limit is shared by every program on the operator's address, and a token is one more secret to configure. The feed lists only the newest tags, so a channel with no release among them resolves nothing, and a named version still installs.
 - **An `onReplace` lifecycle event.** Rejected. No second listener exists, and the application that installs the plugin owns what follows a replacement.
 - **Keeping the replaced binary and a `--rollback`.** Rejected. A rename leaves no half-written binary, a release that runs can install an older version itself, and a release that cannot start cannot run its own rollback either; `install.sh` reinstalls any version.
 - **Rolling back when the hook fails.** Rejected. The replacement succeeded and the record says so; a failure in the application's own step is the application's to report.
