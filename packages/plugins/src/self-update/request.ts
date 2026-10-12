@@ -98,8 +98,8 @@ async function walk(
 /**
  * Requests `start` and follows each redirect itself, only to an HTTPS URL and at most 20 times,
  * until a response that is not a redirect, or a redirect `stop` accepts, which is not requested.
- * `github` is the last URL visited on github.com, which names the repository after GitHub
- * redirected a renamed one. A rejection that carries the run signal's reason propagates as it is.
+ * `github` is the last github.com URL the request reached or a redirect named, which names the
+ * repository after GitHub redirected a renamed one. A rejection that carries the run signal's reason propagates as it is.
  */
 function follow(
   start: URL,
@@ -121,11 +121,8 @@ async function request(url: URL, start: URL, signal: AbortSignal): Promise<Respo
   }
 }
 
-/**
- * The response at the end of the redirects from `url`, when its status is 200. Any other status
- * fails the request, named for `url`.
- */
-async function fetchOk(url: URL, signal: AbortSignal): Promise<{ body: Response; github: URL }> {
+/** The response at the end of the redirects from `url`, when its status is 200; any other fails. */
+async function okResponse(url: URL, signal: AbortSignal): Promise<{ body: Response; github: URL }> {
   const followed = await follow(url, signal);
   if ('stopped' in followed) {
     throw new RequestError('status', url.href);
@@ -137,5 +134,37 @@ async function fetchOk(url: URL, signal: AbortSignal): Promise<{ body: Response;
   return { body: followed.response, github: followed.github };
 }
 
+/**
+ * Reads a body whole. A connection that ends before the body does is no response, named for
+ * `url`, its runtime error kept as the cause; an abort propagates as it is.
+ */
+async function readBody<Body>(
+  url: URL,
+  signal: AbortSignal,
+  read: () => Promise<Body>,
+): Promise<Body> {
+  try {
+    return await read();
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+    throw new RequestError('no-response', url.href, { cause: error });
+  }
+}
+
+/** The text at `url` after its redirects, and the last github.com URL they visited. */
+async function fetchText(url: URL, signal: AbortSignal): Promise<{ text: string; github: URL }> {
+  const { body, github } = await okResponse(url, signal);
+  return { github, text: await readBody(url, signal, () => body.text()) };
+}
+
+/** The bytes at `url` after its redirects. */
+async function fetchBytes(url: URL, signal: AbortSignal): Promise<Uint8Array> {
+  const { body } = await okResponse(url, signal);
+  const buffer = await readBody(url, signal, () => body.arrayBuffer());
+  return new Uint8Array(buffer);
+}
+
 export type { Followed };
-export { fetchOk, follow, notFound, ok, RequestError };
+export { fetchBytes, fetchText, follow, notFound, ok, RequestError };

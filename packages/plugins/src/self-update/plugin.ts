@@ -12,23 +12,27 @@ import type { Host, Log, Plugin } from '@loomcli/core';
 import { z } from 'zod';
 
 import { packageName } from '../constants.js';
+import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
 import { selfUpdateSettings } from '../rules.js';
 import { failures, refusals, requestFailed, shown } from './messages.js';
-import { inspectBinary, removeLeftovers, replaceFile, sha256, unwritable } from './place.js';
-import { fetchOk, RequestError } from './request.js';
+import { unwritable } from './place.js';
+import { fetchBytes, RequestError } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
-import { compareVersions, isChannelName, parseVersion, versionOfArgument } from './version.js';
+import {
+  compareVersions,
+  equalPrecedence,
+  isChannelName,
+  parseVersion,
+  versionOfArgument,
+} from './version.js';
 import type { Version } from './version.js';
 
 const identity = `${packageName}/self-update`;
 
-/** The comparison result of two versions that have the same precedence. */
-const same = 0;
-
-/** The mode of the installation record, which is not executable. */
-const recordMode = 0o644;
+/** The mode of the installation record, as the installer script's `mktemp` leaves it. */
+const recordMode = 0o600;
 
 /** What `afterReplace` reads once the binary is replaced and the record rewritten. */
 interface AfterReplaceContext {
@@ -106,14 +110,14 @@ function scriptInstallation(name: string, installation: Installation | undefined
 
 /** The recorded binary's mode, or the refusal when it is missing, a link, or changed. */
 function intactMode(name: string, installation: Installation): number {
-  const found = inspectBinary(installation.path);
-  if (found.kind === 'missing') {
-    throw refusals.missing(name, installation.path);
-  }
+  const found = observe(installation.path);
   if (found.kind === 'link') {
     throw refusals.link(name, installation.path);
   }
-  if (`sha256:${found.digest}` !== installation.digest) {
+  if (found.kind !== 'file') {
+    throw refusals.missing(name, installation.path);
+  }
+  if (found.digest !== installation.digest) {
     throw refusals.changed(name, installation.path);
   }
   return found.mode;
@@ -200,7 +204,7 @@ function listedDigest(asset: string, release: Release & { sums: string }): strin
 
 /** Whether `found` has the precedence of `running` or lower. */
 function isNotNewer(found: Version, running: Version): boolean {
-  return compareVersions(found, running) <= same;
+  return compareVersions(found, running) <= equalPrecedence;
 }
 
 /** The versions and channel a line about a release that is not newer names. */
@@ -213,7 +217,7 @@ interface NotNewer {
 
 /** The line a resolved release that is not newer prints, which replaces nothing. */
 function notNewerLine({ name, running, found, channel }: NotNewer): string {
-  return compareVersions(found, running) === same
+  return compareVersions(found, running) === equalPrecedence
     ? `${name} ${shown(running.text)} is the newest release on the ${shown(channel)} channel.`
     : `${name} ${shown(running.text)} is newer than the newest release on the ${shown(channel)} channel, ${shown(found.text)}. Name that version to install it: ${name} self-update ${shown(found.text)}.`;
 }
@@ -228,12 +232,11 @@ interface Download {
 
 /** Downloads the asset and returns its bytes once their digest matches the listed one. */
 async function download({ checked, release, digest, signal }: Download): Promise<Uint8Array> {
-  const { body } = await fetchOk(
+  const bytes = await fetchBytes(
     downloadUrl(release.repository, release.version, checked.asset),
     signal,
   );
-  const bytes = new Uint8Array(await body.arrayBuffer());
-  if (sha256(bytes) !== digest) {
+  if (digestOf(bytes) !== `sha256:${digest}`) {
     throw failures.mismatch(checked.asset, `v${release.version.text}`, release.repository);
   }
   return bytes;
@@ -242,7 +245,7 @@ async function download({ checked, release, digest, signal }: Download): Promise
 /** The `install.json` line for the binary now at `path`, in the installation record's format. */
 function recordLine(path: string, digest: string): string {
   // The members keep the record's order, which an object literal would not survive formatting in.
-  return `{"format":1,"method":"script","path":${JSON.stringify(path)},"digest":"sha256:${digest}"}\n`;
+  return `{"format":1,"method":"script","path":${JSON.stringify(path)},"digest":"${digest}"}\n`;
 }
 
 /** What placing the verified bytes needs: the run's binary, the version, and the bytes. */
@@ -257,8 +260,8 @@ interface Placement {
 /** Places the verified bytes over the binary, removing leftover staging files first. */
 function placeBinary({ name, checked, bytes, signal }: Placement): void {
   try {
-    removeLeftovers(checked.path);
-    replaceFile({ bytes, mode: checked.mode, signal, target: checked.path });
+    removeStagingFiles(checked.path);
+    replaceFile(checked.path, bytes, { durable: true, mode: checked.mode, signal });
   } catch (error) {
     if (signal.aborted) {
       throw signal.reason;
@@ -269,13 +272,9 @@ function placeBinary({ name, checked, bytes, signal }: Placement): void {
 
 /** Rewrites the installation record for the binary now at the recorded path. */
 function writeRecord({ name, checked, version, bytes }: Placement): void {
-  const line = recordLine(checked.path, sha256(bytes));
+  const line = recordLine(checked.path, digestOf(bytes));
   try {
-    replaceFile({
-      bytes: new TextEncoder().encode(line),
-      mode: recordMode,
-      target: join(checked.record, 'install.json'),
-    });
+    replaceFile(join(checked.record, 'install.json'), line, { mode: recordMode });
   } catch (error) {
     throw failures.record(name, version.text, error);
   }
@@ -283,7 +282,8 @@ function writeRecord({ name, checked, version, bytes }: Placement): void {
 
 /**
  * Places the verified bytes over the binary, then rewrites the record. An abort read before the
- * rename propagates as it is; from the rename to the record no signal is read.
+ * rename propagates as it is. From the rename to the record no signal is read: the span is
+ * synchronous, so no abort can arrive inside it, and it must stay so.
  */
 function place(placement: Placement): void {
   placeBinary(placement);
@@ -308,13 +308,28 @@ function channelFor(request: Request, checked: Checked): string {
   return request.channel ?? checked.channel;
 }
 
-/** Reports that the named version is the running one, when it is, and says whether it did. */
+/** Whether the operator named the version that is running. */
+function namesRunning(request: Request, checked: Checked): boolean {
+  return (
+    request.named !== undefined &&
+    compareVersions(request.named, checked.running) === equalPrecedence
+  );
+}
+
+/** The line a run that named the running version prints, which replaces nothing. */
+function installedLine(request: Request, checked: Checked): string {
+  return `${request.name} ${shown(checked.running.text)} is already installed.`;
+}
+
+/**
+ * Reports that the named version is the running one, when it is and the run would replace, and
+ * says whether it did. A `--check` run resolves and verifies the release first.
+ */
 async function reportInstalled(request: Request, checked: Checked): Promise<boolean> {
-  const { name, named } = request;
-  if (named === undefined || compareVersions(named, checked.running) !== same) {
+  if (request.checkOnly || !namesRunning(request, checked)) {
     return false;
   }
-  await request.success(`${name} ${shown(named.text)} is already installed.`);
+  await request.success(installedLine(request, checked));
   return true;
 }
 
@@ -358,6 +373,9 @@ async function resolve(request: Request, checked: Checked): Promise<Resolved | u
 /** The line a `--check` run prints for the release it resolved. */
 function checkLine(request: Request, checked: Checked, found: Version): string {
   const { name, named } = request;
+  if (namesRunning(request, checked)) {
+    return installedLine(request, checked);
+  }
   if (named !== undefined) {
     return `${name} can install ${shown(named.text)} in place of ${shown(checked.running.text)}.`;
   }

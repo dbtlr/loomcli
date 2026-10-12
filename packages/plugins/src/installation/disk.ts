@@ -4,21 +4,31 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  closeSync,
+  fchmodSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmdirSync,
   rmSync,
-  writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
-/** What a path holds: nothing, a regular file and its digest, a symbolic link, a directory, or another kind. */
+/** The permission bits of a file mode, without its file type. */
+const permissionBits = 0o7777;
+
+/** The mode a staging file is created with when the caller names none, before the umask applies. */
+const defaultMode = 0o666;
+
+/** What a path holds: nothing, a regular file with its digest and permission bits, a symbolic link, a directory, or another kind. */
 type Observed =
   | { readonly kind: 'absent' }
-  | { readonly kind: 'file'; readonly digest: string }
+  | { readonly kind: 'file'; readonly digest: string; readonly mode: number }
   | { readonly kind: 'link' }
   | { readonly kind: 'directory' }
   | { readonly kind: 'special' };
@@ -46,7 +56,7 @@ function observe(path: string): Observed {
     return { kind: 'directory' };
   }
   return stats.isFile()
-    ? { digest: digestOf(readFileSync(path)), kind: 'file' }
+    ? { digest: digestOf(readFileSync(path)), kind: 'file', mode: stats.mode & permissionBits }
     : { kind: 'special' };
 }
 
@@ -71,14 +81,53 @@ function stagingPath(path: string): string {
 }
 
 /**
+ * How a replacement writes its staging file: the permission bits it takes whatever the umask, whether
+ * it is flushed to disk before the rename, and the signal read just before the rename.
+ */
+interface ReplaceOptions {
+  readonly mode?: number;
+  readonly durable?: boolean;
+  readonly signal?: AbortSignal;
+}
+
+/** Writes every byte of `content` to the descriptor, however many writes it takes. */
+function writeAll(descriptor: number, content: Uint8Array): void {
+  for (let written = 0; written < content.length;) {
+    written += writeSync(descriptor, content, written);
+  }
+}
+
+/** Fills the open staging file, sets its mode and flushes it when asked, and closes it. */
+function fill(descriptor: number, content: Uint8Array, options: ReplaceOptions): void {
+  try {
+    writeAll(descriptor, content);
+    if (options.mode !== undefined) {
+      fchmodSync(descriptor, options.mode);
+    }
+    if (options.durable === true) {
+      fsyncSync(descriptor);
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/**
  * Replaces `path` whole: the content goes to a staging file created exclusively in its directory,
  * which is then renamed into place, so no reader and no other run sees partial content there. A
- * failed write or rename removes the staging file and throws the original error.
+ * failed write or rename, or an abort read before the rename, removes the staging file and throws
+ * the original error or the signal's reason.
  */
-function replaceFile(path: string, content: string | Uint8Array): void {
+function replaceFile(
+  path: string,
+  content: string | Uint8Array,
+  options: ReplaceOptions = {},
+): void {
   const staging = stagingPath(path);
+  const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
   try {
-    writeFileSync(staging, content, { flag: 'wx' });
+    fill(openSync(staging, 'wx', options.mode ?? defaultMode), bytes, options);
+    options.signal?.throwIfAborted();
     renameSync(staging, path);
   } catch (error) {
     removeStaging(staging);
@@ -168,7 +217,7 @@ function missingParents(path: string): string[] {
   return missing;
 }
 
-export type { Observed };
+export type { Observed, ReplaceOptions };
 export {
   createDirectory,
   digestOf,

@@ -37,7 +37,7 @@ function parseVersion(text: string): Version | undefined {
 const versionPrefix = 'v';
 
 /** The comparison result of two versions or identifiers that have the same precedence. */
-const equal = 0;
+const equalPrecedence = 0;
 
 /** The comparison result of a version that has no prerelease identifiers to compare. */
 const noIdentifiers = 0;
@@ -89,7 +89,7 @@ function compareCore(left: Version, right: Version): number {
   return (
     left.core
       .map((part, index) => compareOrdered(part, right.core[index] ?? part))
-      .find((difference) => difference !== equal) ?? equal
+      .find((difference) => difference !== equalPrecedence) ?? equalPrecedence
   );
 }
 
@@ -104,7 +104,7 @@ function comparePrerelease(left: Version, right: Version): number {
       return higher;
     }
     const difference = compareIdentifiers(part, other);
-    if (difference !== equal) {
+    if (difference !== equalPrecedence) {
       return difference;
     }
   }
@@ -114,8 +114,16 @@ function comparePrerelease(left: Version, right: Version): number {
 /** SemVer precedence: below zero when `left` is lower, zero when equal, above zero when higher. */
 function compareVersions(left: Version, right: Version): number {
   const core = compareCore(left, right);
-  return core === equal ? comparePrerelease(left, right) : core;
+  return core === equalPrecedence ? comparePrerelease(left, right) : core;
 }
 
 export type { Version };
-export { channelOf, compareVersions, isChannelName, parseVersion, versionOfArgument, versionOfTag };
+export {
+  channelOf,
+  compareVersions,
+  equalPrecedence,
+  isChannelName,
+  parseVersion,
+  versionOfArgument,
+  versionOfTag,
+};

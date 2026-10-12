@@ -111,6 +111,16 @@ function answerRule(rule, text, signal) {
     chmodSync(dirname(scenario.release.installation.path), 0o555);
     return undefined;
   }
+  if (rule === 'cut') {
+    // The connection ends partway through the body, as a dropped download does.
+    const body = new ReadableStream({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode('partial'));
+        stream.error(new TypeError('terminated'));
+      },
+    });
+    return new Response(body, { status: 200 });
+  }
   if (rule === 'abort') {
     controller.abort();
     throw signal.reason;
@@ -159,7 +169,7 @@ function settings() {
     afterReplace: ({ current, host, path, previous, signal }) => {
       writeFileSync(
         scenario.hookLog,
-        `${JSON.stringify({ aborted: signal.aborted, current, hasHost: host.release !== undefined, path, previous })}\n`,
+        `${JSON.stringify({ aborted: signal.aborted, current, host: host.release.release.version, path, previous })}\n`,
         { flag: 'a' },
       );
       if (scenario.hook === 'throw') {

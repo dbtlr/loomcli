@@ -204,7 +204,7 @@ function lines(stderr: string): string[] {
 
 test('a stable binary updates to the latest release, keeps its mode, rewrites the record, and calls the hook', () => {
   const box = sandbox();
-  writeFileSync(join(box.bin, '.notes.left.loom-staging'), 'leftover');
+  writeFileSync(join(box.bin, '.notes.0123456789abcdef.loom-staging'), 'leftover');
   const result = run(box, [], { umask: 0o077 });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual([
@@ -217,7 +217,7 @@ test('a stable binary updates to the latest release, keeps its mode, rewrites th
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
   expect(stagingFiles(box.bin)).toEqual([]);
   expect(hookCalls(box)).toEqual([
-    { aborted: false, current: '1.5.0', hasHost: true, path: box.binary, previous: '1.4.2' },
+    { aborted: false, current: '1.5.0', host: '1.4.2', path: box.binary, previous: '1.4.2' },
   ]);
   expect(requests(box)).toEqual([
     'https://github.com/acme/notes/releases/latest',
@@ -293,10 +293,11 @@ test('a repository named in another case matches the feed, and a renamed one res
       version,
     });
     expect(moved.status).toBe(0);
-    expect(requests(box).at(-1)).toMatch(/^https:\/\/release-assets\.example\//u);
-    expect(requests(box).filter((url) => url.includes('/releases/download/'))).toEqual(
-      expect.arrayContaining([expect.stringContaining('https://github.com/acme/notes2/')]),
-    );
+    expect(lines(moved.stderr)[0]).toMatch(/ of acme\/notes2\.$/u);
+    // Only the first request names the old repository; every later one uses the name GitHub gave.
+    const [first, ...later] = requests(box);
+    expect(first).toMatch(/^https:\/\/github\.com\/acme\/notes\//u);
+    expect(later.filter((url) => url.startsWith('https://github.com/acme/notes/'))).toEqual([]);
   }
 });
 
@@ -354,6 +355,9 @@ test('--check reports what an update would do, requests SHA256SUMS and no binary
   expect(lines(named.stderr)).toEqual(['notes can install 1.4.0 in place of 1.4.2.']);
   const running = run(box, ['--check', '1.4.2']);
   expect(lines(running.stderr)).toEqual(['notes 1.4.2 is already installed.']);
+  expect(requests(box)).toContain(
+    'https://github.com/acme/notes/releases/download/v1.4.2/SHA256SUMS',
+  );
   expect(requests(box).filter((url) => url.endsWith(asset))).toEqual([]);
   expect(requests(box)).toContain(
     'https://github.com/acme/notes/releases/download/v1.5.0/SHA256SUMS',
@@ -453,6 +457,7 @@ test('a missing binary, a symbolic link, and a changed binary refuse before any 
   );
   for (const box of [missing, linked, changed]) {
     expect(requests(box)).toEqual([]);
+    expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, oldBytes));
   }
 });
 
@@ -538,6 +543,12 @@ const downloadFailures: [string, string[], Scenario, string][] = [
     'notes was redirected too many times while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.',
   ],
   [
+    'a download cut off',
+    [],
+    { rules: { [`release-assets.example/v1.5.0/${asset}`]: 'cut' } },
+    'notes could not download https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64 (no response). Run self-update again later.',
+  ],
+  [
     'no response',
     [],
     { rules: { 'releases/latest': 'no-response' } },
@@ -586,7 +597,7 @@ test('a run aborted after the rename writes the record, calls the hook with an a
   expect(result.status).toBe(130);
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
   expect(hookCalls(box)).toEqual([
-    { aborted: true, current: '1.5.0', hasHost: true, path: box.binary, previous: '1.4.2' },
+    { aborted: true, current: '1.5.0', host: '1.4.2', path: box.binary, previous: '1.4.2' },
   ]);
 });
 

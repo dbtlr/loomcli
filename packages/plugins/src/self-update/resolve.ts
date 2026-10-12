@@ -1,5 +1,5 @@
-import { fetchOk, follow, notFound, ok, RequestError } from './request.js';
-import { channelOf, compareVersions, versionOfTag } from './version.js';
+import { fetchText, follow, notFound, ok, RequestError } from './request.js';
+import { channelOf, compareVersions, equalPrecedence, versionOfTag } from './version.js';
 import type { Version } from './version.js';
 
 /** A release the Command found: its repository after any rename, its version, and its sums. */
@@ -41,8 +41,8 @@ async function fetchSums(
   version: Version,
   signal: AbortSignal,
 ): Promise<{ repository: string; sums: string }> {
-  const { body, github } = await fetchOk(downloadUrl(repository, version, 'SHA256SUMS'), signal);
-  return { repository: repositoryOf(github, repository), sums: await body.text() };
+  const { github, text } = await fetchText(downloadUrl(repository, version, 'SHA256SUMS'), signal);
+  return { repository: repositoryOf(github, repository), sums: text };
 }
 
 /** The stable release a tag page names, or `undefined` for a page that is not one. */
@@ -80,12 +80,9 @@ async function latestStable(repository: string, signal: AbortSignal): Promise<Re
   return stableAt(followed.stopped);
 }
 
-/** The comparison result of two versions that have the same precedence. */
-const same = 0;
-
 /** `sorted`, highest first, with `version` inserted after every version that is not lower. */
 function insertHighestFirst(sorted: Version[], version: Version): Version[] {
-  const notLower = sorted.filter((other) => compareVersions(other, version) >= same);
+  const notLower = sorted.filter((other) => compareVersions(other, version) >= equalPrecedence);
   return [...notLower, version, ...sorted.slice(notLower.length)];
 }
 
@@ -109,12 +106,12 @@ async function latestOnChannel(
   channel: string,
   signal: AbortSignal,
 ): Promise<Release | undefined> {
-  const { body, github } = await fetchOk(
+  const { github, text } = await fetchText(
     new URL(`https://github.com/${repository}/releases.atom`),
     signal,
   );
   const named = repositoryOf(github, repository);
-  for (const version of feedVersions(await body.text(), named, channel)) {
+  for (const version of feedVersions(text, named, channel)) {
     try {
       const { repository: found, sums } = await fetchSums(named, version, signal);
       return { repository: found, sums, version };

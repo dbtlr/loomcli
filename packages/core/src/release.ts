@@ -63,8 +63,8 @@ function releaseSource(
 }
 
 /**
- * The release channel a semantic version reads: its first prerelease identifier, or `stable` when it has none.
- * A value that is not a semantic version reads no release channel.
+ * The release channel a semantic version reads: its first prerelease identifier, or `stable` when
+ * it has none. A value that is not a semantic version reads no release channel.
  */
 function channelOf(version: unknown): string | undefined {
   const parsed = typeof version === 'string' ? semanticVersion.exec(version) : undefined;
