@@ -4,7 +4,7 @@ title: ADR-0070 - The logging plugin writes one JSON record per event to a size-
 description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failure to write the file goes to the author's onError, and is ignored without one.
 status: proposed
 created: 2026-10-10
-modified: 2026-10-10
+modified: 2026-10-12
 ---
 
 # ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
@@ -45,3 +45,4 @@ Proposed. It moves to accepted in the release that ships the logging plugin.
 
 - 2026-10-10: Proposed with the contract.
 - 2026-10-10: Narrowed rotation's promise: two processes rotating one file at the same instant may lose records from the copies, and every line still lands whole. A lock file was rejected.
+- 2026-10-12: [ADR-0071](0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md), proposed, moves the default directory onto core's `applicationDirectory`, which computes the same table. A `HOME`, `XDG_STATE_HOME`, or `LOCALAPPDATA` that is empty or not an absolute path counts as unset, so a relative `HOME` is `unresolved-directory` instead of resolving against the working directory, and a `file` under `~/` follows the same rule for `HOME` and `USERPROFILE`.

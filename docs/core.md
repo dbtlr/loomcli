@@ -1440,15 +1440,15 @@ Invocation by name is proven when public APIs alone produce these results under 
 | `stdout`, `stderr` | Node `Writable` connections                                   |
 | `terminal`         | Each stream's `isTTY` value, plus output `columns` and `rows` |
 | `readSource`       | Optional `(path, cwd) => string \| undefined`, one source file for a [Developer Diagnostic](#developer-diagnostics) |
-| `release`          | The [release facts](#release-facts) the build baked in, or `{ build: 'source' }` when it baked none; frozen |
+| `release`          | The [release facts](#release-facts) the build baked in, or `{ build: 'source' }` when it baked none, with the installation the [installation record](#installation-record) holds; frozen |
 
 An override replaces its whole field. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
 
 The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
 
-Core reads `release` from the build, never from the process: process capture reads the facts the build baked into the artifact, and a `release` override replaces them whole, as [Release facts](#release-facts) states. An action reads its run's build, release, and installation there and nowhere else.
+Core reads `release` from the build and the installation record, never from the process: process capture reads the facts the build baked into the artifact and, for a compiled binary built with `--release`, the installation the [installation record](#installation-record) holds, and a `release` override replaces them whole, as [Release facts](#release-facts) states. An action reads its run's build, release, and installation there and nowhere else.
 
-Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads. The one file core reads is a source file for a defect's findings in a development build, through `readSource`, under the guards [Developer Diagnostics](#developer-diagnostics) states. Process capture supplies `readSource(path, cwd)` as a synchronous read of a UTF-8 file that resolves both paths through symbolic links and answers `undefined` for a file outside `cwd`, for a path that is not a regular file, such as a FIFO or a device, for a file larger than 1 MiB, and for any failure. An override replaces it like any other field, so a test supplies its own reader, and a reader that always answers `undefined` leaves the findings at the stack location.
+Core copies argv, environment values, and terminal facts. It retains the supplied stream connections. Parsing does not modify `host.argv`. Application code owns file access and any stdin reads. Core reads two files: a source file for a defect's findings in a development build, through `readSource`, under the guards [Developer Diagnostics](#developer-diagnostics) states, and the installation record's `install.json`, under the rules of [Reading the installation](#reading-the-installation). Core writes none. Process capture supplies `readSource(path, cwd)` as a synchronous read of a UTF-8 file that resolves both paths through symbolic links and answers `undefined` for a file outside `cwd`, for a path that is not a regular file, such as a FIFO or a device, for a file larger than 1 MiB, and for any failure. An override replaces it like any other field, so a test supplies its own reader, and a reader that always answers `undefined` leaves the findings at the stack location.
 
 The public declarations include Node stream types. The package supplies their type dependency and an explicit declaration reference. Core exports the `Host` and `Out` types, so a helper extracted out of an action, such as a reader that opens a file or `host.stdin`, states its own parameters without reading them back off the action context.
 
@@ -2166,7 +2166,7 @@ interface ReleaseFacts {
     readonly method: string;
     readonly path: string;
     readonly digest: string;
-  }; // always absent until the installation record contract ships
+  }; // read from the installation record, for a compiled binary built with --release
 }
 interface Host {
   readonly release: ReleaseFacts; // new
@@ -2192,15 +2192,15 @@ loom build --target bun-linux-x64 --release
 #   repository: 'acme/notes', asset: 'notes-linux-x64' } }
 ```
 
-Release facts say how the running application was built, released, and installed. The build bakes them into the artifact, and core fills `host.release` from them for every run, so an action reads them from its host. An author imports no file and passes nothing. [ADR-0065](decisions/0065-release-facts-on-the-host-say-how-the-running-application-was-built.md) records the decision, which replaces the packet of [ADR-0050](decisions/0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md).
+Release facts say how the running application was built, released, and installed. The build bakes the build and release group into the artifact, core reads the installation from the [installation record](#installation-record), and core fills `host.release` from them for every run, so an action reads them from its host. An author imports no file and passes nothing. [ADR-0065](decisions/0065-release-facts-on-the-host-say-how-the-running-application-was-built.md) records the decision, which replaces the packet of [ADR-0050](decisions/0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md).
 
 - **`build`.** `source` when the source runs directly with nothing baked in, such as `bun src/main.ts`. `development` for a development artifact, such as one `loom build --watch` or `loom build --build development` writes. `distributed` for a distributed artifact, which `loom build` writes by default. The build decides how core reports what only the author can fix, under [Development builds](#development-builds).
 - **`release`.** Present only when the artifact was built with `loom build --release`. `version` is the package's version, and `repository` is the repository the release belongs to, as `owner/name`. `asset` is the release asset's name, present for a compiled binary alone.
 - **The lane.** Core derives `lane` from `version`: the first prerelease identifier, so `1.1.0-next.3` reads `next` and `1.0.0-beta.1` reads `beta`, and `stable` when the version has none. It is a string, not a closed set, and the build never bakes it.
-- **`installation`.** Its shape is fixed here: how the application was installed, where it was installed, and the digest of what was installed. Where an installation record lives and how core reads it belong to a later installation-record contract. Until that contract ships, the group is always absent.
+- **`installation`.** How the application was installed, where it was installed, and the digest of what was installed. The build never bakes it. Core reads it from the [installation record](#installation-record) for a compiled binary built with `--release`, and only when the recorded path is the running executable. Until the record ships under [ADR-0071](decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md), the group is always absent.
 - **The define.** The build bakes one identifier, `__LOOM_RELEASE__`, through a bundler `define`. Its value is JSON, `{ "build": ..., "release"?: { "version", "repository", "asset"? } }`, which the bundler substitutes as an object literal. Core reads the identifier behind a `typeof` guard, so a source run, where nothing replaced it, reads it as absent. A define reaches code inside `node_modules`. The define reaches core only when the bundle includes `@loomcli/core`; a build that leaves core external reads `source`. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one, and so does every common bundler, such as esbuild, Rollup, and Vite. [`loom build`](toolchain.md#loom-build) bakes it, and its `--facts` and `--define` options print the value, so an author composes a custom build from the same facts.
 - **No baked facts is source.** An artifact built without the define reads `{ build: 'source' }`, as the source run does, and shows the author's detail. An application ships through `loom build`, and anything else counts as unbuilt.
-- **Captured with the host.** `run()` and `app.invoke` read the baked facts during host capture, once per run, and freeze them. An action's `invoke` reads its run's facts. A `release` override, `run({ host: { release } })` or `app.invoke`'s `host: { release }`, replaces the whole field as any host override does, which is how a test supplies facts. Core takes the override as given and reads no baked value.
+- **Captured with the host.** `run()` and `app.invoke` read the baked facts during host capture, once per run, and freeze them. An action's `invoke` reads its run's facts. A `release` override, `run({ host: { release } })` or `app.invoke`'s `host: { release }`, replaces the whole field as any host override does, which is how a test supplies facts. Core takes the override as given and reads no baked value and no installation record.
 - **Without a host.** `inspect()` takes no host, so it reads the baked facts to learn its build. [`check()`](#checking-the-declarations) reads none, because it runs the development checks whatever the build.
 - **A malformed value.** A baked value that is not a plain object, whose `build` is not one of the three values, or whose `release`, when present, is not a plain object with a `version` that is a semantic version and a `repository` of the form `owner/name`, or holds an `asset` that is not a nonempty string, is a defect under `@loomcli/core/invalid-release-facts`. Core ignores every other member, so a later toolchain can bake more facts under this core. Core reports the defect before the graph builds. The build step that baked the value is the author's, so core always reports it as its Developer Diagnostic, whose sentence names the member at fault, such as `The release facts baked into __LOOM_RELEASE__ hold build "staging".`, and whose correction is `Rebuild with loom build, or compose the define from loom build --define.` `run()` exits 1, `app.invoke` resolves `failed` with exit 1, and `inspect()` throws the `InternalError`. Its failure form's `message` is the fault's sentence in every build.
 - **The packet is removed.** The Application's `packet` option, the `Packet` type, `loom.packet.json`, and `packet()` from `@loomcli/loom/build` are gone, and the word leaves the public vocabulary. A JavaScript author who still passes `packet` meets the retired-option row of [Command declaration errors](#command-declaration-errors).
@@ -2288,6 +2288,112 @@ The check is proven when public APIs alone produce these results under Node and 
 - **Every gap.** A fixture whose root, a hidden Command, a deprecated option, a global option, a plugin's option, a plugin Command's argument, and an option a hook declares carry no description exits 1 from source with one diagnostic that lists seven findings in graph order, and runs from a bundle.
 - **Every word.** The same fixture exits 1 from source under `--help` and under a completion request.
 - **The doors.** `app.invoke` from source resolves `failed` with exit 1 and a form whose code is `internal`, `inspect()` returns the graph, and a fixture `onGraphBuilt` hook is never called.
+
+### Installation record
+
+```ts
+type ApplicationDirectory = 'installation' | 'logs';
+type DirectoryLookup =
+  | { readonly path: string } // the absolute directory
+  | { readonly variable: string }; // the variable it needs that is unset, empty, or not absolute
+declare function applicationDirectory(
+  kind: ApplicationDirectory,
+  application: string,
+  from: { readonly env: Host['env']; readonly platform: string },
+): DirectoryLookup;
+```
+
+```sh
+# The installer script, once the verified binary of notes is at /home/me/.local/bin/notes,
+# writes ~/.local/state/notes/installation/install.json:
+{"format":1,"method":"script","path":"/home/me/.local/bin/notes","digest":"sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}
+```
+
+```ts
+// src/commands/about.ts: the binary at that path reads it
+const { installation } = host.release;
+return out.print(installation === undefined ? 'Installed some other way.' : `Installed by ${installation.method} at ${installation.path}.`);
+```
+
+The installation record is one directory per application and per user that says how the application was installed and which files its installers wrote. It holds `install.json`, the installation, and one file for each first-party plugin that installs files, named for the plugin, such as `completion.json`. Each file has its own writers, and each writer replaces only its own file, whole, through a temporary file in the same directory and a rename, so no writer reads or merges another's. Core reads `install.json` and writes nothing. [ADR-0071](decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records the decision.
+
+- **The directory.** `applicationDirectory('installation', name, host)` resolves it from `env` and `platform` alone, and `applicationDirectory('logs', name, host)` resolves the [logging plugin's](#logging-plugin) default directory:
+
+  | Platform | `installation` | `logs` |
+  | --- | --- | --- |
+  | `darwin` | `$HOME/Library/Application Support/<app>/installation/` | `$HOME/Library/Logs/<app>/` |
+  | `win32` | `%LOCALAPPDATA%\<app>\installation\` | `%LOCALAPPDATA%\<app>\Logs\` |
+  | any other | `$XDG_STATE_HOME/<app>/installation/` | `$XDG_STATE_HOME/<app>/` |
+
+  On any other platform, an `XDG_STATE_HOME` that is unset, empty, or not an absolute path is replaced by `$HOME/.local/state`. A `HOME` or `LOCALAPPDATA` that is unset, empty, or not an absolute path cannot give the directory, and the lookup answers `{ variable }` with its name. `<app>` is the application's name, which the [portable name](glossary.md#names-and-routing) grammar keeps safe as one path segment. The platform chooses the row and its variables; the running process's path rules judge an absolute path and join the segments. The function reads no file and creates nothing. The `win32` rows are unverified under [ADR-0011](decisions/0011-bun-first-workflow-with-a-portable-core.md).
+- **`install.json`.** One line: `{"format":1,"method":"<method>","path":"<path>","digest":"sha256:<hex>"}` and a newline, the members in that order, where `path` is the absolute path of the installed binary and `<hex>` the 64 lowercase hexadecimal digits of its SHA-256 digest. The method `script` means an installer script put the binary there, and a plugin that replaces the binary may replace it. Two writers write the file: the installer script, after it moves a verified binary into place, and self-update, after it replaces the binary, each through the recipe's temporary file and rename.
+- **The shell recipe.** An installer script writes `install.json` with POSIX `sh` under `set -e` and no JSON parser, on Linux and macOS:
+
+  ```sh
+  # $app is the application's name; $target is the installed binary's absolute path.
+  case $target in
+    *[\"\\]* | *[[:cntrl:]]*) echo "$app: The install path holds a quote, a backslash, or a control character. Choose another install directory." >&2; exit 1 ;;
+    /*) ;;
+    *) echo "$app: The install path is not absolute. Choose an absolute install directory." >&2; exit 1 ;;
+  esac
+  case $(uname -s) in
+    Darwin) home_needed=1; state="$HOME/Library/Application Support" ;;
+    *) case ${XDG_STATE_HOME:-} in /*) home_needed=; state=$XDG_STATE_HOME ;; *) home_needed=1; state="$HOME/.local/state" ;; esac ;;
+  esac
+  if [ -n "$home_needed" ]; then
+    case ${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$target"); else digest=$(shasum -a 256 "$target"); fi
+  record="$state/$app/installation"
+  mkdir -p "$record"
+  staging=$(mktemp "$record/.install.json.XXXXXX")
+  printf '{"format":1,"method":"script","path":"%s","digest":"sha256:%s"}\n' "$target" "${digest%% *}" >"$staging"
+  mv -f "$staging" "$record/install.json"
+  ```
+
+- **Names.** `applicationDirectory`, `ApplicationDirectory`, and `DirectoryLookup` are exported from `@loomcli/core`.
+
+#### Reading the installation
+
+Core fills `host.release.installation` during host capture for `run()` and `app.invoke`, once per run:
+
+- **When it reads.** Only when the run has no `release` override and the baked facts hold a release with an `asset`, which a compiled binary built with `loom build --release` alone carries. Every other run reads no file and has no installation.
+- **What it reads.** `install.json` in the directory `applicationDirectory('installation', name, host)` gives for the run's `env` and `platform`, read synchronously when it is a regular file no larger than 1 MiB. Its content must be a JSON object whose `format` is `1`, whose `method` is a nonempty string, whose `path` is an absolute path, and whose `digest` is `sha256:` and 64 lowercase hexadecimal digits. Core ignores every other member, in any order.
+- **Whom it trusts.** Core sets `installation` to `{ method, path, digest }` as recorded only when `path` and `process.execPath`, each resolved through symbolic links, are the same path. A copy of the application run from another path, through Node or Bun, or from source has no installation.
+- **What never fails.** A variable the directory needs, a missing file, a read that fails, content that is not that object, a `format` core does not know, and a path that is not the running executable each leave `installation` absent. Core reports none of them, and the run continues.
+- **No hashing.** Core never computes the running binary's digest. A plugin that replaces the binary compares it with `digest` first.
+
+An application with no `installation` was installed some other way, such as by a package manager, from npm, or by copying the file, and that installer owns its updates.
+
+#### Installed files
+
+A first-party plugin that installs files outside the application, such as a completion script, a manual page, an agent skill, or a service unit, records them in its own file in the installation record through one module of `@loomcli/plugins` that every such plugin shares. The module is internal to the pack. Each plugin states to the operator what the module reports, under its own contract.
+
+```json
+{"format":1,"state":"pending","directories":["/home/me/.claude/skills/notes"],"files":[{"path":"/home/me/.claude/skills/notes/SKILL.md","prior":null,"intended":"sha256:…"}]}
+{"format":1,"state":"committed","directories":["/home/me/.claude/skills/notes"],"files":[{"path":"/home/me/.claude/skills/notes/SKILL.md","digest":"sha256:…"}]}
+```
+
+- **The file.** It holds the directories the module created and each file it installed with that file's digest. A `pending` file lists the directories the module created and will create, and holds, for each path, the digest it held before, `null` when it held nothing, and the digest it will hold, `null` when the file is being removed. A plugin's file that is not that shape, or whose `format` the module does not know, refuses the install or uninstall: the module reports its path and writes nothing. A missing plugin's file records nothing.
+- **Before writing.** An install checks every target first. A target that is absent, or a regular file the plugin's file records at that path with its digest unchanged, may be written. A target that is any other file, a file whose digest changed since it was recorded, a symbolic link, or a directory refuses the whole install, and the module writes nothing and reports each such path. The module never takes over a file it did not record.
+- **Writing.** The module writes the plugin's file as `pending`, creates each missing parent directory, writes each target to a staging file it creates exclusively in the target's directory, named `.<name>.<random>.loom-staging` and unique to the attempt, and renames it into place, removes each recorded file the install no longer lists when its digest is unchanged and keeps and reports one whose digest changed, and then writes the plugin's file as `committed`. It reads the run signal before the pending write and, once it has begun, does not stop between targets.
+- **Uninstalling.** The module removes each recorded file whose digest is unchanged, keeps and reports each whose digest changed, removes each recorded directory that is then empty, deepest first, and deletes the plugin's file. A file or directory that is already gone is not an error.
+- **Recovery.** Before any install or uninstall, a `pending` file is resolved by what is on disk: a path whose digest is the intended one was written, one whose digest is the prior one was not, one that is gone was removed, and one with any other digest was changed by someone else and is no longer recorded. A listed directory that exists stays recorded, and one that is gone is dropped. The module removes leftover staging files, writes the result as `committed`, and then does what was asked. It keeps no backup, so an interrupted install finishes on the next run rather than restoring the files it replaced.
+- **No lock.** Two runs of one plugin at once may each find the other's `pending` file and recover it, and the recovery of one can remove a staging file the other is still writing, so one run can fail with the runtime's error. Each target still holds whole content, the last commit wins, and the next run recovers. A file one wrote that the other's commit does not list is no longer recorded, so a later install refuses it until the operator removes it.
+- **A failed write.** A file system call that fails throws the runtime's error, which the plugin's Command reports as any failure. A `pending` file it leaves is recovered on the next run.
+
+#### Installation record acceptance
+
+The installation record is proven when public APIs, process runs, and the module's tests alone produce these results:
+
+- **The directory.** `applicationDirectory` gives each table row from an overridden `env` and `platform`, `$HOME/.local/state` for an `XDG_STATE_HOME` that is unset, empty, or relative, and `{ variable: 'HOME' }` for a `HOME` that is unset, empty, or relative whenever the row needs it, while an absolute `XDG_STATE_HOME` needs no `HOME`, with no file read or created.
+- **The recipe.** The shell recipe runs under `/bin/sh` on Linux and macOS against a fixture binary in a temporary home and writes `install.json` with the pinned bytes. It refuses a target path holding a quote, a backslash, or a newline, and a relative `HOME` whenever the directory needs it, with exit 1 and nothing written. On Linux, an absolute `XDG_STATE_HOME` writes the file with `HOME` unset.
+- **Reading.** A compiled fixture binary built with `--release` and recorded by the recipe prints its `installation` under the temporary home. A symbolic link to the binary, and a recorded path that is a symbolic link to it, read the same installation. The same binary prints none when copied to another path, when `install.json` is missing, empty, not JSON, an array, `format` `2`, an empty `method`, a relative `path`, or an uppercase `digest`, or a directory, and when the directory's variable is unset; each run exits with its own code and writes nothing to stderr. A bundle built for Node with `--release`, and the source run, print none and read no file. `install.json` with an extra member and its members reordered reads the same installation. `run({ host: { release } })` reads the override and no file.
+- **Installing.** Installing two files into a temporary directory writes both and a `committed` file with their digests and the created directory. A second install with new content replaces both, and one that lists only the first removes the second. An install over an unrecorded file, a recorded file changed since, a symbolic link, or a directory refuses, writes nothing, and reports the path, and so does an install whose plugin's file is damaged or holds an unknown `format`.
+- **Uninstalling.** Uninstall removes unchanged files and the created directory, keeps and reports a changed file, passes over a file already gone, and deletes the plugin's file.
+- **Recovery.** A process killed between two targets leaves a `pending` file, and the next install finishes with both targets written and a `committed` file. A process killed before it creates a listed directory leaves a `pending` file whose next install creates the directory and records it. A pending path changed by hand before the next run is kept and no longer recorded. A leftover staging file is removed. Two installs writing one target at once never rename one's partial staging file into place.
+- **Logging.** The logging plugin's default directory follows the `logs` column, and a relative `HOME`, for the default directory and for a `file` under `~/`, calls `onError` with `unresolved-directory` and `variable` `HOME`.
+- **Packaging.** `pnpm check:packed` compiles a consumer that calls `applicationDirectory` against core's emitted declarations and runs it under Node and Bun.
 
 ### Developer Diagnostics
 
@@ -5175,7 +5281,7 @@ The logging plugin writes each [log event](#logging) as one JSON record, appende
   | `win32` | `%LOCALAPPDATA%\<app>\Logs\`, unverified under ADR-0011 |
   | any other | `$XDG_STATE_HOME/<app>/`, or `$HOME/.local/state/<app>/` when `XDG_STATE_HOME` is unset or not absolute |
 
-  `<app>` is the application's name. The file is `<app>.jsonl` with no `file` setting. A `file` that is a bare or relative name resolves inside the default directory, an absolute one is used as written, and one that starts with `~/` resolves from `destination.env.HOME`, or from `USERPROFILE` on `win32` when `HOME` is unset. A relative `file` never resolves against the working directory. The plugin creates a missing directory and its parents.
+  `<app>` is the application's name. The plugin resolves the directory through core's [`applicationDirectory('logs', ...)`](#installation-record), so a `HOME`, `XDG_STATE_HOME`, or `LOCALAPPDATA` that is empty or not an absolute path counts as unset. The file is `<app>.jsonl` with no `file` setting. A `file` that is a bare or relative name resolves inside the default directory, an absolute one is used as written, and one that starts with `~/` resolves from `destination.env.HOME`, or from `USERPROFILE` on `win32` when `HOME` is unset, either counting only when it is an absolute path. A relative `file` never resolves against the working directory. The plugin creates a missing directory and its parents.
 - **Appending.** The plugin appends each record with one synchronous write before its hook returns, so a record survives a `process.exit()` or a kill that follows the call. Several processes may append to one file, and on a local file system each record lands whole.
 - **Rotation.** Before a write that would take the file past `maxBytes`, the plugin renames the file to its first copy, shifting each older copy up one, deletes the copy past `keep`, and starts a new file, with no timer. A copy's name puts its number before the file's last extension, `collector.1.jsonl`, or after a name with none, `hub.1`. A record larger than `maxBytes` is written whole to the new file. When a rename fails because another process rotated first, the plugin appends to the file now at the path. The plugin takes no lock. Several processes may append to one file and rotate it, and while their rotations follow one another every record stays in the file or a copy until its copy passes `keep`. Two processes that rotate one file at the same instant may each rotate it, and a rename of one can replace a copy the other just moved, so records in the copies can be lost early; every line still lands whole, and later records land in the file.
 - **The console.** With `to: 'console'`, the plugin writes each record to `destination.stderr`, and writes nothing when it is `null`. It never writes to stdout, which carries the run's output and, under MCP, the protocol.
@@ -5191,7 +5297,7 @@ The plugin is proven when process tests under Node and Bun, each with a temporar
 - **The file.** `file: 'collector.jsonl'` writes inside the default directory, an absolute `file` writes where it names, `~/x.jsonl` resolves from the test's `HOME`, and from `USERPROFILE` in a `win32` fixture with no `HOME`, a missing directory is created, and `darwin` and `win32` fixtures resolve their table rows from an overridden `env` and `platform`.
 - **Rotation.** With `maxBytes: 200` and `keep: 2`, writes past the size leave the file, `.1`, and `.2`, the oldest copy deleted; a record larger than `maxBytes` lands whole in a new file; two processes that take turns appending and rotating one file leave every record in the file or a copy; and two that append and rotate one file at once leave every line whole and none written twice.
 - **The console.** `to: 'console'` writes the same bytes to stderr and none to stdout, and an `app.invoke` writes nothing to stderr while the file destination still writes.
-- **A failed write.** A read-only directory calls `onError` with `kind` `create-directory` or `append` and the path for each record that fails, and an unset `HOME` with `unresolved-directory` and `variable` `HOME`; with no `onError`, each run exits with its own code and writes nothing to stderr; a later record lands once the directory is writable; and an `onError` that throws is reported as a broken hook with exit 1.
+- **A failed write.** A read-only directory calls `onError` with `kind` `create-directory` or `append` and the path for each record that fails, and an unset or relative `HOME` with `unresolved-directory` and `variable` `HOME`; with no `onError`, each run exits with its own code and writes nothing to stderr; a later record lands once the directory is writable; and an `onError` that throws is reported as a broken hook with exit 1.
 - **Settings.** Each settings fault throws its pinned diagnostic at the `logging()` call.
 - **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/logging` from the packed tarball under Node and Bun.
 
