@@ -15,6 +15,7 @@ import {
   removeStagingFiles,
   replaceFile,
 } from './disk.js';
+import type { Observed } from './disk.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type { Committed, CommittedFile, Pending, PendingFile } from './record.js';
 
@@ -35,12 +36,14 @@ type RefusalReason =
   | 'link'
   | 'directory'
   | 'special'
-  | 'damaged'
-  | 'unknown-format';
+  | RecordRefusalReason;
 
-interface Refusal {
+/** Why the plugin's own file refuses an install or uninstall, the one refusal an uninstall has. */
+type RecordRefusalReason = 'damaged' | 'unknown-format';
+
+interface Refusal<Reason extends RefusalReason = RefusalReason> {
   readonly path: string;
-  readonly reason: RefusalReason;
+  readonly reason: Reason;
 }
 
 /** What the plugin's Command states to the operator: the refused paths, or what was done. */
@@ -56,7 +59,7 @@ type InstallOutcome =
     };
 
 type UninstallOutcome =
-  | { readonly status: 'refused'; readonly refused: readonly Refusal[] }
+  | { readonly status: 'refused'; readonly refused: readonly Refusal<RecordRefusalReason>[] }
   | {
       readonly status: 'uninstalled';
       readonly removed: readonly string[];
@@ -66,13 +69,13 @@ type UninstallOutcome =
 const EMPTY = 0;
 
 /** Whose files: the record directory, which the caller resolves, the plugin, and its run's signal. */
-interface PluginRecord {
+interface UninstallRequest {
   readonly record: string;
   readonly plugin: string;
   readonly signal: AbortSignal;
 }
 
-interface InstallRequest extends PluginRecord {
+interface InstallRequest extends UninstallRequest {
   readonly files: readonly InstalledFile[];
 }
 
@@ -107,7 +110,9 @@ function recoveredFile(entry: PendingFile): CommittedFile[] {
  * What the plugin's file records, a missing one recording nothing and a pending one recovered
  * first, or the refusal of a file the module cannot read.
  */
-function recorded(path: string): { readonly committed: Committed } | { readonly refused: Refusal } {
+function recorded(
+  path: string,
+): { readonly committed: Committed } | { readonly refused: Refusal<RecordRefusalReason> } {
   const read = readPluginFile(path);
   if (read.kind === 'missing') {
     return { committed: nothingRecorded };
@@ -119,11 +124,7 @@ function recorded(path: string): { readonly committed: Committed } | { readonly 
 }
 
 /** The refusal a target is, or none for an absent target or a recorded file with its digest unchanged. */
-function refusalOf(
-  path: string,
-  seen: ReturnType<typeof observe>,
-  digests: ReadonlyMap<string, string>,
-): Refusal[] {
+function refusalOf(path: string, seen: Observed, digests: ReadonlyMap<string, string>): Refusal[] {
   switch (seen.kind) {
     case 'absent': {
       return [];
@@ -268,9 +269,10 @@ function removeDirectories(directories: readonly string[]): void {
 /**
  * Uninstalls the plugin's files. It recovers a pending plugin's file first, removes each recorded
  * file whose digest is unchanged, keeps each one someone changed, removes each recorded directory
- * that is then empty, deepest first, and deletes the plugin's file. A path already gone is no error.
+ * that is then empty, deepest first, and deletes the plugin's file. It reads the run signal before
+ * the first removal. A path already gone is no error.
  */
-function uninstall(request: PluginRecord): UninstallOutcome {
+function uninstall(request: UninstallRequest): UninstallOutcome {
   const path = pluginFilePath(request.record, request.plugin);
   const found = recorded(path);
   if ('refused' in found) {
@@ -287,9 +289,10 @@ export type {
   InstalledFile,
   InstallOutcome,
   InstallRequest,
-  PluginRecord,
+  RecordRefusalReason,
   Refusal,
   RefusalReason,
   UninstallOutcome,
+  UninstallRequest,
 };
 export { install, uninstall };

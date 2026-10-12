@@ -15,6 +15,9 @@ afterEach(() => {
   }
 });
 
+/** Fixed absolute directories for lookups that never touch the disk. */
+const fixed = { home: '/home/me', local: '/local', state: '/state' };
+
 /** An empty temporary directory whose home and state directories the lookups name but never create. */
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), 'loom-directory-'));
@@ -40,9 +43,8 @@ test.each([
   ['win32', 'installation', ['local', 'notes', 'installation']],
   ['win32', 'logs', ['local', 'notes', 'Logs']],
 ] as const)('%s gives the %s row', (platform, kind, [base, ...segments]) => {
-  const box = sandbox();
-  const env = { HOME: box.home, LOCALAPPDATA: box.local, XDG_STATE_HOME: box.state };
-  expect(lookup(kind, platform, env)).toEqual({ path: join(box[base], ...segments) });
+  const env = { HOME: fixed.home, LOCALAPPDATA: fixed.local, XDG_STATE_HOME: fixed.state };
+  expect(lookup(kind, platform, env)).toEqual({ path: join(fixed[base], ...segments) });
 });
 
 test.each([
@@ -50,13 +52,12 @@ test.each([
   ['empty', ''],
   ['relative', 'relative/state'],
 ])('an XDG_STATE_HOME that is %s falls back to HOME/.local/state', (_case, state) => {
-  const box = sandbox();
-  const env = { HOME: box.home, XDG_STATE_HOME: state };
+  const env = { HOME: fixed.home, XDG_STATE_HOME: state };
   expect(lookup('installation', 'linux', env)).toEqual({
-    path: join(box.home, '.local', 'state', 'notes', 'installation'),
+    path: join(fixed.home, '.local', 'state', 'notes', 'installation'),
   });
   expect(lookup('logs', 'linux', env)).toEqual({
-    path: join(box.home, '.local', 'state', 'notes'),
+    path: join(fixed.home, '.local', 'state', 'notes'),
   });
 });
 
@@ -67,16 +68,15 @@ test.each([
 ])('a HOME that is %s answers its variable wherever the row needs it', (_case, home) => {
   for (const kind of ['installation', 'logs'] as const) {
     expect(lookup(kind, 'linux', { HOME: home })).toEqual({ variable: 'HOME' });
-    expect(lookup(kind, 'darwin', { HOME: home, XDG_STATE_HOME: '/state' })).toEqual({
+    expect(lookup(kind, 'darwin', { HOME: home, XDG_STATE_HOME: fixed.state })).toEqual({
       variable: 'HOME',
     });
   }
 });
 
 test('an absolute XDG_STATE_HOME needs no HOME', () => {
-  const box = sandbox();
-  expect(lookup('installation', 'linux', { XDG_STATE_HOME: box.state })).toEqual({
-    path: join(box.state, 'notes', 'installation'),
+  expect(lookup('installation', 'linux', { XDG_STATE_HOME: fixed.state })).toEqual({
+    path: join(fixed.state, 'notes', 'installation'),
   });
 });
 
@@ -86,7 +86,7 @@ test.each([
   ['relative', 'AppData'],
 ])('a LOCALAPPDATA that is %s answers its variable on win32', (_case, local) => {
   for (const kind of ['installation', 'logs'] as const) {
-    expect(lookup(kind, 'win32', { HOME: '/home/me', LOCALAPPDATA: local })).toEqual({
+    expect(lookup(kind, 'win32', { HOME: fixed.home, LOCALAPPDATA: local })).toEqual({
       variable: 'LOCALAPPDATA',
     });
   }

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { isRecord } from '../plain-data.js';
-import { replaceFile } from './disk.js';
+import { errorCode, replaceFile } from './disk.js';
 
 /** A recorded file and the digest the module wrote to it. */
 interface CommittedFile {
@@ -138,7 +138,7 @@ function readText(path: string): string | undefined {
   try {
     return readFileSync(path, 'utf8');
   } catch (error) {
-    if (error instanceof Error && Reflect.get(error, 'code') === 'ENOENT') {
+    if (errorCode(error) === 'ENOENT') {
       return undefined;
     }
     throw error;

@@ -162,6 +162,7 @@ export type { Observed };
 export {
   createDirectory,
   digestOf,
+  errorCode,
   missingParents,
   observe,
   removeEmptyDirectory,

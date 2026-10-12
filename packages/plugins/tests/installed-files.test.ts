@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -305,7 +306,42 @@ test('an install reads the run signal before it writes and throws its reason', (
   expect(existsSync(box.directory)).toBe(false);
 });
 
+test.skipIf(process.platform === 'win32')(
+  'an install over a FIFO refuses, writes nothing, and reports the path',
+  () => {
+    const box = sandbox();
+    mkdirSync(box.directory);
+    expect(spawnSync('mkfifo', [box.second]).status).toBe(0);
+    expect(
+      installed(box, [
+        { content: 'new', path: box.first },
+        { content: 'new', path: box.second },
+      ]),
+    ).toEqual({ refused: [{ path: box.second, reason: 'special' }], status: 'refused' });
+    expect(existsSync(box.first)).toBe(false);
+    expect(existsSync(box.owner)).toBe(false);
+  },
+);
+
 // Uninstalling
+
+test('an uninstall reads the run signal before the first removal and throws its reason', () => {
+  const box = sandbox();
+  installed(box, [
+    { content: 'test', path: box.first },
+    { content: 'abc', path: box.second },
+  ]);
+  const before = ownerText(box);
+  const controller = new AbortController();
+  const reason = new Error('Cancelled.');
+  controller.abort(reason);
+  expect(() =>
+    uninstall({ plugin: 'skill', record: box.record, signal: controller.signal }),
+  ).toThrow(reason);
+  expect(readFileSync(box.first, 'utf8')).toBe('test');
+  expect(readFileSync(box.second, 'utf8')).toBe('abc');
+  expect(ownerText(box)).toBe(before);
+});
 
 test('uninstall removes unchanged files and the created directory, and deletes the plugin file', () => {
   const box = sandbox();
