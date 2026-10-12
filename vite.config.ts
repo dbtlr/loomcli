@@ -170,6 +170,23 @@ export default defineConfig({
         },
       },
       {
+        files: [
+          'packages/plugins/src/installation/record.ts',
+          'packages/plugins/tests/installed-files.test.ts',
+        ],
+        rules: {
+          // A plugin's file in the installation record keeps the member order the contract writes.
+          'eslint/sort-keys': 'off',
+        },
+      },
+      {
+        files: ['packages/plugins/src/installation/**'],
+        rules: {
+          // A pending entry spells a file that held nothing, or will hold nothing, `null`, as the contract states.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/plugins/src/logging/directory.ts'],
         rules: {
           // A logging error with no directory to name reads `null` for its path, as the contract states.
