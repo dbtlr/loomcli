@@ -273,8 +273,10 @@ function placeBinary({ name, checked, bytes, signal }: Placement): void {
 /** Rewrites the installation record for the binary now at the recorded path. */
 function writeRecord({ name, checked, version, bytes }: Placement): void {
   const line = recordLine(checked.path, digestOf(bytes));
+  const record = join(checked.record, 'install.json');
   try {
-    replaceFile(join(checked.record, 'install.json'), line, { mode: recordMode });
+    removeStagingFiles(record);
+    replaceFile(record, line, { mode: recordMode });
   } catch (error) {
     throw failures.record(name, version.text, error);
   }

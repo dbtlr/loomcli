@@ -39,13 +39,20 @@ function redirect(status, location) {
 
 /** The Atom feed GitHub serves: one entry per tag, newest first, each linking its tag page. */
 function feed(repository) {
+  // An entry for another repository's tag, which a feed never holds for this one, must be passed over.
+  const foreign = (github.foreign ?? [])
+    .map(
+      ({ owner, tag }) =>
+        `<entry><link rel="alternate" type="text/html" href="https://github.com/${owner}/releases/tag/${tag}"/></entry>`,
+    )
+    .join('');
   const entries = github.feed
     .map(
       (tag) =>
         `<entry><id>tag:github.com,2008:Repository/1/${tag}</id><link rel="alternate" type="text/html" href="https://github.com/${repository}/releases/tag/${tag}"/><title>${tag}</title><content type="html">&lt;a href=&quot;https://github.com/${repository}/releases/tag/v99.0.0&quot;&gt;notes&lt;/a&gt;</content></entry>`,
     )
     .join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><link type="text/html" rel="alternate" href="https://github.com/${repository}/releases"/><link type="application/atom+xml" rel="self" href="https://github.com/${repository}/releases.atom"/>${entries}</feed>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><link type="text/html" rel="alternate" href="https://github.com/${repository}/releases"/><link type="application/atom+xml" rel="self" href="https://github.com/${repository}/releases.atom"/>${foreign}${entries}</feed>`;
 }
 
 /** What GitHub answers for one URL on github.com. */
@@ -121,11 +128,33 @@ function answerRule(rule, text, signal) {
     });
     return new Response(body, { status: 200 });
   }
+  if (rule === 'late-abort') {
+    // The run is cancelled once the download has its answer, so the abort lands before the rename.
+    controller.abort();
+    return undefined;
+  }
+  if (rule === 'offsite') {
+    return redirect(302, 'https://example.com/elsewhere');
+  }
+  if (typeof rule === 'object' && rule !== null) {
+    return hop(rule.hops, text);
+  }
   if (rule === 'abort') {
     controller.abort();
     throw signal.reason;
   }
   return typeof rule === 'number' ? new Response('Unavailable', { status: rule }) : undefined;
+}
+
+/** Redirects `text` back to itself until it has been redirected `hops` times, then lets GitHub answer. */
+function hop(hops, text) {
+  const url = new URL(text);
+  const done = Number(url.searchParams.get('hop') ?? '0');
+  if (done >= hops) {
+    return undefined;
+  }
+  url.searchParams.set('hop', String(done + 1));
+  return redirect(302, url.href);
 }
 
 /** A rule the scenario sets for URLs that contain a fragment, applied before GitHub answers. */

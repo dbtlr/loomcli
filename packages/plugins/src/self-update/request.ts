@@ -85,12 +85,13 @@ async function walk(
   if (next === undefined) {
     return { github: state.github, response };
   }
+  // The bound comes before the stop rule, so a 21st redirect fails wherever it leads.
+  if (state.redirects === maxRedirects) {
+    throw new RequestError('too-many', state.start.href);
+  }
   const github = next.origin === 'https://github.com' ? next : state.github;
   if (stop(next)) {
     return { github, stopped: next };
-  }
-  if (state.redirects === maxRedirects) {
-    throw new RequestError('too-many', state.start.href);
   }
   return walk({ ...state, github, redirects: state.redirects + oneMore, url: next }, signal, stop);
 }

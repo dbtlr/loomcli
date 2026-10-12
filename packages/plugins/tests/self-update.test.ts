@@ -18,6 +18,12 @@ import { join } from 'node:path';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import {
+  channelOf,
+  compareVersions,
+  parseVersion,
+  versionOfTag,
+} from '../src/self-update/version.js';
 
 const fixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
 
@@ -40,6 +46,8 @@ function release(version: string, bytes = `notes ${version} binary\n`): [string,
 
 interface GitHub {
   readonly repository: string;
+  /** Feed entries that link another repository's tag pages. */
+  readonly foreign?: readonly { readonly owner: string; readonly tag: string }[];
   readonly renamedFrom?: string;
   readonly latest: string | null;
   readonly feed: readonly string[];
@@ -124,7 +132,7 @@ interface Scenario {
   readonly release?: unknown;
   readonly installation?: unknown;
   readonly github?: Partial<GitHub>;
-  readonly rules?: Record<string, string | number>;
+  readonly rules?: Record<string, string | number | { readonly hops: number }>;
   readonly hook?: 'record' | 'throw';
   readonly abortAfterRename?: boolean;
   readonly env?: Record<string, string>;
@@ -215,6 +223,8 @@ test('a stable binary updates to the latest release, keeps its mode, rewrites th
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
   expect(statSync(box.binary).mode & 0o777).toBe(0o755);
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
+  // The record keeps the mode the installer script's mktemp gives it.
+  expect(statSync(box.record).mode & 0o777).toBe(0o600);
   expect(stagingFiles(box.bin)).toEqual([]);
   expect(hookCalls(box)).toEqual([
     { aborted: false, current: '1.5.0', host: '1.4.2', path: box.binary, previous: '1.4.2' },
@@ -525,6 +535,37 @@ const downloadFailures: [string, string[], Scenario, string][] = [
     'notes could not download https://github.com/acme/notes/releases/download/v9.9.9/SHA256SUMS (404). Check that release v9.9.9 exists, then run self-update again.',
   ],
   [
+    'a 503 for a named version',
+    ['1.4.0'],
+    { rules: { '/v1.4.0/SHA256SUMS': 503 } },
+    'notes could not download https://github.com/acme/notes/releases/download/v1.4.0/SHA256SUMS (503). Run self-update again later.',
+  ],
+  [
+    'a 21st redirect on the way to the asset',
+    [],
+    { rules: { [`/releases/download/v1.5.0/${asset}`]: { hops: 20 } } },
+    'notes was redirected too many times while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.',
+  ],
+  [
+    'a 503 for a feed candidate',
+    ['--channel', 'next'],
+    {
+      github: { ...channelGitHub, feed: ['v1.7.0-next.1', 'v1.6.0'] },
+      rules: { '/v1.7.0-next.1/SHA256SUMS': 503 },
+    },
+    'notes could not download https://github.com/acme/notes/releases/download/v1.7.0-next.1/SHA256SUMS (503). Run self-update again later.',
+  ],
+  [
+    '--check on a release that does not list the asset',
+    ['--check'],
+    {
+      github: {
+        releases: { 'v1.5.0': { assets: { [asset]: corrupt }, sums: `${digestOf('x')}  other\n` } },
+      },
+    },
+    'Release v1.5.0 of acme/notes has no notes-linux-x64 in its SHA256SUMS. Install a release that lists it, or ask its maintainers to publish one.',
+  ],
+  [
     'a 503',
     [],
     { rules: { [`/v1.5.0/${asset}`]: 503 } },
@@ -608,4 +649,120 @@ test('a throwing hook fails the run after the update line, and the new binary an
   expect(lines(result.stderr)[1]).toBe('Updated notes from 1.4.2 to 1.5.0.');
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
+});
+
+test('twenty redirects on the way to the asset are followed', () => {
+  const box = sandbox();
+  // Nineteen hops on github.com, then GitHub's own redirect to the asset host.
+  const result = run(box, [], { rules: { [`/releases/download/v1.5.0/${asset}`]: { hops: 19 } } });
+  expect(result.status).toBe(0);
+  expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
+});
+
+test('a run cancelled after the download and before the rename exits 130 and leaves everything', () => {
+  const box = sandbox();
+  const result = run(box, [], {
+    rules: { [`release-assets.example/v1.5.0/${asset}`]: 'late-abort' },
+  });
+  expect(result.status).toBe(130);
+  untouched(box);
+  expect(hookCalls(box)).toEqual([]);
+});
+
+test('the refusals keep their order', () => {
+  const unresolved = sandbox();
+  const first = run(unresolved, [], {
+    env: { HOME: 'home', XDG_STATE_HOME: '' },
+    installation: {
+      digest: `sha256:${digestOf(oldBytes)}`,
+      method: 'npm',
+      path: unresolved.binary,
+    },
+  });
+  expect(first.stderr).toBe(
+    'notes cannot find its installation record because HOME is not an absolute path. Set HOME to an absolute path, then run self-update again.\n',
+  );
+  const directory = sandbox();
+  rmSync(directory.binary);
+  mkdirSync(directory.binary);
+  const second = run(directory, []);
+  expect(second.stderr).toBe(
+    `notes cannot find its binary at ${directory.binary}. Install it again with install.sh.\n`,
+  );
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'a changed binary refuses before an unwritable directory',
+  () => {
+    const box = sandbox();
+    writeFileSync(box.binary, 'patched by hand\n');
+    chmodSync(box.bin, 0o555);
+    const result = run(box, []);
+    expect(result.stderr).toBe(
+      `notes at ${box.binary} changed since it was installed, so self-update will not replace it. Install it again with install.sh.\n`,
+    );
+  },
+);
+
+test('the feed passes over another repository and another channel, and stable passes over a prerelease or offsite answer', () => {
+  const box = sandbox();
+  const feed = run(box, [], {
+    github: {
+      ...channelGitHub,
+      feed: ['v1.8.0-beta.1', 'v1.6.0-next.2'],
+      foreign: [{ owner: 'other/repo', tag: 'v9.0.0' }],
+      releases: Object.fromEntries([release('1.8.0-beta.1'), release('1.6.0-next.2')]),
+    },
+    version: '1.6.0-next.1',
+  });
+  expect(feed.status).toBe(0);
+  expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.6.0-next.2 binary\n');
+  expect(requests(box).filter((url) => url.includes('other/repo'))).toEqual([]);
+
+  const noRelease =
+    'notes found no release on the stable channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.\n';
+  const prerelease = sandbox();
+  expect(run(prerelease, [], { github: { latest: 'v1.6.0-next.2' } }).stderr).toBe(noRelease);
+  const offsite = sandbox();
+  expect(run(offsite, [], { rules: { 'releases/latest': 'offsite' } }).stderr).toBe(noRelease);
+});
+
+test('versions compare by SemVer precedence, and a version reads its channel', () => {
+  const ordered = [
+    '1.0.0-alpha',
+    '1.0.0-alpha.1',
+    '1.0.0-alpha.2',
+    '1.0.0-alpha.10',
+    '1.0.0-alpha.beta',
+    '1.0.0-beta',
+    '1.0.0-beta.2',
+    '1.0.0-beta.11',
+    '1.0.0-rc.1',
+    '1.0.0',
+    '1.0.1',
+    '1.1.0',
+    '2.0.0',
+  ]
+    .map((text) => parseVersion(text))
+    .filter((version) => version !== undefined);
+  expect(ordered).toHaveLength(13);
+  // Each version against the one after it: lower one way, higher the other.
+  const comparisons = ordered.slice(1).map((higher, index) => {
+    const lower = ordered[index];
+    return lower === undefined
+      ? 'missing'
+      : [compareVersions(lower, higher), compareVersions(higher, lower)];
+  });
+  expect(comparisons).toEqual(comparisons.map(() => [-1, 1]));
+  const [built, plain] = ['1.0.0+linux', '1.0.0'].map((text) => parseVersion(text));
+  expect(built !== undefined && plain !== undefined && compareVersions(built, plain)).toBe(0);
+  expect(['01.0.0', '1.0.0-01', '1.0', 'v1.0.0'].map((text) => parseVersion(text))).toEqual([
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  expect(versionOfTag('V1.0.0')).toBeUndefined();
+  const next = versionOfTag('v1.6.0-next.2');
+  expect(next === undefined ? undefined : channelOf(next)).toBe('next');
 });
