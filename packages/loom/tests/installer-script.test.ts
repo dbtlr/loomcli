@@ -298,7 +298,7 @@ function shasumInstalled(): boolean {
     return true;
   }
   if (process.env.LOOM_REQUIRE_SHELLS) {
-    throw new Error('LOOM_REQUIRE_SHELLS is set, but shasum not installed.');
+    throw new Error('LOOM_REQUIRE_SHELLS is set, but shasum is not installed.');
   }
   return false;
 }
@@ -573,7 +573,7 @@ test('a PATH entry that only holds the install directory as a prefix still draws
 
 /** The sentence the recipe prints when the record's directory cannot be created. */
 function recordSentence(record: string) {
-  return `notes: The installation record's directory ${record} cannot be created. Make it writable, then run the installer again.\n`;
+  return `notes: The installation record's directory ${record} cannot be created. Make it a directory you can write to, then run the installer again.\n`;
 }
 
 test('a record directory that cannot be created exits 1 with the recipe sentence, downloads nothing, and creates no install directory', () => {

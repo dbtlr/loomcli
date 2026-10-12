@@ -22,7 +22,7 @@ if [ -n "$home_needed" ]; then
   case \${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
 fi
 record="$state/$app/installation"
-mkdir -p "$record" 2>/dev/null || { echo "$app: The installation record's directory $record cannot be created. Make it writable, then run the installer again." >&2; exit 1; }
+mkdir -p "$record" 2>/dev/null || { echo "$app: The installation record's directory $record cannot be created. Make it a directory you can write to, then run the installer again." >&2; exit 1; }
 `;
 
 /**
