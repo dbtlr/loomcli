@@ -41,7 +41,7 @@ if (door === 'invoke') {
   const outcome = await probe.invoke([process.argv[2] ?? 'installation'], {});
   process.stdout.write(outcome.output);
 } else if (door === 'override') {
-  const release = { asset: 'probe-test', lane: 'stable', repository: 'acme/probe', version: '1.0.0' };
+  const release = { asset: 'probe-test', channel: 'stable', repository: 'acme/probe', version: '1.0.0' };
   await probe.run({ host: { release: { build: 'distributed', release } } });
 } else {
   await probe.run();
@@ -255,6 +255,6 @@ test('a release override reads the override and no installation', () => {
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
     build: 'distributed',
-    release: { asset: 'probe-test', lane: 'stable', repository: 'acme/probe', version: '1.0.0' },
+    release: { asset: 'probe-test', channel: 'stable', repository: 'acme/probe', version: '1.0.0' },
   });
 });

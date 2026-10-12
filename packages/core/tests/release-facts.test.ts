@@ -121,15 +121,15 @@ test.each([
   ['2.0.0', 'stable'],
   ['2.0.0+build.5', 'stable'],
 ])(
-  'a bundle that bakes release %s reads lane %s, which core derives, with no asset',
-  (version, lane) => {
+  'a bundle that bakes release %s reads channel %s, which core derives, with no asset',
+  (version, channel) => {
     const facts = JSON.stringify({
       build: 'distributed',
       release: { repository: 'acme/probe', version },
     });
     for (const runtime of runtimes) {
       expect(printed(fromBundle(facts, runtime, 'facts'))).toEqual({
-        facts: { build: 'distributed', release: { lane, repository: 'acme/probe', version } },
+        facts: { build: 'distributed', release: { channel, repository: 'acme/probe', version } },
         frozen: true,
       });
     }
@@ -146,7 +146,7 @@ test('a baked member core does not know reads as the known members alone', () =>
     expect(printed(fromBundle(facts, runtime, 'facts'))).toEqual({
       facts: {
         build: 'distributed',
-        release: { lane: 'stable', repository: 'acme/probe', version: '1.0.0' },
+        release: { channel: 'stable', repository: 'acme/probe', version: '1.0.0' },
       },
       frozen: true,
     });
@@ -268,7 +268,7 @@ test("app.invoke reads the source's facts, or its host override as given, and an
     output: `${JSON.stringify({
       facts: {
         build: 'development',
-        release: { lane: 'given', repository: 'x', version: '0' },
+        release: { channel: 'given', repository: 'x', version: '0' },
       },
       frozen: false,
     })}\n`,

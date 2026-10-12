@@ -111,7 +111,7 @@ export type Build = 'development' | 'distributed';
 
 /**
  * The release facts a build bakes into `__LOOM_RELEASE__`, in the shape core reads. Core derives
- * the lane from the version, so the build never bakes it.
+ * the release channel from the version, so the build never bakes it.
  */
 export interface BuildFacts {
   readonly build: Build;
