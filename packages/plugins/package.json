@@ -71,6 +71,10 @@
       "types": "./dist/src/records.d.ts",
       "import": "./dist/src/records.js"
     },
+    "./self-update": {
+      "types": "./dist/src/self-update/plugin.d.ts",
+      "import": "./dist/src/self-update/plugin.js"
+    },
     "./suggestions": {
       "types": "./dist/src/suggestions/plugin.d.ts",
       "import": "./dist/src/suggestions/plugin.js"
