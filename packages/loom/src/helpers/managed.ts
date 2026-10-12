@@ -6,8 +6,12 @@ const markdownHeader = /^<!-- Managed by loom init\. sha256:(?<checksum>[\da-f]{
 /** The header line of a managed shell file, which records the checksum of the file's content. */
 const shellHeader = /^# Managed by loom init\. sha256:(?<checksum>[\da-f]{64})$/u;
 
-/** The `#!/bin/sh` line a managed shell file opens with, and its line ending. */
-const shebang = /^#!\/bin\/sh\r?\n/u;
+/**
+ * The `#!` line a shell file opens with, and its line ending. Any `#!` line counts, so a managed
+ * script whose `#!/bin/sh` line was edited, such as to `#!/usr/bin/env sh`, keeps its header and
+ * reads as drift instead of leaving management.
+ */
+const shebang = /^#![^\n]*\n/u;
 
 /** YAML frontmatter at the start of a file: a `---` line, its body, and a closing `---` line. */
 const frontmatter = /^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/u;
@@ -32,15 +36,15 @@ export interface ManagedFile {
 }
 
 /**
- * Reads a managed file's header. In a shell file, one that opens with `#!/bin/sh`, the header is a
+ * Reads a managed file's header. In a shell file, one that opens with a `#!` line, the header is a
  * `#` comment on the second line. Otherwise it is a Markdown comment on the file's first line, or,
  * when the file opens with YAML frontmatter, on the first non-blank line after the closing `---`
  * line, because a Markdown formatter separates the frontmatter from the next block with a blank
  * line. The content without the header is the file's whole text with exactly that line and its line
- * ending, `\n` or `\r\n`, removed, so the `#!/bin/sh` line, the frontmatter, the blank lines before
- * the header, and every byte after it stay. The checksum a header records covers that content with
- * each CRLF read as LF, so a checkout that converts line endings, as `core.autocrlf=true` does, does
- * not read as drift. A file whose header line is not a managed header is not managed, and reads
+ * ending, `\n` or `\r\n`, removed, so the `#!` line, the frontmatter, the blank lines before the
+ * header, and every byte after it stay. The checksum a header records covers that content with each
+ * CRLF read as LF, so a checkout that converts line endings, as `core.autocrlf=true` does, does not
+ * read as drift. A file whose header line is not a managed header is not managed, and reads
  * `undefined`.
  */
 export function readManaged(text: string): ManagedFile | undefined {
@@ -69,12 +73,12 @@ export function managedChecksum(content: string): string {
 }
 
 /**
- * A managed file's text for its content. Shell content, which opens with `#!/bin/sh`, takes a `#`
- * header on the line after it. Other content takes a Markdown header on the first line, or, when the
- * content opens with YAML frontmatter, after the frontmatter and the one blank line that follows it
- * in the content, so a Markdown formatter finds the blank line it would insert already there. The
- * header records the checksum of the content itself, so `readManaged` reads the content back exactly
- * and finds it undrifted.
+ * A managed file's text for its content. Shell content, which opens with a `#!` line such as
+ * `#!/bin/sh`, takes a `#` header on the line after it. Other content takes a Markdown header on the
+ * first line, or, when the content opens with YAML frontmatter, after the frontmatter and the one
+ * blank line that follows it in the content, so a Markdown formatter finds the blank line it would
+ * insert already there. The header records the checksum of the content itself, so `readManaged`
+ * reads the content back exactly and finds it undrifted.
  */
 export function renderManaged(content: string): string {
   const checksum = managedChecksum(content);

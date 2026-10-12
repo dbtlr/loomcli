@@ -157,9 +157,10 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
 }
 
 /**
- * Keeps the installer script current, executable, for the application's name and the package's
- * GitHub repository. A package that names no GitHub repository gets no script and a warning, so an
- * author who sets `repository` gets the script on the next run.
+ * Keeps the installer script current for the application's name and the package's GitHub
+ * repository, through `writeManaged`. Each write sets mode 755, and an unchanged script is left
+ * alone, mode and all. A package that names no GitHub repository gets no script and a warning, so
+ * an author who sets `repository` gets the script on the next run.
  */
 function writeInstaller(run: Run) {
   const manifest = readManifest(run.directory);

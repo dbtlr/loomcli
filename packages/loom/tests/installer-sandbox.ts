@@ -1,8 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  accessSync,
-  constants,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -11,9 +9,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 
+import { findOnPath } from '../../../scripts/test-shell.js';
 import { installerScript } from '../src/content/installer-script.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { temporaryRoot } from './fixture.js';
@@ -28,7 +27,7 @@ function quoted(value: string) {
 
 /** A tool the fakes need, resolved once, which a machine running the suite always holds. */
 function requiredTool(name: string) {
-  const tool = realTool(name);
+  const tool = findOnPath(name);
   if (tool === undefined) {
     throw new Error(`The installer tests need ${name} on PATH.`);
   }
@@ -42,29 +41,26 @@ function executable(path: string, body: string) {
 }
 
 /**
- * The shell body both fake downloaders share once they have read `url` and `output`: log the URL,
- * then answer from the fixture directory, which holds each file under its URL without `https://`.
- * A URL that is not HTTPS finds no file. The sleeping URL writes a few bytes and sleeps, after it
- * marks the log, so a test can signal the run mid-download. `missing` runs when no file answers.
+ * The shell body both fake downloaders share once they have read `url`: log the URL, then write
+ * the answer to stdout from the fixture directory, which holds each file under its URL without
+ * `https://`, as both downloaders do when the script redirects their output. A URL that is not
+ * HTTPS finds no file. The sleeping URL writes a few bytes and sleeps, after it marks the log, so a
+ * test can signal the run mid-download. `missing` runs when no file answers.
  */
-function serve(
-  box: { log: string; release: string },
-  sleepOn: string | undefined,
-  missing: string,
-) {
+function serve(box: { log: string; release: string }, fakes: Fakes, missing: string) {
   const sleep =
-    sleepOn === undefined
+    fakes.sleepOn === undefined
       ? ''
-      : `if [ "$url" = ${quoted(sleepOn)} ]; then
-  printf partial >"$output"
+      : `if [ "$url" = ${quoted(fakes.sleepOn)} ]; then
+  printf partial
   printf 'sleeping\\n' >>${quoted(`${box.log}.sleeping`)}
-  exec ${quoted(requiredTool('sleep'))} 30
+  exec ${quoted(requiredTool('sleep'))} ${fakes.sleepSeconds ?? 30}
 fi
 `;
   return `printf '%s\\n' "$url" >>${quoted(box.log)}
 ${sleep}case $url in https://*) file=${quoted(box.release)}/\${url#https://} ;; *) file= ;; esac
 if [ -n "$file" ] && [ -f "$file" ]; then
-  ${quoted(requiredTool('cat'))} "$file" >"$output"
+  ${quoted(requiredTool('cat'))} "$file"
   exit 0
 fi
 ${missing}
@@ -92,23 +88,43 @@ function writeFakes(directory: string, box: { log: string; release: string }, fa
         : "echo 'ldd (GNU libc) 2.39'\n",
     );
   }
+  if (fakes.refuseRenameOnto !== undefined) {
+    executable(
+      join(directory, 'mv'),
+      `for destination in "$@"; do :; done
+if [ "\${destination##*/}" = ${quoted(fakes.refuseRenameOnto)} ]; then
+  echo "mv: cannot move to '$destination': Permission denied" >&2
+  exit 1
+fi
+exec ${quoted(requiredTool('mv'))} "$@"
+`,
+    );
+  }
   const downloaders = fakes.downloaders ?? ['curl', 'gnu-wget'];
   if (downloaders.includes('curl')) {
     executable(
       join(directory, 'curl'),
       `printf 'curl %s\\n' "$*" >>${quoted(`${box.log}.argv`)}
-fail= output= url=
+fail= url=
 while [ $# -gt 0 ]; do
   case $1 in
     --fail) fail=1 ;;
-    --output) shift; output=$1 ;;
     --proto | --proto-redir) shift ;;
     -*) ;;
     *) url=$1 ;;
   esac
   shift
 done
-${serve(box, fakes.sleepOn, '[ -z "$fail" ] || exit 22\nprintf "Not Found" >"$output"\nexit 0')}`,
+${serve(
+  box,
+  fakes,
+  `if [ -n "$fail" ]; then
+  echo 'curl: (22) The requested URL returned error: 404' >&2
+  exit 22
+fi
+printf 'Not Found'
+exit 0`,
+)}`,
     );
   }
   const wget = downloaders.find((downloader) => downloader !== 'curl');
@@ -120,16 +136,15 @@ ${serve(box, fakes.sleepOn, '[ -z "$fail" ] || exit 22\nprintf "Not Found" >"$ou
     executable(
       join(directory, 'wget'),
       `printf 'wget %s\\n' "$*" >>${quoted(`${box.log}.argv`)}
-output= url=
+url=
 for argument in "$@"; do
   case $argument in
     --version) ${version.replaceAll('\n', '; ')} ;;
-    --output-document=*) output=\${argument#--output-document=} ;;
     -*) ;;
     *) url=$argument ;;
   esac
 done
-${serve(box, fakes.sleepOn, 'exit 8')}`,
+${serve(box, fakes, `echo "$url:" >&2\necho '2026-10-12 12:00:00 ERROR 404: Not Found.' >&2\nexit 8`)}`,
     );
   }
 }
@@ -137,7 +152,7 @@ ${serve(box, fakes.sleepOn, 'exit 8')}`,
 /** Links each named real tool the machine holds into a directory. */
 function linkTools(directory: string, tools: readonly string[]) {
   for (const tool of tools) {
-    const real = realTool(tool);
+    const real = findOnPath(tool);
     if (real !== undefined) {
       symlinkSync(real, join(directory, tool));
     }
@@ -186,8 +201,15 @@ export interface Fakes {
   readonly os?: string;
   /** The release fixture: each URL the fakes answer and the bytes they answer it with. */
   readonly release?: Readonly<Record<string, string>>;
+  /**
+   * A file name a fake `mv` refuses to rename onto, in any directory, as a failed rename would; any
+   * other rename runs the real `mv`.
+   */
+  readonly refuseRenameOnto?: string;
   /** A URL whose download writes a few bytes and then sleeps, so a test can end the run. */
   readonly sleepOn?: string;
+  /** How long the sleeping download sleeps, by default 30 seconds. */
+  readonly sleepSeconds?: number;
   /** The real tools linked into the minimal PATH, by default `scriptTools`. */
   readonly tools?: readonly string[];
   /** What `sysctl -n sysctl.proc_translated` prints, or `undefined` for a `sysctl` that fails. */
@@ -232,20 +254,6 @@ export const defaultRelease = {
   ...release(latest, { [`${app}-linux-x64`]: 'test' }),
   ...release(tagged, { [`${app}-linux-x64`]: 'test' }),
 };
-
-/** The executable a tool's name resolves to on the test process's own PATH, if any. */
-export function realTool(name: string): string | undefined {
-  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-    const candidate = join(directory, name);
-    try {
-      accessSync(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Not in this directory.
-    }
-  }
-  return undefined;
-}
 
 /**
  * A fresh sandbox: a temporary home, state directory, and working directory, the fakes and the
@@ -304,18 +312,28 @@ export function runScript(
 }
 
 /**
- * A run of the script that a `SIGTERM` to its process group ends once the sleeping download has
- * begun, as a terminal's signal reaches both `sh` and the downloader. It resolves to the exit code.
+ * A run of the script that a `SIGTERM` ends once the sleeping download has begun. `group` signals
+ * the whole process group, as a terminal's signal reaches both `sh` and the downloader; `shell`
+ * signals `sh` alone, which runs its trap once the downloader exits. It resolves to the exit code
+ * and what the script wrote to stderr.
  */
-export async function runScriptUntilSignal(box: Sandbox): Promise<number | null> {
+export async function runScriptUntilSignal(
+  box: Sandbox,
+  reach: 'group' | 'shell',
+): Promise<{ status: number | null; stderr: string }> {
   const child = spawn('/bin/sh', [box.script], {
     cwd: box.work,
     detached: true,
     env: environment(box, {}),
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
   });
   const exited = new Promise<number | null>((resolve) => {
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       resolve(code);
     });
   });
@@ -329,8 +347,8 @@ export async function runScriptUntilSignal(box: Sandbox): Promise<number | null>
   if (child.pid === undefined) {
     throw new Error('The script did not start.');
   }
-  process.kill(-child.pid, 'SIGTERM');
-  return exited;
+  process.kill(reach === 'group' ? -child.pid : child.pid, 'SIGTERM');
+  return { status: await exited, stderr };
 }
 
 /** Each URL the fake downloaders were asked for, in order. */

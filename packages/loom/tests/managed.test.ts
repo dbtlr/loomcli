@@ -144,3 +144,16 @@ test.each([
 ])('a shell file with %s is not managed', (_case, text) => {
   expect(readManaged(text)).toBeUndefined();
 });
+
+test.each([
+  ['#!/bin/sh -e', '#!/bin/sh -e\nhello\n'],
+  ['#!/usr/bin/env sh', '#!/usr/bin/env sh\nhello\n'],
+])(
+  'a shell file whose first line was edited to %s keeps its header and reads as drift',
+  (_line, content) => {
+    const [first] = content.split('\n');
+    const file = readManaged(`${first}\n# Managed by loom init. sha256:${script}\nhello\n`);
+    expect(file).toEqual({ checksum: script, content });
+    expect(file && hasDrifted(file)).toBe(true);
+  },
+);

@@ -554,3 +554,19 @@ test.each([
     expect(existsSync(join(root, 'install.sh'))).toBe(false);
   },
 );
+
+test('an install.sh whose #! line was edited keeps its header and draws the drift warning from init and loom check', () => {
+  const root = repositoryPackage('me/notes');
+  const edited = renderManaged(installerScript('notes', 'me/notes')).replace(
+    /^#!\/bin\/sh\n/u,
+    '#!/usr/bin/env sh\n',
+  );
+  put(root, 'install.sh', edited);
+  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+    status: 0,
+    stderr: warning('install.sh'),
+    stdout: '',
+  });
+  expect(read(root, 'install.sh')).toBe(edited);
+  expect(loom(root, ['check']).stderr.split('\n')).toContain(warning('install.sh').trimEnd());
+});

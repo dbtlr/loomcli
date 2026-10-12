@@ -77,22 +77,6 @@ const stepTimeout = 25_000;
 const prompt = '@@PROMPT@@';
 const readback = '@@LINE@@';
 
-/** The absolute path of an executable found on PATH, or undefined. */
-function findOnPath(command: string): string | undefined {
-  return (process.env.PATH ?? '')
-    .split(delimiter)
-    .filter((directory) => directory !== '')
-    .map((directory) => join(directory, command))
-    .find((candidate) => {
-      try {
-        accessSync(candidate, constants.X_OK);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-}
-
 /** The runtime the wrapper runs, as an absolute path: `LOOM_TEST_RUNTIME`, Node by default. */
 function runtimePath(): string {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
@@ -490,3 +474,19 @@ function useSession(
 
 export { shellSuites, shells, useSession };
 export type { Completed, Session, SessionOptions, Shell, ShellSuite, SuiteSession };
+
+/** The absolute path of an executable found on PATH, or undefined. */
+export function findOnPath(command: string): string | undefined {
+  return (process.env.PATH ?? '')
+    .split(delimiter)
+    .filter((directory) => directory !== '')
+    .map((directory) => join(directory, command))
+    .find((candidate) => {
+      try {
+        accessSync(candidate, constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+}

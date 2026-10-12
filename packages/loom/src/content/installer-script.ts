@@ -22,7 +22,7 @@ if [ -n "$home_needed" ]; then
   case \${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
 fi
 record="$state/$app/installation"
-mkdir -p "$record"
+mkdir -p "$record" 2>/dev/null || { echo "$app: The installation record's directory $record cannot be created. Make it writable, then run the installer again." >&2; exit 1; }
 `;
 
 /**
@@ -39,7 +39,9 @@ mv -f "$staging" "$record/install.json"
 /**
  * The installer script `loom init` manages at `install.sh`, without its header, for the
  * application's name and the GitHub repository, `owner/name`, it installs releases from. Every
- * step is a function the last line calls, so a download `curl | sh` cuts short runs nothing. It
+ * step is a function the last line calls inside braces, so a download `curl | sh` cuts short,
+ * even within that line, runs nothing. Each downloader writes to stdout, which the shell redirects
+ * into the staging file, so a downloader that cannot write hidden paths itself still works. It
  * runs under POSIX `sh`, as dash and bash 3.2 in sh mode read it, so it uses no `local`, arrays,
  * `[[`, or `pipefail`.
  */
@@ -49,8 +51,8 @@ export function installerScript(name: string, repository: string): string {
 # verifies it against the release's SHA256SUMS, moves it into place, and records the installation
 # in install.json, so self-update may later replace the binary. Run it with --help for its usage.
 #
-# loom init renders this file. Each step is a function that the last line calls, so a download cut
-# short runs nothing.
+# loom init renders this file. Each step is a function that the last line calls inside braces, so a
+# download cut short anywhere, even within that line, runs nothing.
 
 say() {
   printf '%s\\n' "$app: $1" >&2
@@ -219,9 +221,9 @@ ${recipePrepare}}
 
 fetch() {
   if [ "$downloader" = curl ]; then
-    curl --fail --location --silent --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$2" "$1" 2>/dev/null || download_failed "$1"
+    curl --fail --location --silent --proto '=https' --proto-redir '=https' --tlsv1.2 "$1" >"$2" 2>/dev/null || download_failed "$1"
   else
-    wget --quiet --secure-protocol=TLSv1_2 --output-document="$2" "$1" 2>/dev/null || download_failed "$1"
+    wget --quiet --secure-protocol=TLSv1_2 -O - "$1" >"$2" 2>/dev/null || download_failed "$1"
   fi
 }
 
@@ -331,6 +333,6 @@ main() {
   advise_path
 }
 
-main "$@"
+{ main "$@"; }
 `;
 }

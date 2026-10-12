@@ -5,6 +5,7 @@ import { applicationDirectory } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { installationRecipeParts } from '../../../scripts/test-installation.js';
+import { findOnPath } from '../../../scripts/test-shell.js';
 import { installerScript } from '../src/content/installer-script.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { removeRoots } from './fixture.js';
@@ -18,7 +19,6 @@ import {
   requested,
   runScript,
   runScriptUntilSignal,
-  realTool,
   sandbox,
   scriptTools,
   sha256,
@@ -72,23 +72,34 @@ test('the rendered script holds both parts of the recipe in docs/core.md byte fo
   expect(script.indexOf(prepare)).toBeLessThan(script.indexOf(record));
 });
 
-test('a rendered script cut short at any line runs nothing', () => {
-  const rendered = renderManaged(installerScript(app, repo));
-  const lines = rendered.split('\n');
-  const box = sandbox();
-  for (let count = 0; count < lines.length - 1; count += 1) {
-    writeFileSync(box.script, lines.slice(0, count).join('\n') + (count > 0 ? '\n' : ''));
-    runScript(box, ['--dir', join(box.root, 'bin')]);
-    expect({ count, requested: requested(box) }).toEqual({ count, requested: [] });
-    expect({ count, written: entries(box.home) }).toEqual({ count, written: [] });
-    expect({ count, written: entries(box.state) }).toEqual({ count, written: [] });
-    expect({ count, written: entries(join(box.root, 'bin')) }).toEqual({
-      count,
-      written: undefined,
-    });
+/**
+ * The byte offsets a rendered script may be cut at to test truncation: the start of every line, and
+ * every byte of the last line short of its closing brace, so a cut inside `{ main "$@"; }` counts
+ * too. A cut that keeps the brace keeps the whole script, which is meant to run.
+ */
+function cuts(script: Buffer): number[] {
+  const last = script.lastIndexOf('\n', script.length - 2) + 1;
+  const starts = [0];
+  for (let offset = script.indexOf('\n'); offset !== -1 && offset < last;) {
+    starts.push(offset + 1);
+    offset = script.indexOf('\n', offset + 1);
   }
-  expect(lines.at(-2)).toBe('main "$@"');
-  expect(lines.at(-1)).toBe('');
+  const closing = script.lastIndexOf('}');
+  const inside = Array.from({ length: closing - last }, (_unused, index) => last + index + 1);
+  return [...new Set([...starts, ...inside])].filter((offset) => offset <= closing);
+}
+
+test('a rendered script cut short at any line, or anywhere in its last line, runs nothing', () => {
+  const rendered = Buffer.from(renderManaged(installerScript(app, repo)));
+  expect(rendered.toString().endsWith('\n{ main "$@"; }\n')).toBe(true);
+  const box = sandbox();
+  for (const cut of cuts(rendered)) {
+    writeFileSync(box.script, rendered.subarray(0, cut));
+    runScript(box);
+    expect({ cut, requested: requested(box) }).toEqual({ cut, requested: [] });
+    expect({ cut, written: entries(box.home) }).toEqual({ cut, written: [] });
+    expect({ cut, written: entries(box.state) }).toEqual({ cut, written: [] });
+  }
 });
 
 test('1.4.0 and v1.4.0 each fetch the release of the tag v1.4.0', () => {
@@ -214,25 +225,23 @@ test('curl downloads over HTTPS alone, with --fail, and is preferred over wget',
   expect(runScript(box).status).toBe(0);
   const lines = commandLines(box);
   expect(lines).toHaveLength(2);
-  for (const [index, url] of [`${latest}SHA256SUMS`, `${latest}${app}-linux-x64`].entries()) {
-    expect(lines[index]).toMatch(
-      /^curl --fail --location --silent --proto =https --proto-redir =https --tlsv1\.2 --output \/\S+ /u,
-    );
-    expect(lines[index]?.endsWith(` ${url}`)).toBe(true);
-  }
+  expect(lines).toEqual(
+    [`${latest}SHA256SUMS`, `${latest}${app}-linux-x64`].map(
+      (url) =>
+        `curl --fail --location --silent --proto =https --proto-redir =https --tlsv1.2 ${url}`,
+    ),
+  );
 });
 
 test('with no curl, a wget whose --version names GNU Wget downloads with it', () => {
   const box = sandbox({ downloaders: ['gnu-wget'] });
   expect(runScript(box).status).toBe(0);
   expect(requested(box)).toEqual([`${latest}SHA256SUMS`, `${latest}${app}-linux-x64`]);
-  const downloads = commandLines(box).filter((line) => !line.endsWith('--version'));
-  expect(downloads).toHaveLength(2);
-  for (const line of downloads) {
-    expect(line).toMatch(
-      /^wget --quiet --secure-protocol=TLSv1_2 --output-document=\/\S+ https:\/\//u,
-    );
-  }
+  expect(commandLines(box).filter((line) => !line.endsWith('--version'))).toEqual(
+    [`${latest}SHA256SUMS`, `${latest}${app}-linux-x64`].map(
+      (url) => `wget --quiet --secure-protocol=TLSv1_2 -O - ${url}`,
+    ),
+  );
 });
 
 test.each([
@@ -280,16 +289,27 @@ test('no digest tool exits 1, names sha256sum, and downloads nothing', () => {
   expect(requested(box)).toEqual([]);
 });
 
-test.skipIf(realTool('shasum') === undefined)(
-  'with no sha256sum, shasum -a 256 verifies the download',
-  () => {
-    const box = sandbox({ tools: scriptTools.filter((tool) => tool !== 'sha256sum') });
-    expect(runScript(box).status).toBe(0);
-    expect(readFileSync(join(recordDirectory(box), 'install.json'), 'utf8')).toBe(
-      recordBytes(join(defaultDirectory(box), app)),
-    );
-  },
-);
+/**
+ * Whether `shasum` runs here. A machine without it skips the case that needs it, unless
+ * `LOOM_REQUIRE_SHELLS` is set, when the suite fails, as it fails the shell suites.
+ */
+function shasumInstalled(): boolean {
+  if (findOnPath('shasum') !== undefined) {
+    return true;
+  }
+  if (process.env.LOOM_REQUIRE_SHELLS) {
+    throw new Error('LOOM_REQUIRE_SHELLS is set, but shasum not installed.');
+  }
+  return false;
+}
+
+test.skipIf(!shasumInstalled())('with no sha256sum, shasum -a 256 verifies the download', () => {
+  const box = sandbox({ tools: scriptTools.filter((tool) => tool !== 'sha256sum') });
+  expect(runScript(box).status).toBe(0);
+  expect(readFileSync(join(recordDirectory(box), 'install.json'), 'utf8')).toBe(
+    recordBytes(join(defaultDirectory(box), app)),
+  );
+});
 
 /** A latest release whose SHA256SUMS is the supplied text and whose asset holds `test`. */
 function listing(text: string) {
@@ -517,9 +537,67 @@ test.each(spellings.flatMap((xdg) => spellings.map((home) => [xdg, home] as cons
   },
 );
 
-test('a run ended by SIGTERM during the download exits 1 and leaves no staging file', async () => {
+test('a run ended by SIGTERM to its process group during the download exits 1 and leaves no staging file', async () => {
   const box = sandbox({ sleepOn: `${latest}${asset}` });
-  await expect(runScriptUntilSignal(box)).resolves.toBe(1);
+  const { status } = await runScriptUntilSignal(box, 'group');
+  expect(status).toBe(1);
   expect(entries(defaultDirectory(box))).toEqual([]);
   expect(entries(recordDirectory(box))).toEqual([]);
+});
+
+test('a run whose sh alone gets SIGTERM during the download exits 1 once the download ends, with nothing more done', async () => {
+  const box = sandbox({ sleepOn: `${latest}${asset}`, sleepSeconds: 1 });
+  await expect(runScriptUntilSignal(box, 'shell')).resolves.toEqual({
+    status: 1,
+    stderr: `notes: Downloading ${asset} from the latest release of ${repo}.\n`,
+  });
+  expect(entries(defaultDirectory(box))).toEqual([]);
+  expect(entries(recordDirectory(box))).toEqual([]);
+});
+
+test('a SHA256SUMS that lists the asset only in the binary form, a space and *, installs it', () => {
+  const box = sandbox({ release: listing(`${sha256('test')} *${asset}\n`) });
+  expect(runScript(box).status).toBe(0);
+  expect(readFileSync(join(defaultDirectory(box), app), 'utf8')).toBe('test');
+});
+
+test('a PATH entry that only holds the install directory as a prefix still draws the export line', () => {
+  const box = sandbox();
+  const directory = join(box.root, 'bin');
+  const result = runScript(box, ['--dir', directory], {
+    PATH: `${box.path}:${directory}2:/x${directory}`,
+  });
+  expect(result.status).toBe(0);
+  expect(result.stderr).toContain(`  export PATH="${directory}:$PATH"\n`);
+});
+
+/** The sentence the recipe prints when the record's directory cannot be created. */
+function recordSentence(record: string) {
+  return `notes: The installation record's directory ${record} cannot be created. Make it writable, then run the installer again.\n`;
+}
+
+test('a record directory that cannot be created exits 1 with the recipe sentence, downloads nothing, and creates no install directory', () => {
+  const box = sandbox();
+  const blocked = join(box.root, 'blocked');
+  writeFileSync(blocked, 'a file where a directory belongs\n');
+  const directory = join(box.root, 'opt', 'bin');
+  const result = runScript(box, ['--dir', directory], { XDG_STATE_HOME: join(blocked, 'state') });
+  expect(result).toEqual({
+    status: 1,
+    stderr: recordSentence(join(blocked, 'state', app, 'installation')),
+    stdout: '',
+  });
+  expect(requested(box)).toEqual([]);
+  expect(entries(join(box.root, 'opt'))).toBeUndefined();
+  expect(entries(box.home)).toEqual([]);
+});
+
+test('a rename of the verified binary that fails exits 1, writes no install.json, and leaves no staging file', () => {
+  const box = sandbox({ refuseRenameOnto: app });
+  const directory = join(box.root, 'bin');
+  const result = runScript(box, ['--dir', directory]);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('mv: cannot move');
+  expect(entries(directory)).toEqual([]);
+  expect(entries(recordDirectory(box)) ?? []).toEqual([]);
 });
