@@ -2331,16 +2331,18 @@ The installation record is one directory per application and per user that says 
 
   ```sh
   # $app is the application's name; $target is the installed binary's absolute path.
-  case $HOME in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
   case $target in
     *[\"\\]* | *[[:cntrl:]]*) echo "$app: The install path holds a quote, a backslash, or a control character. Choose another install directory." >&2; exit 1 ;;
     /*) ;;
     *) echo "$app: The install path is not absolute. Choose an absolute install directory." >&2; exit 1 ;;
   esac
   case $(uname -s) in
-    Darwin) state="$HOME/Library/Application Support" ;;
-    *) case ${XDG_STATE_HOME:-} in /*) state=$XDG_STATE_HOME ;; *) state="$HOME/.local/state" ;; esac ;;
+    Darwin) home_needed=1; state="$HOME/Library/Application Support" ;;
+    *) case ${XDG_STATE_HOME:-} in /*) home_needed=; state=$XDG_STATE_HOME ;; *) home_needed=1; state="$HOME/.local/state" ;; esac ;;
   esac
+  if [ -n "$home_needed" ]; then
+    case ${HOME:-} in /*) ;; *) echo "$app: HOME is not an absolute path. Set it to your home directory, then run the installer again." >&2; exit 1 ;; esac
+  fi
   if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$target"); else digest=$(shasum -a 256 "$target"); fi
   record="$state/$app/installation"
   mkdir -p "$record"
@@ -2374,10 +2376,10 @@ A first-party plugin that installs files outside the application, such as a comp
 
 - **The file.** It holds the directories the module created and each file it installed with that file's digest. A `pending` file lists the directories the module created and will create, and holds, for each path, the digest it held before, `null` when it held nothing, and the digest it will hold, `null` when the file is being removed. A plugin's file that is not that shape, or whose `format` the module does not know, refuses the install or uninstall: the module reports its path and writes nothing. A missing plugin's file records nothing.
 - **Before writing.** An install checks every target first. A target that is absent, or a regular file the plugin's file records at that path with its digest unchanged, may be written. A target that is any other file, a file whose digest changed since it was recorded, a symbolic link, or a directory refuses the whole install, and the module writes nothing and reports each such path. The module never takes over a file it did not record.
-- **Writing.** The module writes the plugin's file as `pending`, creates each missing parent directory, writes each target to a staging file named `.<name>.loom-staging` in the target's directory and renames it into place, removes each recorded file the install no longer lists when its digest is unchanged and keeps and reports one whose digest changed, and then writes the plugin's file as `committed`. It reads the run signal before the pending write and, once it has begun, does not stop between targets.
+- **Writing.** The module writes the plugin's file as `pending`, creates each missing parent directory, writes each target to a staging file it creates exclusively in the target's directory, named `.<name>.<random>.loom-staging` and unique to the attempt, and renames it into place, removes each recorded file the install no longer lists when its digest is unchanged and keeps and reports one whose digest changed, and then writes the plugin's file as `committed`. It reads the run signal before the pending write and, once it has begun, does not stop between targets.
 - **Uninstalling.** The module removes each recorded file whose digest is unchanged, keeps and reports each whose digest changed, removes each recorded directory that is then empty, deepest first, and deletes the plugin's file. A file or directory that is already gone is not an error.
 - **Recovery.** Before any install or uninstall, a `pending` file is resolved by what is on disk: a path whose digest is the intended one was written, one whose digest is the prior one was not, one that is gone was removed, and one with any other digest was changed by someone else and is no longer recorded. A listed directory that exists stays recorded, and one that is gone is dropped. The module removes leftover staging files, writes the result as `committed`, and then does what was asked. It keeps no backup, so an interrupted install finishes on the next run rather than restoring the files it replaced.
-- **No lock.** Two runs of one plugin at once may each find the other's `pending` file and recover it, and a rename of one can take a staging file the other wrote, so one run can fail with the runtime's error. Each target still holds whole content, the last commit wins, and the next run recovers. A file one wrote that the other's commit does not list is no longer recorded, so a later install refuses it until the operator removes it.
+- **No lock.** Two runs of one plugin at once may each find the other's `pending` file and recover it, and the recovery of one can remove a staging file the other is still writing, so one run can fail with the runtime's error. Each target still holds whole content, the last commit wins, and the next run recovers. A file one wrote that the other's commit does not list is no longer recorded, so a later install refuses it until the operator removes it.
 - **A failed write.** A file system call that fails throws the runtime's error, which the plugin's Command reports as any failure. A `pending` file it leaves is recovered on the next run.
 
 #### Installation record acceptance
@@ -2385,11 +2387,11 @@ A first-party plugin that installs files outside the application, such as a comp
 The installation record is proven when public APIs, process runs, and the module's tests alone produce these results:
 
 - **The directory.** `applicationDirectory` gives each table row from an overridden `env` and `platform`, `$HOME/.local/state` for an `XDG_STATE_HOME` that is unset, empty, or relative, and `{ variable: 'HOME' }` for a `HOME` that is unset, empty, or relative, with no file read or created.
-- **The recipe.** The shell recipe runs under `/bin/sh` on Linux and macOS against a fixture binary in a temporary home and writes `install.json` with the pinned bytes. It refuses a target path holding a quote, a backslash, or a newline, and a relative `HOME`, with exit 1 and nothing written.
+- **The recipe.** The shell recipe runs under `/bin/sh` on Linux and macOS against a fixture binary in a temporary home and writes `install.json` with the pinned bytes. It refuses a target path holding a quote, a backslash, or a newline, and a relative `HOME` whenever the directory needs it, with exit 1 and nothing written. On Linux, an absolute `XDG_STATE_HOME` writes the file with `HOME` unset.
 - **Reading.** A compiled fixture binary built with `--release` and recorded by the recipe prints its `installation` under the temporary home. A symbolic link to the binary, and a recorded path that is a symbolic link to it, read the same installation. The same binary prints none when copied to another path, when `install.json` is missing, empty, not JSON, an array, `format` `2`, an empty `method`, a relative `path`, or an uppercase `digest`, or a directory, and when the directory's variable is unset; each run exits with its own code and writes nothing to stderr. A bundle built for Node with `--release`, and the source run, print none and read no file. `install.json` with an extra member and its members reordered reads the same installation. `run({ host: { release } })` reads the override and no file.
 - **Installing.** Installing two files into a temporary directory writes both and a `committed` file with their digests and the created directory. A second install with new content replaces both, and one that lists only the first removes the second. An install over an unrecorded file, a recorded file changed since, a symbolic link, or a directory refuses, writes nothing, and reports the path, and so does an install whose plugin's file is damaged or holds an unknown `format`.
 - **Uninstalling.** Uninstall removes unchanged files and the created directory, keeps and reports a changed file, passes over a file already gone, and deletes the plugin's file.
-- **Recovery.** A process killed between two targets leaves a `pending` file, and the next install finishes with both targets written and a `committed` file. A process killed before it creates a listed directory leaves a `pending` file whose next install creates the directory and records it. A pending path changed by hand before the next run is kept and no longer recorded. A leftover staging file is removed.
+- **Recovery.** A process killed between two targets leaves a `pending` file, and the next install finishes with both targets written and a `committed` file. A process killed before it creates a listed directory leaves a `pending` file whose next install creates the directory and records it. A pending path changed by hand before the next run is kept and no longer recorded. A leftover staging file is removed. Two installs writing one target at once never rename one's partial staging file into place.
 - **Logging.** The logging plugin's default directory follows the `logs` column, and a relative `HOME`, for the default directory and for a `file` under `~/`, calls `onError` with `unresolved-directory` and `variable` `HOME`.
 - **Packaging.** `pnpm check:packed` compiles a consumer that calls `applicationDirectory` against core's emitted declarations and runs it under Node and Bun.
 
