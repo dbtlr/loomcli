@@ -4,7 +4,7 @@ title: ADR-0065 - Release facts on the host say how the running application was 
 description: Core fills host.release for every run from one define, __LOOM_RELEASE__, that the build bakes into the artifact. The facts hold the build, source, development, or distributed, an optional release group with a lane core derives from the version, and an installation group whose source a later contract specifies. No baked facts reads as source. Authors import and pass nothing, and the packet, its option, its type, its file, and its writer are removed. This supersedes ADR-0050.
 status: accepted
 created: 2026-10-07
-modified: 2026-10-09
+modified: 2026-10-12
 ---
 
 # ADR-0065 - Release facts on the host say how the running application was built
@@ -53,3 +53,4 @@ Accepted in 0.10.0.
 ## Changelog
 
 - 2026-10-07: Proposed with the release facts contract.
+- 2026-10-12: [ADR-0071](0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md), proposed, is the installation-record contract the decision above defers. Core reads the installation group from the record's `install.json` during host capture, never from the build, for a compiled binary built with `--release`, and only when the recorded path, resolved through symbolic links, is the running executable. The group's shape is unchanged. It binds when that record is accepted; until then the group stays absent.

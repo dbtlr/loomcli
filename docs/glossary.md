@@ -229,16 +229,20 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts the build baked in. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Release facts**:
-The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an optional installation group. The build bakes them into the artifact, and core holds them on the host as `release`. An artifact built with none reads `source`.
+The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an optional installation group. The build bakes the build and release group into the artifact, core reads the installation group from the installation record, and core holds them on the host as `release`. An artifact built with none reads `source`.
 _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
 **Release lane**:
 The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, and the release facts name the field `lane`.
 _Avoid_: Lane (alone), channel, track, dist-tag
+
+**Installation record**:
+The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps its installed files, with their digests, in its own file there.
+_Avoid_: Receipt, installation receipt, journal, ledger, manifest
 
 **Development build**:
 An application whose release facts read `source` or `development`: the source run while the author works, an artifact built with no facts, or an artifact built for development. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
