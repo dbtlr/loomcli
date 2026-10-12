@@ -600,7 +600,7 @@ try {
       `${name}: the packed bundle's defect`,
     );
   }
-  // Core reads no file at run time, so any bundler bundles an application without a define.
+  // Core carries its Unicode tables as a module, so any bundler bundles an application without a define.
   // Each bundle measures text with the packed Unicode tables, reads source, and so writes the
   // Developer Diagnostic for a defect.
   const plainSource = fileURLToPath(new URL('fixtures/bundled', import.meta.url));
