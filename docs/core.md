@@ -2158,7 +2158,7 @@ interface ReleaseFacts {
   readonly build: 'source' | 'development' | 'distributed';
   readonly release?: {
     readonly version: string;
-    readonly lane: string; // derived by core from version
+    readonly channel: string; // derived by core from version
     readonly repository: string; // owner/name
     readonly asset?: string; // a compiled binary's release asset name
   };
@@ -2180,7 +2180,7 @@ import { Command } from '@loomcli/core';
 
 export const about = new Command('about', { description: 'Print how this copy was built.' }).action(({ host, out }) => {
   const { build, release } = host.release;
-  return out.print(release === undefined ? `${build} build` : `${release.version} (${release.lane}) from ${release.repository}`);
+  return out.print(release === undefined ? `${build} build` : `${release.version} (${release.channel}) from ${release.repository}`);
 });
 ```
 
@@ -2188,7 +2188,7 @@ export const about = new Command('about', { description: 'Print how this copy wa
 loom build --target node                  # the bundle reads { build: 'distributed' }
 bun src/main.ts about                     # the source run reads { build: 'source' }
 loom build --target bun-linux-x64 --release
-# the binary reads { build: 'distributed', release: { version: '1.1.0-next.3', lane: 'next',
+# the binary reads { build: 'distributed', release: { version: '1.1.0-next.3', channel: 'next',
 #   repository: 'acme/notes', asset: 'notes-linux-x64' } }
 ```
 
@@ -2196,7 +2196,7 @@ Release facts say how the running application was built, released, and installed
 
 - **`build`.** `source` when the source runs directly with nothing baked in, such as `bun src/main.ts`. `development` for a development artifact, such as one `loom build --watch` or `loom build --build development` writes. `distributed` for a distributed artifact, which `loom build` writes by default. The build decides how core reports what only the author can fix, under [Development builds](#development-builds).
 - **`release`.** Present only when the artifact was built with `loom build --release`. `version` is the package's version, and `repository` is the repository the release belongs to, as `owner/name`. `asset` is the release asset's name, present for a compiled binary alone.
-- **The lane.** Core derives `lane` from `version`: the first prerelease identifier, so `1.1.0-next.3` reads `next` and `1.0.0-beta.1` reads `beta`, and `stable` when the version has none. It is a string, not a closed set, and the build never bakes it.
+- **The release channel.** Core derives `channel` from `version`: the first prerelease identifier, so `1.1.0-next.3` reads `next` and `1.0.0-beta.1` reads `beta`, and `stable` when the version has none. It is a string, not a closed set, and the build never bakes it.
 - **`installation`.** How the application was installed, where it was installed, and the digest of what was installed. The build never bakes it. Core reads it from the [installation record](#installation-record) for a compiled binary built with `--release`, and only when the recorded path is the running executable.
 - **The define.** The build bakes one identifier, `__LOOM_RELEASE__`, through a bundler `define`. Its value is JSON, `{ "build": ..., "release"?: { "version", "repository", "asset"? } }`, which the bundler substitutes as an object literal. Core reads the identifier behind a `typeof` guard, so a source run, where nothing replaced it, reads it as absent. A define reaches code inside `node_modules`. The define reaches core only when the bundle includes `@loomcli/core`; a build that leaves core external reads `source`. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one, and so does every common bundler, such as esbuild, Rollup, and Vite. [`loom build`](toolchain.md#loom-build) bakes it, and its `--facts` and `--define` options print the value, so an author composes a custom build from the same facts.
 - **No baked facts is source.** An artifact built without the define reads `{ build: 'source' }`, as the source run does, and shows the author's detail. An application ships through `loom build`, and anything else counts as unbuilt.
@@ -2230,7 +2230,7 @@ Release facts are proven when public APIs and process runs alone produce these r
 
 - **The examples.** jsonkit and textstat carry no packet and build with `loom build --target node`. The process tests run each bundle under Node and Bun, and every golden they pin is unchanged, because operator failures print the same bytes in both builds. A process test runs `bun src/main.ts` for each example and pins the same bytes for its usage errors.
 - **A source run.** A fixture action that prints `host.release` prints `{ build: 'source' }` from source. When the action throws a `TypeError` instead, the run writes the Developer Diagnostic of `@loomcli/core/foreign-throw` and exits 1.
-- **A bundle with facts.** The fixture bundled by `loom build --target node` prints `{ build: 'distributed' }` with no release group, and its throwing action writes exactly `probe: Something went wrong.` and exits 1, with no reason, class name, or path on stderr. Built with `--build development`, it prints `development` and writes the Developer Diagnostic. Built with `--release` from a package at `1.1.0-next.3` whose `repository` reads `git+https://github.com/acme/probe.git`, it prints version `1.1.0-next.3`, lane `next`, and repository `acme/probe`, with no asset, and a package at `2.0.0` reads lane `stable`. A compiled binary built with `loom build --release` for the host target reads its asset name and writes the generic message.
+- **A bundle with facts.** The fixture bundled by `loom build --target node` prints `{ build: 'distributed' }` with no release group, and its throwing action writes exactly `probe: Something went wrong.` and exits 1, with no reason, class name, or path on stderr. Built with `--build development`, it prints `development` and writes the Developer Diagnostic. Built with `--release` from a package at `1.1.0-next.3` whose `repository` reads `git+https://github.com/acme/probe.git`, it prints version `1.1.0-next.3`, channel `next`, and repository `acme/probe`, with no asset, and a package at `2.0.0` reads channel `stable`. A compiled binary built with `loom build --release` for the host target reads its asset name and writes the generic message.
 - **A bundle without facts.** A packed consumer bundles a fixture application with `Bun.build` and with Rolldown, each with no define. Each bundle reads `{ build: 'source' }` and writes the Developer Diagnostic for a defect under Node and Bun. Each pads wide, combining, emoji, and flag text to its display width and keeps the license notices of core's derived modules.
 - **A malformed define.** A fixture bundled with `--define` values that bake `{"build":"staging"}`, `[]`, and a release group whose version is `one` each exits 1 with the Developer Diagnostic of `@loomcli/core/invalid-release-facts` and runs no action. `app.invoke` from the same bundle resolves `failed` with exit 1, `inspect()` throws the `InternalError`, and `run({ host: { release: { build: 'distributed' } } })` runs, because the override replaces the baked value. A baked member core does not know reads as the known members alone.
 - **Overrides by build.** From source, `run({ host: { release: { build: 'distributed' } } })` writes the generic message for a defect and `{ build: 'development' }` writes the Developer Diagnostic. An application override of `InternalError` renders a defect in a distributed build and is not consulted in a development build; a plugin override of `InternalError` is likewise not consulted in development. An `onFailure` hint prints under the generic message and under the Developer Diagnostic. An action's `invoke` reads its run's facts, and `app.invoke` with `host: { release }` reads the override.
@@ -3685,7 +3685,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -5302,6 +5302,97 @@ The plugin is proven when process tests under Node and Bun, each with a temporar
 - **A failed write.** A read-only directory calls `onError` with `kind` `create-directory` or `append` and the path for each record that fails, and an unset or relative `HOME` with `unresolved-directory` and `variable` `HOME`; with no `onError`, each run exits with its own code and writes nothing to stderr; a later record lands once the directory is writable; and an `onError` that throws is reported as a broken hook with exit 1.
 - **Settings.** Each settings fault throws its pinned diagnostic at the `logging()` call.
 - **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/logging` from the packed tarball under Node and Bun.
+
+### Self-update
+
+```ts
+// @loomcli/plugins/self-update
+import type { Host, Log, Plugin } from '@loomcli/core';
+
+export interface AfterReplaceContext {
+  readonly previous: string; // the version that was replaced
+  readonly current: string; // the version now at path
+  readonly path: string; // the recorded path, as install.json holds it
+  readonly host: Host; // the run's host, whose release facts still describe the replaced binary
+  readonly signal: AbortSignal; // the run signal
+  readonly log: Log; // the run's log
+}
+export interface SelfUpdateSettings {
+  /** Called once after the binary is replaced and the record rewritten. */
+  readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+}
+export declare function selfUpdate(settings?: SelfUpdateSettings): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+
+export const notes = new Application('notes', {
+  plugins: [help(), selfUpdate({ afterReplace: ({ path }) => restartService(path) })],
+});
+```
+
+```text
+$ notes self-update
+Downloading notes-linux-x64 from v1.5.0 of acme/notes.
+Updated notes from 1.4.2 to 1.5.0.
+$ notes self-update --check
+notes can update from 1.5.0 to 1.5.1 on the stable channel.
+$ notes self-update --channel next
+Downloading notes-linux-x64 from v1.6.0-next.2 of acme/notes.
+Updated notes from 1.5.0 to 1.6.0-next.2.
+$ notes self-update 1.5.0
+Downloading notes-linux-x64 from v1.5.0 of acme/notes.
+Updated notes from 1.6.0-next.2 to 1.5.0.
+```
+
+`selfUpdate()` is the self-update plugin. It replaces the running binary with a verified release from the application's GitHub repository, and only when the [installer script](toolchain.md#the-installer-script) placed the binary and nothing has changed it since. Its identity is `@loomcli/plugins/self-update`, and its whole contribution is one [plugin Command](#plugin-commands). [ADR-0073](decisions/0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md) records the decision.
+
+- **Settings.** `selfUpdate()` judges its settings at the call under `checkPluginSettings`, then its one key, and throws a `DeclarationError` of `@loomcli/plugins/self-update/settings` for an `afterReplace` that is not a function: `Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.`, corrected by `Supply a function, or omit the setting.`
+- **The Command.** `self-update`, visible, with the description `Replace this application with a newer release.`, the optional argument `version`, `A release version to install, newer or older, such as 1.4.0.`, the string option `--channel`, `The release channel to follow, such as stable or next.`, and the Boolean option `--check`, `Report what an update would do and replace nothing.` It declares no result. A version may carry a leading `v`, and it must otherwise be a semantic version; a channel must be `stable` or a SemVer prerelease identifier that is not numeric. Either one malformed, and `--channel` beside a version, are usage errors with exit 2. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](#completion) has.
+- **Refusals.** Before any request, in this order, the Command fails with a `FatalError` and exit 1, replacing nothing and writing no record, when:
+
+  | The run | The sentence and correction |
+  | --- | --- |
+  | has no release group with an `asset` in `host.release` | `notes was not built as a release binary, so it cannot update itself. Install a release with install.sh.` |
+  | has no `installation`, or one whose method is not `script` | `notes was installed some other way, so self-update cannot replace it. Update it the way you installed it.` |
+  | finds no regular file where the recorded path resolves | `notes cannot find its binary at /home/me/.local/bin/notes. Install it again with install.sh.` |
+  | finds a file whose SHA-256 digest differs from the recorded one | `notes at /home/me/.local/bin/notes changed since it was installed, so self-update will not replace it. Install it again with install.sh.` |
+  | cannot write to the binary's directory or the installation record's | `notes cannot write to /home/me/.local/bin. Run self-update as the user who installed notes.` |
+
+  The path is the recorded path, resolved through symbolic links to the file the Command would replace. Core never hashes the binary, so the Command hashes it on every run that passes its usage checks, `--check` included.
+- **The release channel.** The running binary's channel is `host.release.channel`. With no version, the Command resolves the newest release on the channel `--channel` names, or else on the running binary's:
+  - `stable`: `https://github.com/<repository>/releases/latest`, requested without following its redirect, whose `Location` must be `https://github.com/<repository>/releases/tag/v<version>` with a stable version. GitHub never resolves it to a draft or a prerelease.
+  - Any other channel: `https://github.com/<repository>/releases.atom`, read for each `href="https://github.com/<repository>/releases/tag/v<version>"` attribute. The release is the highest version, by SemVer precedence, among those whose channel is that channel or `stable`. A tag that is not `v` and a semantic version is passed over. The feed lists only GitHub's newest releases.
+
+  `<repository>` is `host.release.repository`. A channel with no release fails: `notes found no release on the next channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.`
+- **Newer only.** A resolved release whose version is the running version prints `notes 1.5.0 is the newest release on the stable channel.` and one whose version is older prints `notes 1.5.0-next.2 is newer than the newest release on the stable channel, 1.4.2. Name that version to install it: notes self-update 1.4.2.` Both exit 0 and replace nothing. A named version is the release `v<version>`, installed whether it is newer or older, and one equal to the running version prints `notes 1.5.0 is already installed.` and replaces nothing.
+- **`--check`.** The Command resolves the release and checks it exists, then prints what an update would do, such as `notes can update from 1.5.0 to 1.5.1 on the stable channel.` or the newer-only line, and exits 0. It downloads no asset, writes nothing, and never calls `afterReplace`. A named version that has no release fails as it would without `--check`.
+- **Downloading.** The asset is `host.release.asset`, the running binary's own, so the platform needs no detection. The Command fetches `https://github.com/<repository>/releases/download/v<version>/SHA256SUMS`, then the asset beside it. A response other than `200` fails and names the URL: `notes could not download https://github.com/acme/notes/releases/download/v9.9.9/SHA256SUMS (404). Check the version, then run self-update again.` A request that fails before any response, such as an unreachable network, fails with the same sentence and the runtime's message in place of the status.
+- **HTTPS alone.** The Command follows each redirect itself, at most 20 for one request, and only to a URL whose scheme is `https:`. A redirect elsewhere fails: `notes was redirected away from HTTPS while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.` It sends no token and calls no API. It adds no time limit and no size limit; the run signal aborts every request.
+- **Verifying.** The asset's digest comes from `SHA256SUMS` under [the release shape](toolchain.md#the-release-shape). No line for the asset, or two lines for it with different digests, fails and names the asset and the release. A download whose SHA-256 digest differs fails: `notes-linux-x64 from v1.5.0 of acme/notes does not match its SHA256SUMS digest. Run self-update again later.`
+- **Placing.** The verified bytes go to a staging file the Command creates exclusively in the directory of the file it replaces, named `.<name>.<random>.loom-staging`, with that file's permission bits, and the Command renames it over the file. A failure or cancellation before the rename removes the staging file and leaves the binary as it was. The running process keeps running the old binary. When the recorded path is a symbolic link, the link stays and its target is replaced.
+- **Recording.** After the rename, the Command rewrites `install.json` in `applicationDirectory('installation', name, host)`, with the method `script`, the recorded path, and the digest of the bytes it placed, in the [installation record's](#installation-record) line format, through a staging file in the same directory and a rename. The run signal is not read between the rename and the record. A record that cannot be written fails: `notes was updated to 1.5.0, but its installation record could not be written. Install it again with install.sh.`
+- **`afterReplace`.** Once the record is written, the Command calls `afterReplace` with the replaced and new versions, the recorded path, the run's host, signal, and log, and awaits it. It runs in the process that replaced the binary, so it runs the old version's code, and anything that needs the new version runs `path`. A hook that throws or rejects fails the run through the ordinary [failure path](#failure-contract), as any action's throw does, and the new binary and record stay.
+- **No copy, no lock.** The Command keeps no copy of the binary it replaced: a release that runs goes back with `self-update <version>`, and one that cannot start with `install.sh <version>`. Two runs at once each place whole, verified bytes, and the last rename wins the binary and, separately, the record; a record that then disagrees with the binary refuses the next run until `install.sh` installs again.
+- **Output.** Progress goes through `out.info` and the outcome through `out.success`, so stdout stays empty, and each line renders through its lane view. A refusal or failure is a `FatalError` whose sentence names the application, as the table shows, and exits 1.
+- **Names.** `selfUpdate`, `SelfUpdateSettings`, and `AfterReplaceContext` are exported from `@loomcli/plugins/self-update`.
+
+#### Self-update acceptance
+
+The plugin is proven when process tests under Node and Bun produce these results. Each fixture runs an application that installs `selfUpdate()` through `run({ host: { release } })`, whose installation points into a temporary directory, and a preload that replaces `fetch` with a fake GitHub that serves fixture releases, redirects asset downloads to another HTTPS host as GitHub does, and records each request:
+
+- **Updating.** A binary at `1.4.2` on `stable` fetches `releases/latest`, `SHA256SUMS`, and the asset of the latest release, replaces the file with the asset's bytes and the old file's mode, rewrites `install.json` with the pinned bytes and the new digest, calls `afterReplace` once with `1.4.2`, the new version, and the recorded path, and exits 0. A recorded path that is a symbolic link keeps the link and replaces its target.
+- **Channels.** A binary at `1.6.0-next.1` resolves the highest `next` or stable release in the feed, passing over a `beta` release and a tag that is not a version, and moves to a stable `1.6.0` that outranks it. `--channel next` from a stable binary installs the newest `next` release, and `--channel stable` from `1.6.0-next.1` with `1.5.0` latest prints the newer-only line.
+- **Versions.** `1.4.0` and `v1.4.0` install `v1.4.0` from a binary at `1.5.0`, and the running version prints that it is already installed. `--channel next 1.4.0`, `1.x`, and `--channel 01` exit 2.
+- **Newer only and `--check`.** The latest release equal to the running version replaces nothing and calls no hook. `--check` prints the pinned line, requests no asset, writes nothing, and calls no hook.
+- **Refusals.** A run with no release group, no asset, no installation, the method `npm`, a missing file, a file whose digest changed, and a read-only directory each exit 1 with the pinned sentence, make no request, and leave the binary and `install.json` byte for byte. A digest mismatch, no `SHA256SUMS` line for the asset, two lines with different digests, a `404`, a redirect to `http:`, and a failed request each exit 1 with the pinned sentence and leave the binary, `install.json`, and no staging file. A channel with no release in the feed exits 1.
+- **Cancellation.** A run aborted during the asset download exits 130 and leaves the binary, `install.json`, and no staging file.
+- **The hook.** An `afterReplace` that throws exits 1 through the ordinary failure path with the new binary and record in place, and the hook reads the run's host and signal.
+- **Settings.** `selfUpdate({ afterReplace: 1 })` throws its pinned diagnostic at the call.
+- **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/self-update` from the packed tarball under Node and Bun.
 
 ### Example coverage
 

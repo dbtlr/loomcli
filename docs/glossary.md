@@ -233,12 +233,12 @@ The captured facts of the process an invocation runs in: argument tokens, workin
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Release facts**:
-The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, lane, repository, and asset, and an optional installation group. The build bakes the build and release group into the artifact, core reads the installation group from the installation record, and core holds them on the host as `release`. An artifact built with none reads `source`.
+The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, release channel, repository, and asset, and an optional installation group. The build bakes the build and release group into the artifact, core reads the installation group from the installation record, and core holds them on the host as `release`. An artifact built with none reads `source`.
 _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
-**Release lane**:
-The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, and the release facts name the field `lane`.
-_Avoid_: Lane (alone), channel, track, dist-tag
+**Release channel**:
+The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, the release facts name the field `channel`, and self-update follows the running binary's channel unless the operator names another.
+_Avoid_: Lane (a lane is an output area), track, dist-tag
 
 **Installation record**:
 The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps its installed files, with their digests, in its own file there.
@@ -635,6 +635,10 @@ _Avoid_: Retry, rebuild, republish, repair
 **Release asset**:
 One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
 _Avoid_: Artifact, download
+
+**Self-update**:
+The plugin Command that replaces the running binary with a verified release asset from the application's GitHub repository, the newest on its release channel or a version the operator names. It replaces only a binary whose installation record reads the method `script` and whose digest still matches, rewrites `install.json` afterwards, and keeps no copy of what it replaced.
+_Avoid_: Auto-update, upgrade (for the Command), updater
 
 ## Toolchain
 
