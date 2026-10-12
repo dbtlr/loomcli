@@ -170,9 +170,10 @@ export interface OutputTerminal extends InputTerminal {
   rows: number | undefined;
 }
 /**
- * How the running application was built, released, and installed. The build bakes these facts into
- * the artifact, and core fills `host.release` from them for every run; a run of the source, with
- * nothing baked in, reads `{ build: 'source' }`.
+ * How the running application was built, released, and installed. The build bakes the build and
+ * release facts into the artifact, core reads the installation from the installation record, and
+ * core fills `host.release` from them for every run; a run of the source, with nothing baked in,
+ * reads `{ build: 'source' }`.
  */
 export interface ReleaseFacts {
   /** `source` and `development` are development builds, and `distributed` is a distributed one. */
@@ -187,7 +188,10 @@ export interface ReleaseFacts {
     /** The release asset's name, present for a compiled binary alone. */
     readonly asset?: string;
   };
-  /** How the application was installed. Always absent until the installation record ships. */
+  /**
+   * How the application was installed, read from the installation record's `install.json` for a
+   * compiled binary built as a release, and present only when its path is the running executable.
+   */
   readonly installation?: {
     readonly method: string;
     readonly path: string;

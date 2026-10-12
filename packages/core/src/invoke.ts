@@ -207,15 +207,18 @@ function readCall<Mapped>(
 
 /**
  * The five fields `app.invoke` captures at entry, unless the caller replaces one. The working
- * directory and the release facts are read through the steps `run()` shares.
+ * directory and the release facts are read through the steps `run()` shares, the application's
+ * name finding its installation record.
  */
-function processFields(overrides: Partial<InvocationFields>): CapturedFields {
+function processFields(application: string, overrides: Partial<InvocationFields>): CapturedFields {
+  const env = overrides.env ?? process.env;
+  const platform = overrides.platform ?? process.platform;
   return {
     directory: captureWorkingDirectory(overrides.cwd),
-    env: overrides.env ?? process.env,
-    platform: overrides.platform ?? process.platform,
+    env,
+    platform,
     readSource: overrides.readSource ?? readSourceFile,
-    release: captureRelease(overrides.release),
+    release: captureRelease(overrides.release, { application, env, platform }),
   };
 }
 

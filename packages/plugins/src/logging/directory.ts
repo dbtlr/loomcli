@@ -1,55 +1,38 @@
 import { isAbsolute, join } from 'node:path';
 
+import { applicationDirectory } from '@loomcli/core';
 import type { LogDestination } from '@loomcli/core';
 
 import { LoggingError } from './error.js';
 
-/** A variable's value, or `undefined` when the run left it unset or empty. */
-function variableOf(destination: LogDestination, name: string): string | undefined {
+/** A variable's value when it is an absolute path, which alone counts as set. */
+function absoluteVariable(destination: LogDestination, name: string): string | undefined {
   const value = destination.env[name];
-  return value === undefined || value === '' ? undefined : value;
+  return value !== undefined && isAbsolute(value) ? value : undefined;
 }
 
-/** A variable the path needs, or the failure that names it. */
-function required(destination: LogDestination, name: string): string | LoggingError {
-  return (
-    variableOf(destination, name) ??
-    new LoggingError('unresolved-directory', { path: null, variable: name })
-  );
+/** The failure of a path the variable `name` cannot give. */
+function unresolved(name: string): LoggingError {
+  return new LoggingError('unresolved-directory', { path: null, variable: name });
+}
+
+/** The directory a platform keeps an application's logs in, as core's `logs` lookup resolves it. */
+function defaultDirectory(application: string, destination: LogDestination): string | LoggingError {
+  const lookup = applicationDirectory('logs', application, destination);
+  return 'path' in lookup ? lookup.path : unresolved(lookup.variable);
 }
 
 /**
- * The directory a platform keeps an application's logs in, read from the destination's `env` and
- * `platform` alone: the Library/Logs folder on `darwin`, the Logs folder under `LOCALAPPDATA` on
- * `win32`, and the state directory elsewhere, `XDG_STATE_HOME` when it is absolute.
+ * The home directory a `~/` path starts from: `HOME`, or `USERPROFILE` on `win32` without it, each
+ * counting only when it is an absolute path.
  */
-function defaultDirectory(application: string, destination: LogDestination): string | LoggingError {
-  switch (destination.platform) {
-    case 'darwin': {
-      const home = required(destination, 'HOME');
-      return home instanceof LoggingError ? home : join(home, 'Library', 'Logs', application);
-    }
-    case 'win32': {
-      const local = required(destination, 'LOCALAPPDATA');
-      return local instanceof LoggingError ? local : join(local, application, 'Logs');
-    }
-    default: {
-      const state = variableOf(destination, 'XDG_STATE_HOME');
-      if (state !== undefined && isAbsolute(state)) {
-        return join(state, application);
-      }
-      const home = required(destination, 'HOME');
-      return home instanceof LoggingError ? home : join(home, '.local', 'state', application);
-    }
-  }
-}
-
-/** The home directory a `~/` path starts from: `HOME`, or `USERPROFILE` on `win32` without it. */
 function homeDirectory(destination: LogDestination): string | LoggingError {
-  if (destination.platform === 'win32' && variableOf(destination, 'HOME') === undefined) {
-    return required(destination, 'USERPROFILE');
+  const home = absoluteVariable(destination, 'HOME');
+  if (home !== undefined) {
+    return home;
   }
-  return required(destination, 'HOME');
+  const name = destination.platform === 'win32' ? 'USERPROFILE' : 'HOME';
+  return absoluteVariable(destination, name) ?? unresolved(name);
 }
 
 const homePrefix = '~/';

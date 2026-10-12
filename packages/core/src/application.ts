@@ -650,7 +650,7 @@ class ApplicationBuilder<
   }
 
   async run(options?: RunOptions): Promise<ExitCode> {
-    const end = await this.#execute(argvDoor(options));
+    const end = await this.#execute(argvDoor(this.#name, options));
     return end.exitCode;
   }
 
@@ -689,7 +689,7 @@ class ApplicationBuilder<
       nameDoor(read, {
         action,
         declared: this.#config.rendering,
-        fields: () => action?.fields ?? processFields(overrides),
+        fields: () => action?.fields ?? processFields(this.#name, overrides),
         streams,
       }),
     );
@@ -1180,7 +1180,7 @@ interface RunDoor {
 }
 
 /** The door `run()` enters by: argv and the process's own host, signals, and exit status. */
-function argvDoor(options: RunOptions | undefined): RunDoor {
+function argvDoor(application: string, options: RunOptions | undefined): RunDoor {
   return {
     bound: undefined,
     destination: ({ env, platform, stderr }) => Object.freeze({ env, platform, stderr }),
@@ -1189,13 +1189,13 @@ function argvDoor(options: RunOptions | undefined): RunDoor {
       const overrides = options?.host;
       return {
         bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
-        host: (stderr) => captureHost(overrides, stderr),
+        host: (stderr) => captureHost(application, overrides, stderr),
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
         start: undefined,
         stderr: overrides?.stderr,
       };
     },
-    fallback: (stderr) => captureHost(undefined, stderr).report,
+    fallback: (stderr) => captureHost(application, undefined, stderr).report,
     invokedBy: 'argv',
     output: (host, signal) => new Output(host, signal),
     rendering: (declared) => {
