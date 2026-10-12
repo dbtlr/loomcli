@@ -467,6 +467,37 @@ test('an unset HOME reports an unresolved directory that names the variable', ()
   });
 });
 
+test.each([
+  ['the default directory', undefined],
+  ['a file under ~/', '~/x.jsonl'],
+])('a relative HOME reports an unresolved directory for %s', (_case, file) => {
+  const box = sandbox();
+  const result = run(
+    box,
+    ['burst', '1', '0', 'm'],
+    { FIXTURE_HOST_ENV: JSON.stringify({ HOME: 'home' }), FIXTURE_ON_ERROR: 'print' },
+    file === undefined ? undefined : { file },
+  );
+  const failure = '{"kind":"unresolved-directory","path":null,"variable":"HOME"}';
+  expect(result).toEqual({ status: 0, stderr: '', stdout: `onError:${failure}\n` });
+  expect(readdirSync(box.work)).toEqual([]);
+});
+
+test('~/ on win32 passes over a relative HOME to USERPROFILE', () => {
+  const box = sandbox();
+  const result = run(
+    box,
+    ['log'],
+    {
+      FIXTURE_HOST_ENV: JSON.stringify({ HOME: 'home', USERPROFILE: box.home }),
+      FIXTURE_PLATFORM: 'win32',
+    },
+    { file: '~/x.jsonl' },
+  );
+  expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
+  expect(lines(join(box.home, 'x.jsonl'))).toHaveLength(3);
+});
+
 test('a rotation that fails reports it, and the record is still written', () => {
   const box = sandbox();
   const directory = join(box.state, 'heimdall');
