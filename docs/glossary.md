@@ -634,7 +634,7 @@ _Avoid_: Retry, rebuild, republish, repair
 
 **Release asset**:
 One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
-_Avoid_: Artifact, download, release binary
+_Avoid_: Artifact, download
 
 ## Toolchain
 
