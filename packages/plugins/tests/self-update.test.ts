@@ -717,7 +717,8 @@ test('the feed passes over another repository and another channel, and stable pa
   });
   expect(feed.status).toBe(0);
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.6.0-next.2 binary\n');
-  expect(requests(box).filter((url) => url.includes('other/repo'))).toEqual([]);
+  // Another repository's tag is never a candidate, so nothing asks for its version.
+  expect(requests(box).filter((url) => url.includes('v9.0.0'))).toEqual([]);
 
   const noRelease =
     'notes found no release on the stable channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.\n';
