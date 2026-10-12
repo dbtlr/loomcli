@@ -72,17 +72,27 @@ function stagingPath(path: string): string {
 
 /**
  * Replaces `path` whole: the content goes to a staging file created exclusively in its directory,
- * which is then renamed into place, so no reader and no other run sees partial content there.
+ * which is then renamed into place, so no reader and no other run sees partial content there. A
+ * failed write or rename removes the staging file and throws the original error.
  */
 function replaceFile(path: string, content: string | Uint8Array): void {
   const staging = stagingPath(path);
   try {
     writeFileSync(staging, content, { flag: 'wx' });
+    renameSync(staging, path);
   } catch (error) {
-    rmSync(staging, { force: true });
+    removeStaging(staging);
     throw error;
   }
-  renameSync(staging, path);
+}
+
+/** Removes a staging file after a failed replacement, leaving any failure to recovery's next run. */
+function removeStaging(staging: string): void {
+  try {
+    rmSync(staging, { force: true });
+  } catch {
+    // The replacement's own error is the one to report; a later run removes the leftover.
+  }
 }
 
 /** The names in a directory, or none when the directory is gone. */

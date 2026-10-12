@@ -10,12 +10,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
+import { replaceFile } from '../src/installation/disk.js';
 import { install, uninstall } from '../src/installation/files.js';
 import type { InstalledFile } from '../src/installation/files.js';
 
@@ -617,3 +618,10 @@ test('two installs writing one target at once never rename one partial staging f
   expect(ends.has('installed')).toBe(true);
   expect(whole.test(readFileSync(box.first, 'latin1'))).toBe(true);
 }, 60_000);
+
+test('a replacement whose rename fails throws the rename error and leaves no staging file', () => {
+  const box = sandbox();
+  mkdirSync(box.first, { recursive: true });
+  expect(() => replaceFile(box.first, 'test')).toThrow(/EISDIR|ENOTEMPTY|EEXIST|EPERM/u);
+  expect(readdirSync(dirname(box.first))).toEqual([basename(box.first)]);
+});
