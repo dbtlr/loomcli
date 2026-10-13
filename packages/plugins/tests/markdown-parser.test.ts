@@ -8,7 +8,9 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { theme } from '@loomcli/plugins/theme';
 import { expect, test } from 'vite-plus/test';
 
+import { renderDetails } from '../src/help/details.js';
 import { parseMarkdown } from '../src/markdown/blocks.js';
+import { parseInline } from '../src/markdown/inline.js';
 import { blockCases, inlineCases } from './markdown-cases.js';
 
 /** Captures the shipped view through public APIs without starting a process. */
@@ -195,14 +197,44 @@ test('disabled modifiers add no escapes for emphasis or headings', async () => {
   );
 });
 
-test('a plain paragraph stays one primary marked value, including its spaces', async () => {
-  // Adjacent primary fragments would resolve to the same ANSI bytes; inspect the view's wire too.
-  const { renderDetails } = await import('../src/help/details.js');
-  const { createStyle } = await import('../../core/dist/style.js');
-  const contextual = createStyle();
-  expect(renderDetails('One plain line.', { style: contextual, width: () => 0 })).toEqual([
-    '  \uE000["style",[["token","primary"]]]\uE001One plain line.\uE002',
+test('a plain paragraph keeps its spaces inside one primary themed run', async () => {
+  await expect(render('One plain line.', { themed: true })).resolves.toBe(
+    themedPage(['  \u001b[32mOne plain line.\u001b[39m'], false),
+  );
+});
+
+// Styled bytes merge adjacent runs of one style, so only the marked string shows a split value.
+test('a plain paragraph line is one primary value in the marked string', () => {
+  expect(renderDetails('One plain line.', { style, width: () => 0 })).toEqual([
+    `  ${style.primary(style.escape('One plain line.'))}`,
   ]);
+});
+
+test('an address-only link uses surrounding styles instead of its text modifiers', async () => {
+  await expect(
+    render('[**u**](u)\n*[**u**](u)*\n[`u`](`u`)', {
+      modifiers: 'always',
+      themed: true,
+    }),
+  ).resolves.toBe(
+    themedPage([
+      '  \u001b[32mu\u001b[39m',
+      '  \u001b[32;3mu\u001b[39;23m',
+      '  \u001b[32m`u`\u001b[39m',
+    ]),
+  );
+});
+
+test('a depth-three item retains all 200 lazy paragraph lines', async () => {
+  const source = `- outer\n  - middle\n    - inner\n${'wrapped line\n'.repeat(200)}`;
+  await expect(render(source)).resolves.toBe(
+    page([
+      '  - outer',
+      '    - middle',
+      '      - inner',
+      ...Array.from({ length: 200 }, () => '        wrapped line'),
+    ]),
+  );
 });
 
 test.each([
@@ -242,5 +274,15 @@ test('empty headings create no parser block and retain an authored separator', (
   expect(parseMarkdown('one\n\n#\ntwo')).toMatchObject([
     { blankBefore: false, kind: 'paragraph' },
     { blankBefore: true, kind: 'paragraph' },
+  ]);
+});
+
+test('the inline model keeps images distinct and code content separate from its delimiters', () => {
+  expect(parseInline('![x](y) ``a`b`` `C:\\`')).toEqual([
+    { children: [{ kind: 'text', text: 'x' }], destination: 'y', kind: 'image' },
+    { kind: 'text', text: ' ' },
+    { backtickLength: 2, content: 'a`b', kind: 'code' },
+    { kind: 'text', text: ' ' },
+    { backtickLength: 1, content: 'C:\\', kind: 'code' },
   ]);
 });

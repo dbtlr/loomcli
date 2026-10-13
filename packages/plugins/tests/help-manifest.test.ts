@@ -65,7 +65,7 @@ function invalid(message: string) {
 test('manifestCommand applies the line and Markdown rules help applies', () => {
   const line = 'Supply one line that holds a character other than whitespace.';
   expect(rule('valid')).toEqual({ fault: null });
-  expect(rule('blank-prose-line')).toEqual({ fault: null });
+  expect(rule('markdown-blank-lines')).toEqual({ fault: null });
   expect(rule('blank-details')).toEqual(
     invalid('Supply Markdown that holds a character other than whitespace.'),
   );

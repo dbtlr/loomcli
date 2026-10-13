@@ -220,6 +220,30 @@ test('jsonkit get --help renders while the required path is missing', () => {
   );
 });
 
+test('jsonkit get -h omits Details and EXAMPLES and points to extended help', () => {
+  expect(invoke(main, ['get', '-h'])).toEqual(
+    page(
+      'jsonkit get · Read one value at a path.',
+      '',
+      'USAGE',
+      '  jsonkit get <path> [options]',
+      '',
+      'ARGUMENTS',
+      '  path  Dot path to read.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.',
+      '  -v, --verbose...   Name the document before reading it.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
+      "  -M, --manifest     Print this command's manifest as JSON.",
+      '  -e, --explain      Explain the selected command and exit.',
+      '',
+      'Run jsonkit get --help for details and examples.',
+    ),
+  );
+});
+
 test('jsonkit select --bogus --help renders too, because local tokens are never parsed', () => {
   expect(invoke(main, ['select', '--bogus', '--help'])).toEqual(select);
 });

@@ -1,14 +1,20 @@
-const firstIndex = 0;
-const lastIndex = -1;
-const step = 1;
+const notFound = -1;
+const lastElementOffset = -1;
+const firstElement = 0;
+const indexIncrement = 1;
+const delimiterDepth = 1;
+const balancedDepth = 0;
+const singleToken = 1;
+const angleBracketWidth = 1;
 const pairLength = 2;
 
 /** Inline syntax is local to one authored line; opaque nodes isolate their delimiters. */
 type Inline =
   | { readonly kind: 'text'; readonly text: string }
-  | { readonly kind: 'code'; readonly text: string }
+  | { readonly kind: 'code'; readonly content: string; readonly backtickLength: number }
   | { readonly kind: 'address'; readonly text: string }
   | { readonly kind: 'link'; readonly children: readonly Inline[]; readonly destination: string }
+  | { readonly kind: 'image'; readonly children: readonly Inline[]; readonly destination: string }
   | { readonly kind: 'emphasis'; readonly children: readonly Inline[]; readonly strong: boolean };
 
 interface Delimiter {
@@ -19,11 +25,11 @@ type Token = Inline | Delimiter;
 const punctuation = /^[!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~]$/u;
 const alphanumeric = /[\p{L}\p{N}]/u;
 
-/** Coalesces adjacent literal fragments so a plain line remains one styled value. */
+/** Coalesces adjacent literal fragments into one text node. */
 function literal(tokens: Token[], text: string): void {
-  const last = tokens.at(lastIndex);
+  const last = tokens.at(lastElementOffset);
   if (last?.kind === 'text') {
-    tokens[tokens.length - step] = { kind: 'text', text: last.text + text };
+    tokens[tokens.length - indexIncrement] = { kind: 'text', text: last.text + text };
   } else if (text !== '') {
     tokens.push({ kind: 'text', text });
   }
@@ -46,16 +52,23 @@ function materialize(tokens: readonly Token[]): Inline[] {
 
 /** The next equal-length backtick run closes a span; all other runs are literal inside it. */
 function codeAt(source: string, start: number) {
-  const opening = /^`+/u.exec(source.slice(start))?.[firstIndex];
+  const opening = /^`+/u.exec(source.slice(start))?.[firstElement];
   if (opening === undefined) {
     return undefined;
   }
   const runs = /`+/gu;
   runs.lastIndex = start + opening.length;
   for (let next = runs.exec(source); next !== null; next = runs.exec(source)) {
-    if (next[firstIndex].length === opening.length) {
-      const end = next.index + next[firstIndex].length;
-      return { end, node: { kind: 'code', text: source.slice(start, end) } satisfies Inline };
+    if (next[firstElement].length === opening.length) {
+      const end = next.index + next[firstElement].length;
+      return {
+        end,
+        node: {
+          backtickLength: opening.length,
+          content: source.slice(start + opening.length, next.index),
+          kind: 'code',
+        } satisfies Inline,
+      };
     }
   }
   return undefined;
@@ -63,14 +76,14 @@ function codeAt(source: string, start: number) {
 
 function bracketDepth(character: string | undefined, depth: number): number {
   if (character === '[') {
-    return depth + step;
+    return depth + delimiterDepth;
   }
-  return character === ']' ? depth - step : depth;
+  return character === ']' ? depth - delimiterDepth : depth;
 }
 
 /** Escapes, code spans, and autolinks hide brackets from the balancing scanner. */
 function bracketSkip(source: string, index: number): number | undefined {
-  if (source[index] === '\\' && punctuation.test(source[index + step] ?? '')) {
+  if (source[index] === '\\' && punctuation.test(source[index + indexIncrement] ?? '')) {
     return index + pairLength;
   }
   if (source[index] === '`' || source[index] === '<') {
@@ -81,7 +94,7 @@ function bracketSkip(source: string, index: number): number | undefined {
 
 /** Protected inline atoms do not change a link text's bracket depth. */
 function textEnd(source: string, start: number): number {
-  let depth = step,
+  let depth = delimiterDepth,
     index = start;
   while (index < source.length) {
     const skip = bracketSkip(source, index);
@@ -89,70 +102,70 @@ function textEnd(source: string, start: number): number {
       index = skip;
     } else {
       depth = bracketDepth(source[index], depth);
-      if (depth === firstIndex) {
+      if (depth === balancedDepth) {
         return index;
       }
-      index += step;
+      index += indexIncrement;
     }
   }
-  return lastIndex;
+  return notFound;
 }
 
 function parenthesisDepth(character: string, depth: number): number {
   if (character === '(') {
-    return depth + step;
+    return depth + delimiterDepth;
   }
-  return character === ')' ? depth - step : depth;
+  return character === ')' ? depth - delimiterDepth : depth;
 }
 
 /** Destinations balance parentheses but never interpret escapes or allow whitespace. */
 function destinationEnd(source: string, start: number): number {
-  let depth = step;
-  for (let index = start; index < source.length; index += step) {
+  let depth = delimiterDepth;
+  for (let index = start; index < source.length; index += indexIncrement) {
     const character = source[index] ?? '';
     if (/\s/u.test(character)) {
-      return lastIndex;
+      return notFound;
     }
     depth = parenthesisDepth(character, depth);
-    if (depth === firstIndex) {
-      return index === start ? lastIndex : index;
+    if (depth === balancedDepth) {
+      return index === start ? notFound : index;
     }
   }
-  return lastIndex;
+  return notFound;
 }
 
-/** Links and images share their printable model; links cannot nest in their text. */
+/** Links and images retain their identities; links cannot nest in their text. */
 function linkAt(source: string, start: number) {
-  const bracket = source.startsWith('![', start) ? start + step : start;
+  const bracket = source.startsWith('![', start) ? start + indexIncrement : start;
   if (source[bracket] !== '[') {
     return undefined;
   }
-  const closing = textEnd(source, bracket + step);
-  if (closing < firstIndex || source[closing + step] !== '(') {
+  const closing = textEnd(source, bracket + indexIncrement);
+  if (closing === notFound || source[closing + indexIncrement] !== '(') {
     return undefined;
   }
   const end = destinationEnd(source, closing + pairLength);
-  return end < firstIndex
+  return end === notFound
     ? undefined
     : {
-        end: end + step,
+        end: end + indexIncrement,
         node: {
-          children: parseInline(source.slice(bracket + step, closing), false),
+          children: parseInline(source.slice(bracket + indexIncrement, closing), false),
           destination: source.slice(closing + pairLength, end),
-          kind: 'link',
+          kind: bracket === start ? 'link' : 'image',
         } satisfies Inline,
       };
 }
 
 /** Finds the nearest surviving opener without requiring an ES2023 array API. */
 function matchingOpener(tokens: readonly Token[], marker: string): number {
-  for (let index = tokens.length - step; index >= firstIndex; index -= step) {
+  for (let index = tokens.length - indexIncrement; index >= firstElement; index -= indexIncrement) {
     const token = tokens[index];
     if (token?.kind === 'delimiter' && token.marker === marker) {
       return index;
     }
   }
-  return lastIndex;
+  return notFound;
 }
 
 /** Closes the nearest matching opener, leaving intervening unmatched markers literal. */
@@ -163,10 +176,10 @@ function emphasis(
 ): void {
   const underscore = marker.startsWith('_');
   const closes = /\S/u.test(before) && !(underscore && alphanumeric.test(after));
-  const opener = closes ? matchingOpener(tokens, marker) : lastIndex;
-  if (opener >= firstIndex) {
-    const children = materialize(tokens.splice(opener + step));
-    tokens.splice(opener, step, {
+  const opener = closes ? matchingOpener(tokens, marker) : notFound;
+  if (opener !== notFound) {
+    const children = materialize(tokens.splice(opener + indexIncrement));
+    tokens.splice(opener, singleToken, {
       children,
       kind: 'emphasis',
       strong: marker.length === pairLength,
@@ -181,14 +194,14 @@ function emphasis(
 /** A protected run is read as a whole, so an unclosed backtick run never starts at its middle. */
 function protectedAt(source: string, index: number) {
   const character = source[index];
-  if (character === '\\' && punctuation.test(source[index + step] ?? '')) {
+  if (character === '\\' && punctuation.test(source[index + indexIncrement] ?? '')) {
     return {
       end: index + pairLength,
-      node: { kind: 'text', text: source[index + step] ?? '' } satisfies Inline,
+      node: { kind: 'text', text: source[index + indexIncrement] ?? '' } satisfies Inline,
     };
   }
   if (character === '`') {
-    const run = /^`+/u.exec(source.slice(index))?.[firstIndex] ?? '`';
+    const run = /^`+/u.exec(source.slice(index))?.[firstElement] ?? '`';
     return (
       codeAt(source, index) ?? {
         end: index + run.length,
@@ -198,13 +211,16 @@ function protectedAt(source: string, index: number) {
   }
   const address =
     character === '<'
-      ? /^<(?:https?:\/\/|mailto:)[^\s<>]+>/u.exec(source.slice(index))?.[firstIndex]
+      ? /^<(?:https?:\/\/|mailto:)[^\s<>]+>/u.exec(source.slice(index))?.[firstElement]
       : undefined;
   return address === undefined
     ? undefined
     : {
         end: index + address.length,
-        node: { kind: 'address', text: address.slice(step, lastIndex) } satisfies Inline,
+        node: {
+          kind: 'address',
+          text: address.slice(angleBracketWidth, -angleBracketWidth),
+        } satisfies Inline,
       };
 }
 
@@ -219,11 +235,11 @@ function atomAt(source: string, index: number, links: boolean) {
 
 /** Only runs of one or two identical characters can delimit emphasis. */
 function delimiterAt(source: string, index: number, tokens: Token[]): number {
-  const marker = /^(?:\*+|_+)/u.exec(source.slice(index))?.[firstIndex] ?? '';
+  const marker = /^(?:\*+|_+)/u.exec(source.slice(index))?.[firstElement] ?? '';
   if (marker.length <= pairLength) {
     emphasis(tokens, marker, {
       after: nextAfter(source, index + marker.length),
-      before: /.$/u.exec(source.slice(firstIndex, index))?.[firstIndex] ?? '',
+      before: /.$/u.exec(source.slice(firstElement, index))?.[firstElement] ?? '',
     });
   } else {
     literal(tokens, marker);
@@ -256,13 +272,13 @@ function readInline(
     return delimiterAt(source, index, tokens);
   }
   literal(tokens, character);
-  return index + step;
+  return index + indexIncrement;
 }
 
 /** Reads protected constructs before links and emphasis, from left to right on one line. */
 function parseInline(source: string, links = true): Inline[] {
   const tokens: Token[] = [];
-  let index = firstIndex;
+  let index = firstElement;
   while (index < source.length) {
     index = readInline(source, index, { links, tokens });
   }

@@ -9,11 +9,13 @@ interface Modifiers {
   bold: boolean;
   italic: boolean;
 }
-const ordinary: Modifiers = { bold: false, italic: false };
+const firstElement = 0;
+const lastLineOffset = -1;
+const continuationStart = 1;
+const markerSpaceWidth = 1;
+const emptyLength = 0;
 
-const firstIndex = 0;
-const lastIndex = -1;
-const step = 1;
+const ordinary: Modifiers = { bold: false, italic: false };
 
 /** Applies semantic color and surrounding modifiers after escaping each authored fragment. */
 function styled(
@@ -32,6 +34,12 @@ function styled(
   return modifiers.italic ? color.italic(value) : color(value);
 }
 
+/** Help keeps a code span's authored backtick run around its uninterpreted content. */
+function codeSpan(node: Extract<Inline, { kind: 'code' }>): string {
+  const backticks = '`'.repeat(node.backtickLength);
+  return backticks + node.content + backticks;
+}
+
 /** Link equality compares printable text, independently of marked strings and theme policy. */
 function plain(nodes: readonly Inline[]): string {
   return nodes
@@ -39,11 +47,11 @@ function plain(nodes: readonly Inline[]): string {
       if (node.kind === 'emphasis') {
         return plain(node.children);
       }
-      if (node.kind === 'link') {
+      if (node.kind === 'link' || node.kind === 'image') {
         const text = plain(node.children);
         return text === node.destination ? text : `${text} (${node.destination})`;
       }
-      return node.text;
+      return node.kind === 'code' ? codeSpan(node) : node.text;
     })
     .join('');
 }
@@ -58,7 +66,7 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, style: Style): s
           return styled(node.text, 'primary', { modifiers, style });
         }
         case 'code': {
-          return styled(node.text, 'highlight', { modifiers, style });
+          return styled(codeSpan(node), 'highlight', { modifiers, style });
         }
         case 'emphasis': {
           return inline(
@@ -67,6 +75,7 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, style: Style): s
             style,
           );
         }
+        case 'image':
         case 'link': {
           return link(node, modifiers, style);
         }
@@ -79,12 +88,16 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, style: Style): s
     .join('');
 }
 
-/** A destination is dim, but its separating space carries only the inherited modifiers. */
-function link(node: Extract<Inline, { kind: 'link' }>, modifiers: Modifiers, style: Style): string {
-  const text = inline(node.children, modifiers, style);
+/** Images use link layout; a destination is dim unless it prints alone in the surrounding style. */
+function link(
+  node: Extract<Inline, { kind: 'link' | 'image' }>,
+  modifiers: Modifiers,
+  style: Style,
+): string {
   if (plain(node.children) === node.destination) {
-    return text;
+    return styled(node.destination, 'primary', { modifiers, style });
   }
+  const text = inline(node.children, modifiers, style);
   const space = style.escape(' ');
   const separator = modifiers.bold ? style.bold(space) : space;
   return (
@@ -97,10 +110,10 @@ function link(node: Extract<Inline, { kind: 'link' }>, modifiers: Modifiers, sty
 /** Drops empty edges and trailing whitespace before a code line becomes a single styled value. */
 function codeLines(lines: readonly string[], style: Style): string[] {
   const content = lines.map((line) => line.trimEnd());
-  while (content[firstIndex] === '') {
+  while (content[firstElement] === '') {
     content.shift();
   }
-  while (content.at(lastIndex) === '') {
+  while (content.at(lastLineOffset) === '') {
     content.pop();
   }
   return content.map((line) =>
@@ -115,7 +128,7 @@ function listLines(block: Extract<Block, { kind: 'list' }>, style: Style): strin
       block.marker.kind === 'ordered'
         ? `${block.marker.start + index}${block.marker.delimiter}`
         : '-';
-    const separator = item.blankBefore && index > firstIndex ? [''] : [];
+    const separator = item.blankBefore && index > firstElement ? [''] : [];
     return [...separator, ...itemLines(marker, item, style)];
   });
 }
@@ -123,13 +136,13 @@ function listLines(block: Extract<Block, { kind: 'list' }>, style: Style): strin
 /** A marker's printed width, including its space, indents every subsequent content line. */
 function itemLines(marker: string, item: Item, style: Style): string[] {
   const content = blockLines(item.blocks, style);
-  const first = content[firstIndex];
+  const first = content[firstElement];
   const prefix = styled(marker, 'dim', { modifiers: ordinary, style });
   return [
     prefix + (first === undefined || first === '' ? '' : ` ${first}`),
     ...content
-      .slice(step)
-      .map((line) => (line === '' ? '' : ' '.repeat(marker.length + step) + line)),
+      .slice(continuationStart)
+      .map((line) => (line === '' ? '' : ' '.repeat(marker.length + markerSpaceWidth) + line)),
   ];
 }
 
@@ -140,9 +153,7 @@ function renderBlock(block: Block, style: Style): string[] {
       return block.lines.map((line) => inline(line, ordinary, style));
     }
     case 'heading': {
-      return block.text.length === firstIndex
-        ? []
-        : [inline(block.text, { bold: true, italic: false }, style)];
+      return [inline(block.text, { bold: true, italic: false }, style)];
     }
     case 'code': {
       return codeLines(block.lines, style);
@@ -183,10 +194,10 @@ function appendBlock(
 ): void {
   state.blankBefore ||= block.blankBefore;
   const content = renderBlock(block, style);
-  if (content.length === firstIndex) {
+  if (content.length === emptyLength) {
     return;
   }
-  if (state.blankBefore && state.lines.length > firstIndex) {
+  if (state.blankBefore && state.lines.length > emptyLength) {
     state.lines.push('');
   }
   state.lines.push(...content);
