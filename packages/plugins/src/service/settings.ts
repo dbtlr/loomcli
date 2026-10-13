@@ -12,15 +12,10 @@ const longestLabel = 247;
 /** Two or more segments joined by `.`, each a letter or digit followed by letters, digits, and `-`. */
 const labelGrammar = /^[\dA-Za-z][\dA-Za-z-]*(?:\.[\dA-Za-z][\dA-Za-z-]*)+$/u;
 
-/** The last code point of the C0 controls, U+001F. */
-const lastC0 = 0x1f;
+/** A control character, U+0000 to U+001F or U+007F to U+009F. */
+const controlCharacter = /\p{Cc}/u;
 
-/** The first and last code points of DELETE and the C1 controls, U+007F to U+009F. */
-const firstC1 = 0x7f;
-const lastC1 = 0x9f;
-
-/** The index of a character's one code point, and the length of an empty list. */
-const first = 0;
+/** The length of an empty list. */
 const empty = 0;
 
 /** Whether a label follows the grammar and fits its length. */
@@ -30,13 +25,7 @@ function isLabel(value: unknown): value is string {
 
 /** Whether the text holds a control character, U+0000 to U+001F or U+007F to U+009F. */
 function holdsControlCharacter(text: string): boolean {
-  for (const character of text) {
-    const code = character.codePointAt(first) ?? first;
-    if (code <= lastC0 || (code >= firstC1 && code <= lastC1)) {
-      return true;
-    }
-  }
-  return false;
+  return controlCharacter.test(text);
 }
 
 /** Whether a value is a nonempty list of strings. */
