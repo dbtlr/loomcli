@@ -4,6 +4,7 @@ import { Writable } from 'node:stream';
 
 import { Application } from '@loomcli/core';
 import { selfUpdate } from '@loomcli/plugins/self-update';
+import { refreshSkills } from '@loomcli/plugins/skills';
 
 /**
  * One run of an application that installs `selfUpdate()`, against a fake GitHub that replaces
@@ -189,10 +190,13 @@ globalThis.fetch = async (input, init = {}) => {
   throw new TypeError(`The fake GitHub does not serve ${text}.`);
 };
 
-/** The hook the scenario names: one that records what it read, or one that throws. */
+/** The hook the scenario names: one that records what it read, one that throws, or the skills refresh. */
 function settings() {
   if (scenario.hook === undefined) {
     return undefined;
+  }
+  if (scenario.hook === 'refresh') {
+    return { afterReplace: refreshSkills };
   }
   return {
     afterReplace: ({ current, host, path, previous, signal }) => {

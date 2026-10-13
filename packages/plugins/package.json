@@ -79,6 +79,10 @@
       "types": "./dist/src/service/plugin.d.ts",
       "import": "./dist/src/service/plugin.js"
     },
+    "./skills": {
+      "types": "./dist/src/skills/plugin.d.ts",
+      "import": "./dist/src/skills/plugin.js"
+    },
     "./suggestions": {
       "types": "./dist/src/suggestions/plugin.d.ts",
       "import": "./dist/src/suggestions/plugin.js"

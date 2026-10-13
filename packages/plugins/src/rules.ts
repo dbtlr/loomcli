@@ -78,6 +78,20 @@ const serviceRunUnrouted = diagnosticRule(`${packageName}/service/run-unrouted`,
   headline: 'Service run words do not route',
 });
 
+/** A skills plugin setting that is not one it accepts. */
+const skillsSettings = diagnosticRule(`${packageName}/skills/settings`, {
+  explanation:
+    "The skills plugin installs each skill the application declares from a name and a function that returns its files, so skills is a nonempty list of objects, each name is lowercase letters and digits joined by single hyphens, 64 characters at most, no name repeats, and files is a function. A name is one path segment in an agent's skills folder.",
+  headline: 'Invalid skills setting',
+});
+
+/** A skill's loaded files that the plugin cannot write as a folder. */
+const skillsFiles = diagnosticRule(`${packageName}/skills/files`, {
+  explanation:
+    "The skills plugin writes each skill as one folder, so a skill's files function returns a list of files, each with a relative path that has / between its parts and no empty, ., or .. part, and text or bytes as content. Each path appears once, and the list holds the skill's SKILL.md.",
+  headline: 'Invalid skill files',
+});
+
 /** A version plugin `postfix` setting that is not one line of prose. */
 const versionPostfix = diagnosticRule(`${packageName}/version/postfix`, {
   explanation:
@@ -96,5 +110,7 @@ export {
   selfUpdateSettings,
   serviceRunUnrouted,
   serviceSettings,
+  skillsFiles,
+  skillsSettings,
   versionPostfix,
 };
