@@ -146,15 +146,13 @@ async function read(service: Service, installed: boolean): Promise<Reading> {
 /** The launchd backend: `launchctl` in the user's `gui/<uid>` domain. */
 const launchd: Backend = {
   afterRemoval: async () => {},
-  install: async (service, written) => {
+  // Changed or not, the agent is unloaded and loaded again, so launchd always runs the plist on disk.
+  // An earlier install that stopped between its write and its bootstrap is finished this way.
+  install: async (service) => {
     const call = launchctl(service, service.label, 'enable', target(service, service.label));
     await expectCall(service.manager, call);
-    if (written) {
-      await unload(service, service.label);
-      await bootstrap(service);
-    } else {
-      await kickstartOrBootstrap(service, '-k');
-    }
+    await unload(service, service.label);
+    await bootstrap(service);
   },
   read,
   render: launchdPlist,

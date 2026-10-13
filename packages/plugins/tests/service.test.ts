@@ -264,7 +264,7 @@ describe('installing', () => {
     ]);
   });
 
-  it('a distributed install on darwin writes the pinned plist, enables, and bootstraps; a loaded agent is kickstarted, and a changed text unloads, waits, and bootstraps', () => {
+  it('a distributed install on darwin writes the pinned plist, enables, and bootstraps; a second install unloads a loaded agent, waits, and bootstraps, changed or not', () => {
     const box = sandbox();
     const plist = launchdPath(box);
     const result = run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
@@ -283,13 +283,18 @@ describe('installing', () => {
     ]);
 
     clearCalls(box);
-    const again = run(box, ['install'], { answers: loaded, platform: 'darwin' });
+    const again = run(box, ['install'], {
+      answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { exit: 113 }] },
+      platform: 'darwin',
+    });
     expect(again.status).toBe(0);
     expect(lines(again.stderr)).toEqual([`${plist} is unchanged.`, 'Started com.acme.notes.']);
     expect(calls(box)).toEqual([
       `launchctl enable ${agent}`,
+      `launchctl bootout ${agent}`,
       `launchctl print ${agent}`,
-      `launchctl kickstart -k ${agent}`,
+      `launchctl print ${agent}`,
+      `launchctl bootstrap ${domain} ${plist}`,
     ]);
 
     clearCalls(box);
@@ -372,6 +377,37 @@ WantedBy=default.target
     expect(JSON.parse(readFileSync(linuxRecord(box), 'utf8')).files).toEqual([
       { digest: digestOf(pinnedUnit(box)), path: systemdPath(box) },
     ]);
+  });
+
+  it('an install after an earlier one failed between its write and bootstrap prints the unchanged line and loads the plist on disk', () => {
+    const box = sandbox();
+    const plist = launchdPath(box);
+    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    clearCalls(box);
+    const failed = run(box, ['install'], {
+      answers: { ...loaded, [`launchctl enable ${agent}`]: { exit: 1 } },
+      platform: 'darwin',
+      run: ['serve'],
+    });
+    expect(failed.status).toBe(1);
+    expect(lines(failed.stderr)[0]).toBe(`Wrote ${plist}.`);
+    expect(calls(box)).toEqual([`launchctl enable ${agent}`]);
+    clearCalls(box);
+    const rerun = run(box, ['install'], {
+      answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { exit: 113 }] },
+      platform: 'darwin',
+      run: ['serve'],
+    });
+    expect(rerun.status).toBe(0);
+    expect(lines(rerun.stderr)).toEqual([`${plist} is unchanged.`, 'Started com.acme.notes.']);
+    expect(calls(box)).toEqual([
+      `launchctl enable ${agent}`,
+      `launchctl bootout ${agent}`,
+      `launchctl print ${agent}`,
+      `launchctl print ${agent}`,
+      `launchctl bootstrap ${domain} ${plist}`,
+    ]);
+    expect(calls(box).some((words) => words.includes('kickstart'))).toBe(false);
   });
 
   it('an install on darwin after the label changed unloads the earlier agent and removes its plist', () => {
