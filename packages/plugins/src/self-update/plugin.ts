@@ -276,7 +276,7 @@ function writeRecord({ name, checked, version, bytes }: Placement): void {
   const record = join(checked.record, 'install.json');
   try {
     removeStagingFiles(record);
-    replaceFile(record, line, { mode: recordMode });
+    replaceFile(record, line, { durable: true, mode: recordMode });
   } catch (error) {
     throw failures.record(name, version.text, error);
   }
