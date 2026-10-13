@@ -132,19 +132,20 @@ test('adds the warn event with the error and writes the pinned line for a path t
 
 test('adds the warn event and writes the pinned line for a file the runtime throws on starting, and resolves', () => {
   const box = sandbox();
-  // A mode-755 file with no shebang and no executable format fails with ENOEXEC from spawn itself.
-  writeFileSync(box.child, 'garbage, not a program\n');
-  chmodSync(box.child, 0o755);
-  const result = refresh(box, box.child);
+  // A path through a regular file fails with ENOTDIR, which spawn throws itself on every platform.
+  // A file the kernel cannot execute is no portable case: Linux retries it through /bin/sh.
+  writeFileSync(box.child, 'not a directory\n');
+  const path = join(box.child, 'notes');
+  const result = refresh(box, path);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe(
-    `The skills were not refreshed because ${box.child} could not start. Run child.mjs skills update.\n`,
+    `The skills were not refreshed because ${path} could not start. Run notes skills update.\n`,
   );
   expect(existsSync(box.resolved)).toBe(true);
   const [event, ...rest] = events(box);
   expect(rest).toEqual([]);
   expect(event).toMatchObject({ level: 'warn', message: warning });
-  expect(event?.fields.path).toBe(box.child);
+  expect(event?.fields.path).toBe(path);
   expect(event?.fields.error).toBeTypeOf('string');
   expect(event?.fields).not.toHaveProperty('code');
 });
