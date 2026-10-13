@@ -57,3 +57,4 @@ Accepted in 0.11.0.
 ## Changelog
 
 - 2026-10-12: Proposed with the self-update contract.
+- 2026-10-14: [ADR-0080](0080-the-self-update-plugin-tells-an-interactive-operator-about-a-newer-release-from-a-daily-cache.md), proposed, adds update notices to the plugin, replacing the clause above that leaves them out: a middleware with `'always'` activation and the hidden `--refresh-notice` option on the Command join its contribution. It binds when that record is accepted.
