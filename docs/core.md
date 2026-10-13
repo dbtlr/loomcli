@@ -2373,7 +2373,7 @@ An application with no `installation` was installed some other way, such as by a
 
 #### Installed files
 
-A first-party plugin that installs files outside the application, such as a completion script, a manual page, an agent skill, or a service unit, records them in its own file in the installation record through one module of `@loomcli/plugins` that every such plugin shares. The module is internal to the pack. Each plugin states to the operator what the module reports, under its own contract.
+A first-party plugin that installs files outside the application, such as a completion script, a man page, an agent skill, or a service unit, records them in its own file in the installation record through one module of `@loomcli/plugins` that every such plugin shares. The module is internal to the pack. Each plugin states to the operator what the module reports, under its own contract.
 
 ```json
 {"format":1,"state":"pending","directories":["/home/me/.local/share/notes","/home/me/.local/share/notes/completion"],"files":[{"path":"/home/me/.local/share/notes/completion/notes.bash","prior":null,"intended":"sha256:…"}],"lines":[{"path":"/home/me/.bashrc","prior":null,"intended":"if [ -n \"${BASH_VERSION-}\" ] && … # added by notes completion install"}]}
@@ -5282,6 +5282,189 @@ Completion is proven when jsonkit installs `completion()` and real Bash, Zsh, an
   - `install pwsh` against a fixture `pwsh` on `PATH` that answers a Base64 profile path holding non-ASCII characters and `RemoteSigned` writes the line there. Fixtures that cannot start, exit 1, or answer a relative path each fail with the pinned sentence and write nothing, and ones that answer `Restricted` and `AllSigned` each install the script, print the policy sentence and the line, record no line, and exit 0. After the policy changes to `Restricted`, `uninstall` runs no shell and removes the line. A fixture `pwsh` in the working directory and one under a relative `PATH` entry are never run. On a `win32` fixture host with `SHELL` unset, `PSModulePath` holding `C:\Users\me\Documents\PowerShell\Modules`, as every PowerShell 7 adds, including one from the Microsoft Store, selects `pwsh`, and one holding only `WindowsPowerShell` folders selects `powershell`.
 - **Refreshing.** `refreshCompletion`, given a fixture binary path, runs it with `completion update`, pipes its output into the host's streams, and resolves; a child that exits 1, and a path that cannot start, each add the pinned `warn` log event and resolve. Installed as `selfUpdate({ afterReplace: refreshCompletion })` under the self-update fixture, an update rewrites a recorded script to the replaced binary's version.
 - **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/completion`, compiles against its declaration, and prints a script.
+
+### Man pages
+
+```ts
+// @loomcli/plugins/manpage
+import type { Host, Log, Plugin } from '@loomcli/core';
+
+export interface RefreshContext {
+  readonly path: string; // the binary that replaced this one
+  readonly host: Host; // the run's host
+  readonly signal: AbortSignal; // the run signal
+  readonly log: Log; // the run's log
+}
+export declare function manpage(): Plugin;
+export declare function refreshManpages(context: RefreshContext): Promise<void>;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { manpage, refreshManpages } from '@loomcli/plugins/manpage';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+
+export const jsonkit = new Application('jsonkit', {
+  plugins: [help(), manpage(), selfUpdate({ afterReplace: refreshManpages })],
+});
+```
+
+```text
+$ jsonkit manpage install
+Installed 20 man pages in /home/me/.local/share/man/man1.
+Read them with man jsonkit.
+$ man -w jsonkit-get
+/home/me/.local/share/man/man1/jsonkit-get.1
+$ jsonkit manpage uninstall
+Removed 20 man pages from /home/me/.local/share/man/man1.
+$ jsonkit manpage generate --out build/man
+Wrote 20 man pages to /home/me/src/jsonkit/build/man.
+```
+
+`manpage()` is the manpage plugin. It writes one [man page](glossary.md#product-surface) for each Command an operator can find, in the roff that `man` reads, from the graph and the help facts each Command carries, and installs, refreshes, and removes the set in the operator's home folder. Its identity is `@loomcli/plugins/manpage`, and it declares no settings, no options, no middleware, and no extension; it contributes one [plugin Command](#plugin-commands) group and one `onGraphBuilt` hook. [ADR-0079](decisions/0079-the-manpage-plugin-writes-a-roff-page-per-command-and-installs-the-set-in-the-home-folder.md) records the decision.
+
+- **The Commands.** `manpage` is a group, `Write or install the man pages.`, with these children:
+  - `generate`, `Write the man pages to a folder.`, with one required string option, `--out`, `The folder to write the man pages in. It is created when missing.`, whose help placeholder is `folder`.
+  - `install`, `Install the man pages in your home folder.`, with no argument or option.
+  - `update`, `Bring installed man pages up to date with this version.`, with no argument or option.
+  - `uninstall`, `Remove the installed man pages.`, with no argument or option.
+
+  No child declares a result, so `--format` never applies, and every child writes through `out`.
+- **What it reads.** A page reads the `CommandNode` it describes, its parent and visible children, `graph.name`, `graph.version`, `graph.globals` on the root page, and the extension values those nodes carry under `helpCommand`, `helpInput`, and `helpArgument` from `@loomcli/plugins/help/extension` and `configInput` from `@loomcli/plugins/config/extension`, through `readExtension`, as a projection reads any plugin's facts. Neither plugin need be installed: a value is read wherever a node carries it, and a page without help's values is shorter, with no DESCRIPTION or EXAMPLES. A page reads no host fact, so the same graph gives the same bytes on every host, from every build, and through `generate` and `install` alike.
+- **Which applications.** A root that declares arguments cannot hold children, so textstat cannot install the plugin, as [Plugin Commands](#plugin-commands) states, and an application installs it once, because a second `manpage` collides there.
+
+#### The page set
+
+- **One page per findable Command.** The set holds one page for the root and one for every Command that is not hidden and has no hidden ancestor, plugin Commands and groups included, so `jsonkit-manpage-install` has a page and the completion plugin's hidden `__complete` has none. A deprecated Command has a page. An alias has no page and appears on none.
+- **Names.** A page's name is the application name, then each name on the Command's path, joined with `-`: `jsonkit` for the root, `jsonkit-get`, and `jsonkit-completion-install`. Its file is the name and `.1`, because every page is in section 1.
+- **Names that collide.** Two pages whose names are equal when ASCII letters are compared without case would be one file on a file system that ignores case, such as macOS's default. The plugin's `onGraphBuilt` hook judges the page names on every build and throws a `DeclarationError` under the rule `@loomcli/plugins/manpage/page-name-taken`, which reports as itself under [Judging the built graph](#judging-the-built-graph): `Commands "foo-bar" and "foo bar" both give the man page jsonkit-foo-bar. Rename one of them, or hide one.` When the two names differ in case, the sentence names both, `Commands "Get" and "get" give the man pages jsonkit-Get and jsonkit-get, which one file holds on a file system that ignores case. Rename one of them, or hide one.` A hidden Command gives no page, so it collides with nothing.
+
+#### The page
+
+A page is roff for the `man` macro package, read by man-db's `groff` and by `mandoc`, the `man` of macOS and the BSDs. It is UTF-8 with no byte order mark, each line ends with a line feed, the last line included, and no line ends in whitespace. It holds no blank line outside no-fill text, no comment, and no date. With jsonkit's `get` details in `get.md` under [Markdown details](#markdown-details), `jsonkit-get.1` holds this text:
+
+```roff
+.TH JSONKIT\-GET 1 "" "jsonkit 0.12.0" ""
+.SH NAME
+jsonkit\-get \- Read one value at a path.
+.SH SYNOPSIS
+.nf
+\fBjsonkit get\fR <path> [options]
+.fi
+.SH DESCRIPTION
+.PP
+A path is a dot\-separated walk from the root of the document.
+.IP \(bu 2
+A \fBkey\fR reads an object's member, such as \fBuser.name\fR.
+.IP \(bu 2
+A \fBwhole number\fR reads an array's item, such as \fBitems.0\fR.
+.PP
+The document is \fIJSON\fR; see the format <https://www.json.org/json\-en.html>.
+.SH ARGUMENTS
+.TP
+\fIpath\fR
+Dot path to read.
+.SH EXAMPLES
+.PP
+.nf
+\fB$ jsonkit get name \-f doc.json\fR
+.fi
+.PP
+.nf
+\fB$ jsonkit get nested.deep.value \-f doc.json\fR
+.fi
+.SH SEE ALSO
+\fBjsonkit\fR(1)
+```
+
+A page holds these sections, in this order, each omitted when it has nothing to show. `<path>` is the application name followed by the Command's path, space-separated, as on the [help page](#the-help-page).
+
+1. **Title.** `.TH <NAME> 1 "" "<name> <version>" ""`: the page name with its ASCII letters in uppercase, the section, an empty date, the application name and `graph.version`, and an empty manual name. The version tells a reader which build wrote the page, and no clock reaches a page.
+2. **NAME.** `<page> \- <description>`, or the page name alone when the Command has no description.
+3. **SYNOPSIS.** Each usage form help's USAGE block prints for the Command, in its order, one line each in no-fill text, with `<path>` in bold and the rest as help prints it.
+4. **DESCRIPTION.** For a deprecated Command, a paragraph `Deprecated: <message>`. Then the Command's `details`, rendered under Markdown below.
+5. **COMMANDS.** For a Command with a visible child, one entry per visible child, in help's sections and order. An entry's tag is the child's name in bold, followed by help's ` <command>` or ` [command]` suffix, and its text is help's right cell for the row, with `deprecated` as its one possible fact.
+6. **ARGUMENTS.** One entry per argument in declaration order. The tag is the name in italic, and the text is help's right cell for the row.
+7. **OPTIONS** and **GLOBAL OPTIONS.** The Command's visible local options, in help's sections and order. On the root page, the visible globals follow under GLOBAL OPTIONS, or fold into OPTIONS on a root with no children, as help places them; on every other page the globals appear nowhere, and SEE ALSO names the root page, which lists them. An entry's tag is help's left cell, the spellings and placeholder, with spellings in bold and the placeholder in italic, so `\fB\-f\fR, \fB\-\-file\fR \fIpath\fR`. Its text is help's right cell for the row, the description, the [accepted values](#accepted-values) sentence under help's bound, and the parenthesis of facts. Then, on a line of its own, `Environment: <VARIABLE>` when the option has an [environment binding](#input-sources), and on another, `Configuration: <path>` when it carries `configInput`, each value in bold.
+8. **EXAMPLES.** For each of the Command's `examples`, a paragraph holding `$ <name> <command>` in bold as one no-fill line, then its note, when it has one, as a paragraph indented four.
+9. **ENVIRONMENT.** One entry per option the page lists that has an environment binding, in the order the page lists them. The tag is the variable in bold, and the text is `Supplies <spelling>.`, the option's long spelling in bold, or its short spelling for a `shortOnly` option.
+10. **SEE ALSO.** The root page, the parent's page when the parent is not the root, then each visible child's page in the COMMANDS order, as `\fB<page>\fR(1)` separated by `, `. The root page names its children alone.
+
+- **Sections help orders.** When a Command's members carry [ordered help sections](#ordered-help-sections), the page follows help's grouping and order: an outer heading is a `.SH` and an inner heading an `.SS`, each as help prints it, uppercase, and the default headings are COMMANDS, OPTIONS, and GLOBAL OPTIONS, as on help. A global member of an authored section appears on the root page alone.
+- **Entries.** Each entry is `.TP`, its tag on the next line, and its text on the line after, a filled paragraph; an extra line, such as `Environment:`, follows a `.br`.
+
+#### Roff text
+
+Every string a page prints, an authored fact or a graph fact, passes through one writer:
+
+- **Escapes.** Each `\` is written `\e`, and each `-` is written `\-`, so a spelling copied from the page is the one the operator types and no hyphen becomes a typographic one. A text line that would start with `.` or `'` starts with `\&`, so no authored text reads as a request.
+- **Characters.** A control character, U+0000 through U+001F or U+007F through U+009F, and a line separator, U+2028 or U+2029, is dropped. Every other character is written as UTF-8, which man-db's `preconv` and `mandoc` read.
+- **Fonts.** A run of text in a font writes `\fB`, `\fI`, or `\f(BI` before it and `\fR` after it, so every line ends in the regular font, and a request line such as `.SS` or `.TP` holds no font escape.
+
+#### Markdown in roff
+
+`details` is parsed with the parser help uses, under the block and inline rules of [Markdown details](#markdown-details), and rendered in roff's own way: `man` fills a paragraph and wraps it to the reader's width, so the author's line breaks inside a paragraph are not kept, while code keeps every line. Spacing between blocks is the macro package's.
+
+- **A paragraph** is `.PP` and its lines, each written as a source line, which `man` joins.
+- **A heading** at the top level of `details` is `.SS` and its text, its inline constructs printed as plain text. A heading inside a list item or a quote is a paragraph in bold.
+- **Code** is `.PP`, `.RS 4`, `.nf`, its lines, `.fi`, and `.RE`, dropping the blank lines at its start and end. Code with no other line prints nothing.
+- **A thematic break** is a paragraph that holds it as written.
+- **A list item** is `.IP` with its marker and the marker's width and one: `.IP \(bu 2` for every bullet, and for an ordered item its number, counting up by one from the first item's number with leading zeros dropped, and the author's delimiter, so `007.` gives `.IP 7. 3`. When the item's first block is a paragraph, its lines follow the `.IP`, and the item's other blocks follow in `.RS <width>` and `.RE`; otherwise every block of the item is in them. A nested list is therefore indented by its parent's marker.
+- **A quote** is its blocks in `.RS 4` and `.RE`.
+- **Inline.** Emphasis is italic, strong emphasis is bold, and a code span is bold without its backticks, the man convention for a literal; the fonts combine, so a code span inside emphasis is bold italic. A link prints its text, a space, and its destination in angle brackets, `the format <https://www.json.org/json-en.html>`, or the destination alone, without brackets, when the text prints exactly as the destination. An image prints as a link with the same text, and an autolink prints its address. A backslash escape prints its character, and everything else prints as written, as on help.
+
+#### Writing the pages
+
+- **`generate`.** `--out` is resolved against `host.cwd`. The plugin creates the folder and each missing parent with mode `755`, whatever the umask, then writes each page to a staging file it creates exclusively in the folder, named `.<file>.<random>.loom-staging`, with mode `644`, whatever the umask, and renames it into place, which replaces a file or a symbolic link of that name. It touches nothing else in the folder and records nothing, so `generate` runs on every platform, `win32` included, and from every build. It prints `Wrote <count> man pages to <folder>.` through `out.success`. A `--out` that names anything but a folder fails with a `FatalError` and exit 1 before anything is written: `/home/me/src/jsonkit/build/man is not a folder. Name a folder, or a path where jsonkit can create one.` A file system call that fails throws the runtime's error, which fails the run through the ordinary failure path, and the staging file is removed.
+- **The folder.** `install` writes the set to `<home>/.local/share/man/man1`, where `<home>` is `HOME` from `host.env`. Neither man-db nor macOS's `man` reads `XDG_DATA_HOME`, and both search `<dir>/../share/man` for each `<dir>/bin` on `PATH`, so a page there is found whenever `<home>/.local/bin`, the [installer script](toolchain.md#the-installer-script)'s default folder, is on `PATH`.
+- **The record.** The set is recorded through the [installed-files module](#installed-files) in the plugin's file `manpage.json`, every page a file with its digest, under the module's rules as written: there is no `--force`, and each folder the module creates is created with mode `755` and each page written with mode `644`, whatever the umask.
+- **Checks first.** Each of `install`, `update`, and `uninstall` checks, in this order, and fails at the first that fails:
+  1. The platform. On `win32`, which has no `man`, it fails with a `FatalError` and exit 1: `jsonkit manpage install installs man pages on Linux and macOS. Write them with jsonkit manpage generate --out <folder> instead.`, naming the child.
+  2. `install`: `<home>`, which fails as [Skills](#global-installs) states when `HOME` is not an absolute path.
+  3. The record's directory, `applicationDirectory('installation', name, host)`, which answering `{ variable }` fails as Skills states.
+  4. The plugin's file, read through the module. One that is damaged or holds an unknown `format` fails with a `FatalError` and exit 1: `<record> cannot be read, so jsonkit will not change the man pages it lists. Remove it and the pages it lists, then run jsonkit manpage install again.`, with `uninstall` in place of `install` for that child.
+  5. `install` and `update`: every page, under Files the record does not list.
+- **Files the record does not list.** A file at a page's path that `manpage.json` does not record, such as a page an earlier `generate` wrote there, and a recorded page whose digest changed since it was written, each refuse `install` and `update`, which write nothing. The child prints one line for each through `out.warn`, `<page> was not installed by jsonkit manpage install.` or `<page> changed since jsonkit manpage install wrote it.`, then fails with a `FatalError` and exit 1: `jsonkit manpage install changed nothing, because files it did not install are in the way.`, corrected by `Remove them, then run jsonkit manpage install again.` `update` uses `jsonkit manpage update` in the failure sentence and `jsonkit manpage install` in the correction.
+- **`install`.** The module installs every page of the set. When every page is recorded with the digest it would hold and no recorded page is dropped, nothing is written, and it prints `The <count> man pages in <folder> are unchanged.` through `out.info`; otherwise it prints `Installed <count> man pages in <folder>.` through `out.success`, counting the whole set. A recorded page the set no longer holds, as when a Command was removed or hidden, is removed when its digest is unchanged and prints `Removed <page>.`, and is kept when it changed and prints `<page> changed since jsonkit manpage install wrote it, so it was left in place.` through `out.warn`. Then it prints `Read them with man jsonkit.` through `out.info`, or the advice below.
+- **Advice when `man` will not find them.** After `install`, the plugin reads `MANPATH` and `PATH` from `host.env`. An entry of `PATH` maps to the folder when, with a trailing `/` removed, it is `<home>/.local/bin` or `<home>/.local`. `man` finds `<home>/.local/share/man` when one of these holds:
+  - `MANPATH` is unset or empty, and an entry of `PATH` maps to the folder;
+  - `MANPATH` lists `<home>/.local/share/man`;
+  - `MANPATH` holds an empty entry, at its start, at its end, or between two colons, which both `man` programs read as their default search, and an entry of `PATH` maps to the folder.
+
+  When none holds, the plugin prints `man will not find these pages until MANPATH lists <home>/.local/share/man. Add this line to your shell's startup file:` through `out.warn`, then `export MANPATH="<home>/.local/share/man:$MANPATH"` through `out.print`, with each `"`, `\`, `$`, and `` ` `` in the folder escaped with a `\`. When `MANPATH` was unset, the line leaves a trailing colon, so the default search still follows. The plugin never edits a startup file.
+- **`update`.** It acts only on what `manpage.json` records, read as recovery would resolve it. It installs the set into the folder that holds the recorded pages, never reading `HOME`, so a refresh run from another environment never moves a page, and prints `Updated <count> man pages in <folder>.` in place of the installed line, or the unchanged line, with removed and kept pages as `install` prints them. It prints no advice. With no page recorded, it prints `jsonkit has no man pages installed, so there is nothing to update. Run jsonkit manpage install to install them.` through `out.success` and exits 0.
+- **`uninstall`.** The module removes each recorded page whose digest is unchanged, keeps each changed one, removes each directory it created that is then empty, and deletes the plugin's file. It prints `Removed <count> man pages from <folder>.` through `out.success`, counting the pages it removed, and each kept page prints the left-in-place line through `out.warn`. A recorded page already gone is not counted and prints nothing. With no page recorded, it prints `jsonkit has no man pages installed, so there is nothing to remove.` through `out.success` and exits 0.
+- **Any build.** Every child acts from a `source`, `development`, or `distributed` build alike, because a page describes the graph, not the binary's path.
+- **No index.** The plugin never runs `mandb` or `makewhatis`. `man <page>` finds an installed page without an index; `apropos` and `whatis` find it after the system's next index run.
+
+#### Refreshing man pages after a self-update
+
+`refreshManpages` is an `afterReplace` function for the [self-update plugin](#self-update), which passes it a context that holds every member `RefreshContext` names. A page is fixed text, so after a replace the installed pages describe the old version until they are rewritten, and the replaced process holds the old version's graph. `refreshManpages` therefore runs the new binary, and `update` decides what to refresh. It runs `path` with the words `manpage update` exactly as [`refreshSkills`](#refreshing-after-a-self-update) runs `skills update`, under the same rules for the child, its output, and the run signal. A child that fails, or that cannot start, adds the `warn` log event `Man pages were not refreshed after the update.`, with the same fields, and resolves; one that cannot start writes `The man pages were not refreshed because /home/me/.local/bin/jsonkit could not start. Run jsonkit manpage update.` to `host.stderr`. An application that also refreshes skills or completion calls each from its own `afterReplace`, as [Completion](#refreshing-completion-after-a-self-update) shows. A binary that a package manager, npm, or the installer script replaced runs no `afterReplace`, and its installed pages stay those of the earlier version until the operator runs `manpage update`.
+
+- **Output.** The `Wrote`, `Installed`, `Updated`, `Removed <count>`, and nothing-to lines go through `out.success`; the unchanged, `Removed <page>`, and `Read them` lines through `out.info`; the refused-file, left-in-place, and advice lines through `out.warn`; and the `export` line through `out.print`, the only thing a child writes to stdout. The examples above omit the glyph each lane view adds. Every path a sentence repeats passes through `escapeControlCharacters`. Every refusal and check failure above is a `FatalError` that exits 1, and a missing `--out` is core's usage error, with exit 2.
+- **Names.** `manpage`, `refreshManpages`, and `RefreshContext` are exported from `@loomcli/plugins/manpage`. `RefreshContext` is the same declaration `@loomcli/plugins/skills` exports.
+
+#### Man pages acceptance
+
+Man pages are proven when public APIs alone produce these results under Node and Bun:
+
+- **The page.** jsonkit installs `manpage()`, and `jsonkit manpage generate --out <folder>` writes `jsonkit-get.1` byte for byte as above, with jsonkit's version. Two runs, and a run under another `HOME`, `TERM`, `COLUMNS`, and locale, write identical bytes, and `generate` and `install` write identical pages. `groff -man -ww -z` reads every page jsonkit writes with no warning, and where `mandoc` is on `PATH`, `mandoc -T lint -W warning` reports nothing for any page.
+- **The set.** jsonkit's set holds a page for the root, each visible child, the deprecated `fetch`, and each visible plugin Command, and none for `debug`, `paths`, `__complete`, or the alias `ls`. The root page lists `fetch` with its deprecated fact and neither `debug` nor `paths`, and `jsonkit-fetch.1` opens its DESCRIPTION with `Deprecated: Use get instead.`
+- **Sections.** A fixture covers each section and its omission: a root page whose GLOBAL OPTIONS hold jsonkit's globals and a child page that holds none and names `jsonkit(1)` under SEE ALSO; a childless root that folds its globals into OPTIONS; authored outer and inner help sections as `.SH` and `.SS` in help's order; a hidden option on neither OPTIONS nor ENVIRONMENT; an option with an environment binding and `configInput`, which prints both lines and an ENVIRONMENT entry; a Boolean of each polarity, a counted option, a string option with an implied value, and an option with a closed set, each tag and text as help prints its row; an example with a note and one without; and a Command with no description, whose NAME is the page name alone. An application that installs neither help nor the configuration plugin still writes every page, reading the values its Commands carry.
+- **Markdown.** A unit test renders each block and inline construct of [Markdown details](#markdown-details) to the pinned roff: a paragraph's lines filled, a heading at the top level and inside a list item, fenced and indented code with blank lines at its ends, a thematic break, nested bullet and ordered lists with `007.` numbering and an item whose first block is code, a quote holding a list, emphasis, strong emphasis, a code span inside emphasis, a link, a link whose text is its destination, an image, and an autolink.
+- **Escapes.** A description, a details paragraph, a code line, and an example each holding a leading `.`, a leading `'`, a `\`, `\fB`, a `-`, and a control character print literally, and `groff -man -ww -z` reports nothing.
+- **Names that collide.** Fixtures with a root child `foo-bar` beside `foo bar`, and with `Get` beside `get`, fail every build with the pinned diagnostic under `@loomcli/plugins/manpage/page-name-taken`, and the same graph with one of the two hidden builds.
+- **Generating.** `generate` creates a missing folder and its parents with mode `755` and pages with mode `644` under umask `077`, replaces a page of the same name and a symbolic link of that name, leaves every other file, writes no installation record, and runs on a `win32` fixture host. A `--out` that names a file fails with the pinned sentence and writes nothing, and a run without `--out` exits 2.
+- **Installing.** Process tests set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary directories:
+  - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records it in `manpage.json`, and prints the pinned lines; a second `install` prints the unchanged line and changes no byte. Where `man` is on `PATH`, `man -w jsonkit-get` with `MANPATH` unset and `<home>/.local/bin` on `PATH` prints the installed page's path.
+  - With `PATH` lacking `<home>/.local/bin`, and with `MANPATH` set to a list without the folder or an empty entry, `install` prints the pinned advice and the `export` line on stdout; with `MANPATH` ending in a colon and `<home>/.local/bin` on `PATH`, it prints `Read them with man jsonkit.`
+  - A page `generate` wrote into the folder, and a recorded page edited since, each refuse `install` and `update` with exit 1, print the refused line, and change no byte.
+  - After a Command is removed from the fixture, `install` and `update` remove its unchanged page and keep an edited one with the left-in-place line. After a Command is added, `update` writes its page into the recorded folder, even with `HOME` changed since.
+  - With nothing recorded, `update` and `uninstall` print their nothing-to lines and exit 0. `uninstall` removes every unchanged page and each created directory then empty, deletes `manpage.json`, keeps an edited page with the pinned warning, and leaves a `man1` folder that held another file.
+  - A damaged `manpage.json` fails each child with the pinned sentence and writes nothing, and a `win32` fixture host fails `install`, `update`, and `uninstall` with the pinned sentence.
+- **Refreshing.** `refreshManpages`, given a fixture binary path, runs it with `manpage update`, pipes its output into the host's streams, and resolves; a child that exits 1, and a path that cannot start, each add the pinned `warn` log event and resolve. Installed as `selfUpdate({ afterReplace: refreshManpages })` under the self-update fixture, an update rewrites a recorded page to the replaced binary's version.
+- **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manpage`, compiles against its declaration, and generates the pages.
 
 ### MCP
 
