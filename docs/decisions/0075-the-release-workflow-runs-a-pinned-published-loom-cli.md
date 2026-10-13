@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0075 - The release workflow runs a pinned, published Loom CLI
 description: The release workflow's plan and record jobs run a published @loomcli/loom pinned to an exact version by a committed lockfile in .github/release-tool, installed outside the checkout with scripts disabled, and never install or build the workspace. A change to the release commands takes effect once a release publishes it and the pin moves to it.
-status: proposed
+status: accepted
 created: 2026-10-13
 modified: 2026-10-13
 ---
@@ -35,7 +35,7 @@ A defect in the pinned version's release commands is no longer fixed by an ordin
 
 ## Status
 
-Proposed. It moves to accepted in the release that the `record` job reconciles with the pinned CLI.
+Accepted in 0.11.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0071 - An installation record per application says how it was installed and what its installers wrote
 description: Each application keeps one installation record per user, a directory in the platform's state directory named for the application. Its install.json holds the installation that an installer script and self-update write and core reads into host.release.installation when its path is the running executable, and each first-party plugin that installs files keeps its installed files in its own file, written before and after it acts and recovered by digest. Core exports the one directory resolver and writes nothing.
-status: proposed
+status: accepted
 created: 2026-10-12
-modified: 2026-10-12
+modified: 2026-10-13
 ---
 
 # ADR-0071 - An installation record per application says how it was installed and what its installers wrote
@@ -49,7 +49,7 @@ The contract, the file formats, the shell recipe, and the acceptance are in [Ins
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships the installation record.
+Accepted in 0.11.0.
 
 ## Changelog
 

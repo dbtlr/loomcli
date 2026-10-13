@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0074 - The service plugin supervises one user unit per application through the installation record
 description: The service plugin contributes service install, uninstall, start, stop, restart, and status. It writes one systemd user unit on Linux or one launchd user agent on macOS, named by a required reverse-DNS label, that runs the application with argument words the graph must route. Only a distributed build installs, with no opt-in. The unit file is recorded through the installation record, so a file the plugin did not write is never overwritten. Status returns a typed result and exits 0 whenever it reports, with author rows from an optional probe. The plugin adds no time limit, redirects no output, and exports no supervisor seam.
-status: proposed
+status: accepted
 created: 2026-10-13
 modified: 2026-10-13
 ---
@@ -52,7 +52,7 @@ An application whose root declares arguments cannot install the plugin, the limi
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships the service plugin.
+Accepted in 0.11.0.
 
 ## Changelog
 

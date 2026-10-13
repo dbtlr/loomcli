@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
 description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failure to write the file goes to the author's onError, and is ignored without one.
-status: proposed
+status: accepted
 created: 2026-10-10
-modified: 2026-10-12
+modified: 2026-10-13
 ---
 
 # ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
@@ -39,7 +39,7 @@ modified: 2026-10-12
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships the logging plugin.
+Accepted in 0.11.0.
 
 ## Changelog
 
