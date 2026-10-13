@@ -117,6 +117,17 @@ test.each<[string, string, string]>([
     'see https://x.org',
   ],
   [
+    'a link whose text is its destination keeps the fonts of its text',
+    'see [**https://x.org**](https://x.org) and [`x`](x)',
+    String.raw`see \fBhttps://x.org\fR and \fBx\fR`,
+  ],
+  [
+    'an image whose text prints empty prints its destination alone, with no space before it',
+    '![](logo.png) after',
+    'logo.png after',
+  ],
+  ['a link whose text prints empty prints its destination alone', 'see [](x.org)', 'see x.org'],
+  [
     'an image prints as a link with the same text',
     '![the logo](https://x.org/logo.png)',
     'the logo <https://x.org/logo.png>',

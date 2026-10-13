@@ -92,6 +92,23 @@ function lines(stderr: string): string[] {
     .map((line) => line.replace(/^\P{ASCII} /u, ''));
 }
 
+/** The lines a run wrote to stderr as written, each lane glyph included. */
+function rawLines(stderr: string): string[] {
+  return stderr.trim().split('\n');
+}
+
+/** The glyph each lane marks its line with on a terminal that shows the main glyphs. */
+const laneGlyphs = {
+  info: String.fromCodePoint(0x21_39),
+  success: String.fromCodePoint(0x27_14),
+  warning: String.fromCodePoint(0x26_a0),
+};
+
+/** A line as a lane writes it: the lane's glyph, a space, and the message. */
+function laned(mark: keyof typeof laneGlyphs, message: string): string {
+  return `${laneGlyphs[mark]} ${message}`;
+}
+
 /** The folder `install` writes under a home. */
 function folderOf(home: string): string {
   return join(home, '.local', 'share', 'man', 'man1');
@@ -238,6 +255,22 @@ describe('generate', () => {
     expect(readFileSync(file, 'utf8')).toBe('a file\n');
   });
 
+  it.each(['man/sub', 'man/sub/deeper'])(
+    'an --out under a file, %s, fails with the pinned sentence and writes nothing',
+    (out) => {
+      const box = sandbox();
+      const file = join(box.cwd, 'man');
+      writeFileSync(file, 'a file\n');
+      const result = run(box, ['manpage', 'generate', '--out', out]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        `${join(box.cwd, out)} is not a folder. Name a folder, or a path where notes can create one.`,
+      );
+      expect(readdirSync(box.cwd)).toEqual(['man']);
+      expect(readFileSync(file, 'utf8')).toBe('a file\n');
+    },
+  );
+
   it('a run without --out is a usage error with exit 2', () => {
     const box = sandbox();
     expect(run(box, ['manpage', 'generate']).status).toBe(2);
@@ -251,9 +284,9 @@ describe('install', () => {
     const first = run(box, ['manpage', 'install'], { umask: 0o077 });
     expect(first.status).toBe(0);
     expect(first.stdout).toBe('');
-    expect(lines(first.stderr)).toEqual([
-      `Installed 8 man pages in ${folder}.`,
-      'Read them with man notes.',
+    expect(rawLines(first.stderr)).toEqual([
+      laned('success', `Installed 8 man pages in ${folder}.`),
+      laned('info', 'Read them with man notes.'),
     ]);
     for (const directory of [
       '.local',
@@ -271,9 +304,9 @@ describe('install', () => {
     const before = snapshot(box);
     const second = run(box, ['manpage', 'install']);
     expect(second.status).toBe(0);
-    expect(lines(second.stderr)).toEqual([
-      `The 8 man pages in ${folder} are unchanged.`,
-      'Read them with man notes.',
+    expect(rawLines(second.stderr)).toEqual([
+      laned('info', `The 8 man pages in ${folder} are unchanged.`),
+      laned('info', 'Read them with man notes.'),
     ]);
     expect(snapshot(box)).toEqual(before);
   });
@@ -345,6 +378,10 @@ describe('advice when man will not find the pages', () => {
     ['PATH lacks the home bin folder', { PATH: '/usr/bin' }],
     ['PATH holds the bare home .local folder alone', { PATH: 'HOME/.local:/usr/bin' }],
     ['MANPATH lists neither the folder nor an empty entry', { MANPATH: '/usr/share/man' }],
+    [
+      'MANPATH holds an empty entry while PATH lacks the home bin folder',
+      { MANPATH: ':/usr/share/man', PATH: '/usr/bin' },
+    ],
   ])('%s: the advice and the export line on stdout', (_name, env) => {
     const box = sandbox();
     const resolved = Object.fromEntries(
@@ -353,9 +390,9 @@ describe('advice when man will not find the pages', () => {
     const result = run(box, ['manpage', 'install'], { env: resolved });
     const manFolder = join(box.home, '.local', 'share', 'man');
     expect(result.status).toBe(0);
-    expect(lines(result.stderr)).toEqual([
-      `Installed 8 man pages in ${folderOf(box.home)}.`,
-      advice(box.home),
+    expect(rawLines(result.stderr)).toEqual([
+      laned('success', `Installed 8 man pages in ${folderOf(box.home)}.`),
+      laned('warning', advice(box.home)),
     ]);
     expect(result.stdout).toBe(`export MANPATH="${manFolder}:\${MANPATH-}"\n`);
     for (const manpath of [undefined, '/usr/share/man']) {
@@ -411,13 +448,26 @@ describe('advice when man will not find the pages', () => {
     },
   );
 
-  it.each<[string, string]>([
-    ['MANPATH ending in a colon', '/usr/share/man:'],
-    ['MANPATH listing the folder', 'HOME/.local/share/man'],
-  ])('%s, with the home bin folder on PATH, prints Read them', (_name, manpath) => {
+  it.each<[string, Record<string, string>]>([
+    ['MANPATH ending in a colon, with the home bin folder on PATH', { MANPATH: '/usr/share/man:' }],
+    [
+      'MANPATH listing the folder, with PATH lacking the home bin folder',
+      { MANPATH: 'HOME/.local/share/man', PATH: '/usr/bin' },
+    ],
+    [
+      'MANPATH listing the folder with a trailing slash, with PATH lacking the home bin folder',
+      { MANPATH: 'HOME/.local/share/man/', PATH: '/usr/bin' },
+    ],
+    [
+      'MANPATH unset, with the home bin folder on PATH with a trailing slash',
+      { PATH: 'HOME/.local/bin/:/usr/bin' },
+    ],
+  ])('%s prints Read them', (_name, env) => {
     const box = sandbox();
     const result = run(box, ['manpage', 'install'], {
-      env: { MANPATH: manpath.replace('HOME', box.home) },
+      env: Object.fromEntries(
+        Object.entries(env).map(([key, value]) => [key, value.replace('HOME', box.home)]),
+      ),
     });
     expect(result.stdout).toBe('');
     expect(lines(result.stderr).at(-1)).toBe('Read them with man notes.');
@@ -425,32 +475,34 @@ describe('advice when man will not find the pages', () => {
 });
 
 describe('files the record does not list', () => {
-  it.each<[string, (box: Box) => void, (box: Box) => string]>([
-    [
-      'a page generate wrote into the folder',
-      (box) => {
-        run(box, ['manpage', 'generate', '--out', folderOf(box.home)]);
-      },
-      (box) => `${join(folderOf(box.home), 'notes.1')} was not installed by notes manpage install.`,
-    ],
-    [
-      'a symbolic link at a page path',
-      (box) => {
-        mkdirSync(folderOf(box.home), { recursive: true });
-        symlinkSync(join(box.root, 'elsewhere'), join(folderOf(box.home), 'notes-ping.1'));
-      },
-      (box) =>
-        `${join(folderOf(box.home), 'notes-ping.1')} was not installed by notes manpage install.`,
-    ],
-  ])('%s refuses install, which changes no byte', (_name, arrange, refused) => {
+  it.each<[string, 'install' | 'update', 'generate' | 'link']>([
+    ['a page generate wrote into the folder', 'install', 'generate'],
+    ['a page generate wrote into the folder', 'update', 'generate'],
+    ['a symbolic link at a page path', 'install', 'link'],
+    ['a symbolic link at a page path', 'update', 'link'],
+  ])('%s refuses %s, which changes no byte', (_name, verb, kind) => {
     const box = sandbox();
-    arrange(box);
+    const folder = folderOf(box.home);
+    // Update acts on an installed set, so the file sits at the page of a Command added since.
+    const commands = verb === 'update' ? ['ping', 'sync', 'tidy'] : ['ping', 'sync'];
+    const page = join(folder, verb === 'update' ? 'notes-tidy.1' : 'notes-ping.1');
+    if (verb === 'update') {
+      run(box, ['manpage', 'install']);
+    }
+    if (kind === 'generate') {
+      run(box, ['manpage', 'generate', '--out', folder], { commands });
+    } else {
+      mkdirSync(folder, { recursive: true });
+      symlinkSync(join(box.root, 'elsewhere'), page);
+    }
     const before = snapshot(box);
-    const result = run(box, ['manpage', 'install']);
+    const result = run(box, ['manpage', verb], { commands });
     expect(result.status).toBe(1);
-    expect(lines(result.stderr)).toContain(refused(box));
+    expect(rawLines(result.stderr)).toContain(
+      laned('warning', `${page} was not installed by notes manpage install.`),
+    );
     expect(result.stderr).toContain(
-      'notes manpage install changed nothing, because files it did not install are in the way. Remove them, then run notes manpage install again.',
+      `notes manpage ${verb} changed nothing, because files it did not install are in the way. Remove them, then run notes manpage install again.`,
     );
     expect(snapshot(box)).toEqual(before);
   });
@@ -469,6 +521,28 @@ describe('files the record does not list', () => {
     );
     expect(snapshot(box)).toEqual(before);
   });
+
+  it.each(['install', 'update'])(
+    'a page holding the bytes this run would write, whose record holds an older digest, refuses %s',
+    (verb) => {
+      const box = sandbox();
+      run(box, ['manpage', 'install']);
+      const page = join(folderOf(box.home), 'notes-ping.1');
+      const record: { files: { digest: string; path: string }[] } = JSON.parse(
+        readFileSync(recordPath(box), 'utf8'),
+      );
+      for (const file of record.files.filter(({ path }) => path === page)) {
+        file.digest = digestOf('an older page\n');
+      }
+      writeFileSync(recordPath(box), `${JSON.stringify(record)}\n`);
+      const before = snapshot(box);
+      const result = run(box, ['manpage', verb]);
+      expect(result.status).toBe(1);
+      expect(lines(result.stderr)[0]).toBe(`${page} changed since notes manpage install wrote it.`);
+      expect(result.stderr).not.toContain('unchanged');
+      expect(snapshot(box)).toEqual(before);
+    },
+  );
 });
 
 describe('moving and changing the set', () => {
@@ -548,13 +622,19 @@ describe('moving and changing the set', () => {
       writeFileSync(join(folder, 'notes-tidy.1'), 'edited\n');
       const result = run(box, ['manpage', verb], { commands: ['ping'] });
       expect(result.status).toBe(0);
-      const said = lines(result.stderr);
+      const said = rawLines(result.stderr);
       expect(said[0]).toBe(
-        `${verb === 'install' ? 'Installed' : 'Updated'} 7 man pages in ${folder}.`,
+        laned(
+          'success',
+          `${verb === 'install' ? 'Installed' : 'Updated'} 7 man pages in ${folder}.`,
+        ),
       );
-      expect(said).toContain(`Removed ${join(folder, 'notes-sync.1')}.`);
+      expect(said).toContain(laned('info', `Removed ${join(folder, 'notes-sync.1')}.`));
       expect(said).toContain(
-        `${join(folder, 'notes-tidy.1')} changed since notes manpage install wrote it, so it was left in place.`,
+        laned(
+          'warning',
+          `${join(folder, 'notes-tidy.1')} changed since notes manpage install wrote it, so it was left in place.`,
+        ),
       );
       expect(existsSync(join(folder, 'notes-sync.1'))).toBe(false);
       expect(readFileSync(join(folder, 'notes-tidy.1'), 'utf8')).toBe('edited\n');
@@ -621,9 +701,12 @@ describe('uninstall and the nothing-to lines', () => {
     writeFileSync(join(folder, 'notes-ping.1'), 'edited\n');
     const result = run(box, ['manpage', 'uninstall']);
     expect(result.status).toBe(0);
-    expect(lines(result.stderr)).toEqual([
-      `Removed 7 man pages from ${folder}.`,
-      `${join(folder, 'notes-ping.1')} changed since notes manpage install wrote it, so it was left in place.`,
+    expect(rawLines(result.stderr)).toEqual([
+      laned('success', `Removed 7 man pages from ${folder}.`),
+      laned(
+        'warning',
+        `${join(folder, 'notes-ping.1')} changed since notes manpage install wrote it, so it was left in place.`,
+      ),
     ]);
     expect(readdirSync(folder)).toEqual(['notes-ping.1']);
     expect(existsSync(recordPath(box))).toBe(false);

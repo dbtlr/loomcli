@@ -78,11 +78,6 @@ function requiredOptions(command: CommandNode): StringOption[] {
   return reachable.filter((option) => option.type === 'string').filter((option) => option.required);
 }
 
-/**
- * One line per form. A node with an action prints the action form, and a node with a visible child
- * prints the children form after it, which is the only form a group has. Groupness reads the raw
- * list, so a group whose children are all hidden prints the children form still: it has no other.
- */
 /** The routed node, the graph, and its visible children, which the usage forms read. */
 interface UsageSubject {
   readonly command: CommandNode;

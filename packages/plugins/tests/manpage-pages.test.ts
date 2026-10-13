@@ -429,6 +429,12 @@ const hostile = `.lead 'q' "dq" \`bt\` ^c ~t \\b \\fB a-b ${String.fromCodePoint
 /** The text a reader sees: hostile with its escape character shown as its escape. */
 const shownHostile = hostile.replace(String.fromCodePoint(0x1b), String.raw`\u001b`);
 
+/** Hostile with one backtick, which Markdown details print as written rather than as a code span. */
+const detailsHostile = hostile.replace('`bt`', '`bt');
+
+/** The text a reader sees of the details' hostile string. */
+const shownDetails = detailsHostile.replace(String.fromCodePoint(0x1b), String.raw`\u001b`);
+
 /**
  * The same characters in a version short enough for the footer: groff's man macros warn that they
  * cannot abbreviate a fourth `.TH` argument wider than half the line when it holds an escape.
@@ -456,7 +462,9 @@ const escapes = new Application('kit', {
   description: hostile,
   extensions: [
     helpCommand({
-      details: [hostile, '', `# ${hostile}`, '', '```', hostile, 'a\tb', '```'].join('\n'),
+      details: [detailsHostile, '', `# ${detailsHostile}`, '', '```', hostile, 'a\tb', '```'].join(
+        '\n',
+      ),
       examples: [{ command: hostile, note: hostile }],
       optionSections: [[hostile]],
     }),
@@ -484,8 +492,12 @@ describe('escapes', () => {
     () => {
       const pages = pagesOf(escapes);
       const root = rendered(pages.get('kit.1') ?? '');
-      // The description, the details paragraph, the code line, the example, the note, and the version.
-      expect(root.split(shownHostile).length - 1).toBeGreaterThanOrEqual(5);
+      const rows = root.split('\n');
+      // The description in NAME, the code line, the child's row, the example, and its note.
+      expect(root.split(shownHostile).length - 1).toBe(5);
+      // The details paragraph, in DESCRIPTION's indent, and the details heading, an .SS.
+      expect(rows).toContain(`       ${shownDetails}`);
+      expect(rows).toContain(`   ${shownDetails}`);
       expect(root).toContain(`$ kit ${shownHostile}`);
       expect(root).toContain(`kit ${shownHostile}`);
       // A heading keeps its quote, and an authored help section heading prints in uppercase.

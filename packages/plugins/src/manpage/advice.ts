@@ -4,6 +4,8 @@
  */
 import { join } from 'node:path';
 
+import { fishQuoted } from '../completion/name.js';
+
 /** The folder `man` searches, the parent of the pages' `man1`, and the line that adds it. */
 interface Advice {
   readonly folder: string;
@@ -43,11 +45,6 @@ function manFinds(home: string, env: Readonly<Record<string, string | undefined>
 /** The folder in double quotes, with each `"`, `\`, `$`, and backtick escaped with a `\`. */
 function doubleQuoted(folder: string): string {
   return folder.replaceAll(/["$\\`]/gu, (character) => `\\${character}`);
-}
-
-/** The folder in Fish's single quotes, which read `\'` and `\\` as escapes. */
-function fishQuoted(folder: string): string {
-  return `'${folder.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
 }
 
 /** Whether the login shell is Fish: the last segment of `SHELL`, after the last `/` or `\`. */

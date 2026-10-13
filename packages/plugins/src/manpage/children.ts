@@ -4,6 +4,7 @@
  * module, recorded in the plugin's file `manpage.json`.
  */
 import { statSync } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import type { CommandGraph, Host } from '@loomcli/core';
@@ -12,6 +13,7 @@ import { isEmpty } from '../help/cells.js';
 import {
   createDirectory,
   digestOf,
+  errorCode,
   missingParents,
   observe,
   replaceFile,
@@ -56,11 +58,36 @@ function filesIn(folder: string, set: readonly ManPage[]): InstalledFile[] {
   return set.map(({ file, text }) => ({ content: text, mode: pageMode, path: join(folder, file) }));
 }
 
+/** What a path names, following links, or `undefined` when nothing is there or a parent is a file. */
+function statOf(path: string): Stats | undefined {
+  try {
+    return statSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if (errorCode(error) === 'ENOTDIR') {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Whether a path names something other than a folder: the nearest of it and its parents that
+ * exists, which is where the plugin would create the rest, is not a folder.
+ */
+function isNotFolder(path: string): boolean {
+  let current = path;
+  let found = statOf(current);
+  while (found === undefined && dirname(current) !== current) {
+    current = dirname(current);
+    found = statOf(current);
+  }
+  return found !== undefined && !found.isDirectory();
+}
+
 /** The folder `--out` names, resolved against the working directory, which must be a folder when it exists. */
 function outFolder(run: ChildRun, out: string): string {
   const folder = resolve(run.host.cwd, out);
-  const found = statSync(folder, { throwIfNoEntry: false });
-  if (found !== undefined && !found.isDirectory()) {
+  if (isNotFolder(folder)) {
     throw refusals.notFolder(run.graph.name, folder);
   }
   return folder;
