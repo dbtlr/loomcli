@@ -2319,7 +2319,7 @@ const { installation } = host.release;
 return out.print(installation === undefined ? 'Installed some other way.' : `Installed by ${installation.method} at ${installation.path}.`);
 ```
 
-The installation record is one directory per application and per user that says how the application was installed and which files its installers wrote. It holds `install.json`, the installation, and one file for each first-party plugin that installs files, named for the plugin, such as `completion.json`. Each file has its own writers, and each writer replaces only its own file, whole, through a temporary file in the same directory and a rename, so no writer reads or merges another's. Core reads `install.json` and writes nothing. [ADR-0071](decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records the decision.
+The installation record is one directory per application and per user that says how the application was installed and which files its installers wrote. It holds `install.json`, the installation, and one file for each first-party plugin that installs files, named for the plugin, such as `completion.json`, or one for each of its targets when a plugin installs into independent targets, named for the plugin and the target, such as `skills.claude.json`. Each file has its own writers, and each writer replaces only its own file, whole, through a temporary file in the same directory and a rename, so no writer reads or merges another's. Core reads `install.json` and writes nothing. [ADR-0071](decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records the decision.
 
 - **The directory.** `applicationDirectory('installation', name, host)` resolves it from `env` and `platform` alone, and `applicationDirectory('logs', name, host)` resolves the [logging plugin's](#logging-plugin) default directory:
 
@@ -2381,7 +2381,7 @@ A first-party plugin that installs files outside the application, such as a comp
 ```
 
 - **The file.** It holds the directories the module created and each file it installed with that file's digest. Before every install and uninstall whose plugin's file reads cleanly or is missing, the module removes leftover staging files of the plugin's file. A `pending` file lists the directories the module created and will create, and holds, for each path, the digest it held before, `null` when it held nothing, and the digest it will hold, `null` when the file is being removed. A plugin's file that is not that shape, or whose `format` the module does not know, refuses the install or uninstall: the module reports its path and writes nothing. A missing plugin's file records nothing.
-- **Before writing.** An install checks every target first. A target that is absent, or a regular file the plugin's file records at that path with its digest unchanged, may be written. A target that is any other file, a file whose digest changed since it was recorded, a symbolic link, or a directory refuses the whole install, and the module writes nothing and reports each such path. The module never takes over a file it did not record. Each target is an absolute, normalized path listed once; any other is a first-party plugin's bug, and the module throws a TypeError before it reads or writes anything.
+- **Before writing.** An install checks every target first. A target that is absent, or a regular file the plugin's file records at that path with its digest unchanged, may be written. A target that is any other file, a file whose digest changed since it was recorded, a symbolic link, or a directory refuses the whole install, and the module writes nothing and reports each such path. The module never takes over a file it did not record, unless the plugin passes the force mode, which the [skills plugin](#skills) alone passes, and only for an operator's `--force`: a forced install may also write over a regular file the plugin's file does not record, a recorded file whose digest changed, and a symbolic link, which its rename replaces without writing through it, reports each such path as taken over, and records it; a directory or another kind of file still refuses. Each target is an absolute, normalized path listed once; any other is a first-party plugin's bug, and the module throws a TypeError before it reads or writes anything.
 - **Writing.** The module writes the plugin's file as `pending`, creates each missing parent directory, writes each target to a staging file it creates exclusively in the target's directory, named `.<name>.<random>.loom-staging` and unique to the attempt, with the permission bits a plugin names for that target, whatever the umask, when it names any, and renames it into place, removes each recorded file the install no longer lists when its digest is unchanged and keeps and reports one whose digest changed, and then writes the plugin's file as `committed`. It reads the run signal before the pending write and, once it has begun, does not stop between targets.
 - **Uninstalling.** The module removes each recorded file whose digest is unchanged, keeps and reports each whose digest changed, removes each recorded directory that is then empty, deepest first, and deletes the plugin's file. It reads the run signal before the first removal. A file or directory that is already gone is not an error.
 - **Recovery.** Before any install or uninstall, a `pending` file is resolved by what is on disk: a path whose digest is the intended one was written, one whose digest is the prior one was not, one that is gone was removed, and one with any other digest was changed by someone else and is no longer recorded. A listed directory that exists stays recorded, and one that is gone is dropped. The module removes leftover staging files, of targets and of the plugin's file, writes the result as `committed`, and then does what was asked. It keeps no backup, so an interrupted install finishes on the next run rather than restoring the files it replaced.
@@ -2395,7 +2395,7 @@ The installation record is proven when public APIs, process runs, and the module
 - **The directory.** `applicationDirectory` gives each table row from an overridden `env` and `platform`, `$HOME/.local/state` for an `XDG_STATE_HOME` that is unset, empty, or relative, and `{ variable: 'HOME' }` for a `HOME` that is unset, empty, or relative whenever the row needs it, while an absolute `XDG_STATE_HOME` needs no `HOME`, with no file read or created.
 - **The recipe.** The shell recipe runs under `/bin/sh` on Linux and macOS against a fixture binary in a temporary home and writes `install.json` with the pinned bytes. It refuses a target path holding a quote, a backslash, or a newline, and a relative `HOME` whenever the directory needs it, with exit 1 and nothing written. On Linux, an absolute `XDG_STATE_HOME` writes the file with `HOME` unset.
 - **Reading.** A compiled fixture binary built with `--release` and recorded by the recipe prints its `installation` under the temporary home. A symbolic link to the binary, and a recorded path that is a symbolic link to it, read the same installation. The same binary prints none when copied to another path, when `install.json` is missing, empty, not JSON, an array, `format` `2`, an empty `method`, a relative `path`, or an uppercase `digest`, or a directory, and when the directory's variable is unset; each run exits with its own code and writes nothing to stderr. A bundle built for Node with `--release`, and the source run, print none and read no file. `install.json` with an extra member and its members reordered reads the same installation. `run({ host: { release } })` reads the override and no file.
-- **Installing.** Installing two files into a temporary directory writes both and a `committed` file with their digests and the created directory. A second install with new content replaces both, and one that lists only the first removes the second. An install over an unrecorded file, a recorded file changed since, a symbolic link, or a directory refuses, writes nothing, and reports the path, and so does an install whose plugin's file is damaged or holds an unknown `format`.
+- **Installing.** Installing two files into a temporary directory writes both and a `committed` file with their digests and the created directory. A second install with new content replaces both, and one that lists only the first removes the second. An install over an unrecorded file, a recorded file changed since, a symbolic link, or a directory refuses, writes nothing, and reports the path, and so does an install whose plugin's file is damaged or holds an unknown `format`. A forced install over an unrecorded file, a recorded file changed since, and a symbolic link writes each, records it, and reports it as taken over, and leaves the link's target byte for byte; a forced install over a directory still refuses and writes nothing.
 - **Uninstalling.** Uninstall removes unchanged files and the created directory, keeps and reports a changed file, passes over a file already gone, and deletes the plugin's file.
 - **Recovery.** A process killed between two targets leaves a `pending` file, and the next install finishes with both targets written and a `committed` file. A process killed before it creates a listed directory leaves a `pending` file whose next install creates the directory and records it. A pending path changed by hand before the next run is kept and no longer recorded. A leftover staging file is removed. Two installs writing one target at once never rename one's partial staging file into place.
 - **Logging.** The logging plugin's default directory follows the `logs` column, and a relative `HOME`, for the default directory and for a `file` under `~/`, calls `onError` with `unresolved-directory` and `variable` `HOME`.
@@ -3689,7 +3689,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the [skills plugin](#skills), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -5593,6 +5593,165 @@ The plugin is proven when process tests under Node and Bun produce these results
 - **Waiting.** A run aborted while launchd's unload is polled, and one aborted during a manager call, exit 130 and leave the record as the module left it.
 - **Settings and the graph.** Each settings fault throws its pinned diagnostic at the call. `run` words naming an unknown Command, a group, an unknown option, a misplaced option, an unexpected argument, and an option with no value each fail the build with `run-unrouted`, and `check()` reports it. `run` words that end in passthrough words after `--` pass.
 - **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/service` from the packed tarball under Node and Bun.
+
+### Skills
+
+```ts
+// @loomcli/plugins/skills
+import type { Host, Log, Plugin } from '@loomcli/core';
+
+export interface SkillFile {
+  readonly path: string; // relative to the skill's folder, such as references/commands.md
+  readonly content: string | Uint8Array; // the file's text or bytes
+  readonly executable?: boolean; // written with mode 755 when true, else 644
+}
+export interface Skill {
+  /** The skill's folder name, such as notes. */
+  readonly name: string;
+  /** Loads the skill's files, called only when a skills Command runs. */
+  readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
+}
+export interface SkillsSettings {
+  readonly skills: readonly Skill[];
+}
+export interface RefreshContext {
+  readonly path: string; // the binary that replaced this one
+  readonly host: Host; // the run's host
+  readonly signal: AbortSignal; // the run signal
+  readonly log: Log; // the run's log
+}
+export declare function skills(settings: SkillsSettings): Plugin;
+export declare function refreshSkills(context: RefreshContext): Promise<void>;
+```
+
+```ts
+// src/skill.ts: the files of skills/notes/, read only when a skills Command calls the loader
+import type { SkillFile } from '@loomcli/plugins/skills';
+
+export async function notesSkill(): Promise<readonly SkillFile[]> {
+  const [skill, commands] = await Promise.all([
+    import('../skills/notes/SKILL.md', { with: { type: 'text' } }),
+    import('../skills/notes/references/commands.md', { with: { type: 'text' } }),
+  ]);
+  return [
+    { path: 'SKILL.md', content: skill.default },
+    { path: 'references/commands.md', content: commands.default },
+  ];
+}
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+import { refreshSkills, skills } from '@loomcli/plugins/skills';
+
+import { notesSkill } from './skill.js';
+
+export const notes = new Application('notes', {
+  plugins: [help(), skills({ skills: [{ name: 'notes', files: notesSkill }] }), selfUpdate({ afterReplace: refreshSkills })],
+});
+```
+
+```text
+$ notes skills install
+Installed notes for claude in /home/me/.claude/skills/notes.
+Installed notes for agents in /home/me/.agents/skills/notes.
+$ notes skills update
+/home/me/.claude/skills/notes is unchanged.
+/home/me/.agents/skills/notes is unchanged.
+$ notes skills install --project --agent claude
+Installed notes for claude in /home/me/src/acme/.claude/skills/notes.
+$ notes skills uninstall
+Removed /home/me/.claude/skills/notes.
+Removed /home/me/.agents/skills/notes.
+```
+
+Text imports are Bun's: a compiled binary and a Bun bundle inline each file the loader imports, and an author who builds for Node returns the files another way, such as from a module generated before the build. The loader is the author's code, so where its bytes come from is the author's choice.
+
+`skills()` is the skills plugin. It installs the application's agent skills where coding agents read them, keeps them current with the binary, and removes them. Its identity is `@loomcli/plugins/skills`, and its whole contribution is one [plugin Command](#plugin-commands) group. [ADR-0076](decisions/0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) records the decision.
+
+- **Settings.** `skills()` judges its settings at the call under `checkPluginSettings`, then each skill in order, and throws a `DeclarationError` of `@loomcli/plugins/skills/settings` for the first fault, with the finding marked on `skills`:
+
+  | The setting | The sentence and correction |
+  | --- | --- |
+  | `skills` missing, not an array, or empty | `Plugin "@loomcli/plugins/skills" setting "skills" is not a list of skills.`, corrected by `Supply at least one skill, such as { name: 'notes', files: loadNotesSkill }.` |
+  | an entry that is not an object | `Plugin "@loomcli/plugins/skills" setting "skills" holds an entry that is not a skill.`, corrected by `Supply each skill as { name, files }.` |
+  | an entry whose `name` is not a skill name | `Plugin "@loomcli/plugins/skills" setting "skills" holds a name that is not a skill name: Notes.`, corrected by `Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.` |
+  | a name a second entry repeats | `Plugin "@loomcli/plugins/skills" setting "skills" holds the skill name notes twice.`, corrected by `Give each skill its own name.` |
+  | an entry whose `files` is not a function | `Plugin "@loomcli/plugins/skills" setting "skills" holds a skill whose files is not a function: notes.`, corrected by `Supply a function that returns the skill's files.` |
+
+  A skill name is one or more runs of lowercase ASCII letters and digits joined by single `-`, 64 characters at most, the Agent Skills grammar, so it is safe as one path segment. A name the sentence repeats passes through [`escapeControlCharacters`](#strings-and-composition), and a name that is missing or not a string is written as `(none)`. Settings is required, so `skills()` with none is the `skills` fault.
+- **Loading the files.** `install` and `update` call each skill's `files` once, in declaration order, after every check under Global installs or Project installs that comes before loading, and before they read the record or write anything, and await each; `uninstall` calls no loader, so a broken loader never blocks a removal. A loader that throws or rejects fails the run through the ordinary [failure path](#failure-contract). The result is judged before anything is written, and the first fault throws a `DeclarationError` of `@loomcli/plugins/skills/files`, which fails the run through the same path:
+
+  | The result | The sentence and correction |
+  | --- | --- |
+  | not an array, or holding an entry whose `path` is not a string or whose `content` is neither a string nor a `Uint8Array` | `Skill "notes" loaded something that is not a list of files.`, corrected by `Return a list of { path, content } files from the skill's files function.` |
+  | a path that is empty, starts with `/`, holds `\` or a control character, or has an empty, `.`, or `..` segment | `Skill "notes" lists a file path that is not a plain relative path: ../notes.md.`, corrected by `Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.` |
+  | a path a second entry repeats | `Skill "notes" lists the file references/commands.md twice.`, corrected by `List each file once.` |
+  | no entry whose path is `SKILL.md` | `Skill "notes" lists no SKILL.md.`, corrected by `Add the skill's SKILL.md at the top of its files.` |
+
+  A path the sentence repeats passes through `escapeControlCharacters`. The plugin judges no file's content.
+- **The Commands.** `skills`, visible, with the description `Install this application's agent skills.`, and three children, each visible with no arguments:
+  - `install`, `Install the skills for your coding agents.`, with the string option `--agent`, `The agents to install for: claude, or agents for Codex and others. Both when left out.`, validated to `claude` or `agents`; the Boolean option `--project`, `Install into the current repository instead of your home folder.`; the string option `--directory` with the short spelling `-C`, `Find the repository from this directory instead of the current one.`; and the Boolean option `--force`, `Replace skill files that something else wrote or that you changed.`
+  - `update`, `Bring installed skills up to date with this version.`, with no options.
+  - `uninstall`, `Remove the skills from your coding agents.`, with `--agent`, `The agents to remove the skills from: claude or agents. Both when left out.`, validated the same way.
+
+  An `--agent` value outside the set is core's usage error for that input, with exit 2. `--directory` without `--project` is an `InputError` the action throws, `Option "--directory" needs --project. Add --project, or leave out --directory.`, with exit 2. `--force` with `--project` has no effect, because a project install always replaces. No child declares a result. A root that declares arguments cannot hold children, so such an application cannot install the plugin, and an application installs it once, because a second `skills` collides under [Plugin Commands](#plugin-commands).
+- **Agent targets.** `claude` and `agents`, in that order, which every child follows. A child with no `--agent` acts on both.
+
+  | Target | Global folder | Project folder |
+  | --- | --- | --- |
+  | `claude` | `<claude>/skills/<name>/`, where `<claude>` is `CLAUDE_CONFIG_DIR` when it is an absolute path, else `<home>/.claude` | `<root>/.claude/skills/<name>/` |
+  | `agents` | `<home>/.agents/skills/<name>/` | `<root>/.agents/skills/<name>/` |
+
+  `<home>` is `HOME`, or `USERPROFILE` on `win32`, read from `host.env`. The `win32` rows are unverified under [ADR-0011](decisions/0011-bun-first-workflow-with-a-portable-core.md).
+- **File modes.** Each file is written with mode `755` when `executable` is true and `644` otherwise, whatever the umask, at both scopes. Folders are created with the process's default mode.
+- **Any build.** Every child acts from a `source`, `development`, or `distributed` build alike, because a skill does not depend on the binary's path.
+
+#### Global installs
+
+- **Checks first.** At global scope, `install`, `update`, and `uninstall` check, in this order, before they load files or read the record, and fail with a `FatalError` and exit 1 at the first that fails. `<home>`, unless every selected target is `claude` and `CLAUDE_CONFIG_DIR` is absolute: `notes cannot find your home folder because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.`, naming `USERPROFILE` on `win32`. Then the record's directory, `applicationDirectory('installation', name, host)`, which answering `{ variable }` fails: `notes cannot find its installation record because XDG_STATE_HOME is not an absolute path. Set XDG_STATE_HOME to an absolute path, then run the command again.`, naming the variable the lookup answers.
+- **The record.** Each target's files are recorded in its own plugin's file in the record's directory, `skills.claude.json` and `skills.agents.json`, through the module [Installed files](#installed-files) defines, under its rules, so an install into one target never removes the other's files. Before it writes, a child reads each selected target's plugin's file through the module, and one that is damaged or holds an unknown `format` fails with `<record> cannot be read, so notes will not change the files it lists. Remove it and the files it lists, then run notes skills install again.`, with `uninstall` in place of `install` for that child.
+- **Skill folders.** Every global child checks each skill folder at each selected target before anything else it judges, without following a symbolic link at the folder itself; a link among its parent directories is followed. For `install` and `update`, a folder that is a symbolic link refuses, and one that is any other kind of file than a directory refuses even under `--force`. Under `--force`, the files under a linked folder are judged absent, since the link is replaced, and the link is removed, never what it points to, just before the module writes, with the line `Replaced the symbolic link <folder>.` A skill folder that is a link is never read through for the unchanged rule. For `uninstall`, see `uninstall` below.
+- **All or nothing.** `install` and `update` check every selected target before they write any: each skill folder under Skill folders and each file through the module's read of what an install would refuse. When anything refuses, the child fails, writes nothing to any target, and prints, before the failure, one line for each refused path: `<path> was not written by notes skills install.`, `<path> changed since notes skills install wrote it.`, `<path> is a symbolic link.`, or `<path> is not a regular file.` The failure is `notes skills install changed nothing, because files it did not write, or that changed, are in the way.`, corrected by `Remove them, or run notes skills install --force to replace them.`; when any refused path is not a regular file or a link, or is a skill folder that is not a directory, the correction is `Remove them, then run notes skills install again.` instead. `update` uses `notes skills update` in the failure sentence and the same corrections.
+- **Unchanged.** A skill is unchanged at a target when its folder is a directory, and every one of its files is recorded with the digest of its content, holds it on disk, and has the mode its `executable` names. A target whose skills are all unchanged, and whose plugin's file records no other file, is not written, and each of its skills prints `<folder> is unchanged.`
+- **`install`.** Every selected target that is not unchanged is installed through the module, with every skill's files listed, in the force mode when `--force` is given. The module removes each recorded file the install no longer lists, such as a reference a newer version dropped or a skill the application stopped declaring, and keeps one that changed. Each skill prints `Installed <name> for <target> in <folder>.`; each path `--force` took over prints `Replaced <path>, which notes skills install did not write or which changed.`; each removed file prints `Removed <path>.`; and each kept file prints `Kept <path> because it changed since notes skills install wrote it. Remove it yourself when it is no longer needed.` A skill folder left empty after its files are removed is removed.
+- **`update`.** It acts on each target whose plugin's file records at least one file, as `install` with no `--force` would, and prints `Updated <name> for <target> in <folder>.` in place of the installed line. It never touches a project folder. With no target recording a file, it prints `notes has no skills installed in your home folder, so there is nothing to update. Run notes skills install to install them.` and exits 0.
+- **`uninstall`.** A selected target with a recorded skill folder that is now a symbolic link is left alone whole, its files and its plugin's file, because its files would be read through the link: it prints `<folder> is a symbolic link, so uninstall leaves the skills for <target> alone. Remove the link, then run notes skills uninstall again.` through `out.warn`, and the child exits 1 with a `FatalError` once every other selected target is done: `notes skills uninstall left some skills in place.`, corrected by `Remove the links it names, then run it again.` For every other selected target, the module uninstalls the plugin's file's files, removing each unchanged file and each folder the module created that is then empty, and keeping each changed file. A skill folder left empty is removed too, even one the module did not create. Each skill folder that is gone afterwards prints `Removed <folder>.`, and each kept file prints the kept line above. With no selected target recording a file, it prints `notes has no skills installed in your home folder, so there is nothing to remove.` and exits 0. A file at a skill's folder that the record does not list is never removed.
+
+#### Project installs
+
+- **The root.** `--project` starts at `host.cwd`, or at `--directory` resolved against it, and walks up through each parent to the first directory that holds an entry named `.git` of any kind, a directory in a clone and a file in a worktree or submodule. That directory is the root; with none up to the file system's root, the start is the root. A `--directory` that is not a directory fails with an `InputError` and exit 2: `Option "--directory" names /home/me/src/missing, which is not a directory. Name a directory that exists.` Both checks come before loading.
+- **Never the global folder.** When a skill's project folder is that target's global folder, as when the root is the home folder, the install fails with a `FatalError` and exit 1 before it loads or writes anything: `notes skills install --project would write to /home/me/.claude/skills/notes, the folder notes skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project.` The global folder is computed as Agent targets states, and the comparison follows no symbolic link.
+- **Replacing.** For each selected target and each skill, the plugin removes whatever is at the skill's project folder: a directory with everything in it, a symbolic link by removing the link alone, or any other file. It then creates the folder and writes every file the skill lists. Nothing is recorded, so a project folder has no update, uninstall, edit detection, or `--force`; its repository's history shows what changed. Each skill prints `Installed <name> for <target> in <folder>.`, or `Installed <name> for <target> in <folder>, replacing the copy that was there.` when something was at the folder.
+- **A failed write.** A file system call that fails throws the runtime's error, which fails the run through the ordinary failure path. The folder may be left part written; the next install replaces it whole.
+
+#### Refreshing after a self-update
+
+`refreshSkills` is an `afterReplace` function for the [self-update plugin](#self-update), which passes it a context that holds every member `RefreshContext` names. It runs in the replaced process, which holds the old version's skills, so it runs the new binary, and `update` decides what to refresh:
+
+- **The child.** It runs `path` with the words `skills update` as a child process, with `host.env` as its environment and `host.cwd` as its working directory, no shell, no input, and its standard output and standard error piped into `host.stdout` and `host.stderr`, so the child reads neither as a terminal. It adds no time limit; the run signal ends the child with `SIGTERM`.
+- **Never a failure.** A child that exits with any code but 0, or that cannot be started, adds a `warn` [log event](#logging), `Skills were not refreshed after the update.`, with the fields `path` and `code`, or `error` for a child that cannot start, and `refreshSkills` resolves. The child's own failure sentence, which says what to do, has already reached `host.stderr`. A child that cannot be started writes none, so `refreshSkills` writes one line to `host.stderr` itself: `The skills were not refreshed because /home/me/.local/bin/notes could not start. Run notes skills update.`, with the path passed through `escapeControlCharacters` and the program named by the path's last segment. A child ended by the run signal resolves the same way, and the run resolves its cancellation code under [Signals and cancellation](#signals-and-cancellation).
+
+- **Composing.** An application that runs more after a replace calls `refreshSkills(context)` from its own `afterReplace` and awaits it. With nothing recorded, the child prints `update`'s nothing-to-update line, which names the install Command.
+- **Output.** The per-skill `Installed` and `Updated` lines and the nothing-to lines go through `out.success`; the `is unchanged`, `Replaced`, and `Removed` lines through `out.info`; and the refused-path and `Kept` lines through `out.warn`, so stdout stays empty for every child. The examples above omit the glyph each lane view adds. Every path, folder, and name a sentence repeats passes through `escapeControlCharacters`. Every refusal and check failure above is a `FatalError` that exits 1, the option conflicts are the `InputError`s above, and a throwing loader takes the ordinary failure path.
+- **Names.** `skills`, `refreshSkills`, `SkillsSettings`, `Skill`, `SkillFile`, and `RefreshContext` are exported from `@loomcli/plugins/skills`.
+
+#### Skills acceptance
+
+The plugin is proven when process tests under Node and Bun produce these results. Each fixture sets `HOME`, `XDG_STATE_HOME`, and the working directory to temporary directories, clears `CLAUDE_CONFIG_DIR` unless a case sets it, and runs an application that installs `skills()` with fixture skills through `run({ host })`:
+
+- **Installing globally.** `skills install` writes every file of every skill to both global folders with the pinned modes under umask `002` and `077`, records each target in its own plugin's file, and prints the pinned lines. `--agent claude` writes only the Claude folder and leaves `skills.agents.json` and its files as they were. A second install prints the unchanged lines and writes nothing, and one after a file's mode changed, or after the skill flips a file's `executable`, rewrites it with the pinned mode. An absolute `CLAUDE_CONFIG_DIR` moves the Claude folder under it, a relative one is ignored, and `--agent claude` with an absolute `CLAUDE_CONFIG_DIR` installs under a relative `HOME` on Linux when `XDG_STATE_HOME` is absolute. An `--agent` value outside the set exits 2.
+- **Refusing.** An unrecorded file, a recorded file changed since, a symbolic link at a file, and a symbolic link at a skill folder each fail `install` with exit 1, print their refused-path line, and leave both targets byte for byte, including the target that had nothing in the way. A directory where a file belongs, and a regular file where a skill folder belongs, fail with the remove-then-install correction. A damaged and an unknown-format plugin's file each fail `install` and `uninstall` with the pinned sentence for that child. A relative `HOME` fails every global child, and a relative `XDG_STATE_HOME` with a relative `HOME` fails with the record sentence naming the variable the lookup answers. A skill folder that is a symbolic link to the other target's folder, as `npx skills` leaves it, refuses `install` and `update` and reads as no unchanged skill.
+- **Forcing.** `install --force` over an unrecorded file, a changed file, a symbolic link at a file, and a symbolic link at a skill folder writes and records each, prints the pinned replaced lines, and leaves every link's target byte for byte. A directory where a file belongs still refuses under `--force`, and `--force --project` installs as `--project` does.
+- **Updating.** After the fixture's skill drops a reference and adds another, `update` writes the new file, removes the dropped one, and prints the updated lines; a changed recorded file fails it with the install-force correction and writes nothing. After the application stops declaring a skill, `update` removes that skill's files and its emptied folder. With nothing recorded it prints the nothing-to-update line and exits 0. It leaves a project folder byte for byte.
+- **Uninstalling.** `uninstall` removes every recorded file and each emptied skill folder, keeps a changed file with the kept line, leaves an unrecorded file in place, deletes the plugin's file, and prints the nothing-to-remove line on a second run. `--agent agents` leaves the Claude folder and its record alone. A folder that keeps a changed file prints the kept line and no removed line. A recorded Claude skill folder that is now a symbolic link to the agents folder leaves the Claude target, the agents folder, and both links' targets byte for byte, removes the agents target, and exits 1 with the pinned sentences. `uninstall` with a loader that throws calls no loader and succeeds.
+- **Projects.** `install --project` from a subdirectory of a fixture repository writes to the root that holds `.git`, a directory or a file, and from a directory with no `.git` above it writes to the start. `-C` starts the walk at its directory, a missing directory exits 2, and `-C` without `--project` exits 2. Run from a home folder that holds `.git`, or from one with no `.git` above it, it fails with the never-the-global-folder sentence and writes nothing. A second install removes a file the skill no longer lists and a file someone added, replaces a symbolic link at the folder without touching its target, and prints the replacing line. Nothing is written to the installation record.
+- **Loading.** A run of any Command outside `skills` calls no loader. Each loader fault throws its pinned diagnostic when a child runs and writes nothing, and a loader that throws exits 1.
+- **Refreshing.** `refreshSkills`, given a fixture binary path, runs it with `skills update`, pipes its output into the host's streams, and resolves; a child that exits 1, and a path that cannot start, each add the pinned `warn` log event and resolve, and the path that cannot start writes the pinned line to `host.stderr`. A run aborted while the child runs ends it with `SIGTERM`, and `refreshSkills` resolves. Installed as `selfUpdate({ afterReplace: refreshSkills })` under the self-update fixture, an update refreshes a recorded skill to the replaced binary's version.
+- **Settings.** Each settings fault throws its pinned diagnostic at the call.
+- **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/skills` from the packed tarball under Node and Bun.
 
 ### Example coverage
 
