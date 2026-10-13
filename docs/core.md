@@ -4409,8 +4409,8 @@ The details block keeps its place after the masthead on the extended page alone.
 
 Under the [help and version restyle](#help-and-version-restyle), each block has a style, and inline constructs add to it.
 
-- **Blocks.** The text of a paragraph, a list item, a quote, and a thematic break is `primary`, as details was. A heading is `primary` and `bold`. Each line of code is one `highlight` value, its own leading whitespace included.
-- **Inline.** Emphasis adds `italic` and strong emphasis adds `bold` to everything inside them. A code span is `highlight`, keeping the modifiers around it, so a code span in a heading is `highlight` and `bold`. A link's text keeps the style around it. The destination with its parentheses is one `dim` value, keeping the modifiers around it, and the space before the opening parenthesis is unstyled. An address an autolink or a link prints alone keeps the style around it.
+- **Blocks.** The text of a paragraph, a list item, a quote, and a thematic break is `primary`, as details was. A heading is `primary` and `bold`. Each line of code is one `highlight` value, its own leading whitespace included and its trailing whitespace dropped.
+- **Inline.** Emphasis adds `italic` and strong emphasis adds `bold` to everything inside them. A code span is `highlight`, keeping the modifiers around it, so a code span in a heading is `highlight` and `bold`. A link's text keeps the style around it. The destination with its parentheses is one `dim` value, keeping the modifiers around it, and the space before the opening parenthesis carries only the modifiers around it. An address an autolink or a link prints alone keeps the style around it.
 - **Markers.** A list marker and a quote's `>` are `dim`.
 - **Values.** Each run of text between inline constructs is one styled value, its spaces included. A line of text with no inline construct is therefore one `primary` value, as before. Indentation and the space after a marker are unstyled.
 
