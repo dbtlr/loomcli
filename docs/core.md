@@ -1433,6 +1433,7 @@ Invocation by name is proven when public APIs alone produce these results under 
 | Field              | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |
 | `argv`             | Application tokens without the runtime and script prefix      |
+| `program`          | The runtime and script prefix `argv` omits: the words that start this application again; frozen |
 | `platform`         | Captured process platform string, such as `linux` or `win32` |
 | `cwd`              | Working directory; a capture that throws fails the run, under [An unreadable working directory](#an-unreadable-working-directory) |
 | `env`              | Map of environment names to strings or `undefined`            |
@@ -1445,6 +1446,8 @@ Invocation by name is proven when public APIs alone produce these results under 
 An override replaces its whole field. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
 
 The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
+
+Core captures `program` from the process and the build: a compiled binary reads `[process.execPath]`, because the binary is the whole program, and any other run reads `process.execPath` followed by the absolute path of `process.argv[1]`, the script the runtime ran, or `[process.execPath]` alone when there is none. A run is a compiled binary when the build baked `compiled: true`, which `loom build` bakes for a compile target alone; the release facts do not repeat it. So `[...host.program, ...host.argv]` starts the same application again, without runtime options such as `process.execArgv`, and a [service unit](#service) runs `host.program`. A `program` override replaces the whole list, and an `invoke` keeps the outer run's.
 
 Core reads `release` from the build and the installation record, never from the process: process capture reads the facts the build baked into the artifact and, for a compiled binary built with `--release`, the installation the [installation record](#installation-record) holds, and a `release` override replaces them whole, as [Release facts](#release-facts) states. An action reads its run's build, release, and installation there and nowhere else.
 
@@ -2170,6 +2173,7 @@ interface ReleaseFacts {
 }
 interface Host {
   readonly release: ReleaseFacts; // new
+  readonly program: readonly string[]; // new: the runtime and script prefix argv omits
   // ...the fields under Host...
 }
 ```
@@ -2198,7 +2202,7 @@ Release facts say how the running application was built, released, and installed
 - **`release`.** Present only when the artifact was built with `loom build --release`. `version` is the package's version, and `repository` is the repository the release belongs to, as `owner/name`. `asset` is the release asset's name, present for a compiled binary alone.
 - **The release channel.** Core derives `channel` from `version`: the first prerelease identifier, so `1.1.0-next.3` reads `next` and `1.0.0-beta.1` reads `beta`, and `stable` when the version has none. It is a string, not a closed set, and the build never bakes it.
 - **`installation`.** How the application was installed, where it was installed, and the digest of what was installed. The build never bakes it. Core reads it from the [installation record](#installation-record) for a compiled binary built with `--release`, and only when the recorded path is the running executable.
-- **The define.** The build bakes one identifier, `__LOOM_RELEASE__`, through a bundler `define`. Its value is JSON, `{ "build": ..., "release"?: { "version", "repository", "asset"? } }`, which the bundler substitutes as an object literal. Core reads the identifier behind a `typeof` guard, so a source run, where nothing replaced it, reads it as absent. A define reaches code inside `node_modules`. The define reaches core only when the bundle includes `@loomcli/core`; a build that leaves core external reads `source`. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one, and so does every common bundler, such as esbuild, Rollup, and Vite. [`loom build`](toolchain.md#loom-build) bakes it, and its `--facts` and `--define` options print the value, so an author composes a custom build from the same facts.
+- **The define.** The build bakes one identifier, `__LOOM_RELEASE__`, through a bundler `define`. Its value is JSON, `{ "build": ..., "compiled"?: true, "release"?: { "version", "repository", "asset"? } }`, where `compiled` marks a compiled binary for [`host.program`](#host) and a `compiled` other than `true` is malformed, naming the member, which the bundler substitutes as an object literal. Core reads the identifier behind a `typeof` guard, so a source run, where nothing replaced it, reads it as absent. A define reaches code inside `node_modules`. The define reaches core only when the bundle includes `@loomcli/core`; a build that leaves core external reads `source`. `Bun.build({ define })` and the `bun build` command line's `--define`, `--watch` included, both take one, and so does every common bundler, such as esbuild, Rollup, and Vite. [`loom build`](toolchain.md#loom-build) bakes it, and its `--facts` and `--define` options print the value, so an author composes a custom build from the same facts.
 - **No baked facts is source.** An artifact built without the define reads `{ build: 'source' }`, as the source run does, and shows the author's detail. An application ships through `loom build`, and anything else counts as unbuilt.
 - **Captured with the host.** `run()` and `app.invoke` read the baked facts during host capture, once per run, and freeze them. An action's `invoke` reads its run's facts. A `release` override, `run({ host: { release } })` or `app.invoke`'s `host: { release }`, replaces the whole field as any host override does, which is how a test supplies facts. Core takes the override as given and reads no baked value and no installation record.
 - **Without a host.** `inspect()` takes no host, so it reads the baked facts to learn its build. [`check()`](#checking-the-declarations) reads none, because it runs the development checks whatever the build.
@@ -2232,7 +2236,7 @@ Release facts are proven when public APIs and process runs alone produce these r
 - **A source run.** A fixture action that prints `host.release` prints `{ build: 'source' }` from source. When the action throws a `TypeError` instead, the run writes the Developer Diagnostic of `@loomcli/core/foreign-throw` and exits 1.
 - **A bundle with facts.** The fixture bundled by `loom build --target node` prints `{ build: 'distributed' }` with no release group, and its throwing action writes exactly `probe: Something went wrong.` and exits 1, with no reason, class name, or path on stderr. Built with `--build development`, it prints `development` and writes the Developer Diagnostic. Built with `--release` from a package at `1.1.0-next.3` whose `repository` reads `git+https://github.com/acme/probe.git`, it prints version `1.1.0-next.3`, channel `next`, and repository `acme/probe`, with no asset, and a package at `2.0.0` reads channel `stable`. A compiled binary built with `loom build --release` for the host target reads its asset name and writes the generic message.
 - **A bundle without facts.** A packed consumer bundles a fixture application with `Bun.build` and with Rolldown, each with no define. Each bundle reads `{ build: 'source' }` and writes the Developer Diagnostic for a defect under Node and Bun. Each pads wide, combining, emoji, and flag text to its display width and keeps the license notices of core's derived modules.
-- **A malformed define.** A fixture bundled with `--define` values that bake `{"build":"staging"}`, `[]`, and a release group whose version is `one` each exits 1 with the Developer Diagnostic of `@loomcli/core/invalid-release-facts` and runs no action. `app.invoke` from the same bundle resolves `failed` with exit 1, `inspect()` throws the `InternalError`, and `run({ host: { release: { build: 'distributed' } } })` runs, because the override replaces the baked value. A baked member core does not know reads as the known members alone.
+- **A malformed define.** A fixture bundled with `--define` values that bake `{"build":"staging"}`, `[]`, a release group whose version is `one`, and `"compiled":1` each exits 1 with the Developer Diagnostic of `@loomcli/core/invalid-release-facts` and runs no action. `app.invoke` from the same bundle resolves `failed` with exit 1, `inspect()` throws the `InternalError`, and `run({ host: { release: { build: 'distributed' } } })` runs, because the override replaces the baked value. A baked member core does not know reads as the known members alone.
 - **Overrides by build.** From source, `run({ host: { release: { build: 'distributed' } } })` writes the generic message for a defect and `{ build: 'development' }` writes the Developer Diagnostic. An application override of `InternalError` renders a defect in a distributed build and is not consulted in a development build; a plugin override of `InternalError` is likewise not consulted in development. An `onFailure` hint prints under the generic message and under the Developer Diagnostic. An action's `invoke` reads its run's facts, and `app.invoke` with `host: { release }` reads the override.
 - **Build faults.** A root with neither children nor an action writes the generic message from a distributed bundle and its Developer Diagnostic from source, both with exit 1, and `inspect()` throws the `DeclarationError` in both.
 - **Broken contracts.** A broken failure view and a broken `onFailure` hook each write the failure's own text and then one generic line in a distributed build, and the broken contract's Developer Diagnostic in a development build, with exit 1, or 130 in a run a caller cancelled.
@@ -3685,7 +3689,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -5404,6 +5408,191 @@ The plugin is proven when process tests under Node and Bun produce these results
 - **The hook.** An `afterReplace` that throws exits 1 through the ordinary failure path after the update line, with the new binary and record in place, and the hook reads the run's host and signal.
 - **Settings.** `selfUpdate({ afterReplace: 1 })` throws its pinned diagnostic at the call.
 - **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/self-update` from the packed tarball under Node and Bun.
+
+### Service
+
+```ts
+// @loomcli/plugins/service
+import type { ActionContext, Host, Log, Plugin } from '@loomcli/core';
+
+export interface ServiceDetail {
+  readonly name: string; // the row's name, such as health
+  readonly value: string; // the row's text, written as the author gives it
+}
+export interface ServiceState {
+  readonly label: string; // the settings' label
+  readonly unit: string; // the unit file's path
+  readonly installed: boolean; // whether a file is at the unit's path
+  readonly running: boolean; // whether the manager reports a running process
+  readonly state: string; // the manager's state word, not installed, not loaded, or unknown
+  readonly pid?: number; // the running process, when the manager reports one
+  readonly notes: readonly string[]; // sentences about the user's session and an unreadable state
+}
+export interface ServiceStatus extends ServiceState {
+  readonly details: readonly ServiceDetail[]; // the probe's rows, or none
+}
+export interface ProbeContext {
+  readonly state: ServiceState; // what status read from the manager
+  readonly host: Host; // the run's host
+  readonly invoke: ActionContext<unknown>['invoke']; // the status action's invoke
+  readonly signal: AbortSignal; // the run signal
+  readonly log: Log; // the run's log
+}
+export interface ServiceSettings {
+  /** The unit's reverse-DNS name, such as com.acme.notes. */
+  readonly label: string;
+  /** The argument words the unit runs the application with, such as ['serve']. */
+  readonly run: readonly string[];
+  /** Rows status adds under the unit, once the unit is installed. */
+  readonly probe?: (context: ProbeContext) => Promise<readonly ServiceDetail[]> | readonly ServiceDetail[];
+}
+export declare function service(settings: ServiceSettings): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { service } from '@loomcli/plugins/service';
+
+export const notes = new Application('notes', {
+  description: 'Keep notes in sync.',
+  plugins: [
+    help(),
+    service({
+      label: 'com.acme.notes',
+      run: ['serve', '--port', '8080'],
+      probe: async ({ state, invoke }) => (state.running ? healthRows(await invoke(['health'], {})) : []),
+    }),
+  ],
+});
+```
+
+```text
+$ notes service install
+Wrote /home/me/.config/systemd/user/com.acme.notes.service.
+Started com.acme.notes.
+$ notes service status
+com.acme.notes: running (pid 4120)
+  unit    /home/me/.config/systemd/user/com.acme.notes.service
+  health  ok, v1.5.0
+  note    Lingering is off, so com.acme.notes stops when you log out. Run loginctl enable-linger to keep it running.
+$ notes service stop
+Stopped com.acme.notes.
+$ notes service uninstall
+Removed /home/me/.config/systemd/user/com.acme.notes.service.
+```
+
+`service()` is the service plugin. It installs one of the application's own Commands as a per-user service the platform supervises, a systemd user unit on Linux and a launchd user agent on macOS, and starts, stops, restarts, reports, and removes it. Its identity is `@loomcli/plugins/service`, and its whole contribution is one [plugin Command](#plugin-commands) group and one graph check. [ADR-0074](decisions/0074-the-service-plugin-supervises-one-user-unit-per-application-through-the-installation-record.md) records the decision.
+
+- **Settings.** `service()` judges its settings at the call under `checkPluginSettings`, then each key in the order below, and throws a `DeclarationError` of `@loomcli/plugins/service/settings` for the first fault, with the finding marked on that key:
+
+  | The setting | The sentence and correction |
+  | --- | --- |
+  | `label` missing, or not a string | `Plugin "@loomcli/plugins/service" setting "label" is not a reverse-DNS name.`, corrected by `Supply a label such as com.acme.notes.` |
+  | `label` outside the grammar | the same sentence and correction |
+  | `run` not an array, empty, or holding a word that is not a string | `Plugin "@loomcli/plugins/service" setting "run" is not a list of argument words.`, corrected by `Supply the words that run the service's Command, such as ['serve'].` |
+  | a `run` word holding a control character | `Plugin "@loomcli/plugins/service" setting "run" holds a word with a control character.`, corrected by `Remove the control character from the word.` |
+  | `probe` present and not a function | `Plugin "@loomcli/plugins/service" setting "probe" is not a function.`, corrected by `Supply a function, or omit the setting.` |
+
+  A label is two or more segments joined by `.`, each a letter or digit followed by letters, digits, and `-`, and 247 characters at most, so `<label>.service` fits systemd's 255-character unit name. A control character is any of U+0000 to U+001F and U+007F to U+009F. Settings is required, so `service()` with none is the `label` fault.
+- **The run words.** On every graph build, the plugin's `onGraphBuilt` hook reads `run` with [`locate`](#locating-a-word) as the words before a final `--`, and throws a `DeclarationError` of `@loomcli/plugins/service/run-unrouted` unless the result is an `option` position, or a `passthrough` position when `run` holds a bare `--`, whose Command has an action: `Plugin "@loomcli/plugins/service" setting "run" does not route to a Command with an action: serve --port 8080.`, corrected by `Name the words of a Command that has an action, as the application's command line takes them.`, with the words passed through [`escapeControlCharacters`](#strings-and-composition) and joined by spaces. So an unknown or renamed Command, a group, an unknown or misplaced option, an option still waiting for its value, and an unexpected argument each fail the build under [Judging the built graph](#judging-the-built-graph). No validator runs, so a value its validator rejects, and a required option or argument the words leave out, fail when the unit runs.
+- **The Commands.** `service`, visible, with the description `Run this application as a background service.`, and six children, each visible with no arguments and no options: `install`, `Install the service and start it.`; `uninstall`, `Stop the service and remove it.`; `start`, `Start the service.`; `stop`, `Stop the service.`; `restart`, `Restart the service.`; and `status`, `Report whether the service is running.` `status` declares the result `ServiceStatus` with the views `text`, its default, and `json: json()` from the [formatter](#formatter), so an installed formatter selects either and adds `jsonl`; the other five declare none. A root that declares arguments cannot hold children, so such an application cannot install the plugin, and an application installs it once, because a second `service` collides under [Plugin Commands](#plugin-commands).
+- **Checks first.** Every child checks, in this order, before it reads or writes anything else, and fails with a `FatalError` and exit 1 at the first that fails. The platform: `host.platform` `linux` selects the systemd backend and `darwin` the launchd backend, and any other fails with `notes cannot run a service on win32. Run it on Linux with systemd or macOS with launchd.` Then `HOME`, which every child requires to be absolute on both platforms, because the unit runs from it: `notes cannot find its service unit because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.` Then, for `install` alone, the build, under Building below.
+- **The unit's path.** On Linux, `<config>/systemd/user/<label>.service`, where `<config>` is `XDG_CONFIG_HOME` when it is absolute, else `$HOME/.config`. On macOS, `$HOME/Library/LaunchAgents/<label>.plist`.
+- **What the unit runs.** The unit runs [`host.program`](#host) followed by `run`, with the working directory `HOME` and no environment of its own. The unit's description is the application's description, or its name when it has none.
+- **The managers.** The plugin runs `systemctl --user`, `loginctl`, and `launchctl` as child processes with `host.env` as their environment, found on its `PATH`, and with no shell. On Linux, an environment with no `XDG_RUNTIME_DIR` gains `/run/user/<uid>`, because `sudo -u` drops it and `systemctl --user` needs it. `<uid>` is the process's user id, the one fact the plugin reads from the process, and launchd's domain is `gui/<uid>`. A call runs until it exits, with no time limit; the run signal ends it with `SIGTERM`, and the run resolves its cancellation code under [Signals and cancellation](#signals-and-cancellation). The plugin captures each call's output and prints none of it. A manager that cannot be started fails with exit 1: `notes cannot find systemctl. Install systemd, or run the command where it is available.`, naming the program. A call that exits with a code the steps below do not name fails with exit 1, naming the call and its code and pointing at the manager's own report: `systemctl --user restart com.acme.notes.service exited with 1. Run systemctl --user status com.acme.notes.service to see why.`, or on macOS `launchctl bootstrap gui/501 /Users/me/Library/LaunchAgents/com.acme.notes.plist exited with 5. Run launchctl print gui/501/com.acme.notes to see why.`
+
+#### The unit
+
+```ini
+[Unit]
+Description=Keep notes in sync.
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart="/home/me/.local/bin/notes" "serve" "--port" "8080"
+WorkingDirectory=/home/me
+Restart=always
+RestartSec=10
+SuccessExitStatus=130 143
+
+[Install]
+WantedBy=default.target
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.acme.notes</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/me/.local/bin/notes</string>
+    <string>serve</string>
+    <string>--port</string>
+    <string>8080</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/me</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
+```
+
+- **The text.** Each file is the text above with its values substituted, ending in one newline. The manager restarts the process whenever it exits, ten seconds apart, and never gives up; systemd counts the exit codes `130` and `143`, a run cancelled by `SIGINT` or `SIGTERM`, as a clean stop.
+- **systemd quoting.** Each `ExecStart` word is wrapped in `"`, with `\` written `\\`, `"` written `\"`, and `$` written `$$`. Every value doubles `%` to `%%`, so systemd expands no specifier.
+- **plist quoting.** Every value escapes `&`, `<`, `>`, `"`, and `'` as XML entities.
+- **No output.** The unit sets no standard output or standard error, so the platform's default applies: the journal under systemd, and nothing under launchd. A daemon's records reach a file through the [logging plugin](#logging-plugin), whose file destination is how a macOS daemon keeps a log.
+- **A value the file cannot hold.** A `host.program` word, the description, or `HOME` holding a control character fails `install` with exit 1 and nothing written: `notes cannot write its service unit because a path or its description holds a control character. Install notes where its path has none.`
+
+#### The children
+
+- **Building.** `install` refuses a run whose `host.release.build` is not `distributed`: `notes is a source build, so it cannot install a service that would outlive it. Build it with loom build, then run the built notes service install.`, or `a development build` for `development`. There is no opt-in. The other five children act from any build.
+- **The record.** The unit file is recorded in the plugin's file `service.json` in `applicationDirectory('installation', name, host)` through the module [Installed files](#installed-files) defines, under its rules, which `HOME` being absolute always resolves. Before it runs any manager, `install` and `uninstall` read what the plugin's file records through the module, and a plugin's file that is damaged or holds an unknown `format` fails with `<record> cannot be read, so notes will not change the files it lists. Remove it and the files it lists, then run notes service install again.`, with `uninstall` in place of `install` for that child.
+- **Unchanged.** `install` treats the unit as unchanged only when the file at the unit's path holds the rendered text and the plugin's file records it with that digest; it then prints `<path> is unchanged.` and writes nothing. Any other file at the path, including one with the rendered text that the record does not list, goes through the module, which refuses it as A refused install states.
+- **An earlier unit.** When the plugin's file records a unit file at another path, as after the label or `XDG_CONFIG_HOME` changed, `install` first stops and disables the unit that file names, as `uninstall` does, and the module then removes it, or keeps it when it changed, with the `Removed` or `Kept` line below.
+- **`install` on systemd.** The plugin renders the unit. Unless it is unchanged, it installs the unit through the module, prints `Wrote <path>.`, and runs `daemon-reload`. It then runs `enable <label>.service` and `restart <label>.service`, and prints `Started <label>.`
+- **`install` on launchd.** The plugin renders the plist. Unless it is unchanged, it installs the plist through the module and prints `Wrote <path>.`, and only then runs anything: `launchctl enable gui/<uid>/<label>`, because a disabled agent cannot load, then for a written plist it unloads a loaded agent as Stopping states and runs `bootstrap gui/<uid> <path>`, and for an unchanged one it runs `kickstart -k gui/<uid>/<label>` for a loaded agent, or `bootstrap` for one that is not loaded. It then prints `Started <label>.`
+- **A refused install.** When the module refuses, because the file at the unit's path is one it did not record, one changed since it was recorded, or not a regular file, `install` fails, has written nothing, and has run no manager: `<path> was not written by notes service install, so install leaves it alone. Remove it, or uninstall it with whatever installed it, then run notes service install again.`, or `<path> changed since notes service install wrote it, so install leaves it alone. Remove it, then run notes service install again.` for a changed file, or `<path> is not a regular file, so install leaves it alone. Remove it, then run notes service install again.` for a link, a directory, or any other kind of file. A unit that a hand-built installer wrote at the same path is moved over by removing it once; the plugin never takes over a file it did not write.
+- **Loaded.** On launchd, an agent is loaded when `launchctl print gui/<uid>/<label>` exits 0, and not loaded when it exits 113; any other code is the failure under The managers.
+- **Stopping on launchd.** The plugin runs `bootout gui/<uid>/<label>`. Exit codes 3 and 113 mean it was not loaded, and 36 means an unload already in progress; each is no failure. It then runs `print` every 250 milliseconds until the agent is not loaded, with no deadline; the run signal ends the wait. It loads the agent again only after that, so it never retries `bootstrap`.
+- **Not installed.** `start`, `stop`, and `restart` with no file at the unit's path fail with exit 1 and run nothing: `com.acme.notes is not installed. Run notes service install first.`
+- **`start`.** systemd runs `start <label>.service`. launchd runs `kickstart gui/<uid>/<label>` for a loaded agent and `bootstrap gui/<uid> <path>` for one that is not. It prints `Started <label>.`
+- **`stop`.** systemd runs `stop <label>.service`. launchd unloads the agent as Stopping states and leaves the plist, because `KeepAlive` would relaunch a stopped process. It prints `Stopped <label>.`
+- **`restart`.** systemd runs `restart <label>.service`. launchd runs `kickstart -k gui/<uid>/<label>` for a loaded agent and `bootstrap` for one that is not. It prints `Restarted <label>.`
+- **`uninstall`.** It reads the record first, under The record. With no file at the unit's path, it runs no manager, clears a record that lists the unit through the module, and prints `com.acme.notes is not installed, so there is nothing to remove.` and exits 0. With a file at the path that the plugin's file does not record, it fails and runs nothing: `<path> was not written by notes service install, so uninstall leaves it alone. Remove it with whatever installed it.` Otherwise systemd runs `disable --now <label>.service`, removes the unit through the module, and runs `daemon-reload`; launchd unloads the agent as Stopping states and removes the plist through the module. It prints `Removed <path>.` for a removed file, and for a file the module kept because it changed, `Kept <path> because it changed since notes service install wrote it. Remove it yourself when it is no longer needed.`, and exits 0.
+- **Output.** `Wrote`, `is unchanged`, `Removed`, and `Kept` lines go through `out.info`, and `Started`, `Stopped`, `Restarted`, and `nothing to remove` through `out.success`, so stdout stays empty for every child but `status`. The examples above omit the glyph each lane view adds. Every path, label, and program name a sentence repeats passes through [`escapeControlCharacters`](#strings-and-composition). Every refusal and manager failure above is a `FatalError` that exits 1, and a throwing probe takes the ordinary failure path.
+
+#### Status
+
+- **Reading the state.** `installed` is whether a file is at the unit's path. A unit that is not installed reads `state` `not installed`, `running` false, and runs no manager. On systemd, an installed unit runs `show <label>.service --property=ActiveState,MainPID`, and `state` is the `ActiveState` value, `running` is `ActiveState` `active` with a `MainPID` above 0, and `pid` is that `MainPID`. On launchd, an agent that is not loaded reads `state` `not loaded`; a loaded one reads `state` from the `state = ` line of `print`'s top level, one tab in, `running` is that state `running` or a `pid = ` line of digits there, and `pid` is that number.
+- **An unreadable state.** A manager that cannot be started, or a call that exits with a code the reading does not name, reads `state` `unknown` and `running` false, with the note `systemctl --user could not report com.acme.notes.service (exit 1). Run systemctl --user status com.acme.notes.service to see why.`, or `launchctl could not report gui/501/com.acme.notes (exit 5). Run launchctl print gui/501/com.acme.notes to see why.`, or for a program that cannot be started, `notes cannot find systemctl. Install systemd, or run the command where it is available.`
+- **Session notes.** On systemd, an installed unit runs `loginctl show-user <uid> --property=Linger`, and `Linger=no` adds `Lingering is off, so <label> stops when you log out. Run loginctl enable-linger to keep it running.` On launchd, an installed unit runs `print gui/<uid>`, and exit 113 adds `There is no login session, so <label> starts when you log in.` A session call that fails in any other way adds no note. The plugin never enables lingering or starts a session.
+- **The probe.** When `probe` is set and the unit is installed, status calls it once with the state it read, whatever that state is, and the status action's host, `invoke`, signal, and log, and awaits it. Its rows become `details` in the order it returns them; an absent probe, or a unit that is not installed, gives none. A probe that throws or rejects fails the run through the ordinary [failure path](#failure-contract), as any action's throw does. The plugin does not judge the rows, so a row the text view cannot print is the author's defect.
+- **The result.** status sends one `ServiceStatus` through `out.results`: the state, then `details`. Its members appear in the order the type lists them, and `pid` is absent when the manager reports none.
+- **The text view.** The first line is `<label>: <summary>`, where the summary is `running (pid <pid>)` for a running unit with a pid, `running` without one, and otherwise the state word. Then two-space-indented rows: `unit` and the unit's path, each detail's name and value, and `note` and each note, the names padded to the longest name plus two spaces. Manager words and paths pass through `escapeControlCharacters`; the probe's names and values are printed as the author gives them.
+- **Exit code.** status exits 0 whenever it produced a report: installed or not, running, stopped, failed, or in an unreadable state. Only the checks under Checks first, a cancelled run, and a probe that throws fail it.
+- **Names.** `service`, `ServiceSettings`, `ServiceStatus`, `ServiceState`, `ServiceDetail`, and `ProbeContext` are exported from `@loomcli/plugins/service`.
+
+#### Service acceptance
+
+The plugin is proven when process tests under Node and Bun produce these results. Each fixture sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories, puts fake `systemctl`, `loginctl`, and `launchctl` programs first on `PATH` that answer from a scenario file and record each call, and runs an application that installs `service()` through `run({ host: { platform, program, release } })`, so both backends run on either CI platform:
+
+- **Installing.** A distributed run on `linux` writes the pinned unit, records it in `service.json`, and calls `daemon-reload`, `enable`, and `restart` in that order; a second install calls no `daemon-reload` and prints the unchanged line. On `darwin` it writes the pinned plist and calls `enable` and `bootstrap`; a second install with the agent loaded calls `kickstart -k`, and one whose text changed unloads the agent, polls until `print` exits 113, then writes and calls `bootstrap`. A `program` of an interpreter and a script, a `run` word holding a space, `"`, `$`, and `%`, and a description holding `&` and `<` each render with the pinned quoting. An install after the label changed stops and disables the earlier unit and removes its file. An application with no description renders its name as the description. Every child but `status` leaves stdout empty.
+- **Refusing.** A source build and a development build each exit 1 with the pinned sentence and call nothing. An unrecorded file, a recorded file changed since, a symbolic link, and a directory at the unit's path each exit 1, write nothing, and call nothing after the refusal. `win32` exits 1 from every child, and a relative `HOME` exits 1 from every child. A file with the rendered text that `service.json` does not list refuses as unrecorded, and on `darwin` every refusal calls no `launchctl`. A `program` word holding a newline exits 1 with nothing written. A damaged and an unknown-format `service.json` each fail `install` and `uninstall` with the pinned sentence and call nothing.
+- **Children.** `start`, `stop`, and `restart` call the pinned commands on each backend, and exit 1 with the not-installed sentence when no file is at the path. On launchd, `stop` leaves the plist. `uninstall` disables, removes, and reloads on systemd, unloads and removes on launchd, keeps a changed unit with the kept line, refuses an unrecorded unit, and prints the nothing-to-remove line and exits 0 when nothing is installed. A recorded unit whose file is gone uninstalls with the nothing-to-remove line, calls nothing, and clears the record.
+- **Managers.** A fake `systemctl` that exits 1 fails `restart` with the pinned sentence and prints none of its output. A `PATH` with no `systemctl` fails with the cannot-find sentence. On launchd, a `bootout` that exits 3, 36, or 113 is no failure. On `linux`, an environment with no `XDG_RUNTIME_DIR` passes `/run/user/<uid>` to every call.
+- **Status.** Each `ActiveState` of `active`, `inactive`, `failed`, and `activating`, and each launchd `print` of a running agent, a loaded agent with no process, and an agent that is not loaded, gives the pinned text and JSON. A not-installed unit exits 0 and calls nothing. A `show` that exits 1 gives `unknown` with its note and exits 0. `Linger=no` and a `print gui/<uid>` that exits 113 add their notes. A probe's rows print under `unit`, and the probe receives the state and an `invoke` that runs the application's own Command; a probe that throws exits 1.
+- **Waiting.** A run aborted while launchd's unload is polled, and one aborted during a manager call, exit 130 and leave the record as the module left it.
+- **Settings and the graph.** Each settings fault throws its pinned diagnostic at the call. `run` words naming an unknown Command, a group, an unknown option, a misplaced option, an unexpected argument, and an option with no value each fail the build with `run-unrouted`, and `check()` reports it. `run` words that end in passthrough words after `--` pass.
+- **Packaging.** `pnpm check:packed` resolves `@loomcli/plugins/service` from the packed tarball under Node and Bun.
 
 ### Example coverage
 
