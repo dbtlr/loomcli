@@ -507,7 +507,7 @@ The projection a shell reads while the operator types: a script, printed or inst
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Man page**:
-The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. It has one page per Command that is not hidden, named for the Command's path, `jsonkit-get`, and its bytes depend only on the graph.
+The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. Each Command that is neither hidden nor under a hidden Command has one, named for the Command's path, such as `jsonkit-get`, and a page's bytes depend only on the graph.
 _Avoid_: Manual page, manpage (outside the plugin's name), roff page, help page
 
 **MCP tool**:
