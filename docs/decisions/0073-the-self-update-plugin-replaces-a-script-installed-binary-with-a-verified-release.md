@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0073 - The self-update plugin replaces a script-installed binary with a verified release
 description: The self-update plugin contributes self-update [<version>] [--channel <name>] [--check]. It replaces only a release binary whose installation record reads the method script and whose bytes still match the recorded digest. It resolves the newest release on the binary's release channel, never downgrades unless a version is named, verifies the release asset against SHA256SUMS over HTTPS alone, renames it over the binary, rewrites install.json, and then calls the application's afterReplace hook. It keeps no copy of the binary it replaced. The release lane is renamed the release channel, and host.release.lane becomes host.release.channel.
-status: proposed
+status: accepted
 created: 2026-10-12
-modified: 2026-10-12
+modified: 2026-10-13
 ---
 
 # ADR-0073 - The self-update plugin replaces a script-installed binary with a verified release
@@ -52,7 +52,7 @@ The release facts' type, `docs/core.md`, `docs/toolchain.md`, and the glossary r
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships the self-update plugin.
+Accepted in 0.11.0.
 
 ## Changelog
 

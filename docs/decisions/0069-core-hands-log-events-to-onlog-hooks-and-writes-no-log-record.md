@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0069 - Core hands log events to onLog hooks and writes no log record
 description: The action, middleware, source, and onFailure contexts gain a log with five levels. Each call becomes a frozen log event, shaped to the OpenTelemetry log record, that core hands to every installed plugin's onLog hook with the outermost run's destination. Core logs each failure it reports, a defect at fatal with its stack in both builds, and writes no log record itself.
-status: proposed
+status: accepted
 created: 2026-10-10
-modified: 2026-10-10
+modified: 2026-10-13
 ---
 
 # ADR-0069 - Core hands log events to onLog hooks and writes no log record
@@ -44,7 +44,7 @@ Every context listed gains a member, which is additive for a consumer that reads
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships core's log events and the `onLog` hook.
+Accepted in 0.11.0.
 
 ## Changelog
 

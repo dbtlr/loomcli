@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0072 - init renders an installer script that installs a verified release binary and records it
 description: loom init renders install.sh, a managed file named for the application and its GitHub repository. Under POSIX sh on Linux and macOS it takes an optional version and --dir, picks the release asset for the platform, verifies it against the release's SHA256SUMS, moves it into place, and writes install.json through the installation record's recipe. It advises on PATH and never edits a shell profile, runs the binary, or takes a test-only input. The release shape it reads, a v<version> tag, <name>-<os>-<arch> assets, and sha256sum's output, is the shape every repository's own release workflow publishes.
-status: proposed
+status: accepted
 created: 2026-10-12
-modified: 2026-10-12
+modified: 2026-10-13
 ---
 
 # ADR-0072 - init renders an installer script that installs a verified release binary and records it
@@ -45,7 +45,7 @@ An application's README can point at `install.sh` on its default branch. The scr
 
 ## Status
 
-Proposed. It moves to accepted in the release that ships the installer script.
+Accepted in 0.11.0.
 
 ## Changelog
 

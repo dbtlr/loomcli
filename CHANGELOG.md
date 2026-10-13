@@ -6,6 +6,79 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.11.0 - 2026-10-13
+
+0.11.0 gives a Loom application the pieces it needs to live on an operator's machine: it can log, install, update itself, and run as a service.
+
+A run now has a `log` on every context. Core turns each call into a frozen log event, logs each failure it reports, and hands every event to `onLog` hooks. It writes no record of its own. The logging plugin, `@loomcli/plugins/logging`, is one such hook. It writes each event as a JSON line, either to a file in the platform's log directory that it rotates by size, or to stderr.
+
+A compiled binary also learns how it was installed. `loom init` now writes `install.sh` for a package whose `repository` names a GitHub repository. The script installs the platform's binary from a GitHub Release, verifies it against `SHA256SUMS`, and records the installation in `install.json`. Core reads that record into `host.release.installation`. The self-update plugin, `@loomcli/plugins/self-update`, replaces only a binary that the script installed, and only with a verified release on the binary's release channel. The service plugin, `@loomcli/plugins/service`, installs one of the application's own Commands as a systemd user unit or a launchd user agent. It records the unit through the same installation record, so it never overwrites a file it did not write.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.11.0`. The one migration renames the release facts' `lane` member to `channel`.
+
+### Breaking Changes
+
+- Rename the release facts' `lane` member to `channel`. `host.release.release.channel` holds the release channel: the first prerelease identifier of the version, or `stable` when the version has none. See [release facts](docs/core.md#release-facts).
+
+### Migration
+
+**Affected surface.** Application code that reads `host.release.release.lane`, and tests that pass a `release` host override whose release group holds `lane`.
+
+**Why.** Operators know a release line as a channel, and core already uses lane for its output areas, such as the results lane and the lane views.
+
+**Before and after.**
+
+Before:
+
+```ts
+const { release } = host.release;
+out.print(`${release.version} (${release.lane})`);
+```
+
+After:
+
+```ts
+const { release } = host.release;
+out.print(`${release.version} (${release.channel})`);
+```
+
+**Steps.**
+
+1. Replace each read of `release.lane` with `release.channel`.
+2. In each `run({ host: { release } })` or `app.invoke` override that spells a release group, rename `lane` to `channel`.
+
+**Validation.** Run the application's type check: TypeScript reports every remaining read of `lane`. Run the application's tests to cover overrides in JavaScript files.
+
+### Features
+
+- Add `log` to the action, middleware, configuration source, and `onFailure` contexts, with the levels `trace`, `debug`, `info`, `warn`, and `error`. Each call becomes a frozen log event that carries a JSON copy of its fields, the application, a run id, the path, and the plugin whose context logged it. Core also logs each failure it reports, at `fatal` with the caught defect's name, message, and stack for a defect, in both builds. Core writes no log record of its own.
+- Add the `onLog(event, destination)` plugin hook, which receives every event in installation order with the outermost run's `env`, `platform`, and `stderr`, and a `null` stderr under `app.invoke`. A hook that throws or returns a value is reported once after the run and makes it exit 1, though a cancelled run keeps its signal's code. A `log` call made during delivery throws `@loomcli/core/log-in-log-hook`. Export the `Log`, `LogFields`, `JsonValue`, `LogLevel`, `LogEvent`, `LogDefect`, `LogHook`, and `LogDestination` types.
+
+- Add the logging plugin, `logging()` from `@loomcli/plugins/logging`, an `onLog` hook that writes each log event as one JSON line. The record keeps its keys in the order `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, `defect`, and the file and the console write the same bytes.
+  - `to: 'file'`, the default, appends each record with one synchronous write to `<app>.jsonl` in the platform's state or log directory (`$XDG_STATE_HOME/<app>/` or `~/.local/state/<app>/`, `~/Library/Logs/<app>/` on macOS, `%LOCALAPPDATA%\<app>\Logs\` on Windows). A `file` setting names another file in that directory, an absolute path, or a path under `~/`, and never resolves against the working directory. The directory is the one `applicationDirectory('logs', ...)` resolves, so a `HOME`, `XDG_STATE_HOME`, or `LOCALAPPDATA` that is empty or not an absolute path counts as unset, and a `~/` path reads `HOME`, or `USERPROFILE` on Windows, the same way.
+  - The file rotates by size, before a write that would pass `maxBytes` (10 MB by default), into numbered copies (`collector.1.jsonl`), keeping `keep` copies (5 by default). It sets no timer and takes no lock.
+  - `to: 'console'` writes the same records to stderr, never stdout, and writes nothing under `app.invoke`.
+  - `level` sets the lowest level written, `info` by default, and never filters a `fatal` event.
+  - `onError` receives a `LoggingError` with `kind`, `path`, `variable`, and `cause` for each failure to resolve, create, append to, or rotate the file. Without it a failed write is ignored and the next record tries again.
+  - `logging()` throws a `DeclarationError` of `@loomcli/plugins/logging/settings` for a setting out of its range, and for `file`, `maxBytes`, `keep`, or `onError` beside `to: 'console'`.
+
+- Add the installation record, one directory per application and per user that says how the application was installed. A compiled binary built with `loom build --release` reads `host.release.installation`, `{ method, path, digest }`, from the record's `install.json` when its recorded path, resolved through symbolic links, is the running executable. A missing, unreadable, or malformed file, a copy run from another path, a Node or Bun bundle, the source run, and a `release` override read no installation, and none of them fails the run. Core never hashes the binary. See the [core reference](docs/core.md#installation-record) for the file format and the shell recipe an installer script writes it with.
+- Add `applicationDirectory(kind, application, { env, platform })`, which resolves an application's `installation` or `logs` directory from a run's `env` and `platform` alone, and the `ApplicationDirectory` and `DirectoryLookup` types. It answers `{ path }`, or `{ variable }` naming a `HOME` or `LOCALAPPDATA` that is unset, empty, or not an absolute path; an `XDG_STATE_HOME` that is unset, empty, or relative falls back to `$HOME/.local/state`. It reads no file and creates nothing.
+
+- Add the `install` piece to `loom init`. In a package whose `package.json` `repository` names a GitHub repository, init writes `install.sh`, an executable managed file whose header is a `#` comment on the line after its `#!` line. Under POSIX `sh` on Linux and macOS, `install.sh [--dir <directory>] [<version>]` downloads the platform's binary from the repository's GitHub Release, verifies it against the release's `SHA256SUMS`, moves it into `~/.local/bin` or the `--dir` directory, and writes `install.json` in the installation record with the method `script`. With no GitHub repository, init writes no script and prints a warning that names `repository`. `loom check` warns about an edited `install.sh` as it does for every managed file. See [the installer script](docs/toolchain.md#the-installer-script) for its arguments, output, and the release shape a release workflow publishes for it.
+
+- Add the self-update plugin, `selfUpdate()` from `@loomcli/plugins/self-update`. It contributes `self-update [<version>] [--channel <name>] [--check]`, which replaces a binary that `install.sh` installed with a release from the application's GitHub repository. With no version, it installs the newest release on the binary's release channel. A named version installs in either direction, and `--check` reports without replacing anything. It verifies the download against the release's `SHA256SUMS` over HTTPS, renames it into place, rewrites `install.json`, and then calls the application's `afterReplace` hook. It refuses a binary another installer placed, a symbolic link, and a binary changed since it was installed. See [self-update](docs/core.md#self-update).
+
+- Add the service plugin, `service({ label, run, probe? })` from `@loomcli/plugins/service`, which installs one of the application's own Commands as a per-user service: a systemd user unit on Linux, run through `systemctl --user`, and a launchd user agent on macOS, run through `launchctl` in the `gui/<uid>` domain. It contributes `service install`, `uninstall`, `start`, `stop`, `restart`, and `status`. See [Service](docs/core.md#service).
+  - `label` is a required reverse-DNS name, such as `com.acme.notes`, that names the unit file. `run` holds the argument words the unit runs the application with, such as `['serve', '--port', '8080']`. A label outside the grammar, a `run` that is not a nonempty list of strings or holds a control character, and a `probe` that is not a function each throw `@loomcli/plugins/service/settings` at the call.
+  - Every graph build checks that the `run` words route to a Command with an action, as the command line takes them. Words that name an unknown Command, a group, an unknown or misplaced option, an option with no value, or an unexpected argument fail the build with `@loomcli/plugins/service/run-unrouted`, which `check()` reports.
+  - `install` refuses a `source` or `development` build. It writes the unit through the installation record's `service.json`, so it refuses a file it did not write, keeps one changed since, and removes an earlier unit after the label or `XDG_CONFIG_HOME` changed. It writes the unit with mode 644 whatever the umask. The unit runs `host.program` and the `run` words from `HOME`, restarts the process whenever it exits, and redirects no output.
+  - Manager calls run with the host's environment, with no shell and no time limit. On Linux, an environment with no `XDG_RUNTIME_DIR` gains `/run/user/<uid>`. The run signal ends a call with `SIGTERM`. A call's output is never printed; a failed call names itself, its exit code, and the manager command that reports why.
+  - `status` returns a `ServiceStatus` result with a `text` view by default and a `json` view, and exits 0 whenever it produced a report. Its notes say when lingering is off or there is no login session. The optional `probe` adds the author's rows for an installed unit and receives the state, the host, the status action's `invoke`, the signal, and the log.
+  - The pack exports the `ServiceSettings`, `ServiceStatus`, `ServiceState`, `ServiceDetail`, and `ProbeContext` types.
+- Add `host.program`, the frozen runtime and script prefix that `host.argv` omits, so `[...host.program, ...host.argv]` starts the same application again. A compiled binary reads its own path alone, and any other run reads the runtime's path and the absolute path of the script it ran. `run({ host: { program } })` replaces the whole list, and an action's `invoke` keeps its run's. See [Host](docs/core.md#host).
+- Add the `compiled` member to the facts `loom build` bakes into `__LOOM_RELEASE__`. A compile target bakes `compiled: true`, with or without `--release`, and `node` and `bun` bake none. `--facts` and `--define` print it. A baked `compiled` other than `true` fails the run with `@loomcli/core/invalid-release-facts`. The release facts on the host do not repeat it.
+
 ## v0.10.0 - 2026-10-09
 
 0.10.0 makes `@loomcli/loom` the public toolchain for a Loom application. Its `loom` bin acts on the package whose directory it runs in: `loom init` scaffolds a new application or adds the pieces an existing package lacks, `loom build` bundles the application for Node, Bun, or a compiled binary, `loom check` runs the package's TypeScript and reports every declaration fault without running the application, and `loom changelog` checks the package's change fragments and cuts its version from them.
