@@ -14,6 +14,9 @@ import type { Child } from './messages.js';
 import { holdsControlCharacter } from './settings.js';
 import { systemd } from './systemd.js';
 
+/** The unit file's mode whatever the umask, because launchd refuses a plist its group or others can write. */
+const unitMode = 0o644;
+
 /** The plugin's file in the installation record, `service.json`. */
 const recordName = 'service';
 
@@ -207,7 +210,7 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
   const { record, run, service } = prepared;
   await retireEarlier(prepared, files);
   const outcome = install({
-    files: [{ content: text, path: service.unit }],
+    files: [{ content: text, mode: unitMode, path: service.unit }],
     plugin: recordName,
     record,
     signal: run.signal,

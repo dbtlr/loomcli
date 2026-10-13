@@ -20,10 +20,14 @@ import type { Observed } from './disk.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type { Committed, CommittedFile, Pending, PendingFile } from './record.js';
 
-/** One file an install writes: its absolute path and the content it will hold. */
+/**
+ * One file an install writes: its absolute path, the content it will hold, and the permission bits
+ * it is written with whatever the umask, when the plugin names any.
+ */
 interface InstalledFile {
   readonly path: string;
   readonly content: string | Uint8Array;
+  readonly mode?: number;
 }
 
 /**
@@ -280,7 +284,7 @@ function carryOut(
     createDirectory(directory);
   }
   for (const file of files) {
-    replaceFile(file.path, file.content);
+    replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
   }
   const { kept, removed } = removeRecorded(plan.removals);
   writePluginFile(path, plan.committed);

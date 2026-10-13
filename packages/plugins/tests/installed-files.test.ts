@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -124,6 +125,28 @@ test('installing two files writes both and a committed file with their digests a
   );
   expect(readdirSync(box.directory).toSorted()).toEqual(['SKILL.md', 'reference.md']);
   expect(readdirSync(box.record)).toEqual(['skill.json']);
+});
+
+test('a target with a named mode holds that mode under umask 002, and one with none follows the umask', () => {
+  const box = sandbox();
+  const previous = process.umask(0o002);
+  try {
+    const outcome = installed(box, [
+      { content: 'test', mode: 0o644, path: box.first },
+      { content: 'abc', path: box.second },
+    ]);
+    expect(outcome.status).toBe('installed');
+  } finally {
+    process.umask(previous);
+  }
+  expect(statSync(box.first).mode & 0o777).toBe(0o644);
+  expect(statSync(box.second).mode & 0o777).toBe(0o664);
+  // The mode changes neither the content nor what the plugin's file records.
+  expect(readFileSync(box.first, 'utf8')).toBe('test');
+  expect(JSON.parse(ownerText(box)).files).toEqual([
+    { path: box.first, digest: digests.test },
+    { path: box.second, digest: digests.abc },
+  ]);
 });
 
 test('each missing parent directory is created and recorded, outermost first', () => {

@@ -13,6 +13,10 @@ const [scenarioPath, ...argv] = process.argv.slice(2);
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const controller = new AbortController();
 
+if (scenario.umask !== undefined) {
+  process.umask(scenario.umask);
+}
+
 if (scenario.abortMarker !== undefined) {
   // A fake manager writes the marker when the scenario asks, and the run is cancelled as a caller would.
   const timer = setInterval(() => {

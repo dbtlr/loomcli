@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -91,6 +92,7 @@ interface Scenario {
   readonly probe?: 'rows' | 'throw';
   readonly answers?: Answers;
   readonly env?: Record<string, string | undefined>;
+  readonly umask?: number;
 }
 
 /** Runs `notes service ...argv` in the sandbox against its fake managers. */
@@ -121,6 +123,7 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
       program: scenario.program ?? program,
       release: scenario.release ?? { build: 'distributed' },
       run: scenario.run ?? runWords,
+      umask: scenario.umask,
     }),
   );
   return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
@@ -422,6 +425,17 @@ WantedBy=default.target
     expect(result.status).toBe(0);
     expect(existsSync(launchdPath(box, 'com.acme.old'))).toBe(false);
     expect(calls(box).slice(0, 2)).toEqual([`launchctl bootout ${old}`, `launchctl print ${old}`]);
+  });
+
+  it('under umask 002 the unit and the plist are written with mode 644', () => {
+    const linux = sandbox();
+    expect(run(linux, ['install'], { umask: 0o002 }).status).toBe(0);
+    expect(statSync(systemdPath(linux)).mode & 0o777).toBe(0o644);
+    const darwin = sandbox();
+    expect(
+      run(darwin, ['install'], { answers: notLoaded, platform: 'darwin', umask: 0o002 }).status,
+    ).toBe(0);
+    expect(statSync(launchdPath(darwin)).mode & 0o777).toBe(0o644);
   });
 
   it('an application with no description renders its name as the description', () => {
