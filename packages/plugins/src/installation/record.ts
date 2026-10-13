@@ -1,6 +1,7 @@
 /**
  * A first-party plugin's file in the installation record, `<plugin>.json`: the directories the
- * installed-files module created and each file it installed with its digest. Only the module reads
+ * installed-files module created, each file it installed with its digest, and each installed folder
+ * by its path alone. Only the module reads
  * or writes it, and it replaces the file whole, through a staging file and a rename.
  */
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -13,6 +14,14 @@ import { errorCode, replaceFile } from './disk.js';
 interface CommittedFile {
   readonly path: string;
   readonly digest: string;
+}
+
+/**
+ * An installed folder, recorded by its path alone: the plugin owns it whole, so no digest says what
+ * is inside. A pending file lists the folders an install under way writes or removes the same way.
+ */
+interface RecordedFolder {
+  readonly path: string;
 }
 
 /**
@@ -30,6 +39,7 @@ interface Committed {
   readonly state: 'committed';
   readonly directories: readonly string[];
   readonly files: readonly CommittedFile[];
+  readonly folders: readonly RecordedFolder[];
 }
 
 /** What the module was doing when it wrote the file: the work a later run recovers. */
@@ -37,6 +47,7 @@ interface Pending {
   readonly state: 'pending';
   readonly directories: readonly string[];
   readonly files: readonly PendingFile[];
+  readonly folders: readonly RecordedFolder[];
 }
 
 type PluginFile = Committed | Pending;
@@ -47,11 +58,14 @@ type PluginFileRead =
   | { readonly kind: 'refused'; readonly reason: 'damaged' | 'unknown-format' }
   | { readonly kind: 'read'; readonly file: PluginFile };
 
+/** The count of folders a plugin's file omits the `folders` member for. */
+const noFolders = 0;
+
 /** The one format the module reads and writes. */
 const knownFormat = 1;
 
 /** The record of a plugin that has installed nothing. */
-const nothingRecorded: Committed = { directories: [], files: [], state: 'committed' };
+const nothingRecorded: Committed = { directories: [], files: [], folders: [], state: 'committed' };
 
 /** A SHA-256 digest as the record spells it: `sha256:` and 64 lowercase hexadecimal digits. */
 const sha256Digest = /^sha256:[\da-f]{64}$/u;
@@ -88,6 +102,10 @@ function everyOf<Entry>(
   return entries;
 }
 
+function recordedFolderOf(value: unknown): RecordedFolder | undefined {
+  return isRecord(value) && isAbsolutePath(value.path) ? { path: value.path } : undefined;
+}
+
 function committedFileOf(value: unknown): CommittedFile | undefined {
   if (!isRecord(value) || !isAbsolutePath(value.path) || !isDigest(value.digest)) {
     return undefined;
@@ -114,21 +132,35 @@ function pendingFileOf(value: unknown): PendingFile | undefined {
     : { intended, path: value.path, prior };
 }
 
+/** The recorded folders of a parsed plugin's file, none when it omits the member, or `undefined` when malformed. */
+function foldersOf(value: unknown): readonly RecordedFolder[] | undefined {
+  return value === undefined ? [] : everyOf(value, recordedFolderOf);
+}
+
 /** The plugin's file one parsed value holds, or `undefined` when it is not that shape. */
 function pluginFileOf(value: Record<string, unknown>): PluginFile | undefined {
   const directories = everyOf(value.directories, (member) =>
     isAbsolutePath(member) ? member : undefined,
   );
-  if (directories === undefined) {
+  const folders = foldersOf(value.folders);
+  if (directories === undefined || folders === undefined) {
     return undefined;
   }
+  return filesOf(value, { directories, folders });
+}
+
+/** The plugin's file with its files read by its state, or `undefined` for a state or files not that shape. */
+function filesOf(
+  value: Record<string, unknown>,
+  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+): PluginFile | undefined {
   if (value.state === 'committed') {
     const files = everyOf(value.files, committedFileOf);
-    return files === undefined ? undefined : { directories, files, state: 'committed' };
+    return files === undefined ? undefined : { ...rest, files, state: 'committed' };
   }
   if (value.state === 'pending') {
     const files = everyOf(value.files, pendingFileOf);
-    return files === undefined ? undefined : { directories, files, state: 'pending' };
+    return files === undefined ? undefined : { ...rest, files, state: 'pending' };
   }
   return undefined;
 }
@@ -171,14 +203,16 @@ function readPluginFile(path: string): PluginFileRead {
   return file === undefined ? { kind: 'refused', reason: 'damaged' } : { file, kind: 'read' };
 }
 
-/** The plugin's file as one line of JSON, its members in the contract's order. */
+/** The plugin's file as one line of JSON, its members in the contract's order, `folders` last and only when it lists any. */
 function serialize(file: PluginFile): string {
   const files =
     file.state === 'committed'
       ? file.files.map(({ path, digest }) => ({ path, digest }))
       : file.files.map(({ path, prior, intended }) => ({ path, prior, intended }));
   const { state, directories } = file;
-  return `${JSON.stringify({ format: knownFormat, state, directories, files })}\n`;
+  const folders = file.folders.map(({ path }) => ({ path }));
+  const members = { format: knownFormat, state, directories, files };
+  return `${JSON.stringify(folders.length === noFolders ? members : { ...members, folders })}\n`;
 }
 
 /** Replaces the plugin's file whole, creating the record directory when it is missing. */
@@ -187,5 +221,5 @@ function writePluginFile(path: string, file: PluginFile): void {
   replaceFile(path, serialize(file));
 }
 
-export type { Committed, CommittedFile, Pending, PendingFile, PluginFile };
+export type { Committed, CommittedFile, Pending, PendingFile, PluginFile, RecordedFolder };
 export { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile };

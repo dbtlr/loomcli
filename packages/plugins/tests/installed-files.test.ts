@@ -1,10 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -18,8 +21,15 @@ import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
 import { replaceFile } from '../src/installation/disk.js';
-import { install, readRecorded, targetRefusals, uninstall } from '../src/installation/files.js';
-import type { InstalledFile } from '../src/installation/files.js';
+import {
+  install,
+  readRecorded,
+  folderRefusals,
+  targetRefusals,
+  uninstall,
+} from '../src/installation/files.js';
+import type { InstalledFile, InstalledFolder } from '../src/installation/files.js';
+import { folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
 
 /** The SHA-256 digests of the bytes `test`, `abc`, and `new`, from independent sources. */
 const digests = {
@@ -717,4 +727,553 @@ test('the target refusals read without writing match the ones an install meets',
   expect(targetRefusals([box.first], recorded.files)).toEqual([
     { path: box.first, reason: 'changed' },
   ]);
+});
+
+// Installed folders
+
+/** A folder of the skill plugin at `path` holding the named files, each with its content. */
+function folderOf(path: string, files: Record<string, string>): InstalledFolder {
+  return {
+    files: Object.entries(files).map(([name, content]) => ({ content, path: name })),
+    path,
+  };
+}
+
+/** One install of `folders` by the skill plugin, with `files` and the force mode when named. */
+function installedFolders(
+  box: Box,
+  folders: readonly InstalledFolder[],
+  extra: { files?: readonly InstalledFile[]; force?: boolean } = {},
+) {
+  return install({
+    files: extra.files ?? [],
+    folders,
+    plugin: 'skill',
+    record: box.record,
+    signal: new AbortController().signal,
+    ...(extra.force === undefined ? {} : { force: extra.force }),
+  });
+}
+
+/** A committed plugin's file's bytes with the folders it records and no files. */
+function committedFolders(directories: readonly string[], folders: readonly string[]): string {
+  const entries = folders.map((path) => ({ path }));
+  return `${JSON.stringify({ format: 1, state: 'committed', directories, files: [], folders: entries })}\n`;
+}
+
+/** Every entry under `directory` as `name`, `name/`, or `name -> target`, sorted, without following links. */
+function listing(directory: string, prefix = ''): string[] {
+  const lines: string[] = [];
+  for (const name of readdirSync(directory).toSorted()) {
+    const path = join(directory, name);
+    const stats = lstatSync(path);
+    if (stats.isSymbolicLink()) {
+      lines.push(`${prefix}${name} -> ${readlinkSync(path)}`);
+    } else if (stats.isDirectory()) {
+      lines.push(`${prefix}${name}/`, ...listing(path, `${prefix}${name}/`));
+    } else {
+      lines.push(`${prefix}${name}`);
+    }
+  }
+  return lines;
+}
+
+/** An outside directory with a file in it, which a link inside an installed folder points at. */
+function outside(box: Box): string {
+  const directory = join(box.root, 'outside');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'keep.txt'), 'keep');
+  return directory;
+}
+
+test('installing a folder writes it whole, with its modes, and records its path and created parents', () => {
+  const box = sandbox();
+  const folder = join(box.skills, 'deep', 'notes');
+  const outcome = installedFolders(box, [
+    {
+      files: [
+        { content: 'test', path: 'SKILL.md' },
+        { content: 'abc', mode: 0o755, path: 'agents/run.sh' },
+      ],
+      path: folder,
+    },
+  ]);
+  expect(outcome).toEqual({ kept: [], removed: [], status: 'installed', written: [folder] });
+  expect(listing(folder)).toEqual(['SKILL.md', 'agents/', 'agents/run.sh']);
+  expect(readFileSync(join(folder, 'agents', 'run.sh'), 'utf8')).toBe('abc');
+  expect(statSync(join(folder, 'agents', 'run.sh')).mode & 0o7777).toBe(0o755);
+  expect(ownerText(box)).toBe(committedFolders([join(box.skills, 'deep')], [folder]));
+  expect(listing(join(box.skills, 'deep'))).toEqual([
+    'notes/',
+    'notes/SKILL.md',
+    'notes/agents/',
+    'notes/agents/run.sh',
+  ]);
+});
+
+test('a second install leaves exactly the new files, even after edits and additions inside the folder', () => {
+  const box = sandbox();
+  installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test', 'old.md': 'abc' })]);
+  writeFileSync(join(box.directory, 'SKILL.md'), 'edited');
+  writeFileSync(join(box.directory, 'added.md'), 'mine');
+  mkdirSync(join(box.directory, 'extra'));
+  const outcome = installedFolders(box, [
+    folderOf(box.directory, { 'SKILL.md': 'new', 'references/old.md': 'abc' }),
+  ]);
+  expect(outcome).toEqual({ kept: [], removed: [], status: 'installed', written: [box.directory] });
+  expect(listing(box.directory)).toEqual(['SKILL.md', 'references/', 'references/old.md']);
+  expect(readFileSync(join(box.directory, 'SKILL.md'), 'utf8')).toBe('new');
+  expect(listing(box.skills)).toEqual([
+    'notes/',
+    'notes/SKILL.md',
+    'notes/references/',
+    'notes/references/old.md',
+  ]);
+  expect(ownerText(box)).toBe(committedFolders([], [box.directory]));
+});
+
+test('an install that no longer lists a recorded folder removes it whole, edits included', () => {
+  const box = sandbox();
+  const other = join(box.skills, 'other');
+  installedFolders(box, [
+    folderOf(box.directory, { 'SKILL.md': 'test' }),
+    folderOf(other, { 'a.md': 'abc' }),
+  ]);
+  writeFileSync(join(box.directory, 'added.md'), 'mine');
+  const outcome = installedFolders(box, [folderOf(other, { 'a.md': 'abc' })]);
+  expect(outcome).toEqual({
+    kept: [],
+    removed: [box.directory],
+    status: 'installed',
+    written: [other],
+  });
+  expect(listing(box.skills)).toEqual(['other/', 'other/a.md']);
+  expect(ownerText(box)).toBe(committedFolders([], [other]));
+});
+
+test('files and folders install together and an uninstall removes both', () => {
+  const box = sandbox();
+  const folder = join(box.skills, 'pack');
+  installedFolders(box, [folderOf(folder, { 'a.md': 'abc' })], {
+    files: [{ content: 'test', path: box.first }],
+  });
+  expect(readFileSync(box.first, 'utf8')).toBe('test');
+  expect(JSON.parse(ownerText(box))).toMatchObject({
+    files: [{ digest: digests.test, path: box.first }],
+    folders: [{ path: folder }],
+  });
+  expect(uninstalled(box)).toEqual({
+    kept: [],
+    removed: [box.first, folder],
+    status: 'uninstalled',
+  });
+  expect(listing(box.skills)).toEqual([]);
+});
+
+// What is at a listed folder's path
+
+/** What can sit at a listed folder's path, each made at `path`, with the outside directory a link points at. */
+const occupants: [string, (path: string, target: string) => void][] = [
+  [
+    'an unrecorded folder',
+    (path) => {
+      mkdirSync(path);
+      writeFileSync(join(path, 'mine.md'), 'mine');
+    },
+  ],
+  ['a regular file', (path) => writeFileSync(path, 'mine')],
+  ['a symbolic link to a directory', (path, target) => symlinkSync(target, path)],
+];
+
+test.each(occupants)(
+  'an install over %s refuses and writes nothing, files and folders alike',
+  (_name, occupy) => {
+    const box = sandbox();
+    const target = outside(box);
+    occupy(box.directory, target);
+    const before = listing(box.root);
+    const outcome = installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test' })], {
+      files: [{ content: 'abc', path: join(box.skills, 'file.md') }],
+    });
+    expect(outcome).toEqual({
+      refused: [{ path: box.directory, reason: 'unrecorded' }],
+      status: 'refused',
+    });
+    expect(listing(box.root)).toEqual(before);
+    expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('keep');
+  },
+);
+
+test.each(occupants)(
+  'the force mode replaces %s, records the folder, and reports the takeover',
+  (_name, occupy) => {
+    const box = sandbox();
+    const target = outside(box);
+    occupy(box.directory, target);
+    const outcome = installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test' })], {
+      force: true,
+    });
+    expect(outcome).toEqual({
+      kept: [],
+      removed: [],
+      replaced: [box.directory],
+      status: 'installed',
+      written: [box.directory],
+    });
+    expect(listing(box.directory)).toEqual(['SKILL.md']);
+    expect(lstatSync(box.directory).isDirectory()).toBe(true);
+    expect(listing(target)).toEqual(['keep.txt']);
+    expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('keep');
+    expect(ownerText(box)).toBe(committedFolders([], [box.directory]));
+    expect(readdirSync(box.skills)).toEqual(['notes']);
+  },
+);
+
+test('the force mode reports nothing replaced for an absent or a recorded folder', () => {
+  const box = sandbox();
+  expect(
+    installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })], { force: true }),
+  ).toEqual({
+    kept: [],
+    removed: [],
+    status: 'installed',
+    written: [box.directory],
+  });
+  expect(
+    installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })], { force: true }),
+  ).not.toHaveProperty('replaced');
+});
+
+test('a symbolic link inside a recorded folder is never followed when the folder is replaced or removed', () => {
+  const box = sandbox();
+  const target = outside(box);
+  installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test' })]);
+  symlinkSync(target, join(box.directory, 'link'));
+  installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'new' })]);
+  expect(listing(box.directory)).toEqual(['SKILL.md']);
+  expect(listing(target)).toEqual(['keep.txt']);
+  symlinkSync(target, join(box.directory, 'link'));
+  symlinkSync(join(target, 'keep.txt'), join(box.directory, 'file-link'));
+  expect(uninstalled(box)).toMatchObject({ removed: [box.directory], status: 'uninstalled' });
+  expect(listing(box.skills)).toEqual([]);
+  expect(listing(target)).toEqual(['keep.txt']);
+  expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('keep');
+});
+
+test('a recorded folder replaced by a link or a file is replaced without following the link', () => {
+  const box = sandbox();
+  const target = outside(box);
+  installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test' })]);
+  rmSync(box.directory, { recursive: true });
+  symlinkSync(target, box.directory);
+  expect(installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'new' })]).status).toBe(
+    'installed',
+  );
+  expect(listing(box.directory)).toEqual(['SKILL.md']);
+  expect(listing(target)).toEqual(['keep.txt']);
+  rmSync(box.directory, { recursive: true });
+  symlinkSync(target, box.directory);
+  expect(uninstalled(box)).toMatchObject({ removed: [box.directory], status: 'uninstalled' });
+  expect(existsSync(box.directory)).toBe(false);
+  expect(listing(target)).toEqual(['keep.txt']);
+});
+
+// Uninstalling folders
+
+test('an uninstall removes recorded folders whole, passes over a gone folder, and removes empty created parents', () => {
+  const box = sandbox();
+  const parent = join(box.skills, 'deep');
+  const first = join(parent, 'one');
+  const second = join(parent, 'two');
+  installedFolders(box, [folderOf(first, { 'a.md': 'abc' }), folderOf(second, { 'b.md': 'abc' })]);
+  writeFileSync(join(first, 'edited.md'), 'mine');
+  rmSync(second, { recursive: true });
+  expect(uninstalled(box)).toEqual({ kept: [], removed: [first], status: 'uninstalled' });
+  expect(listing(box.skills)).toEqual([]);
+  expect(existsSync(box.owner)).toBe(false);
+});
+
+test('an uninstall keeps a created parent that holds something else', () => {
+  const box = sandbox();
+  const parent = join(box.skills, 'deep');
+  const folder = join(parent, 'one');
+  installedFolders(box, [folderOf(folder, { 'a.md': 'abc' })]);
+  writeFileSync(join(parent, 'mine.md'), 'mine');
+  uninstalled(box);
+  expect(listing(box.skills)).toEqual(['deep/', 'deep/mine.md']);
+});
+
+// Recovery of folders
+
+test('a process killed between moving the old folder aside and renaming the new one leaves a pending file the next install recovers', () => {
+  const box = sandbox();
+  const other = join(box.skills, 'other');
+  installedFolders(box, [
+    folderOf(box.directory, { 'SKILL.md': 'test' }),
+    folderOf(other, { 'a.md': 'abc' }),
+  ]);
+  const folders = [
+    {
+      files: [
+        { content: 'new', path: 'SKILL.md' },
+        { content: 'abc', path: 'extra.md' },
+      ],
+      path: box.directory,
+    },
+    { files: [{ content: 'abc', path: 'a.md' }], path: other },
+  ];
+  const killed = inProcess({
+    files: [],
+    folders,
+    killAfterMoveAside: box.directory,
+    record: box.record,
+  });
+  expect(killed).toMatchObject({ status: null, stdout: '' });
+  expect(JSON.parse(ownerText(box))).toMatchObject({
+    folders: [{ path: box.directory }, { path: other }],
+    state: 'pending',
+  });
+  expect(existsSync(box.directory)).toBe(false);
+  const leftovers = readdirSync(box.skills).filter(
+    (name) => name.endsWith('.loom-retired') || name.endsWith('.loom-staging'),
+  );
+  expect(leftovers.length).toBeGreaterThan(0);
+  const alien = join(box.skills, '.other-name.0123456789abcdef.loom-retired');
+  const lookalike = join(box.skills, '.notes.not-sixteen-hex.loom-staging');
+  const longer = join(box.skills, '.notes2.0123456789abcdef.loom-staging');
+  for (const path of [alien, lookalike, longer]) {
+    mkdirSync(path);
+  }
+  const outcome = installedFolders(box, [
+    folderOf(box.directory, { 'SKILL.md': 'new', 'extra.md': 'abc' }),
+    folderOf(other, { 'a.md': 'abc' }),
+  ]);
+  expect(outcome).toEqual({
+    kept: [],
+    removed: [],
+    status: 'installed',
+    written: [box.directory, other],
+  });
+  expect(listing(box.directory)).toEqual(['SKILL.md', 'extra.md']);
+  expect(readdirSync(box.skills).toSorted()).toEqual(
+    [
+      '.notes.not-sixteen-hex.loom-staging',
+      '.notes2.0123456789abcdef.loom-staging',
+      '.other-name.0123456789abcdef.loom-retired',
+      'notes',
+      'other',
+    ].toSorted(),
+  );
+  expect(ownerText(box)).toBe(committedFolders([], [box.directory, other]));
+});
+
+test('a pending file keeps a folder recorded whether or not it is there, and an uninstall passes over a gone one', () => {
+  const box = sandbox();
+  mkdirSync(box.record, { recursive: true });
+  const retired = join(box.skills, '.notes.0123456789abcdef.loom-retired');
+  mkdirSync(retired);
+  writeFileSync(join(retired, 'old.md'), 'old');
+  writeFileSync(
+    box.owner,
+    `${JSON.stringify({ format: 1, state: 'pending', directories: [], files: [], folders: [{ path: box.directory }] })}\n`,
+  );
+  expect(read(box)).toEqual({ files: [], folders: [{ path: box.directory }], status: 'read' });
+  expect(existsSync(retired)).toBe(true);
+  expect(uninstalled(box)).toEqual({ kept: [], removed: [], status: 'uninstalled' });
+  expect(existsSync(retired)).toBe(false);
+  expect(existsSync(box.owner)).toBe(false);
+});
+
+test('a recorded folder that is gone is written again by the next install', () => {
+  const box = sandbox();
+  installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })]);
+  rmSync(box.directory, { recursive: true });
+  expect(installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })]).status).toBe(
+    'installed',
+  );
+  expect(listing(box.directory)).toEqual(['a.md']);
+});
+
+// Reading folders
+
+test('reading a plugin file returns its recorded folders, and none when it records none', () => {
+  const box = sandbox();
+  installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })]);
+  expect(read(box)).toEqual({ files: [], folders: [{ path: box.directory }], status: 'read' });
+  installedFolders(box, []);
+  expect(read(box)).toEqual({ files: [], status: 'read' });
+});
+
+test('a plugin file with a folders member that is not a list of absolute paths is damaged', () => {
+  const box = sandbox();
+  mkdirSync(box.record);
+  for (const folders of ['x', [{ path: 'relative' }], [{ path: '/a', digest: 'x' }, 1]]) {
+    writeFileSync(
+      box.owner,
+      `${JSON.stringify({ format: 1, state: 'committed', directories: [], files: [], folders })}\n`,
+    );
+    expect(read(box)).toEqual({
+      refused: { path: box.owner, reason: 'damaged' },
+      status: 'refused',
+    });
+  }
+});
+
+test('the folder refusals read without writing match the ones an install meets', () => {
+  const box = sandbox();
+  installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })]);
+  const link = join(box.skills, 'link');
+  symlinkSync(box.directory, link);
+  const file = join(box.skills, 'file');
+  writeFileSync(file, 'x');
+  const directory = join(box.skills, 'dir');
+  mkdirSync(directory);
+  const absent = join(box.skills, 'absent');
+  expect(
+    folderRefusals([box.directory, absent, link, file, directory], [{ path: box.directory }]),
+  ).toEqual([
+    { path: link, reason: 'unrecorded' },
+    { path: file, reason: 'unrecorded' },
+    { path: directory, reason: 'unrecorded' },
+  ]);
+});
+
+// The exact-contents check
+
+const exactFiles = [
+  { content: 'test', path: 'SKILL.md' },
+  { content: 'abc', mode: 0o755, path: 'agents/run.sh' },
+];
+
+/** A folder at `path` written with `exactFiles`, which a test then spoils one way. */
+function exactFolder(box: Box): string {
+  writeFolder(box.directory, exactFiles);
+  return box.directory;
+}
+
+test('a folder holds exactly its files when contents and modes match, with no mode named for a file that names none', () => {
+  const box = sandbox();
+  expect(folderHoldsExactly(exactFolder(box), exactFiles)).toBe(true);
+  chmodSync(join(box.directory, 'SKILL.md'), 0o600);
+  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(true);
+});
+
+test.each([
+  ['an extra file', (path: string) => writeFileSync(join(path, 'extra.md'), 'x')],
+  [
+    'an extra file in a subfolder',
+    (path: string) => writeFileSync(join(path, 'agents', 'extra.md'), 'x'),
+  ],
+  ['an extra empty subfolder', (path: string) => mkdirSync(join(path, 'empty'))],
+  ['a wrong mode', (path: string) => chmodSync(join(path, 'agents', 'run.sh'), 0o644)],
+  ['a wrong content', (path: string) => writeFileSync(join(path, 'SKILL.md'), 'other')],
+  ['a missing file', (path: string) => rmSync(join(path, 'SKILL.md'))],
+  [
+    'a link in place of a file',
+    (path: string) => {
+      rmSync(join(path, 'SKILL.md'));
+      writeFileSync(join(path, '..', 'target.md'), 'test');
+      symlinkSync(join(path, '..', 'target.md'), join(path, 'SKILL.md'));
+    },
+  ],
+  [
+    'a link to a directory inside',
+    (path: string) => symlinkSync(join(path, 'agents'), join(path, 'again')),
+  ],
+])('a folder with %s does not hold exactly its files', (_name, spoil) => {
+  const box = sandbox();
+  spoil(exactFolder(box));
+  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
+});
+
+test('a link at the path, a file, or nothing does not hold exactly its files', () => {
+  const box = sandbox();
+  const real = join(box.root, 'real');
+  writeFolder(real, exactFiles);
+  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
+  symlinkSync(real, box.directory);
+  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
+  expect(folderHoldsExactly(join(real, 'SKILL.md'), exactFiles)).toBe(false);
+  expect(folderHoldsExactly(real, exactFiles)).toBe(true);
+});
+
+// The folder write without a record
+
+test('writing a folder without a record replaces what is there and removes the leftovers of its own name only', () => {
+  const box = sandbox();
+  const target = outside(box);
+  symlinkSync(target, box.directory);
+  const own = [
+    join(box.skills, '.notes.0123456789abcdef.loom-staging'),
+    join(box.skills, '.notes.fedcba9876543210.loom-retired'),
+  ];
+  const others = [
+    join(box.skills, '.other.0123456789abcdef.loom-staging'),
+    join(box.skills, '.notes.0123456789ABCDEF.loom-retired'),
+  ];
+  for (const path of [...own, ...others]) {
+    mkdirSync(path);
+    symlinkSync(target, join(path, 'link'));
+  }
+  writeFolder(box.directory, exactFiles);
+  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(true);
+  expect(existsSync(own[0]!)).toBe(false);
+  expect(existsSync(own[1]!)).toBe(false);
+  expect(others.every((path) => existsSync(path))).toBe(true);
+  expect(listing(target)).toEqual(['keep.txt']);
+  expect(existsSync(box.record)).toBe(false);
+});
+
+test('writing a folder that fails leaves the old folder and no staging folder', () => {
+  const box = sandbox();
+  writeFolder(box.directory, [{ content: 'test', path: 'a.md' }]);
+  expect(() =>
+    writeFolder(box.directory, [
+      { content: 'x', path: 'a.md/b.md' },
+      { content: 'y', path: 'a.md' },
+    ]),
+  ).toThrow(/EISDIR|ENOTEMPTY|EEXIST|EPERM|ENOTDIR/u);
+  expect(listing(box.skills)).toEqual(['notes/', 'notes/a.md']);
+});
+
+// Folder paths a first-party plugin got wrong
+
+test.each([
+  ['not absolute', () => 'notes', 'is not absolute'],
+  ['not normalized', (box: Box) => `${box.skills}/x/../notes`, 'is not normalized'],
+  ['listed as a file too', (box: Box) => box.first, 'is listed twice'],
+])(
+  'a folder path that is %s throws a TypeError before anything is written',
+  (_name, path, fault) => {
+    const box = sandbox();
+    expect(() =>
+      installedFolders(box, [folderOf(path(box), { 'a.md': 'abc' })], {
+        files: [{ content: 'test', path: box.first }],
+      }),
+    ).toThrow(new TypeError(`Installed folder path "${path(box)}" ${fault}.`));
+    expect(existsSync(box.record)).toBe(false);
+  },
+);
+
+test.each(['/etc/passwd', '../escape.md', 'a/../../escape.md', 'a//b.md', './a.md', '', 'a/'])(
+  'a folder file path "%s" that is not relative and normalized throws a TypeError',
+  (name) => {
+    const box = sandbox();
+    expect(() => installedFolders(box, [folderOf(box.directory, { [name]: 'abc' })])).toThrow(
+      TypeError,
+    );
+    expect(existsSync(box.record)).toBe(false);
+  },
+);
+
+test('a folder file listed twice throws a TypeError', () => {
+  const box = sandbox();
+  const folder = {
+    files: [
+      { content: 'a', path: 'a.md' },
+      { content: 'b', path: 'a.md' },
+    ],
+    path: box.directory,
+  };
+  expect(() => installedFolders(box, [folder])).toThrow(TypeError);
 });

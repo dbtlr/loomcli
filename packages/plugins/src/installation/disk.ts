@@ -72,12 +72,25 @@ const stagingSuffix = '.loom-staging';
 const stagingBytes = 8;
 const stagingRandom = /^[\da-f]{16}$/u;
 
-/** A staging file's path beside `path`, `.<name>.<random>.loom-staging`, unique to the attempt. */
-function stagingPath(path: string): string {
+/** The suffix that marks a folder moved aside during a replacement, which recovery removes. */
+const retiredSuffix = '.loom-retired';
+
+/** A marked path beside `path`, `.<name>.<random><suffix>`, unique to the attempt. */
+function markedPath(path: string, suffix: string): string {
   return join(
     dirname(path),
-    `.${basename(path)}.${randomBytes(stagingBytes).toString('hex')}${stagingSuffix}`,
+    `.${basename(path)}.${randomBytes(stagingBytes).toString('hex')}${suffix}`,
   );
+}
+
+/** A staging file's path beside `path`, `.<name>.<random>.loom-staging`, unique to the attempt. */
+function stagingPath(path: string): string {
+  return markedPath(path, stagingSuffix);
+}
+
+/** The path a folder at `path` is moved aside to, `.<name>.<random>.loom-retired`. */
+function retiredPath(path: string): string {
+  return markedPath(path, retiredSuffix);
 }
 
 /**
@@ -156,14 +169,19 @@ function entriesOf(directory: string): string[] {
   }
 }
 
-/** Whether `entry` names a staging file of the file `name`: `.<name>.<random>.loom-staging`. */
-function isStagingFile(entry: string, name: string): boolean {
+/** Whether `entry` is `.<name>.<random><suffix>`, for the name `name` alone and 16 lowercase hex digits. */
+function isMarkedEntry(entry: string, name: string, suffix: string): boolean {
   const prefix = `.${name}.`;
   return (
     entry.startsWith(prefix) &&
-    entry.endsWith(stagingSuffix) &&
-    stagingRandom.test(entry.slice(prefix.length, -stagingSuffix.length))
+    entry.endsWith(suffix) &&
+    stagingRandom.test(entry.slice(prefix.length, -suffix.length))
   );
+}
+
+/** Whether `entry` names a staging file of the file `name`: `.<name>.<random>.loom-staging`. */
+function isStagingFile(entry: string, name: string): boolean {
+  return isMarkedEntry(entry, name, stagingSuffix);
 }
 
 /** Removes every staging file a run left beside `path`, and nothing else in its directory. */
@@ -221,10 +239,17 @@ export type { Observed, ReplaceOptions };
 export {
   createDirectory,
   digestOf,
+  entriesOf,
   errorCode,
+  exists,
+  isMarkedEntry,
   missingParents,
   observe,
   removeEmptyDirectory,
   removeStagingFiles,
   replaceFile,
+  retiredPath,
+  retiredSuffix,
+  stagingPath,
+  stagingSuffix,
 };
