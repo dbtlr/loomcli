@@ -652,6 +652,10 @@ _Avoid_: Artifact, download
 The plugin Command that replaces the running binary with a verified release asset from the application's GitHub repository, the newest on its release channel or a version the operator names. It replaces only a binary whose installation record reads the method `script` and whose digest still matches, rewrites `install.json` afterwards, and keeps no copy of what it replaced.
 _Avoid_: Auto-update, upgrade (for the Command), updater
 
+**Update notice**:
+The one line the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache at most once a day, so no run waits on the network, and the author or the operator can turn notices off.
+_Avoid_: Update check (for the line), nag, banner
+
 **Service unit**:
 The file that has the platform supervise one of the application's own Commands for the user: a systemd user unit on Linux or a launchd user agent on macOS, named by the application's reverse-DNS label. The service plugin writes it through the installation record, runs `host.program` with the declared argument words from home, and starts, stops, restarts, reports, and removes it.
 _Avoid_: Daemon (for the file), job, supervisor config
