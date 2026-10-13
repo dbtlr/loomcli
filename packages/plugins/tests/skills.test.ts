@@ -87,6 +87,7 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
   writeFileSync(
     box.scenario,
     JSON.stringify({
+      ceiling: box.root,
       cwd: scenario.cwd ?? box.repo,
       env: { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env },
       loaded: box.loaded,
