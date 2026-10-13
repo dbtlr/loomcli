@@ -4,7 +4,7 @@ title: ADR-0043 - Shell completion follows Cobra's protocol and never evaluates 
 description: The completion plugin prints Bash, Zsh, and Fish scripts ported from Cobra, and a hidden __complete Command answers them in Cobra's line protocol. Every eval is removed, so pressing Tab never runs typed text; an offered word is exact or omitted; the application name enters a script as data; and aliases, hidden members, and deprecated members are never offered.
 status: accepted
 created: 2026-09-26
-modified: 2026-09-27
+modified: 2026-10-13
 ---
 
 # ADR-0043 - Shell completion follows Cobra's protocol and never evaluates typed text
@@ -58,3 +58,4 @@ Accepted 2026-09-27 with the implementation. The completion plugin ships, and it
 - 2026-09-27: The Bash script calls no `compgen -f` or `compgen -d`, because in a completion Bash 3.2 expands the directory part of their word, so a typed `$((x[$(…)]))/` ran. It lists file names by pathname expansion of the dequoted word with only a trailing `*` unquoted, and it never rewrites a typed `$HOME` or `~`. With several matches, each entry holds its word escaped, so the common prefix readline inserts is escaped text.
 - 2026-09-27: The Zsh completion function is `_loom_<identifier>`, so no application name shadows a completion system function such as `_describe`. Each script generator throws a `DeclarationError` for a name outside the portable set, so a newline never reaches the `#compdef` line.
 - 2026-09-27: The Bash script escapes every `~` in a word it inserts, not only a leading one, because Bash expands a `~` after `=` or `:` in a word shaped like an assignment when the line runs.
+- 2026-10-13: [ADR-0078](0078-the-completion-plugin-installs-a-script-and-one-startup-line-per-shell.md), proposed, withdraws the print-only clause. The plugin adds `install`, `update`, and `uninstall`, which write each shell's script to a file and a startup line that loads it, and a PowerShell script ported from Cobra's with its `Invoke-Expression` removed, under every other rule of this record.

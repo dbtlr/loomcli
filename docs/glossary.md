@@ -241,8 +241,12 @@ The release line a version belongs to, which core derives from the version: its 
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation record**:
-The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests or whole folders, in files of its own there.
+The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders, or startup lines, in files of its own there.
 _Avoid_: Receipt, installation receipt, journal, ledger, manifest
+
+**Startup line**:
+The one line an installer adds to a shell's startup file, such as `.zshrc` or the PowerShell profile, that loads a completion script it installed and names the Command that added it. The installation record holds the line's text rather than the file's digest, because the startup file is the operator's.
+_Avoid_: Shell hook, rc line, profile snippet, init block
 
 **Development build**:
 An application whose release facts read `source` or `development`: the source run while the author works, an artifact built with no facts, or an artifact built for development. A defect or declaration fault shows the author its Developer Diagnostic, and checks that only development runs report author mistakes a distributed build tolerates.
@@ -499,7 +503,7 @@ A Command's teaching prose, written in Markdown inline or brought in from a file
 _Avoid_: Long description, body, help text, Markdown asset
 
 **Completion**:
-The projection a shell reads while the operator types: a printed script that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
+The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **MCP tool**:

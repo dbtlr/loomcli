@@ -1,0 +1,62 @@
+---
+type: adr
+title: ADR-0078 - The completion plugin installs a script and one startup line per shell
+description: The completion plugin adds completion install, update, and uninstall beside its print Commands, and a PowerShell script for Windows PowerShell and PowerShell 7. Install writes the shell's script to a file and, for every shell but Fish, adds one startup line to the operator's startup file that loads it, as Typer and tabtab do. Both are recorded through the installation record, which gains startup lines, so an uninstall removes the line it added and leaves a changed one. The shell defaults to the login shell, update rewrites what is recorded, and refreshCompletion refreshes after a self-update.
+status: proposed
+created: 2026-10-13
+modified: 2026-10-13
+---
+
+# ADR-0078 - The completion plugin installs a script and one startup line per shell
+
+## Context
+
+[ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md) ships completion as printed Bash, Zsh, and Fish scripts and leaves installing them, and PowerShell, out of scope. The operator adds `source <(notes completion zsh)` to a startup file by hand, and that line starts the application on every new shell, which costs real time for an application that runs on Node.
+
+Only Fish loads a user's completions from a folder without help: `~/.config/fish/completions` has been on its search path since Fish 3.0, and `~/.local/share/fish/vendor_completions.d` since 3.5. Bash loads `~/.local/share/bash-completion/completions` only through the bash-completion package, which macOS's Bash 3.2 lacks. Zsh's default `fpath` holds no user folder, so a script written to one still needs a line in `.zshrc` that adds the folder, and a script that is only sourced loses its registration to a `compinit` that runs later and reloads its cache. PowerShell loads nothing a user did not name in `$PROFILE`. On every shell but Fish, then, an install reaches the operator's startup file or does not happen.
+
+Cobra and the tools built on it, such as kubectl, Helm, and gh, install nothing and document the line. Every widely used tool with an install command edits the startup file itself: Typer's and Click's `--install-completion` write the script to a file and add the lines that load it to `.zshrc`, `.bashrc`, or the PowerShell profile, and tabtab, which pnpm used through version 8, adds one line that sources its script and adds it only once.
+
+[ADR-0071](0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records every file an installer writes by its digest and never writes or removes a file it did not record. A startup file is the operator's, edited by hand and often a symbolic link a dotfile manager keeps, so no digest of it stays true. [ADR-0076](0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) gives self-update one `afterReplace` function and an `update` Command that refreshes what is recorded.
+
+## Decision
+
+- **Install, update, and uninstall join the print Commands.** `completion` keeps its print children, gains `powershell`, and gains `install [shell]`, `update`, and `uninstall [shell]`. The shell is an argument, because a Command path nests at most two levels below the root under [ADR-0035](0035-a-command-path-nests-at-most-two-levels-below-the-root.md). `install` defaults to the login shell, the last segment of `SHELL`, and on Windows when `SHELL` is unset to `pwsh` when `PSModulePath` lists PowerShell 7's module folders and to `powershell` otherwise, as Typer detects the shell; a shell it cannot tell is an input error that names the choices. `uninstall` with no shell acts on every shell the record lists. `update` takes no argument.
+- **Five shells.** `bash`, `zsh`, `fish`, `powershell`, which is Windows PowerShell 5.1, and `pwsh`, which is PowerShell 7, each with its own startup file and record. Both PowerShell editions run one script, which `completion powershell` prints. On Windows, `install` offers `powershell` and `pwsh` alone.
+- **A script file and one startup line.** Install writes the shell's script to a file under the user's data directory, `<data>/<app>/completion/`, and, for Bash, Zsh, and PowerShell, adds one startup line to the shell's startup file that loads that file when it exists. The Zsh line also puts the script's folder on `fpath`, so a later `compinit` that rebuilds its cache finds the script by its `#compdef` line, while one that loads a cache written before the install drops the registration until the operator removes the cache, which Loom never touches, and the file is named `_loom_<identifier>` so it never shadows a completion function Zsh ships. Fish's script goes to `~/.config/fish/completions`, which every Fish since 3.0 reads, and Fish gets no line. A new shell reads a file, and no shell start runs the application. On Windows, the PowerShell line names the script through `LOCALAPPDATA`, so it stays ASCII for Windows PowerShell.
+- **The startup files.** Zsh's `.zshrc` under `ZDOTDIR` when that is an absolute path, else under home. Bash's `.bashrc`, and on macOS, where a terminal opens a login shell, the first of `.bash_profile`, `.bash_login`, and `.profile` that exists, else `.bash_profile`, so the line never shadows a login file the operator already has. PowerShell's `$PROFILE`, which install asks the shell for by running it once, because Windows may move the Documents folder that holds it. The shell is found only in absolute `PATH` entries and runs from home, so a program planted in the working directory never runs, and it answers in Base64 with its execution policy, so no console code page garbles the path.
+- **The line is exact and added once.** A startup line is one line that names its script path in its shell's quoting and ends with a comment naming the install Command. Install adds it at the end of the file when no line of the file equals it, and records it. Uninstall removes each line equal to the recorded one and leaves the rest of the file as it was. A line the operator changed is no longer equal, so it stays, and the plugin says so. `update` replaces a recorded line whose text changed where it stands, and never adds one the operator removed.
+- **Startup lines in the installation record.** The installed-files module gains startup lines beside files and folders: the plugin's file lists each startup file's path and the line. The module adds a line by appending it in place, so the file keeps its owner, mode, links, and every other byte, and concurrent installs of two applications both land. It replaces or removes a line through a staging file and a rename of the real path. It reads UTF-8, with or without a byte order mark, and UTF-16LE with one, and writes an added line in the file's own encoding and line ending. It recovers an interrupted write by reading whether the file holds the line, and never removes a startup file, even one it created. This narrows ADR-0071's rule that an installer writes only files it recorded by digest, for startup lines alone.
+- **One record file per shell.** `completion.<shell>.json`, so an install for one shell never removes another's files or line. The script files follow ADR-0071 as written: an unrecorded file in the way, or one changed since it was written, refuses, and there is no `--force`.
+- **A startup file the plugin cannot change.** Every Command that would change a startup file checks first that it may: that the process may write the file and its folder, that the file is the operator's own, that its encoding is one the module reads, and, for a PowerShell install, that the execution policy runs an unsigned profile. When it may not, as with a startup file a read-only home configuration manager links or a Windows client whose policy is `Restricted`, install writes the script, records no line, and prints the line for the operator to add, and uninstall and update do the rest, release the line from the record without touching the file, and print the line to remove. A startup file that is not a file fails install.
+- **A PowerShell script under ADR-0043.** The PowerShell script is ported from Cobra's, with its `Invoke-Expression` removed: it calls the program with an argument array and evaluates nothing typed, as the other scripts do. It quotes with every character PowerShell reads as a single quote doubled, U+2018 through U+201B included, and it calls no `.bat` or `.cmd` program, whose arguments `cmd.exe` reads again as commands.
+- **`update` and `refreshCompletion`.** `update` rewrites each recorded shell's script at its recorded path, and its line only when a new version changes the line's text, so a refresh run from another environment moves nothing. It touches no shell the record does not list, checks every shell before it writes any, and exits 0 when nothing is recorded. `refreshCompletion` is an `afterReplace` function for self-update that runs the replaced binary's `completion update` as a child process, as `refreshSkills` runs `skills update`, and never fails the update. An application with both composes them in its own `afterReplace`. A binary updated another way, by a package manager or the installer script, refreshes through `completion update`, and a stale script keeps working because it asks the binary at every Tab.
+
+The contract and its acceptance are in [Completion](../core.md#completion) and [Installed files](../core.md#installed-files).
+
+## Considered options
+
+- **Print only, as Cobra does.** Rejected. It leaves Bash, Zsh, and PowerShell where they are now, and `install zsh` would add nothing over the documentation.
+- **A user `fpath` folder for Zsh with no source, or bash-completion's folder for Bash.** Rejected. The Zsh folder still needs a startup line, and the shell then completes nothing until a `compinit` after the line runs; the Bash folder works only with the bash-completion package, which a stock Mac lacks.
+- **Fish's vendor folder under `XDG_DATA_HOME`.** Rejected. Fish reads it only from 3.5, and Ubuntu 22.04 ships 3.3.
+- **Rewriting the startup file to add a line.** Rejected. Two applications installing at once would each drop the other's line, and a rename gives the file a new owner and breaks a hard link; an append keeps all of them.
+- **Setting the execution policy, as Typer does.** Rejected. It changes a security setting the operator owns; install prints the command instead.
+- **Finding a writable folder already on the shell's search path.** Rejected. A child process cannot read an interactive shell's `fpath`, and such folders belong to a package manager.
+- **A startup line that runs the application, `source <(notes completion zsh)`.** Rejected. It starts the application on every new shell.
+- **A marked block of several lines.** Rejected. One line is found and removed by equality, and a block needs rules for a block the operator edited inside.
+- **Recording the startup file's digest.** Rejected. The operator edits the file, so the digest would refuse the next install or uninstall after any edit.
+- **Computing `$PROFILE` from the platform.** Rejected. Windows may move the Documents folder that holds it, and asking the shell is what Typer does.
+- **PowerShell 7 alone.** Rejected. Windows PowerShell is the edition every Windows machine has.
+- **A list for `afterReplace`.** Rejected. It reopens [ADR-0073](0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md) for a convenience that ADR-0076's composing rule already gives.
+
+## Consequences
+
+ADR-0043's print-only clause no longer holds, and ADR-0071's installed-files module gains startup lines; both carry dated entries. The Windows rows, and Windows PowerShell 5.1, are unverified under [ADR-0011](0011-bun-first-workflow-with-a-portable-core.md), because no CI runner has Windows; PowerShell 7 is proven on Linux and macOS. An operator who sets `ZDOTDIR` without exporting it gets the line in the home folder's `.zshrc`, which a Zsh with that `ZDOTDIR` never reads.
+
+## Status
+
+Proposed with the completion install contract. It moves to accepted in the release PR of the release that ships the implementation.
+
+## Changelog
+
+- 2026-10-13: Proposed with the completion install contract.
