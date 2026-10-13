@@ -194,6 +194,11 @@ test('jsonkit get --help renders while the required path is missing', () => {
       '',
       '  A path is a dot-separated walk from the root of the document.',
       '',
+      "  - A key reads an object's member, such as `user.name`.",
+      "  - A whole number reads an array's item, such as `items.0`.",
+      '',
+      '  The document is JSON; see the format (https://www.json.org/json-en.html).',
+      '',
       'USAGE',
       '  jsonkit get <path> [options]',
       '',
@@ -211,6 +216,30 @@ test('jsonkit get --help renders while the required path is missing', () => {
       'EXAMPLES',
       '  $ jsonkit get name -f doc.json',
       '  $ jsonkit get nested.deep.value -f doc.json',
+    ),
+  );
+});
+
+test('jsonkit get -h omits Details and EXAMPLES and points to extended help', () => {
+  expect(invoke(main, ['get', '-h'])).toEqual(
+    page(
+      'jsonkit get · Read one value at a path.',
+      '',
+      'USAGE',
+      '  jsonkit get <path> [options]',
+      '',
+      'ARGUMENTS',
+      '  path  Dot path to read.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.',
+      '  -v, --verbose...   Name the document before reading it.',
+      '  -h, --help         Show this help.',
+      '  -V, --version      Print the version.',
+      "  -M, --manifest     Print this command's manifest as JSON.",
+      '  -e, --explain      Explain the selected command and exit.',
+      '',
+      'Run jsonkit get --help for details and examples.',
     ),
   );
 });

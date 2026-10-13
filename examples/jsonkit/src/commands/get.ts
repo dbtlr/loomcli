@@ -6,6 +6,7 @@ import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 
 import { getValue } from '../actions/get-value.js';
 import { pathFailures, readFailures } from '../failures.js';
+import details from './get.md' with { type: 'text' };
 
 export const get = new Command('get', {
   description: 'Read one value at a path.',
@@ -16,7 +17,7 @@ export const get = new Command('get', {
       failures: [...pathFailures, ...readFailures],
     }),
     helpCommand({
-      details: 'A path is a dot-separated walk from the root of the document.',
+      details,
       examples: [
         { command: 'get name -f doc.json' },
         { command: 'get nested.deep.value -f doc.json' },

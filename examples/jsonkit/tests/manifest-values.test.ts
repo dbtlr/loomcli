@@ -51,7 +51,8 @@ test('the author value on get is collected ahead of the value help supplies', ()
       failures: [pathNotFound, invalidJson],
     },
     {
-      details: 'A path is a dot-separated walk from the root of the document.',
+      details:
+        "A path is a dot-separated walk from the root of the document.\n\n- A **key** reads an object's member, such as `user.name`.\n- A **whole number** reads an array's item, such as `items.0`.\n\nThe document is *JSON*; see [the format](https://www.json.org/json-en.html).\n",
       examples: [
         { command: 'get name -f doc.json' },
         { command: 'get nested.deep.value -f doc.json' },

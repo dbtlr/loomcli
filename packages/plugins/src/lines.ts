@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * The line terminators the pack recognizes, spelled once, and the two text rules built on them.
+ * The line terminators the pack recognizes, spelled once, and the text rules built on them.
  * Help's schema, help's page, and the manifest's schema have to agree on which characters end a
  * line, so every other spelling below derives from the character class of the first. This module
  * belongs to no subpath: help and the manifest both import it, and neither imports the other's.
@@ -26,4 +26,9 @@ const prose = z.string().refine((value) => value.split(breaks).every((each) => /
   message: 'Supply prose whose every line holds a character other than whitespace.',
 });
 
-export { breaks, line, prose, terminator, terminators };
+/** Markdown may hold blank lines and a final terminator, but is never whitespace alone. */
+const markdown = z.string().refine((value) => /\S/u.test(value), {
+  message: 'Supply Markdown that holds a character other than whitespace.',
+});
+
+export { breaks, line, markdown, prose, terminator, terminators };

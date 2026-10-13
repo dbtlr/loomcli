@@ -10,7 +10,7 @@ const dispatch = ({ out }) => out.print('dispatched');
 const scenarios = {
   'blank-details': () =>
     new Application('app', {
-      extensions: [helpCommand({ details: 'one\n\ntwo' })],
+      extensions: [helpCommand({ details: ' \t\n ' })],
       plugins: [help()],
     }).action(dispatch),
   'example-line': () => {

@@ -133,12 +133,12 @@ test('a missing value and a repeated --help are held, so help after them renders
   expect(run('cells', ['--help', '--help'])).toEqual(page);
 });
 
-test('a details value with a blank line is rejected at its call the way any extension value is', () => {
+test('a whitespace-only Details value is rejected at its call the way any extension value is', () => {
   expect(invoke(rejected, ['blank-details'])).toEqual({
     status: 0,
     stderr: '',
     stdout:
-      'thrown:1: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply prose whose every line holds a character other than whitespace. Correct the value.\n',
+      'thrown:1: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply Markdown that holds a character other than whitespace. Correct the value.\n',
   });
 });
 

@@ -1,7 +1,6 @@
 import { readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
-import { breaks } from '../lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -15,6 +14,7 @@ import {
   rightCell,
 } from './cells.js';
 import type { Row, StringOption } from './cells.js';
+import { renderDetails } from './details.js';
 import { helpCommand, helpInput } from './extension.js';
 import { sectionBlocks } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
@@ -61,12 +61,10 @@ function masthead(path: string, command: CommandNode, { style }: ViewContext): s
     : [opening, `  ${style.warning(style.escape(`Deprecated: ${deprecated}`))}`];
 }
 
-/** The routed node's prose, one authored line per page line, each indented two spaces. */
-function details(command: CommandNode, { style }: ViewContext): string[] {
-  const prose = commandHelp(command)?.details;
-  return prose === undefined
-    ? []
-    : prose.split(breaks).map((line) => `  ${style.primary(style.escape(line))}`);
+/** The routed node's Markdown, rendered as authored lines in extended help. */
+function details(command: CommandNode, context: ViewContext): string[] {
+  const source = commandHelp(command)?.details;
+  return source === undefined ? [] : renderDetails(source, context);
 }
 
 /**
@@ -247,22 +245,22 @@ function hints(
 
 /**
  * The help page of one routed Command, derived from the graph and the variant and nothing else. It
- * is a sequence of blocks separated by one blank line, no block holds a blank line of its own, a
- * block with nothing to show is omitted, and the page carries no line terminator of its own at
- * either end. The compact page omits Details and EXAMPLES.
+ * separates blocks by one blank line; Details also keeps authored blank lines inside it. A block
+ * with nothing to show is omitted, and the page carries no line terminator of its own at either
+ * end. The compact page omits Details and EXAMPLES.
  */
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
   // They are the children usage form, the Command sections, and the child hint.
   const children = visible(command.children);
-  const prose = details(command, context);
+  const detailLines = details(command, context);
   const listed = examples(graph, command, context);
   const extended = variant === 'extended';
-  const omitted = !extended && !(isEmpty(prose) && isEmpty(listed));
+  const omitted = !extended && !(isEmpty(detailLines) && isEmpty(listed));
   return [
     masthead(path, command, context),
-    extended ? prose : [],
+    extended ? detailLines : [],
     usage({ children, command, graph }, context),
     ...commands({ children, command }, context),
     args(command, context),

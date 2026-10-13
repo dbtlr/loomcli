@@ -108,9 +108,9 @@ const failure = (fields) => ({
   failures: [{ failure: BadDataError, meaning: 'The data is bad.', ...fields }],
 });
 
-/** One author value per case, each breaking one line, prose, or failure rule, or keeping them all. */
+/** One author value per case, covering valid Markdown and examples alongside declaration faults. */
 const cases = {
-  'blank-prose-line': { details: 'First line.\n\nThird line.' },
+  'blank-details': { details: ' \t\n ' },
   'command-on-two-lines': { examples: [{ command: 'get a\nget b' }] },
   'failure-bad-code': failure({ failure: BadCodeError }),
   'failure-code-200': failure({ failure: ReservedError }),
@@ -126,6 +126,7 @@ const cases = {
   'failure-prototype-throws': failure({ failure: throwingPrototype }),
   'failure-stale-name': failure({ name: 'bad-data' }),
   'failure-valid': failure({}),
+  'markdown-blank-lines': { details: 'First line.\n\nThird line.' },
   'note-on-two-lines': { examples: [{ command: 'get a', note: 'One.\nTwo.' }] },
   valid: { details: 'First line.\nSecond line.', examples: [{ command: 'get a', note: 'One.' }] },
 };
