@@ -49,3 +49,4 @@ Accepted in 0.8.0.
 
 - 2026-10-05: Proposed with the ordered help sections contract.
 - 2026-10-05: Implementation adds the descriptor fields and shared section renderer. textstat groups its counting options, and jsonkit groups its document Commands. Runtime fixtures and packed consumers cover both help variants, combined named option sections, and unchanged unsectioned pages. The record stays proposed until the release PR accepts it.
+- 2026-10-13: [ADR-0077](0077-help-details-are-markdown-that-help-renders-with-its-own-subset-parser.md) narrows the one-layout rule that no blank line sits inside a block: the Details block renders Markdown and keeps one blank line wherever the author separated two blocks. Every other block keeps the rule.
