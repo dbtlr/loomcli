@@ -640,6 +640,10 @@ _Avoid_: Artifact, download
 The plugin Command that replaces the running binary with a verified release asset from the application's GitHub repository, the newest on its release channel or a version the operator names. It replaces only a binary whose installation record reads the method `script` and whose digest still matches, rewrites `install.json` afterwards, and keeps no copy of what it replaced.
 _Avoid_: Auto-update, upgrade (for the Command), updater
 
+**Service unit**:
+The file that has the platform supervise one of the application's own Commands for the user: a systemd user unit on Linux or a launchd user agent on macOS, named by the application's reverse-DNS label. The service plugin writes it through the installation record, runs `host.program` with the declared argument words from home, and starts, stops, restarts, reports, and removes it.
+_Avoid_: Daemon (for the file), job, supervisor config
+
 ## Toolchain
 
 **Package directory**:
