@@ -4,6 +4,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  chmodSync,
   closeSync,
   fchmodSync,
   fsyncSync,
@@ -194,14 +195,21 @@ function removeStagingFiles(path: string): void {
   }
 }
 
-/** Creates one directory whose parent exists; one another process created first is no error. */
-function createDirectory(path: string): void {
+/**
+ * Creates one directory whose parent exists, with the permission bits `mode` names whatever the
+ * umask, when it names any; one another process created first is no error and keeps its own mode.
+ */
+function createDirectory(path: string, mode?: number): void {
   try {
     mkdirSync(path);
   } catch (error) {
     if (errorCode(error) !== 'EEXIST') {
       throw error;
     }
+    return;
+  }
+  if (mode !== undefined) {
+    chmodSync(path, mode);
   }
 }
 

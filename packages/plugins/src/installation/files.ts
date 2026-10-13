@@ -97,12 +97,15 @@ interface UninstallRequest {
 
 /**
  * What an install writes: files, folders, or both. The force mode, which only the skills plugin
- * passes, replaces an unrecorded folder at a listed folder's path in place of refusing.
+ * passes, replaces an unrecorded folder at a listed folder's path in place of refusing. The
+ * directory mode is the permission bits each missing parent directory is created with, whatever
+ * the umask, when the plugin names any.
  */
 interface InstallRequest extends UninstallRequest {
   readonly files: readonly InstalledFile[];
   readonly folders?: readonly InstalledFolder[];
   readonly force?: boolean;
+  readonly directoryMode?: number;
 }
 
 /**
@@ -265,11 +268,15 @@ function planInstall(
   };
 }
 
-/** What an install lists: its files, its folders, and whether it may take over an unrecorded folder. */
+/**
+ * What an install lists: its files, its folders, whether it may take over an unrecorded folder,
+ * and the mode it creates missing parent directories with, when it names one.
+ */
 interface Listed {
   readonly files: readonly InstalledFile[];
   readonly folders: readonly InstalledFolder[];
   readonly force: boolean;
+  readonly directoryMode: number | undefined;
 }
 
 /** The rule a target path breaks, or none for an absolute, normalized path not yet listed. */
@@ -347,6 +354,7 @@ function checkTargetPaths(
  */
 function install(request: InstallRequest): InstallOutcome {
   const listed: Listed = {
+    directoryMode: request.directoryMode,
     files: request.files,
     folders: request.folders ?? [],
     force: request.force === true,
@@ -410,7 +418,7 @@ function prepareInstall(
 /** The writes of the files and folders, in that order, after the missing parents are created. */
 function writeTargets(plan: InstallPlan, listed: Listed): void {
   for (const directory of plan.created) {
-    createDirectory(directory);
+    createDirectory(directory, listed.directoryMode);
   }
   for (const file of listed.files) {
     replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });

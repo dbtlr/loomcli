@@ -159,6 +159,29 @@ test('a target with a named mode holds that mode under umask 002, and one with n
   ]);
 });
 
+test('a named directory mode holds on each created parent under umask 077, and an existing parent keeps its own', () => {
+  const box = sandbox();
+  const deep = join(box.root, 'a', 'b', 'c.md');
+  chmodSync(box.root, 0o700);
+  const previous = process.umask(0o077);
+  try {
+    const outcome = install({
+      directoryMode: 0o755,
+      files: [{ content: 'test', mode: 0o644, path: deep }],
+      plugin: 'skill',
+      record: box.record,
+      signal: new AbortController().signal,
+    });
+    expect(outcome.status).toBe('installed');
+  } finally {
+    process.umask(previous);
+  }
+  expect(statSync(join(box.root, 'a')).mode & 0o777).toBe(0o755);
+  expect(statSync(join(box.root, 'a', 'b')).mode & 0o777).toBe(0o755);
+  expect(statSync(deep).mode & 0o777).toBe(0o644);
+  expect(statSync(box.root).mode & 0o777).toBe(0o700);
+});
+
 test('each missing parent directory is created and recorded, outermost first', () => {
   const box = sandbox();
   const deep = join(box.root, 'a', 'b', 'c.md');
