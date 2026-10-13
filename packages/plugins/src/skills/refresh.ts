@@ -52,13 +52,26 @@ function endOnAbort(child: ChildProcess, signal: AbortSignal): () => void {
   return () => signal.removeEventListener('abort', end);
 }
 
+/** Starts the child, or answers the error a synchronous throw of the runtime carried (ENOEXEC, ENOTDIR, and others). */
+function tryStart(context: RefreshContext): ChildProcess | Extract<Answer, { kind: 'missing' }> {
+  try {
+    return start(context);
+  } catch (error) {
+    return { error, kind: 'missing' };
+  }
+}
+
 /**
  * Runs `path` with the words until it exits or cannot start. The run signal ends it with SIGTERM.
  * It never rejects.
  */
 function runChild(context: RefreshContext): Promise<Answer> {
   return new Promise((resolve) => {
-    const child = start(context);
+    const child = tryStart(context);
+    if ('kind' in child) {
+      resolve(child);
+      return;
+    }
     const release = endOnAbort(child, context.signal);
     let settled = false;
     const settle = (answer: Answer) => {

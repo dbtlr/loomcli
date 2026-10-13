@@ -130,6 +130,25 @@ test('adds the warn event with the error and writes the pinned line for a path t
   expect(event?.fields).not.toHaveProperty('code');
 });
 
+test('adds the warn event and writes the pinned line for a file the runtime throws on starting, and resolves', () => {
+  const box = sandbox();
+  // A mode-755 file with no shebang and no executable format fails with ENOEXEC from spawn itself.
+  writeFileSync(box.child, 'garbage, not a program\n');
+  chmodSync(box.child, 0o755);
+  const result = refresh(box, box.child);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe(
+    `The skills were not refreshed because ${box.child} could not start. Run child.mjs skills update.\n`,
+  );
+  expect(existsSync(box.resolved)).toBe(true);
+  const [event, ...rest] = events(box);
+  expect(rest).toEqual([]);
+  expect(event).toMatchObject({ level: 'warn', message: warning });
+  expect(event?.fields.path).toBe(box.child);
+  expect(event?.fields.error).toBeTypeOf('string');
+  expect(event?.fields).not.toHaveProperty('code');
+});
+
 test('escapes control characters in the path the line repeats', () => {
   const box = sandbox();
   const path = join(box.root, 'missing', 'no\u0007tes');
@@ -139,7 +158,7 @@ test('escapes control characters in the path the line repeats', () => {
   );
 });
 
-test('ends the child with SIGTERM when the run is aborted while it runs, and resolves', () => {
+test('ends the child with SIGTERM when the run is aborted while it runs, warns with its code, and resolves', () => {
   const box = sandbox();
   const path = childProgram(
     box,
@@ -156,4 +175,19 @@ setInterval(() => {}, 1000);`,
   expect(result.status).toBe(130);
   expect(readFileSync(box.term, 'utf8')).toBe('term');
   expect(existsSync(box.resolved)).toBe(true);
+  expect(events(box)).toEqual([{ fields: { code: 7, path }, level: 'warn', message: warning }]);
+});
+
+test('reports the shell status of the signal for a child with no SIGTERM handler, and exits 130', () => {
+  const box = sandbox();
+  const path = childProgram(
+    box,
+    `import { writeFileSync } from 'node:fs';
+writeFileSync(process.env.MARK, 'started');
+setInterval(() => {}, 1000);`,
+  );
+  const result = refresh(box, path, { abort: true });
+  expect(result.status).toBe(130);
+  expect(existsSync(box.resolved)).toBe(true);
+  expect(events(box)).toEqual([{ fields: { code: 143, path }, level: 'warn', message: warning }]);
 });

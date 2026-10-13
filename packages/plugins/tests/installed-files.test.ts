@@ -29,7 +29,7 @@ import {
   uninstall,
 } from '../src/installation/files.js';
 import type { InstalledFile, InstalledFolder } from '../src/installation/files.js';
-import { folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
+import { fillFolder, folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
 
 /** The SHA-256 digests of the bytes `test`, `abc`, and `new`, from independent sources. */
 const digests = {
@@ -1234,6 +1234,40 @@ test('writing a folder that fails leaves the old folder and no staging folder', 
     ]),
   ).toThrow(/EISDIR|ENOTEMPTY|EEXIST|EPERM|ENOTDIR/u);
   expect(listing(box.skills)).toEqual(['notes/', 'notes/a.md']);
+});
+
+test.each([
+  ['a file in the staging folder', 'a.md'],
+  ['a file in a subfolder', 'sub/deep/a.md'],
+])('filling a staging folder that is gone throws and does not make it again: %s', (_name, path) => {
+  const box = sandbox();
+  const staging = join(box.skills, '.notes.0123456789abcdef.loom-staging');
+  expect(() => fillFolder(staging, [{ content: 'abc', path }])).toThrow(/ENOENT/u);
+  expect(existsSync(staging)).toBe(false);
+});
+
+test('filling a staging folder that goes away between two files throws on the second and does not make it again', () => {
+  const box = sandbox();
+  const staging = join(box.skills, '.notes.0123456789abcdef.loom-staging');
+  mkdirSync(staging);
+  let removed = false;
+  const files = [
+    { content: 'abc', path: 'sub/a.md' },
+    {
+      content: 'abc',
+      get path(): string {
+        // The first read comes as the second file starts, after another run's recovery removed the folder.
+        if (!removed) {
+          removed = true;
+          rmSync(staging, { force: true, recursive: true });
+        }
+        return 'sub/b.md';
+      },
+    },
+    { content: 'abc', path: 'sub/c.md' },
+  ];
+  expect(() => fillFolder(staging, files)).toThrow(/ENOENT/u);
+  expect(existsSync(staging)).toBe(false);
 });
 
 // Folder paths a first-party plugin got wrong

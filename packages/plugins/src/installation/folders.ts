@@ -52,11 +52,32 @@ function removeFolderLeftovers(path: string): void {
   }
 }
 
-/** Writes each file under the staging folder, creating the subfolders it needs. */
+/**
+ * Creates each subfolder above a file one level at a time, never recursively, so a staging folder
+ * that another run's recovery removed makes the create throw and is never made again.
+ */
+function createSubfolders(staging: string, path: string, made: Set<string>): void {
+  const segments = path.split(posix.sep);
+  segments.pop();
+  let directory = staging;
+  for (const segment of segments) {
+    directory = join(directory, segment);
+    if (!made.has(directory)) {
+      mkdirSync(directory);
+      made.add(directory);
+    }
+  }
+}
+
+/**
+ * Writes each file under the staging folder, creating the subfolders it needs. It never creates the
+ * staging folder itself: when the folder is gone, the write throws and nothing is published short.
+ */
 function fillFolder(staging: string, files: readonly FolderFile[]): void {
+  const made = new Set<string>();
   for (const file of files) {
+    createSubfolders(staging, file.path, made);
     const target = join(staging, ...file.path.split(posix.sep));
-    mkdirSync(dirname(target), { recursive: true });
     replaceFile(target, file.content, file.mode === undefined ? {} : { mode: file.mode });
   }
 }
@@ -165,4 +186,4 @@ function folderHoldsExactly(path: string, files: readonly FolderFile[]): boolean
 }
 
 export type { FolderFile };
-export { folderHoldsExactly, removeFolderLeftovers, removeWhole, writeFolder };
+export { fillFolder, folderHoldsExactly, removeFolderLeftovers, removeWhole, writeFolder };

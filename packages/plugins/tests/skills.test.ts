@@ -184,6 +184,46 @@ function holding(files: Record<string, string>): Record<string, string> {
   return entries;
 }
 
+/** A path's inode and modification time, or `absent`, without following a link. */
+function identity(path: string): string {
+  const stats = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  return stats === undefined ? 'absent' : `${stats.ino} ${stats.mtimeNs}`;
+}
+
+/** A record's content and identity, or `absent`. */
+function recordState(path: string): string {
+  return existsSync(path) ? `${readFileSync(path, 'utf8')} ${identity(path)}` : 'absent';
+}
+
+/**
+ * What a run that writes nothing must leave alone: each target's folder identity and each target's
+ * record by its content and modification time, absent when nothing is there.
+ */
+function writeState(box: Box) {
+  const target = (name: Target) => ({
+    folder: identity(folderOf(box, name)),
+    record: recordState(recordPath(box, name)),
+  });
+  return { agents: target('agents'), claude: target('claude') };
+}
+
+/**
+ * Leaves what a process killed after the swap leaves for a target: the new folder in place, a
+ * stale full copy retired beside it, and a plugin's file still `pending`.
+ */
+function killedAfterSwap(box: Box): string[] {
+  const retired: string[] = [];
+  for (const target of ['claude', 'agents'] as const) {
+    const leftover = join(folderOf(box, target), '..', '.notes.0123456789abcdef.loom-retired');
+    mkdirSync(leftover);
+    writeFileSync(join(leftover, 'SKILL.md'), 'stale\n');
+    retired.push(leftover);
+    const record = JSON.parse(readFileSync(recordPath(box, target), 'utf8'));
+    writeFileSync(recordPath(box, target), `${JSON.stringify({ ...record, state: 'pending' })}\n`);
+  }
+  return retired;
+}
+
 const installedBoth = [
   'Installed notes for claude in HOME/.claude/skills/notes.',
   'Installed notes for agents in HOME/.agents/skills/notes.',
@@ -256,17 +296,34 @@ describe('installing globally', () => {
   it('prints the unchanged lines on a second install and writes nothing', () => {
     const box = sandbox();
     run(box, ['skills', 'install']);
-    const inode = lstatSync(folderOf(box, 'claude')).ino;
-    const record = readFileSync(recordPath(box, 'claude'), 'utf8');
+    const before = writeState(box);
     const result = run(box, ['skills', 'install']);
     expect(result.status).toBe(0);
     expect(pinned(box, result.stderr)).toEqual([
       'HOME/.claude/skills/notes is unchanged.',
       'HOME/.agents/skills/notes is unchanged.',
     ]);
-    expect(lstatSync(folderOf(box, 'claude')).ino).toBe(inode);
-    expect(readFileSync(recordPath(box, 'claude'), 'utf8')).toBe(record);
+    expect(writeState(box)).toEqual(before);
   });
+
+  it.each(['install', 'update'])(
+    '%s resolves a pending record whose folder already matches, and removes the retired copy',
+    (child) => {
+      const box = sandbox();
+      run(box, ['skills', 'install']);
+      const retired = killedAfterSwap(box);
+      expect(recorded(box, 'claude').state).toBe('pending');
+      const result = run(box, ['skills', child]);
+      expect(result.status).toBe(0);
+      for (const target of ['claude', 'agents'] as const) {
+        expect(recorded(box, target).state).toBe('committed');
+        expect(recorded(box, target).folders).toEqual([folderOf(box, target)]);
+        expect(tree(folderOf(box, target))).toEqual(holding(written));
+        expect(readdirSync(join(folderOf(box, target), '..'))).toEqual(['notes']);
+      }
+      expect(retired.some((path) => existsSync(path))).toBe(false);
+    },
+  );
 
   const changes: [string, (box: Box) => void, Scenario?][] = [
     ['a file mode changed', (box) => chmodSync(join(folderOf(box, 'claude'), 'SKILL.md'), 0o600)],
@@ -378,6 +435,7 @@ describe('refusing', () => {
       const before = {
         agents: tree(join(box.home, '.agents')),
         claude: tree(join(box.home, '.claude')),
+        written: writeState(box),
       };
       const result = run(box, ['skills', 'install']);
       expect(result.status).toBe(1);
@@ -387,6 +445,7 @@ describe('refusing', () => {
       ]);
       expect(tree(join(box.home, '.agents'))).toEqual(before.agents);
       expect(tree(join(box.home, '.claude'))).toEqual(before.claude);
+      expect(writeState(box)).toEqual(before.written);
       expect(existsSync(recordPath(box, 'claude'))).toBe(false);
       expect(existsSync(recordPath(box, 'agents'))).toBe(false);
       expect(tree(box.elsewhere)).toEqual({ '.': 'directory' });
@@ -406,6 +465,7 @@ describe('refusing', () => {
       const before = {
         agents: tree(join(box.home, '.agents')),
         claude: tree(join(box.home, '.claude')),
+        written: writeState(box),
       };
       const result = run(box, ['skills', 'update'], { skills: [notes, second] });
       expect(result.status).toBe(1);
@@ -415,6 +475,7 @@ describe('refusing', () => {
       ]);
       expect(tree(join(box.home, '.agents'))).toEqual(before.agents);
       expect(tree(join(box.home, '.claude'))).toEqual(before.claude);
+      expect(writeState(box)).toEqual(before.written);
     },
   );
 
@@ -595,11 +656,13 @@ describe('updating', () => {
   it('prints the unchanged lines when nothing changed', () => {
     const box = sandbox();
     run(box, ['skills', 'install']);
+    const before = writeState(box);
     const result = run(box, ['skills', 'update']);
     expect(pinned(box, result.stderr)).toEqual([
       'HOME/.claude/skills/notes is unchanged.',
       'HOME/.agents/skills/notes is unchanged.',
     ]);
+    expect(writeState(box)).toEqual(before);
   });
 
   it('acts only on a target whose plugin’s file lists a folder', () => {

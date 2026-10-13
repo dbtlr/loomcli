@@ -507,6 +507,15 @@ function readRecorded(request: Omit<UninstallRequest, 'signal'>): RecordedRead {
 }
 
 /**
+ * Whether the plugin's file is `pending`, which an install or uninstall resolves before it acts,
+ * read without writing. A missing, damaged, or unknown file is not pending.
+ */
+function hasPendingRecord(request: Omit<UninstallRequest, 'signal'>): boolean {
+  const read = readPluginFile(pluginFilePath(request.record, request.plugin));
+  return read.kind === 'read' && read.file.state === 'pending';
+}
+
+/**
  * The refusal each target path would meet from an install against the recorded files, read
  * without writing: none for an absent target or a recorded file with its digest unchanged.
  */
@@ -530,4 +539,4 @@ export type {
   UninstallOutcome,
   UninstallRequest,
 };
-export { folderRefusals, install, readRecorded, targetRefusals, uninstall };
+export { folderRefusals, hasPendingRecord, install, readRecorded, targetRefusals, uninstall };

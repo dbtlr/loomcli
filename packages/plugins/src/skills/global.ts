@@ -7,7 +7,13 @@ import { join } from 'node:path';
 
 import type { Host } from '@loomcli/core';
 
-import { folderRefusals, install, readRecorded, uninstall } from '../installation/files.js';
+import {
+  folderRefusals,
+  hasPendingRecord,
+  install,
+  readRecorded,
+  uninstall,
+} from '../installation/files.js';
 import type { InstalledFolder, InstallOutcome, Refusal } from '../installation/files.js';
 import { folderHoldsExactly } from '../installation/folders.js';
 import { loadSkills } from './load.js';
@@ -82,10 +88,11 @@ async function actingPlaces(run: ChildRun, places: readonly Place[]): Promise<re
   return [first];
 }
 
-/** A place with the folders its plugin's file lists. */
+/** A place with the folders its plugin's file lists, and whether that file is still `pending`. */
 interface Recorded {
   readonly place: Place;
   readonly folders: readonly string[];
+  readonly pending: boolean;
 }
 
 /** The folders each place's plugin's file lists, or the refusal of a file that cannot be read. */
@@ -95,11 +102,16 @@ function recordedBy(
   verb: 'install' | 'uninstall',
 ): readonly Recorded[] {
   return places.map((place) => {
-    const read = readRecorded({ plugin: recordName(place.target), record: where.record });
+    const request = { plugin: recordName(place.target), record: where.record };
+    const read = readRecorded(request);
     if (read.status === 'refused') {
       throw refusals.record(where.run.name, read.refused.path, verb);
     }
-    return { folders: (read.folders ?? []).map(({ path }) => path), place };
+    return {
+      folders: (read.folders ?? []).map(({ path }) => path),
+      pending: hasPendingRecord(request),
+      place,
+    };
   });
 }
 
@@ -118,10 +130,14 @@ function unrecorded(entries: readonly Wanted[]): readonly Refusal[] {
   );
 }
 
-/** Whether a target's skills are all unchanged and its plugin's file lists no other folder. */
-function isUnchanged({ folders, wanted }: Wanted): boolean {
+/**
+ * Whether a target's skills are all unchanged and its plugin's file lists no other folder. A
+ * `pending` file is never unchanged: the module's install resolves it and removes its leftovers.
+ */
+function isUnchanged({ folders, pending, wanted }: Wanted): boolean {
   const paths = new Set(folders);
   return (
+    !pending &&
     paths.size === wanted.length &&
     wanted.every(
       (folder) => paths.has(folder.path) && folderHoldsExactly(folder.path, folder.files),
@@ -211,8 +227,9 @@ async function chosenTargets(
   const entries = recordedBy(where, acting, 'install');
   const chosen =
     request.verb === 'update' ? entries.filter(({ folders }) => folders.length > none) : entries;
-  return chosen.map(({ folders, place }) => ({
+  return chosen.map(({ folders, pending, place }) => ({
     folders,
+    pending,
     place,
     wanted: foldersIn(place.directory, loaded),
   }));
