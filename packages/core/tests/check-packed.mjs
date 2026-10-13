@@ -576,6 +576,17 @@ try {
       `${name}: packed skills refusal`,
     );
   }
+  // The packed manpage plugin generates the page set into a folder.
+  const paging = join(temporary, 'dist/manpage.js');
+  for (const name of selected) {
+    const generated = run(runtimes.get(name), [paging], temporary);
+    assert.equal(generated.status, 0, generated.output);
+    assert.equal(
+      generated.output,
+      '8 pages\n.TH "PACKED\\-MAN\\-GREET" "1" "" "packed\\-man 1.0.0" ""\n',
+      `${name}: packed man pages`,
+    );
+  }
   // The packed resolver gives the state directory row and names a relative HOME the darwin row needs.
   const directories = `${JSON.stringify([
     { path: join('/state', 'notes', 'installation') },
@@ -739,7 +750,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

@@ -22,6 +22,13 @@ const configFilePattern = diagnosticRule(`${packageName}/config/file-pattern`, {
   headline: 'Invalid configuration file pattern',
 });
 
+/** Two findable Commands whose man page names are one file on a file system that ignores case. */
+const manpagePageNameTaken = diagnosticRule(`${packageName}/manpage/page-name-taken`, {
+  explanation:
+    "The manpage plugin writes one page for each Command an operator can find, named by the application name and the Command's path joined with hyphens. Two names that are equal when letters are compared without case would be one file on a file system that ignores case, such as macOS's default, so one page would replace the other.",
+  headline: 'Man page name taken',
+});
+
 /** One failure code declared with two exit codes or two meanings. */
 const failureCodeConflict = diagnosticRule(`${packageName}/manifest/failure-code-conflict`, {
   explanation:
@@ -104,6 +111,7 @@ export {
   configFilePattern,
   failureCodeConflict,
   loggingSettings,
+  manpagePageNameTaken,
   mcpPropertyNameTaken,
   mcpToolNameTaken,
   mcpToolWithoutAction,
