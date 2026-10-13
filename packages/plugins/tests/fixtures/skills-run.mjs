@@ -1,21 +1,46 @@
-import { appendFileSync, readFileSync } from 'node:fs';
-
-import { Application, Command } from '@loomcli/core';
-import { help } from '@loomcli/plugins/help';
-import { skills } from '@loomcli/plugins/skills';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import { basename, dirname, isAbsolute, relative, sep } from 'node:path';
 
 /**
  * One run of an application that installs `skills()`. The scenario file, named by
  * `SKILLS_SCENARIO`, holds the skills with the files each loader answers, the host's environment,
- * working directory, and platform, the umask, and the file each loader call is appended to. A
- * skill with `throws` has a loader that rejects, and one with `result` answers that value as given.
+ * working directory, and platform, the umask, the file each loader call is appended to, and the
+ * ceiling. A skill with `throws` has a loader that rejects, and one with `result` answers that
+ * value as given.
+ *
+ * The ceiling is the sandbox root. A `.git` entry outside it reads as missing to an `lstatSync`
+ * that answers `undefined` for a missing entry, as the project install's walk to a repository root
+ * asks, so the walk never leaves the sandbox, whatever sits above the temporary directory on the
+ * machine running the tests. The trap replaces `lstatSync` and resyncs the builtin's ESM exports.
+ * Bun fixes a builtin's ESM exports at the first ESM import and ignores the resync, so the fixture
+ * reads `node:fs` through `require` and imports the application only after the trap.
  */
-const scenario = JSON.parse(readFileSync(process.env.SKILLS_SCENARIO, 'utf8'));
+const fs = createRequire(import.meta.url)('node:fs');
+const scenario = JSON.parse(fs.readFileSync(process.env.SKILLS_SCENARIO, 'utf8'));
 const argv = process.argv.slice(2);
 
 if (scenario.umask !== undefined) {
   process.umask(scenario.umask);
 }
+
+/** Whether a path lies outside the ceiling. */
+function aboveCeiling(path) {
+  const inside = relative(scenario.ceiling, path);
+  return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+}
+
+if (scenario.ceiling !== undefined) {
+  const lstat = fs.lstatSync;
+  fs.lstatSync = (path, options) =>
+    options?.throwIfNoEntry === false && basename(path) === '.git' && aboveCeiling(dirname(path))
+      ? undefined
+      : lstat(path, options);
+  syncBuiltinESMExports();
+}
+
+const { Application, Command } = await import('@loomcli/core');
+const { help } = await import('@loomcli/plugins/help');
+const { skills } = await import('@loomcli/plugins/skills');
 
 /** A file as the loader answers it: text, or the bytes the scenario lists. */
 function fileOf({ bytes, content, executable, path }) {
@@ -30,7 +55,7 @@ function fileOf({ bytes, content, executable, path }) {
 function skillOf(entry) {
   return {
     files: async () => {
-      appendFileSync(scenario.loaded, `${entry.name}\n`);
+      fs.appendFileSync(scenario.loaded, `${entry.name}\n`);
       if (entry.throws) {
         throw new Error(`The ${entry.name} loader failed.`);
       }
