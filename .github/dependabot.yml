@@ -10,6 +10,12 @@ updates:
         patterns:
           - '*'
 
+  # The published Loom CLI the release workflow's plan and record jobs run.
+  - package-ecosystem: npm
+    directory: /.github/release-tool
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

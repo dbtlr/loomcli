@@ -1,0 +1,8 @@
+{
+  "name": "loomcli-release-tool",
+  "private": true,
+  "description": "Pins the published Loom CLI that the release workflow's plan and record jobs run.",
+  "dependencies": {
+    "@loomcli/loom": "0.10.0"
+  }
+}
