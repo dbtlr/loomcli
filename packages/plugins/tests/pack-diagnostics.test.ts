@@ -34,6 +34,13 @@ const explanations = {
     'list of strings with no control character; and calls probe, a function, from',
     'status.',
   ],
+  'skills/settings': [
+    'The skills plugin installs each skill the application declares from a name and a',
+    'function that returns its files, so skills is a nonempty list of objects, each',
+    'name is lowercase letters and digits joined by single hyphens, 64 characters at',
+    'most, no name repeats, and files is a function. A name is one path segment in an',
+    "agent's skills folder.",
+  ],
   'version/postfix': [
     'The version plugin prints the postfix after the version on its one line, so the',
     'postfix holds a character other than whitespace and no line terminator.',
@@ -115,6 +122,29 @@ const runFault = {
   key: 'run',
   sentence: 'is not a list of argument words.',
 };
+
+/** One skills settings fault: the call, what the finding marks, and the fault's words. */
+function skillsFault(
+  call: string,
+  target: string | undefined,
+  fault: { readonly sentence: string; readonly correction: string },
+): Expected {
+  return {
+    correction: fault.correction,
+    finding: target === undefined ? [`    ${call}`] : marked(call, target),
+    headline: 'INVALID SKILLS SETTING',
+    rule: 'skills/settings',
+    sentence: `Plugin "@loomcli/plugins/skills" setting "skills" ${fault.sentence}`,
+  };
+}
+
+const listFault = {
+  correction: "Supply at least one skill, such as { name: 'notes', files: loadNotesSkill }.",
+  sentence: 'is not a list of skills.',
+};
+
+const nameCorrection =
+  'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
 /** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
@@ -198,6 +228,35 @@ const settingsCases: Record<string, Expected> = {
     "run: ['serve', 8080]",
     runFault,
   ),
+  'skills-empty': skillsFault('skills({ skills: [] })', 'skills: []', listFault),
+  'skills-entry': skillsFault('skills({ skills: [1] })', 'skills: [1]', {
+    correction: 'Supply each skill as { name, files }.',
+    sentence: 'holds an entry that is not a skill.',
+  }),
+  'skills-files': skillsFault(
+    "skills({ skills: [{ files: 'notes.md', name: 'notes' }] })",
+    "skills: [{ files: 'notes.md', name: 'notes' }]",
+    {
+      correction: "Supply a function that returns the skill's files.",
+      sentence: 'holds a skill whose files is not a function: notes.',
+    },
+  ),
+  'skills-list': skillsFault("skills({ skills: 'notes' })", "skills: 'notes'", listFault),
+  'skills-name': skillsFault(
+    "skills({ skills: [{ files: …, name: 'Notes' }] })",
+    "skills: [{ files: …, name: 'Notes' }]",
+    { correction: nameCorrection, sentence: 'holds a name that is not a skill name: Notes.' },
+  ),
+  'skills-name-none': skillsFault('skills({ skills: [{ files: … }] })', 'skills: [{ files: … }]', {
+    correction: nameCorrection,
+    sentence: 'holds a name that is not a skill name: (none).',
+  }),
+  'skills-none': skillsFault('skills()', undefined, listFault),
+  'skills-twice': skillsFault(
+    "skills({ skills: [{ files: …, name: 'notes' }, { files: …, name: 'notes' }] })",
+    "skills: [{ files: …, name: 'notes' }, { files: …, name: 'notes' }]",
+    { correction: 'Give each skill its own name.', sentence: 'holds the skill name notes twice.' },
+  ),
   'version-blank': postfixFault("version({ postfix: ' ' })", "postfix: ' '"),
   'version-lines': postfixFault(
     String.raw`version({ postfix: 'schema\u000av1' })`,
@@ -216,8 +275,9 @@ test.each(Object.entries(settingsCases))(
 
 /**
  * The pack's rules a build raises rather than a factory call: the one `--manifest` raises, which
- * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, and
- * the service plugin's, which the service test pins.
+ * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
+ * service plugin's, which the service test pins, and the skills plugin's file faults, which the
+ * skills test pins.
  */
 const pinnedElsewhere = [
   'manifest/failure-code-conflict',
@@ -225,6 +285,7 @@ const pinnedElsewhere = [
   'mcp/tool-name-taken',
   'mcp/tool-without-action',
   'service/run-unrouted',
+  'skills/files',
 ];
 
 test('every rule the pack declares has a pinned diagnostic', () => {

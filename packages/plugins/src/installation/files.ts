@@ -5,11 +5,12 @@
  * over a file it did not record. The module is internal to the pack: no subpath exports it.
  */
 import { rmSync } from 'node:fs';
-import { isAbsolute, normalize, sep } from 'node:path';
+import { isAbsolute, normalize, posix, sep } from 'node:path';
 
 import {
   createDirectory,
   digestOf,
+  exists,
   missingParents,
   observe,
   removeEmptyDirectory,
@@ -17,8 +18,10 @@ import {
   replaceFile,
 } from './disk.js';
 import type { Observed } from './disk.js';
+import { removeFolderLeftovers, removeWhole, writeFolder } from './folders.js';
+import type { FolderFile } from './folders.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
-import type { Committed, CommittedFile, Pending, PendingFile } from './record.js';
+import type { Committed, CommittedFile, Pending, PendingFile, RecordedFolder } from './record.js';
 
 /**
  * One file an install writes: its absolute path, the content it will hold, and the permission bits
@@ -31,7 +34,16 @@ interface InstalledFile {
 }
 
 /**
- * Why a path refuses an install or uninstall: a file the plugin did not record, a recorded file
+ * One folder an install writes: its absolute path and the files it holds, which the install
+ * writes whole in place of whatever the folder held.
+ */
+interface InstalledFolder {
+  readonly path: string;
+  readonly files: readonly FolderFile[];
+}
+
+/**
+ * Why a path refuses an install or uninstall: a file or folder the plugin did not record, a recorded file
  * whose digest changed, a symbolic link, a directory, another kind of file, or a plugin's file that
  * is damaged or holds an unknown format.
  */
@@ -56,11 +68,14 @@ type InstallOutcome =
   | { readonly status: 'refused'; readonly refused: readonly Refusal[] }
   | {
       readonly status: 'installed';
+      /** The files and the folders written. */
       readonly written: readonly string[];
-      /** Recorded files the install no longer lists, removed because no one changed them. */
+      /** Recorded files the install no longer lists, removed because no one changed them, and recorded folders it no longer lists. */
       readonly removed: readonly string[];
       /** Recorded files the install no longer lists, kept because someone changed them. */
       readonly kept: readonly string[];
+      /** Unrecorded folder paths the force mode took over; the member is absent when it took none. */
+      readonly replaced?: readonly string[];
     };
 
 type UninstallOutcome =
@@ -80,23 +95,34 @@ interface UninstallRequest {
   readonly signal: AbortSignal;
 }
 
+/**
+ * What an install writes: files, folders, or both. The force mode, which only the skills plugin
+ * passes, replaces an unrecorded folder at a listed folder's path in place of refusing.
+ */
 interface InstallRequest extends UninstallRequest {
   readonly files: readonly InstalledFile[];
+  readonly folders?: readonly InstalledFolder[];
+  readonly force?: boolean;
 }
 
 /**
  * Resolves a pending plugin's file by what is on disk: a path holding the intended or the prior
  * digest stays recorded with it, and one that is gone or holds any other digest is dropped. A
- * listed directory that exists stays. Leftover staging files are removed, and the result is
- * written as committed.
+ * listed directory that exists stays, and so does every listed folder, whether or not it is there.
+ * Leftover staging files and the staging and retired folders beside each listed folder are removed,
+ * and the result is written as committed.
  */
 function recover(path: string, pending: Pending): Committed {
   for (const entry of pending.files) {
     removeStagingFiles(entry.path);
   }
+  for (const folder of pending.folders) {
+    removeFolderLeftovers(folder.path);
+  }
   const committed: Committed = {
     directories: pending.directories.filter((directory) => observe(directory).kind === 'directory'),
     files: pending.files.flatMap(recoveredFile),
+    folders: pending.folders,
     state: 'committed',
   };
   writePluginFile(path, committed);
@@ -165,20 +191,49 @@ function removeRecorded(files: readonly CommittedFile[]): { removed: string[]; k
   return { kept, removed };
 }
 
+/** The refusal of a listed folder path that is not recorded and holds anything, a link included. */
+function folderRefusals(
+  paths: readonly string[],
+  folders: readonly RecordedFolder[],
+): readonly Refusal[] {
+  const recordedPaths = new Set(folders.map(({ path }) => path));
+  return unrecordedFolders(paths, recordedPaths).map((path) => ({ path, reason: 'unrecorded' }));
+}
+
+/** The listed folder paths that hold something the plugin's file does not record. */
+function unrecordedFolders(paths: readonly string[], recordedPaths: ReadonlySet<string>): string[] {
+  return paths.filter((path) => !recordedPaths.has(path) && exists(path));
+}
+
 /** What an install will do, written as the pending plugin's file before it touches any target. */
 interface InstallPlan {
   readonly pending: Pending;
   readonly created: readonly string[];
   readonly removals: readonly CommittedFile[];
+  readonly folderRemovals: readonly RecordedFolder[];
+  readonly replaced: readonly string[];
   readonly committed: Committed;
 }
 
+/**
+ * The plan for the targets it writes, with no folder taken over yet. The pending file lists
+ * every folder recorded before and every folder listed now, so a folder stays recorded wherever a
+ * kill leaves the install.
+ */
 function planInstall(
   targets: readonly { file: InstalledFile; prior: string | null }[],
+  folders: readonly InstalledFolder[],
   committed: Committed,
 ): InstallPlan {
   const listed = new Set(targets.map(({ file }) => file.path));
-  const created = [...new Set(targets.flatMap(({ file }) => missingParents(file.path)))];
+  const listedFolders = new Set(folders.map(({ path }) => path));
+  const created = [
+    ...new Set(
+      [...targets.map(({ file }) => file.path), ...folders.map(({ path }) => path)].flatMap(
+        missingParents,
+      ),
+    ),
+  ];
   const directories = [...new Set([...committed.directories, ...created])];
   const removals = committed.files.filter(({ path }) => !listed.has(path));
   const written = targets.map(({ file, prior }) => ({
@@ -190,16 +245,31 @@ function planInstall(
     ...written,
     ...removals.map(({ digest, path }) => ({ intended: null, path, prior: digest })),
   ];
+  const folderRemovals = committed.folders.filter(({ path }) => !listedFolders.has(path));
+  const everyFolder = [
+    ...committed.folders,
+    ...folders.filter(({ path }) => !committed.folders.some((entry) => entry.path === path)),
+  ].map(({ path }) => ({ path }));
   return {
     committed: {
       directories,
       files: written.map(({ intended, path }) => ({ digest: intended, path })),
+      folders: folders.map(({ path }) => ({ path })),
       state: 'committed',
     },
     created,
-    pending: { directories, files: pendingFiles, state: 'pending' },
+    folderRemovals,
+    pending: { directories, files: pendingFiles, folders: everyFolder, state: 'pending' },
     removals,
+    replaced: [],
   };
+}
+
+/** What an install lists: its files, its folders, and whether it may take over an unrecorded folder. */
+interface Listed {
+  readonly files: readonly InstalledFile[];
+  readonly folders: readonly InstalledFolder[];
+  readonly force: boolean;
 }
 
 /** The rule a target path breaks, or none for an absolute, normalized path not yet listed. */
@@ -214,38 +284,100 @@ function targetPathFault(path: string, listed: ReadonlySet<string>): string | un
 }
 
 /**
- * Throws a TypeError for the first target path that is not absolute, not normalized, or listed
- * twice: a first-party plugin's bug, which the module never repairs by normalizing or merging.
+ * The rule a file of a folder breaks, or none for a relative POSIX path that is normalized, stays
+ * inside the folder, and is not yet listed.
  */
-function checkTargetPaths(files: readonly InstalledFile[]): void {
+function folderFilePathFault(path: string, listed: ReadonlySet<string>): string | undefined {
+  if (isAbsolute(path) || path === '' || path.endsWith(posix.sep)) {
+    return 'is not relative';
+  }
+  if (path !== posix.normalize(path) || path === '..' || path.startsWith(`..${posix.sep}`)) {
+    return 'is not normalized or leaves its folder';
+  }
+  return listed.has(path) ? 'is listed twice' : undefined;
+}
+
+/** Throws a TypeError for the first file of a folder whose path breaks the rule above. */
+function checkFolderFilePaths(folder: InstalledFolder): void {
   const listed = new Set<string>();
-  for (const { path } of files) {
-    const fault = targetPathFault(path, listed);
+  for (const { path } of folder.files) {
+    const fault = folderFilePathFault(path, listed);
     if (fault !== undefined) {
-      throw new TypeError(`Installed file path "${path}" ${fault}.`);
+      throw new TypeError(`Installed folder file path "${path}" in "${folder.path}" ${fault}.`);
     }
     listed.add(path);
   }
 }
 
 /**
- * Installs the plugin's files. A target path that is not absolute, not normalized, or listed twice
- * throws a TypeError before anything is read or written. It recovers a pending plugin's file first, then checks every
- * target: a target that is absent, or a regular file the plugin recorded with its digest
- * unchanged, may be written, and any other refuses the whole install, which writes nothing. It
- * reads the run signal before the pending write and, once it has begun, does not stop between
- * targets. Each target goes through a staging file and a rename, and each recorded file the
- * install no longer lists is removed when no one changed it.
+ * Throws a TypeError for the first target path, of a file or a folder, that is not absolute, not
+ * normalized, or listed twice, and for the first file of a folder whose path is not relative and
+ * normalized: a first-party plugin's bug, which the module never repairs by normalizing or merging.
+ */
+function checkTargetPaths(
+  files: readonly InstalledFile[],
+  folders: readonly InstalledFolder[],
+): void {
+  const listed = new Set<string>();
+  const kinds = [
+    ...files.map(({ path }) => ({ kind: 'file', path })),
+    ...folders.map(({ path }) => ({ kind: 'folder', path })),
+  ];
+  for (const { kind, path } of kinds) {
+    const fault = targetPathFault(path, listed);
+    if (fault !== undefined) {
+      throw new TypeError(`Installed ${kind} path "${path}" ${fault}.`);
+    }
+    listed.add(path);
+  }
+  folders.forEach(checkFolderFilePaths);
+}
+
+/**
+ * Installs the plugin's files and folders. A target path that is not absolute, not normalized, or
+ * listed twice throws a TypeError before anything is read or written. It recovers a pending
+ * plugin's file first, then checks every target: a file target that is absent, or a regular file
+ * the plugin recorded with its digest unchanged, may be written, and a folder target that is
+ * absent or recorded may be replaced whatever is inside it. Any other target refuses the whole
+ * install, which writes nothing, except an unrecorded folder target under the force mode, which is
+ * replaced and recorded. It reads the run signal before the pending write and, once it has begun,
+ * does not stop between targets. Each file goes through a staging file and a rename, each folder
+ * through a staging folder and renames, and each recorded file the install no longer lists is
+ * removed when no one changed it, and each recorded folder it no longer lists is removed whole.
  */
 function install(request: InstallRequest): InstallOutcome {
-  checkTargetPaths(request.files);
+  const listed: Listed = {
+    files: request.files,
+    folders: request.folders ?? [],
+    force: request.force === true,
+  };
+  checkTargetPaths(listed.files, listed.folders);
   const path = pluginFilePath(request.record, request.plugin);
-  const prepared = prepareInstall(path, request.files);
+  const prepared = prepareInstall(path, listed);
   if ('refused' in prepared) {
     return { refused: prepared.refused, status: 'refused' };
   }
   request.signal.throwIfAborted();
-  return carryOut(path, prepared.plan, request.files);
+  return carryOut(path, prepared.plan, listed);
+}
+
+/** The refusals of the file targets against the files the plugin's file records. */
+function fileRefusals(
+  observed: readonly { file: InstalledFile; seen: Observed }[],
+  committed: Committed,
+): Refusal[] {
+  const digests = new Map(committed.files.map(({ digest, path }) => [path, digest]));
+  return observed.flatMap(({ file, seen }) => refusalOf(file.path, seen, digests));
+}
+
+/** Each observed file target with the digest it held before, `null` when it held nothing. */
+function withPriors(
+  observed: readonly { file: InstalledFile; seen: Observed }[],
+): { file: InstalledFile; prior: string | null }[] {
+  return observed.map(({ file, seen }) => ({
+    file,
+    prior: seen.kind === 'file' ? seen.digest : null,
+  }));
 }
 
 /**
@@ -254,41 +386,59 @@ function install(request: InstallRequest): InstallOutcome {
  */
 function prepareInstall(
   path: string,
-  files: readonly InstalledFile[],
+  listed: Listed,
 ): { readonly refused: readonly Refusal[] } | { readonly plan: InstallPlan } {
   const found = recorded(path);
   if ('refused' in found) {
     return { refused: [found.refused] };
   }
-  const digests = new Map(found.committed.files.map(({ digest, path: file }) => [file, digest]));
-  const observed = files.map((file) => ({ file, seen: observe(file.path) }));
-  const refused = observed.flatMap(({ file, seen }) => refusalOf(file.path, seen, digests));
+  const observed = listed.files.map((file) => ({ file, seen: observe(file.path) }));
+  const unrecorded = folderRefusals(
+    listed.folders.map((folder) => folder.path),
+    found.committed.folders,
+  );
+  const refused = [...fileRefusals(observed, found.committed), ...(listed.force ? [] : unrecorded)];
   if (refused.length !== EMPTY) {
     return { refused };
   }
-  const targets = observed.map(({ file, seen }) => ({
-    file,
-    prior: seen.kind === 'file' ? seen.digest : null,
-  }));
-  return { plan: planInstall(targets, found.committed) };
+  const replaced = unrecorded.map((refusal) => refusal.path);
+  return {
+    plan: { ...planInstall(withPriors(observed), listed.folders, found.committed), replaced },
+  };
 }
 
-/** The writes of an install, which do not stop between targets once the pending file is written. */
-function carryOut(
-  path: string,
-  plan: InstallPlan,
-  files: readonly InstalledFile[],
-): InstallOutcome {
-  writePluginFile(path, plan.pending);
+/** The writes of the files and folders, in that order, after the missing parents are created. */
+function writeTargets(plan: InstallPlan, listed: Listed): void {
   for (const directory of plan.created) {
     createDirectory(directory);
   }
-  for (const file of files) {
+  for (const file of listed.files) {
     replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
   }
+  for (const folder of listed.folders) {
+    writeFolder(folder.path, folder.files);
+  }
+}
+
+/** The writes of an install, which do not stop between targets once the pending file is written. */
+function carryOut(path: string, plan: InstallPlan, listed: Listed): InstallOutcome {
+  writePluginFile(path, plan.pending);
+  writeTargets(plan, listed);
   const { kept, removed } = removeRecorded(plan.removals);
+  const removedFolders = removeFolders(plan.folderRemovals);
   writePluginFile(path, plan.committed);
-  return { kept, removed, status: 'installed', written: files.map((file) => file.path) };
+  return {
+    kept,
+    removed: [...removed, ...removedFolders],
+    status: 'installed',
+    written: [...listed.files, ...listed.folders].map((target) => target.path),
+    ...(plan.replaced.length === EMPTY ? {} : { replaced: plan.replaced }),
+  };
+}
+
+/** Removes each recorded folder whole and answers those that were there; a folder already gone is no error. */
+function removeFolders(folders: readonly RecordedFolder[]): string[] {
+  return folders.filter(({ path }) => removeWhole(path)).map(({ path }) => path);
 }
 
 /** Removes each recorded directory that is empty, deepest first, so a parent empties before its turn. */
@@ -302,10 +452,10 @@ function removeDirectories(directories: readonly string[]): void {
 }
 
 /**
- * Uninstalls the plugin's files. It recovers a pending plugin's file first, removes each recorded
- * file whose digest is unchanged, keeps each one someone changed, removes each recorded directory
- * that is then empty, deepest first, and deletes the plugin's file. It reads the run signal before
- * the first removal. A path already gone is no error.
+ * Uninstalls the plugin's files and folders. It recovers a pending plugin's file first, removes each
+ * recorded file whose digest is unchanged, keeps each one someone changed, removes each recorded
+ * folder whole, removes each recorded directory that is then empty, deepest first, and deletes the
+ * plugin's file. It reads the run signal before the first removal. A path already gone is no error.
  */
 function uninstall(request: UninstallRequest): UninstallOutcome {
   const path = pluginFilePath(request.record, request.plugin);
@@ -315,20 +465,29 @@ function uninstall(request: UninstallRequest): UninstallOutcome {
   }
   request.signal.throwIfAborted();
   const { kept, removed } = removeRecorded(found.committed.files);
+  const removedFolders = removeFolders(found.committed.folders);
   removeDirectories(found.committed.directories);
   rmSync(path, { force: true });
-  return { kept, removed, status: 'uninstalled' };
+  return { kept, removed: [...removed, ...removedFolders], status: 'uninstalled' };
 }
 
-/** What a plugin's file records, read without writing: its files, or the refusal of its file. */
+/**
+ * What a plugin's file records, read without writing: its files and, when it records any, its
+ * folders, or the refusal of its file.
+ */
 type RecordedRead =
   | { readonly status: 'refused'; readonly refused: Refusal<RecordRefusalReason> }
-  | { readonly status: 'read'; readonly files: readonly CommittedFile[] };
+  | {
+      readonly status: 'read';
+      readonly files: readonly CommittedFile[];
+      readonly folders?: readonly RecordedFolder[];
+    };
 
 /**
  * What the plugin's file records, read without writing anything: each recorded file with its
- * digest, none for a missing file, and for a pending file what recovery would keep. A damaged file
- * or one of an unknown format refuses, as it refuses an install or uninstall.
+ * digest and each recorded folder, none for a missing file, and for a pending file what recovery
+ * would keep. A damaged file or one of an unknown format refuses, as it refuses an install or
+ * uninstall.
  */
 function readRecorded(request: Omit<UninstallRequest, 'signal'>): RecordedRead {
   const path = pluginFilePath(request.record, request.plugin);
@@ -342,8 +501,18 @@ function readRecorded(request: Omit<UninstallRequest, 'signal'>): RecordedRead {
   const { file } = read;
   return {
     files: file.state === 'pending' ? file.files.flatMap(recoveredFile) : file.files,
+    ...(file.folders.length === EMPTY ? {} : { folders: file.folders }),
     status: 'read',
   };
+}
+
+/**
+ * Whether the plugin's file is `pending`, which an install or uninstall resolves before it acts,
+ * read without writing. A missing, damaged, or unknown file is not pending.
+ */
+function hasPendingRecord(request: Omit<UninstallRequest, 'signal'>): boolean {
+  const read = readPluginFile(pluginFilePath(request.record, request.plugin));
+  return read.kind === 'read' && read.file.state === 'pending';
 }
 
 /**
@@ -360,6 +529,7 @@ function targetRefusals(
 
 export type {
   InstalledFile,
+  InstalledFolder,
   InstallOutcome,
   InstallRequest,
   RecordedRead,
@@ -369,4 +539,4 @@ export type {
   UninstallOutcome,
   UninstallRequest,
 };
-export { install, readRecorded, targetRefusals, uninstall };
+export { folderRefusals, hasPendingRecord, install, readRecorded, targetRefusals, uninstall };

@@ -565,6 +565,17 @@ try {
       `${name}: packed service refusal`,
     );
   }
+  // The packed skills plugin refuses a relative HOME, before it loads a skill or reads the record.
+  const skilling = join(temporary, 'dist/skills.js');
+  for (const name of selected) {
+    const refused = run(runtimes.get(name), [skilling], temporary);
+    assert.equal(refused.status, 1, refused.output);
+    assert.equal(
+      refused.output,
+      'packed-skills cannot find your home folder because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.\n',
+      `${name}: packed skills refusal`,
+    );
+  }
   // The packed resolver gives the state directory row and names a relative HOME the darwin row needs.
   const directories = `${JSON.stringify([
     { path: join('/state', 'notes', 'installation') },
@@ -687,7 +698,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
