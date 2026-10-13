@@ -81,8 +81,8 @@ function inlineRuns(nodes: readonly Inline[], modifiers: Modifiers): Run[] {
 
 /**
  * A link prints its text, a space, and its destination in angle brackets. When the text prints
- * exactly as the destination, the text alone prints, in its own fonts; when it prints empty, the
- * destination alone prints, so no line starts with the space, which roff reads as a break. An
+ * exactly as the destination, the text alone prints, in its own fonts; when it prints nothing but
+ * whitespace, the destination alone prints, so no line starts with the space, which roff reads as a break. An
  * image prints as a link with the same text.
  */
 function linkRuns(node: Extract<Inline, { kind: 'link' | 'image' }>, modifiers: Modifiers): Run[] {
@@ -92,7 +92,7 @@ function linkRuns(node: Extract<Inline, { kind: 'link' | 'image' }>, modifiers: 
   if (printed === node.destination) {
     return text;
   }
-  if (printed === '') {
+  if (printed.trim() === '') {
     return [{ font, text: node.destination }];
   }
   return [...text, { font, text: ` <${node.destination}>` }];

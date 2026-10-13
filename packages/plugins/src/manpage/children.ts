@@ -3,7 +3,7 @@
  * `update`, and `uninstall` act on the set under the operator's home through the installed-files
  * module, recorded in the plugin's file `manpage.json`.
  */
-import { statSync } from 'node:fs';
+import { lstatSync, statSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
@@ -58,10 +58,13 @@ function filesIn(folder: string, set: readonly ManPage[]): InstalledFile[] {
   return set.map(({ file, text }) => ({ content: text, mode: pageMode, path: join(folder, file) }));
 }
 
-/** What a path names, following links, or `undefined` when nothing is there or a parent is a file. */
+/**
+ * What a path names, following links, or `undefined` when nothing is there or a parent is a file.
+ * A symbolic link whose target is missing is what is there, read without following it.
+ */
 function statOf(path: string): Stats | undefined {
   try {
-    return statSync(path, { throwIfNoEntry: false });
+    return statSync(path, { throwIfNoEntry: false }) ?? lstatSync(path, { throwIfNoEntry: false });
   } catch (error) {
     if (errorCode(error) === 'ENOTDIR') {
       return undefined;

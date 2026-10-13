@@ -271,6 +271,17 @@ describe('generate', () => {
     },
   );
 
+  it('an --out under a symbolic link whose target is missing fails with the pinned sentence and writes nothing', () => {
+    const box = sandbox();
+    symlinkSync(join(box.cwd, 'missing'), join(box.cwd, 'man'));
+    const result = run(box, ['manpage', 'generate', '--out', 'man/sub']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `${join(box.cwd, 'man/sub')} is not a folder. Name a folder, or a path where notes can create one.`,
+    );
+    expect(readdirSync(box.cwd)).toEqual(['man']);
+  });
+
   it('a run without --out is a usage error with exit 2', () => {
     const box = sandbox();
     expect(run(box, ['manpage', 'generate']).status).toBe(2);

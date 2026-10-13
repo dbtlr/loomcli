@@ -128,6 +128,11 @@ test.each<[string, string, string]>([
   ],
   ['a link whose text prints empty prints its destination alone', 'see [](x.org)', 'see x.org'],
   [
+    'a link whose text prints only whitespace prints its destination alone, with no space before it',
+    '[ ](x.org) after',
+    'x.org after',
+  ],
+  [
     'an image prints as a link with the same text',
     '![the logo](https://x.org/logo.png)',
     'the logo <https://x.org/logo.png>',
