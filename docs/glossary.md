@@ -653,7 +653,7 @@ The plugin Command that replaces the running binary with a verified release asse
 _Avoid_: Auto-update, upgrade (for the Command), updater
 
 **Update notice**:
-The one line the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache at most once a day, so no run waits on the network, and the author or the operator can turn notices off.
+The one line the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache about once a day, so no run waits on the network, and the author or the operator can turn notices off.
 _Avoid_: Update check (for the line), nag, banner
 
 **Service unit**:
