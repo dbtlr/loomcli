@@ -9,6 +9,7 @@ import { help } from '@loomcli/plugins/help';
 import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+import { manpage } from '@loomcli/plugins/manpage';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
@@ -61,6 +62,7 @@ const configured = new Application('jsonkit', {
     doctor(),
     completion(),
     mcp(),
+    manpage(),
   ],
   translators: [invalidJson],
   version: Package.version,

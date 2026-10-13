@@ -36,7 +36,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       it('jsonkit <Tab> lists the visible root children and never a deprecated, hidden, or alias name', async () => {
         const { listed } = await complete('jsonkit ');
         expect(counts(listed)).toEqual(
-          counts(['completion', 'doctor', 'get', 'keys', 'mcp', 'select']),
+          counts(['completion', 'doctor', 'get', 'keys', 'manpage', 'mcp', 'select']),
         );
       });
 
