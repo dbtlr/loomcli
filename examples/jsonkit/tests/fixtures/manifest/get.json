@@ -103,7 +103,7 @@
     "description": "Read one value at a path.",
     "details": [
       "Quote a path that holds a shell metacharacter.",
-      "A path is a dot-separated walk from the root of the document."
+      "A path is a dot-separated walk from the root of the document.\n\n- A **key** reads an object's member, such as `user.name`.\n- A **whole number** reads an array's item, such as `items.0`.\n\nThe document is *JSON*; see [the format](https://www.json.org/json-en.html).\n"
     ],
     "examples": [
       {

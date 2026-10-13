@@ -737,7 +737,8 @@ describe('uninstalling', () => {
     const box = sandbox();
     run(box, ['skills', 'install']);
     mkdirSync(folderOf(box, 'claude', 'mine'), { recursive: true });
-    writeFileSync(join(folderOf(box, 'claude', 'mine'), 'SKILL.md'), 'mine');
+    // The mode is explicit, so the pinned 644 holds under any umask.
+    writeFileSync(join(folderOf(box, 'claude', 'mine'), 'SKILL.md'), 'mine', { mode: 0o644 });
     run(box, ['skills', 'uninstall']);
     expect(tree(folderOf(box, 'claude', 'mine'))).toEqual({
       '.': 'directory',

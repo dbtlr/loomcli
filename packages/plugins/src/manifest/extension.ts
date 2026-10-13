@@ -2,7 +2,7 @@ import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
 import { packageName } from '../constants.js';
-import { line, prose } from '../lines.js';
+import { line, markdown } from '../lines.js';
 import { failure } from './failures.js';
 
 /** One example invocation: the tokens after the application name, and an optional note. */
@@ -21,16 +21,16 @@ const declaredFailure = z.object({ failure, meaning: line }).transform((entry) =
 
 /**
  * The manifest's collecting extension on Commands, as declarations alone. The author and any
- * plugin supply prose, example invocations, and the failures a Command can raise for its manifest
+ * plugin supply Markdown, example invocations, and the failures a Command can raise for its manifest
  * entry through it, and every value is kept in collection order. It ships apart from the manifest
  * plugin's entry, so help supplies its values here whether or not the manifest is installed. It
- * applies the pack's shared line and prose rules, which help's schema also uses, so every value
+ * applies the pack's shared line and Markdown rules, which help's schema also uses, so every value
  * help supplies validates.
  */
 export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
   schema: z.object({
-    details: prose.optional(),
+    details: markdown.optional(),
     examples: z.array(example).optional(),
     failures: z.array(declaredFailure).optional(),
   }),

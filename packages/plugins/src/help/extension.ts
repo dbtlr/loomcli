@@ -2,12 +2,12 @@ import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
 import { packageName } from '../constants.js';
-import { line, prose } from '../lines.js';
+import { line, markdown } from '../lines.js';
 
 /**
  * The facts a declaration carries for the help page, as declarations alone. A projection that
- * wants help's prose imports this module and never the help middleware, and an application that
- * installs no help plugin still compiles against it. The line and prose rules are the manifest's
+ * wants help's Details imports this module and never the help middleware, and an application that
+ * installs no help plugin still compiles against it. The line and Markdown rules are the manifest's
  * too, so every value help supplies to the manifest validates there.
  */
 
@@ -17,7 +17,7 @@ const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
 export const helpCommand = extension(`${packageName}/help/command`, {
   schema: z.object({
     commandSections: z.array(sectionPath).optional(),
-    details: prose.optional(),
+    details: markdown.optional(),
     examples: z.array(example).optional(),
     optionSections: z.array(sectionPath).optional(),
     section: sectionPath.optional(),

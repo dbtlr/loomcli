@@ -1,0 +1,1 @@
+- Add [Markdown Details](docs/core.md#markdown-details) to extended help, with paragraphs, headings, lists, code, quotes, emphasis, and links. Allow blank lines and text imports while keeping the Markdown source unchanged in the manifest.

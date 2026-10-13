@@ -110,6 +110,7 @@ const failure = (fields) => ({
 
 /** One author value per case, each breaking one line, prose, or failure rule, or keeping them all. */
 const cases = {
+  'blank-details': { details: ' \t\n ' },
   'blank-prose-line': { details: 'First line.\n\nThird line.' },
   'command-on-two-lines': { examples: [{ command: 'get a\nget b' }] },
   'failure-bad-code': failure({ failure: BadCodeError }),

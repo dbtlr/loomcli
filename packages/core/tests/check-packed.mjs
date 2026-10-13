@@ -608,6 +608,47 @@ try {
     temporary,
   );
   assert.equal(bundled.status, 0, bundled.output);
+  // A text import is bundled by the installed toolchain and renders under either runtime.
+  const markdownSource = fileURLToPath(new URL('fixtures/markdown', import.meta.url));
+  await cp(markdownSource, join(temporary, 'markdown'), { recursive: true });
+  const markdownBuild = run(
+    join(temporary, 'node_modules/.bin/loom'),
+    ['build', '--target', 'node', '--entry', 'markdown/main.ts', '--out', 'markdown-dist'],
+    temporary,
+  );
+  assert.equal(markdownBuild.status, 0, markdownBuild.output);
+  // Removing the source proves the bundle carries the imported file's text.
+  await rm(join(temporary, 'markdown'), { recursive: true });
+  const markdownPage = [
+    'markdown · Read Markdown Details.',
+    '',
+    '  Read values',
+    '',
+    '  - Read a key, such as `user.name`.',
+    '  - See the format (https://www.json.org/json-en.html).',
+    '',
+    '    app get user.name',
+    '',
+    'USAGE',
+    '  markdown [options]',
+    '',
+    'OPTIONS',
+    '  -h, --help  Show this help.',
+    '',
+  ].join('\n');
+  for (const name of selected) {
+    const result = run(
+      runtimes.get(name),
+      [join(temporary, 'markdown-dist/main.js'), '--help'],
+      temporary,
+    );
+    assert.equal(result.status, 0, result.output);
+    assert.equal(
+      result.stdout,
+      markdownPage,
+      `${name}: packed Markdown Details from a text import`,
+    );
+  }
   // The packed loom bin checks an application module against the packed core and finds no fault.
   await writeFile(
     join(temporary, 'checked.ts'),
@@ -698,7 +739,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
