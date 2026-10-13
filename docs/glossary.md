@@ -506,6 +506,10 @@ _Avoid_: Long description, body, help text, Markdown asset
 The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
+**Man page**:
+The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. Each Command that is neither hidden nor under a hidden Command has one, named for the Command's path, such as `jsonkit-get`, and a page's bytes depend only on the graph.
+_Avoid_: Manual page, manpage (outside the plugin's name), roff page, help page
+
 **MCP tool**:
 One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that is the Command's path joined with `_`, or the application name for the root, with each `-` written as `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
 _Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted in)
