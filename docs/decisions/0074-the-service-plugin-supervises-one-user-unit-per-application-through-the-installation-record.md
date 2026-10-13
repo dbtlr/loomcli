@@ -57,3 +57,4 @@ Accepted in 0.11.0.
 ## Changelog
 
 - 2026-10-13: Proposed with the service contract.
+- 2026-10-13: [ADR-0076](0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md), proposed, gives the installed-files module a force mode for an operator's `skills install --force`, so adoption by flag no longer loosens the guarantee for every installer. The service plugin never passes it, and its refusal to adopt a unit it did not write stands.
