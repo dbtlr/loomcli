@@ -1,10 +1,5 @@
-import fs, { appendFileSync, readFileSync } from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, isAbsolute, relative, sep } from 'node:path';
-
-import { Application, Command } from '@loomcli/core';
-import { help } from '@loomcli/plugins/help';
-import { skills } from '@loomcli/plugins/skills';
 
 /**
  * One run of an application that installs `skills()`. The scenario file, named by
@@ -17,8 +12,11 @@ import { skills } from '@loomcli/plugins/skills';
  * that answers `undefined` for a missing entry, as the project install's walk to a repository root
  * asks, so the walk never leaves the sandbox, whatever sits above the temporary directory on the
  * machine running the tests. The trap replaces `lstatSync` and resyncs the builtin's ESM exports.
+ * Bun fixes a builtin's ESM exports at the first ESM import and ignores the resync, so the fixture
+ * reads `node:fs` through `require` and imports the application only after the trap.
  */
-const scenario = JSON.parse(readFileSync(process.env.SKILLS_SCENARIO, 'utf8'));
+const fs = createRequire(import.meta.url)('node:fs');
+const scenario = JSON.parse(fs.readFileSync(process.env.SKILLS_SCENARIO, 'utf8'));
 const argv = process.argv.slice(2);
 
 if (scenario.umask !== undefined) {
@@ -40,6 +38,10 @@ if (scenario.ceiling !== undefined) {
   syncBuiltinESMExports();
 }
 
+const { Application, Command } = await import('@loomcli/core');
+const { help } = await import('@loomcli/plugins/help');
+const { skills } = await import('@loomcli/plugins/skills');
+
 /** A file as the loader answers it: text, or the bytes the scenario lists. */
 function fileOf({ bytes, content, executable, path }) {
   return {
@@ -53,7 +55,7 @@ function fileOf({ bytes, content, executable, path }) {
 function skillOf(entry) {
   return {
     files: async () => {
-      appendFileSync(scenario.loaded, `${entry.name}\n`);
+      fs.appendFileSync(scenario.loaded, `${entry.name}\n`);
       if (entry.throws) {
         throw new Error(`The ${entry.name} loader failed.`);
       }
