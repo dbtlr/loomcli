@@ -94,4 +94,6 @@ The squash merge is the only publication step. Watch the `Release` workflow run 
 - The annotated tag `v<version>` exists at the commit the run published from.
 - The GitHub Release `v<version>` exists on that tag with the changelog section as its notes and one registry tarball per package as its assets.
 
+The `plan` and `record` jobs run the published Loom CLI that `.github/release-tool` pins, not the CLI in the cut. When the cycle changed `loom release plan` or `loom release record`, this release still ran the pinned version. Once the release is confirmed, move the pin to the new version through an ordinary PR, as the [release workflow reference](../../../docs/release-workflow.md#release-tool) describes; Dependabot also proposes it.
+
 If the run failed, follow the recovery order in the [release workflow reference](../../../docs/release-workflow.md): re-run the failed job, dispatch the workflow on `main` after fixing the workflow, or abandon the version unpublished and cut the next one. Never publish, tag, or create a Release by hand.

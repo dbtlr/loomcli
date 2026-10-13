@@ -8,7 +8,7 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
 
-The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share.
+The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
 
 ## Trigger
 
@@ -27,17 +27,34 @@ Each job holds one permission, and the two writing jobs run under the `release` 
 | `publish` | Publication is missing   | `id-token: write` | `release`   |
 | `record`  | The plan asks to record  | `contents: write` | `release`   |
 
-`plan` checks out `main` with full history, builds the CLI, and runs `loom release plan`. It reports `version`, `publish`, `record`, and `libraries` as job outputs. `libraries` is a compact JSON array of the participating directories. No job uploads the plan, because the `record` job derives it again from the same checkout.
+`plan` checks out `main` with full history, installs the release tool, and runs `loom release plan`. It installs and builds nothing from the checkout. It reports `version`, `publish`, `record`, and `libraries` as job outputs. `libraries` is a compact JSON array of the participating directories. No job uploads the plan, because the `record` job derives it again from the same checkout.
 
 `build` checks out the commit the run attests, installs with a frozen lockfile, builds, and runs `pnpm check:packed`. It then packs each directory in `libraries` with `pnpm --dir <directory> pack`, so a private or non-participating package is never packed. It uploads the tarballs as the `release-tarballs` artifact.
 
 `publish` runs Node.js 24 for npm 11.5.1 or newer, which trusted publishing requires. It has no checkout, because the repository's `devEngines` setting makes npm refuse to run inside one. For each tarball it reads the registry first with `npm view <name>@<version> version`. A version the registry already carries is skipped. Every other version is published with `npm publish --access public --provenance --ignore-scripts`, and a failed publication fails the job.
 
-`record` checks out `main` with full history, builds the CLI, runs `loom release plan` again, and then runs `loom release record` with that plan. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
+`record` checks out `main` with full history, installs the release tool, runs `loom release plan` again, and then runs `loom release record` with that plan. Like `plan`, it installs and builds nothing from the checkout. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
 
 Every third-party action is pinned to a full commit SHA with its version tag in a comment. GitHub-owned `actions/*` stay on their major tags.
 
 The packed consumer runs in CI on every pull request: the Linux Node job proves it under Node and the Linux Bun job proves it under Bun, each selected by `LOOM_TEST_RUNTIME`.
+
+## Release tool
+
+The `plan` and `record` jobs run the published `@loomcli/loom` that `.github/release-tool` pins. [ADR-0075](decisions/0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) records the design.
+
+`.github/release-tool/package.json` names `@loomcli/loom` at one exact version, and `.github/release-tool/package-lock.json` pins it and every package it depends on by integrity. Each job copies both files into `$RUNNER_TEMP/release-tool`, outside the checkout so the install leaves the working tree the plan reads untouched, and runs `npm ci --ignore-scripts` there. The jobs then run `$RUNNER_TEMP/release-tool/node_modules/.bin/loom` from the checkout.
+
+A change to `release plan` or `release record` therefore reaches the workflow one release later: a release publishes it, and then the pin moves to that version. The pinned version must carry every command and option the workflow calls. The `build` job still installs and builds the workspace, because it packs the release from the commit the run attests.
+
+Dependabot proposes each new version of the release tool as a pull request. To move the pin by hand, set the exact version in `.github/release-tool/package.json`, then regenerate the lockfile from that directory, which npm treats as its own project:
+
+```sh
+cd .github/release-tool
+npm install --package-lock-only --ignore-scripts
+```
+
+Move the pin when a release changes the release commands, and check that the workflow's calls still match the new version's options.
 
 ## Commands
 
@@ -108,7 +125,9 @@ The command prints every read, reuse, and write it made.
 Recovery has three modes. Take them in order.
 
 1. **Re-run the failed job.** A network failure, a registry timeout, or a cancelled runner needs nothing else. The run reads the current state and continues from it.
-2. **Fix the workflow on `main`, then dispatch it.** A defect in the workflow or in the CLI is fixed through an ordinary PR. Dispatch the workflow from `main` afterwards. It publishes only while the participating tree is unchanged since the cut commit.
+2. **Fix the workflow on `main`, then dispatch it.** A defect in the workflow is fixed through an ordinary PR. Dispatch the workflow from `main` afterwards. It publishes only while the participating tree is unchanged since the cut commit.
+
+   A defect in the release commands lives in the pinned, published CLI, so a fix in `packages/loom` reaches the workflow only after a release publishes it. When an earlier published version works, a PR moves the pin back to it. When the defect blocks the release that would publish its fix, a PR switches the `plan` and `record` jobs to install the workspace and run `node packages/loom/dist/main.js` after `pnpm build` for that release, and a later PR restores the release tool and moves its pin to the fixed version.
 3. **Fix forward with a new cut.** Nothing is ever repaired in place. What the next cut says depends on whether bytes reached the registry.
 
 A version that never published is abandoned as unpublished. This happens when the plan refuses publication, for example after a tag landed at the wrong commit or a participating file changed after the cut. The version never reaches the registry, the material-change baseline stays the commit that set it, and the next cut supersedes it. Say so in the narrative of the next cut.
@@ -137,7 +156,7 @@ The workflow depends on settings that live outside this repository's files.
 
 ## Accepted risks
 
-The `record` job installs from the frozen lockfile and builds the Loom CLI from the checkout in the same job that holds `contents: write`, before the step that uses the token. Dependency scripts are disabled and every package is integrity-pinned by the lockfile, so this is the same code that already runs on every pull request. `@loomcli/loom` is published, but the workflow runs the CLI it builds, `node packages/loom/dist/main.js`, not the published one. Running the published `@loomcli/loom` would remove the build from that job, and it remains the path to closing this risk.
+The `record` job runs third-party code while it holds `contents: write`: the pinned `@loomcli/loom` and the packages it depends on. Every one of them is integrity-pinned by the release tool's lockfile and installed with scripts disabled, and the job installs and builds nothing from the checkout, so a new dependency version reaches the job only through a reviewed pull request.
 
 ## A run with nothing to do
 
