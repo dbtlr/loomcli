@@ -23,6 +23,10 @@ const explanations = {
     'are whole numbers of 1 or more; onError is a function; and the console',
     'destination takes only a level.',
   ],
+  'self-update/settings': [
+    'The self-update plugin calls afterReplace once it has replaced the binary and',
+    'rewritten its installation record, so afterReplace is a function.',
+  ],
   'version/postfix': [
     'The version plugin prints the postfix after the version on its one line, so the',
     'postfix holds a character other than whitespace and no line terminator.',
@@ -118,6 +122,13 @@ const settingsCases: Record<string, Expected> = {
     headline: 'INVALID LOGGING SETTING',
     rule: 'logging/settings',
     sentence: 'Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.',
+  },
+  'self-update-hook': {
+    correction: 'Supply a function, or omit the setting.',
+    finding: marked('selfUpdate({ afterReplace: 1 })', 'afterReplace: 1'),
+    headline: 'INVALID SELF-UPDATE SETTING',
+    rule: 'self-update/settings',
+    sentence: 'Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.',
   },
   'version-blank': postfixFault("version({ postfix: ' ' })", "postfix: ' '"),
   'version-lines': postfixFault(

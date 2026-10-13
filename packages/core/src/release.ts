@@ -11,7 +11,7 @@ import type { ReleaseFacts } from './types.js';
  */
 declare const __LOOM_RELEASE__: unknown;
 
-/** The release group of the facts, which a baked value carries without its lane. */
+/** The release group of the facts, which a baked value carries without its channel. */
 type ReleaseGroup = NonNullable<ReleaseFacts['release']>;
 
 /** The release facts one read found, or the defect a malformed baked value is in their place. */
@@ -49,7 +49,7 @@ function heldMember(name: string, value: unknown): string {
 function releaseSource(
   repository: unknown,
   asset: unknown,
-): { source: Omit<ReleaseGroup, 'lane' | 'version'> } | { failure: InternalError } {
+): { source: Omit<ReleaseGroup, 'channel' | 'version'> } | { failure: InternalError } {
   if (typeof repository !== 'string' || !ownerName.test(repository)) {
     return malformed(heldMember('repository', repository));
   }
@@ -63,26 +63,26 @@ function releaseSource(
 }
 
 /**
- * The lane a semantic version reads: its first prerelease identifier, or `stable` when it has none.
- * A value that is not a semantic version reads no lane.
+ * The release channel a semantic version reads: its first prerelease identifier, or `stable` when
+ * it has none. A value that is not a semantic version reads no release channel.
  */
-function laneOf(version: unknown): string | undefined {
+function channelOf(version: unknown): string | undefined {
   const parsed = typeof version === 'string' ? semanticVersion.exec(version) : undefined;
   return parsed ? (parsed.groups?.prerelease?.split('.')[0] ?? 'stable') : undefined;
 }
 
-/** The release group of a baked value, frozen with its known members and the lane core derives. */
+/** The release group of a baked value, frozen with its known members and the channel core derives. */
 function releaseGroup(value: unknown): { group: ReleaseGroup } | { failure: InternalError } {
   if (!isPlainObject(value)) {
     return malformed('hold a release that is not an object');
   }
   const { asset, repository, version } = value;
-  const lane = laneOf(version);
-  if (typeof version !== 'string' || lane === undefined) {
+  const channel = channelOf(version);
+  if (typeof version !== 'string' || channel === undefined) {
     return malformed(heldMember('version', version));
   }
   const read = releaseSource(repository, asset);
-  return 'failure' in read ? read : { group: Object.freeze({ ...read.source, lane, version }) };
+  return 'failure' in read ? read : { group: Object.freeze({ ...read.source, channel, version }) };
 }
 
 /**

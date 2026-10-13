@@ -101,7 +101,7 @@ const host = { argv: [] };
 /** A release override a test supplies, which core takes as given. */
 const supplied = {
   build: 'development',
-  release: { lane: 'given', repository: 'x', version: '0' },
+  release: { channel: 'given', repository: 'x', version: '0' },
 };
 
 const scenarios = {

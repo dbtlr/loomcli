@@ -182,7 +182,7 @@ export interface ReleaseFacts {
   readonly release?: {
     readonly version: string;
     /** The first prerelease identifier of `version`, or `stable` when it has none. */
-    readonly lane: string;
+    readonly channel: string;
     /** The repository the release belongs to, as `owner/name`. */
     readonly repository: string;
     /** The release asset's name, present for a compiled binary alone. */

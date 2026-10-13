@@ -57,6 +57,13 @@ const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-ta
   headline: 'MCP property name taken',
 });
 
+/** A self-update plugin setting that is not one it accepts. */
+const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`, {
+  explanation:
+    'The self-update plugin calls afterReplace once it has replaced the binary and rewritten its installation record, so afterReplace is a function.',
+  headline: 'Invalid self-update setting',
+});
+
 /** A version plugin `postfix` setting that is not one line of prose. */
 const versionPostfix = diagnosticRule(`${packageName}/version/postfix`, {
   explanation:
@@ -72,5 +79,6 @@ export {
   mcpPropertyNameTaken,
   mcpToolNameTaken,
   mcpToolWithoutAction,
+  selfUpdateSettings,
   versionPostfix,
 };

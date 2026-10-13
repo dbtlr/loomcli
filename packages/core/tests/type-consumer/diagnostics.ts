@@ -6,17 +6,17 @@ const about = new Application('app', { description: 'Print how this copy was bui
   ({ host, out }) => {
     const { build, installation, release }: ReleaseFacts = host.release;
     const development: boolean = build === 'source' || build === 'development';
-    const lane: string | undefined = release?.lane;
+    const channel: string | undefined = release?.channel;
     const asset: string | undefined = release?.asset;
     const digest: string | undefined = installation?.digest;
-    return out.print(`${String(development)} ${lane ?? ''} ${asset ?? ''} ${digest ?? ''}`);
+    return out.print(`${String(development)} ${channel ?? ''} ${asset ?? ''} ${digest ?? ''}`);
   },
 );
 
 // A test supplies the facts through the host override, of run() and app.invoke alike.
 const supplied: ReleaseFacts = {
   build: 'distributed',
-  release: { lane: 'next', repository: 'acme/notes', version: '1.1.0-next.3' },
+  release: { channel: 'next', repository: 'acme/notes', version: '1.1.0-next.3' },
 };
 void about.run({ host: { release: supplied } });
 void about.invoke([], {}, { host: { release: supplied } });

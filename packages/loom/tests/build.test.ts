@@ -303,7 +303,7 @@ test(
       build: 'distributed',
       release: {
         asset: `probe-${hostTarget().slice('bun-'.length)}`,
-        lane: 'stable',
+        channel: 'stable',
         repository: 'acme/probe',
         version: '1.0.0',
       },
@@ -488,14 +488,14 @@ test.each([
   ['1.1.0-next.3', 'next'],
   ['2.0.0', 'stable'],
 ])(
-  '--release in a package at %s reads its version, lane %s, and repository with no asset',
-  (version, lane) => {
+  '--release in a package at %s reads its version, channel %s, and repository with no asset',
+  (version, channel) => {
     const root = probePackage({ repository: 'git+https://github.com/acme/probe.git', version });
     expect(loom(root, ['build', '--target', 'node', '--release']).status).toBe(0);
     for (const runtime of runtimes) {
       expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({
         build: 'distributed',
-        release: { lane, repository: 'acme/probe', version },
+        release: { channel, repository: 'acme/probe', version },
       });
       expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
     }
@@ -509,7 +509,7 @@ test('--repository overrides the repository field', () => {
   ).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({
     build: 'distributed',
-    release: { lane: 'stable', repository: 'other/fork', version: '1.0.0' },
+    release: { channel: 'stable', repository: 'other/fork', version: '1.0.0' },
   });
 });
 
@@ -627,7 +627,7 @@ test('--facts and --define each print one line, write no file, and compose a bui
   expect(define).toBe(`__LOOM_RELEASE__=${facts}`);
   const expected = {
     build: 'development',
-    release: { lane: 'next', repository: 'acme/probe', version: '1.1.0-next.3' },
+    release: { channel: 'next', repository: 'acme/probe', version: '1.1.0-next.3' },
   };
   expect(loom(root, ['build', ...args]).status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual(expected);
