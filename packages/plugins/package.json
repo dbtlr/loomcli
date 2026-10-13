@@ -75,6 +75,10 @@
       "types": "./dist/src/self-update/plugin.d.ts",
       "import": "./dist/src/self-update/plugin.js"
     },
+    "./service": {
+      "types": "./dist/src/service/plugin.d.ts",
+      "import": "./dist/src/service/plugin.js"
+    },
     "./suggestions": {
       "types": "./dist/src/suggestions/plugin.d.ts",
       "import": "./dist/src/suggestions/plugin.js"

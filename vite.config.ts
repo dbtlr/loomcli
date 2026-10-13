@@ -187,6 +187,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/service/status.ts', 'packages/plugins/tests/service.test.ts'],
+        rules: {
+          // A service status keeps the member order its type lists, which its JSON view prints.
+          'eslint/sort-keys': 'off',
+        },
+      },
+      {
         files: ['packages/plugins/src/logging/directory.ts'],
         rules: {
           // A logging error with no directory to name reads `null` for its path, as the contract states.

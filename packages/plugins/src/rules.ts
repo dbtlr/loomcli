@@ -64,6 +64,20 @@ const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`,
   headline: 'Invalid self-update setting',
 });
 
+/** A service plugin setting that is not one it accepts. */
+const serviceSettings = diagnosticRule(`${packageName}/service/settings`, {
+  explanation:
+    'The service plugin names its unit by label, a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most; runs the application with the words in run, a nonempty list of strings with no control character; and calls probe, a function, from status.',
+  headline: 'Invalid service setting',
+});
+
+/** Service `run` words that do not route to a Command with an action. */
+const serviceRunUnrouted = diagnosticRule(`${packageName}/service/run-unrouted`, {
+  explanation:
+    "The service unit runs the application with the words in run, so they name a Command that has an action, with its options and arguments, as the application's command line takes them. Words that route nowhere would leave the manager restarting a process that fails at once.",
+  headline: 'Service run words do not route',
+});
+
 /** A version plugin `postfix` setting that is not one line of prose. */
 const versionPostfix = diagnosticRule(`${packageName}/version/postfix`, {
   explanation:
@@ -80,5 +94,7 @@ export {
   mcpToolNameTaken,
   mcpToolWithoutAction,
   selfUpdateSettings,
+  serviceRunUnrouted,
+  serviceSettings,
   versionPostfix,
 };
