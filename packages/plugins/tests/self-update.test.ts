@@ -213,6 +213,13 @@ function lines(stderr: string): string[] {
 test('a stable binary updates to the latest release, keeps its mode, rewrites the record, and calls the hook', () => {
   const box = sandbox();
   writeFileSync(join(box.bin, '.notes.0123456789abcdef.loom-staging'), 'leftover');
+  const recordStaging = join(
+    box.state,
+    'notes',
+    'installation',
+    '.install.json.0123456789abcdef.loom-staging',
+  );
+  writeFileSync(recordStaging, 'leftover');
   const result = run(box, [], { umask: 0o077 });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual([
@@ -223,6 +230,7 @@ test('a stable binary updates to the latest release, keeps its mode, rewrites th
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
   expect(statSync(box.binary).mode & 0o777).toBe(0o755);
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
+  expect(existsSync(recordStaging)).toBe(false);
   // The record keeps the mode the installer script's mktemp gives it.
   expect(statSync(box.record).mode & 0o777).toBe(0o600);
   expect(stagingFiles(box.bin)).toEqual([]);
@@ -545,6 +553,24 @@ const downloadFailures: [string, string[], Scenario, string][] = [
     [],
     { rules: { [`/releases/download/v1.5.0/${asset}`]: { hops: 20 } } },
     'notes was redirected too many times while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.',
+  ],
+  [
+    'a SHA256SUMS cut off',
+    [],
+    { rules: { 'release-assets.example/v1.5.0/SHA256SUMS': 'cut' } },
+    'notes could not download https://github.com/acme/notes/releases/download/v1.5.0/SHA256SUMS (no response). Run self-update again later.',
+  ],
+  [
+    'a feed cut off',
+    ['--channel', 'next'],
+    { rules: { 'releases.atom': 'cut' } },
+    'notes could not download https://github.com/acme/notes/releases.atom (no response). Run self-update again later.',
+  ],
+  [
+    'a 21st redirect that reaches the tag page',
+    [],
+    { rules: { 'releases/latest': { hops: 20 } } },
+    'notes was redirected too many times while downloading https://github.com/acme/notes/releases/latest. Run self-update again later.',
   ],
   [
     'a 503 for a feed candidate',
