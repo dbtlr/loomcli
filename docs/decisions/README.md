@@ -95,6 +95,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0074](0074-the-service-plugin-supervises-one-user-unit-per-application-through-the-installation-record.md) | The service plugin supervises one user unit per application, recorded through the installation record. | accepted |
 | [ADR-0075](0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) | The release workflow's `plan` and `record` jobs run a published `@loomcli/loom` pinned by a committed lockfile in `.github/release-tool`, installed outside the checkout with scripts disabled, and never install or build the workspace; a change to the release commands takes effect once a release publishes it and the pin moves. | accepted |
 | [ADR-0076](0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) | The skills plugin installs an application's agent skills, loaded only when a skills Command runs, for Claude and the shared agents folder: each skill's folder replaced whole, recorded per target at global scope with an operator's `--force` to take over, and as an unrecorded copy at the repository root at project scope. | proposed |
+| [ADR-0077](0077-help-details-are-markdown-that-help-renders-with-its-own-subset-parser.md) | Help details are Markdown, inline or from a text import, which the extended page renders as a stated subset with the pack's own parser, keeping every authored line and printing anything outside the subset as written. | proposed |
 
 ## Adding a record
 

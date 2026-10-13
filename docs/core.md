@@ -3785,7 +3785,7 @@ const app = new Application('example', {
 ```
 
 ```ts
-// src/lines.ts, the pack's line and prose rules, which belong to no subpath
+// src/lines.ts, the pack's line, prose, and Markdown rules, which belong to no subpath
 import { z } from 'zod';
 
 const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
@@ -3795,6 +3795,9 @@ export const line = z.string().refine((value) => /\S/u.test(value) && !terminato
 export const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
   message: 'Supply prose whose every line holds a character other than whitespace.',
 });
+export const markdown = z.string().refine((value) => /\S/u.test(value), {
+  message: 'Supply Markdown that holds a character other than whitespace.',
+});
 ```
 
 ```ts
@@ -3803,14 +3806,14 @@ import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
 import { packageName } from '../constants.js';
-import { line, prose } from '../lines.js';
+import { line, markdown } from '../lines.js';
 
 const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
 
 export const helpCommand = extension(`${packageName}/help/command`, {
   schema: z.object({
     commandSections: z.array(sectionPath).optional(),
-    details: prose.optional(),
+    details: markdown.optional(),
     examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
     optionSections: z.array(sectionPath).optional(),
     section: sectionPath.optional(),
@@ -3831,7 +3834,7 @@ export const helpArgument = extension(`${packageName}/help/argument`, {
 });
 ```
 
-`helpCommand` targets Commands, so a Command or the Application carries it. `details` is prose the page prints after the masthead, one authored line per page line, each indented two spaces, with line breaks kept and nothing wrapped; every line of it holds a character other than whitespace, so it adds no blank line of its own to the page and no line terminator at either end. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
+`helpCommand` targets Commands, so a Command or the Application carries it. `details` is [Markdown](#markdown-details) the extended page renders after the masthead, a string that holds a character other than whitespace, with blank lines allowed, written inline or brought in with a text import. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
 
 `section` places a Command or an option in an authored [help section](#ordered-help-sections). `commandSections` and `optionSections` order the sections on that Command's own help page. The fields are optional and belong to help, including on a global option a plugin declares. Arguments keep their existing block and gain no section field.
 
@@ -3904,7 +3907,7 @@ export const attachHelp: CommandAttachHook = (command) => {
 
 Help decides that its prose belongs in the [manifest](#manifest), and it supplies that prose through the manifest's [collecting extension](#collecting-extensions), so the manifest carries no code for help.
 
-- **What it supplies.** On each Command, the hook reads `helpCommand` as it stands at help's turn, so a later plugin's hook that replaces that value does not change what help supplied. When the value holds `details` or `examples`, it extends the Command with one `manifestCommand` value that holds the same `details` and the same `examples`, each field present only where help's value holds it. `manifestCommand` applies the same line and prose rules as the shipped `helpCommand`, so every value help supplies validates. A Command with no help value, or with one that holds neither field, gets nothing. Neither `helpInput` nor `helpArgument` is supplied: a placeholder and an `accepts` line are for a human reader, and the input's own [schema](#input-schema) states what it accepts.
+- **What it supplies.** On each Command, the hook reads `helpCommand` as it stands at help's turn, so a later plugin's hook that replaces that value does not change what help supplied. When the value holds `details` or `examples`, it extends the Command with one `manifestCommand` value that holds the same `details` and the same `examples`, each field present only where help's value holds it. `manifestCommand` applies the same line and Markdown rules as the shipped `helpCommand`, so every value help supplies validates. A Command with no help value, or with one that holds neither field, gets nothing. Neither `helpInput` nor `helpArgument` is supplied: a placeholder and an `accepts` line are for a human reader, and the input's own [schema](#input-schema) states what it accepts.
 - **When the manifest is absent.** The manifest plugin need not be installed. The value is then inert, and `inspect()` still reports it under `@loomcli/plugins/manifest/command`.
 - **Order.** Help's value joins the author's own `manifestCommand` values after them, and it joins values from other plugins' hooks in installation order.
 - **Cost.** The hook is one call per Command on every build. Help's entry module imports `@loomcli/plugins/manifest/extension`, a declarations module, and nothing else of the manifest's.
@@ -3913,10 +3916,10 @@ Help decides that its prose belongs in the [manifest](#manifest), and it supplie
 
 The page rules below define the default content and layout. [Ordered help sections](#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. Each rule applies to both [variants](#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
 
-The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
+The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own except Details, whose Markdown blocks are separated the same way. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
 1. **Masthead.** `<path> · <description>`, with a space, U+00B7, and a space as the separator, or `<path>` alone when the node has no description. When the routed Command is deprecated, a second line `  Deprecated: <message>` follows in the same block.
-2. **Details.** Extended alone. The routed node's `details`, one authored line per page line, each indented two spaces. The page view splits on the same line terminators the schema recognizes, CRLF and each single terminator, and joins with LF, so an authored CR or NEL never reaches the page.
+2. **Details.** Extended alone. The routed node's `details`, rendered under [Markdown details](#markdown-details), each line indented two spaces. Help reads the same line terminators the schema recognizes, CRLF and each single terminator, as line breaks and joins with LF, so an authored CR or NEL never reaches the page.
 3. **USAGE.** One line per form, each beginning with `<path>`. The action form is `<path> <arguments> <required options> [options]`: each declared argument in declaration order as `<name>` when required and `[name]` when optional, with `...` inside the brackets for a variadic, so `<path>`, `[path]`, `<files...>`, and `[files...]`; then each visible required option in declaration order, which is always the node's own because a global option declares no presence rule, as `--long <placeholder>`, or `-s <placeholder>` for a `shortOnly` option, or `--long[=<placeholder>]` and `-s[<placeholder>]` for an option with an [implied value](#implied-values), with `...` appended for a multiple option; then `[options]`, which is always present because the help option is one. A node with an action prints the action form. A node with a visible child prints the children form, `<path> <command> [options]`, after the action form when both apply. A group whose children are all hidden prints the children form alone, because it has no other form.
 4. **COMMANDS.** For a node with a visible child, one row per visible child in authoring order. The left cell is the child's name, followed by ` <command>` when the child is a group and by ` [command]` when it has an action and children. The right cell follows the right-cell rule below, with `deprecated` as its one possible fact.
 5. **ARGUMENTS.** For a node with arguments, one row per argument in declaration order. The left cell is the name, and the right cell follows the right-cell rule, with `default` as its one possible fact.
@@ -4265,7 +4268,7 @@ The default help view applies this mapping. A style named below is a member of t
 | --- | --- |
 | Masthead application path | `highlight.bold` |
 | Masthead middle dot | `dim` |
-| Masthead description and details | `primary` |
+| Masthead description, and details text under [Markdown styles](#markdown-styles) | `primary` |
 | Section titles | `dim` |
 | Application paths, child command names, and option spellings outside authored examples | `highlight` |
 | Placeholders, including their brackets, the `[=` and `]` around an implied value's placeholder, and variadic suffix, the `...` after a counted option's spellings, and argument labels in ARGUMENTS | `dim.italic` |
@@ -4304,6 +4307,119 @@ The implementation re-pins hand-written help pages and version lines against bui
 - Check formatter view order, custom and replaced view names, an unadvertised `ndjson` alias, and a declared default other than a pack view. An earlier hook changing the default updates the description. A later hook changing it leaves the description at its formatter-hook value. With the formatter absent, help invents no selector or view list. Inspect the formatter description and the absence of a parser default, and prove omission preserves an earlier middleware's selected view.
 - Check version strings with a lowercase `v`, an uppercase `V`, an omitted version, and explicit `0.0.0`. Root and routed invocations print the same application version text, and raw marker-bearing strings stay literal.
 - Keep the existing help and version override, takeover, fault precedence, stdout, and exit-code coverage. A replacement sees the same graph data, owns its newline, and can render its own styles without installing a replacement plugin.
+
+#### Markdown details
+
+```markdown
+A path is a dot-separated walk from the root of the document.
+
+- A **key** reads an object's member, such as `user.name`.
+- A **whole number** reads an array's item, such as `items.0`.
+
+The document is *JSON*; see [the format](https://www.json.org/json-en.html).
+```
+
+```ts
+// examples/jsonkit/src/commands/get.ts
+import details from './get.md' with { type: 'text' };
+
+helpCommand({ details, examples: [{ command: 'get name -f doc.json' }] });
+```
+
+A Command's `details` is Markdown, so an author writes paragraphs, lists, code, and links as they would in a README, inline or in a file of its own. [ADR-0077](decisions/0077-help-details-are-markdown-that-help-renders-with-its-own-subset-parser.md) records the decision. The extended page renders a stated subset of Markdown with a parser the pack carries, which loads with the page view and needs no dependency, and prints everything outside the subset as written. With jsonkit's `get` details in `get.md` above, `jsonkit get --help` has this text with color and modifiers disabled:
+
+```text
+jsonkit get · Read one value at a path.
+
+  A path is a dot-separated walk from the root of the document.
+
+  - A key reads an object's member, such as `user.name`.
+  - A whole number reads an array's item, such as `items.0`.
+
+  The document is JSON; see the format (https://www.json.org/json-en.html).
+
+USAGE
+  jsonkit get <path> [options]
+
+ARGUMENTS
+  path  Dot path to read.
+
+GLOBAL OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.
+  -v, --verbose...   Name the document before reading it.
+  -h, --help         Show this help.
+  -V, --version      Print the version.
+  -M, --manifest     Print this command's manifest as JSON.
+  -e, --explain      Explain the selected command and exit.
+
+EXAMPLES
+  $ jsonkit get name -f doc.json
+  $ jsonkit get nested.deep.value -f doc.json
+```
+
+- **The value.** `details` on `helpCommand` and on `manifestCommand` is a string that holds a character other than whitespace, judged at the authoring call. Blank lines, whitespace at either end, and a final line terminator are allowed, so a file's text passes as it is. Help reads strings and no files, and no flag marks a value as Markdown or as plain lines: every `details` is Markdown, and details that uses no Markdown syntax prints as it did when details was lines.
+- **A file.** An author who keeps details in a file imports it as text, `import details from './get.md' with { type: 'text' }`. Bun reads the file in a source run and in a test, and a [`loom build`](toolchain.md#loom-build) bundle or binary inlines its text for every target, so the built application reads no file at run time. `loom build` gains no embedding seam, as [ADR-0076](decisions/0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) decided for skills. TypeScript types the import through the author's own module declaration, `declare module '*.md' { const text: string; export default text; }`.
+- **Lines.** Help reads every line terminator the pack recognizes, CRLF and each single terminator, as a line break before it parses, so an authored CR or NEL never reaches the page. A line that holds only whitespace is blank. A tab in a line's leading whitespace counts as four spaces.
+
+##### Markdown blocks
+
+Help reads the text as a sequence of blocks. Each rule below reads a line after the indentation its container takes, and a marker may follow up to three spaces of indentation.
+
+- **Fenced code.** A run of three or more backticks, or of three or more tildes, opens a code block, and the rest of the opening line is ignored. The block closes at a line that holds a run of the same character at least as long and nothing else but whitespace, or at the end of its container. The lines between are the code, each with up to the opening run's indentation removed, and no other rule reads them.
+- **Heading.** One to six `#` characters followed by a space, a tab, or the end of the line. Its text is the rest of the line, without surrounding whitespace and without a closing run of `#` that follows a space. A run of seven or more is paragraph text.
+- **Quote.** A line that starts with `>`, with one space after it removed. Consecutive such lines form one quote, and the text after the markers is read as blocks, so a quote holds lists, code, and paragraphs.
+- **List item.** A bullet marker, `-`, `+`, or `*`, or an ordered marker, one to nine digits followed by `.` or `)`, then a space, a tab, or the end of the line. The item's content starts after the spaces that follow the marker, or one column after the marker when five or more follow. A later line belongs to the item when it is indented at least to the content's column, when it continues the item's open paragraph, or when it is blank and a later line belongs to the item. The item's lines, with that indentation removed, are read as blocks, so a list nests inside an item. Consecutive items with the same bullet character, or with the same ordered delimiter, form one list, whether or not blank lines separate them, and a different bullet character or delimiter starts another list. A list is loose when a blank line separates two of its items or two blocks inside one item, and tight otherwise.
+- **Paragraph.** Any other line that is not blank. A paragraph continues on each following line until a blank line or a line that starts fenced code, a heading, a quote, or a list item. Each of its lines keeps no leading or trailing whitespace.
+
+A table, a thematic break such as `---`, a setext heading underline, an indented code block, a link reference definition, and an HTML block are not in the subset, so each reads as paragraph text and prints as written.
+
+##### Markdown inline text
+
+Help reads inline constructs in each line of a paragraph and of a heading, wherever the block sits. No construct spans a line break, so a marker that would close on a later line prints as written. Code spans and autolinks bind first, then links, then emphasis, so a code span's or a destination's characters start nothing, and an emphasis pair never crosses a link's brackets.
+
+- **Backslash escape.** A backslash before an ASCII punctuation character prints that character, which then starts or closes nothing. Any other backslash prints as written.
+- **Code span.** A run of backticks opens a code span that closes at the next run of exactly as many backticks. The span prints as written, its backticks included, and no other rule reads inside it. A run with no closing run prints as written.
+- **Emphasis and strong emphasis.** A run of one `*` or `_` marks emphasis, and a run of two marks strong emphasis. A run opens when the character after it is not whitespace, and closes the nearest open run of the same character and length when the character before it is not whitespace. An `_` run opens only when no letter or digit precedes it and closes only when no letter or digit follows it, so `snake_case_name` prints as written. The text between is read for inline constructs, so emphasis nests. The markers do not print. A run of three or more, and a run that neither opens nor closes a pair, prints as written.
+- **Link.** `[text](destination)` prints the text, a space, and the destination in parentheses: `the format (https://www.json.org/json-en.html)`. The destination is not empty, holds no whitespace, and ends at the first `)`. The text is read for inline constructs except links. When the text prints exactly as the destination, the destination prints once, without parentheses. `![text](destination)` is an image and prints as a link with the same text. A bracket that starts no link prints as written.
+- **Autolink.** `<`, a scheme of two to thirty-two characters that starts with a letter and holds letters, digits, `+`, `.`, and `-`, then `:` and characters other than whitespace, `<`, and `>`, then `>`, prints the address between the angle brackets.
+
+Everything else prints as written, such as an HTML tag, an entity like `&amp;`, and a table's pipes.
+
+##### Markdown layout
+
+The details block keeps its place after the masthead on the extended page alone, and every one of its lines is indented two spaces, as before.
+
+- **Between blocks.** One blank line separates two blocks, and the details block has no blank line at its start or end. A tight list's items, and an item's paragraph and the list nested in it, have no blank line between them.
+- **A paragraph** prints each of its lines as one page line. Nothing wraps, and help reads no terminal width.
+- **A heading** prints its text alone on one line, at any level.
+- **Code** prints each of its lines indented two more spaces, without the fence lines.
+- **A list item** prints its marker, one space, and its first line, and every later line of the item, its nested blocks included, is indented by the marker's width and one space. Every bullet prints as `-`, whatever character the author used. An ordered item prints its number, counting up by one from the first item's number with leading zeros dropped, and the author's delimiter.
+- **A quote** prints `>` and a space before each line of its content, and `>` alone on a blank line inside it.
+- **Whitespace at a line's end.** No page line ends in whitespace, so an empty line inside code prints empty, with no indentation.
+
+##### Markdown styles
+
+Under the [help and version restyle](#help-and-version-restyle), the text of a paragraph, a heading, a list item, and a quote is `primary`, as details was. A heading adds `bold`, emphasis adds `italic`, and strong emphasis adds `bold`. A code span and each line of code are `highlight`. A link's destination and the parentheses around it are `dim`, and so are a list marker and a quote's `>`. Indentation and the spaces between styled parts are unstyled, and a line of paragraph text with no inline construct is one `primary` value, as before.
+
+The page escapes each authored fragment with `style.escape` before styling or measuring it, so style-wire markup inside Markdown prints literally, as it does in every help string. Help drops the emphasis and heading markers because stress and a heading's level are presentation, and it keeps a code span's backticks and a link's destination because a literal token and an address are meaning, so the page reads the same with styling off.
+
+- **The manifest.** Help supplies `details` to `manifestCommand` as written, so the manifest carries the Markdown source, which an agent reads as it is.
+- **Replacement.** `HelpPage` is unchanged. A replacement of `helpPage` reads `details` through `readExtension` as the Markdown source and renders it as it chooses, and the pack exports no parser.
+
+Compared with the page rules before this section, the changed rules are: `details` on `helpCommand` and `manifestCommand` is Markdown and may hold blank lines; the Details block renders the subset above instead of printing each line as written, so it may hold blank lines of its own; and a paragraph line loses its leading whitespace. Compact help, the pointer to `--help`, and every other block are unchanged.
+
+#### Markdown details acceptance
+
+Markdown details are proven when public APIs alone produce these results under Node and Bun:
+
+- **Example page.** jsonkit's `get` reads its help `details` from `src/commands/get.md` through a text import, and `jsonkit get --help` prints the page above, byte for byte, with color and modifiers disabled, from the `loom build --target node` bundle the example tests run. `jsonkit get -h` omits the block and prints the pointer. `jsonkit get --manifest` carries the file's text as written, final line terminator included. Every other example page and manifest is unchanged.
+- **Packed consumer.** The packed-consumer fixture declares details through a text import of a `.md` file, built with `loom build`, and its `--help` page prints the rendered block under Node and Bun.
+- **Blocks.** Fixtures cover each block rule: fenced code with backticks and with tildes, an info string ignored, a longer closing run, an unclosed fence running to the end of its container, and Markdown inside code printing as written; headings at levels one and six, a closing `#` run removed, and seven `#` printing as text; a quote holding a list and code; bullet and ordered lists, nested two levels, tight and loose, an ordered list starting at `3` and at `007`, `)` delimiters, a change of bullet character starting a new list, a lazy continuation line, and an item whose content starts after more than four spaces; and a paragraph interrupted by each block that can interrupt it.
+- **Inline.** Fixtures cover each inline rule: emphasis and strong emphasis with both characters, nested, unmatched, and spanning a line break; `snake_case_name`; a run of three; code spans with one and two backticks, holding emphasis markers, and unclosed; backslash escapes of a marker and of a letter; a link, an image, a link whose text equals its destination, a destination holding whitespace, and a bracket that starts no link; and an autolink and an angle-bracketed word that is not one.
+- **Unsupported constructs.** A table, a thematic break, a setext underline, an indented code block, a reference definition, an HTML block, and an entity print as written.
+- **Lines.** CRLF, CR, NEL, and LINE SEPARATOR read as line breaks; a tab in leading indentation counts as four spaces; whitespace at both ends and a final terminator are accepted; details of whitespace alone is a declaration fault at the call on `helpCommand` and on `manifestCommand`; and no page line ends in whitespace.
+- **Compatibility.** jsonkit's root and textstat's root, whose details use no Markdown syntax, print their pages unchanged, and so does a multi-line details value with no Markdown syntax.
+- **Styles and escaping.** Exact themed bytes pin each style in the mapping above, a plain paragraph line as one `primary` value, nested emphasis, and style-wire marker characters inside a heading, a code span, a code line, and a link destination printing literally. With modifiers disabled, emphasis and headings carry no escape.
 
 ### Formatter
 
@@ -4731,7 +4847,7 @@ type ManifestOption =
     "description": "Read one value at a path.",
     "details": [
       "Quote a path that holds a shell metacharacter.",
-      "A path is a dot-separated walk from the root of the document."
+      "A path is a dot-separated walk from the root of the document.\n\n- A **key** reads an object's member, such as `user.name`.\n- A **whole number** reads an array's item, such as `items.0`.\n\nThe document is *JSON*; see [the format](https://www.json.org/json-en.html).\n"
     ],
     "examples": [
       {
@@ -4796,8 +4912,8 @@ import { extension } from '@loomcli/core';
 import { z } from 'zod';
 
 import { packageName } from '../constants.js';
-// The pack's shared line and prose rules, which help's schema also uses.
-import { line, prose } from '../lines.js';
+// The pack's shared line and Markdown rules, which help's schema also uses.
+import { line, markdown } from '../lines.js';
 // failureEntry accepts { failure, meaning }, where failure is a class that extends LoomError,
 // and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
 import { failureEntry } from './failures.js';
@@ -4805,7 +4921,7 @@ import { failureEntry } from './failures.js';
 export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
   schema: z.object({
-    details: prose.optional(),
+    details: markdown.optional(),
     examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
     failures: z.array(failureEntry).optional(),
   }),
@@ -4825,7 +4941,7 @@ const get = new Command('get', {
 
 The declarations module, `@loomcli/plugins/manifest/extension`, holds the collecting extension through which the author and any plugin give a Command's entry its `details`, `examples`, and `failures`. It is declarations alone, apart from the plugin's entry, so help supplies values through it whether or not the manifest is installed.
 
-- **The extension.** `manifestCommand` is a [collecting extension](#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is prose under the rule help's `details` follows: every line holds a character other than whitespace, and line breaks are kept. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
+- **The extension.** `manifestCommand` is a [collecting extension](#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is Markdown under the rule help's `details` follows: a string that holds a character other than whitespace, with blank lines allowed, carried as written. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
 - **Who supplies values.** A value is meant for an agent because it lands in the manifest. The author's own value is where an instruction goes that an agent needs beyond the help page. A plugin's value holds the facts that plugin chooses to project into the manifest, as help's hook does under [Help in the manifest](#help-in-the-manifest).
 - **An empty value.** A value that holds none of the fields is accepted and stored, and the manifest prints nothing for it.
 
@@ -5095,7 +5211,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 - **The plugin.** Its identity is `@loomcli/plugins/mcp`. `mcp()` takes no settings and declares no option, no middleware, and no view, and it claims no slot. It contributes one [plugin Command](#plugin-commands), the three extensions above, and an [`onGraphBuilt`](#judging-the-built-graph) hook. The Command is `mcp`, visible, with the description `Serve this application's tools to an MCP client over stdin and stdout.`, no arguments, no options, and no result. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](#completion) has under [ADR-0033](decisions/0033-a-plugin-attaches-ordinary-commands-to-the-root.md).
 - **Opt-in.** A Command is a tool when it carries an `mcpCommand` value, and only then. The root opts in through the Application's `extensions`. An explicit opt-in wins over `hidden`, so a hidden Command that carries the value is a tool, and the listing in help, the manifest, and completion still omits it. A deprecated Command that opts in is a tool whose description opens with its migration message. An alias is never a tool and never a second name. A Command with no action cannot serve a call, so `mcpCommand` on a group is a build fault.
 - **Tool names.** A tool's name is the Command's path joined by `_`, with each `-` written as `_`, so `scratch create` is `scratch_create` and `cache clear-all` is `cache_clear_all`. The root's tool is the application name written the same way, so `git-lfs` serves `git_lfs`. A [portable name](glossary.md#names-and-routing) holds nothing else the protocol's tool-name characters exclude, and `.` stays. There is no name override. Two opted-in Commands that give one name, such as the root and a child named like the application, are a build fault that names both.
-- **The description.** A tool's description is the `mcpCommand` value's `description`, or else the Command's core `description`, the Application's at the root. With neither, the tool carries no description. A deprecated Command's description opens with `Deprecated: ` and its migration message, then a line break and the rest. `description` is prose under the rule help's `details` follows: every line holds a character other than whitespace, and line breaks are kept.
+- **The description.** A tool's description is the `mcpCommand` value's `description`, or else the Command's core `description`, the Application's at the root. With neither, the tool carries no description. A deprecated Command's description opens with `Deprecated: ` and its migration message, then a line break and the rest. `description` is prose under the pack's prose rule: every line holds a character other than whitespace, and line breaks are kept.
 - **Annotations.** `annotations` projects onto the protocol's tool annotations, `readOnly` as `readOnlyHint`, `destructive` as `destructiveHint`, `idempotent` as `idempotentHint`, and `openWorld` as `openWorldHint`. An unset hint is omitted, so the protocol's own defaults apply, and a tool with none set carries no `annotations`. They are hints the author owns and Loom never verifies: Loom infers none from the graph, and nothing but this plugin reads them, neither core nor help nor the manifest. A false claim is a defect in the author's application, and the protocol tells a client to treat annotations from a server it does not trust as untrusted.
 - **The input schema.** A tool's `inputSchema` is `{ type: 'object', properties, required, additionalProperties: false }`, with `required` left out when it is empty. `properties` holds every argument of the routed Command in declaration order, then its local options in authoring order, then every global option in graph order, keyed by declared name, minus a [hidden](#hidden-and-deprecated-members) option and a [control option](#control-options). Passthrough is never exposed.
   - Each property is the input's [input schema](#input-schema) without its top-level `$schema` key, because the property lives inside a schema whose dialect is the protocol's default, JSON Schema 2020-12, the target the converter answers. Where the graph holds `null`, the property is derived from the node: `{ type: 'string' }` for a string option or an argument, `{ type: 'boolean' }` for a Boolean option, and `{ type: 'integer', minimum: 0 }` for a counted option. A multiple option or a variadic argument wraps its value's schema as `{ type: 'array', items: <schema> }`.

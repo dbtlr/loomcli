@@ -494,6 +494,10 @@ _Avoid_: Short help, summary, brief help
 The help page `--help` prints, for a reader who is learning the Command: the whole page, with the details and the examples. Help prints it whenever the help option was not typed as `-h`.
 _Avoid_: Long help, full help, man page
 
+**Details**:
+A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead and the manifest carries as written. Anything outside the subset prints as written.
+_Avoid_: Long description, body, help text, Markdown asset
+
 **Completion**:
 The projection a shell reads while the operator types: a printed script that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
