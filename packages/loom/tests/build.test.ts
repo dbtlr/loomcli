@@ -3,6 +3,7 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   watch as watchDirectory,
@@ -37,6 +38,11 @@ export const probe = new Application('probe', { description: 'Probe the release 
     ),
   )
   .command(
+    new Command('program', { description: 'Print the program.' }).action(({ host, out }) =>
+      out.print(JSON.stringify(host.program)),
+    ),
+  )
+  .command(
     new Command('throw', { description: 'Throw a defect.' }).action(() => {
       throw new TypeError('The probe failed.');
     }),
@@ -66,6 +72,21 @@ function factsOf(file: string, runtime?: string): unknown {
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
+}
+
+/** The program an artifact's `program` Command printed under one runtime, or as a binary. */
+function programOf(file: string, runtime?: string): unknown {
+  const result = execute(file, ['program'], runtime === undefined ? {} : { runtime });
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  return JSON.parse(result.stdout);
+}
+
+/** A runtime's own executable, which a bundle's `host.program` names first. */
+function executableOf(runtime: string): string {
+  return spawnSync(runtime, ['-e', 'process.stdout.write(process.execPath)'], {
+    encoding: 'utf8',
+  }).stdout;
 }
 
 /** What `loom build` printed when it built nothing but the facts. */
@@ -116,6 +137,10 @@ test('--target node writes a bundle of the entry and the application module that
   for (const runtime of runtimes) {
     expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
     expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
+    expect(programOf(join(root, 'dist/main.js'), runtime)).toEqual([
+      executableOf(runtime),
+      join(root, 'dist/main.js'),
+    ]);
   }
 });
 
@@ -321,6 +346,8 @@ test(
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(factsOf(join(root, 'bin/named'))).toEqual({ build: 'distributed' });
+    // A compiled binary is the whole program, so its program is its own path alone.
+    expect(programOf(join(root, 'bin/named'))).toEqual([realpathSync(join(root, 'bin/named'))]);
   },
   slow,
 );
@@ -593,8 +620,26 @@ test.each([
   const facts = printed(root, ['--target', 'bun-linux-x64-musl', '--release', '--facts', ...args]);
   expect(JSON.parse(facts)).toEqual({
     build: 'distributed',
+    compiled: true,
     release: { asset: `${name}-linux-x64-musl`, repository: 'acme/probe', version: '1.0.0' },
   });
+});
+
+test('--facts for a compile target prints compiled true with and without --release, and for node and bun prints none', () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
+  expect(printed(root, ['--target', 'bun-linux-x64', '--facts'])).toBe(
+    '{"build":"distributed","compiled":true}\n',
+  );
+  expect(printed(root, ['--target', 'bun-darwin-arm64', '--release', '--facts'])).toBe(
+    '{"build":"distributed","compiled":true,"release":{"asset":"probe-darwin-arm64","repository":"acme/probe","version":"1.0.0"}}\n',
+  );
+  expect(printed(root, ['--target', 'bun-linux-x64', '--define'])).toBe(
+    '__LOOM_RELEASE__={"build":"distributed","compiled":true}\n',
+  );
+  for (const target of ['node', 'bun']) {
+    expect(printed(root, ['--target', target, '--facts'])).toBe('{"build":"distributed"}\n');
+    expect(printed(root, ['--target', target, '--release', '--facts'])).not.toContain('compiled');
+  }
 });
 
 test('an object bin with several keys and no --name names --name', () => {

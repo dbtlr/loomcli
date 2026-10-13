@@ -20,10 +20,14 @@ import type { Observed } from './disk.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type { Committed, CommittedFile, Pending, PendingFile } from './record.js';
 
-/** One file an install writes: its absolute path and the content it will hold. */
+/**
+ * One file an install writes: its absolute path, the content it will hold, and the permission bits
+ * it is written with whatever the umask, when the plugin names any.
+ */
 interface InstalledFile {
   readonly path: string;
   readonly content: string | Uint8Array;
+  readonly mode?: number;
 }
 
 /**
@@ -280,7 +284,7 @@ function carryOut(
     createDirectory(directory);
   }
   for (const file of files) {
-    replaceFile(file.path, file.content);
+    replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
   }
   const { kept, removed } = removeRecorded(plan.removals);
   writePluginFile(path, plan.committed);
@@ -316,14 +320,53 @@ function uninstall(request: UninstallRequest): UninstallOutcome {
   return { kept, removed, status: 'uninstalled' };
 }
 
+/** What a plugin's file records, read without writing: its files, or the refusal of its file. */
+type RecordedRead =
+  | { readonly status: 'refused'; readonly refused: Refusal<RecordRefusalReason> }
+  | { readonly status: 'read'; readonly files: readonly CommittedFile[] };
+
+/**
+ * What the plugin's file records, read without writing anything: each recorded file with its
+ * digest, none for a missing file, and for a pending file what recovery would keep. A damaged file
+ * or one of an unknown format refuses, as it refuses an install or uninstall.
+ */
+function readRecorded(request: Omit<UninstallRequest, 'signal'>): RecordedRead {
+  const path = pluginFilePath(request.record, request.plugin);
+  const read = readPluginFile(path);
+  if (read.kind === 'refused') {
+    return { refused: { path, reason: read.reason }, status: 'refused' };
+  }
+  if (read.kind === 'missing') {
+    return { files: [], status: 'read' };
+  }
+  const { file } = read;
+  return {
+    files: file.state === 'pending' ? file.files.flatMap(recoveredFile) : file.files,
+    status: 'read',
+  };
+}
+
+/**
+ * The refusal each target path would meet from an install against the recorded files, read
+ * without writing: none for an absent target or a recorded file with its digest unchanged.
+ */
+function targetRefusals(
+  paths: readonly string[],
+  files: readonly CommittedFile[],
+): readonly Refusal[] {
+  const digests = new Map(files.map(({ digest, path }) => [path, digest]));
+  return paths.flatMap((path) => refusalOf(path, observe(path), digests));
+}
+
 export type {
   InstalledFile,
   InstallOutcome,
   InstallRequest,
+  RecordedRead,
   RecordRefusalReason,
   Refusal,
   RefusalReason,
   UninstallOutcome,
   UninstallRequest,
 };
-export { install, uninstall };
+export { install, readRecorded, targetRefusals, uninstall };

@@ -106,6 +106,21 @@ function releaseVersion(manifest: Manifest): string {
   return version;
 }
 
+/** The release group one build bakes, computed from the package and the release options. */
+function releaseGroup(
+  request: FactsRequest,
+  release: NonNullable<FactsRequest['release']>,
+): NonNullable<BuildFacts['release']> {
+  const { manifest, target } = request;
+  const version = releaseVersion(manifest);
+  const repository = releaseRepository(manifest, release.repository);
+  if (target.kind === 'bundle') {
+    return { repository, version };
+  }
+  const asset = `${applicationName(manifest, request.name)}-${target.platform}${isWindows(target) ? '.exe' : ''}`;
+  return { asset, repository, version };
+}
+
 /** The build an artifact reads: a development artifact or a distributed one. */
 export type Build = 'development' | 'distributed';
 
@@ -115,6 +130,8 @@ export type Build = 'development' | 'distributed';
  */
 export interface BuildFacts {
   readonly build: Build;
+  /** Present on a compiled binary alone, so core knows the binary is the whole program. */
+  readonly compiled?: true;
   readonly release?: {
     readonly asset?: string;
     readonly repository: string;
@@ -186,21 +203,16 @@ export function scaffoldName(manifest: Manifest): string {
 
 /**
  * The release facts one build bakes, computed from its options and the package's `package.json`
- * alone. `loom build` bakes them, and `--facts` and `--define` print them, so every build of the
- * same options reads the same facts.
+ * alone. A compile target bakes `compiled: true`, with or without a release. `loom build` bakes
+ * them, and `--facts` and `--define` print them, so every build of the same options reads the same
+ * facts.
  */
 export function buildFacts(request: FactsRequest): BuildFacts {
-  const { build, manifest, release, target } = request;
-  if (release === undefined) {
-    return { build };
-  }
-  const version = releaseVersion(manifest);
-  const repository = releaseRepository(manifest, release.repository);
-  if (target.kind === 'bundle') {
-    return { build, release: { repository, version } };
-  }
-  const asset = `${applicationName(manifest, request.name)}-${target.platform}${isWindows(target) ? '.exe' : ''}`;
-  return { build, release: { asset, repository, version } };
+  const { build, release, target } = request;
+  const compiled: Pick<BuildFacts, 'compiled'> = target.kind === 'bundle' ? {} : { compiled: true };
+  return release === undefined
+    ? { build, ...compiled }
+    : { build, ...compiled, release: releaseGroup(request, release) };
 }
 
 /** The define pair a bundler takes, `__LOOM_RELEASE__=<json>`, for the facts it bakes. */

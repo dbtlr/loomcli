@@ -1,11 +1,11 @@
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { Writable } from 'node:stream';
 
 import { WorkingDirectoryError } from './errors.js';
 import type { InternalError } from './errors.js';
 import { readSmallFile } from './files.js';
-import { captureRelease } from './release.js';
+import { captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
 import type { Host, ReleaseFacts, RunOptions } from './types.js';
 
@@ -16,6 +16,18 @@ function isTerminal(stream: { isTTY?: boolean }): boolean {
 
 function dimension(value: number | undefined): number | undefined {
   return value === 0 ? undefined : value;
+}
+
+/** The absolute path of the script the runtime ran, as the process names it. */
+function scriptPath(script: string): string {
+  if (isAbsolute(script)) {
+    return script;
+  }
+  try {
+    return resolve(script);
+  } catch {
+    return script;
+  }
 }
 
 /**
@@ -49,6 +61,23 @@ export function sourceRoots(cwd: string): readonly string[] {
   } catch {
     return [cwd];
   }
+}
+
+/**
+ * The words that start this application again, frozen: an override copied whole, else the
+ * compiled binary alone, else the runtime and the absolute path of the script it ran, or the
+ * runtime alone when it ran none.
+ */
+export function captureProgram(override: readonly string[] | undefined): readonly string[] {
+  if (override !== undefined) {
+    return Object.freeze([...override]);
+  }
+  const [, script] = process.argv;
+  return Object.freeze(
+    isCompiled() || script === undefined
+      ? [process.execPath]
+      : [process.execPath, scriptPath(script)],
+  );
 }
 
 /** The working directory one capture read, or the failure its read raised in its place. */
@@ -125,7 +154,7 @@ export function captureHost(
   overrides: RunOptions['host'],
   stderr: Writable,
 ): HostCapture {
-  const { argv, cwd, readSource, release, stdin, stdout, terminal } = overrides ?? {};
+  const { argv, cwd, program, readSource, release, stdin, stdout, terminal } = overrides ?? {};
   const env = { ...(overrides?.env ?? process.env) };
   const platform = overrides?.platform ?? process.platform;
   const captured = {
@@ -137,6 +166,7 @@ export function captureHost(
       argv: [...(argv ?? process.argv.slice(2))],
       env,
       platform,
+      program: captureProgram(program),
       readSource: readSource ?? readSourceFile,
       stderr,
       stdin: stdin ?? process.stdin,

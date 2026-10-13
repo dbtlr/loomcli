@@ -94,10 +94,18 @@ function readFacts(value: unknown): CapturedRelease {
   if (!isPlainObject(value)) {
     return malformed('are not an object');
   }
-  const { build, release } = value;
+  const { build, compiled, release } = value;
   if (build !== 'source' && build !== 'development' && build !== 'distributed') {
     return malformed(build === undefined ? 'hold no build' : `hold build ${quoted(build)}`);
   }
+  if (compiled !== undefined && compiled !== true) {
+    return malformed(`hold compiled ${quoted(compiled)}`);
+  }
+  return withRelease(build, release);
+}
+
+/** The facts of one baked build and its release group, or the defect a malformed group is. */
+function withRelease(build: ReleaseFacts['build'], release: unknown): CapturedRelease {
   if (release === undefined) {
     return { facts: Object.freeze({ build }) };
   }
@@ -110,6 +118,19 @@ function readBaked(): CapturedRelease {
   return typeof __LOOM_RELEASE__ === 'undefined'
     ? { facts: sourceFacts }
     : readFacts(__LOOM_RELEASE__);
+}
+
+/**
+ * Whether the build baked `compiled: true`, which marks a compiled binary, the whole program. The
+ * release facts never repeat it. A value core cannot read marks none, and the run reports it as
+ * malformed release facts unless an override replaced them.
+ */
+function isCompiled(): boolean {
+  if (typeof __LOOM_RELEASE__ === 'undefined') {
+    return false;
+  }
+  const baked: unknown = __LOOM_RELEASE__;
+  return isPlainObject(baked) && baked.compiled === true;
 }
 
 /**
@@ -163,4 +184,4 @@ function isDevelopment(release: unknown): boolean {
 }
 
 export type { CapturedRelease };
-export { bakedFacts, captureRelease, isDevelopment };
+export { bakedFacts, captureRelease, isCompiled, isDevelopment };

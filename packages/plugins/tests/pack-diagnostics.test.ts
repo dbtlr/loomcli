@@ -27,6 +27,13 @@ const explanations = {
     'The self-update plugin calls afterReplace once it has replaced the binary and',
     'rewritten its installation record, so afterReplace is a function.',
   ],
+  'service/settings': [
+    'The service plugin names its unit by label, a reverse-DNS name of two or more',
+    'segments of letters, digits, and hyphens, each opening with a letter or digit,',
+    '247 characters at most; runs the application with the words in run, a nonempty',
+    'list of strings with no control character; and calls probe, a function, from',
+    'status.',
+  ],
   'version/postfix': [
     'The version plugin prints the postfix after the version on its one line, so the',
     'postfix holds a character other than whitespace and no line terminator.',
@@ -82,6 +89,33 @@ function postfixFault(call: string, target: string): Expected {
   };
 }
 
+/** One service settings fault: the call, what the finding marks, and the fault's words. */
+function serviceFault(
+  call: string,
+  target: string | undefined,
+  fault: { readonly key: string; readonly sentence: string; readonly correction: string },
+): Expected {
+  return {
+    correction: fault.correction,
+    finding: target === undefined ? [`    ${call}`] : marked(call, target),
+    headline: 'INVALID SERVICE SETTING',
+    rule: 'service/settings',
+    sentence: `Plugin "@loomcli/plugins/service" setting "${fault.key}" ${fault.sentence}`,
+  };
+}
+
+const labelFault = {
+  correction: 'Supply a label such as com.acme.notes.',
+  key: 'label',
+  sentence: 'is not a reverse-DNS name.',
+};
+
+const runFault = {
+  correction: "Supply the words that run the service's Command, such as ['serve'].",
+  key: 'run',
+  sentence: 'is not a list of argument words.',
+};
+
 /** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
   'config-glob': {
@@ -130,6 +164,40 @@ const settingsCases: Record<string, Expected> = {
     rule: 'self-update/settings',
     sentence: 'Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.',
   },
+  'service-label': serviceFault(
+    "service({ label: 'notes', run: ['serve'] })",
+    "label: 'notes'",
+    labelFault,
+  ),
+  'service-none': serviceFault('service()', undefined, labelFault),
+  'service-probe': serviceFault(
+    "service({ label: 'com.acme.notes', probe: 1, run: ['serve'] })",
+    'probe: 1',
+    {
+      correction: 'Supply a function, or omit the setting.',
+      key: 'probe',
+      sentence: 'is not a function.',
+    },
+  ),
+  'service-run-control': serviceFault(
+    String.raw`service({ label: 'com.acme.notes', run: ['serve', 'a\u0007b'] })`,
+    String.raw`run: ['serve', 'a\u0007b']`,
+    {
+      correction: 'Remove the control character from the word.',
+      key: 'run',
+      sentence: 'holds a word with a control character.',
+    },
+  ),
+  'service-run-empty': serviceFault(
+    "service({ label: 'com.acme.notes', run: [] })",
+    'run: []',
+    runFault,
+  ),
+  'service-run-word': serviceFault(
+    "service({ label: 'com.acme.notes', run: ['serve', 8080] })",
+    "run: ['serve', 8080]",
+    runFault,
+  ),
   'version-blank': postfixFault("version({ postfix: ' ' })", "postfix: ' '"),
   'version-lines': postfixFault(
     String.raw`version({ postfix: 'schema\u000av1' })`,
@@ -148,13 +216,15 @@ test.each(Object.entries(settingsCases))(
 
 /**
  * The pack's rules a build raises rather than a factory call: the one `--manifest` raises, which
- * the manifest failures test pins, and the MCP plugin's build faults, which the MCP test pins.
+ * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, and
+ * the service plugin's, which the service test pins.
  */
 const pinnedElsewhere = [
   'manifest/failure-code-conflict',
   'mcp/property-name-taken',
   'mcp/tool-name-taken',
   'mcp/tool-without-action',
+  'service/run-unrouted',
 ];
 
 test('every rule the pack declares has a pinned diagnostic', () => {

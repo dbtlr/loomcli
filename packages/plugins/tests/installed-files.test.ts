@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -17,7 +18,7 @@ import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
 import { replaceFile } from '../src/installation/disk.js';
-import { install, uninstall } from '../src/installation/files.js';
+import { install, readRecorded, targetRefusals, uninstall } from '../src/installation/files.js';
 import type { InstalledFile } from '../src/installation/files.js';
 
 /** The SHA-256 digests of the bytes `test`, `abc`, and `new`, from independent sources. */
@@ -124,6 +125,28 @@ test('installing two files writes both and a committed file with their digests a
   );
   expect(readdirSync(box.directory).toSorted()).toEqual(['SKILL.md', 'reference.md']);
   expect(readdirSync(box.record)).toEqual(['skill.json']);
+});
+
+test('a target with a named mode holds that mode under umask 002, and one with none follows the umask', () => {
+  const box = sandbox();
+  const previous = process.umask(0o002);
+  try {
+    const outcome = installed(box, [
+      { content: 'test', mode: 0o644, path: box.first },
+      { content: 'abc', path: box.second },
+    ]);
+    expect(outcome.status).toBe('installed');
+  } finally {
+    process.umask(previous);
+  }
+  expect(statSync(box.first).mode & 0o777).toBe(0o644);
+  expect(statSync(box.second).mode & 0o777).toBe(0o664);
+  // The mode changes neither the content nor what the plugin's file records.
+  expect(readFileSync(box.first, 'utf8')).toBe('test');
+  expect(JSON.parse(ownerText(box)).files).toEqual([
+    { path: box.first, digest: digests.test },
+    { path: box.second, digest: digests.abc },
+  ]);
 });
 
 test('each missing parent directory is created and recorded, outermost first', () => {
@@ -624,4 +647,74 @@ test('a replacement whose rename fails throws the rename error and leaves no sta
   mkdirSync(box.first, { recursive: true });
   expect(() => replaceFile(box.first, 'test')).toThrow(/EISDIR|ENOTEMPTY|EEXIST|EPERM/u);
   expect(readdirSync(dirname(box.first))).toEqual([basename(box.first)]);
+});
+
+/** What the skill plugin's file records, read without writing. */
+function read(box: Box) {
+  return readRecorded({ plugin: 'skill', record: box.record });
+}
+
+test('reading what a plugin file records returns each file and digest and writes nothing', () => {
+  const box = sandbox();
+  expect(read(box)).toEqual({ files: [], status: 'read' });
+  expect(existsSync(box.record)).toBe(false);
+  installed(box, [{ content: 'test', path: box.first }]);
+  const before = ownerText(box);
+  const staging = join(box.record, '.skill.json.0123456789abcdef.loom-staging');
+  writeFileSync(staging, 'leftover');
+  expect(read(box)).toEqual({ files: [{ digest: digests.test, path: box.first }], status: 'read' });
+  expect(ownerText(box)).toBe(before);
+  expect(existsSync(staging)).toBe(true);
+});
+
+test('reading a pending plugin file returns what recovery would keep and writes nothing', () => {
+  const box = sandbox();
+  mkdirSync(box.directory);
+  writeFileSync(box.first, 'new');
+  pending(
+    box,
+    [box.directory],
+    [
+      [box.first, digests.test, digests.new],
+      [box.second, null, digests.abc],
+    ],
+  );
+  const before = ownerText(box);
+  expect(read(box)).toEqual({ files: [{ digest: digests.new, path: box.first }], status: 'read' });
+  expect(ownerText(box)).toBe(before);
+});
+
+test.each([
+  ['damaged', 'not json'],
+  ['unknown-format', '{"format":2,"state":"committed","directories":[],"files":[]}\n'],
+])('reading a %s plugin file refuses it and reports its path', (reason, text) => {
+  const box = sandbox();
+  mkdirSync(box.record);
+  writeFileSync(box.owner, text);
+  expect(read(box)).toEqual({ refused: { path: box.owner, reason }, status: 'refused' });
+  expect(readFileSync(box.owner, 'utf8')).toBe(text);
+});
+
+test('the target refusals read without writing match the ones an install meets', () => {
+  const box = sandbox();
+  installed(box, [{ content: 'test', path: box.first }]);
+  const recorded = read(box);
+  if (recorded.status !== 'read') {
+    throw new Error('The plugin file did not read.');
+  }
+  const link = join(box.skills, 'link.md');
+  symlinkSync(box.first, link);
+  const unrecorded = join(box.skills, 'other.md');
+  writeFileSync(unrecorded, 'abc');
+  const absent = join(box.skills, 'absent.md');
+  const paths = [box.first, absent, unrecorded, link, box.skills];
+  expect(targetRefusals(paths, recorded.files)).toEqual([
+    { path: unrecorded, reason: 'unrecorded' },
+    { path: link, reason: 'link' },
+    { path: box.skills, reason: 'directory' },
+  ]);
+  writeFileSync(box.first, 'abc');
+  expect(targetRefusals([box.first], recorded.files)).toEqual([
+    { path: box.first, reason: 'changed' },
+  ]);
 });
