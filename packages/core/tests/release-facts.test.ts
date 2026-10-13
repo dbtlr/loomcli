@@ -167,6 +167,7 @@ test.each([
     '{"build":"distributed","release":{"version":"one","repository":"acme/probe"}}',
     'hold release version "one"',
   ],
+  ['{"build":"distributed","compiled":1}', 'hold compiled 1'],
 ])(
   'a bundle that bakes %s fails every door with invalid-release-facts, and an override replaces it',
   (facts, found) => {
@@ -324,3 +325,50 @@ test.each(runtimes)(
     });
   },
 );
+
+/** The runtime's own executable, which `host.program` names first. */
+function executableOf(runtime: string): string {
+  return run(runtime, ['-e', 'process.stdout.write(process.execPath)']).stdout;
+}
+
+test.each(runtimes)(
+  'a bundle reads host.program as the runtime and the bundle, frozen, and one that bakes compiled true as the runtime alone, under %s',
+  (runtime) => {
+    const executable = executableOf(runtime);
+    const main = bundled(distributed);
+    expect(printed(fromBundle(distributed, runtime, 'program'))).toEqual({
+      frozen: true,
+      program: [executable, main],
+    });
+    const compiled = JSON.stringify({ build: 'distributed', compiled: true });
+    expect(printed(fromBundle(compiled, runtime, 'program'))).toEqual({
+      frozen: true,
+      program: [executable],
+    });
+    // The release facts never repeat the member.
+    expect(printed(fromBundle(compiled, runtime, 'facts'))).toEqual({
+      facts: { build: 'distributed' },
+      frozen: true,
+    });
+    expect(printed(fromBundle(compiled, runtime, 'program-invoke'))).toEqual({
+      frozen: true,
+      program: [executable],
+    });
+  },
+);
+
+test('a source run reads host.program as the runtime and the absolute script path', () => {
+  const result = fromSource('program');
+  expect(printed(result)).toEqual({
+    frozen: true,
+    program: [executableOf('bun'), fileURLToPath(fixture)],
+  });
+});
+
+test('a program override replaces the whole list, copied and frozen, and an action invoke keeps it', () => {
+  expect(printed(fromSource('program-override'))).toEqual({
+    frozen: true,
+    program: ['/opt/runtime', '/srv/main.js'],
+  });
+  expect(printed(fromSource('program-nested'))).toEqual(['/opt/runtime', '/srv/main.js']);
+});

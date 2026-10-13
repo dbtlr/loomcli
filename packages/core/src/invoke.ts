@@ -2,7 +2,7 @@ import { Readable, Writable } from 'node:stream';
 
 import { InternalError } from './errors.js';
 import type { LoomError } from './errors.js';
-import { capturedHost, captureWorkingDirectory, readSourceFile } from './host.js';
+import { capturedHost, captureProgram, captureWorkingDirectory, readSourceFile } from './host.js';
 import type { CapturedFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
 import { isPlainObject } from './plain.js';
@@ -16,9 +16,12 @@ type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform' | 'releas
 
 /**
  * The five fields one invocation by name runs on, its working directory and its release facts as
- * its capture read them.
+ * its capture read them, and the program that starts the application again, which an invocation
+ * by name never replaces.
  */
-type CapturedFields = Omit<InvocationFields, 'cwd' | 'release'> & CapturedFacts;
+type CapturedFields = Omit<InvocationFields, 'cwd' | 'release'> &
+  CapturedFacts &
+  Pick<Host, 'program'>;
 
 /** The five host fields by name, the only keys `app.invoke` accepts under `host`. */
 const hostFields = new Set(['cwd', 'env', 'platform', 'readSource', 'release']);
@@ -217,15 +220,19 @@ function processFields(application: string, overrides: Partial<InvocationFields>
     directory: captureWorkingDirectory(overrides.cwd),
     env,
     platform,
+    program: captureProgram(undefined),
     readSource: overrides.readSource ?? readSourceFile,
     release: captureRelease(overrides.release, { application, env, platform }),
   };
 }
 
-/** The five fields an action's call reads from its run's host, which it never reads again. */
+/**
+ * The five fields an action's call reads from its run's host, which it never reads again, and the
+ * run's program.
+ */
 function fieldsOf(host: Host): CapturedFields {
-  const { cwd, env, platform, readSource } = host;
-  const captured = { directory: { cwd }, env, platform, release: { facts: host.release } };
+  const { cwd, env, platform, program, readSource } = host;
+  const captured = { directory: { cwd }, env, platform, program, release: { facts: host.release } };
   return readSource === undefined ? captured : { ...captured, readSource };
 }
 
@@ -262,6 +269,7 @@ function invocationHost(
     argv: [],
     env: { ...fields.env },
     platform: fields.platform,
+    program: fields.program,
     stderr: sinks.stderr,
     stdin: Readable.from([]),
     stdout: sinks.stdout,

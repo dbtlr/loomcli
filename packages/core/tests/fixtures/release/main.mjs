@@ -74,6 +74,31 @@ function nested() {
     );
 }
 
+/** An application whose root prints the program its run reads, and whether core froze it. */
+function program() {
+  return new Application('probe', { description: 'Probe the program.' }).action(({ host, out }) =>
+    out.print(JSON.stringify({ frozen: Object.isFrozen(host.program), program: host.program })),
+  );
+}
+
+/** An application whose `outer` action calls `inner`, which prints the program the call reads. */
+function nestedProgram() {
+  return new Application('probe', { description: 'Probe the program.' })
+    .command(
+      new Command('inner', { description: 'Print the program.' }).action(({ host, out }) =>
+        out.print(JSON.stringify(host.program)),
+      ),
+    )
+    .command(
+      new Command('outer', { description: 'Call inner by name.' }).action(
+        async ({ invoke, out }) => {
+          const outcome = await invoke(['inner'], {});
+          await out.print(outcome.status === 'completed' ? outcome.output.trim() : outcome.status);
+        },
+      ),
+    );
+}
+
 /** What `inspect()` answers: the graph's name, or the class, rule, and sentence it threw. */
 function inspected(app) {
   try {
@@ -132,6 +157,22 @@ const scenarios = {
     const outcome = await throwing().invoke([], {}, { host: { release: null } });
     print({ exitCode: outcome.exitCode, status: outcome.status });
     return 0;
+  },
+  program: () => program().run({ host }),
+  'program-invoke': async () => {
+    const outcome = await program().invoke([], {});
+    print(outcome.status === 'completed' ? JSON.parse(outcome.output) : outcome.status);
+    return 0;
+  },
+  'program-nested': () =>
+    nestedProgram().run({
+      host: { argv: ['outer'], program: ['/opt/runtime', '/srv/main.js'], release: supplied },
+    }),
+  'program-override': () => {
+    const words = ['/opt/runtime', '/srv/main.js'];
+    const run = program().run({ host: { ...host, program: words } });
+    words.push('changed after the call');
+    return run;
   },
   throw: () => throwing().run({ host }),
 };

@@ -201,6 +201,13 @@ export interface ReleaseFacts {
 export interface Host {
   platform: string;
   argv: string[];
+  /**
+   * The runtime and script prefix `argv` omits: the words that start this application again, so
+   * `[...program, ...argv]` reruns it. A compiled binary reads its own path alone, and any other
+   * run reads the runtime's path and the absolute path of the script it ran. Frozen; an override
+   * replaces the whole list, and an action's `invoke` keeps its run's.
+   */
+  program: readonly string[];
   cwd: string;
   env: Record<string, string | undefined>;
   terminal: { stdin: InputTerminal; stdout: OutputTerminal; stderr: OutputTerminal };
