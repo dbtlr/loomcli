@@ -241,7 +241,7 @@ The release line a version belongs to, which core derives from the version: its 
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation record**:
-The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps its installed files, with their digests, in files of its own there.
+The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests or whole folders, in files of its own there.
 _Avoid_: Receipt, installation receipt, journal, ledger, manifest
 
 **Development build**:
@@ -645,7 +645,7 @@ The file that has the platform supervise one of the application's own Commands f
 _Avoid_: Daemon (for the file), job, supervisor config
 
 **Agent skill**:
-A folder of instructions a coding agent loads to use the application, holding `SKILL.md` and any reference files beside it, named by a skill name of lowercase letters, digits, and hyphens. The application ships its skills inside itself, and the skills plugin writes them where agents read them, so an installed skill speaks the surface of the binary that installed it.
+A folder of instructions a coding agent loads to use the application, holding `SKILL.md` and any reference files beside it, named by a skill name of lowercase letters, digits, and hyphens. The application ships its skills inside itself, and the skills plugin writes each one where agents read it as a whole folder, so an installed skill speaks the surface of the binary that installed it.
 _Avoid_: Prompt, plugin (for the folder), instructions file
 
 **Agent target**:
