@@ -120,12 +120,13 @@ async function startupOf(run: ChildRun, place: Place): Promise<Startup | undefin
 }
 
 /**
- * What an install does to startup lines: the line it lists, the startup files whose recorded lines
- * it releases or keeps, the lines the operator changes by hand, and whether the lines stay as
- * recorded.
+ * What an install does to startup lines: the line it lists or records only as held, the startup
+ * files whose recorded lines it releases or keeps, the lines the operator changes by hand, and
+ * whether the lines stay as recorded.
  */
 interface LinePlan {
   readonly lines: readonly InstalledLine[];
+  readonly hold: readonly InstalledLine[];
   readonly release: readonly string[];
   readonly keep: readonly string[];
   readonly notices: readonly Notice[];
@@ -152,10 +153,7 @@ function placeLine(
 ): { readonly listed: boolean; readonly notices: readonly Notice[] } {
   const { line, path, policy } = startup;
   if (releasedHere) {
-    return {
-      listed: false,
-      notices: judgement.holds === true ? [] : [{ line, sentence: lines.addInPlace(path) }],
-    };
+    return { listed: false, notices: [{ line, sentence: lines.addInPlace(path) }] };
   }
   if (judgement.holds === true) {
     return { listed: true, notices: [] };
@@ -194,29 +192,43 @@ function releasedLines(
   };
 }
 
+/** The new startup file, judged for its line, with the lines recorded before the install. */
+type NewLine = Omit<Target, 'releasedHere'> & { readonly recorded: readonly StartupLine[] };
+
 /**
- * The plan for a new startup line: listed, or printed for the operator to add. A recorded line in
- * a startup file the install cannot change and lists no line for is released, so the module never
- * reads or writes that file. The recorded line equal to the one it would list, in a file it cannot
- * read, is kept as recorded, with nothing printed for it.
+ * The plan that leaves the new line's startup file unread or unwritten, or none: the new line held
+ * in the place of a recorded line released from its startup file, which already holds the new line
+ * because the operator added it, so a later uninstall prints it; or the recorded line equal to the
+ * new one kept as recorded in a file the install cannot read, with nothing printed for it.
  */
-function planNewLine(
-  run: ChildRun,
-  {
-    judgement,
-    recorded,
-    startup,
-  }: Omit<Target, 'releasedHere'> & { readonly recorded: readonly StartupLine[] },
-): LinePlan {
-  const { release, removals } = releasedLines(run, startup, recorded);
+function planInPlace(
+  { judgement, recorded, startup }: NewLine,
+  { release, removals }: ReturnType<typeof releasedLines>,
+): LinePlan | undefined {
+  const { line, path } = startup;
+  if (release.has(path) && judgement.holds === true) {
+    // The held line releases the recorded line in its own file, so the module names that file once.
+    const others = [...release].filter((entry) => entry !== path);
+    const hold = [{ line, path }];
+    return { hold, keep: [], lines: [], notices: removals, release: others, steady: false };
+  }
   if (judgement.holds === undefined && recorded.some((entry) => isListed(entry, startup))) {
-    return {
-      keep: [startup.path],
-      lines: [],
-      notices: removals,
-      release: [...release],
-      steady: recorded.length === sole,
-    };
+    const steady = recorded.length === sole;
+    return { hold: [], keep: [path], lines: [], notices: removals, release: [...release], steady };
+  }
+  return undefined;
+}
+
+/**
+ * The plan for a new startup line: listed, held or kept in place, or printed for the operator to
+ * add. A recorded line in a startup file the install cannot change and lists no line for is
+ * released, so the module never writes that file.
+ */
+function planNewLine(run: ChildRun, { judgement, recorded, startup }: NewLine): LinePlan {
+  const { release, removals } = releasedLines(run, startup, recorded);
+  const inPlace = planInPlace({ judgement, recorded, startup }, { release, removals });
+  if (inPlace !== undefined) {
+    return inPlace;
   }
   const placed = placeLine(run, { judgement, releasedHere: release.has(startup.path), startup });
   const recordedHere = recorded.some(({ path }) => path === startup.path);
@@ -229,6 +241,7 @@ function planNewLine(
       recorded.every((entry) => isListed(entry, startup))
     : recorded.length === none;
   return {
+    hold: [],
     keep: [],
     lines: placed.listed ? [installedLine(startup)] : [],
     notices: [...removals, ...placed.notices],
@@ -250,6 +263,7 @@ function planLines(
   if (startup === undefined) {
     const { release, removals } = releasedLines(run, startup, recorded);
     return {
+      hold: [],
       keep: [],
       lines: [],
       notices: removals,
@@ -297,6 +311,7 @@ function installThrough(
   const outcome = install({
     directoryMode,
     files: [scriptFile(place.script, content)],
+    hold: plan.hold,
     keep: plan.keep,
     lines: plan.lines,
     plugin: recordName(place.shell),
