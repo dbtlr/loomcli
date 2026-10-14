@@ -7,7 +7,8 @@ import type { Host } from '@loomcli/core';
 
 import { releaseBinary } from './binary.js';
 import { writeCache } from './cache.js';
-import { refusals } from './messages.js';
+import type { CacheEntry } from './cache.js';
+import { failures, refusals } from './messages.js';
 import { latestRelease } from './resolve.js';
 
 /** What the refresh reads: the graph's name, the run's host, and the run signal. */
@@ -17,10 +18,20 @@ interface RefreshRun {
   readonly signal: AbortSignal;
 }
 
+/** Writes the cache, or throws the cache failure with the runtime's error as its cause. */
+function writeOrFail(name: string, directory: string, entry: CacheEntry): void {
+  try {
+    writeCache(directory, entry);
+  } catch (error) {
+    throw failures.cache(name, directory, error);
+  }
+}
+
 /**
  * Resolves the newest release on `host.release.channel`, fetching only what resolving the channel
  * needs, and writes the cache with the time it finished. It reads no installation and hashes
- * nothing. A channel with no release writes `null`; a request that fails throws and writes nothing.
+ * nothing. A channel with no release writes `null`; a request that fails throws and writes nothing;
+ * a write that fails is the cache failure, the runtime's error kept as its cause.
  */
 async function refreshNotice({ name, host, signal }: RefreshRun): Promise<void> {
   const binary = releaseBinary(host);
@@ -33,12 +44,8 @@ async function refreshNotice({ name, host, signal }: RefreshRun): Promise<void> 
   }
   const { channel, repository } = binary;
   const found = await latestRelease(repository, channel, signal);
-  writeCache(directory.path, {
-    channel,
-    checked: new Date(),
-    latest: found?.version.text,
-    repository,
-  });
+  const entry = { channel, checked: new Date(), latest: found?.version.text, repository };
+  writeOrFail(name, directory.path, entry);
 }
 
 export { refreshNotice };

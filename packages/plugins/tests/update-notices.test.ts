@@ -554,6 +554,24 @@ test('self-update --refresh-notice refuses a run with no asset and a run whose c
   expect(existsSync(box.cache)).toBe(false);
 });
 
+test.skipIf(process.getuid?.() === 0)(
+  'self-update --refresh-notice exits 1 with the write sentence when its cache directory cannot be written',
+  () => {
+    const box = sandbox();
+    mkdirSync(box.cache);
+    chmodSync(box.cache, 0o555);
+    const result = run(box, ['self-update', '--refresh-notice'], {
+      tty: { stderr: false, stdout: false },
+    });
+    expect(result).toEqual({
+      status: 1,
+      stderr: `notes could not write its update cache to ${box.cache}. Free space there or check its permissions, then run self-update --refresh-notice again.\n`,
+      stdout: '',
+    });
+    expect(readdirSync(box.cache)).toEqual([]);
+  },
+);
+
 test('--refresh-notice is listed by no help page', () => {
   const box = sandbox();
   const result = run(box, ['self-update', '--help'], {
