@@ -28,6 +28,8 @@ import {
   viewShape,
   viewsWithoutResult,
 } from './command-rules.js';
+import { contentDeclaration, stdinClaimedTwice } from './content-rules.js';
+import type { Content } from './content.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
@@ -68,6 +70,9 @@ import {
   checkNoListingFacts,
   declarerNote,
   siteFinding,
+  callSite,
+  factFault,
+  flagFault,
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import type {
@@ -135,6 +140,8 @@ import type {
   RowViews,
   ValidateOmittedConstraint,
   View,
+  StdinConfig,
+  StdinContext,
 } from './types.js';
 import {
   captureInputConfig,
@@ -171,6 +178,7 @@ export interface ArgumentSlot {
  * no graph and calls no converter.
  */
 export interface DispatchInput {
+  stdin: Content | undefined;
   command: () => CommandNode;
   graph: () => CommandGraph;
   style: ContextualStyle;
@@ -202,6 +210,7 @@ export interface RoutedChild {
  * it, and `routes` adds the aliases, so routing alone resolves them.
  */
 export interface BuiltCommand {
+  stdin: (StdinConfig & { readonly position: number }) | undefined;
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   /**
@@ -251,7 +260,8 @@ export type CommandMethod =
   | 'command'
   | 'option'
   | 'result'
-  | 'rows';
+  | 'rows'
+  | 'stdin';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
 export type AfterArgument<State> = Exclude<State, 'command'>;
@@ -492,6 +502,7 @@ export interface CommandFacts {
  * them, so one declaration call has one implementation.
  */
 export interface CommandState<Args, Options, Globals> {
+  stdin?: StdinConfig & { readonly position: number };
   /**
    * The registered action, with the declared result erased. An action is stored under the widest
    * result, so a handler typed from its own declaration stores here and the channel that carries
@@ -520,7 +531,7 @@ export interface CommandState<Args, Options, Globals> {
 /** The untyped part of a declaration, which every attach and build check reads. */
 export type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'aliases' | 'children' | 'descriptors' | 'inputs' | 'name' | 'records' | 'results'
+  'aliases' | 'children' | 'descriptors' | 'inputs' | 'name' | 'records' | 'results' | 'stdin'
 >;
 
 /** How the extension diagnostics of one Command's own layers name it. */
@@ -689,6 +700,44 @@ function optionsOf(inputs: readonly InputDeclaration[]): OptionInput[] {
   return inputs.filter((input): input is OptionInput => input.kind === 'option');
 }
 
+/** A stdin call's finding carries authored settings without internal ordering metadata. */
+export function stdinFinding(path: readonly string[], config: StdinConfig): Finding {
+  const supplied = {
+    ...(Object.hasOwn(config, 'description') ? { description: config.description } : {}),
+    ...(Object.hasOwn(config, 'required') ? { required: config.required } : {}),
+  };
+  return { arguments: [supplied], call: 'stdin', mark: '0', path };
+}
+
+/** Claims are checked at each authored call and again after hooks add local inputs. */
+function checkStdinClaims(
+  inputs: readonly InputDeclaration[],
+  place: { path: readonly string[]; stdin: StdinConfig | undefined },
+  declarers: ReadonlyMap<InputDeclaration, string> = new Map(),
+): void {
+  const claimed = inputs.filter(
+    (input) => input.config.type === 'content' && input.config.stdin === true,
+  );
+  if (claimed.length + Number(place.stdin !== undefined) > 1) {
+    throw new DeclarationError(stdinClaimedTwice, {
+      correction: 'Keep one stdin target on the Command.',
+      findings: [
+        ...claimed.map((input) =>
+          inputFinding(
+            place.path,
+            input,
+            declarers.has(input)
+              ? `${declarerNote(declarers.get(input) ?? '')} in onCommandAttach; claims stdin`
+              : 'claims stdin',
+          ),
+        ),
+        ...(place.stdin === undefined ? [] : [stdinFinding(place.path, place.stdin)]),
+      ],
+      sentence: 'A Command declares more than one stdin target.',
+    });
+  }
+}
+
 /** The positional slot one argument fills. */
 function slotOf(input: ArgumentInput): ArgumentSlot {
   return {
@@ -801,6 +850,7 @@ export function declareArgument<
     remedy: inputRemedy,
   });
   checkArgument(state, input);
+  checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
   const recorded = recordInput(state, input);
   const previous = state.bind;
   return {
@@ -860,6 +910,7 @@ export function declareOption<
     localScope(state.name, pathOf(state.name)),
   );
   checkDeclarations([{ input, site }]);
+  checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
   const previous = state.bind;
   return {
     ...state,
@@ -952,9 +1003,10 @@ function declaredChannel<Result>(out: Out<OpenResult>): Out<Result> {
  * The handler is typed against the result its own declaration carries, and the state holds one
  * action for every declaration, so the context the handler receives is read back at the call.
  */
-export function declareAction<Args, Options, Globals, Result>(
+export function declareAction<Args, Options, Globals, Result, Stdin extends StdinContext>(
   state: CommandState<Args, Options, Globals>,
-  handler: Action<Args, Globals & Options, Result>,
+  handler: Action<Args, Globals & Options, Result, Stdin>,
+  stdinBind: (source: Content | undefined) => Stdin,
 ): CommandState<Args, Options, Globals> {
   if (state.action !== undefined) {
     throw new DeclarationError(multipleActions, {
@@ -988,6 +1040,7 @@ export function declareAction<Args, Options, Globals, Result>(
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
       signal: context.signal,
+      ...stdinBind(context.stdin),
       style: context.style,
     });
   return { ...state, action: stored };
@@ -1195,6 +1248,13 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
       findings:
         placement === undefined ? [] : [{ ...placement, note: 'no action and no children' }],
       sentence: `${commandSentence(name)} has no action.`,
+    });
+  }
+  if (state.stdin !== undefined) {
+    throw new DeclarationError(contentDeclaration, {
+      correction: 'Declare stdin on the Command that reads it, or register an action.',
+      findings: [stdinFinding(place.path, state.stdin)],
+      sentence: `${commandSentence(name)} declares stdin but registers no action to receive it.`,
     });
   }
   const option = state.inputs.find((input) => input.kind === 'option');
@@ -2232,6 +2292,7 @@ function bindDispatch<Args, Options, Globals>(
     passthrough,
     signal,
     style,
+    stdin,
     values,
   }: DispatchInput) => {
     const bound = state.bind(values);
@@ -2257,6 +2318,7 @@ function bindDispatch<Args, Options, Globals>(
       out,
       passthrough,
       signal,
+      stdin,
       style,
     });
   };
@@ -2348,6 +2410,11 @@ export function buildCommand<Args, Options, Globals>(
   }
   const hooked = applyAttachCalls(state, calls);
   const hookInputs = calls.filter((call) => call.kind === 'input');
+  checkStdinClaims(
+    hooked.inputs,
+    { path: context.path, stdin: hooked.stdin },
+    new Map(hookInputs.map(({ input, identity }) => [input, identity])),
+  );
   checkInputFacts(
     hookInputs.map((call) => call.input),
     { name, subject },
@@ -2404,6 +2471,7 @@ export function buildCommand<Args, Options, Globals>(
     placement: context.placement,
     result,
     routes,
+    stdin: state.stdin,
     table,
   };
 }
@@ -2439,23 +2507,98 @@ export function buildGraph<Args, Options, Globals>(
   return { extensions, globals: context.globals, root: buildCommand(root, context) };
 }
 
+/** A required source reaches this accessor only after preparation accepted its presence. */
+export function requiredStdinContext(source: Content | undefined): { readonly stdin: Content } {
+  if (source === undefined) {
+    throw new Error('Required stdin was not prepared.');
+  }
+  return { stdin: source };
+}
+
+export function declareStdin<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  config: StdinConfig,
+): CommandState<Args, Options, Globals> {
+  checkOpen(state, {
+    arguments: [config],
+    call: 'stdin',
+    clause: 'declares stdin',
+    remedy: inputRemedy,
+  });
+  const captured = captureInputConfig(
+    { config, kind: 'argument', name: 'stdin' },
+    { call: 'stdin', path: pathOf(state.name) },
+  );
+  const site = callSite('Stdin', {
+    arguments: [captured],
+    call: 'stdin',
+    path: pathOf(state.name),
+  });
+  checkDescription({ ...site, at: '0' }, captured.description);
+  if (captured.required !== undefined && typeof captured.required !== 'boolean') {
+    throw flagFault({ ...site, at: '0' }, 'required');
+  }
+  for (const key of Object.keys(captured)) {
+    if (!['description', 'required'].includes(key)) {
+      throw factFault(
+        contentDeclaration,
+        { ...site, at: '0' },
+        {
+          correction: 'Declare only description and required on stdin.',
+          fact: key,
+          sentence: `Stdin declares ${key}.`,
+        },
+      );
+    }
+  }
+  if (state.stdin !== undefined) {
+    throw new DeclarationError(stdinClaimedTwice, {
+      correction: 'Keep one stdin declaration.',
+      findings: [siteFinding(site, '0')],
+      sentence: 'A Command declares stdin twice.',
+    });
+  }
+  checkStdinClaims(state.inputs, { path: pathOf(state.name), stdin: captured });
+  return { ...state, stdin: Object.freeze({ ...captured, position: state.inputs.length }) };
+}
+
 export class CommandBuilder<
   Args,
   Options,
   Globals,
   State extends CommandMethod = CommandMethod,
   Result = unknown,
+  Stdin extends StdinContext = StdinContext,
 > {
   declare readonly [commandValue]: true;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin>;
 
   readonly #name: string;
   readonly #state: CommandState<Args, Options, Globals>;
+  readonly #stdinBind: (source: Content | undefined) => Stdin;
 
-  constructor(name: string, state: CommandState<Args, Options, Globals>) {
+  constructor(
+    name: string,
+    state: CommandState<Args, Options, Globals>,
+    stdinBind: (source: Content | undefined) => Stdin,
+  ) {
+    this.#stdinBind = stdinBind;
     this.#name = name;
     this.#state = state;
     nodes.set(this, nodeHandle(name, state));
+  }
+
+  stdin(
+    config: StdinConfig & { required: true },
+  ): Command<Args, Options, Globals, State, Result, { readonly stdin: Content }>;
+  stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result>;
+  stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result> {
+    const state = declareStdin(this.#state, config);
+    return new CommandBuilder<Args, Options, Globals, State, Result>(
+      this.#name,
+      state,
+      state.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+    );
   }
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
@@ -2470,7 +2613,8 @@ export class CommandBuilder<
     Options,
     Globals,
     AfterArgument<State>,
-    Result
+    Result,
+    Stdin
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -2489,7 +2633,7 @@ export class CommandBuilder<
       NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result> {
+  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin> {
     const input: OptionInput<Name, Config> = {
       config,
       kind: 'option',
@@ -2502,14 +2646,14 @@ export class CommandBuilder<
    * Aliases are other portable names that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
-  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result> {
+  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result, Stdin> {
     return this.#derive(declareAlias(this.#state, names));
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
   command<const Child extends Command<unknown, unknown, Globals>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Command<Args, Options, Globals, AfterCommand<State>, Result> {
+  ): Command<Args, Options, Globals, AfterCommand<State>, Result, Stdin> {
     return this.#derive(attachChild(this.#state, child));
   }
 
@@ -2519,7 +2663,7 @@ export class CommandBuilder<
    */
   result<Value>(declaration: {
     views: ResultViews<NoInfer<Value>>;
-  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'value'; value: Value }> {
+  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'value'; value: Value }, Stdin> {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#state, 'value', declaration),
     );
@@ -2528,7 +2672,7 @@ export class CommandBuilder<
   /** The same declaration over a sequence, whose type argument is one row. */
   rows<Row>(declaration: {
     views: RowViews<NoInfer<Row>>;
-  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'rows'; row: Row }> {
+  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'rows'; row: Row }, Stdin> {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#state, 'rows', declaration),
     );
@@ -2541,20 +2685,20 @@ export class CommandBuilder<
   views(
     replacements: ResultViewsOf<Result>,
     options?: { default?: string },
-  ): Command<Args, Options, Globals, State, Result> {
+  ): Command<Args, Options, Globals, State, Result, Stdin> {
     return this.#derive(declareResultViews(this.#state, replacements, options));
   }
 
   /** The action closes input authoring; `extend()` remains outside this state transition. */
   action(
-    handler: Action<Args, Globals & Options, Result>,
-  ): Command<Args, Options, Globals, AfterAction, Result> {
-    return this.#derive(declareAction(this.#state, handler));
+    handler: Action<Args, Globals & Options, Result, Stdin>,
+  ): Command<Args, Options, Globals, AfterAction, Result, Stdin> {
+    return this.#derive(declareAction(this.#state, handler, this.#stdinBind));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Command<Args, Options, Globals, State, Result> {
+  ): Command<Args, Options, Globals, State, Result, Stdin> {
     return this.#derive(declareExtensions(this.#state, values));
   }
 
@@ -2564,10 +2708,11 @@ export class CommandBuilder<
    */
   #derive<DerivedArgs, DerivedOptions, Next extends CommandMethod, DerivedResult = Result>(
     state: CommandState<DerivedArgs, DerivedOptions, Globals>,
-  ): Command<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult> {
-    return new CommandBuilder<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult>(
+  ): Command<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult, Stdin> {
+    return new CommandBuilder<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult, Stdin>(
       this.#name,
       state,
+      this.#stdinBind,
     );
   }
 }
@@ -2585,8 +2730,9 @@ export type Command<
   Globals = {},
   State extends CommandMethod = AfterAction,
   Result = unknown,
+  Stdin extends StdinContext = StdinContext,
 > = Pick<
-  CommandBuilder<Args, Options, Globals, State, Result>,
+  CommandBuilder<Args, Options, Globals, State, Result, Stdin>,
   typeof commandValue | typeof declaredTypes | 'extend' | State | ResultMethod<Result>
 >;
 
@@ -2629,7 +2775,7 @@ type CommandConstructor = new (
 class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
   constructor(name: string, options?: CommandOptions) {
     const declared = declaring(() => namedState<RegisteredGlobals>(name, options));
-    super(declared.name, declared.state);
+    super(declared.name, declared.state, (source) => ({ stdin: source }));
   }
 }
 
@@ -2720,7 +2866,7 @@ export type Prepared = {
 function requestOf(
   command: BuiltCommand,
   values: ValidatedInputs,
-  passthrough: readonly string[],
+  { passthrough, stdin }: { passthrough: readonly string[]; stdin: Content | undefined },
 ): Request {
   const args: Record<string, unknown> = {};
   const options: Record<string, unknown> = {};
@@ -2729,6 +2875,7 @@ function requestOf(
     target[input.name] = snapshot(values.read(input));
   }
   return Object.freeze({
+    ...(command.stdin !== undefined ? { stdin } : {}),
     args: Object.freeze(args),
     options: Object.freeze(options),
     passthrough: Object.freeze([...passthrough]),
@@ -2884,6 +3031,7 @@ function validateInvocation(
     places: invocation.places,
     signal: invocation.signal,
     sources,
+    stdin: local ? routed.command.stdin : undefined,
     supplied: {
       args: local?.args ?? new Map(),
       options: local ? mergeValues(filled.values, local.options) : filled.values,
@@ -2978,7 +3126,7 @@ function ownRecord(routed: ParsedInvocation, validated: ValidatedInputs): Prepar
 function readyDispatch(
   { invocation, routed }: Preparation,
   local: LocalPhase & { kind: 'parsed' },
-  values: ValidatedInputs,
+  { values, stdin }: Pick<Validation, 'values' | 'stdin'>,
 ): { dispatch: (view: string | null) => Promise<void>; request: Request } {
   const { command, path } = routed;
   return {
@@ -2996,6 +3144,7 @@ function readyDispatch(
           out: channel.out,
           passthrough: local.passthrough,
           signal: invocation.signal,
+          stdin,
           style: invocation.style,
           values,
         });
@@ -3015,7 +3164,7 @@ function readyDispatch(
         throw error;
       }
     },
-    request: requestOf(command, values, local.passthrough),
+    request: requestOf(command, values, { passthrough: local.passthrough, stdin }),
   };
 }
 
@@ -3067,7 +3216,7 @@ export async function prepareDispatch(
     if (local.kind === 'held' || validation.failure) {
       return await held(validation.failure, options);
     }
-    const ready = readyDispatch(preparation, local, validation.values);
+    const ready = readyDispatch(preparation, local, validation);
     return {
       ...ready,
       globals,

@@ -356,7 +356,11 @@ function checkMultiple(config: OptionConfig, site: InputSite, subject: string): 
 }
 
 /** The kind each option type reads as in a sentence about a value it cannot take. */
-const valuelessKinds = { boolean: 'a Boolean option', count: 'a counted option' } as const;
+const valuelessKinds = {
+  boolean: 'a Boolean option',
+  content: 'a content option',
+  count: 'a counted option',
+} as const;
 
 /**
  * A string option's implied value, the string a bare spelling supplies. A Boolean option and a
@@ -387,9 +391,9 @@ function checkImplied(config: OptionConfig, site: InputSite, subject: string): v
 function validateDeclaration({ name, config }: OptionDeclaration, site: InputSite) {
   checkOptionName(name, site);
   const subject = `Option ${quoted(name)}`;
-  if (!['string', 'boolean', 'count'].includes(config.type)) {
+  if (!['string', 'content', 'boolean', 'count'].includes(config.type)) {
     throw factFault(optionType, site, {
-      correction: 'Use "string", "boolean", or "count".',
+      correction: 'Use "string", "content", "boolean", or "count".',
       fact: 'type',
       sentence: `${subject} has an invalid type.`,
     });
@@ -484,6 +488,7 @@ export function booleanValue(values: OptionValues, name: string, config: OptionC
 /** The form an option's positive spellings read words by, its long form and short alias alike. */
 function positiveForm(name: string, config: OptionConfig): OptionForm {
   switch (config.type) {
+    case 'content':
     case 'string': {
       const multiple = config.multiple === true;
       return config.implied === undefined

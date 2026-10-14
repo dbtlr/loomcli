@@ -29,6 +29,7 @@ interface ManifestDocument {
 }
 
 interface ManifestCommand {
+  readonly stdin?: CommandNode['stdin'];
   readonly name: string | null;
   readonly path: readonly string[];
   readonly description: string | null;
@@ -50,6 +51,10 @@ interface ManifestFailure {
 }
 
 interface ManifestArgument {
+  readonly type?: 'content';
+  readonly stdin?: boolean;
+  readonly min?: number | undefined;
+  readonly max?: number | undefined;
   readonly name: string;
   readonly description: string | null;
   readonly required: boolean;
@@ -60,7 +65,10 @@ interface ManifestArgument {
 
 type ManifestOption =
   | {
-      readonly type: 'string';
+      readonly type: 'string' | 'content';
+      readonly stdin?: boolean;
+      readonly min?: number | undefined;
+      readonly max?: number | undefined;
       readonly name: string;
       readonly description: string | null;
       readonly deprecated: string | null;
@@ -157,9 +165,11 @@ function optionEntry(node: OptionNode): ManifestOption {
     case 'count': {
       return { type: 'count', ...common, schema: node.schema, env: node.env };
     }
+    case 'content':
     case 'string': {
       return {
-        type: 'string',
+        type: node.type,
+        ...(node.type === 'content' ? { stdin: node.stdin, min: node.min, max: node.max } : {}),
         ...common,
         required: node.required,
         multiple: node.multiple,
@@ -179,6 +189,9 @@ function optionEntry(node: OptionNode): ManifestOption {
 /** One argument's entry: its node without `validated`, `validateOmitted`, and `extensions`. */
 function argumentEntry(node: ArgumentNode): ManifestArgument {
   return {
+    ...(node.type === 'content'
+      ? { type: 'content' as const, stdin: node.stdin ?? false, min: node.min, max: node.max }
+      : {}),
     name: node.name,
     description: node.description ?? null,
     required: node.required,
@@ -317,6 +330,7 @@ function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
 function commandEntry(node: CommandNode): ManifestCommand {
   const values = readExtension(node, manifestCommand);
   return {
+    ...(node.stdin !== undefined ? { stdin: node.stdin } : {}),
     name: node.name,
     path: node.path,
     description: node.description ?? null,
@@ -366,7 +380,7 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
 
 /** How a diagnostic names one input: an option by its spelling, an argument by its name. */
 function inputLabel(entry: ManifestOption | ManifestArgument): string {
-  return 'type' in entry
+  return 'long' in entry
     ? `option "${entry.long ?? entry.short ?? entry.name}"`
     : `argument "${entry.name}"`;
 }

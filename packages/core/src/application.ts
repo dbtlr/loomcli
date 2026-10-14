@@ -5,6 +5,8 @@ import { noSelection, runInvocation } from './chain.js';
 import type { FailureSelection, Invocation, StartingView } from './chain.js';
 import { portableName } from './command-rules.js';
 import {
+  declareStdin,
+  requiredStdinContext,
   attachToRoot,
   callArguments,
   childNode,
@@ -38,6 +40,7 @@ import type {
   CommandState,
   ResultMethod,
 } from './command.js';
+import type { Content } from './content.js';
 import { elided, spelled } from './diagnostic-text.js';
 import { encoderRegistry } from './encoders.js';
 import type { EncoderRegistry } from './encoders.js';
@@ -103,6 +106,8 @@ import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
 import { readTranslations, translateThrow } from './translators.js';
 import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
+  StdinConfig,
+  StdinContext,
   Action,
   ArgumentConfig,
   ArgumentValue,
@@ -321,10 +326,12 @@ class ApplicationBuilder<
   State extends ApplicationMethod = ApplicationMethod,
   Plugins extends readonly Plugin[] = readonly [],
   Result = unknown,
+  Stdin extends StdinContext = StdinContext,
 > {
   declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin>;
 
+  readonly #stdinBind: (source: Content | undefined) => Stdin;
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #globals: GlobalsState;
@@ -337,7 +344,9 @@ class ApplicationBuilder<
       globals: GlobalsState;
       root: CommandState<Args, Options, Globals>;
     },
+    stdinBind: (source: Content | undefined) => Stdin,
   ) {
+    this.#stdinBind = stdinBind;
     this.#name = name;
     this.#config = declared.config;
     this.#globals = declared.globals;
@@ -346,6 +355,19 @@ class ApplicationBuilder<
 
   get name(): string {
     return this.#name;
+  }
+
+  stdin(
+    config: StdinConfig & { required: true },
+  ): Application<Args, Options, Globals, State, Plugins, Result, { readonly stdin: Content }>;
+  stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result>;
+  stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result> {
+    const root = declareStdin(this.#root, config);
+    return new ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>(
+      this.#name,
+      { config: this.#config, globals: this.#globals, root },
+      root.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+    );
   }
 
   argument<const Name extends string, const Config extends ArgumentConfig>(
@@ -361,7 +383,8 @@ class ApplicationBuilder<
     Globals,
     AfterArgument<State>,
     Plugins,
-    Result
+    Result,
+    Stdin
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -386,7 +409,8 @@ class ApplicationBuilder<
     Globals,
     State,
     Plugins,
-    Result
+    Result,
+    Stdin
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -414,7 +438,8 @@ class ApplicationBuilder<
     Globals & Record<Name, OptionValue<Config>>,
     State,
     Plugins,
-    Result
+    Result,
+    Stdin
   > {
     // The plugins' Commands attach at construction, so only the application's own calls close it.
     // The config is judged after the order, so the finding prints it elided and reads none of it.
@@ -452,15 +477,16 @@ class ApplicationBuilder<
       Globals & Record<Name, OptionValue<Config>>,
       State,
       Plugins,
-      Result
-    >(this.#name, { config: this.#config, globals, root });
+      Result,
+      Stdin
+    >(this.#name, { config: this.#config, globals, root }, this.#stdinBind);
   }
 
   /** Registering the action closes input authoring; extension configuration remains available. */
   action(
-    handler: Action<Args, Globals & Options, Result>,
-  ): Application<Args, Options, Globals, AfterAction, Plugins, Result> {
-    return this.derive(declareAction(this.#root, handler), { composed: true });
+    handler: Action<Args, Globals & Options, Result, Stdin>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin> {
+    return this.derive(declareAction(this.#root, handler, this.#stdinBind), { composed: true });
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
@@ -472,7 +498,8 @@ class ApplicationBuilder<
     Globals,
     AfterCommand<Exclude<State, 'globalOption'>>,
     Plugins,
-    Result
+    Result,
+    Stdin
   > {
     const scope = {
       descriptors: new Map(this.#root.descriptors),
@@ -500,7 +527,8 @@ class ApplicationBuilder<
     Globals,
     AfterResult<State>,
     Plugins,
-    { kind: 'value'; value: Value }
+    { kind: 'value'; value: Value },
+    Stdin
   > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#root, 'value', declaration),
@@ -510,7 +538,15 @@ class ApplicationBuilder<
   /** The same declaration over a sequence, whose type argument is one row. */
   rows<Row>(declaration: {
     views: RowViews<NoInfer<Row>>;
-  }): Application<Args, Options, Globals, AfterResult<State>, Plugins, { kind: 'rows'; row: Row }> {
+  }): Application<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    Plugins,
+    { kind: 'rows'; row: Row },
+    Stdin
+  > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#root, 'rows', declaration),
     );
@@ -520,13 +556,13 @@ class ApplicationBuilder<
   views(
     replacements: ResultViewsOf<Result>,
     options?: { default?: string },
-  ): Application<Args, Options, Globals, State, Plugins, Result> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
     return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Application<Args, Options, Globals, State, Plugins, Result> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
     return this.derive(declareExtensions(this.#root, values));
   }
 
@@ -543,10 +579,19 @@ class ApplicationBuilder<
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
     changed: Partial<Pick<ApplicationConfig, 'composed' | 'owners'>> = {},
-  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared> {
-    return new ApplicationBuilder<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared>(
+  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared, Stdin> {
+    return new ApplicationBuilder<
+      DerivedArgs,
+      DerivedOptions,
+      Globals,
+      Next,
+      Plugins,
+      Declared,
+      Stdin
+    >(
       this.#name,
       { config: { ...this.#config, ...changed }, globals: this.#globals, root },
+      this.#stdinBind,
     );
   }
 
@@ -1274,8 +1319,9 @@ export type Application<
   State extends ApplicationMethod = AfterAction,
   Plugins extends readonly Plugin[] = readonly Plugin[],
   Result = unknown,
+  Stdin extends StdinContext = StdinContext,
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>,
+  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin>,
   | typeof applicationEnvironment
   | typeof declaredTypes
   | 'check'
@@ -1526,6 +1572,7 @@ class ApplicationDeclaration<
     super(
       checked,
       declaring(() => declareApplication(checked, options)),
+      (source) => ({ stdin: source }),
     );
   }
 }

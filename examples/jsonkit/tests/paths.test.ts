@@ -101,14 +101,13 @@ test('the inspected graph marks the control options and leaves the work options 
     graph.root.children.find((child) => child.name === name)?.options ?? [];
   expect(marks(graph.globals)).toEqual({
     explain: true,
-    file: false,
     help: true,
     manifest: true,
     verbose: false,
     version: true,
   });
-  expect(marks(optionsOf('paths'))).toEqual({ format: true });
-  expect(marks(optionsOf('select'))).toMatchObject({ field: false });
+  expect(marks(optionsOf('paths'))).toEqual({ file: false, format: true });
+  expect(marks(optionsOf('select'))).toEqual({ field: false, file: false });
 });
 
 test('the hidden Command stays off the help page and out of the candidate list', () => {

@@ -1,3 +1,4 @@
+export type { Content } from './content.js';
 export { Application } from './application.js';
 export { Command } from './command.js';
 export { escapeControlCharacters } from './controls.js';
@@ -118,6 +119,10 @@ export type {
   BooleanOption,
   CommandAttachHook,
   CountOption,
+  ContentArgument,
+  ContentOption,
+  StdinConfig,
+  StdinContext,
   ExitCode,
   GraphBuiltHook,
   Host,

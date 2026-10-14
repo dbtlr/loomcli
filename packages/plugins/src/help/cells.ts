@@ -6,7 +6,7 @@ import { terminators } from '../lines.js';
 import { helpInput } from './extension.js';
 
 /** One option that takes a value, the only kind the action form and the fact list ever narrow to. */
-type StringOption = Extract<OptionNode, { type: 'string' }>;
+type StringOption = Extract<OptionNode, { type: 'string' | 'content' }>;
 
 /** One row of a section: the two cells the column rule pads and joins. */
 interface Row {
@@ -93,7 +93,10 @@ function optionCellParts(option: OptionNode): OptionCellParts {
     counted: option.type === 'count',
     long: longSpelling(option),
     short: option.short,
-    value: option.type === 'string' ? valueParts(option, option.long !== null) : undefined,
+    value:
+      option.type === 'string' || option.type === 'content'
+        ? valueParts(option, option.long !== null)
+        : undefined,
   };
 }
 
@@ -150,7 +153,7 @@ function optionForm(option: StringOption, writer: UsageWriter): string {
 /** How the action form names one argument: required or optional, and variadic or scalar. */
 function argumentForm(argument: ArgumentNode, writer: UsageWriter): string {
   const name = argument.variadic ? `${argument.name}...` : argument.name;
-  return writer.word(argument.required ? `<${name}>` : `[${name}]`);
+  return writer.word(argument.required && !argument.stdin ? `<${name}>` : `[${name}]`);
 }
 
 /** The JSON escape each line terminator prints as, in code point order. */
@@ -293,9 +296,33 @@ function impliedFacts(implied: string | null): Fact[] {
   return implied === null ? [] : [dimFact(`implied: ${oneLine(implied)}`)];
 }
 
-/** The facts one string option row carries, in the order the right-cell rule names them. */
+const singularSourceCount = 1;
+
+/** The native source routing and count bounds shared by help and man page rows. */
+function contentFacts(
+  input: { type?: string; stdin?: boolean; min?: number | undefined; max?: number | undefined },
+  collected: boolean,
+): Fact[] {
+  if (input.type !== 'content') {
+    return [];
+  }
+  const routing = collected
+    ? 'files and piped stdin; - places stdin'
+    : 'file or piped stdin; - selects stdin';
+  return [
+    dimFact(input.stdin ? routing : 'file path'),
+    ...(input.min === undefined
+      ? []
+      : [dimFact(`min: ${input.min} ${input.min === singularSourceCount ? 'source' : 'sources'}`)]),
+    ...(input.max === undefined
+      ? []
+      : [dimFact(`max: ${input.max} ${input.max === singularSourceCount ? 'source' : 'sources'}`)]),
+  ];
+}
+
 function stringFacts(option: StringOption): Fact[] {
   return [
+    ...contentFacts(option, option.multiple),
     ...(option.required ? [dimFact('required')] : []),
     ...(option.multiple ? [dimFact('repeatable')] : []),
     ...defaultFacts(option.default),
@@ -331,6 +358,7 @@ function optionFacts(option: OptionNode): Fact[] {
 /** The facts one option's kind contributes ahead of its deprecation. */
 function kindFacts(option: OptionNode): Fact[] {
   switch (option.type) {
+    case 'content':
     case 'string': {
       return stringFacts(option);
     }
@@ -349,7 +377,7 @@ function kindFacts(option: OptionNode): Fact[] {
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */
 function argumentFacts(argument: ArgumentNode): Fact[] {
-  return defaultFacts(argument.default);
+  return [...contentFacts(argument, argument.variadic), ...defaultFacts(argument.default)];
 }
 
 /**

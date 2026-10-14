@@ -88,7 +88,7 @@
     "path": [],
     "description": "Count bytes, words, or lines across text sources.",
     "details": [
-      "With no files, textstat counts the text piped to it and names the source \"stdin\"."
+      "Textstat counts files and piped text in order. Use - to place stdin among the files."
     ],
     "examples": [
       {
@@ -119,11 +119,16 @@
     "failures": [],
     "arguments": [
       {
+        "type": "content",
+        "stdin": true,
         "name": "files",
-        "description": "The files to count. Omit them to read piped text.",
-        "required": false,
+        "description": "The files and piped text to count. Use - to place stdin.",
+        "required": true,
         "variadic": true,
-        "schema": null,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        },
         "default": null
       }
     ],

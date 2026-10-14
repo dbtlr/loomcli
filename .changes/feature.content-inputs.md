@@ -1,0 +1,3 @@
+- Add local content arguments and options that prepare readable file paths into lazy `Content` handles, with one declared stdin target per Command and source-count bounds on collections.
+- Add `.stdin()` for an input that accepts piped or redirected content without a file operand. Content preparation reads no bytes; the action selects `text()` or `stream()`.
+- Describe content sources and count bounds in inspection, manifests, help, man pages, and MCP schemas, and support content inputs in completion. Named invocations and MCP calls accept file paths without content stdin.

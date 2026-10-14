@@ -17,7 +17,7 @@ const manifest = z
 const application = [
   'textstat',
   'Count bytes, words, or lines across text sources.',
-  'With no files, textstat counts the text piped to it and names the source "stdin".',
+  'Textstat counts files and piped text in order. Use - to place stdin among the files.',
   '  textstat one.txt two.txt',
   '  textstat --metric words --total *.md',
   '',
@@ -54,7 +54,7 @@ test.each(['--explain', '-e'])(
 );
 
 test('textstat explains an otherwise invalid invocation instead of rejecting it', () => {
-  // The named file does not exist, so a run that reached the action would fail reading it.
+  // The named file fails preparation, but the explain takeover keeps that input fault held.
   withDirectory((cwd) => {
     expect(invoke(main, ['missing.txt', '--explain'], { cwd })).toEqual({
       status: 0,
@@ -91,11 +91,13 @@ test("the inspected graph carries the plugin's option, the extension value, and 
   // Help also supplies its value to the manifest's collecting extension, with no manifest installed.
   expect(graph.root.extensions).toEqual({
     '@loom/explain/command': {
-      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      details:
+        'Textstat counts files and piped text in order. Use - to place stdin among the files.',
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     },
     '@loomcli/plugins/help/command': {
-      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      details:
+        'Textstat counts files and piped text in order. Use - to place stdin among the files.',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
       optionSections: [
         ['Counting', 'Measure'],
@@ -107,7 +109,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
     '@loomcli/plugins/manifest/command': [
       {
         details:
-          'With no files, textstat counts the text piped to it and names the source "stdin".',
+          'Textstat counts files and piped text in order. Use - to place stdin among the files.',
         examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
       },
     ],

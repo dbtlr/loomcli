@@ -102,6 +102,7 @@ export function describe(option: OptionNode): string {
       const polarity: unknown = option.polarity;
       return `${option.name} ${String(schema)} ${String(polarity)}`;
     }
+    case 'content':
     case 'string': {
       const implied: string | null = option.implied;
       return implied ?? option.name;

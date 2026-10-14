@@ -135,8 +135,9 @@ const explanations = {
   ],
   'option-type': [
     'The type decides how the parser reads an option: a string option consumes a',
-    'value, a Boolean option consumes none, and a counted option consumes none and',
-    'counts its occurrences. Core reads no other kind.',
+    'value, a Boolean option consumes none, a content option consumes a path and',
+    'prepares a lazy handle, and a counted option consumes none and counts its',
+    'occurrences. Core reads no other kind.',
   ],
   'polarity-on-count': [
     'Polarity chooses which long forms a Boolean option accepts and what its absence',
@@ -718,7 +719,7 @@ const cases: Record<string, Expected> = {
     sentence: 'Option "raw" is declared more than once on Command "get".',
   },
   'option-type': {
-    correction: 'Use "string", "boolean", or "count".',
+    correction: 'Use "string", "content", "boolean", or "count".',
     findings: [onCommand(['get'], "option('limit', { type: 'number' })", "type: 'number'")],
     headline: 'INVALID OPTION TYPE',
     rule: 'option-type',

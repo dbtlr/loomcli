@@ -4,7 +4,7 @@ title: ADR-0030 - An input carries its JSON Schema as a core graph fact, derived
 description: Graph build asks a validated input's Standard Schema for its input-side JSON Schema through the standard's converter and stores the plain result on the option or argument node, so the manifest, help, completion, and any later projection read one shape fact with no plugin installed. A result carries no schema.
 status: accepted
 created: 2026-09-18
-modified: 2026-09-29
+modified: 2026-10-14
 ---
 
 # ADR-0030 - An input carries its JSON Schema as a core graph fact, derived through the Standard JSON Schema channel
@@ -48,3 +48,4 @@ Accepted 2026-09-29 with the implementation. Build stores each validated input's
 - 2026-09-26: The shell completion contract in [Completion](../core.md#completion), written for [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-evaluates-typed-text.md), reads the same closed sets through one shared derivation with no size bound. The eight-value limit in the entry above bounds what help lists, not what the schema derives, so completion offers every value of a larger set. It binds when that record is accepted.
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md), proposed, answers the question the 2026-09-19 entry held this record on: a packet built into the application says whether it is in development. The converter-failure rule becomes: in a development build, a converter that throws or returns anything other than a plain object is a `DeclarationError` at build under the rule `@loomcli/core/schema-converter-failed`, from `run()` and from `inspect()`, naming the input, the target, and the converter's message; a distributed build reads `null`. This record moves to accepted with the implementation of that check.
 - 2026-09-29: Accepted. The implementation settles the rule the entry above states: in a development build, `inspect()` and every `run()` call every validated input's converter at build, and a converter that throws or returns anything but a plain object throws `@loomcli/core/schema-converter-failed`, whose finding marks the input's `validate` and whose sentence names the input, the target `draft-2020-12`, and the thrown reason, escaped. A distributed build calls a converter only where a projection reads the graph, as before, and reads a failure as `null`.
+- 2026-10-14: [ADR-0081](0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md), proposed, narrows validator-derived input schemas for native content paths. Core publishes their path schema directly in the graph field `schema`, without a converter. It binds when accepted; every other clause remains unchanged.

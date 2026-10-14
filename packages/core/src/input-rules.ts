@@ -6,10 +6,10 @@ import { registerRule } from './diagnostic-text.js';
  * raises it, as a plugin's rules are.
  */
 
-/** An option declared with a type other than string, Boolean, or count. */
+/** An option declared with a type other than string, content, Boolean, or count. */
 const optionType = registerRule('@loomcli/core/option-type', {
   explanation:
-    'The type decides how the parser reads an option: a string option consumes a value, a Boolean option consumes none, and a counted option consumes none and counts its occurrences. Core reads no other kind.',
+    'The type decides how the parser reads an option: a string option consumes a value, a Boolean option consumes none, a content option consumes a path and prepares a lazy handle, and a counted option consumes none and counts its occurrences. Core reads no other kind.',
   headline: 'Invalid option type',
 });
 

@@ -1,6 +1,6 @@
 import { undescribed } from './command-rules.js';
 import type { BuiltCommand, BuiltGraph } from './command.js';
-import { inputFinding } from './command.js';
+import { inputFinding, stdinFinding } from './command.js';
 import { spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { DeclarationError } from './errors.js';
@@ -35,7 +35,11 @@ function commandGaps(command: BuiltCommand, path: readonly string[]): Finding[] 
   const below = [...command.children].flatMap(([name, child]) =>
     commandGaps(child, [...path, name]),
   );
-  return [...own, ...gaps, ...below];
+  const stdin =
+    command.stdin !== undefined && command.stdin.description === undefined
+      ? [{ ...stdinFinding(path, command.stdin), note: gapNote }]
+      : [];
+  return [...own, ...gaps, ...stdin, ...below];
 }
 
 /**

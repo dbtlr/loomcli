@@ -12,7 +12,8 @@ test("help supplies the root help values to the manifest's collecting extension"
   const { root } = inspected.parse(JSON.parse(result.stdout));
   expect(root.extensions['@loomcli/plugins/manifest/command']).toEqual([
     {
-      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      details:
+        'Textstat counts files and piped text in order. Use - to place stdin among the files.',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
     },
   ]);

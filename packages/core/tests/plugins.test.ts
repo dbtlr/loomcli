@@ -325,7 +325,7 @@ const rejected = [
   ],
   [
     'hook-invalid-option',
-    'Option "format" has an invalid type. Use "string", "boolean", or "count".',
+    'Option "format" has an invalid type. Use "string", "content", "boolean", or "count".',
   ],
 ] satisfies [string, string][];
 

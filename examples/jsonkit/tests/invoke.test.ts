@@ -121,10 +121,10 @@ test('help: true completes with the extended help page that --help prints', () =
   expect(help).toEqual({ messages: '', output: helpArgv.stdout, status: 'completed' });
 });
 
-test('an invocation by name reads an empty stdin, so a document read from it is not valid JSON', () => {
+test('an invocation by name requires a file because content stdin is unavailable', () => {
   expect(JSON.parse(report('stdin'))).toMatchObject({
-    exitCode: 65,
-    messages: 'The document is not valid JSON. Correct its syntax, or supply another document.\n',
+    exitCode: 2,
+    messages: 'jsonkit: Option "file": Expected at least 1 readable source.\n',
     output: '',
     status: 'failed',
   });

@@ -2,6 +2,9 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { captureDeclaration, elidedRead, unreadableFault } from './capture.js';
 import type { CaptureFaults } from './capture.js';
+import { contentDeclaration } from './content-rules.js';
+import type { Content } from './content.js';
+import { minimumSources, prepareContent } from './content.js';
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
@@ -36,6 +39,7 @@ import type {
   OptionConfig,
   OptionValue,
   SuppliedInputs,
+  StdinConfig,
   ValidationContext,
 } from './types.js';
 
@@ -106,6 +110,7 @@ interface SuppliedValues {
 
 /** Everything one invocation validates: its declarations, its tokens, and where they were read. */
 export interface Invocation {
+  stdin?: (StdinConfig & { readonly position: number }) | undefined;
   command: readonly string[];
   /** Every declared default and implied value, validated before any token was read. */
   declaredValues: DeclaredValues;
@@ -272,7 +277,7 @@ export interface ConfigFaults extends CaptureFaults {
  * trap, is the unreadable fault, named by the key it threw in, a default nested deeper is the
  * too-deep fault, and a value that is not a plain object is the not-an-object fault.
  */
-export function captureConfig<Config extends ArgumentConfig | OptionConfig>(
+export function captureConfig<Config extends ArgumentConfig | OptionConfig | StdinConfig>(
   config: Config,
   faults: ConfigFaults,
 ): Config {
@@ -308,7 +313,7 @@ export function defaultDepthFault(subject: string, findings: readonly Finding[])
  * of another kind, reports a declaration fault and not a TypeError, and so does a config whose read
  * throws. Each fault marks the config on the call at `place`.
  */
-export function captureInputConfig<Config extends ArgumentConfig | OptionConfig>(
+export function captureInputConfig<Config extends ArgumentConfig | OptionConfig | StdinConfig>(
   declared: {
     readonly config: Config;
     readonly kind: InputDeclaration['kind'];
@@ -557,7 +562,64 @@ function checkValueless(config: OptionConfig, site: InputSite, subject: string) 
 
 function checkDeclaration(input: InputDeclaration, site: InputSite, subject: string) {
   const { config } = input;
-  if (input.kind === 'option' && input.config.type !== 'string') {
+  if (config.type === 'content') {
+    const invalid = (fact: string, sentence: string, correction: string) =>
+      factFault(contentDeclaration, site, { correction, fact, sentence });
+    if (site.declaration.call === 'globalOption' || site.declaration.call === 'plugin') {
+      throw invalid(
+        'type',
+        `${subject} declares a global content input.`,
+        'Declare content on the Command that reads it.',
+      );
+    }
+    for (const key of ['default', 'implied', 'validate', 'validateOmitted']) {
+      if (Object.hasOwn(config, key)) {
+        throw invalid(
+          key,
+          `${subject} is a content input and declares ${key}.`,
+          `Remove ${key}; content inputs use supplied paths or claimed stdin.`,
+        );
+      }
+    }
+    if (config.stdin !== undefined && typeof config.stdin !== 'boolean') {
+      throw flagFault(site, 'stdin');
+    }
+    for (const key of ['min', 'max']) {
+      const bound: unknown = Reflect.get(config, key);
+      if (
+        bound !== undefined &&
+        (!collects(input) || typeof bound !== 'number' || !Number.isSafeInteger(bound) || bound < 0)
+      ) {
+        throw invalid(
+          key,
+          `${subject} declares an invalid ${key} source count.`,
+          'Use a nonnegative safe integer on a content collection.',
+        );
+      }
+    }
+    if (config.max !== undefined && minimumSources(config) > config.max) {
+      throw invalid(
+        'max',
+        `${subject} declares a maximum below its minimum source count.`,
+        'Make max at least the minimum, including required.',
+      );
+    }
+  } else {
+    for (const key of ['stdin', 'min', 'max']) {
+      if (Object.hasOwn(config, key)) {
+        throw factFault(contentDeclaration, site, {
+          correction: 'Declare a content input or remove the content setting.',
+          fact: key,
+          sentence: `${subject} declares ${key} without type content.`,
+        });
+      }
+    }
+  }
+  if (
+    input.kind === 'option' &&
+    input.config.type !== 'string' &&
+    input.config.type !== 'content'
+  ) {
     checkValueless(input.config, site, subject);
     return;
   }
@@ -979,6 +1041,29 @@ interface Report {
   readonly problem: InputProblem;
 }
 
+/** A stdin declaration is not a token slot, but its problems retain its authoring position. */
+function orderedReports(
+  inputs: ScopedInputs,
+  reports: ReadonlyMap<InputDeclaration, Report>,
+  standalone: { position: number | undefined; report: Report | undefined },
+): Report[] {
+  if (standalone.report === undefined) {
+    return [...reports.values()];
+  }
+  const preceding = new Set([
+    ...inputs.globals,
+    ...inputs.locals.filter(
+      (_input, index) => index < (standalone.position ?? inputs.locals.length),
+    ),
+  ]);
+  const before: Report[] = [];
+  const after: Report[] = [];
+  for (const [input, report] of reports) {
+    (preceding.has(input) ? before : after).push(report);
+  }
+  return [...before, standalone.report, ...after];
+}
+
 /**
  * What one validation pass produced: every value its validator accepted, each input's report in
  * reporting order, and those reports aggregated into one failure, or `undefined` when there were
@@ -986,6 +1071,7 @@ interface Report {
  * global options keeps them when only a local input was rejected.
  */
 export interface Validation {
+  readonly stdin: Content | undefined;
   readonly failure: InputError | undefined;
   readonly reports: ReadonlyMap<InputDeclaration, Report>;
   readonly values: ValidatedInputs;
@@ -1131,7 +1217,21 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         input.kind === 'argument'
           ? supplied.args.get(input)
           : suppliedOption(supplied.options, input.name, collected);
-      if (raw === undefined) {
+      if (input.config.type === 'content') {
+        const result = await prepareContent(raw, input.config, {
+          collected,
+          host: invocation.host,
+          named: invocation.named !== undefined,
+          signal: invocation.signal,
+        });
+        if (result.issues === undefined) {
+          values.set(input, result.value);
+        } else if (result.missing) {
+          omit(entry, spelling, messages(suppliedName(input, spelling), result.issues).join('\n'));
+        } else {
+          reject(entry, result.issues, suppliedName(input, spelling, originOf(input)));
+        }
+      } else if (raw === undefined) {
         if (input.config.required) {
           // An omitted required argument arrives here too, so omission has one class.
           // One aggregated diagnostic covers an omitted argument and an omitted option alike.
@@ -1180,7 +1280,36 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     }
   }
   ledger.record({ reports, values }, undefined);
-  const found = [...reports.values()];
+  let stdinReport: Report | undefined = undefined;
+  let stdin: Content | undefined = undefined;
+  if (invocation.stdin !== undefined && invocation.only === undefined) {
+    const result = await prepareContent(
+      undefined,
+      { ...invocation.stdin, stdin: true },
+      {
+        collected: false,
+        host: invocation.host,
+        named: invocation.named !== undefined,
+        signal: invocation.signal,
+      },
+    );
+    if (result.issues !== undefined) {
+      stdinReport = {
+        lines: result.issues.map((issue) => `Stdin: ${issue.message}`),
+        problem: {
+          input: { global: false, kind: 'stdin', name: 'stdin' },
+          reason: 'missing',
+          spelling: 'stdin',
+        },
+      };
+    } else if (result.value !== undefined && !Array.isArray(result.value)) {
+      stdin = result.value;
+    }
+  }
+  const found = orderedReports(invocation.inputs, reports, {
+    position: invocation.stdin?.position,
+    report: stdinReport,
+  });
   return {
     failure:
       found.length > 0
@@ -1190,6 +1319,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           )
         : undefined,
     reports,
+    stdin,
     values: new ValidatedInputs(values),
   };
 }

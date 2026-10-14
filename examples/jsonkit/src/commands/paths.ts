@@ -4,6 +4,7 @@ import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
 import { listPaths } from '../actions/list-paths.js';
+import { documentInput } from '../document-input.js';
 import type { Entry } from '../entries.js';
 import { readFailures } from '../failures.js';
 
@@ -14,6 +15,7 @@ export const paths = new Command('paths', {
   extensions: [manifestCommand({ failures: readFailures })],
   hidden: true,
 })
+  .option('file', documentInput)
   .rows<Entry>({
     views: {
       list: records({ identifier: 'path' }),

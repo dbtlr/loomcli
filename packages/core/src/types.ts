@@ -3,6 +3,7 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import type { Content } from './content.js';
 import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import type { ExtensionValue } from './extension.js';
@@ -146,6 +147,20 @@ interface LiteralNameFault {
 type ActionArgument<Declaration> =
   ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
 
+/** The context fragment a stdin declaration contributes to its action. */
+interface StdinContext {
+  readonly stdin?: Content | undefined;
+}
+
+interface ContentInput {
+  type: 'content';
+  stdin?: boolean;
+  required?: boolean;
+  default?: never;
+  validate?: never;
+  validateOmitted?: never;
+}
+
 /** A local option name cannot repeat a key the globals already own; the key names the fault. */
 export type GlobalNameConstraint<Name extends string, Globals> = Name extends keyof Globals
   ? { 'This option name is already declared as a global option': Name }
@@ -247,7 +262,7 @@ export interface RunOptions {
 
 /** The declaration one schema call validates, under the name and the scope it was declared in. */
 export interface InputIdentity {
-  kind: 'argument' | 'option';
+  kind: 'argument' | 'option' | 'stdin';
   name: string;
   global: boolean;
 }
@@ -449,6 +464,7 @@ export interface ResultBinding {
  * type for a value.
  */
 export interface Request {
+  readonly stdin?: Content | undefined;
   readonly args: Readonly<Record<string, unknown>>;
   readonly options: Readonly<Record<string, unknown>>;
   readonly passthrough: readonly string[];
@@ -482,17 +498,39 @@ export type StringOption = OptionSpelling &
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence &
   Described &
-  ArgumentExtensions & { variadic: true; validate?: StandardSchemaV1 };
+  ArgumentExtensions & { type?: 'string'; variadic: true; validate?: StandardSchemaV1 };
 export type ScalarArgument = Presence &
   Omission &
   Described &
-  ArgumentExtensions & { variadic?: false; validate?: StandardSchemaV1 };
-export type ArgumentConfig = VariadicArgument | ScalarArgument;
-export type ValidatedValue<Config, Raw> = Config extends unknown
-  ? 'validate' extends keyof Config
-    ? SchemaOutput<Config, Config['validate'], Raw>
-    : Raw
-  : never;
+  ArgumentExtensions & { type?: 'string'; variadic?: false; validate?: StandardSchemaV1 };
+export type ContentArgument = ContentInput &
+  Described &
+  ArgumentExtensions &
+  ({ variadic: true; min?: number; max?: number } | { variadic?: false; min?: never; max?: never });
+export type ContentOption = ContentInput &
+  OptionSpelling &
+  Described &
+  Listed &
+  Controlled &
+  OptionExtensions & {
+    polarity?: never;
+    implied?: never;
+  } & (
+    | { multiple: true; env?: never; min?: number; max?: number }
+    | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
+  );
+export interface StdinConfig {
+  description?: string;
+  required?: boolean;
+}
+export type ArgumentConfig = VariadicArgument | ScalarArgument | ContentArgument;
+export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
+  ? PerValue<Config, Content>
+  : Config extends unknown
+    ? 'validate' extends keyof Config
+      ? SchemaOutput<Config, Config['validate'], Raw>
+      : Raw
+    : never;
 /** Keep each conditional declaration paired with its own validator input type. */
 export type DefaultConstraint<Config> = Config extends unknown
   ? Config & {
@@ -560,11 +598,15 @@ export type ValidateOmittedConstraint<Config> = Config extends { validateOmitted
  * config fails when any member declares the key, and a wide `OptionConfig` passes, because its
  * members only allow the key. `required` is named first when a config declares both.
  */
-export type GlobalOmissionConstraint<Config> = [DeclaredPresenceRule<Config>] extends [never]
-  ? unknown
-  : PresenceRuleFaults['required' extends DeclaredPresenceRule<Config>
-      ? 'required'
-      : 'validateOmitted'];
+export type GlobalOmissionConstraint<Config> = [Extract<Config, { type: 'content' }>] extends [
+  never,
+]
+  ? [DeclaredPresenceRule<Config>] extends [never]
+    ? unknown
+    : PresenceRuleFaults['required' extends DeclaredPresenceRule<Config>
+        ? 'required'
+        : 'validateOmitted']
+  : { 'A content input is local to its Command': never };
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
   :
@@ -624,15 +666,16 @@ export type CountOption = OptionSpelling &
     polarity?: never;
     implied?: never;
   };
-export type OptionConfig = StringOption | BooleanOption | CountOption;
+export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 /**
  * The configuration of a global option a plugin declares: everything `option()` takes except the
  * presence rules, which a global option never declares, because its validation runs on every
  * Command. `globalOption()` states the same rule through `GlobalOmissionConstraint`, which also
  * accepts a config typed as the wide `OptionConfig`.
  */
-export type GlobalOptionConfig = OptionConfig & Readonly<Partial<Record<PresenceRuleKey, never>>>;
-export type OptionValue<Config extends OptionConfig> = Config extends StringOption
+export type GlobalOptionConfig = Exclude<OptionConfig, ContentOption> &
+  Readonly<Partial<Record<PresenceRuleKey, never>>>;
+export type OptionValue<Config extends OptionConfig> = Config extends StringOption | ContentOption
   ? Config extends { multiple: true }
     ? ValidatedValue<Config, string[]>
     :
@@ -705,6 +748,7 @@ export type InvocationOutcome<Mapped = LoomError> =
  * `invoke` runs another Command of that graph by name.
  */
 export interface ActionContext<Args, Options = {}, Result = unknown> {
+  readonly stdin?: Content | undefined;
   readonly style: ContextualStyle;
   args: Args;
   options: Options;
@@ -724,9 +768,12 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
     options?: InvokeOptions<Mapped>,
   ) => Promise<InvocationOutcome<Mapped>>;
 }
-export type Action<Args, Options = {}, Result = unknown> = (
-  context: ActionContext<Args, Options, Result>,
-) => unknown;
+export type Action<
+  Args,
+  Options = {},
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+> = (context: Omit<ActionContext<Args, Options, Result>, 'stdin'> & Stdin) => unknown;
 
 /** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
 export declare const declaredTypes: unique symbol;
@@ -735,7 +782,14 @@ export declare const declaredTypes: unique symbol;
  * Arguments and local options describe the action's own inputs. Globals are a requirement on the
  * Receiving Application: a library that needs none can attach wherever its local keys are disjoint.
  */
-export interface DeclaredTypes<Args, Options, Globals, Result = unknown> {
+export interface DeclaredTypes<
+  Args,
+  Options,
+  Globals,
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+> {
+  stdin: Stdin;
   args: Args;
   globals: (value: Globals) => void;
   options: Options;
@@ -751,9 +805,15 @@ export interface DeclaredTypes<Args, Options, Globals, Result = unknown> {
  * holds on a fresh declaration, on a partly declared one, and on one that registered its action.
  */
 export type ActionHandler<Declaration> = Declaration extends {
-  [declaredTypes]: DeclaredTypes<infer Args, infer Options, infer Globals, infer Result>;
+  [declaredTypes]: DeclaredTypes<
+    infer Args,
+    infer Options,
+    infer Globals,
+    infer Result,
+    infer Stdin
+  >;
 }
-  ? Action<Args, Globals & Options, Result>
+  ? Action<Args, Globals & Options, Result, Stdin>
   : never;
 /** The args object an extracted handler receives for this declaration. */
 export type ActionArgs<Declaration> =
@@ -761,3 +821,5 @@ export type ActionArgs<Declaration> =
 /** The options object an extracted handler receives, global values included. */
 export type ActionOptions<Declaration> =
   ActionArgument<Declaration> extends { options: infer Options } ? Options : never;
+
+export type { StdinContext };
