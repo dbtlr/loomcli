@@ -242,6 +242,6 @@ test('completion keeps canonical graph order and core descriptions under help se
     status: 0,
     stderr: '',
     stdout:
-      'completion\tPrint a shell completion script.\nalpha\tRead first.\nbeta\tRead last.\n:4\n',
+      'completion\tPrint or install a shell completion script.\nalpha\tRead first.\nbeta\tRead last.\n:4\n',
   });
 });

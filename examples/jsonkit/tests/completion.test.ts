@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { shellSuites, useSession } from '../../../scripts/test-shell.js';
-import type { SessionOptions } from '../../../scripts/test-shell.js';
-import { main } from './documents.js';
+import type { SessionOptions, Shell } from '../../../scripts/test-shell.js';
+import { counts, main } from './documents.js';
+
+/** The program words each shell types before `sel`, a quoted one read without its quotes. */
+const quotedPrograms: Record<Shell, string[]> = {
+  bash: ['jsonkit'],
+  fish: ['jsonkit', "'jsonkit'"],
+  pwsh: ['jsonkit', "& 'jsonkit'"],
+  zsh: ['jsonkit', "'jsonkit'"],
+};
 
 /** The documents in each session's directory: `d` completes to `doc-`, and `a` to `alp`. */
 const files = ['alpha.json', 'alpine.json', 'doc-a.json', 'doc-b.json'];
@@ -18,15 +26,6 @@ const failures: { callback: NonNullable<SessionOptions['callback']>; title: stri
   { callback: 'exits nonzero', title: 'a callback that exits nonzero' },
   { callback: 'prints a bare colon', title: 'an answer whose directive line is a bare colon' },
 ];
-
-/** Each word with how often it appears, so a comparison ignores the order a shell lists in. */
-function counts(words: readonly string[]): Map<string, number> {
-  const tally = new Map<string, number>();
-  for (const word of words) {
-    tally.set(word, (tally.get(word) ?? 0) + 1);
-  }
-  return tally;
-}
 
 describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   describe.skipIf(!installed)('jsonkit completes', () => {
@@ -45,13 +44,16 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         expect(counts(listed)).toEqual(counts(options));
       });
 
-      it('jsonkit completion <Tab> lists the three shells and never __complete', async () => {
+      it('jsonkit completion <Tab> lists its children and never __complete', async () => {
         const { listed } = await complete('jsonkit completion ');
-        expect(counts(listed)).toEqual(counts(['bash', 'fish', 'zsh']));
+        expect(counts(listed)).toEqual(
+          counts(['bash', 'fish', 'install', 'powershell', 'uninstall', 'update', 'zsh']),
+        );
       });
 
-      // Bash finds no completion for a quoted program word, so only Zsh and Fish type one.
-      it.each(shell === 'bash' ? ['jsonkit'] : ['jsonkit', "'jsonkit'"])(
+      // Bash finds no completion for a quoted program word, so only Zsh, Fish, and PowerShell type one.
+      // PowerShell types it after its call operator, because a quoted word alone is a string.
+      it.each(quotedPrograms[shell])(
         '%s sel<Tab> inserts select, the program word read without its quotes',
         async (program) => {
           const { line } = await complete(`${program} sel`);
@@ -107,10 +109,21 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         expect(line.trimEnd()).toBe('jsonkit paths --format=table');
       });
 
-      it('jsonkit --file d<Tab> falls back to file names', async () => {
+      // PowerShell's Tab inserts no common prefix of several matches.
+      // Its own file completion offers each name with a leading ./ on Linux and macOS.
+      it.runIf(shell !== 'pwsh')('jsonkit --file d<Tab> falls back to file names', async () => {
         const { line } = await complete('jsonkit --file d');
         expect(line).toBe('jsonkit --file doc-');
       });
+
+      it.runIf(shell === 'pwsh')(
+        'jsonkit --file d<Tab> falls back to the file names PowerShell lists',
+        async () => {
+          const { listed } = await complete('jsonkit --file d');
+          const names = listed.map((word) => word.replace(/^\.\//u, ''));
+          expect(counts(names)).toEqual(counts(['doc-a.json', 'doc-b.json']));
+        },
+      );
 
       it('jsonkit paths --format a<Tab> matches no view and offers no file name either', async () => {
         await expect(complete('jsonkit paths --format a')).resolves.toMatchObject({

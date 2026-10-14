@@ -2,14 +2,12 @@
  * Where each agent target keeps its skills: the global folders under the operator's home, and the
  * real paths two folders resolve to, so a link between them is seen.
  */
-import { realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 
-import { applicationDirectory } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
-import { errorCode } from '../installation/disk.js';
-import { refusals } from './messages.js';
+import { homeOf, homeRefusal, homeVariable } from '../application-folders.js';
+import { realPath } from '../installation/disk.js';
 
 /** The agents the plugin installs for, in the order every child follows. */
 const targets = ['claude', 'agents'] as const;
@@ -19,17 +17,6 @@ type Target = (typeof targets)[number];
 /** The targets a child acts on: the one `--agent` names, or both. */
 function selectedTargets(agent: Target | undefined): readonly Target[] {
   return agent === undefined ? targets : [agent];
-}
-
-/** The name of the variable that holds the home folder on a platform. */
-function homeVariable(platform: string): 'HOME' | 'USERPROFILE' {
-  return platform === 'win32' ? 'USERPROFILE' : 'HOME';
-}
-
-/** The absolute home folder the host's environment names, or none. */
-function homeOf(host: Host): string | undefined {
-  const home = host.env[homeVariable(host.platform)];
-  return home !== undefined && isAbsolute(home) ? home : undefined;
 }
 
 /** The absolute `CLAUDE_CONFIG_DIR` the host's environment names, or none. */
@@ -62,41 +49,10 @@ function globalPlaces(name: string, host: Host, selected: readonly Target[]): re
   return selected.map((target) => {
     const directory = skillsDirectory(target, host);
     if (directory === undefined) {
-      throw refusals.home(name, homeVariable(host.platform));
+      throw homeRefusal(name, homeVariable(host.platform));
     }
     return { directory, target };
   });
-}
-
-/** The installation record's directory, or the refusal of an environment that cannot name one. */
-function recordDirectory(name: string, host: Host): string {
-  const directory = applicationDirectory('installation', name, host);
-  if ('variable' in directory) {
-    throw refusals.recordDirectory(name, directory.variable);
-  }
-  return directory.path;
-}
-
-/** Whether a runtime error says the path, or a part of it, does not exist. */
-function isMissing(error: unknown): boolean {
-  const code = errorCode(error);
-  return code === 'ENOENT' || code === 'ENOTDIR';
-}
-
-/**
- * The real path of `path` through the nearest ancestor that exists: that ancestor is resolved
- * through every link, and the parts below it that do not exist are kept as they are.
- */
-function realPath(path: string, below: readonly string[] = []): string {
-  try {
-    return join(realpathSync(path), ...below);
-  } catch (error) {
-    const parent = dirname(path);
-    if (!isMissing(error) || parent === path) {
-      throw error;
-    }
-    return realPath(parent, [basename(path), ...below]);
-  }
 }
 
 /**
@@ -108,13 +64,4 @@ function realFolder(folder: string): string {
 }
 
 export type { Place, Target };
-export {
-  globalPlaces,
-  homeOf,
-  realFolder,
-  realPath,
-  recordDirectory,
-  selectedTargets,
-  skillsDirectory,
-  targets,
-};
+export { globalPlaces, realFolder, selectedTargets, skillsDirectory, targets };

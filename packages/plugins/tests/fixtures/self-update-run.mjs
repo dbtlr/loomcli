@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { Writable } from 'node:stream';
 
 import { Application } from '@loomcli/core';
+import { refreshCompletion } from '@loomcli/plugins/completion';
 import { refreshManpages } from '@loomcli/plugins/manpage';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { refreshSkills } from '@loomcli/plugins/skills';
@@ -191,13 +192,19 @@ globalThis.fetch = async (input, init = {}) => {
   throw new TypeError(`The fake GitHub does not serve ${text}.`);
 };
 
-/** The hook the scenario names: one that records what it read, one that throws, or the skills or man pages refresh. */
+/**
+ * The hook the scenario names: one that records what it read, one that throws, the skills refresh,
+ * the completion refresh, or the man pages refresh.
+ */
 function settings() {
   if (scenario.hook === undefined) {
     return undefined;
   }
   if (scenario.hook === 'refresh') {
     return { afterReplace: refreshSkills };
+  }
+  if (scenario.hook === 'completion') {
+    return { afterReplace: refreshCompletion };
   }
   if (scenario.hook === 'refresh-manpages') {
     return { afterReplace: refreshManpages };

@@ -183,7 +183,7 @@
         "path": [
           "completion"
         ],
-        "description": "Print a shell completion script.",
+        "description": "Print or install a shell completion script.",
         "details": [],
         "examples": [],
         "deprecated": null,
@@ -241,6 +241,112 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "powershell",
+            "path": [
+              "completion",
+              "powershell"
+            ],
+            "description": "Print the PowerShell completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "install",
+            "path": [
+              "completion",
+              "install"
+            ],
+            "description": "Install completion for your shell.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [
+              {
+                "name": "shell",
+                "description": "The shell: bash, zsh, fish, powershell, or pwsh. Your login shell when left out.",
+                "required": false,
+                "variadic": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "zsh",
+                    "fish",
+                    "powershell",
+                    "pwsh"
+                  ]
+                },
+                "default": null
+              }
+            ],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "update",
+            "path": [
+              "completion",
+              "update"
+            ],
+            "description": "Bring installed completion up to date with this version.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "uninstall",
+            "path": [
+              "completion",
+              "uninstall"
+            ],
+            "description": "Remove completion from your shell.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [
+              {
+                "name": "shell",
+                "description": "The shell: bash, zsh, fish, powershell, or pwsh. Every installed shell when left out.",
+                "required": false,
+                "variadic": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "zsh",
+                    "fish",
+                    "powershell",
+                    "pwsh"
+                  ]
+                },
+                "default": null
+              }
+            ],
             "options": [],
             "children": []
           }

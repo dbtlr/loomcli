@@ -1,41 +1,14 @@
 import { identifier, posixQuoted, scriptName } from './name.js';
 
 /**
- * The Zsh completion script, ported from Cobra's `zsh_completions.go`.
- * Copyright 2013-2023 The Cobra Authors, under the Apache License, Version 2.0, from
- * https://github.com/spf13/cobra at commit adbc8813901bba65827259daa8e22ff94ec1f30e. The
- * package NOTICE records the attribution. The changes from Cobra:
- * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
- * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function identifiers by `identifier()`, and only a portable name, which
- *   `scriptName()` checks at the call with a `TypeError`.
- * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
- * - The request carries every word, the last cut at the cursor, so no empty word is appended.
- * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
- *   adds no flag prefix of its own.
- * - A nonzero exit, or an answer whose last line is not `:` and decimal digits, offers nothing.
- * - Directive numbers are written as literals.
- * - Quoting is removed with the `(Q)` flag, which expands nothing; when `compstate[quote]` is set,
- *   the cursor is inside an unclosed quote and the script offers nothing without a call.
- * - Words are no longer split with `${=...}`, which broke a quoted word holding a space.
- * - `_describe` receives its arguments as an array; `_files` is called directly rather than through
- *   an `_arguments` action string, and each file extension is quoted as a pattern with the `(b)`
- *   flag, so no glob qualifier in it runs.
- * - `\` and then `:` are escaped in each word and description passed to `_describe`, which reads a
- *   backslash as an escape.
- * - The last word of the request is `$PREFIX`, the word under the cursor cut at the cursor, rather
- *   than the whole word under the cursor.
- * - The completion function is `_loom_<id>` and the debug function `__loom_<id>_debug`, so no
- *   application name shadows a completion system function such as `_describe`, `_files`, or
- *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
- * - The `#compdef` line and the autoload check carry the name as it is, because `scriptName()`
- *   accepts only a portable name.
+ * The script for a name, with the guard lines after its `#compdef` line and the function name its
+ * file is autoloaded as, which runs the completion function.
  */
-export function zshScript(name: string): string {
+function zshText(name: string, file: { guard: string; loadedAs: string }): string {
   const id = identifier(scriptName(name));
   const quoted = posixQuoted(name);
   return `#compdef ${name}
-compdef _loom_${id} ${quoted}
+${file.guard}compdef _loom_${id} ${quoted}
 
 # Zsh completion script, printed by the Loom completion plugin.
 # Ported from Cobra's zsh_completions.go, Copyright 2013-2023 The Cobra Authors,
@@ -189,10 +162,59 @@ _loom_${id}()
     fi
 }
 
-# Run the completion function when compinit autoloads this file as _${name},
+# Run the completion function when compinit autoloads this file as ${file.loadedAs},
 # and not when it is sourced.
-if [ "$funcstack[1]" = "_${name}" ]; then
+if [ "$funcstack[1]" = "${file.loadedAs}" ]; then
     _loom_${id}
 fi
 `;
+}
+
+/**
+ * The Zsh completion script, ported from Cobra's `zsh_completions.go`.
+ * Copyright 2013-2023 The Cobra Authors, under the Apache License, Version 2.0, from
+ * https://github.com/spf13/cobra at commit adbc8813901bba65827259daa8e22ff94ec1f30e. The
+ * package NOTICE records the attribution. The changes from Cobra:
+ * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
+ * - The application name enters the script only as data: single-quoted in the shell's quoting, or
+ *   encoded into function identifiers by `identifier()`, and only a portable name, which
+ *   `scriptName()` checks at the call with a `TypeError`.
+ * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
+ * - The request carries every word, the last cut at the cursor, so no empty word is appended.
+ * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
+ *   adds no flag prefix of its own.
+ * - A nonzero exit, or an answer whose last line is not `:` and decimal digits, offers nothing.
+ * - Directive numbers are written as literals.
+ * - Quoting is removed with the `(Q)` flag, which expands nothing; when `compstate[quote]` is set,
+ *   the cursor is inside an unclosed quote and the script offers nothing without a call.
+ * - Words are no longer split with `${=...}`, which broke a quoted word holding a space.
+ * - `_describe` receives its arguments as an array; `_files` is called directly rather than through
+ *   an `_arguments` action string, and each file extension is quoted as a pattern with the `(b)`
+ *   flag, so no glob qualifier in it runs.
+ * - `\` and then `:` are escaped in each word and description passed to `_describe`, which reads a
+ *   backslash as an escape.
+ * - The last word of the request is `$PREFIX`, the word under the cursor cut at the cursor, rather
+ *   than the whole word under the cursor.
+ * - The completion function is `_loom_<id>` and the debug function `__loom_<id>_debug`, so no
+ *   application name shadows a completion system function such as `_describe`, `_files`, or
+ *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
+ * - The `#compdef` line and the autoload check carry the name as it is, because `scriptName()`
+ *   accepts only a portable name.
+ */
+export function zshScript(name: string): string {
+  return zshText(name, { guard: '', loadedAs: `_${name}` });
+}
+
+/**
+ * The Zsh file `completion install` writes, named `_loom_<identifier>`: the printed script with
+ * its autoload check naming that file, and, right after the `#compdef` line, a guard that starts
+ * the completion system when `.zshrc` has not, with `compinit -i`, which skips an insecure folder on
+ * `fpath` rather than asking, and registers nothing when `compdef` is still not defined.
+ */
+export function zshInstalledScript(name: string): string {
+  const guard = `# Start the completion system when no compdef is defined, and register nothing without it.
+(( $+functions[compdef] )) || { autoload -Uz compinit && compinit -i }
+(( $+functions[compdef] )) || return 0
+`;
+  return zshText(name, { guard, loadedAs: `_loom_${identifier(scriptName(name))}` });
 }
