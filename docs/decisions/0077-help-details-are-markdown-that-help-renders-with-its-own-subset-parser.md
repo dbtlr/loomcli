@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0077 - Help details are Markdown that help renders with its own subset parser
 description: A Command's details is always Markdown, a string the author writes inline or brings in with a text import, which loom build inlines for every target with no embedding seam. The extended help page renders a stated subset, paragraphs, headings, lists, code, quotes, emphasis, and links, with a parser the pack writes itself and loads with the page view, keeping every authored line break and one blank line wherever the author left one or more, and wrapping nothing. Text outside the subset, other than a thematic break, reads as paragraph text. The manifest carries the Markdown as written. This narrows ADR-0058's rule that no help block holds a blank line, for the Details block alone.
-status: proposed
+status: accepted
 created: 2026-10-13
-modified: 2026-10-13
+modified: 2026-10-14
 ---
 
 # ADR-0077 - Help details are Markdown that help renders with its own subset parser
@@ -40,7 +40,7 @@ An application whose details uses Markdown syntax as plain text, such as a line 
 
 ## Status
 
-Proposed with the Markdown details contract. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.12.0.
 
 ## Changelog
 

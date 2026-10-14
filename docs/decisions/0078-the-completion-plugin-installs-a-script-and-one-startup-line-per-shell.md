@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0078 - The completion plugin installs a script and one startup line per shell
 description: The completion plugin adds completion install, update, and uninstall beside its print Commands, and a PowerShell script for Windows PowerShell and PowerShell 7. Install writes the shell's script to a file and, for every shell but Fish, adds one startup line to the operator's startup file that loads it, as Typer and tabtab do. Both are recorded through the installation record, which gains startup lines, so an uninstall removes the line it added and leaves a changed one. The shell defaults to the login shell, update rewrites what is recorded, and refreshCompletion refreshes after a self-update.
-status: proposed
+status: accepted
 created: 2026-10-13
-modified: 2026-10-13
+modified: 2026-10-14
 ---
 
 # ADR-0078 - The completion plugin installs a script and one startup line per shell
@@ -55,7 +55,7 @@ ADR-0043's print-only clause no longer holds, and ADR-0071's installed-files mod
 
 ## Status
 
-Proposed with the completion install contract. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.12.0.
 
 ## Changelog
 
