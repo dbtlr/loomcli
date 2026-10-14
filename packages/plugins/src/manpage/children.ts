@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import type { CommandGraph, Host } from '@loomcli/core';
 
+import { homeOf, homeRefusal, recordDirectory } from '../application-folders.js';
 import { isEmpty } from '../help/cells.js';
 import {
   createDirectory,
@@ -20,8 +21,6 @@ import {
 } from '../installation/disk.js';
 import { hasPendingRecord, install, readRecorded, uninstall } from '../installation/files.js';
 import type { InstalledFile, InstallOutcome, Refusal } from '../installation/files.js';
-import { refusals as homeRefusals } from '../skills/messages.js';
-import { homeOf, recordDirectory } from '../skills/targets.js';
 import { advice } from './advice.js';
 import { lines, refusals } from './messages.js';
 import type { WritingVerb } from './messages.js';
@@ -220,7 +219,7 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
 function homeFor(run: ChildRun): string {
   const home = homeOf(run.host);
   if (home === undefined) {
-    throw homeRefusals.home(run.graph.name, 'HOME');
+    throw homeRefusal(run.graph.name, 'HOME');
   }
   return home;
 }

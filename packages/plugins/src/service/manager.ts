@@ -1,17 +1,16 @@
 /*
- * The service managers' programs, run as child processes with no shell and no time limit. The run
- * signal ends a call with SIGTERM. Each call's output is captured and never printed.
+ * The service managers' programs, run through the pack's one way to run a program, with no shell
+ * and no time limit. The run signal ends a call with SIGTERM. Each call's output is captured and
+ * never printed.
  */
-import { spawn } from 'node:child_process';
-import { constants } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { runChild } from '../child.js';
+import type { ChildAnswer } from '../child.js';
 import { failures } from './messages.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
-type Answer =
-  | { readonly kind: 'exited'; readonly code: number; readonly stdout: string }
-  | { readonly kind: 'missing'; readonly cause: unknown };
+type Answer = ChildAnswer;
 
 /** One call: the program and its words, and the command whose report a failure points at. */
 interface Call {
@@ -30,53 +29,22 @@ interface Manager {
 /** The code of a call that succeeded. */
 const succeeded = 0;
 
-/** The shell's status for a process a signal ended, 128 plus the signal's number. */
-const signalBase = 128;
-
-/** The code a call reports: its exit code, or the shell's status for the signal that ended it. */
-function codeOf(code: number | null, signal: NodeJS.Signals | null): number {
-  if (code !== null) {
-    return code;
-  }
-  return signal === null ? signalBase : signalBase + constants.signals[signal];
-}
-
-/** Runs one call until it exits, or until the run signal ends it, whose reason it then throws. */
-function run(manager: Manager, call: Call): Promise<Answer> {
+/**
+ * Runs one call from the process's working directory, its standard error discarded, until it
+ * exits, or until the run signal ends it, whose reason it then throws.
+ */
+async function run(manager: Manager, call: Call): Promise<Answer> {
   const { signal } = manager;
   signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const child = spawn(call.program, call.args, {
-      env: { ...manager.env },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.stderr.resume();
-    const end = () => child.kill('SIGTERM');
-    signal.addEventListener('abort', end, { once: true });
-    let settled = false;
-    const settle = (answer: Answer) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      signal.removeEventListener('abort', end);
-      if (signal.aborted) {
-        reject(signal.reason);
-      } else {
-        resolve(answer);
-      }
-    };
-    child.on('error', (cause) => settle({ cause, kind: 'missing' }));
-    child.on('close', (code, ended) =>
-      settle({
-        code: codeOf(code, ended),
-        kind: 'exited',
-        stdout: Buffer.concat(chunks).toString(),
-      }),
-    );
+  const answer = await runChild({
+    env: manager.env,
+    program: call.program,
+    signal,
+    stdout: 'capture',
+    words: call.args,
   });
+  signal.throwIfAborted();
+  return answer;
 }
 
 /** The words of a call as a sentence repeats them. */
@@ -95,7 +63,7 @@ async function expectCall(
 ): Promise<{ readonly code: number; readonly stdout: string }> {
   const answer = await run(manager, call);
   if (answer.kind === 'missing') {
-    throw failures.missing(manager.name, call.program, answer.cause);
+    throw failures.missing(manager.name, call.program, answer.error);
   }
   if (!accepted.includes(answer.code)) {
     throw failures.exited(callText(call), answer.code, call.report);

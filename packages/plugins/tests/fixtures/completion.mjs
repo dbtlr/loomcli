@@ -104,6 +104,17 @@ const backups = new Command('backups', { hidden: true })
   .option('verbose', { description: 'Say more.', short: 'v', type: 'count' })
   .action(() => {});
 
+/**
+ * Values PowerShell inserts single-quoted: one holding a subexpression, which would run if it were
+ * inserted bare, and one holding U+2019, which ends PowerShell's single quotes as `'` does. The
+ * Command is hidden, so no root listing shows it.
+ */
+const quotes = new Command('quotes', { hidden: true })
+  .argument('value', {
+    validate: shaped({ enum: ['$(New-Item sentinel)', `it${String.fromCodePoint(8217)}s`] }),
+  })
+  .action(() => {});
+
 const cache = new Command('cache', { description: String.fromCodePoint(1) })
   .command(new Command('clear').action(() => {}))
   .command(new Command('list', { description: 'List entries.' }).action(() => {}));
@@ -119,6 +130,7 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(debug)
   .command(cache)
   .command(odd)
+  .command(quotes)
   .command(backups);
 
 await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });

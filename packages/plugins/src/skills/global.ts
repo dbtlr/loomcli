@@ -7,6 +7,8 @@ import { join } from 'node:path';
 
 import type { Host } from '@loomcli/core';
 
+import { recordDirectory } from '../application-folders.js';
+import { realPath } from '../installation/disk.js';
 import {
   folderRefusals,
   hasPendingRecord,
@@ -19,7 +21,7 @@ import { folderHoldsExactly } from '../installation/folders.js';
 import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
 import { lines, refusals } from './messages.js';
-import { globalPlaces, realPath, recordDirectory, selectedTargets } from './targets.js';
+import { globalPlaces, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
 import type { Skill } from './types.js';
 

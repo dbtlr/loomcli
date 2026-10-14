@@ -47,11 +47,15 @@ jobs:
 
       - name: Install the completion shells
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+        run: |
+          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+          pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
       - name: Install the completion shells
         if: runner.os == 'macOS'
-        run: brew install fish
+        run: |
+          brew install fish
+          pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
       - name: Build, check types, and run process tests
         run: pnpm verify
@@ -97,11 +101,15 @@ jobs:
 
       - name: Install the completion shells
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+        run: |
+          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+          pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
       - name: Install the completion shells
         if: runner.os == 'macOS'
-        run: brew install fish
+        run: |
+          brew install fish
+          pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
       - name: Build, check types, and run process tests
         run: pnpm verify

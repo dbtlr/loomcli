@@ -18,3 +18,12 @@ export function withDocuments(files: Record<string, string>, run: (cwd: string) 
     rmSync(directory, { force: true, recursive: true });
   }
 }
+
+/** Each word with how often it appears, so a comparison ignores the order a shell lists in. */
+export function counts(words: readonly string[]): Map<string, number> {
+  const tally = new Map<string, number>();
+  for (const word of words) {
+    tally.set(word, (tally.get(word) ?? 0) + 1);
+  }
+  return tally;
+}

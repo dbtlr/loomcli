@@ -9,10 +9,6 @@ function fatal(sentence: string): FatalError {
 }
 
 const refusals = {
-  home: (name: string, variable: string) =>
-    fatal(
-      `${shown(name)} cannot find your home folder because ${variable} is not an absolute path. Set ${variable} to an absolute path, then run the command again.`,
-    ),
   inTheWay: (name: string, verb: 'install' | 'update') =>
     fatal(
       `${shown(name)} skills ${verb} changed nothing, because folders it did not install are in the way. Remove them, or run ${shown(name)} skills install --force to replace them.`,
@@ -24,10 +20,6 @@ const refusals = {
   record: (name: string, record: string, verb: 'install' | 'uninstall') =>
     fatal(
       `${shown(record)} cannot be read, so ${shown(name)} will not change the folders it lists. Remove it and the folders it lists, then run ${shown(name)} skills ${verb} again.`,
-    ),
-  recordDirectory: (name: string, variable: string) =>
-    fatal(
-      `${shown(name)} cannot find its installation record because ${variable} is not an absolute path. Set ${variable} to an absolute path, then run the command again.`,
     ),
 };
 

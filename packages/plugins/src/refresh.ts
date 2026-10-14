@@ -1,16 +1,16 @@
 /*
  * The `afterReplace` refresh the installing plugins share: a replaced process holds the old
- * version's files, so it runs the new binary with the plugin's `update` words and passes the
- * child's output through. A child that fails or cannot start adds a `warn` log event and resolves,
- * because the binary update succeeded.
+ * version's files, so it runs the new binary with the plugin's `update` words, through the pack's
+ * one way to run a child, and passes the child's output through. The skills, completion, and
+ * manpage plugins each call it with their words and sentences. A child that fails or cannot start
+ * adds a `warn` log event and resolves, because the binary update succeeded.
  */
-import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
-import { constants } from 'node:os';
 import { basename } from 'node:path';
 
 import { escapeControlCharacters } from '@loomcli/core';
 import type { Host, Log } from '@loomcli/core';
+
+import { runChild } from './child.js';
 
 /** What a refresh reads from a self-update's `afterReplace` context. */
 interface RefreshContext {
@@ -35,84 +35,8 @@ interface Refresh {
   readonly notStarted: (path: string, name: string) => string;
 }
 
-/** What a child answered: the code it ended with, or the error that kept it from starting. */
-type Answer =
-  | { readonly kind: 'exited'; readonly code: number }
-  | { readonly kind: 'missing'; readonly error: unknown };
-
-/** The shell's status for a process a signal ended, 128 plus the signal's number. */
-const signalBase = 128;
-
 /** The code of a child that succeeded. */
 const succeeded = 0;
-
-/** The code a child reports: its exit code, or the shell's status for the signal that ended it. */
-function codeOf(code: number | null, ended: NodeJS.Signals | null): number {
-  if (code !== null) {
-    return code;
-  }
-  return ended === null ? signalBase : signalBase + constants.signals[ended];
-}
-
-/** Starts the child with the host's environment and working directory, its output piped into the host's streams. */
-function start({ host, path }: RefreshContext, words: readonly string[]): ChildProcess {
-  const child = spawn(path, words, {
-    cwd: host.cwd,
-    env: { ...host.env },
-    shell: false,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  child.stdout.pipe(host.stdout, { end: false });
-  child.stderr.pipe(host.stderr, { end: false });
-  return child;
-}
-
-/** Ends the child with SIGTERM when the signal aborts, and answers the call that stops listening. */
-function endOnAbort(child: ChildProcess, signal: AbortSignal): () => void {
-  const end = () => child.kill('SIGTERM');
-  signal.addEventListener('abort', end, { once: true });
-  if (signal.aborted) {
-    end();
-  }
-  return () => signal.removeEventListener('abort', end);
-}
-
-/** Starts the child, or answers the error a synchronous throw of the runtime carried (ENOEXEC, ENOTDIR, and others). */
-function tryStart(
-  context: RefreshContext,
-  words: readonly string[],
-): ChildProcess | Extract<Answer, { kind: 'missing' }> {
-  try {
-    return start(context, words);
-  } catch (error) {
-    return { error, kind: 'missing' };
-  }
-}
-
-/**
- * Runs `path` with the words until it exits or cannot start. The run signal ends it with SIGTERM.
- * It never rejects.
- */
-function runChild(context: RefreshContext, words: readonly string[]): Promise<Answer> {
-  return new Promise((resolve) => {
-    const child = tryStart(context, words);
-    if ('kind' in child) {
-      resolve(child);
-      return;
-    }
-    const release = endOnAbort(child, context.signal);
-    let settled = false;
-    const settle = (answer: Answer) => {
-      if (!settled) {
-        settled = true;
-        release();
-        resolve(answer);
-      }
-    };
-    child.on('error', (error) => settle({ error, kind: 'missing' }));
-    child.on('close', (code, ended) => settle({ code: codeOf(code, ended), kind: 'exited' }));
-  });
-}
 
 /** The text of an error the log event carries. */
 function errorText(error: unknown): string {
@@ -120,13 +44,22 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Runs the new binary with the refresh's words and passes its output through. A child that fails
- * adds the `warn` event with its code, and one that cannot start writes the refresh's line to the
- * host's stderr and adds the event with its error; either way it resolves.
+ * Runs the new binary with the refresh's words, the host's environment and working directory, and
+ * its output piped into the host's streams. A child that fails adds the `warn` event with its code,
+ * and one that cannot start writes the refresh's line to the host's stderr and adds the event with
+ * its error; either way it resolves.
  */
 async function refreshByRunning(context: RefreshContext, refresh: Refresh): Promise<void> {
-  const { host, log, path } = context;
-  const answer = await runChild(context, refresh.words);
+  const { host, log, path, signal } = context;
+  const answer = await runChild({
+    cwd: host.cwd,
+    env: host.env,
+    program: path,
+    signal,
+    stderr: host.stderr,
+    stdout: host.stdout,
+    words: refresh.words,
+  });
   if (answer.kind === 'exited' && answer.code === succeeded) {
     return;
   }

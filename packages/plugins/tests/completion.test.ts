@@ -11,8 +11,9 @@ import { invoke } from '../../../scripts/test-process.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
 import { fishScript } from '../src/completion/fish.js';
-import { identifier } from '../src/completion/name.js';
-import { zshScript } from '../src/completion/zsh.js';
+import { identifier, powershellQuoted } from '../src/completion/name.js';
+import { powershellScript } from '../src/completion/powershell.js';
+import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
 
@@ -55,7 +56,7 @@ describe('the answer', () => {
     expect(complete('')).toBe(
       framed(
         [
-          'completion\tPrint a shell completion script.',
+          'completion\tPrint or install a shell completion script.',
           'paths\tWalkall paths.',
           'keys\tList keys.',
           'cache',
@@ -67,16 +68,23 @@ describe('the answer', () => {
     expect(complete('p')).toBe(framed(['paths\tWalkall paths.'], 4));
   });
 
-  it('the completion group offers its shells and never __complete', () => {
+  it('the completion group offers its shells and installing children, and never __complete', () => {
     expect(complete('completion', '')).toBe(
       framed(
         [
           'bash\tPrint the Bash completion script.',
           'zsh\tPrint the Zsh completion script.',
           'fish\tPrint the Fish completion script.',
+          'powershell\tPrint the PowerShell completion script.',
+          'install\tInstall completion for your shell.',
+          'update\tBring installed completion up to date with this version.',
+          'uninstall\tRemove completion from your shell.',
         ],
         4,
       ),
+    );
+    expect(complete('completion', 'install', '')).toBe(
+      framed(['bash', 'zsh', 'fish', 'powershell', 'pwsh'], 4),
     );
     expect(complete('completion', '_')).toBe(framed([], 4));
   });
@@ -238,7 +246,7 @@ describe('the answer', () => {
     expect(complete('--help', '')).toBe(
       framed(
         [
-          'completion\tPrint a shell completion script.',
+          'completion\tPrint or install a shell completion script.',
           'paths\tWalkall paths.',
           'keys\tList keys.',
           'cache',
@@ -273,7 +281,12 @@ describe('the answer', () => {
 
 describe('the Commands', () => {
   it('each shell Command prints its script for the application name in one exact write', () => {
-    const shells = { bash: bashScript, fish: fishScript, zsh: zshScript };
+    const shells = {
+      bash: bashScript,
+      fish: fishScript,
+      powershell: powershellScript,
+      zsh: zshScript,
+    };
     for (const [shell, script] of Object.entries(shells)) {
       expect(invoke(fixture, ['completion', shell])).toEqual({
         status: 0,
@@ -287,7 +300,7 @@ describe('the Commands', () => {
     const result = invoke(fixture, ['completion']);
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('bash, zsh, fish');
+    expect(result.stderr).toContain('bash, zsh, fish, powershell');
     expect(result.stderr).not.toContain('__complete');
   });
 
@@ -309,6 +322,34 @@ describe('the name', () => {
 
   it('an empty name has no identifier', () => {
     expect(() => identifier('')).toThrow(TypeError);
+  });
+
+  it("a PowerShell single-quoted string writes ' and each of U+2018 through U+201B twice", () => {
+    const quotes = [8216, 8217, 8218, 8219].map((code) => String.fromCodePoint(code));
+    expect(powershellQuoted("/home/o'neil/.local/share")).toBe("'/home/o''neil/.local/share'");
+    for (const quote of quotes) {
+      expect(powershellQuoted(`/home/a${quote}b/x`)).toBe(`'/home/a${quote}${quote}b/x'`);
+      expect(powershellQuoted(`it${quote}s`)).toBe(`'it${quote}${quote}s'`);
+    }
+    expect(powershellQuoted(quotes.join("'"))).toBe(
+      `'${quotes.map((quote) => quote + quote).join("''")}'`,
+    );
+  });
+
+  it('a PowerShell single-quoted string keeps every other character as it is', () => {
+    const others = [
+      'jsonkit',
+      'git-lfs',
+      String.raw`C:\Users\me`,
+      '"$(New-Item sentinel)"',
+      '`n $HOME @a {b} (c) ;|&<>#,',
+      `x${String.fromCodePoint(8220)}y${String.fromCodePoint(8221)}z`,
+      `x${String.fromCodePoint(128_512)}`,
+      '',
+    ];
+    for (const text of others) {
+      expect(powershellQuoted(text)).toBe(`'${text}'`);
+    }
   });
 });
 
@@ -333,6 +374,7 @@ interface ScriptShell {
   script: (name: string) => string;
   shell: string;
   source: string;
+  title: string;
 }
 
 /**
@@ -357,7 +399,8 @@ function shellRuns(shell: string): boolean {
 function sourceScript({ flags, shell, source }: ScriptShell, text: string, after = '') {
   const directory = mkdtempSync(join(tmpdir(), 'loom-completion-'));
   try {
-    const file = join(directory, 'script');
+    // PowerShell dot-sources only a file named .ps1 and hands any other to the desktop's opener.
+    const file = join(directory, shell === 'pwsh' ? 'script.ps1' : 'script');
     writeFileSync(file, text);
     const result = spawnSync(shell, [...flags, '-c', `${source} '${file}'${after}`], {
       cwd: directory,
@@ -376,6 +419,7 @@ describe('the scripts', () => {
     script: bashScript,
     shell: 'bash',
     source: 'source',
+    title: 'Bash',
   };
   const scripts: ScriptShell[] = [
     bash,
@@ -384,21 +428,95 @@ describe('the scripts', () => {
       script: zshScript,
       shell: 'zsh',
       source: 'autoload -U compinit; compinit -u -D; source',
+      title: 'Zsh',
     },
-    { flags: ['--no-config'], script: fishScript, shell: 'fish', source: 'source' },
+    // The installed file starts the completion system itself when compdef is not defined.
+    {
+      flags: ['-f'],
+      script: zshInstalledScript,
+      shell: 'zsh',
+      source: 'source',
+      title: 'installed Zsh',
+    },
+    { flags: ['--no-config'], script: fishScript, shell: 'fish', source: 'source', title: 'Fish' },
+    {
+      flags: ['-NoProfile', '-NonInteractive'],
+      script: powershellScript,
+      shell: 'pwsh',
+      source: '.',
+      title: 'PowerShell',
+    },
   ];
 
-  it.each(scripts)('the $shell script refuses a name outside the portable set', ({ script }) => {
+  it.each(scripts)('the $title script refuses a name outside the portable set', ({ script }) => {
     for (const name of hostileNames) {
       expect(() => script(name)).toThrow(TypeError);
     }
   });
 
-  it.each(scripts)('the $shell script evaluates nothing', ({ script }) => {
+  it.each(scripts)('the $title script evaluates nothing', ({ script }) => {
     const text = script('kit');
     expect(text).not.toMatch(/\beval\b/u);
     expect(text).not.toMatch(/compgen\s+-[WfdG]/u);
     expect(text).not.toContain('_activeHelp_');
+  });
+
+  it('the PowerShell script registers a native completer and runs no string as a command', () => {
+    const text = powershellScript('kit');
+    expect(text).not.toMatch(/Invoke-Expression|\biex\b|ScriptBlock\]::Create|NewScriptBlock/iu);
+    expect(text).toMatch(/^Register-ArgumentCompleter -Native -CommandName 'kit' /mu);
+  });
+
+  it('the PowerShell script starts an application with an argument list off Windows, and calls & on Windows', () => {
+    const text = powershellScript('kit');
+    expect(text).toContain(
+      "$Unix = $PSVersionTable.PSEdition -eq 'Core' -and ($IsLinux -or $IsMacOS)",
+    );
+    expect(text).toMatch(
+      /if \(\$Unix\) \{\n\s+\$Resolved = Get-Command -Name \$Pattern -CommandType Application /u,
+    );
+    const unix = text.slice(text.lastIndexOf('if ($Unix) {'), text.indexOf('$Out = @(& $Resolved'));
+    expect(unix).toContain('$Start.ArgumentList.Add($Word)');
+    expect(unix).toContain('$Start.UseShellExecute = $false');
+    expect(unix).toContain('$Start.RedirectStandardError = $true');
+    expect(unix).toContain('$Process.StandardError.ReadToEndAsync()');
+    expect(unix).toMatch(/\} else \{\n[\s\S]*__kit_legacy/u);
+    expect(text.match(/& \$Resolved/gu)).toHaveLength(1);
+  });
+
+  it('the PowerShell script inserts a space after a sole word unless directive 2 is set', () => {
+    const text = powershellScript('kit');
+    expect(text).toMatch(
+      /\$Space = " "\n\s+if \(\(\$Directive -band \$ShellCompDirectiveNoSpace\) -ne 0 \) \{\n[^}]*\$Space = ""\n/u,
+    );
+    expect(text).toMatch(/if \(\$Values\.Count -eq 1\) \{\n\s+\$After = \$Space\n/u);
+    expect(text).toContain(
+      "__kit_result (($_.Name | __kit_quote) + $After) $_.Name 'ParameterValue'",
+    );
+  });
+
+  it('the PowerShell script holds the name only in its registration, single-quoted', () => {
+    // Each name holds a character the identifier encodes, so only the registration spells it.
+    for (const name of ['git-lfs', 'a.b_c']) {
+      const text = powershellScript(name);
+      expect(text.split(name)).toHaveLength(2);
+      expect(text).toContain(`-CommandName '${name}' `);
+    }
+  });
+
+  it('the installed Zsh file differs from the printed script in its autoload check and compinit guard alone', () => {
+    const guard = [
+      '# Start the completion system when no compdef is defined, and register nothing without it.',
+      '(( $+functions[compdef] )) || { autoload -Uz compinit && compinit -i }',
+      '(( $+functions[compdef] )) || return 0',
+    ];
+    const printed = zshScript('git-lfs');
+    expect(printed).toContain('"_git-lfs"');
+    expect(zshInstalledScript('git-lfs')).toBe(
+      printed
+        .replace('#compdef git-lfs\n', `#compdef git-lfs\n${guard.join('\n')}\n`)
+        .replaceAll('_git-lfs', '_loom_git_2d_lfs'),
+    );
   });
 
   it('the Bash script escapes every tilde in a word it inserts, which printf %q may leave bare', () => {
@@ -429,7 +547,7 @@ a=\~root
   });
 
   it.each(scripts)(
-    'the $shell script sources without running anything for every portable name',
+    'the $title script sources without running anything for every portable name',
     (entry) => {
       if (!shellRuns(entry.shell)) {
         return;
