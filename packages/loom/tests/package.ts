@@ -15,6 +15,7 @@ const repository = fileURLToPath(new URL('../../../', import.meta.url));
  */
 const installed = {
   core: { from: 'packages/core', to: '@loomcli/core' },
+  plugins: { from: 'packages/plugins', to: '@loomcli/plugins' },
   types: { from: 'packages/core/node_modules/@types/node', to: '@types/node' },
   typescript: { from: 'node_modules/typescript', to: 'typescript' },
 } as const;
@@ -28,7 +29,7 @@ export const cli = fileURLToPath(new URL('../dist/main.js', import.meta.url));
 /** The runtimes every artifact runs under. */
 export const runtimes = ['node', 'bun'] as const;
 
-/** A link a fixture package holds: core, the TypeScript compiler, or Node's type declarations. */
+/** A link a fixture package holds: core, the plugins, the TypeScript compiler, or Node's type declarations. */
 export type Link = keyof typeof installed;
 
 /**
