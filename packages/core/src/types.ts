@@ -210,6 +210,12 @@ export interface Host {
    */
   program: readonly string[];
   cwd: string;
+  /**
+   * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
+   * local time. Process capture takes the zone `Intl` resolves, which honours `TZ`; an override
+   * replaces it, and an action's `invoke` keeps its run's.
+   */
+  timeZone: string;
   env: Record<string, string | undefined>;
   terminal: { stdin: InputTerminal; stdout: OutputTerminal; stderr: OutputTerminal };
   stdin: Readable;

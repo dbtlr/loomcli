@@ -11,8 +11,8 @@ const explanations = {
   'bound-value': [
     'A bound limits the values or the length a validator accepts, and the published',
     'schema carries it, so it is a number of the kind the validator reads: a safe',
-    'integer for integer(), a finite number for number(), and a non-negative safe',
-    "integer for text()'s lengths.",
+    'integer for integer(), a finite number for number(), a non-negative safe integer',
+    "for text()'s lengths, and a duration in the operator's grammar for duration().",
   ],
   'bounds-order': [
     'A validator accepts what lies between its lower and its upper bound, both',
@@ -70,6 +70,10 @@ const explanations = {
     'Only the author can say what a pattern accepts, so text() takes a pattern',
     'together with one sentence that states it, and prints that sentence when a token',
     'does not match.',
+  ],
+  'time-zone': [
+    'dateTime() reads a token with no offset in the time zone it names, so the name',
+    'is an IANA time zone the runtime knows, such as America/New_York.',
   ],
   'url-protocols': [
     'url() accepts a URL whose scheme the list names and publishes the list as a',
@@ -146,6 +150,20 @@ const cases: Record<string, Expected> = {
     headline: 'CONTEXT OUTSIDE A RUN',
     rule: 'context-outside-run',
     sentence: 'This validator reads the validation context, which only exists during a Loom run.',
+  },
+  'duration-bound-value': {
+    correction: 'Supply a duration such as "30s" or "2h30m".',
+    findings: [marked("duration({ min: 'abc' })", "min: 'abc'")],
+    headline: 'INVALID BOUND',
+    rule: 'bound-value',
+    sentence: 'duration() min is not a duration.',
+  },
+  'duration-bounds-order': {
+    correction: 'Supply a min at or below max.',
+    findings: [marked("duration({ max: '30s', min: '1h' })", "min: '1h'")],
+    headline: 'BOUNDS OUT OF ORDER',
+    rule: 'bounds-order',
+    sentence: 'duration() min 1h is above max 30s.',
   },
   'factory-options': {
     correction: 'Supply an object or leave it out.',
@@ -242,6 +260,13 @@ const cases: Record<string, Expected> = {
     headline: 'INVALID PATTERN',
     rule: 'invalid-pattern',
     sentence: 'text() pattern carries the flag g.',
+  },
+  'time-zone': {
+    correction: 'Supply a name such as America/New_York.',
+    findings: [marked("dateTime({ timeZone: 'Mars/Olympus' })", "timeZone: 'Mars/Olympus'")],
+    headline: 'INVALID TIME ZONE',
+    rule: 'time-zone',
+    sentence: 'dateTime() timeZone is not an IANA time zone name.',
   },
   'url-protocols': {
     correction: 'List a letter followed by letters, digits, +, -, or ., with no trailing colon.',

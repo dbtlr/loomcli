@@ -2,11 +2,18 @@ import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');
 
-test('the root export holds the nine factories, createValidator, issueCode, and the catalog codes', () => {
+test('the root export holds the eleven factories, createValidator, issueCode, and the catalog codes', () => {
   expect(Object.keys(catalog).toSorted()).toEqual([
     'createValidator',
     'date',
     'dateIssue',
+    'dateTime',
+    'dateTimeIssue',
+    'duration',
+    'durationIssue',
+    'durationMaxIssue',
+    'durationMinIssue',
+    'durationRangeIssue',
     'integer',
     'integerIssue',
     'integerMaxIssue',
@@ -50,6 +57,8 @@ test.each([
   ['url', catalog.url()],
   ['uuid', catalog.uuid()],
   ['date', catalog.date()],
+  ['dateTime', catalog.dateTime()],
+  ['duration', catalog.duration()],
   ['path', catalog.path()],
 ])(
   '%s() returns a frozen value from the package that publishes an input schema',
@@ -92,6 +101,16 @@ test.each([
     'date',
     catalog.date(),
     '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","format":"date"}',
+  ],
+  [
+    'dateTime',
+    catalog.dateTime(),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}:?[0-9]{2})?$"}`,
+  ],
+  [
+    'duration',
+    catalog.duration(),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)|(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ms|s|m|h|d|w))+)$"}`,
   ],
   [
     'path',

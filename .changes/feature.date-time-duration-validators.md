@@ -1,0 +1,4 @@
+- Add `dateTime()` and `duration()` validators to `@loomcli/validators`, and `host.timeZone` to the `Host` in `@loomcli/core`.
+  - `dateTime()` reads an ISO 8601 or RFC 3339 date and time into a `Date`. A token with an offset or `Z` names that instant. A token without one is read in the `timeZone` option or, when none is given, in the operator's time zone from `host.timeZone`, which honours `TZ`. A time a clock change skips moves forward, and one it repeats takes the earlier instant.
+  - `duration()` reads Go's duration grammar plus `d` and `w`, such as `90s`, `2h30m`, `1.5h`, or a bare number of seconds, into milliseconds. `min` and `max` take durations in the same grammar and are inclusive.
+  - `run({ host: { timeZone } })` overrides the captured zone.

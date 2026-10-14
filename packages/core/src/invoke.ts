@@ -2,7 +2,13 @@ import { Readable, Writable } from 'node:stream';
 
 import { InternalError } from './errors.js';
 import type { LoomError } from './errors.js';
-import { capturedHost, captureProgram, captureWorkingDirectory, readSourceFile } from './host.js';
+import {
+  capturedHost,
+  captureProgram,
+  captureTimeZone,
+  captureWorkingDirectory,
+  readSourceFile,
+} from './host.js';
 import type { CapturedFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
 import { isPlainObject } from './plain.js';
@@ -21,7 +27,7 @@ type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform' | 'releas
  */
 type CapturedFields = Omit<InvocationFields, 'cwd' | 'release'> &
   CapturedFacts &
-  Pick<Host, 'program'>;
+  Pick<Host, 'program' | 'timeZone'>;
 
 /** The five host fields by name, the only keys `app.invoke` accepts under `host`. */
 const hostFields = new Set(['cwd', 'env', 'platform', 'readSource', 'release']);
@@ -223,6 +229,7 @@ function processFields(application: string, overrides: Partial<InvocationFields>
     program: captureProgram(undefined),
     readSource: overrides.readSource ?? readSourceFile,
     release: captureRelease(overrides.release, { application, env, platform }),
+    timeZone: captureTimeZone(undefined),
   };
 }
 
@@ -231,8 +238,15 @@ function processFields(application: string, overrides: Partial<InvocationFields>
  * run's program.
  */
 function fieldsOf(host: Host): CapturedFields {
-  const { cwd, env, platform, program, readSource } = host;
-  const captured = { directory: { cwd }, env, platform, program, release: { facts: host.release } };
+  const { cwd, env, platform, program, readSource, timeZone } = host;
+  const captured = {
+    directory: { cwd },
+    env,
+    platform,
+    program,
+    release: { facts: host.release },
+    timeZone,
+  };
   return readSource === undefined ? captured : { ...captured, readSource };
 }
 
@@ -274,6 +288,7 @@ function invocationHost(
     stdin: Readable.from([]),
     stdout: sinks.stdout,
     terminal: noTerminal(),
+    timeZone: fields.timeZone,
   };
   return capturedHost(
     fields.readSource === undefined ? facts : { ...facts, readSource: fields.readSource },
