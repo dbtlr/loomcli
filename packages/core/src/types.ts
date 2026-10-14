@@ -55,11 +55,12 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
  */
 type Multiplicity = { multiple: true; env?: never } | ({ multiple?: false } & EnvBinding);
 /**
- * The environment binding: the variable the input-source stage fills the option from when argv
- * supplies none. The declaration names it explicitly, and core derives no name.
+ * The environment binding: the variable, or the non-empty list of variables, the input-source
+ * stage fills the option from when argv supplies none. The first name holding a value supplies it.
+ * The declaration names each explicitly, and core derives no name.
  */
 interface EnvBinding {
-  env?: string;
+  env?: string | readonly [string, ...string[]];
 }
 /**
  * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member

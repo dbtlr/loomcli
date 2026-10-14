@@ -158,7 +158,7 @@ test('inspection publishes a counted option as a count node with no value facts'
     control: false,
     deprecated: undefined,
     description: undefined,
-    env: null,
+    env: [],
     extensions: {},
     hidden: false,
     long: '--verbose',

@@ -206,6 +206,27 @@ function application() {
       type: 'string',
     })
     .action(print('select'));
+  // Each option binds a list: the first name holding a non-empty value supplies it.
+  const region = new Command('region', {
+    description: 'The region command.',
+  })
+    .option('area', {
+      description: 'The area option.',
+      env: ['FIXTURE_AREA', 'FIXTURE_DEFAULT_AREA'],
+      type: 'string',
+      validate: digits,
+    })
+    .option('debug', {
+      description: 'The debug option.',
+      env: ['FIXTURE_DEBUG', 'FIXTURE_DEBUG_FALLBACK'],
+      type: 'boolean',
+    })
+    .option('depth', {
+      description: 'The depth option.',
+      env: ['FIXTURE_DEPTH', 'FIXTURE_DEPTH_FALLBACK'],
+      type: 'count',
+    })
+    .action(print('region'));
   const paint = new Command('paint', {
     description: 'The paint command.',
   })
@@ -240,6 +261,7 @@ function application() {
     })
     .command(count)
     .command(select)
+    .command(region)
     .command(paint)
     .command(cache)
     .command(inherited)

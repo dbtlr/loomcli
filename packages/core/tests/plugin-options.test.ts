@@ -189,7 +189,7 @@ test("a plugin's option publishes the node an application's global option publis
     control: false,
     default: { value: 'plain' },
     description: undefined,
-    env: null,
+    env: [],
     extensions: {},
     hidden: false,
     implied: null,
@@ -207,7 +207,7 @@ test("a plugin's option publishes the node an application's global option publis
     aliases: [],
     control: false,
     description: undefined,
-    env: null,
+    env: [],
     extensions: {},
     hidden: false,
     long: '--cache',
@@ -219,7 +219,7 @@ test("a plugin's option publishes the node an application's global option publis
     type: 'boolean',
   });
   expect(graph.globals[5]).toMatchObject({
-    env: 'FIXTURE_LEVEL',
+    env: ['FIXTURE_LEVEL'],
     long: '--level',
     name: 'level',
     short: '-l',

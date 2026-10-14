@@ -12,12 +12,57 @@ interface BindingConfig {
   readonly multiple?: unknown;
 }
 
+/** The declaration fault for a binding that breaks the name rules. */
+function nameFault(site: FactSite, sentence: string, correction: string): DeclarationError {
+  return factFault(envName, site, {
+    correction,
+    fact: 'env',
+    sentence: `${site.subject} ${sentence}`,
+  });
+}
+
+/** One name of a binding: a variable name that the names before it do not already hold. */
+function checkName(site: FactSite, name: unknown, held: readonly string[]): string {
+  if (typeof name !== 'string' || !variableName.test(name)) {
+    const named = typeof name === 'string' ? ` ${quoted(name)}` : '';
+    throw nameFault(
+      site,
+      `env${named} is not a variable name.`,
+      'Use a letter or an underscore, then letters, digits, or underscores.',
+    );
+  }
+  if (held.includes(name)) {
+    throw nameFault(site, `env names ${quoted(name)} more than once.`, 'Name each variable once.');
+  }
+  return name;
+}
+
+/** A binding's names are a non-empty list of variable names, each held once. */
+function checkNames(site: FactSite, names: readonly unknown[]): readonly string[] {
+  if (names.length === 0) {
+    throw nameFault(
+      site,
+      'env is an empty list.',
+      'List at least one variable name, or remove env.',
+    );
+  }
+  const valid: string[] = [];
+  for (const name of names) {
+    valid.push(checkName(site, name, valid));
+  }
+  return valid;
+}
+
 /**
- * The environment binding one option declares, or `undefined` when it declares none. A multiple
- * option takes its list from the configuration source, so it cannot bind, and a bound name must be
- * a variable name. The site names the declaration and marks its `env`.
+ * The environment binding one option declares, as its variable names in declaration order, or
+ * `undefined` when it declares none. A multiple option takes its list from the configuration
+ * source, so it cannot bind. A binding is one name or a non-empty list, and each name must be a
+ * variable name that the list holds once. The site names the declaration and marks its `env`.
  */
-export function checkEnvBinding(site: FactSite, config: BindingConfig): string | undefined {
+export function checkEnvBinding(
+  site: FactSite,
+  config: BindingConfig,
+): readonly string[] | undefined {
   const env = config.env;
   if (env === undefined) {
     return undefined;
@@ -29,15 +74,16 @@ export function checkEnvBinding(site: FactSite, config: BindingConfig): string |
       sentence: `${site.subject} is a multiple option and declares env.`,
     });
   }
-  if (typeof env !== 'string' || !variableName.test(env)) {
-    const named = typeof env === 'string' ? ` ${quoted(env)}` : '';
-    throw factFault(envName, site, {
-      correction: 'Use a letter or an underscore, then letters, digits, or underscores.',
-      fact: 'env',
-      sentence: `${site.subject} env${named} is not a variable name.`,
-    });
+  return checkNames(site, Array.isArray(env) ? env : [env]);
+}
+
+/** The variable names a checked option declaration binds, in declaration order, or none. */
+export function envNames(config: { readonly env?: string | readonly string[] }): readonly string[] {
+  const { env } = config;
+  if (env === undefined) {
+    return [];
   }
-  return env;
+  return typeof env === 'string' ? [env] : env;
 }
 
 /** An argument is identified by its place among bare tokens, so no variable can stand in for it. */

@@ -44,6 +44,25 @@ const scenarios = {
     new Application('app')
       .globalOption('limit', { env: '9LIMIT', type: 'string' })
       .action(dispatch),
+  'env-list-bad-name': () =>
+    new Application('app')
+      .globalOption('limit', { env: ['LIMIT', '9LIMIT'], type: 'string' })
+      .action(dispatch),
+  'env-list-empty': () =>
+    new Application('app').globalOption('limit', { env: [], type: 'string' }).action(dispatch),
+  'env-list-repeat': () =>
+    new Application('app')
+      .globalOption('limit', { env: ['LIMIT', 'MAX', 'LIMIT'], type: 'string' })
+      .action(dispatch),
+  'env-list-twice': () =>
+    new Application('app')
+      .globalOption('limit', { env: ['TEXTSTAT_LIMIT', 'TEXTSTAT_MAX'], type: 'string' })
+      .command(
+        new Command('count')
+          .option('max', { env: ['TEXTSTAT_CAP', 'TEXTSTAT_MAX'], type: 'string' })
+          .action(dispatch),
+      )
+      .action(dispatch),
   'env-multiple': () =>
     new Application('app')
       .globalOption('field', { env: 'FIELDS', multiple: true, type: 'string' })
@@ -74,6 +93,15 @@ const scenarios = {
       config({ binding: configKey, load }),
       plugin('@acme/yaml', { extensions: [yamlKey], source: { binding: yamlKey, load } }),
     ),
+  'sibling-list': () =>
+    new Application('app')
+      .command(
+        new Command('count')
+          .option('max', { env: ['SHARED', 'OTHER'], type: 'string' })
+          .action(dispatch),
+      )
+      .command(new Command('sum').option('cap', { env: 'SHARED', type: 'string' }).action(dispatch))
+      .action(dispatch),
   'sibling-variable': () =>
     new Application('app')
       .command(
