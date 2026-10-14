@@ -74,11 +74,12 @@ interface LineRefusal {
 }
 
 /**
- * The startup lines a run lists, the startup files whose recorded lines it releases or keeps, and
- * whether it is an update.
+ * The startup lines a run lists, the lines it records only as held, the startup files whose
+ * recorded lines it releases or keeps, and whether it is an update.
  */
 interface LineListing {
   readonly lines: readonly InstalledLine[];
+  readonly hold: readonly InstalledLine[];
   readonly release: ReadonlySet<string>;
   readonly keep: ReadonlySet<string>;
   readonly update: boolean;
@@ -148,6 +149,22 @@ function listedAction({ listed, prior, found }: ListedRead, update: boolean): Li
   return { found, kind: 'add', listed, prior };
 }
 
+/**
+ * What an install does to a line it records only as held, in a startup file the plugin cannot
+ * change: a recorded line of other text there is released, and the line is recorded as held when
+ * the file holds it and is never added.
+ */
+function heldActions({ listed, prior, found }: ListedRead): LineAction[] {
+  const released: LineAction[] =
+    prior === null || prior === listed.line ? [] : [{ kind: 'release', path: listed.path, prior }];
+  if (found === undefined || !holdsLine(found.text, listed.line)) {
+    return released;
+  }
+  // A released line leaves no prior text, so recovery never records it again.
+  const heldPrior = prior === listed.line ? prior : null;
+  return [...released, { kind: 'hold', listed, prior: heldPrior }];
+}
+
 /** What a run does to a recorded line it does not list: release it, remove it, or report it gone. */
 function unlistedAction(recorded: StartupLine, release: ReadonlySet<string>): LineAction {
   const { line: prior, path } = recorded;
@@ -164,33 +181,54 @@ function unlistedAction(recorded: StartupLine, release: ReadonlySet<string>): Li
   return { kind: 'not-held', path, prior };
 }
 
+/** What a run plans for the lines it names, and the refusals of their startup files. */
+interface NamedPlan {
+  readonly refused: readonly LineRefusal[];
+  readonly actions: readonly LineAction[];
+}
+
 /**
- * What a run does to every startup line it lists or the plugin's file records, and the refusal of
- * each listed startup file that is not a regular file or nothing, which refuses the whole install.
- * It reads each startup file it would change and none it releases or keeps, and throws a TypeError
- * for one in an encoding it does not read.
+ * Reads the startup file of each named line, listed or held, and plans each line whose file is a
+ * regular file or nothing with the text recorded for that file, `null` for none.
  */
-function planLines(
-  listing: LineListing,
-  recorded: readonly StartupLine[],
-): { readonly refused: readonly LineRefusal[]; readonly actions: readonly LineAction[] } {
+function planNamed(
+  lines: readonly InstalledLine[],
+  priors: ReadonlyMap<string, string>,
+  plan: (read: ListedRead) => readonly LineAction[],
+): NamedPlan {
+  const reads = lines.map((listed) => ({ found: foundText(listed.path), listed }));
+  return {
+    actions: reads.flatMap(({ found, listed }) =>
+      isRefusal(found) ? [] : plan({ found, listed, prior: priors.get(listed.path) ?? null }),
+    ),
+    refused: reads.flatMap(({ found }) => (isRefusal(found) ? [found] : [])),
+  };
+}
+
+/**
+ * What a run does to every startup line it lists, holds, or the plugin's file records, and the
+ * refusal of each listed or held startup file that is not a regular file or nothing, which refuses
+ * the whole install. It reads each startup file it would change or hold a line in and none it
+ * releases or keeps, and throws a TypeError for one in an encoding it does not read.
+ */
+function planLines(listing: LineListing, recorded: readonly StartupLine[]): NamedPlan {
   const priors = new Map(recorded.map(({ line, path }) => [path, line]));
-  const reads = listing.lines.map((listed) => ({ found: foundText(listed.path), listed }));
-  const refused = reads.flatMap(({ found }) => (isRefusal(found) ? [found] : []));
-  const listedActions = reads.flatMap(({ found, listed }) =>
-    isRefusal(found)
-      ? []
-      : [listedAction({ found, listed, prior: priors.get(listed.path) ?? null }, listing.update)],
-  );
-  const listedPaths = new Set(listing.lines.map(({ path }) => path));
-  const unlisted = recorded.filter(({ path }) => !listedPaths.has(path));
+  const listed = planNamed(listing.lines, priors, (read) => [listedAction(read, listing.update)]);
+  const held = planNamed(listing.hold, priors, heldActions);
+  const named = new Set([...listing.lines, ...listing.hold].map(({ path }) => path));
+  const unlisted = recorded.filter(({ path }) => !named.has(path));
   const kept = unlisted
     .filter(({ path }) => listing.keep.has(path))
     .map(({ line, path }): LineAction => ({ kind: 'keep', path, prior: line }));
   const changed = unlisted.filter(({ path }) => !listing.keep.has(path));
   return {
-    actions: [...listedActions, ...kept, ...unlistedActions(changed, listing.release)],
-    refused,
+    actions: [
+      ...listed.actions,
+      ...held.actions,
+      ...kept,
+      ...unlistedActions(changed, listing.release),
+    ],
+    refused: [...listed.refused, ...held.refused],
   };
 }
 
