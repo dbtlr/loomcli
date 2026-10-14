@@ -5,10 +5,10 @@
 import { applicationDirectory } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
+import { releaseBinary } from './binary.js';
 import { writeCache } from './cache.js';
 import { refusals } from './messages.js';
 import { latestRelease } from './resolve.js';
-import { parseVersion } from './version.js';
 
 /** What the refresh reads: the graph's name, the run's host, and the run signal. */
 interface RefreshRun {
@@ -23,15 +23,15 @@ interface RefreshRun {
  * nothing. A channel with no release writes `null`; a request that fails throws and writes nothing.
  */
 async function refreshNotice({ name, host, signal }: RefreshRun): Promise<void> {
-  const { release } = host.release;
-  if (release?.asset === undefined || parseVersion(release.version) === undefined) {
+  const binary = releaseBinary(host);
+  if (binary === undefined) {
     throw refusals.notBuilt(name);
   }
   const directory = applicationDirectory('cache', name, host);
   if ('variable' in directory) {
     throw refusals.cache(name, directory.variable);
   }
-  const { channel, repository } = release;
+  const { channel, repository } = binary;
   const found = await latestRelease(repository, channel, signal);
   writeCache(directory.path, {
     channel,

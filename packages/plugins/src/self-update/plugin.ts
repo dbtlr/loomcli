@@ -15,6 +15,8 @@ import { packageName } from '../constants.js';
 import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
 import { isPlainObject } from '../plain-data.js';
 import { selfUpdateSettings } from '../rules.js';
+import { releaseBinary } from './binary.js';
+import type { ReleaseBinary } from './binary.js';
 import { failures, refusals, requestFailed, shown } from './messages.js';
 import { unwritable } from './place.js';
 import { refreshNotice } from './refresh.js';
@@ -22,13 +24,7 @@ import { fetchBytes, RequestError } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
-import {
-  compareVersions,
-  equalPrecedence,
-  isChannelName,
-  parseVersion,
-  versionOfArgument,
-} from './version.js';
+import { compareVersions, equalPrecedence, isChannelName, versionOfArgument } from './version.js';
 import type { Version } from './version.js';
 
 const identity = `${packageName}/self-update`;
@@ -134,11 +130,7 @@ const channelInput = z.string().refine(isChannelName, {
 });
 
 /** What a run checked before any request: the binary to replace and where its record lives. */
-interface Checked {
-  readonly asset: string;
-  readonly repository: string;
-  readonly running: Version;
-  readonly channel: string;
+interface Checked extends ReleaseBinary {
   readonly path: string;
   readonly mode: number;
   readonly record: string;
@@ -194,24 +186,15 @@ function requireWritable(name: string, path: string, record: string): void {
  * process cannot write to.
  */
 function check(name: string, host: Host): Checked {
-  const { release } = host.release;
-  const running = release === undefined ? undefined : parseVersion(release.version);
-  if (release?.asset === undefined || running === undefined) {
+  const binary = releaseBinary(host);
+  if (binary === undefined) {
     throw refusals.notBuilt(name);
   }
   const record = recordDirectory(name, host);
   const installation = scriptInstallation(name, host.release.installation);
   const mode = intactMode(name, installation);
   requireWritable(name, installation.path, record);
-  return {
-    asset: release.asset,
-    channel: release.channel,
-    mode,
-    path: installation.path,
-    record,
-    repository: release.repository,
-    running,
-  };
+  return { ...binary, mode, path: installation.path, record };
 }
 
 /** What finding the release to install needs. */

@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
 import type { Host, Middleware, Out } from '@loomcli/core';
 
+import { releaseBinary } from './binary.js';
 import { readCache, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
 import type { selfUpdate } from './plugin.js';
@@ -57,12 +58,12 @@ function isEligible({ host, optOut, routed }: Candidate): boolean {
 
 /** The running binary's version and lookup, when a release binary the installer script placed. */
 function scriptRelease(host: Host): (Lookup & { readonly running: Version }) | undefined {
-  const { installation, release } = host.release;
-  const running = release === undefined ? undefined : parseVersion(release.version);
-  if (release?.asset === undefined || running === undefined || installation?.method !== 'script') {
+  const binary = releaseBinary(host);
+  if (binary === undefined || host.release.installation?.method !== 'script') {
     return undefined;
   }
-  return { channel: release.channel, repository: release.repository, running };
+  const { channel, repository, running } = binary;
+  return { channel, repository, running };
 }
 
 /**
