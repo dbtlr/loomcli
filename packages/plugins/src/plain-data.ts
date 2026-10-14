@@ -9,6 +9,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Whether a value is a plain object: one whose prototype is `Object.prototype` or `null`. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Whether a value is plain JSON data: null, a Boolean, a finite number, a string, or arrays and
  * plain objects of these. Core copies every plain object it snapshots onto `Object.prototype`, so
@@ -44,4 +53,4 @@ function isPlainContainer(value: object, ancestors: ReadonlySet<object>): boolea
   );
 }
 
-export { isPlainJson, isRecord };
+export { isPlainJson, isPlainObject, isRecord };

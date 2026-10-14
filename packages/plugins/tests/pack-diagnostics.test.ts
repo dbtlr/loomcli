@@ -25,7 +25,9 @@ const explanations = {
   ],
   'self-update/settings': [
     'The self-update plugin calls afterReplace once it has replaced the binary and',
-    'rewritten its installation record, so afterReplace is a function.',
+    'rewritten its installation record, so afterReplace is a function, and notices is',
+    'true, false, or an object whose env names the environment variable that turns',
+    'update notices off.',
   ],
   'service/settings': [
     'The service plugin names its unit by label, a reverse-DNS name of two or more',
@@ -146,6 +148,20 @@ const listFault = {
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
+/** One self-update `notices` fault: the call, what the finding marks, and the fault's words. */
+function noticesFault(call: string, target: string, key: 'notices' | 'notices.env'): Expected {
+  const notices = key === 'notices';
+  return {
+    correction: notices
+      ? 'Supply true, false, or { env }, or omit the setting.'
+      : 'Name it with letters, digits, and underscores, not starting with a digit.',
+    finding: marked(call, target),
+    headline: 'INVALID SELF-UPDATE SETTING',
+    rule: 'self-update/settings',
+    sentence: `Plugin "@loomcli/plugins/self-update" setting "${key}" ${notices ? 'is not a Boolean or an object.' : 'is not an environment variable name.'}`,
+  };
+}
+
 /** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
   'config-glob': {
@@ -194,6 +210,13 @@ const settingsCases: Record<string, Expected> = {
     rule: 'self-update/settings',
     sentence: 'Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.',
   },
+  'self-update-notices-env': noticesFault(
+    "selfUpdate({ notices: { env: '1X' } })",
+    "env: '1X'",
+    'notices.env',
+  ),
+  'self-update-notices-list': noticesFault('selfUpdate({ notices: [] })', 'notices: []', 'notices'),
+  'self-update-notices-number': noticesFault('selfUpdate({ notices: 1 })', 'notices: 1', 'notices'),
   'service-label': serviceFault(
     "service({ label: 'notes', run: ['serve'] })",
     "label: 'notes'",

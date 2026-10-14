@@ -12,6 +12,10 @@ function fatal(sentence: string, cause?: unknown): FatalError {
 }
 
 const refusals = {
+  cache: (name: string, variable: string) =>
+    fatal(
+      `${name} cannot find its cache directory because ${variable} is not an absolute path. Set ${variable} to an absolute path.`,
+    ),
   changed: (name: string, path: string) =>
     fatal(
       `${name} at ${shown(path)} changed since it was installed, so self-update will not replace it. Install it again with install.sh.`,
