@@ -63,7 +63,7 @@ const level = new Command('level', {
   })
   .option('mode', {
     description: 'The mode.',
-    env: 'KIT_MODE',
+    env: ['KIT_MODE', 'KIT_LEGACY_MODE'],
     extensions: [configInput({ path: 'level.mode' })],
     type: 'string',
     validate: z.enum(['fast', 'slow']),
@@ -231,7 +231,7 @@ describe('sections', () => {
         String.raw`\fB\-\-mode\fR <\fImode\fR>`,
         'The mode. One of: fast, slow.',
         '.br',
-        String.raw`Environment: \fBKIT_MODE\fR`,
+        String.raw`Environment: \fBKIT_MODE\fR, \fBKIT_LEGACY_MODE\fR`,
         '.br',
         String.raw`Configuration: \fBlevel.mode\fR`,
         '.TP',
@@ -266,6 +266,9 @@ describe('sections', () => {
         String.raw`Supplies \fB\-\-debug\fR.`,
         '.TP',
         String.raw`\fBKIT_MODE\fR`,
+        String.raw`Supplies \fB\-\-mode\fR.`,
+        '.TP',
+        String.raw`\fBKIT_LEGACY_MODE\fR`,
         String.raw`Supplies \fB\-\-mode\fR.`,
         '.TP',
         String.raw`\fBKIT_RAW\fR`,

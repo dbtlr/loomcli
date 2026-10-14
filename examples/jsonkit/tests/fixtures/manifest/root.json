@@ -409,7 +409,7 @@
                 "required": true,
                 "multiple": false,
                 "schema": null,
-                "env": null,
+                "env": [],
                 "default": null,
                 "implied": null
               }

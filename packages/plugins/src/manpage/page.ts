@@ -197,7 +197,9 @@ function optionTag(option: OptionNode): string {
 function bindings(option: OptionNode): string[] {
   const path = readExtension(option, configInput)?.path;
   return [
-    ...(option.env === null ? [] : [`Environment: ${inFont(option.env, 'bold')}`]),
+    ...(isEmpty(option.env)
+      ? []
+      : [`Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}`]),
     ...(path === undefined ? [] : [`Configuration: ${inFont(path, 'bold')}`]),
   ];
 }
@@ -221,9 +223,9 @@ function suppliedSpelling(option: OptionNode): string {
 
 function environment({ optionSections }: Subject): string[] {
   const lines = listed(optionSections).flatMap((option) =>
-    option.env === null
-      ? []
-      : entry(inFont(option.env, 'bold'), `Supplies ${inFont(suppliedSpelling(option), 'bold')}.`),
+    option.env.flatMap((name) =>
+      entry(inFont(name, 'bold'), `Supplies ${inFont(suppliedSpelling(option), 'bold')}.`),
+    ),
   );
   return headed('ENVIRONMENT', lines);
 }
