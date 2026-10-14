@@ -46,65 +46,111 @@ function placeholder(option: OptionNode): string {
 }
 
 /**
+ * How a string option's placeholder follows a spelling, in the parts a projection styles: the
+ * separator, the text before the placeholder, the placeholder, and the text after it.
+ */
+interface ValueParts {
+  readonly separator: string;
+  readonly before: string;
+  readonly placeholder: string;
+  readonly after: string;
+}
+
+/**
+ * A separate value follows after a space; an implied value is replaced only by an attached one, so
+ * its placeholder sits in brackets, after `=` on a long spelling and after the letter alone on a
+ * short one.
+ */
+function valueParts(option: StringOption, long: boolean): ValueParts {
+  const word = placeholder(option);
+  if (option.implied === null) {
+    return { after: '>', before: '<', placeholder: word, separator: ' ' };
+  }
+  return { after: '>]', before: long ? '[=<' : '[<', placeholder: word, separator: '' };
+}
+
+/** The value parts as one string, such as `<path>` or `[=<control>]`. */
+function valueText(parts: ValueParts): string {
+  return `${parts.before}${parts.placeholder}${parts.after}`;
+}
+
+/**
+ * What one option row's left cell shows before a projection styles it: the short spelling, the
+ * published long spelling, the value parts of an option that takes a value, and whether the option
+ * counts, whose spellings end with `...` because each occurrence adds one. A Boolean option takes no
+ * value, so it shows no placeholder.
+ */
+interface OptionCellParts {
+  readonly short: string | null;
+  readonly long: string | null;
+  readonly value: ValueParts | undefined;
+  readonly counted: boolean;
+}
+
+/** The parts of one option row's left cell. */
+function optionCellParts(option: OptionNode): OptionCellParts {
+  return {
+    counted: option.type === 'count',
+    long: longSpelling(option),
+    short: option.short,
+    value: option.type === 'string' ? valueParts(option, option.long !== null) : undefined,
+  };
+}
+
+/**
  * The spellings one option row opens with: both of them, the long one alone indented four spaces so
  * the long spellings align, or the short one alone for a `shortOnly` option.
  */
-function spellings(option: OptionNode, { style }: ViewContext): string {
-  const long = longSpelling(option);
+function spellings({ long, short }: OptionCellParts, { style }: ViewContext): string {
   if (long === null) {
-    return style.highlight(style.escape(option.short ?? ''));
+    return style.highlight(style.escape(short ?? ''));
   }
   const highlighted = style.highlight(style.escape(long));
-  return option.short === null
+  return short === null
     ? `    ${highlighted}`
-    : `${style.highlight(style.escape(option.short))}${style.dim(',')} ${highlighted}`;
+    : `${style.highlight(style.escape(short))}${style.dim(',')} ${highlighted}`;
 }
 
-/**
- * How a string option's placeholder follows a spelling. A separate value follows after a space; an
- * implied value is replaced only by an attached one, so its placeholder sits in brackets, after `=`
- * on a long spelling and after the letter alone on a short one.
- */
-function valueCell(option: StringOption, long: boolean): { separator: string; value: string } {
-  const shown = `<${placeholder(option)}>`;
-  if (option.implied === null) {
-    return { separator: ' ', value: shown };
-  }
-  return { separator: '', value: long ? `[=${shown}]` : `[${shown}]` };
-}
-
-/**
- * The left cell of one option row. A Boolean option takes no value, so it shows no placeholder, and
- * a counted option's spellings end with `...`, because each occurrence adds one.
- */
+/** The left cell of one option row, its parts styled as help prints them. */
 function optionCell(option: OptionNode, context: ViewContext): string {
   const { style } = context;
-  const cell = spellings(option, context);
-  if (option.type === 'count') {
+  const parts = optionCellParts(option);
+  const cell = spellings(parts, context);
+  if (parts.counted) {
     return `${cell}${style.dim.italic('...')}`;
   }
-  if (option.type === 'boolean') {
+  if (parts.value === undefined) {
     return cell;
   }
-  const { separator, value } = valueCell(option, option.long !== null);
-  return `${cell}${separator}${style.dim.italic(style.escape(value))}`;
+  return `${cell}${parts.value.separator}${style.dim.italic(style.escape(valueText(parts.value)))}`;
+}
+
+/**
+ * How a usage form styles its words: the routed path, an option's spelling, and every other word,
+ * such as a placeholder, `[options]`, or `<command>`. Help styles them as its page does, and the
+ * man page writes them in roff.
+ */
+interface UsageWriter {
+  readonly path: (text: string) => string;
+  readonly spelling: (text: string) => string;
+  readonly word: (text: string) => string;
 }
 
 /**
  * How the action form names one required option, with `...` for a multiple option. Only an option
  * that takes a value reaches this, because core rejects `required` on a Boolean or counted option.
  */
-function optionForm(option: StringOption, { style }: ViewContext): string {
+function optionForm(option: StringOption, writer: UsageWriter): string {
   const long = longSpelling(option);
   const spelling = long ?? option.short ?? '';
-  const { separator, value } = valueCell(option, long !== null);
-  return `${style.highlight(style.escape(spelling))}${separator}${style.dim.italic(style.escape(`${value}${option.multiple ? '...' : ''}`))}`;
+  const value = valueParts(option, long !== null);
+  return `${writer.spelling(spelling)}${value.separator}${writer.word(`${valueText(value)}${option.multiple ? '...' : ''}`)}`;
 }
 
 /** How the action form names one argument: required or optional, and variadic or scalar. */
-function argumentForm(argument: ArgumentNode, { style }: ViewContext): string {
+function argumentForm(argument: ArgumentNode, writer: UsageWriter): string {
   const name = argument.variadic ? `${argument.name}...` : argument.name;
-  return style.dim.italic(style.escape(argument.required ? `<${name}>` : `[${name}]`));
+  return writer.word(argument.required ? `<${name}>` : `[${name}]`);
 }
 
 /** The JSON escape each line terminator prints as, in code point order. */
@@ -181,23 +227,38 @@ function renderDefault(value: unknown): string {
   return oneLine(isText(value) ? String(value) : jsonOrText(value));
 }
 
+/** One fact of a row's parenthesis, and the tone help prints it in. */
+interface Fact {
+  readonly text: string;
+  readonly tone: 'dim' | 'warning';
+}
+
+/** How a right cell styles its parts: the prose, each fact, and the parenthesis and its commas. */
+interface CellWriter {
+  readonly prose: (text: string) => string;
+  readonly fact: (fact: Fact) => string;
+  readonly mark: (text: string) => string;
+}
+
+/** The text a right cell reads from its member: the description and the accepted-values sentence. */
+interface CellText {
+  readonly accepts?: string | undefined;
+  readonly description: string | undefined;
+}
+
 /**
  * The right cell of one row: the description when the member has one, then its accepted-values
  * sentence, then the facts that apply in one parenthesis. One space separates the description from
  * the sentence and two spaces separate the text from the parenthesis; a member with no text has the
  * parenthesis as its whole cell, and a member with none of the three has no right cell at all.
  */
-function rightCell(
-  text: { readonly accepts?: string | undefined; readonly description: string | undefined },
-  facts: readonly string[],
-  { style }: ViewContext,
-): string {
+function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWriter): string {
   const parenthesis = isEmpty(facts)
     ? ''
-    : `${style.dim('(')}${facts.join(`${style.dim(',')} `)}${style.dim(')')}`;
+    : `${writer.mark('(')}${facts.map((fact) => writer.fact(fact)).join(`${writer.mark(',')} `)}${writer.mark(')')}`;
   const written = [text.description, text.accepts]
     .filter((part) => part !== undefined)
-    .map((part) => style.primary(style.escape(part)));
+    .map((part) => writer.prose(part));
   if (isEmpty(written)) {
     return parenthesis;
   }
@@ -205,53 +266,57 @@ function rightCell(
   return parenthesis === '' ? joined : `${joined}${gutter}${parenthesis}`;
 }
 
+/** The right cell of one row as help styles it. */
+function rightCell(text: CellText, facts: readonly Fact[], { style }: ViewContext): string {
+  return rightCellWith(text, facts, {
+    fact: (fact) => style[fact.tone](style.escape(fact.text)),
+    mark: (mark) => style.dim(mark),
+    prose: (prose) => style.primary(style.escape(prose)),
+  });
+}
+
+/** A fact help prints dim. */
+function dimFact(text: string): Fact {
+  return { text, tone: 'dim' };
+}
+
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
-function defaultFacts(
-  declared: { readonly value: unknown } | undefined,
-  { style }: ViewContext,
-): string[] {
+function defaultFacts(declared: { readonly value: unknown } | undefined): Fact[] {
   if (declared === undefined || declared.value === undefined) {
     return [];
   }
-  return [style.dim(style.escape(`default: ${renderDefault(declared.value)}`))];
+  return [dimFact(`default: ${renderDefault(declared.value)}`)];
 }
 
 /** The fact an implied value contributes, which prints and escapes as a string default does. */
-function impliedFacts(implied: string | null, { style }: ViewContext): string[] {
-  return implied === null ? [] : [style.dim(style.escape(`implied: ${oneLine(implied)}`))];
+function impliedFacts(implied: string | null): Fact[] {
+  return implied === null ? [] : [dimFact(`implied: ${oneLine(implied)}`)];
 }
 
 /** The facts one string option row carries, in the order the right-cell rule names them. */
-function stringFacts(option: StringOption, context: ViewContext): string[] {
-  const { style } = context;
+function stringFacts(option: StringOption): Fact[] {
   return [
-    ...(option.required ? [style.dim('required')] : []),
-    ...(option.multiple ? [style.dim('repeatable')] : []),
-    ...defaultFacts(option.default, context),
-    ...impliedFacts(option.implied, context),
+    ...(option.required ? [dimFact('required')] : []),
+    ...(option.multiple ? [dimFact('repeatable')] : []),
+    ...defaultFacts(option.default),
+    ...impliedFacts(option.implied),
   ];
 }
 
 /** The facts one Boolean option row carries. Its absent value is its only possible one. */
-function booleanFacts(
-  option: Extract<OptionNode, { type: 'boolean' }>,
-  { style }: ViewContext,
-): string[] {
+function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): Fact[] {
   // A negative polarity means the absent value is `true` and both spellings set it to `false`.
-  return option.polarity === 'negative' ? [style.dim('default: true')] : [];
+  return option.polarity === 'negative' ? [dimFact('default: true')] : [];
 }
 
 /**
  * The fact a deprecated member contributes: its migration message. The right-cell rule prints it
  * last, so a reader takes everything after `deprecated: ` as the message.
  */
-function deprecatedFacts(
-  member: { readonly deprecated: string | undefined },
-  { style }: ViewContext,
-): string[] {
+function deprecatedFacts(member: { readonly deprecated: string | undefined }): Fact[] {
   return member.deprecated === undefined
     ? []
-    : [style.warning(style.escape(`deprecated: ${member.deprecated}`))];
+    : [{ text: `deprecated: ${member.deprecated}`, tone: 'warning' }];
 }
 
 /**
@@ -259,18 +324,18 @@ function deprecatedFacts(
  * `...` already says it repeats, and a count has no presence rule or default, so it carries none
  * but its deprecation.
  */
-function optionFacts(option: OptionNode, context: ViewContext): string[] {
-  return [...kindFacts(option, context), ...deprecatedFacts(option, context)];
+function optionFacts(option: OptionNode): Fact[] {
+  return [...kindFacts(option), ...deprecatedFacts(option)];
 }
 
 /** The facts one option's kind contributes ahead of its deprecation. */
-function kindFacts(option: OptionNode, context: ViewContext): string[] {
+function kindFacts(option: OptionNode): Fact[] {
   switch (option.type) {
     case 'string': {
-      return stringFacts(option, context);
+      return stringFacts(option);
     }
     case 'boolean': {
-      return booleanFacts(option, context);
+      return booleanFacts(option);
     }
     case 'count': {
       return [];
@@ -283,8 +348,8 @@ function kindFacts(option: OptionNode, context: ViewContext): string[] {
 }
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */
-function argumentFacts(argument: ArgumentNode, context: ViewContext): string[] {
-  return defaultFacts(argument.default, context);
+function argumentFacts(argument: ArgumentNode): Fact[] {
+  return defaultFacts(argument.default);
 }
 
 /**
@@ -298,7 +363,16 @@ function column(rows: readonly Row[], context: ViewContext): string[] {
   );
 }
 
-export type { Row, StringOption };
+export type {
+  CellText,
+  CellWriter,
+  Fact,
+  OptionCellParts,
+  Row,
+  StringOption,
+  UsageWriter,
+  ValueParts,
+};
 export {
   argumentFacts,
   argumentForm,
@@ -307,7 +381,9 @@ export {
   isEmpty,
   oneLine,
   optionCell,
+  optionCellParts,
   optionFacts,
   optionForm,
   rightCell,
+  rightCellWith,
 };

@@ -1,5 +1,3 @@
-import type { Host, Log } from '@loomcli/core';
-
 /** One file of a skill's folder. */
 export interface SkillFile {
   /** The path relative to the skill's folder, such as references/commands.md. */
@@ -24,14 +22,5 @@ export interface SkillsSettings {
   readonly skills: readonly Skill[];
 }
 
-/** What `refreshSkills` reads from a self-update's `afterReplace` context. */
-export interface RefreshContext {
-  /** The binary that replaced this one. */
-  readonly path: string;
-  /** The run's host. */
-  readonly host: Host;
-  /** The run signal. */
-  readonly signal: AbortSignal;
-  /** The run's log. */
-  readonly log: Log;
-}
+/** What `refreshSkills` reads from a self-update's `afterReplace` context, the declaration every refresh shares. */
+export type { RefreshContext } from '../refresh.js';

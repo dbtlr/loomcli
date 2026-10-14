@@ -263,6 +263,107 @@
         "children": []
       },
       {
+        "name": "manpage",
+        "path": [
+          "manpage"
+        ],
+        "description": "Write or install the man pages.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "options": [],
+        "children": [
+          {
+            "name": "generate",
+            "path": [
+              "manpage",
+              "generate"
+            ],
+            "description": "Write the man pages to a folder.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [
+              {
+                "type": "string",
+                "name": "out",
+                "description": "The folder to write the man pages in. It is created when missing.",
+                "deprecated": null,
+                "control": false,
+                "long": "--out",
+                "short": null,
+                "required": true,
+                "multiple": false,
+                "schema": null,
+                "env": null,
+                "default": null,
+                "implied": null
+              }
+            ],
+            "children": []
+          },
+          {
+            "name": "install",
+            "path": [
+              "manpage",
+              "install"
+            ],
+            "description": "Install the man pages in your home folder.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "update",
+            "path": [
+              "manpage",
+              "update"
+            ],
+            "description": "Bring installed man pages up to date with this version.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "name": "uninstall",
+            "path": [
+              "manpage",
+              "uninstall"
+            ],
+            "description": "Remove the installed man pages.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "options": [],
+            "children": []
+          }
+        ]
+      },
+      {
         "name": "get",
         "path": [
           "get"

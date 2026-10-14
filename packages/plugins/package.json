@@ -59,6 +59,10 @@
       "types": "./dist/src/manifest/extension.d.ts",
       "import": "./dist/src/manifest/extension.js"
     },
+    "./manpage": {
+      "types": "./dist/src/manpage/plugin.d.ts",
+      "import": "./dist/src/manpage/plugin.js"
+    },
     "./mcp": {
       "types": "./dist/src/mcp/plugin.d.ts",
       "import": "./dist/src/mcp/plugin.js"

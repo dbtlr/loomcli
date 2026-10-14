@@ -54,6 +54,7 @@ test('inspect() lists the plugin Command as the root first child, with nothing m
     'doctor',
     'completion',
     'mcp',
+    'manpage',
     'get',
     'keys',
     'select',

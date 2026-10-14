@@ -13,10 +13,11 @@ import {
   optionForm,
   rightCell,
 } from './cells.js';
-import type { Row, StringOption } from './cells.js';
+import type { Row, StringOption, UsageWriter } from './cells.js';
 import { renderDetails } from './details.js';
 import { helpCommand, helpInput } from './extension.js';
 import { sectionBlocks } from './sections.js';
+import type { SectionMember } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
 
 /**
@@ -77,56 +78,78 @@ function requiredOptions(command: CommandNode): StringOption[] {
   return reachable.filter((option) => option.type === 'string').filter((option) => option.required);
 }
 
+/** The routed node, the graph, and its visible children, which the usage forms read. */
+interface UsageSubject {
+  readonly command: CommandNode;
+  readonly graph: CommandGraph;
+  readonly children: readonly CommandNode[];
+}
+
 /**
- * One line per form. A node with an action prints the action form, and a node with a visible child
- * prints the children form after it, which is the only form a group has. Groupness reads the raw
- * list, so a group whose children are all hidden prints the children form still: it has no other.
+ * One string per form. A node with an action has the action form, and a node with a visible child
+ * the children form after it, which is the only form a group has. Groupness reads the raw list, so
+ * a group whose children are all hidden has the children form still: it has no other.
  */
-function usage(
-  {
-    command,
-    graph,
-    children,
-  }: {
-    command: CommandNode;
-    graph: CommandGraph;
-    children: readonly CommandNode[];
-  },
-  context: ViewContext,
-): string[] {
-  const { style } = context;
-  const path = style.highlight(style.escape(pathOf(graph, command)));
+function usageForms({ children, command, graph }: UsageSubject, writer: UsageWriter): string[] {
+  const path = writer.path(pathOf(graph, command));
   const forms: string[] = [];
   if (command.hasAction) {
     const parts = [
-      ...command.arguments.map((argument) => argumentForm(argument, context)),
-      ...requiredOptions(command).map((option) => optionForm(option, context)),
+      ...command.arguments.map((argument) => argumentForm(argument, writer)),
+      ...requiredOptions(command).map((option) => optionForm(option, writer)),
       // `[options]` is always present, because the help option is one.
-      style.dim.italic('[options]'),
+      writer.word('[options]'),
     ];
     forms.push(`${path} ${parts.join(' ')}`);
   }
   const group = !command.hasAction && !isEmpty(command.children);
   if (!isEmpty(children) || group) {
-    forms.push(`${path} ${style.dim.italic('<command>')} ${style.dim.italic('[options]')}`);
+    forms.push(`${path} ${writer.word('<command>')} ${writer.word('[options]')}`);
   }
+  return forms;
+}
+
+/** The USAGE block: one line per form, its words styled as the page styles them. */
+function usage(subject: UsageSubject, { style }: ViewContext): string[] {
+  const forms = usageForms(subject, {
+    path: (text) => style.highlight(style.escape(text)),
+    spelling: (text) => style.highlight(style.escape(text)),
+    word: (text) => style.dim.italic(style.escape(text)),
+  });
   return isEmpty(forms) ? [] : [style.dim('USAGE'), ...forms.map((form) => `  ${form}`)];
 }
 
 /**
- * One child row: its name, the form it answers to, and the right cell it carries. A group is a
- * Command with children and no action, so groupness reads the child's own children and its action,
- * not the visible ones: a group whose every child is hidden is a group still.
+ * The form a child row names after the child's name: `<command>` for a group, `[command]` for a
+ * Command with an action and children, and none for a leaf. A group is a Command with children and
+ * no action, so groupness reads the child's own children and its action, not the visible ones: a
+ * group whose every child is hidden is a group still.
  */
+function childSuffix(child: CommandNode): string | undefined {
+  if (isEmpty(child.children)) {
+    return undefined;
+  }
+  return child.hasAction ? '[command]' : '<command>';
+}
+
+/** One child row: its name, the form it answers to, and the right cell it carries. */
 function childRow(child: CommandNode, context: ViewContext): Row {
   const { style } = context;
-  const parent = !isEmpty(child.children);
-  const suffix = child.hasAction ? '[command]' : '<command>';
+  const suffix = childSuffix(child);
   // `deprecated` is this row's one possible fact.
   return {
-    left: `${style.highlight(style.escape(child.name ?? ''))}${parent ? ` ${style.dim.italic(suffix)}` : ''}`,
-    right: rightCell({ description: child.description }, deprecatedFacts(child, context), context),
+    left: `${style.highlight(style.escape(child.name ?? ''))}${suffix === undefined ? '' : ` ${style.dim.italic(suffix)}`}`,
+    right: rightCell({ description: child.description }, deprecatedFacts(child), context),
   };
+}
+
+/** The visible children as section members, under COMMANDS unless an authored section holds one. */
+function commandMembers(children: readonly CommandNode[]): SectionMember<CommandNode>[] {
+  return children.map((child) => ({
+    fallback: 'COMMANDS',
+    path: commandHelp(child)?.section,
+    row: child,
+  }));
 }
 
 function commands(
@@ -136,10 +159,10 @@ function commands(
   return sectionBlocks(
     {
       order: commandHelp(command)?.commandSections,
-      rows: children.map((child) => ({
-        fallback: 'COMMANDS',
-        path: commandHelp(child)?.section,
-        row: childRow(child, context),
+      rows: commandMembers(children).map(({ fallback, path, row }) => ({
+        fallback,
+        path,
+        row: childRow(row, context),
       })),
     },
     context,
@@ -151,7 +174,7 @@ function args(command: CommandNode, context: ViewContext): string[] {
     left: context.style.dim.italic(context.style.escape(argument.name)),
     right: rightCell(
       { accepts: argumentAccepts(argument), description: argument.description },
-      argumentFacts(argument, context),
+      argumentFacts(argument),
       context,
     ),
   }));
@@ -163,7 +186,7 @@ function optionRow(option: OptionNode, context: ViewContext): Row {
     left: optionCell(option, context),
     right: rightCell(
       { accepts: optionAccepts(option), description: option.description },
-      optionFacts(option, context),
+      optionFacts(option),
       context,
     ),
   };
@@ -174,20 +197,33 @@ function foldsGlobals(graph: CommandGraph): boolean {
   return isEmpty(graph.root.children);
 }
 
+/** One option as a section member, under its fallback heading unless an authored section holds it. */
+function optionMember(option: OptionNode, fallback: string): SectionMember<OptionNode> {
+  return { fallback, path: readExtension(option, helpInput)?.section, row: option };
+}
+
+/**
+ * The visible local options under OPTIONS, then the visible globals given under the global heading,
+ * as section members, unless an authored section holds one.
+ */
+function optionMembers(
+  command: CommandNode,
+  { globals, globalHeading }: { globals: readonly OptionNode[]; globalHeading: string },
+): SectionMember<OptionNode>[] {
+  return [
+    ...visible(command.options).map((option) => optionMember(option, 'OPTIONS')),
+    ...visible(globals).map((option) => optionMember(option, globalHeading)),
+  ];
+}
+
 function options(command: CommandNode, graph: CommandGraph, context: ViewContext): string[][] {
-  const member = (option: OptionNode, fallback: string) => ({
-    fallback,
-    path: readExtension(option, helpInput)?.section,
-    row: optionRow(option, context),
-  });
   const globalHeading = foldsGlobals(graph) ? 'OPTIONS' : 'GLOBAL OPTIONS';
   return sectionBlocks(
     {
       order: commandHelp(command)?.optionSections,
-      rows: [
-        ...visible(command.options).map((option) => member(option, 'OPTIONS')),
-        ...visible(graph.globals).map((option) => member(option, globalHeading)),
-      ],
+      rows: optionMembers(command, { globalHeading, globals: graph.globals }).map(
+        ({ fallback, path, row }) => ({ fallback, path, row: optionRow(row, context) }),
+      ),
     },
     context,
   );
@@ -273,4 +309,15 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     .join('\n\n');
 }
 
-export { renderPage };
+export type { Example, UsageSubject };
+export {
+  childSuffix,
+  commandHelp,
+  commandMembers,
+  foldsGlobals,
+  optionMembers,
+  pathOf,
+  renderPage,
+  usageForms,
+  visible,
+};

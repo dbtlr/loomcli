@@ -276,11 +276,12 @@ test.each(Object.entries(settingsCases))(
 /**
  * The pack's rules a build raises rather than a factory call: the one `--manifest` raises, which
  * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
- * service plugin's, which the service test pins, and the skills plugin's file faults, which the
- * skills test pins.
+ * service plugin's, which the service test pins, the skills plugin's file faults, which the
+ * skills test pins, and the manpage plugin's page names, which the man page test pins.
  */
 const pinnedElsewhere = [
   'manifest/failure-code-conflict',
+  'manpage/page-name-taken',
   'mcp/property-name-taken',
   'mcp/tool-name-taken',
   'mcp/tool-without-action',
