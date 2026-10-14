@@ -1,4 +1,4 @@
-import { close, constants, createReadStream, fstatSync, open } from 'node:fs';
+import { constants, createReadStream, fstatSync, open } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { posix, win32 } from 'node:path';
@@ -78,20 +78,32 @@ function openFile(path: string): Promise<number> {
   });
 }
 
-function closeFile(fd: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    close(fd, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
+function sameSource(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+/** Darwin's fd-path stat can report a pipe inode differently from descriptor stat. */
+async function aliasesDarwinStdin(source: BigIntStats): Promise<boolean> {
+  if (process.platform !== 'darwin') {
+    return false;
+  }
+  try {
+    return sameSource(source, await stat('/dev/fd/0', { bigint: true }));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      (error.code === 'EBADF' || verdicts.has(error.code))
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /** Named calls cannot reopen the process stream through a filesystem alias. */
-function aliasesProcessStdin(source: BigIntStats): boolean {
+async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
   try {
     const stdin = fstatSync(0, { bigint: true });
     // Windows may report no inode identity for a device; zero cannot identify an alias.
@@ -101,7 +113,7 @@ function aliasesProcessStdin(source: BigIntStats): boolean {
     ) {
       return false;
     }
-    return source.dev === stdin.dev && source.ino === stdin.ino;
+    return sameSource(source, stdin) || (await aliasesDarwinStdin(source));
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'EBADF') {
       return false;
@@ -110,11 +122,11 @@ function aliasesProcessStdin(source: BigIntStats): boolean {
   }
 }
 
-function acceptsSource(source: BigIntStats, named: boolean): boolean {
+async function acceptsSource(source: BigIntStats, named: boolean): Promise<boolean> {
   return (
     source.isFile() ||
     ((source.isFIFO() || source.isCharacterDevice() || source.isBlockDevice()) &&
-      (!named || !aliasesProcessStdin(source)))
+      (!named || !(await aliasesProcessStdin(source))))
   );
 }
 
@@ -122,7 +134,7 @@ function acceptsSource(source: BigIntStats, named: boolean): boolean {
 async function readableSource(path: string, named: boolean): Promise<boolean> {
   try {
     const info = await stat(path, { bigint: true });
-    if (!acceptsSource(info, named)) {
+    if (!(await acceptsSource(info, named))) {
       return false;
     }
     await access(path, constants.R_OK);
@@ -153,14 +165,10 @@ function absoluteSource(name: string, host: Host): string {
   return `${base}${base.endsWith(paths.sep) ? '' : paths.sep}${tail}`;
 }
 
-/** Open only on consumption; native open preserves filesystem traversal on Node and Bun. */
+/** Native open preserves traversal; the reader alone closes its descriptor after pending reads. */
 async function* fileChunks(path: string): AsyncGenerator {
   const fd = await openFile(path);
-  try {
-    yield* createReadStream(path, { autoClose: false, fd });
-  } finally {
-    await closeFile(fd);
-  }
+  yield* createReadStream(path, { fd });
 }
 
 /** A successful probe leaves opening the file to the action's first read. */

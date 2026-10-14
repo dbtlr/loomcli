@@ -9,6 +9,61 @@ import { Application, Command, plugin } from '@loomcli/core';
 const [scenario, ...argv] = process.argv.slice(2);
 const [path] = argv;
 
+async function readHeader(source, mode) {
+  const stream = source.stream();
+  stream.on('error', (error) => {
+    if (error.code !== 'ABORT_ERR') {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 1;
+    }
+  });
+  if (mode === 'header-break') {
+    for await (const chunk of stream) {
+      return chunk;
+    }
+  } else {
+    return await new Promise((resolve, reject) => {
+      stream.once('error', reject);
+      stream.once('data', (chunk) => {
+        stream.destroy();
+        resolve(chunk);
+      });
+    });
+  }
+}
+
+if (['header-break', 'header-destroy'].includes(scenario)) {
+  const app = new Application('content', { description: 'Read file headers and reopen sources.' })
+    .argument('files', {
+      description: 'The sources.',
+      required: true,
+      type: 'content',
+      variadic: true,
+    })
+    .action(async ({ args, out }) => {
+      for (const source of args.files) {
+        await readHeader(source, scenario);
+      }
+      const lengths = [];
+      for (const source of args.files) {
+        const contents = await source.text();
+        lengths.push(contents.length);
+      }
+      await out.print(JSON.stringify(lengths));
+    });
+  const lengths = [];
+  for (let index = 0; index < 100; index++) {
+    const outcome = await app.invoke([], { args: { files: argv } });
+    if (outcome.status !== 'completed') {
+      process.stderr.write(outcome.messages);
+      process.exitCode = 1;
+      break;
+    }
+    lengths.push(JSON.parse(outcome.output));
+  }
+  process.stdout.write(JSON.stringify(lengths));
+}
+
 if (scenario === 'named-pipe') {
   process.stdout.write(
     execFileSync(

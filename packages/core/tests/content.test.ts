@@ -24,9 +24,33 @@ test('a named content argument checks a path and hands its action a lazy file ha
   }
 });
 
+test.each(['header-break', 'header-destroy'])(
+  'file content can stop after a header and repeatedly reopen sources: %s',
+  async (scenario) => {
+    const directory = await mkdtemp(join(tmpdir(), 'loom-content-header-'));
+    try {
+      const size = 2 * 1024 * 1024;
+      const paths = ['a.txt', 'b.txt', 'c.txt', 'd.txt'].map((name) => join(directory, name));
+      for (const path of paths) {
+        await writeFile(path, 'x'.repeat(size));
+      }
+      const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [scenario, ...paths]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      const lengths = JSON.parse(result.stdout);
+      expect(lengths).toHaveLength(100);
+      for (const reopened of lengths) {
+        expect(reopened).toEqual([size, size, size, size]);
+      }
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  },
+);
+
 test
   .skipIf(process.platform === 'win32')
-  .each(process.platform === 'linux' ? ['/dev/stdin', '/proc/self/fd/0'] : ['/dev/stdin'])(
+  .each(['/dev/stdin', '/dev/fd/0', ...(process.platform === 'linux' ? ['/proc/self/fd/0'] : [])])(
   'a named content path cannot read process stdin through %s',
   (path) => {
     const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
