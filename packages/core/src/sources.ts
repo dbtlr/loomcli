@@ -1,3 +1,4 @@
+import { envNames } from './bindings.js';
 import {
   asSentence,
   foreignFailure,
@@ -94,35 +95,46 @@ const truths: ReadonlyMap<string, boolean> = new Map([
  */
 type RawFill = string | boolean | number | readonly string[];
 
-/** One option's value under the environment rules: a fill, a value outside the grammar, or unset. */
-type VariableReading =
-  | { kind: 'fill'; value: string | boolean | number }
-  | { kind: 'rejected' }
-  | undefined;
+/** What one variable holds under the environment rules: a fill, or a value outside the grammar. */
+type VariableReading = { kind: 'fill'; value: string | boolean | number } | { kind: 'rejected' };
 
 /** The count grammar a bound variable is read through: the whole value, one or more ASCII digits. */
 const countText = /^[0-9]+$/u;
 
+/** The reading of the first variable that holds a value, and that variable, or unset. */
+type NamedReading = { reading: VariableReading; variable: string } | undefined;
+
 /**
- * Reads one option's bound variable. An empty variable is unset and falls through, and a string
+ * Reads one option's bound variables in list order. The first variable holding a non-empty value
+ * supplies the option, and an empty variable is unset and falls through to the next. A string
  * option receives the raw string, never its implied value. A Boolean option reads the whole value
  * through the grammar, so the value states the option's value and not a spelling, and a counted
- * option reads the whole value as decimal digits.
+ * option reads the whole value as decimal digits. A value outside the grammar stops at its
+ * variable and never falls through.
  */
-function readVariable(input: OptionInput, env: Host['env']): VariableReading {
-  const variable = input.config.env;
-  const raw = variable !== undefined && Object.hasOwn(env, variable) ? env[variable] : undefined;
-  if (raw === undefined || raw === '') {
+function readVariable(input: OptionInput, env: Host['env']): NamedReading {
+  const variable = envNames(input.config).find((name) => {
+    const raw = Object.hasOwn(env, name) ? env[name] : undefined;
+    return raw !== undefined && raw !== '';
+  });
+  const raw = variable === undefined ? undefined : env[variable];
+  if (variable === undefined || raw === undefined) {
     return undefined;
   }
   if (input.config.type === 'string') {
-    return { kind: 'fill', value: raw };
+    return { reading: { kind: 'fill', value: raw }, variable };
   }
   if (input.config.type === 'count') {
-    return countText.test(raw) ? { kind: 'fill', value: Number(raw) } : { kind: 'rejected' };
+    const reading: VariableReading = countText.test(raw)
+      ? { kind: 'fill', value: Number(raw) }
+      : { kind: 'rejected' };
+    return { reading, variable };
   }
   const value = truths.get(raw.toLowerCase());
-  return value === undefined ? { kind: 'rejected' } : { kind: 'fill', value };
+  return {
+    reading: value === undefined ? { kind: 'rejected' } : { kind: 'fill', value },
+    variable,
+  };
 }
 
 /** Writes one filled value where the option's own shape keeps it, a list as the run's own copy. */
@@ -345,7 +357,7 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
 
 /**
  * The environment tier: each option in scope that argv left unfilled reads its bound variable. A
- * filled option is labeled with its variable, and a Boolean or counted one outside its grammar is
+ * filled option is labeled with the variable that supplied it, and a Boolean or counted one outside its grammar is
  * recorded as rejected, which fills nothing.
  */
 function fillFromEnvironment(
@@ -356,13 +368,12 @@ function fillFromEnvironment(
   const rejected = new Map<string, string>();
   for (const scope of scopes) {
     for (const input of scope.inputs) {
-      const reading = isSupplied(scope.values, input.name) ? undefined : readVariable(input, env);
-      const variable = input.config.env ?? '';
-      if (reading?.kind === 'fill') {
-        fill(scope.values, input.name, reading.value);
-        labels.set(input.name, variable);
-      } else if (reading?.kind === 'rejected') {
-        rejected.set(input.name, variable);
+      const read = isSupplied(scope.values, input.name) ? undefined : readVariable(input, env);
+      if (read?.reading.kind === 'fill') {
+        fill(scope.values, input.name, read.reading.value);
+        labels.set(input.name, read.variable);
+      } else if (read?.reading.kind === 'rejected') {
+        rejected.set(input.name, read.variable);
       }
     }
   }

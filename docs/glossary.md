@@ -133,7 +133,7 @@ The invocation phase between local parsing and validation that fills each unfill
 _Avoid_: Config merge, fallback chain, value resolution
 
 **Environment binding**:
-The variable an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
+The variable, or the ordered list of variables, an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. With a list, the first name holding a non-empty value supplies it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
 _Avoid_: Env var option, env fallback, auto env
 
 **Validator**:

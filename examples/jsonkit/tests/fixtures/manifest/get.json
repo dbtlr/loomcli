@@ -27,7 +27,7 @@
       "required": false,
       "multiple": false,
       "schema": null,
-      "env": null,
+      "env": [],
       "default": null,
       "implied": null
     },
@@ -40,7 +40,7 @@
       "long": "--verbose",
       "short": "-v",
       "schema": null,
-      "env": null
+      "env": []
     },
     {
       "type": "boolean",
@@ -53,7 +53,7 @@
       "negative": null,
       "polarity": "positive",
       "schema": null,
-      "env": null
+      "env": []
     },
     {
       "type": "boolean",
@@ -66,7 +66,7 @@
       "negative": null,
       "polarity": "positive",
       "schema": null,
-      "env": null
+      "env": []
     },
     {
       "type": "boolean",
@@ -79,7 +79,7 @@
       "negative": null,
       "polarity": "positive",
       "schema": null,
-      "env": null
+      "env": []
     },
     {
       "type": "boolean",
@@ -92,7 +92,7 @@
       "negative": null,
       "polarity": "positive",
       "schema": null,
-      "env": null
+      "env": []
     }
   ],
   "command": {

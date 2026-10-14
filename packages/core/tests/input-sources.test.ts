@@ -460,24 +460,71 @@ function envs(options: { env: unknown; name: string }[]) {
 test('inspect() publishes env on bound and unbound options of every kind', () => {
   const graph = JSON.parse(invoke(fixture, ['full', 'inspect']).stdout);
   expect(envs(graph.globals)).toEqual([
-    ['limit', 'FIXTURE_LIMIT'],
-    ['config', 'FIXTURE_CONFIG_FILE'],
-    ['level', 'FIXTURE_LEVEL'],
-    ['verbose', 'FIXTURE_VERBOSE'],
-    ['help', null],
+    ['limit', ['FIXTURE_LIMIT']],
+    ['config', ['FIXTURE_CONFIG_FILE']],
+    ['level', ['FIXTURE_LEVEL']],
+    ['verbose', ['FIXTURE_VERBOSE']],
+    ['help', []],
   ]);
-  const [count, select] = graph.root.children;
+  const [count, select, region] = graph.root.children;
   expect(envs(count.options)).toEqual([
-    ['max', 'FIXTURE_MAX'],
-    ['file', 'FIXTURE_FILE'],
-    ['total', 'FIXTURE_TOTAL'],
-    ['quiet', 'FIXTURE_QUIET'],
-    ['color', 'FIXTURE_COLOR'],
+    ['max', ['FIXTURE_MAX']],
+    ['file', ['FIXTURE_FILE']],
+    ['total', ['FIXTURE_TOTAL']],
+    ['quiet', ['FIXTURE_QUIET']],
+    ['color', ['FIXTURE_COLOR']],
   ]);
   expect(envs(select.options)).toEqual([
-    ['fields', null],
-    ['title', null],
+    ['fields', []],
+    ['title', []],
   ]);
+  // A list publishes in declaration order.
+  expect(envs(region.options)).toEqual([
+    ['area', ['FIXTURE_AREA', 'FIXTURE_DEFAULT_AREA']],
+    ['debug', ['FIXTURE_DEBUG', 'FIXTURE_DEBUG_FALLBACK']],
+    ['depth', ['FIXTURE_DEPTH', 'FIXTURE_DEPTH_FALLBACK']],
+  ]);
+});
+
+/** One option's value after a `region` run. */
+function regionValue(name: string, env: Record<string, string>, argv: string[] = []) {
+  return valueOf(run(['region', ...argv], env, 'plain').stdout, 'region', name);
+}
+
+test('the first name in a list that holds a value supplies the option', () => {
+  expect(regionValue('area', { FIXTURE_AREA: '1', FIXTURE_DEFAULT_AREA: '2' })).toBe('1');
+  expect(regionValue('area', { FIXTURE_DEFAULT_AREA: '2' })).toBe('2');
+  expect(regionValue('area', {})).toBeUndefined();
+  expect(regionValue('area', { FIXTURE_AREA: '1' }, ['--area', '9'])).toBe('9');
+});
+
+test('an empty value in a list counts as unset and the next name is read', () => {
+  expect(regionValue('area', { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: '2' })).toBe('2');
+  expect(regionValue('debug', { FIXTURE_DEBUG: '', FIXTURE_DEBUG_FALLBACK: 'true' })).toBe(true);
+  expect(regionValue('depth', { FIXTURE_DEPTH: '', FIXTURE_DEPTH_FALLBACK: '3' })).toBe(3);
+});
+
+test('a Boolean or count value outside its grammar on a listed name fails naming that variable', () => {
+  expect(
+    run(['region'], { FIXTURE_DEBUG: 'yes', FIXTURE_DEBUG_FALLBACK: 'true' }, 'plain'),
+  ).toEqual({
+    status: 2,
+    stderr: 'app: Option "--debug" (from FIXTURE_DEBUG): Use true, false, 1, or 0.\n',
+    stdout: 'resolved:2\n',
+  });
+  expect(run(['region'], { FIXTURE_DEPTH: 'x', FIXTURE_DEPTH_FALLBACK: '2' }, 'plain').stderr).toBe(
+    'app: Option "--depth" (from FIXTURE_DEPTH): Use a whole number of 0 or more.\n',
+  );
+  // A later name is read only when the earlier ones are unset.
+  expect(run(['region'], { FIXTURE_DEBUG_FALLBACK: 'maybe' }, 'plain').stderr).toBe(
+    'app: Option "--debug" (from FIXTURE_DEBUG_FALLBACK): Use true, false, 1, or 0.\n',
+  );
+});
+
+test('a failure on a listed string value labels the variable that supplied it', () => {
+  expect(run(['region'], { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: 'x' }, 'plain').stderr).toBe(
+    'app: Option "--area" (from FIXTURE_DEFAULT_AREA): Supply a whole number.\n',
+  );
 });
 
 /** Every input source declaration rule throws from the call or the attach that first proves it. */
@@ -501,6 +548,22 @@ test.each([
   [
     'plugin-env-grammar',
     'Plugin "@loomcli/log" option "verbose" env "" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
+  ],
+  [
+    'env-list-empty',
+    'Global option "limit" env is an empty list. List at least one variable name, or remove env.',
+  ],
+  [
+    'env-list-repeat',
+    'Global option "limit" env names "LIMIT" more than once. Name each variable once.',
+  ],
+  [
+    'env-list-bad-name',
+    'Global option "limit" env "9LIMIT" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
+  ],
+  [
+    'env-list-twice',
+    'Variable "TEXTSTAT_MAX" is bound by global option "limit" and Command "count" option "max". Bind each variable to one option.',
   ],
   [
     'env-multiple',
@@ -560,6 +623,10 @@ test.each([
     stderr: '',
     stdout: `thrown:1: ${message}\n`,
   });
+});
+
+test('a list that shares a name across sibling Commands is accepted', () => {
+  expect(build('sibling-list', 'inspect').stdout).toBe('inspected\n');
 });
 
 test('one variable bound on two sibling Commands is accepted', () => {

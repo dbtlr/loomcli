@@ -70,7 +70,7 @@ type ManifestOption =
       readonly required: boolean;
       readonly multiple: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
-      readonly env: string | null;
+      readonly env: readonly string[];
       readonly default: { readonly value: unknown } | null;
       readonly implied: string | null;
     }
@@ -85,7 +85,7 @@ type ManifestOption =
       readonly negative: string | null;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
-      readonly env: string | null;
+      readonly env: readonly string[];
     }
   | {
       readonly type: 'count';
@@ -96,7 +96,7 @@ type ManifestOption =
       readonly long: string | null;
       readonly short: string | null;
       readonly schema: null;
-      readonly env: string | null;
+      readonly env: readonly string[];
     };
 
 /** The token rule, stated once so no entry repeats it. */

@@ -13,7 +13,7 @@ const owned = {
   aliases: [],
   control: false,
   deprecated: none,
-  env: null,
+  env: [],
   extensions: {},
   hidden: false,
   schema: null,

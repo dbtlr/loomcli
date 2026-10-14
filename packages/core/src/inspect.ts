@@ -1,5 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 
+import { envNames } from './bindings.js';
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
@@ -51,7 +52,8 @@ interface ArgumentNode {
  * node holds if a later contract lets a Boolean option validate. A counted option has no negative
  * spelling, polarity, default, or validator, so its variant carries none of them. A string option's
  * `implied` is the value a bare spelling supplies, or `null` when it declares none.
- * `env` is the variable the option's environment binding names, or `null` when it binds none.
+ * `env` holds the variables the option's environment binding names, in declaration order, and is
+ * empty when it binds none.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
@@ -72,7 +74,7 @@ type OptionNode =
       readonly validated: boolean;
       readonly validateOmitted: boolean;
       readonly schema: InputSchema;
-      readonly env: string | null;
+      readonly env: readonly string[];
       readonly default: { readonly value: unknown } | undefined;
       readonly implied: string | null;
       readonly extensions: Readonly<Record<string, unknown>>;
@@ -90,7 +92,7 @@ type OptionNode =
       readonly aliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
-      readonly env: string | null;
+      readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
     }
   | {
@@ -104,7 +106,7 @@ type OptionNode =
       readonly short: string | null;
       readonly aliases: readonly string[];
       readonly schema: null;
-      readonly env: string | null;
+      readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
     };
 
@@ -298,7 +300,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
     control: config.control === true,
     deprecated: config.deprecated,
     description: config.description,
-    env: config.env ?? null,
+    env: Object.freeze([...envNames(config)]),
     extensions: extensionsOf(records, input),
     hidden: config.hidden === true,
     long,

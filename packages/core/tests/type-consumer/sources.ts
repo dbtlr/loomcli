@@ -53,6 +53,15 @@ const tags = { tags: { env: 'TAGS', multiple: true, type: 'string' } } satisfies
 // @ts-expect-error TS2353: An argument config declares no env.
 const positional = new Command('positional').argument('path', { env: 'PATH_TO' });
 
+// A binding takes one name or a non-empty list of names, in either declaration form.
+const migrated = new Command('migrated')
+  .option('region', { env: ['AWS_REGION', 'AWS_DEFAULT_REGION'], type: 'string' })
+  .option('debug', { env: ['APP_DEBUG'], type: 'boolean' })
+  .option('level', { env: 'APP_LEVEL', type: 'count' });
+
+// @ts-expect-error TS2322: A list names at least one variable.
+const nameless = new Command('nameless').option('region', { env: [], type: 'string' });
+
 // @ts-expect-error TS2322: A variable name is a string.
 const numbered = new Command('numbered').option('limit', { env: 7, type: 'string' });
 
@@ -64,4 +73,15 @@ const misbound = plugin('@fixture/misbound', {
 });
 
 export type { SettingsOptions };
-export { bound, listed, misbound, numbered, positional, settingKey, settings, tags };
+export {
+  bound,
+  listed,
+  migrated,
+  misbound,
+  nameless,
+  numbered,
+  positional,
+  settingKey,
+  settings,
+  tags,
+};

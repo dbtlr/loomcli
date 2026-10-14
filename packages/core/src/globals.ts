@@ -1,4 +1,4 @@
-import { checkEnvBinding, claimVariables } from './bindings.js';
+import { checkEnvBinding, claimVariables, envNames } from './bindings.js';
 import type { BoundOption } from './bindings.js';
 import { DeclarationError, quoted } from './errors.js';
 import { buildExtensions } from './extension.js';
@@ -408,9 +408,14 @@ function boundOptions(
   inputs: readonly OptionInput[],
   describe: (input: OptionInput) => Omit<BoundOption, 'variable'>,
 ): BoundOption[] {
-  return inputs.flatMap((input) =>
-    input.config.env === undefined ? [] : [{ ...describe(input), variable: input.config.env }],
-  );
+  return inputs.flatMap((input) => {
+    const described = describe(input);
+    return envNames(input.config).map((variable) => ({
+      phrase: described.phrase,
+      site: described.site,
+      variable,
+    }));
+  });
 }
 
 /** One plugin's options joining the table the application's globals already hold. */
