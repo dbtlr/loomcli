@@ -32,7 +32,7 @@ const oneOfValues = catalogRule('one-of-values', {
 /** A bound that is not a number of the kind its validator reads. */
 const boundValue = catalogRule('bound-value', {
   explanation:
-    "A bound limits the values or the length a validator accepts, and the published schema carries it, so it is a number of the kind the validator reads: a safe integer for integer(), a finite number for number(), and a non-negative safe integer for text()'s lengths.",
+    "A bound limits the values or the length a validator accepts, and the published schema carries it, so it is a number of the kind the validator reads: a safe integer for integer(), a finite number for number(), a non-negative safe integer for text()'s lengths, and a duration in the operator's grammar for duration().",
   headline: 'Invalid bound',
 });
 
@@ -41,6 +41,13 @@ const boundsOrder = catalogRule('bounds-order', {
   explanation:
     'A validator accepts what lies between its lower and its upper bound, both inclusive, so a lower bound above the upper one would reject every token.',
   headline: 'Bounds out of order',
+});
+
+/** A `dateTime()` time zone that is not an IANA time zone name the runtime knows. */
+const timeZone = catalogRule('time-zone', {
+  explanation:
+    'dateTime() reads a token with no offset in the time zone it names, so the name is an IANA time zone the runtime knows, such as America/New_York.',
+  headline: 'Invalid time zone',
 });
 
 /** A `url()` protocols list that is not a list of scheme names. */
@@ -134,6 +141,7 @@ export {
   pathCheck,
   patternMessage,
   textPattern,
+  timeZone,
   urlProtocols,
   validatorDefinition,
 };

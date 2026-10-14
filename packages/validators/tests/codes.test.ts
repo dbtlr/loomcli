@@ -169,6 +169,54 @@ const rows: Row[] = [
     'Expected a date as YYYY-MM-DD, such as 2026-09-25.',
   ],
   [
+    'date-time',
+    catalog.dateTimeIssue,
+    catalog.dateTime({ timeZone: 'UTC' }),
+    'nope',
+    {},
+    'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.',
+  ],
+  [
+    'duration',
+    catalog.durationIssue,
+    catalog.duration(),
+    'abc',
+    {},
+    'Expected a duration, such as 90s, 2h30m, or 1.5h.',
+  ],
+  [
+    'duration-capital-m',
+    catalog.durationCapitalMIssue,
+    catalog.duration(),
+    '5M',
+    {},
+    'Expected a duration; write minutes as m or min, because M is ambiguous.',
+  ],
+  [
+    'duration-range',
+    catalog.durationRangeIssue,
+    catalog.duration({ max: '24h', min: '30' }),
+    '25h',
+    { max: 86_400_000, min: 30_000 },
+    'Expected a duration from 30s through 1d.',
+  ],
+  [
+    'duration-min',
+    catalog.durationMinIssue,
+    catalog.duration({ min: '1h30m' }),
+    '1h',
+    { min: 5_400_000 },
+    'Expected a duration of at least 1h30m.',
+  ],
+  [
+    'duration-max',
+    catalog.durationMaxIssue,
+    catalog.duration({ max: '250ms' }),
+    '1s',
+    { max: 250 },
+    'Expected a duration of at most 250ms.',
+  ],
+  [
     'path',
     catalog.pathIssue,
     catalog.path(),
@@ -207,9 +255,9 @@ async function issueOf(validator: StandardSchemaV1<string, unknown>, token: stri
   return issue;
 }
 
-test('the catalog declares 23 codes, each a frozen descriptor under its export', () => {
-  expect(rows).toHaveLength(23);
-  expect(new Set(descriptors).size).toBe(23);
+test('the catalog declares 29 codes, each a frozen descriptor under its export', () => {
+  expect(rows).toHaveLength(29);
+  expect(new Set(descriptors).size).toBe(29);
   for (const [code, descriptor] of rows) {
     expect(descriptor.code).toBe(`${prefix}${code}`);
     expect(Object.isFrozen(descriptor)).toBe(true);

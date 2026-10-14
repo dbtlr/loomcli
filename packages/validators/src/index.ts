@@ -1,5 +1,11 @@
 export {
   dateIssue,
+  dateTimeIssue,
+  durationCapitalMIssue,
+  durationIssue,
+  durationMaxIssue,
+  durationMinIssue,
+  durationRangeIssue,
   integerIssue,
   integerMaxIssue,
   integerMinIssue,
@@ -25,6 +31,8 @@ export {
 } from './codes.js';
 export { createValidator } from './create.js';
 export { date } from './date.js';
+export { dateTime } from './date-time.js';
+export { duration } from './duration.js';
 export { integer } from './integer.js';
 export { issueCode } from './issue-code.js';
 export { number } from './number.js';

@@ -51,8 +51,9 @@ Each fault carries a [diagnostic rule](core.md#developer-diagnostics) the packag
 | --- | --- |
 | `@loomcli/validators/factory-options` | Options that are not a plain object, for every factory that takes them |
 | `@loomcli/validators/one-of-values` | Every `oneOf` fault |
-| `@loomcli/validators/bound-value` | A `min` or `max` of `integer` or `number`, or a `minLength` or `maxLength` of `text`, that is not a number of its kind |
+| `@loomcli/validators/bound-value` | A `min` or `max` of `integer`, `number`, or `duration`, or a `minLength` or `maxLength` of `text`, that is not a value of its kind |
 | `@loomcli/validators/bounds-order` | `min` above `max`, and `minLength` above `maxLength` |
+| `@loomcli/validators/time-zone` | A `dateTime` `timeZone` that is not an IANA time zone name the runtime knows |
 | `@loomcli/validators/url-protocols` | Every `url` fault |
 | `@loomcli/validators/path-check` | Every `path` fault |
 | `@loomcli/validators/invalid-pattern` | A `text` pattern that is not a RegExp, carries a flag other than `u`, or does not compile under `u` |
@@ -177,6 +178,32 @@ date(): Validator<string>
 - **Output** is the token unchanged. A calendar date has no time and no zone, and any `Date` would fix a midnight in some zone, so the action builds the type it needs.
 - **Publishes** `{ type: 'string', format: 'date' }`.
 - **Message.** `Expected a date as YYYY-MM-DD, such as 2026-09-25.`
+
+### dateTime
+
+```ts
+dateTime(options?: { timeZone?: string }): Validator<Date>
+```
+
+- **Accepts** an ISO 8601 or RFC 3339 date and time: `YYYY-MM-DD`, then `T`, `t`, or one space, then `hh:mm` with optional `:ss` and, after seconds, an optional fraction of one or more digits, then an optional `Z`, `z`, or an offset of `+` or `-` and `hh:mm`, `hhmm`, or the hour-only `hh` that PostgreSQL prints for `timestamptz`, such as `+05`, each naming the same instant as its `hh:mm` form. The date names a real day under `date()`'s rule, the hour runs 0 through 23, the minute and second 0 through 59, and an offset's hour and minute stay within the same bounds. A date alone is `date()`'s job, and relative forms such as `now+2h` are rejected.
+- **Reads** a token with an offset or `Z` as that instant. A token with neither is a local time, read in `timeZone` when the option names one and otherwise in `host.timeZone`, so only a zone-less token under an unpinned validator reads the [validation context](core.md#validation-context) and runs only inside a Loom run. A local time that a clock change skips moves forward by the length of the gap, and one it repeats takes the earlier instant, as Temporal's `compatible` disambiguation does. The offsets come from `Intl.DateTimeFormat`, because `Temporal` is not on every supported runtime.
+- **Output** is a `Date`. A fraction beyond milliseconds is truncated, not rounded.
+- **Publishes** `{ type: 'string', pattern }`, where the pattern admits the zone-less form and every offset spelling and states no range. `format: 'date-time'` requires an offset, so it would be stricter than the validator.
+- **Message.** `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.`
+- **Faults.** A `timeZone` that is not a string or that the runtime does not know as an IANA time zone name, under `@loomcli/validators/time-zone`.
+
+### duration
+
+```ts
+duration(options?: { min?: string; max?: string }): Validator<number>
+```
+
+- **Accepts** the span spellings of systemd.time(7) without a sign: a sequence of decimal numbers, each followed by a unit, so `90s`, `2h30m`, `1.5h`, `7d`, and `1 hour 30 min` pass. The units are `ms` and `msec`; `s`, `sec`, `second`, and `seconds`; `m`, `min`, `minute`, and `minutes`; `h`, `hr`, `hour`, and `hours`; `d`, `day`, and `days`; and `w`, `week`, and `weeks`. A number is digits with an optional fraction, so `.5s` and `1.s` pass. Units come in any order and may repeat, so `30m2h` is 2 hours 30 minutes and `1h1h` is 2 hours. A bare number with no unit counts seconds, so `30` is 30 seconds and `1.5` is 1500 milliseconds. Whitespace may sit between a number and its unit, between parts, and around the token, so `2 hours` and `90 sec` pass. Units are lowercase and a sign is rejected. A capital `M` is rejected with its own sentence, because systemd reads it as months; write `m` or `min`. Months and years (`month`, `year`, `y`, and their plurals) are rejected because they have no fixed length.
+- **Output** is the number of milliseconds. A token that sums beyond the safe integers is rejected.
+- **Bounds.** `min` and `max` are durations in the same grammar, such as `'30'`, `'24h'`, or `'1 day'`, both inclusive.
+- **Publishes** `{ type: 'string', pattern }`, the grammar whole. The bounds are not stated, because a pattern cannot carry them.
+- **Message.** `Expected a duration, such as 90s, 2h30m, or 1.5h.`, `Expected a duration from 30s through 1d.`, `Expected a duration of at least 30s.`, or `Expected a duration of at most 1d.` A capital `M` earns `Expected a duration; write minutes as m or min, because M is ambiguous.` A bound prints in the grammar's largest units, so `24h` prints as `1d`.
+- **Faults.** A `min` or `max` that is not a string in the grammar, under `@loomcli/validators/bound-value`, and `min` above `max`.
 
 ### path
 
@@ -322,15 +349,21 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `url-scheme`        | `urlSchemeIssue`        | `{ protocols: readonly string[] }`          | `Expected an absolute URL with the scheme {protocols}.` |
 | `uuid`              | `uuidIssue`             | none                                        | `Expected a UUID, such as 123e4567-e89b-12d3-a456-426614174000.` |
 | `date`              | `dateIssue`             | none                                        | `Expected a date as YYYY-MM-DD, such as 2026-09-25.`   |
+| `date-time`         | `dateTimeIssue`         | none                                        | `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.` |
+| `duration`          | `durationIssue`         | none                                        | `Expected a duration, such as 90s, 2h30m, or 1.5h.`    |
+| `duration-capital-m` | `durationCapitalMIssue` | none                                        | `Expected a duration; write minutes as m or min, because M is ambiguous.` |
+| `duration-range`    | `durationRangeIssue`    | `{ min: number; max: number }`              | `Expected a duration from {min} through {max}.`        |
+| `duration-min`      | `durationMinIssue`      | `{ min: number }`                           | `Expected a duration of at least {min}.`               |
+| `duration-max`      | `durationMaxIssue`      | `{ max: number }`                           | `Expected a duration of at most {max}.`                |
 | `path`              | `pathIssue`             | none                                        | `Expected a nonempty path with no NUL character.`      |
 | `path-readable`     | `pathReadableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a readable {kind} that exists.`              |
 | `path-writable`     | `pathWritableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a writable {kind}, or a new {kind} in a writable directory.` |
 
-A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
+The duration codes carry milliseconds, and their sentences print each count in the grammar's units. A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
 
 ## Package
 
-- The root export holds the nine factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eleven factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 - Under ADR-0037, the package joins the synchronized release set the way `@loomcli/plugins` did under [ADR-0020](decisions/0020-first-party-plugins-ship-in-one-package-as-subpaths.md) and [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder from a minimal manifest without `private` and binds the npm trusted publisher, an ordinary pull request removes `private` at the current synchronized version, and the next release cut publishes it. The root `build` script and `scripts/clean.mjs` list it, and the packed-consumer check that installs the published tarballs covers it beside core and plugins.
 
@@ -353,7 +386,6 @@ A code with no parameters has the parameters `{}`. A count of 1 reads `character
 
 ## Not in 0.5.0
 
-- `dateTime` and `duration`. No settled use shows how an operator would type them; an author who needs one builds it with `createValidator`.
 - `email` and a JSON validator. Every simple email rule rejects a real address somewhere, and a JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers and length, and a composition utility.
+- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers, durations, and length, and a composition utility.

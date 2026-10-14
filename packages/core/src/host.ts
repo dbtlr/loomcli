@@ -80,6 +80,25 @@ export function captureProgram(override: readonly string[] | undefined): readonl
   );
 }
 
+/**
+ * The time zone a run reads: an override, else the IANA name `Intl` resolves, which honours `TZ`.
+ * A zone `Intl` does not resolve, or will not build a formatter for, reads as UTC, as an empty `TZ` does.
+ */
+export function captureTimeZone(override: string | undefined): string {
+  if (override !== undefined) {
+    return override;
+  }
+  const resolved: string | undefined = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (resolved === undefined) {
+    return 'UTC';
+  }
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: resolved }).resolvedOptions().timeZone;
+  } catch {
+    return 'UTC';
+  }
+}
+
 /** The working directory one capture read, or the failure its read raised in its place. */
 export type WorkingDirectory =
   | { readonly cwd: string }
@@ -154,7 +173,8 @@ export function captureHost(
   overrides: RunOptions['host'],
   stderr: Writable,
 ): HostCapture {
-  const { argv, cwd, program, readSource, release, stdin, stdout, terminal } = overrides ?? {};
+  const { argv, cwd, program, readSource, release, stdin, stdout, terminal, timeZone } =
+    overrides ?? {};
   const env = { ...(overrides?.env ?? process.env) };
   const platform = overrides?.platform ?? process.platform;
   const captured = {
@@ -190,6 +210,7 @@ export function captureHost(
               rows: dimension(process.stdout.rows),
             },
           },
+      timeZone: captureTimeZone(timeZone),
     },
     captured,
   );

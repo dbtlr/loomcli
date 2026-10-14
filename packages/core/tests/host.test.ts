@@ -90,3 +90,24 @@ test('environment snapshots preserve key spelling and use case-sensitive lookup 
     nativeUppercase: process.platform === 'win32' ? 'captured' : null,
   });
 });
+
+test('host.timeZone is the zone the process resolves, which honours TZ', () => {
+  const fixture = new URL('fixtures/host.mjs', import.meta.url);
+  const tokyo = invoke(fixture, ['time-zone'], { env: { TZ: 'Asia/Tokyo' } });
+  expect(tokyo).toEqual({ status: 0, stderr: '', stdout: 'Asia/Tokyo\n' });
+  const newYork = invoke(fixture, ['time-zone'], { env: { TZ: 'America/New_York' } });
+  expect(newYork).toEqual({ status: 0, stderr: '', stdout: 'America/New_York\n' });
+});
+
+test.each(['', 'UTC0', 'Bogus/Zone'])('host.timeZone falls back to UTC when TZ is %j', (zone) => {
+  const fixture = new URL('fixtures/host.mjs', import.meta.url);
+  const result = invoke(fixture, ['time-zone'], { env: { TZ: zone } });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: 'UTC\n' });
+});
+
+test('a host override replaces the captured time zone', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['time-zone-override'], {
+    env: { TZ: 'Asia/Tokyo' },
+  });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: 'Pacific/Auckland\n' });
+});

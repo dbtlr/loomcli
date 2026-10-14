@@ -1,3 +1,4 @@
+import { formatDuration } from './duration-grammar.js';
 import { issueCode } from './issue-code.js';
 import type { IssueCode } from './issue-code.js';
 import { listing } from './issues.js';
@@ -136,6 +137,37 @@ const dateIssue = issueCode(catalogCode('date'), {
   schema: noParams,
 });
 
+const dateTimeIssue = issueCode(catalogCode('date-time'), {
+  message: () => 'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.',
+  schema: noParams,
+});
+
+const durationIssue = issueCode(catalogCode('duration'), {
+  message: () => 'Expected a duration, such as 90s, 2h30m, or 1.5h.',
+  schema: noParams,
+});
+
+const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
+  message: () => 'Expected a duration; write minutes as m or min, because M is ambiguous.',
+  schema: noParams,
+});
+
+const durationRangeIssue = issueCode(catalogCode('duration-range'), {
+  message: ({ max, min }) =>
+    `Expected a duration from ${formatDuration(min)} through ${formatDuration(max)}.`,
+  schema: rangeParams(isFiniteNumber),
+});
+
+const durationMinIssue = issueCode(catalogCode('duration-min'), {
+  message: ({ min }) => `Expected a duration of at least ${formatDuration(min)}.`,
+  schema: minParams(isFiniteNumber),
+});
+
+const durationMaxIssue = issueCode(catalogCode('duration-max'), {
+  message: ({ max }) => `Expected a duration of at most ${formatDuration(max)}.`,
+  schema: maxParams(isFiniteNumber),
+});
+
 const pathIssue = issueCode(catalogCode('path'), {
   message: () => 'Expected a nonempty path with no NUL character.',
   schema: noParams,
@@ -188,8 +220,22 @@ const numberCodes: BoundCodes = {
   unbounded: numberIssue,
 };
 
+const durationCodes: BoundCodes = {
+  max: durationMaxIssue,
+  min: durationMinIssue,
+  range: durationRangeIssue,
+  unbounded: durationIssue,
+};
+
 export {
   dateIssue,
+  dateTimeIssue,
+  durationCapitalMIssue,
+  durationCodes,
+  durationIssue,
+  durationMaxIssue,
+  durationMinIssue,
+  durationRangeIssue,
   integerCodes,
   integerIssue,
   integerMaxIssue,

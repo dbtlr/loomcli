@@ -37,4 +37,4 @@ function date(): Validator<string> {
   });
 }
 
-export { date };
+export { date, isRealDay };

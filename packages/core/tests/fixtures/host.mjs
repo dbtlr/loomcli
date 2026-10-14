@@ -146,4 +146,12 @@ if (scenario === 'capture') {
     .action(({ args, out }) => out.print(args.values.join(',')));
   await app.run({ host: { argv: ['one'], release: { build: 'distributed' } } });
   await app.run({ host: { argv: ['two'], release: { build: 'distributed' } } });
+} else if (scenario === 'time-zone') {
+  const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
+  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+} else if (scenario === 'time-zone-override') {
+  const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
+  await app.run({
+    host: { argv: [], release: { build: 'distributed' }, timeZone: 'Pacific/Auckland' },
+  });
 }

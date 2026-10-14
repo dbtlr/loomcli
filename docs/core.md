@@ -1438,6 +1438,7 @@ Invocation by name is proven when public APIs alone produce these results under 
 | `program`          | The runtime and script prefix `argv` omits: the words that start this application again; frozen |
 | `platform`         | Captured process platform string, such as `linux` or `win32` |
 | `cwd`              | Working directory; a capture that throws fails the run, under [An unreadable working directory](#an-unreadable-working-directory) |
+| `timeZone`         | The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a local time |
 | `env`              | Map of environment names to strings or `undefined`            |
 | `stdin`            | Node `Readable` connection                                    |
 | `stdout`, `stderr` | Node `Writable` connections                                   |
@@ -1445,7 +1446,7 @@ Invocation by name is proven when public APIs alone produce these results under 
 | `readSource`       | Optional `(path, cwd) => string \| undefined`, one source file for a [Developer Diagnostic](#developer-diagnostics) |
 | `release`          | The [release facts](#release-facts) the build baked in, or `{ build: 'source' }` when it baked none, with the installation the [installation record](#installation-record) holds; frozen |
 
-An override replaces its whole field. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
+An override replaces its whole field. Process capture reads `timeZone` once per run from the zone `Intl.DateTimeFormat` resolves, which honours `TZ`, and no field holds the current time. An invocation by name captures it the same way, and an action's `invoke` keeps its run's. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
 
 The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
 

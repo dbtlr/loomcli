@@ -1,6 +1,8 @@
 import { DeclarationError } from '@loomcli/core';
 import {
   createValidator,
+  dateTime,
+  duration,
   integer,
   issueCode,
   number,
@@ -30,6 +32,8 @@ const scenarios = {
     createValidator({ parse: (raw, context) => ({ value: context.host }) })['~standard'].validate(
       'x',
     ),
+  'duration-bound-value': () => duration({ min: 'abc' }),
+  'duration-bounds-order': () => duration({ max: '30s', min: '1h' }),
   'factory-options': () => number('5'),
   'input-schema': () => createValidator({ inputSchema: { $schema: 'x', type: 'string' }, parse }),
   'issue-code-config': () =>
@@ -53,6 +57,7 @@ const scenarios = {
   'pattern-message': () => text({ pattern: /[a-z]+/u }),
   'text-bounds-order': () => text({ maxLength: 0 }),
   'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),
+  'time-zone': () => dateTime({ timeZone: 'Mars/Olympus' }),
   'url-protocols': () => url({ protocols: ['https:'] }),
   'validator-definition': () => createValidator({ parse: 'x' }),
 };
