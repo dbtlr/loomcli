@@ -18,6 +18,7 @@ const scenarios = {
   'logging-keep': () => logging({ keep: 0 }),
   'self-update-hook': () => selfUpdate({ afterReplace: 1 }),
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
+  'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'self-update-notices-list': () => selfUpdate({ notices: [] }),
   'self-update-notices-number': () => selfUpdate({ notices: 1 }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),

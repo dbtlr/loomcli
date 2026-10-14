@@ -215,6 +215,11 @@ const settingsCases: Record<string, Expected> = {
     "env: '1X'",
     'notices.env',
   ),
+  'self-update-notices-hyphen': noticesFault(
+    "selfUpdate({ notices: { env: 'A-B' } })",
+    "env: 'A-B'",
+    'notices.env',
+  ),
   'self-update-notices-list': noticesFault('selfUpdate({ notices: [] })', 'notices: []', 'notices'),
   'self-update-notices-number': noticesFault('selfUpdate({ notices: 1 })', 'notices: 1', 'notices'),
   'service-label': serviceFault(

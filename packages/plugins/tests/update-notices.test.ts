@@ -161,9 +161,12 @@ interface Scenario {
   readonly env?: Record<string, string>;
   readonly tty?: { readonly stdout: boolean; readonly stderr: boolean };
   readonly notices?: unknown;
-  readonly help?: boolean;
+  /** Where the help plugin sits beside `selfUpdate()`, when the application installs it. */
+  readonly help?: 'before' | 'after';
   readonly restyle?: boolean;
   readonly hold?: boolean;
+  /** Each run and refresh child records its process group and session. */
+  readonly session?: boolean;
   /** `fixture` starts the fixture again with its scenario; `inert` starts a runtime that does nothing. */
   readonly program?: 'fixture' | 'inert' | readonly string[];
 }
@@ -208,20 +211,23 @@ function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
       requests: box.requests,
       restyle: scenario.restyle,
       rules: scenario.rules,
+      session: scenario.session,
       tty: scenario.tty ?? { stderr: true, stdout: true },
     }),
   );
   return invoke(fixture, [file, ...argv]);
 }
 
-/** One event the fixture recorded: a run's or a child's start, request, or exit. */
+/** One event the fixture recorded: a run's or a child's start, request, exit, or session. */
 interface FixtureEvent {
-  readonly event: 'start' | 'request' | 'exit';
+  readonly event: 'start' | 'request' | 'exit' | 'session';
   readonly role: 'run' | 'child';
   readonly cache?: string | null;
   readonly cwd?: string;
   readonly code?: number;
   readonly url?: string;
+  readonly group?: number;
+  readonly session?: number;
 }
 
 function events(box: Sandbox): FixtureEvent[] {
@@ -295,6 +301,16 @@ test('a fresh cache naming a newer release prints the notice after the Command l
   await sleep(quiet);
   expect(childEvents(box)).toEqual([]);
   expect(readFileSync(box.file, 'utf8')).toBe(line);
+});
+
+test('a cache naming 1.10.0 prints the notice to a run of 1.9.0, by SemVer precedence', () => {
+  const box = sandbox();
+  writeCache(box, cacheLine({ latest: '1.10.0' }));
+  const result = run(box, ['add'], { program: 'inert', version: '1.9.0' });
+  expect(lines(result.stderr)).toEqual([
+    'Added note 12.',
+    'notes 1.10.0 is available on the stable channel. Run notes self-update to update from 1.9.0.',
+  ]);
 });
 
 test.each([
@@ -404,11 +420,47 @@ test.each([
   },
 );
 
+test('a cache directory whose parents are missing is created with them, by the run and by its child', async () => {
+  const box = sandbox();
+  const cacheHome = join(box.root, 'a', 'b');
+  const cache = join(cacheHome, 'notes');
+  const from = Date.now();
+  const result = run(box, ['add'], { env: { XDG_CACHE_HOME: cacheHome } });
+  expect(result).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
+  const children = await childrenDone(box);
+  const start = children.find(({ event }) => event === 'start');
+  expect(start?.cwd).toBe(cache);
+  // The run wrote `checked` before it started the child.
+  expectRefreshed(start?.cache, from, null);
+  expect(children.at(-1)).toMatchObject({ code: 0, event: 'exit' });
+  expectRefreshed(readFileSync(join(cache, 'update.json'), 'utf8'), from, '1.5.1');
+});
+
+test.skipIf(process.platform !== 'linux')(
+  'the refresh child leads its own session and process group, apart from the run',
+  async () => {
+    const box = sandbox();
+    run(box, ['add'], { session: true });
+    const children = await childrenDone(box);
+    const sessions = events(box).filter(({ event }) => event === 'session');
+    const runSession = sessions.find(({ role }) => role === 'run');
+    const childSession = sessions.find(({ role }) => role === 'child');
+    expect(runSession).toBeDefined();
+    expect(childSession).toBeDefined();
+    expect(childSession?.session).not.toBe(runSession?.session);
+    expect(childSession?.group).not.toBe(runSession?.group);
+    // A child that called setsid leads both: its session and its group are its own process.
+    expect(childSession?.group).toBe(childSession?.session);
+    expect(children.at(-1)).toMatchObject({ event: 'exit' });
+  },
+);
+
 test('a 503 makes the child exit 1 and write nothing, so the run’s checked stays and a second run starts no child', async () => {
   const box = sandbox();
   const from = Date.now();
   const first = run(box, ['add'], { rules: { 'releases/latest': 503 } });
-  expect(first.status).toBe(0);
+  // The child's own failure sentence never reaches the run's streams.
+  expect(first).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
   const children = await childrenDone(box);
   expect(children.at(-1)).toMatchObject({ code: 1, event: 'exit' });
   const runExit = events(box).find(({ event, role }) => event === 'exit' && role === 'run');
@@ -505,7 +557,7 @@ test('self-update --refresh-notice refuses a run with no asset and a run whose c
 test('--refresh-notice is listed by no help page', () => {
   const box = sandbox();
   const result = run(box, ['self-update', '--help'], {
-    help: true,
+    help: 'before',
     tty: { stderr: false, stdout: false },
   });
   expect(result.status).toBe(0);
@@ -524,7 +576,8 @@ test('--refresh-notice is offered by no completion', () => {
 const leftOut: [string, string[], (box: Sandbox) => Scenario][] = [
   ['an action that fails', ['fail'], () => ({})],
   ['a run cancelled during its action', ['cancel'], () => ({})],
-  ['--help under the help plugin', ['--help'], () => ({ help: true })],
+  ['--help under the help plugin', ['--help'], () => ({ help: 'before' })],
+  ['--help under a help plugin installed after it', ['--help'], () => ({ help: 'after' })],
   ['self-update itself', ['self-update', '--check'], () => ({})],
   ['stderr that is not a terminal', ['add'], () => ({ tty: { stderr: false, stdout: true } })],
   ['stdout that is not a terminal', ['add'], () => ({ tty: { stderr: true, stdout: false } })],
@@ -546,6 +599,15 @@ const leftOut: [string, string[], (box: Sandbox) => Scenario][] = [
         release: { channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
       },
     }),
+  ],
+  [
+    'a script installation whose release names no asset',
+    ['add'],
+    (box) => {
+      const { build, installation } = scriptFacts(box, '1.5.0', 'stable');
+      const group = { channel: 'stable', repository: 'acme/notes', version: '1.5.0' };
+      return { releaseFacts: { build, installation, release: group } };
+    },
   ],
   [
     'the method npm',
@@ -597,6 +659,19 @@ test('runs left out print no notice, write no cache, and start no child', async 
   }
   const expected = { cache: [['update.json', line]], children: [], notice: false };
   expect(observed).toEqual(Object.fromEntries(leftOut.map(([label]) => [label, expected])));
+});
+
+test('a run whose action returns once it is cancelled exits 130, prints no notice, writes no cache, and starts no child', async () => {
+  const box = sandbox();
+  const line = cacheLine({ checked: hoursAgo(25) });
+  writeCache(box, line);
+  const result = run(box, ['interrupt']);
+  expect(result.status).toBe(130);
+  expect(`${result.stdout}${result.stderr}`).not.toContain('is available');
+  await sleep(quiet);
+  expect(readdirSync(box.cache)).toEqual(['update.json']);
+  expect(readFileSync(box.file, 'utf8')).toBe(line);
+  expect(childEvents(box)).toEqual([]);
 });
 
 test('NO_UPDATE_NOTIFIER and the author’s env set to the empty string do not turn notices off', () => {

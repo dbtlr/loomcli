@@ -49,6 +49,18 @@ function cacheIn(directory) {
 if (child) {
   record('start', { cache: cacheIn(process.cwd()), cwd: process.cwd() });
 }
+
+/** This process's group and session, from `/proc/self/stat`, the fields after the command's name. */
+function session() {
+  const stat = readFileSync('/proc/self/stat', 'utf8');
+  // The fields after the name are the state, the parent, the group, and the session.
+  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+  return { group: Number(fields[2]), session: Number(fields[3]) };
+}
+
+if (scenario.session === true) {
+  record('session', session());
+}
 process.on('exit', (code) => {
   record('exit', { cache: scenario.cache === undefined ? null : cacheIn(scenario.cache), code });
 });
@@ -292,16 +304,26 @@ function settings() {
   return 'notices' in scenario ? { ...hook, notices: scenario.notices } : hook;
 }
 
+/** `selfUpdate()`, with the help plugin before or after it when the scenario names where. */
+function plugins() {
+  const update = selfUpdate(settings());
+  if (scenario.help === 'before') {
+    return [help(), update];
+  }
+  return scenario.help === 'after' ? [update, help()] : [update];
+}
+
 const app = new Application('notes', {
   description: 'A fixture application.',
-  plugins: scenario.help === true ? [help(), selfUpdate(settings())] : [selfUpdate(settings())],
+  plugins: plugins(),
   version: scenario.release?.release?.version ?? '0.0.0',
   views:
     scenario.restyle === true
       ? [override(lanes.info, { render: (message) => `[info] ${message}` })]
       : [],
 })
-  // The Commands an update notices scenario runs: one that succeeds, one that fails, one cancelled.
+  // The Commands an update notices scenario runs: one that succeeds, one that fails, two cancelled.
+  // Cancel throws the abort; interrupt returns once it sees it, as a handled Ctrl-C does.
   .command(
     new Command('add', { description: 'Add a note.' }).action(({ out }) =>
       out.success('Added note 12.'),
@@ -317,6 +339,17 @@ const app = new Application('notes', {
       ({ signal }) => {
         controller.abort();
         signal.throwIfAborted();
+      },
+    ),
+  )
+  .command(
+    new Command('interrupt', { description: 'Return once the run is cancelled.' }).action(
+      async ({ signal }) => {
+        const aborted = new Promise((resolve) => {
+          signal.addEventListener('abort', resolve, { once: true });
+        });
+        controller.abort();
+        await aborted;
       },
     ),
   );
