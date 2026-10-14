@@ -207,21 +207,25 @@ test.each([
 });
 
 test.each([[[]], [['get', 'name']], [['keys']]])(
-  'jsonkit reports a read failure for %j',
+  'jsonkit rejects an unreadable file before action for %j',
   (args) => {
     const result = invoke(main, ['--file', 'missing.json', ...args]);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Cannot read file: missing.json: ');
-    expect(result.stderr).toContain('ENOENT');
-    expect(result.stderr).toMatch(/[^.]\. Supply a readable file, or pipe JSON to stdin\.\n$/u);
+    const command = args[0];
+    const route = command ? ` ${command}` : '';
+    expect(result).toEqual({
+      status: 2,
+      stderr: `jsonkit: Option "--file": Expected a readable file that exists.\nRun "jsonkit${route} --help" to see the usage.\n`,
+      stdout: '',
+    });
   },
 );
 
-test('jsonkit escapes the control characters of a file name it cannot read', () => {
+test('jsonkit reports an unreadable file without echoing its control characters', () => {
   const result = invoke(main, ['--file', 'missing\u{202e}.json', 'keys']);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain(String.raw`Cannot read file: missing\u202e.json: `);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(
+    'jsonkit: Option "--file": Expected a readable file that exists.\nRun "jsonkit keys --help" to see the usage.\n',
+  );
   expect(result.stderr).not.toContain('\u{202e}');
 });
 
@@ -285,11 +289,14 @@ test.each([
   [['get', 'name', '--file', 'doc.json']],
   [['get', 'name', '--file=doc.json']],
   [['-f', 'doc.json', 'get', 'name']],
-])('jsonkit reads the same value for the global placement %j', (args) => {
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    expect(invoke(main, args, { cwd })).toEqual({ status: 0, stderr: '', stdout: '"loom"\n' });
-  });
-});
+])(
+  'jsonkit reads the same value for the local option placement and parent rebinding %j',
+  (args) => {
+    withDocuments({ 'doc.json': document }, (cwd) => {
+      expect(invoke(main, args, { cwd })).toEqual({ status: 0, stderr: '', stdout: '"loom"\n' });
+    });
+  },
+);
 
 test('jsonkit treats a route name after --file as the option value', () => {
   withDocuments({ keys: document }, (cwd) => {
@@ -301,7 +308,7 @@ test('jsonkit treats a route name after --file as the option value', () => {
   });
 });
 
-test('jsonkit ignores a passthrough tail that repeats the file global', () => {
+test('jsonkit ignores a passthrough tail that repeats the file option', () => {
   withDocuments({ 'doc.json': document }, (cwd) => {
     expect(
       invoke(main, ['keys', '--file', 'doc.json', '--', '--file', 'other.json'], { cwd }),
@@ -431,7 +438,7 @@ test('jsonkit asks for a file or piped JSON when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
     stderr:
-      'jsonkit: Option "--file": Supply a file or pipe JSON to stdin.\nRun "jsonkit get --help" to see the usage.\n',
+      'jsonkit: Option "--file": Expected at least 1 readable source.\nRun "jsonkit get --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -463,7 +470,7 @@ test('jsonkit reports a stdin connection that closed before it ended', () => {
   );
 });
 
-test('jsonkit never reads stdin when the file global is supplied', () => {
+test('jsonkit never reads stdin when the file option is supplied', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['file-only'])).toEqual({
     status: 0,
     stderr: '',

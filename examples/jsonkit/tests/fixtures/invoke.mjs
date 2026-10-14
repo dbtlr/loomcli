@@ -121,7 +121,7 @@ if (scenario === 'wedge') {
   });
   process.exitCode = 0;
 } else if (scenario === 'stdin') {
-  // No file names the document, so `get` reads the empty stdin an invocation by name supplies.
+  // No file names the document, and content stdin is unavailable to an invocation by name.
   const outcome = await jsonkit.invoke(['get'], { args: { path: 'name' } });
   process.stdout.write(`${JSON.stringify(outcome)}\n`);
 }

@@ -17,21 +17,6 @@
   },
   "globals": [
     {
-      "type": "string",
-      "name": "file",
-      "description": "The document to read. Omit it to read piped text.",
-      "deprecated": null,
-      "control": false,
-      "long": "--file",
-      "short": "-f",
-      "required": false,
-      "multiple": false,
-      "schema": null,
-      "env": [],
-      "default": null,
-      "implied": null
-    },
-    {
       "type": "count",
       "name": "verbose",
       "description": "Name the document before reading it.",
@@ -140,7 +125,27 @@
         "default": null
       }
     ],
-    "options": [],
+    "options": [
+      {
+        "type": "content",
+        "stdin": true,
+        "name": "file",
+        "description": "The document to read. Omit it to read piped text.",
+        "deprecated": null,
+        "control": false,
+        "long": "--file",
+        "short": "-f",
+        "required": true,
+        "multiple": false,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "env": [],
+        "default": null,
+        "implied": null
+      }
+    ],
     "children": []
   }
 }

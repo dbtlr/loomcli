@@ -13,7 +13,7 @@ The root of one command application: an unnamed root Command plus the applicatio
 _Avoid_: Program, CLI object, app root
 
 **Command**:
-A standalone typed declaration value with a canonical name, its arguments, its local options, its aliases, its children, and at most one action. A Command is not defined by its place in a path; it carries everything it needs as a value.
+A standalone typed declaration value with a canonical name, its arguments, its local options, its aliases, its children, at most one stdin target, and at most one action. A Command is not defined by its place in a path; it carries everything it needs as a value.
 _Avoid_: Subcommand (in the model; operator diagnostics may still say "subcommand"), verb, handler
 
 **Root Command**:
@@ -36,7 +36,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
+The single object an action receives, carrying its validated inputs, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -66,8 +66,24 @@ A positional input a Command binds from plain words in declaration order. A scal
 _Avoid_: Positional, operand, parameter
 
 **Option**:
-A named input introduced by a hyphen spelling, of one of three kinds. A string option consumes a value; a Boolean option consumes none and reports the value of its spelling; a counted option consumes none and reports how many times it was supplied.
+A named input introduced by a hyphen spelling: a string, content, Boolean, or counted option. String options consume values, content options consume paths, Boolean options report their spelling's value, and counted options report how often they were supplied.
 _Avoid_: Flag, switch, parameter
+
+**Content input**:
+A native argument or local option whose supplied values name file sources and whose action values are lazy content handles. A content input may be scalar or a collection, and may be its Command's stdin target.
+_Avoid_: File validator, file-or-stdin validator, content validator, document option
+
+**Content**:
+A lazy handle for one readable file source or stdin, with its kind, name, file path when present, and text and stream reads. File reads open afresh, while stdin handles share one stream at its current position.
+_Avoid_: File contents, payload, input stream (for the handle), buffered document
+
+**Stdin target**:
+The one input on a Command that claims available nonterminal stdin: a content input carrying `stdin: true`, or a stdin-only input. It places stdin among a content collection's sources, fills an absent scalar content input, or exposes stdin separately.
+_Avoid_: Stdin owner, stdin binding, pipe input
+
+**Stdin-only input**:
+A Command input declared through `stdin()` that consumes no command-line word and exposes its content handle separately as `stdin`. It is the Command's stdin target and may require a source or permit absence.
+_Avoid_: Stdin argument, stdin option, stream parameter
 
 **Local option**:
 An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
@@ -98,7 +114,7 @@ An option word is a word the parser reads as options: `--` followed by at least 
 _Avoid_: Flag token, hyphen token (for the class), negative number (as a grammar rule)
 
 **Value class**:
-The way an option reads words, of which there are four: a Boolean option, a counted option, a string option with an implied value, and a string option that takes a separate value. A parent's own option typed before a child's name binds to the child's option of that spelling only when both have one value class.
+The way an option reads words, of which there are four: a Boolean option, a counted option, a string option with an implied value, and a string option that takes a separate value. A native content option shares the last class, and a parent's own option typed before a child's name binds to the child's option of that spelling only when both share one value class.
 _Avoid_: Arity, option shape, value kind
 
 **Command table**:
@@ -110,7 +126,7 @@ The Boolean option setting that selects which long forms exist and what an absen
 _Avoid_: Negation mode, inverse flag
 
 **Multiple option**:
-A string option that collects every occurrence into one array instead of rejecting the second. Omission is an accurate empty array rather than `undefined`. The same validator checks each value, so no occurrence makes no validator call.
+A string or content option that collects every occurrence into one array instead of rejecting the second. An omitted string option with no default receives `[]` and calls no per-value validator, while a content option holds assembled sources, including stdin when claimed.
 _Avoid_: Repeatable flag, array option, list option
 
 **Counted option**:
@@ -137,7 +153,7 @@ The variable, or the ordered list of variables, an option names with `env` on it
 _Avoid_: Env var option, env fallback, auto env
 
 **Validator**:
-The Standard Schema object a value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
+The Standard Schema object an ordinary value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. Native content inputs declare no validator. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
 _Avoid_: Schema (for the object), parser, type guard
 
 **Validator catalog**:
@@ -201,11 +217,11 @@ One `run()` or `invoke()` call: host capture, graph build, routing, parsing the 
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
-An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It behaves as the argv that spells the same values, reports its inputs by name, and touches no process. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
+An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and touches no process, following argv behavior except that no stdin is available for content. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
 _Avoid_: Programmatic run, child run, sub-invocation, tool call (for the invocation)
 
 **Request**:
-The read-only snapshot of the routed Command's validated argument, local option, and passthrough values that middleware reads through `request`. Global options are separate, and the request is `null` while core holds a fault or the routed Command is a group.
+The read-only snapshot of the routed Command's validated argument, local option, stdin-only input, and passthrough values that middleware reads through `request`. Global options are separate, and the request is `null` while core holds a fault or the routed Command is a group.
 _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
@@ -370,7 +386,7 @@ A parse-time fault in the invocation's words, such as an unknown or misplaced op
 _Avoid_: Syntax error, parse error
 
 **Input error**:
-The usage error that carries the whole validation phase: every omitted required input and every value a validator rejected, in authoring order.
+The usage error that carries the whole validation phase: every omitted required input, every value a validator rejected, and every native content preparation problem, in authoring order.
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
@@ -438,7 +454,7 @@ A function registered by the application or a plugin, keyed by a foreign error c
 _Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:
-One Standard Schema rejection returned by a validator, with its message and optional path inside the value. Core reads only the message and the path, and it keeps every other field the validator attached, so an issue code and its parameters reach a failure view.
+One rejection returned by a validator or native content preparation, with its message and optional path inside the value. Core keeps every field a validator attached, including issue codes and their parameters, while its native content issues carry no code.
 _Avoid_: Validation error, problem (for the schema-level record)
 
 **Issue code**:
@@ -531,7 +547,7 @@ The projection that describes the accepted built product to a machine consumer: 
 _Avoid_: Schema (for the whole document), spec, descriptor, tool listing
 
 **Input schema**:
-The JSON Schema a validated input's validator publishes through the Standard JSON Schema channel, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes the value one string token must satisfy, exactly as the validator states it, and a multiple option or a variadic argument publishes that same schema for each of its values. It is unknown, not unconstrained, where the validator publishes none. A published input schema is sound: every token the validator accepts satisfies it, so it may be looser than the validator and never stricter.
+The JSON Schema an input's validator publishes through the Standard JSON Schema channel, or core publishes for a native content path, carried on the Command graph as a core fact so every projection reads what the input accepts. It describes one supplied value rather than an action's transformed value or content handle, and a multiple option or variadic argument publishes the same schema for each value. It is unknown, not unconstrained, where neither the validator nor core publishes one. A published input schema is sound: every accepted value satisfies it, so it may be looser than validation and never stricter.
 _Avoid_: Constraint facts, choices, enum fact, shape (for the graph fact)
 
 **Plugin**:
@@ -591,7 +607,7 @@ The author or a plugin whose lifecycle hook gives a value to a collecting extens
 _Avoid_: Contributor, producer, publisher
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, the input schema, and a result's media types.
+A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, the input schema, native content type, stdin claims and declarations, content collection bounds, and a result's media types.
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:

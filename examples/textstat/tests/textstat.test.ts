@@ -18,7 +18,7 @@ test('textstat prints one table for the counted files, with the total only when 
     ).toEqual({
       status: 0,
       stderr: '',
-      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n    0  stdin\n',
     });
     expect(
       invoke(new URL('../dist/main.js', import.meta.url), ['one.txt', 'two words.txt', '--total'], {
@@ -27,7 +27,7 @@ test('textstat prints one table for the counted files, with the total only when 
     ).toEqual({
       status: 0,
       stderr: '',
-      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n    8  total\n',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    2  two words.txt\n    0  stdin\n    8  total\n',
     });
   } finally {
     rmSync(directory, { force: true, recursive: true });
@@ -51,14 +51,18 @@ test('textstat logs one record for each run through the logging plugin, and prin
       cwd: directory,
       env: { HOME: home, LOCALAPPDATA: join(home, 'local'), XDG_STATE_HOME: state },
     });
-    expect(result).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
+    expect(result).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    0  stdin\n',
+    });
     const records = readFileSync(join(logDirectory, 'textstat.jsonl'), 'utf8')
       .trimEnd()
       .split('\n')
       .map((line) => JSON.parse(line));
     expect(records).toMatchObject([
       {
-        fields: { kept: 1, metric: 'bytes', sources: 1 },
+        fields: { kept: 2, metric: 'bytes', sources: 2 },
         level: 'info',
         message: 'Counted the sources.',
         path: [],
@@ -89,17 +93,18 @@ test.each(['--min-bytes', '-b'])(
   },
 );
 
-test.each([
-  ['missing-fixture.txt', 'ENOENT'],
-  ['.', 'EISDIR'],
-])('textstat preserves the file-read reason for %s', (file, reason) => {
-  const result = invoke(new URL('../dist/main.js', import.meta.url), [file]);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(`Cannot read file: ${file}: `);
-  expect(result.stderr).toContain(reason);
-  expect(result.stderr).toMatch(/[^.]\. Supply readable files, or pipe text to stdin\.\n$/u);
-});
+test.each(['missing-fixture.txt', '.'])(
+  'textstat rejects unreadable file source %s during preparation',
+  (file) => {
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [file]);
+    expect(result).toEqual({
+      status: 2,
+      stderr:
+        'textstat: Argument "files" at 0: Expected a readable file that exists.\nRun "textstat --help" to see the usage.\n',
+      stdout: '',
+    });
+  },
+);
 
 test('textstat prints no table when a later source cannot be read', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-partial-'));
@@ -110,9 +115,12 @@ test('textstat prints no table when a later source cannot be read', () => {
       ['one.txt', 'missing-fixture.txt', '--total'],
       { cwd: directory },
     );
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Cannot read file: missing-fixture.txt: ');
+    expect(result).toEqual({
+      status: 2,
+      stderr:
+        'textstat: Argument "files" at 1: Expected a readable file that exists.\nRun "textstat --help" to see the usage.\n',
+      stdout: '',
+    });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -124,7 +132,11 @@ test('textstat widens the count column past the header for a large count', () =>
     writeFileSync(join(directory, 'big.txt'), 'a'.repeat(123_456));
     expect(
       invoke(new URL('../dist/main.js', import.meta.url), ['big.txt'], { cwd: directory }),
-    ).toEqual({ status: 0, stderr: '', stdout: ' COUNT  SOURCE\n123456  big.txt\n' });
+    ).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: ' COUNT  SOURCE\n123456  big.txt\n     0  stdin\n',
+    });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -134,7 +146,7 @@ test('textstat uses the supplied cwd and supports an explicit hyphenated relativ
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['cwd'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'COUNT  SOURCE\n    5  ./-notes.txt\n',
+    stdout: 'COUNT  SOURCE\n    5  ./-notes.txt\n    0  stdin\n',
   });
 });
 
@@ -157,7 +169,16 @@ test('textstat asks for files or piped text when stdin is a terminal', () => {
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal'])).toEqual({
     status: 2,
     stderr:
-      'textstat: Argument "files": Supply file arguments or pipe text to stdin.\nRun "textstat --help" to see the usage.\n',
+      'textstat: Argument "files": Expected at least 1 readable source.\nRun "textstat --help" to see the usage.\n',
+    stdout: '',
+  });
+});
+
+test('textstat rejects explicit stdin at a terminal before reading it', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-hyphen'])).toEqual({
+    status: 2,
+    stderr:
+      'textstat: Argument "files" at 0: Expected piped or redirected stdin.\nRun "textstat --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -189,8 +210,8 @@ test('textstat reports the reason a stdin read failed', () => {
   );
 });
 
-test('textstat never reads stdin when files are supplied', () => {
-  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['files-only'])).toEqual({
+test('textstat leaves terminal stdin unread when files are supplied', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-files'])).toEqual({
     status: 0,
     stderr: '',
     stdout: 'COUNT  SOURCE\n    5  notes.txt\nreads: 0\n',
@@ -200,13 +221,22 @@ test('textstat never reads stdin when files are supplied', () => {
 test.each([
   [
     ['--metric', 'bytes', '--total'],
-    'COUNT  SOURCE\n   12  one.txt\n   14  two.txt\n   26  total\n',
+    'COUNT  SOURCE\n   12  one.txt\n   14  two.txt\n    0  stdin\n   26  total\n',
   ],
-  [['-tm', 'words'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
-  [['--metric=lines', '-t'], 'COUNT  SOURCE\n    1  one.txt\n    1  two.txt\n    2  total\n'],
-  [['-mwords', '-t'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
-  [['-m=words', '-t'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
-  [['-tmwords'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    5  total\n'],
+  [['-tm', 'words'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    0  stdin\n    5  total\n'],
+  [
+    ['--metric=lines', '-t'],
+    'COUNT  SOURCE\n    1  one.txt\n    1  two.txt\n    0  stdin\n    2  total\n',
+  ],
+  [
+    ['-mwords', '-t'],
+    'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    0  stdin\n    5  total\n',
+  ],
+  [
+    ['-m=words', '-t'],
+    'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    0  stdin\n    5  total\n',
+  ],
+  [['-tmwords'], 'COUNT  SOURCE\n    2  one.txt\n    3  two.txt\n    0  stdin\n    5  total\n'],
 ] satisfies [string[], string][])(
   'textstat counts the selected metric and total for %j',
   (options, stdout) => {
@@ -226,8 +256,8 @@ test.each([
 );
 
 test.each([
-  ['words', 'COUNT  SOURCE\n    0  empty.txt\n    0  total\n'],
-  ['lines', 'COUNT  SOURCE\n    0  empty.txt\n    0  total\n'],
+  ['words', 'COUNT  SOURCE\n    0  empty.txt\n    0  stdin\n    0  total\n'],
+  ['lines', 'COUNT  SOURCE\n    0  empty.txt\n    0  stdin\n    0  total\n'],
 ])('textstat counts empty content as zero for %s', (metric, stdout) => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-empty-'));
   try {
@@ -244,19 +274,22 @@ test.each([
   }
 });
 
-test.each(['unsupported', ''])('textstat rejects metric %j before file access', (metric) => {
-  const result = invoke(new URL('../dist/main.js', import.meta.url), [
-    '--metric',
-    metric,
-    'missing-fixture.txt',
-  ]);
-  expect(result).toEqual({
-    status: 2,
-    stderr:
-      'textstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
-    stdout: '',
-  });
-});
+test.each(['unsupported', ''])(
+  'textstat aggregates metric %j and file preparation failures',
+  (metric) => {
+    const result = invoke(new URL('../dist/main.js', import.meta.url), [
+      '--metric',
+      metric,
+      'missing-fixture.txt',
+    ]);
+    expect(result).toEqual({
+      status: 2,
+      stderr:
+        'textstat: Argument "files" at 0: Expected a readable file that exists.\ntextstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
+      stdout: '',
+    });
+  },
+);
 
 test('textstat -m= hands the metric validator the empty string', () => {
   expect(
@@ -264,7 +297,7 @@ test('textstat -m= hands the metric validator the empty string', () => {
   ).toEqual({
     status: 2,
     stderr:
-      'textstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
+      'textstat: Argument "files" at 0: Expected a readable file that exists.\ntextstat: Option "--metric": Expected one of: bytes, words, lines.\nRun "textstat --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -295,7 +328,10 @@ test.each(['--minimun', '--timin'])(
 );
 
 test.each([
-  ['0', 'COUNT  SOURCE\n    0  empty.txt\n    2  small.txt\n    5  large.txt\n    7  total\n'],
+  [
+    '0',
+    'COUNT  SOURCE\n    0  empty.txt\n    2  small.txt\n    5  large.txt\n    0  stdin\n    7  total\n',
+  ],
   ['0002', 'COUNT  SOURCE\n    2  small.txt\n    5  large.txt\n    7  total\n'],
   ['3', 'COUNT  SOURCE\n    5  large.txt\n    5  total\n'],
   ['6', 'COUNT  SOURCE\n    0  total\n'],
@@ -321,7 +357,7 @@ test.each([
 );
 
 test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
-  'textstat rejects minimum %j before file access',
+  'textstat aggregates minimum %j and file preparation failures',
   (minimum) => {
     const result = invoke(new URL('../dist/main.js', import.meta.url), [
       `--min-bytes=${minimum}`,
@@ -330,6 +366,7 @@ test.each(['', '-1', '1.5', ' 2 ', '1e3', '10KB', '9007199254740992'])(
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Option "--min-bytes":');
+    expect(result.stderr).toContain('Argument "files" at 0: Expected a readable file that exists.');
     expect(result.stderr).not.toContain('Cannot read file');
   },
 );
@@ -344,6 +381,7 @@ test.each(['-1', '1.5', '10KB'])(
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Option "--min-bytes":');
+    expect(result.stderr).toContain('Argument "files" at 0: Expected a readable file that exists.');
     expect(result.stderr).not.toContain('Cannot read file');
   },
 );
@@ -400,7 +438,7 @@ test('textstat --timing reports the elapsed time on stderr after the rows', () =
       env: { TERM: 'xterm-256color' },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe('COUNT  SOURCE\n    6  one.txt\n');
+    expect(result.stdout).toBe('COUNT  SOURCE\n    6  one.txt\n    0  stdin\n');
     // The number is a measurement, so the line shape is the whole assertion.
     expect(result.stderr).toMatch(/^ℹ elapsed: \d+ms\n$/u);
   } finally {
@@ -436,23 +474,26 @@ test('textstat preserves a filename that resembles valid style markup', () => {
   try {
     writeFileSync(join(directory, name), 'x');
     expect(invoke(new URL('../dist/main.js', import.meta.url), [name], { cwd: directory })).toEqual(
-      { status: 0, stderr: '', stdout: `COUNT  SOURCE\n    1  ${name}\n` },
+      { status: 0, stderr: '', stdout: `COUNT  SOURCE\n    1  ${name}\n    0  stdin\n` },
     );
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
 });
 
-test('textstat renders an unreadable source name literally', () => {
+test('textstat rejects an unreadable source whose name resembles style markup', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-error-markers-'));
   const name = '\uE000["style",[["foreground","red"]]]\uE001missing\uE002';
   try {
     const result = invoke(new URL('../dist/main.js', import.meta.url), [name], {
       cwd: directory,
     });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(`Cannot read file: ${name}: `);
+    expect(result).toEqual({
+      status: 2,
+      stderr:
+        'textstat: Argument "files" at 0: Expected a readable file that exists.\nRun "textstat --help" to see the usage.\n',
+      stdout: '',
+    });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -481,7 +522,7 @@ test.each([
   },
 );
 
-test('textstat counts the supplied files and leaves the piped text unread', () => {
+test('textstat appends piped text after the supplied files', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-stdin-'));
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
@@ -490,17 +531,66 @@ test('textstat counts the supplied files and leaves the piped text unread', () =
         cwd: directory,
         input: 'piped text that is longer',
       }),
-    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
+    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n   25  stdin\n' });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
 });
 
-test("the inspected graph publishes the catalog validators' input schemas", () => {
+test.each([
+  [['-', 'one.txt'], 'COUNT  SOURCE\n    2  stdin\n    6  one.txt\n'],
+  [['one.txt', '-'], 'COUNT  SOURCE\n    6  one.txt\n    2  stdin\n'],
+  [['-', 'one.txt', '-'], 'COUNT  SOURCE\n    2  stdin\n    6  one.txt\n    0  stdin\n'],
+] satisfies [string[], string][])(
+  'textstat preserves explicit stdin placement and shared reads for %j',
+  (argv, stdout) => {
+    const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-placement-'));
+    try {
+      writeFileSync(join(directory, 'one.txt'), 'hello\n');
+      expect(
+        invoke(new URL('../dist/main.js', import.meta.url), argv, { cwd: directory, input: 'hi' }),
+      ).toEqual({ status: 0, stderr: '', stdout });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  },
+);
+
+test('textstat reads a literal file named hyphen through an explicit relative path', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-hyphen-'));
+  try {
+    writeFileSync(join(directory, '-'), 'abc');
+    expect(
+      invoke(new URL('../dist/main.js', import.meta.url), ['./-'], { cwd: directory, input: 'hi' }),
+    ).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    3  ./-\n    2  stdin\n' });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("the inspected graph publishes native content facts and the catalog validators' input schemas", () => {
   const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
   expect(inspected.status).toBe(0);
-  const graph: { root: { options: { aliases: string[]; name: string; schema: unknown }[] } } =
-    JSON.parse(inspected.stdout);
+  const graph: {
+    root: {
+      arguments: unknown[];
+      options: { aliases: string[]; name: string; schema: unknown }[];
+    };
+  } = JSON.parse(inspected.stdout);
+  expect(graph.root.arguments).toEqual([
+    {
+      description: 'The files and piped text to count. Use - to place stdin.',
+      extensions: {},
+      name: 'files',
+      required: true,
+      schema: { minLength: 1, type: 'string' },
+      stdin: true,
+      type: 'content',
+      validateOmitted: false,
+      validated: true,
+      variadic: true,
+    },
+  ]);
   const schemaOf = (name: string) =>
     graph.root.options.find((entry) => entry.name === name)?.schema;
   const draft = { $schema: 'https://json-schema.org/draft/2020-12/schema' };
@@ -573,7 +663,7 @@ test.each([
     expect(result).toEqual({
       status: 0,
       stderr: '',
-      stdout: `\u001b[${dim}mCOUNT\u001b[39m  \u001b[${dim}mSOURCE\u001b[39m\n    3  total\n    \u001b[${highlight}m3\u001b[39m  \u001b[${highlight}mtotal\u001b[39m\n`,
+      stdout: `\u001b[${dim}mCOUNT\u001b[39m  \u001b[${dim}mSOURCE\u001b[39m\n    3  total\n    0  stdin\n    \u001b[${highlight}m3\u001b[39m  \u001b[${highlight}mtotal\u001b[39m\n`,
     });
   } finally {
     rmSync(directory, { force: true, recursive: true });

@@ -26,6 +26,10 @@ type InputSchema = Readonly<Record<string, unknown>> | null;
  * `schema` is the input schema its validator publishes through the Standard JSON Schema converter.
  */
 interface ArgumentNode {
+  readonly type?: 'content';
+  readonly stdin?: boolean;
+  readonly min?: number | undefined;
+  readonly max?: number | undefined;
   readonly name: string;
   readonly description: string | undefined;
   readonly required: boolean;
@@ -58,27 +62,34 @@ interface ArgumentNode {
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
  */
+interface StringOptionNode {
+  readonly type: 'string';
+  readonly name: string;
+  readonly description: string | undefined;
+  readonly hidden: boolean;
+  readonly deprecated: string | undefined;
+  readonly control: boolean;
+  readonly long: string | null;
+  readonly short: string | null;
+  readonly aliases: readonly string[];
+  readonly required: boolean;
+  readonly multiple: boolean;
+  readonly validated: boolean;
+  readonly validateOmitted: boolean;
+  readonly schema: InputSchema;
+  readonly env: readonly string[];
+  readonly default: { readonly value: unknown } | undefined;
+  readonly implied: string | null;
+  readonly extensions: Readonly<Record<string, unknown>>;
+}
 type OptionNode =
-  | {
-      readonly type: 'string';
-      readonly name: string;
-      readonly description: string | undefined;
-      readonly hidden: boolean;
-      readonly deprecated: string | undefined;
-      readonly control: boolean;
-      readonly long: string | null;
-      readonly short: string | null;
-      readonly aliases: readonly string[];
-      readonly required: boolean;
-      readonly multiple: boolean;
-      readonly validated: boolean;
-      readonly validateOmitted: boolean;
-      readonly schema: InputSchema;
-      readonly env: readonly string[];
-      readonly default: { readonly value: unknown } | undefined;
-      readonly implied: string | null;
-      readonly extensions: Readonly<Record<string, unknown>>;
-    }
+  | StringOptionNode
+  | (Omit<StringOptionNode, 'type'> & {
+      readonly type: 'content';
+      readonly stdin: boolean;
+      readonly min: number | undefined;
+      readonly max: number | undefined;
+    })
   | {
       readonly type: 'boolean';
       readonly name: string;
@@ -118,6 +129,7 @@ type OptionNode =
  * `deprecated: undefined`, the two core facts a listing reads on every other node.
  */
 interface CommandNode {
+  readonly stdin?: Readonly<{ description: string | undefined; required: boolean }>;
   readonly name: string | null;
   readonly aliases: readonly string[];
   readonly path: readonly string[];
@@ -243,6 +255,9 @@ function converterFault(
  */
 function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   const { config } = input;
+  if (config.type === 'content') {
+    return Object.freeze({ minLength: 1, type: 'string' });
+  }
   const schema = 'validate' in config ? config.validate : undefined;
   if (schema === undefined) {
     return null;
@@ -308,19 +323,27 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
     short,
   };
   switch (config.type) {
+    case 'content':
     case 'string': {
-      return Object.freeze({
+      const value = {
         ...shared,
         default: declaredDefault(config),
         implied: config.implied ?? null,
-        // The parser reads the same test, so a collection reports as one here and there.
         multiple: config.multiple === true,
-        required: config.required === true,
+        required: config.required === true || (config.type === 'content' && (config.min ?? 0) > 0),
         schema: inputSchema(input, check),
-        type: 'string',
         validateOmitted: validatesOmission(input),
-        validated: config.validate !== undefined,
-      });
+        validated: config.type === 'content' || config.validate !== undefined,
+      };
+      return config.type === 'content'
+        ? Object.freeze({
+            ...value,
+            max: config.max,
+            min: config.min,
+            stdin: config.stdin === true,
+            type: 'content',
+          })
+        : Object.freeze({ ...value, type: 'string' });
     }
     case 'boolean': {
       return Object.freeze({
@@ -349,14 +372,17 @@ function argumentNode(
   const { check, records } = read;
   const { config, name } = slot.input;
   const node: ArgumentNode = {
+    ...(config.type === 'content'
+      ? { max: config.max, min: config.min, stdin: config.stdin === true, type: 'content' as const }
+      : {}),
     default: declaredDefault(config),
     description: config.description,
     extensions: extensionsOf(records, slot.input),
     name,
-    required: slot.required,
+    required: slot.required || (config.type === 'content' && (config.min ?? 0) > 0),
     schema: inputSchema(slot.input, check),
     validateOmitted: validatesOmission(slot.input),
-    validated: config.validate !== undefined,
+    validated: config.type === 'content' || config.validate !== undefined,
     variadic: slot.variadic,
   };
   return Object.freeze(node);
@@ -386,6 +412,14 @@ function commandNode(
     siteOf: (input) => declaringSite(input, inputPlace(input, path)),
   };
   const node: CommandNode = {
+    ...(command.stdin !== undefined
+      ? {
+          stdin: Object.freeze({
+            description: command.stdin.description,
+            required: command.stdin.required === true,
+          }),
+        }
+      : {}),
     aliases: Object.freeze([...command.aliases]),
     arguments: Object.freeze(
       command.arguments.map((slot) => argumentNode(slot, { check, records })),

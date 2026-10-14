@@ -16,8 +16,15 @@ const application = new Application('jsonkit', {
   description: 'Read one JSON document.',
   plugins: [cause],
   translators: [invalidJson],
-}).action(async ({ host, out, style }) => {
-  await readJson({ host, options: { file: undefined, verbose: 0 }, out, style });
-});
+})
+  .option('file', {
+    description: 'The document to read.',
+    required: true,
+    stdin: true,
+    type: 'content',
+  })
+  .action(async ({ options, out, style }) => {
+    await readJson({ options: { file: options.file, verbose: 0 }, out, style });
+  });
 
 process.exitCode = await application.run();

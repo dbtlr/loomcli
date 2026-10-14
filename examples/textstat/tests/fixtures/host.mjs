@@ -49,10 +49,10 @@ if (scenario === 'cwd') {
       terminal: piped,
     },
   });
-} else if (scenario === 'terminal') {
+} else if (scenario === 'terminal' || scenario === 'terminal-hyphen') {
   await textstat.run({
     host: {
-      argv: [],
+      argv: scenario === 'terminal-hyphen' ? ['-'] : [],
       stdin: chunkStream([]),
       terminal: { ...piped, stdin: { isTTY: true } },
     },
@@ -89,7 +89,7 @@ if (scenario === 'cwd') {
     },
   });
   await textstat.run({ host: { argv: [], stdin, terminal: piped } });
-} else if (scenario === 'files-only') {
+} else if (scenario === 'terminal-files') {
   let reads = 0;
   const stdin = new Readable({
     read() {
@@ -100,7 +100,14 @@ if (scenario === 'cwd') {
   const directory = mkdtempSync(join(tmpdir(), 'loom-host-'));
   try {
     writeFileSync(join(directory, 'notes.txt'), 'three');
-    await textstat.run({ host: { argv: ['notes.txt'], cwd: directory, stdin, terminal: piped } });
+    await textstat.run({
+      host: {
+        argv: ['notes.txt'],
+        cwd: directory,
+        stdin,
+        terminal: { ...piped, stdin: { isTTY: true } },
+      },
+    });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

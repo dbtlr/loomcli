@@ -45,7 +45,7 @@ function derived(schema: Schema | null): string | undefined {
  * none.
  */
 function optionAccepts(option: OptionNode): string | undefined {
-  if (option.type !== 'string') {
+  if (option.type !== 'string' && option.type !== 'content') {
     return undefined;
   }
   return readExtension(option, helpInput)?.accepts ?? derived(option.schema);

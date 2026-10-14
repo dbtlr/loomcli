@@ -14,13 +14,13 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
     page(
       'textstat · Count bytes, words, or lines across text sources.',
       '',
-      '  With no files, textstat counts the text piped to it and names the source "stdin".',
+      '  Textstat counts files and piped text in order. Use - to place stdin among the files.',
       '',
       'USAGE',
       '  textstat [files...] [options]',
       '',
       'ARGUMENTS',
-      '  files  The files to count. Omit them to read piped text.',
+      '  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)',
       '',
       'COUNTING',
       '  MEASURE',
@@ -54,7 +54,7 @@ test('textstat -h prints the compact page and points to the details and examples
       '  textstat [files...] [options]',
       '',
       'ARGUMENTS',
-      '  files  The files to count. Omit them to read piped text.',
+      '  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)',
       '',
       'COUNTING',
       '  MEASURE',
@@ -90,3 +90,12 @@ test('textstat --version prints the name and the declared version', () => {
     stdout: 'textstat v0.0.0\n',
   });
 });
+
+test.each(['--help', '--version'])(
+  'textstat %s takes over a file preparation failure',
+  (spelling) => {
+    const expected = invoke(main, [spelling]);
+    expect(expected.status).toBe(0);
+    expect(invoke(main, ['missing-fixture.txt', spelling])).toEqual(expected);
+  },
+);

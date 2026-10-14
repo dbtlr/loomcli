@@ -1,27 +1,10 @@
-import { createReadStream } from 'node:fs';
-import { resolve } from 'node:path';
-import type { Readable } from 'node:stream';
-
 import { FatalError } from '@loomcli/core';
-import type { ActionHandler, ActionOptions, Host, Log } from '@loomcli/core';
+import type { ActionHandler, ActionOptions, Content, Log } from '@loomcli/core';
 
 import type { textstat } from './application.js';
 import { countSource } from './count-source.js';
-import { checkFilesOrStdin } from './files-or-stdin.js';
 import { totalRow } from './row.js';
 import type { Row } from './row.js';
-
-/**
- * One counted source: the subject each failure names, the name its row prints, and the
- * connection, opened only when the source is reached.
- */
-interface Source {
-  /** A read failure names where the text came from, so a file failure keeps its path. */
-  failure: string;
-  /** A printed row names the source itself. */
-  name: string;
-  open: () => Readable;
-}
 
 /**
  * The reason a read failed, as one sentence ending in a period. A reason that already ends with one
@@ -30,23 +13,6 @@ interface Source {
 function explain(error: unknown): string {
   const reason = error instanceof Error ? error.message : 'The source could not be read.';
   return reason.endsWith('.') ? reason : `${reason}.`;
-}
-
-/**
- * The sources of one invocation. Supplied files are the whole selection, so no first file is the
- * whole rule for reading stdin, once an empty selection at a terminal has been rejected.
- */
-function sources(files: readonly string[], host: Host): Source[] {
-  checkFilesOrStdin(files, host);
-  const [named] = files;
-  if (named === undefined) {
-    return [{ failure: 'stdin', name: 'stdin', open: () => host.stdin }];
-  }
-  return files.map((file) => ({
-    failure: `file: ${file}`,
-    name: file,
-    open: () => createReadStream(resolve(host.cwd, file)),
-  }));
 }
 
 /** What one pass over the sources produced: the rows it kept and the total of their counts. */
@@ -61,16 +27,16 @@ interface Counted {
  */
 async function countAll(
   options: ActionOptions<typeof textstat>,
-  selected: readonly Source[],
+  selected: readonly Content[],
   log: Log,
 ): Promise<Counted> {
   const rows: Row[] = [];
   const minimum = options['min-bytes'];
   let total = 0;
   for (const source of selected) {
-    const counts = await countSource(source.open(), options.metric).catch((error: unknown) => {
+    const counts = await countSource(source.stream(), options.metric).catch((error: unknown) => {
       throw new FatalError(
-        `Cannot read ${source.failure}: ${explain(error)} Supply readable files, or pipe text to stdin.`,
+        `Cannot read ${source.kind === 'stdin' ? 'stdin' : `file: ${source.name}`}: ${explain(error)} Supply readable files, or pipe text to stdin.`,
       );
     });
     if (counts.bytes >= minimum) {
@@ -88,15 +54,9 @@ async function countAll(
 }
 
 /** The counted rows are emitted at once as the result, and the hidden timing line follows it. */
-export const countFiles: ActionHandler<typeof textstat> = async ({
-  args,
-  host,
-  log,
-  options,
-  out,
-}) => {
+export const countFiles: ActionHandler<typeof textstat> = async ({ args, log, options, out }) => {
   const started = performance.now();
-  const counted = await countAll(options, sources(args.files, host), log);
+  const counted = await countAll(options, args.files, log);
   log.info('Counted the sources.', {
     kept: counted.rows.length,
     metric: options.metric,

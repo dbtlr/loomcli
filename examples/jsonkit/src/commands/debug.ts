@@ -2,6 +2,7 @@ import { Command } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
 import { dumpDocument } from '../actions/dump-document.js';
+import { documentInput } from '../document-input.js';
 import { readFailures } from '../failures.js';
 
 // `debug` is a hidden Command, so no listing shows it.
@@ -10,4 +11,6 @@ export const debug = new Command('debug', {
   description: 'Dump the parsed document.',
   extensions: [manifestCommand({ failures: readFailures })],
   hidden: true,
-}).action(dumpDocument);
+})
+  .option('file', documentInput)
+  .action(dumpDocument);

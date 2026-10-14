@@ -1,8 +1,29 @@
+import { Application, DeclarationError } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/undescribed.mjs', import.meta.url);
+
+test('an undescribed stdin finding shows only the authored configuration', async () => {
+  const app = new Application('events', { description: 'Read events.' })
+    .option('quiet', { description: 'Print nothing.', type: 'boolean' })
+    .stdin({ required: true })
+    .action(() => undefined);
+  const outcome = await app.invoke([], {}, { host: { release: { build: 'development' } } });
+  if (outcome.status !== 'failed' || !(outcome.failure instanceof DeclarationError)) {
+    throw new Error('Expected a missing-description declaration fault.');
+  }
+  expect(outcome.failure.findings).toEqual([
+    {
+      arguments: [{ required: true }],
+      call: 'stdin',
+      mark: '0',
+      note: 'no description',
+      path: [],
+    },
+  ]);
+});
 
 function run(scenario: string, build: 'development' | 'distributed', argv: string[] = []) {
   return invoke(fixture, [scenario, build, ...argv]);

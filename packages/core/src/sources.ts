@@ -121,7 +121,7 @@ function readVariable(input: OptionInput, env: Host['env']): NamedReading {
   if (variable === undefined || raw === undefined) {
     return undefined;
   }
-  if (input.config.type === 'string') {
+  if (input.config.type === 'string' || input.config.type === 'content') {
     return { reading: { kind: 'fill', value: raw }, variable };
   }
   if (input.config.type === 'count') {
@@ -168,7 +168,7 @@ const owed: Readonly<Record<RawKind, string>> = {
 };
 
 function rawKind(input: OptionInput): RawKind {
-  if (input.config.type !== 'string') {
+  if (input.config.type !== 'string' && input.config.type !== 'content') {
     return input.config.type;
   }
   return input.config.multiple === true ? 'list' : 'string';

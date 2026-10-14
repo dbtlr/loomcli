@@ -137,7 +137,20 @@ function synopsis({ children, command, graph }: Subject): string[] {
       word: (text) => escapeText(text, 'noFill'),
     },
   );
-  return isEmpty(forms) ? [] : headed('SYNOPSIS', ['.nf', ...forms.map(textLine), '.fi']);
+  const [firstForm] = forms;
+  return isEmpty(forms)
+    ? []
+    : headed('SYNOPSIS', [
+        '.nf',
+        ...forms.map((form) =>
+          textLine(
+            command.stdin?.required && command.hasAction && form === firstForm
+              ? `${escapeText('<producer> | ', 'noFill')}${form}`
+              : form,
+          ),
+        ),
+        '.fi',
+      ]);
 }
 
 /** The deprecation paragraph, then the details. */
@@ -167,6 +180,23 @@ function argumentEntry(argument: ArgumentNode): string[] {
       argumentFacts(argument),
     ),
   );
+}
+
+function stdinSection({ command, graph }: Subject): string[] {
+  const input = command.stdin;
+  if (input === undefined) {
+    return [];
+  }
+  const commandName = [graph.name, ...command.path].join(' ');
+  return headed('INPUT', [
+    ...(input.description === undefined ? [] : [textLine(escapeText(input.description))]),
+    textLine(
+      escapeText(
+        `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
+      ),
+    ),
+    textLine(escapeText(`Example: <producer> | ${commandName}`)),
+  ]);
 }
 
 function argumentsSection({ command }: Subject): string[] {
@@ -302,6 +332,7 @@ function renderManPage(
     ...description(subject),
     ...sectionLines(subject.commandSections, childEntry),
     ...argumentsSection(subject),
+    ...stdinSection(subject),
     ...sectionLines(subject.optionSections, optionEntry),
     ...examples(subject),
     ...environment(subject),

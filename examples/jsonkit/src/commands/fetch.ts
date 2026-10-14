@@ -3,6 +3,7 @@ import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
 import { getValue } from '../actions/get-value.js';
+import { documentInput } from '../document-input.js';
 import { pathFailures, readFailures } from '../failures.js';
 
 // `fetch` is the former spelling of `get`.
@@ -15,5 +16,6 @@ export const fetch = new Command('fetch', {
     helpCommand({ section: ['Document commands', 'Read'] }),
   ],
 })
+  .option('file', documentInput)
   .argument('path', { description: 'Dot path to read.', required: true })
   .action(getValue);

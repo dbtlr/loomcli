@@ -5,6 +5,7 @@ import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 import { text } from '@loomcli/validators';
 
 import { selectFields } from '../actions/select-fields.js';
+import { documentInput } from '../document-input.js';
 import { readFailures } from '../failures.js';
 
 export const select = new Command('select', {
@@ -15,6 +16,7 @@ export const select = new Command('select', {
     mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
 })
+  .option('file', documentInput)
   .option('field', {
     description: 'A field to keep. Repeat it for several.',
     multiple: true,

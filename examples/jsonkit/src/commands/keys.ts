@@ -4,6 +4,7 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 
 import { listKeys } from '../actions/list-keys.js';
+import { documentInput } from '../document-input.js';
 import { pathFailures, readFailures } from '../failures.js';
 
 // `ls` is an alias: it routes to this Command, and no projection advertises it.
@@ -15,6 +16,7 @@ export const keys = new Command('keys', {
     mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
 })
+  .option('file', documentInput)
   .alias('ls')
   .argument('path', { description: 'Dot path to list. Omit it for the root.' })
   .action(listKeys);

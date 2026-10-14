@@ -76,7 +76,10 @@ function childOffers(command: CommandNode): Offer[] {
  * a counted option adds one.
  */
 function repeats(option: OptionNode): boolean {
-  return option.type === 'count' || (option.type === 'string' && option.multiple);
+  return (
+    option.type === 'count' ||
+    ((option.type === 'string' || option.type === 'content') && option.multiple)
+  );
 }
 
 /**

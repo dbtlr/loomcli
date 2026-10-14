@@ -36,10 +36,16 @@ const serverInfo = {
   },
 };
 
-/** The properties every jsonkit tool lists last: the global options a call may supply. */
+/** The global work option a tool call may supply. */
 const globals = {
-  file: { description: 'The document to read. Omit it to read piped text.', type: 'string' },
   verbose: { description: 'Name the document before reading it.', minimum: 0, type: 'integer' },
+};
+
+/** Content input paths are supplied by name; MCP transport stdin cannot fill them. */
+const file = {
+  description: 'The document to read. Omit it to read piped text.',
+  minLength: 1,
+  type: 'string',
 };
 
 const annotations = { openWorldHint: false, readOnlyHint: true };
@@ -111,7 +117,12 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
         {
           annotations,
           description: 'Read and reshape one JSON document.',
-          inputSchema: { additionalProperties: false, properties: globals, type: 'object' },
+          inputSchema: {
+            additionalProperties: false,
+            properties: { file, ...globals },
+            required: ['file'],
+            type: 'object',
+          },
           name: 'jsonkit',
         },
         {
@@ -119,8 +130,12 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
           description: 'Read one value at a path.',
           inputSchema: {
             additionalProperties: false,
-            properties: { path: { description: 'Dot path to read.', type: 'string' }, ...globals },
-            required: ['path'],
+            properties: {
+              file,
+              path: { description: 'Dot path to read.', type: 'string' },
+              ...globals,
+            },
+            required: ['path', 'file'],
             type: 'object',
           },
           name: 'get',
@@ -131,9 +146,11 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
           inputSchema: {
             additionalProperties: false,
             properties: {
+              file,
               path: { description: 'Dot path to list. Omit it for the root.', type: 'string' },
               ...globals,
             },
+            required: ['file'],
             type: 'object',
           },
           name: 'keys',
@@ -149,9 +166,10 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
                 items: { minLength: 1, type: 'string' },
                 type: 'array',
               },
+              file,
               ...globals,
             },
-            required: ['field'],
+            required: ['file', 'field'],
             type: 'object',
           },
           name: 'select',
@@ -238,6 +256,13 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
     const shape = 'Argument "path": Use a string or a number.';
     await expect(resultOf('get', { file: 'doc.json', path: true })).resolves.toEqual(
       failed('invalid-input', 2, shape, `jsonkit: ${shape}\n`),
+    );
+  });
+
+  it('a missing file fails input validation without consuming MCP transport stdin as content', async () => {
+    const missing = 'Option "file": Expected at least 1 readable source.';
+    await expect(resultOf('get', { path: 'name' })).resolves.toEqual(
+      failed('invalid-input', 2, missing, `jsonkit: ${missing}\n`),
     );
   });
 

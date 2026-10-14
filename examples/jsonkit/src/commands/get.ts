@@ -5,6 +5,7 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 
 import { getValue } from '../actions/get-value.js';
+import { documentInput } from '../document-input.js';
 import { pathFailures, readFailures } from '../failures.js';
 import details from './get.md' with { type: 'text' };
 
@@ -31,5 +32,6 @@ export const get = new Command('get', {
     mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
 })
+  .option('file', documentInput)
   .argument('path', { description: 'Dot path to read.', required: true })
   .action(getValue);

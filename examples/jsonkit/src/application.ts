@@ -6,7 +6,7 @@ import type { EnvironmentOf } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
-import { helpInput, helpCommand } from '@loomcli/plugins/help/extension';
+import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { manpage } from '@loomcli/plugins/manpage';
@@ -25,6 +25,7 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
+import { documentInput } from './document-input.js';
 import { readFailures } from './failures.js';
 import type { Member } from './member.js';
 import { invalidJson } from './translators.js';
@@ -68,12 +69,7 @@ const configured = new Application('jsonkit', {
   version: Package.version,
   views: [override(FatalError, fatalError)],
 })
-  .globalOption('file', {
-    description: 'The document to read. Omit it to read piped text.',
-    extensions: [helpInput({ placeholder: 'path' })],
-    short: 'f',
-    type: 'string',
-  })
+  .option('file', documentInput)
   .globalOption('verbose', {
     description: 'Name the document before reading it.',
     short: 'v',

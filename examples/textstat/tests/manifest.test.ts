@@ -31,7 +31,16 @@ const option = z.object({
 });
 const readable = z.object({
   command: z.object({
-    arguments: z.array(z.object({ name: z.string(), variadic: z.boolean() })),
+    arguments: z.array(
+      z.object({
+        name: z.string(),
+        required: z.boolean(),
+        schema: z.object({ minLength: z.number(), type: z.string() }),
+        stdin: z.boolean(),
+        type: z.string(),
+        variadic: z.boolean(),
+      }),
+    ),
     options: z.array(option),
     result: z.object({ kind: z.string(), views: z.array(z.string()) }).nullable(),
   }),
@@ -48,7 +57,14 @@ test('an agent builds a valid invocation from the manifest alone and parses the 
   expect(command.result).toMatchObject({ kind: 'rows' });
   expect(command.result?.views).toContain('json');
   expect(format?.schema?.enum).toContain('json');
-  expect(command.arguments[0]).toEqual({ name: 'files', variadic: true });
+  expect(command.arguments[0]).toEqual({
+    name: 'files',
+    required: true,
+    schema: { minLength: 1, type: 'string' },
+    stdin: true,
+    type: 'content',
+    variadic: true,
+  });
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-agent-'));
   try {
     writeFileSync(join(directory, 'one.txt'), 'two words\n');
@@ -67,6 +83,7 @@ test('an agent builds a valid invocation from the manifest alone and parses the 
     expect(JSON.parse(result.stdout)).toEqual([
       { count: 2, source: 'one.txt' },
       { count: 3, source: 'two.txt' },
+      { count: 0, source: 'stdin' },
     ]);
   } finally {
     rmSync(directory, { force: true, recursive: true });

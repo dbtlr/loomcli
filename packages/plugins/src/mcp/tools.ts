@@ -128,7 +128,9 @@ function takesSeveral(property: Property): boolean {
   if (property.kind === 'argument') {
     return property.node.variadic;
   }
-  return property.node.type === 'string' && property.node.multiple;
+  return (
+    (property.node.type === 'string' || property.node.type === 'content') && property.node.multiple
+  );
 }
 
 /** The input's description for an agent: its extension value's, or else its core description. */
@@ -157,7 +159,20 @@ function propertySchema(property: Property): Schema {
   const value = valueSchema(property);
   const description = propertyDescription(property);
   return {
-    ...(takesSeveral(property) ? listOf(value) : value),
+    ...(takesSeveral(property)
+      ? {
+          ...listOf(value),
+          ...(property.node.type === 'content'
+            ? {
+                minItems: Math.max(
+                  Number(property.node.required),
+                  property.node.min ?? Number(property.node.required),
+                ),
+                ...(property.node.max === undefined ? {} : { maxItems: property.node.max }),
+              }
+            : {}),
+        }
+      : value),
     ...(description === undefined ? {} : { description }),
     ...propertyDefault(property),
   };
@@ -168,7 +183,11 @@ function isRequired(property: Property): boolean {
   if (property.kind === 'argument') {
     return property.node.required;
   }
-  return !property.global && property.node.type === 'string' && property.node.required;
+  return (
+    !property.global &&
+    (property.node.type === 'string' || property.node.type === 'content') &&
+    property.node.required
+  );
 }
 
 /** The object a tool's arguments form, keyed by each listed input's declared name. */

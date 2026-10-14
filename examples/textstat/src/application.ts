@@ -29,7 +29,8 @@ export const textstat = new Application('textstat', {
   description: 'Count bytes, words, or lines across text sources.',
   extensions: [
     helpCommand({
-      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      details:
+        'Textstat counts files and piped text in order. Use - to place stdin among the files.',
       examples: [{ command: 'one.txt two.txt' }, { command: '--metric words --total *.md' }],
       optionSections: [
         ['Counting', 'Measure'],
@@ -39,7 +40,8 @@ export const textstat = new Application('textstat', {
       ],
     }),
     explainCommand({
-      details: 'With no files, textstat counts the text piped to it and names the source "stdin".',
+      details:
+        'Textstat counts files and piped text in order. Use - to place stdin among the files.',
       examples: ['textstat one.txt two.txt', 'textstat --metric words --total *.md'],
     }),
   ],
@@ -59,7 +61,10 @@ export const textstat = new Application('textstat', {
   views: [override(FatalError, fatalError)],
 })
   .argument('files', {
-    description: 'The files to count. Omit them to read piped text.',
+    description: 'The files and piped text to count. Use - to place stdin.',
+    required: true,
+    stdin: true,
+    type: 'content',
     variadic: true,
   })
   .option('metric', {

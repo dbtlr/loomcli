@@ -16,7 +16,6 @@ import { expect, test } from 'vite-plus/test';
 import { invoke } from '../../../scripts/test-process.js';
 
 const main = new URL('../dist/main.js', import.meta.url);
-const hostFixture = new URL('fixtures/config-host.mjs', import.meta.url);
 const appFixture = new URL('fixtures/config-app.mjs', import.meta.url);
 
 /**
@@ -30,8 +29,6 @@ interface Workspace {
   readonly profile: string;
   /** The built application, run in the project directory with each home variable set. */
   textstat(argv: string[], env?: Record<string, string | undefined>): ReturnType<typeof invoke>;
-  /** The built application under a `win32` host, run from the temporary root. */
-  windows(argv: string[]): ReturnType<typeof invoke>;
   /**
    * An application named textstat, built from public APIs, that installs the plugin with the
    * settings given, or with none, and prints the options it receives.
@@ -69,8 +66,6 @@ function workspace(): Workspace {
     root,
     textstat: (argv, env = {}) =>
       invoke(main, argv, { cwd: project, env: { ...variables, ...env } }),
-    windows: (argv) =>
-      invoke(hostFixture, ['win32', project, ...argv], { cwd: root, env: variables }),
     write: (base, relative, content) => {
       const path = join(base, relative);
       mkdirSync(join(path, '..'), { recursive: true });
@@ -120,7 +115,7 @@ function wrong(line: string): string {
 }
 
 const files = ['one.txt', 'two.txt'];
-const both = 'COUNT  SOURCE\n    6  one.txt\n    2  two.txt\n';
+const both = 'COUNT  SOURCE\n    6  one.txt\n    2  two.txt\n    0  stdin\n';
 const filtered = 'COUNT  SOURCE\n    6  one.txt\n';
 const withTotal = `${both}    8  total\n`;
 const filteredTotal = `${filtered}    6  total\n`;
@@ -141,10 +136,12 @@ test(
     space.write(space.home, '.textstat.toml', 'minBytes = 5\n');
     space.write(space.profile, '.textstat.toml', 'total = true\n');
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
-    expect(space.windows(files)).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `${withTotal}resolved:0\n`,
+    // Windows home lookup is exercised without resolving file paths against a simulated platform.
+    expect(
+      received(space.app({ file: '.textstat.toml' }, [], { FIXTURE_PLATFORM: 'win32' })),
+    ).toEqual({
+      ...fixtureDefaults,
+      total: true,
     });
     // A file in the working directory hides the home file, so its minBytes is not read.
     space.write(space.project, '.textstat.toml', 'total = true\n');

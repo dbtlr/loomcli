@@ -53,11 +53,48 @@ const inspected = z.object({
   version: z.string(),
 });
 
+test('only document-reading Commands claim stdin through their local native file option', () => {
+  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  const option = z.object({
+    name: z.string(),
+    required: z.boolean().optional(),
+    schema: z.unknown(),
+    stdin: z.boolean().optional(),
+    type: z.string(),
+  });
+  const inspectedCommand = z.object({ name: z.string().nullable(), options: z.array(option) });
+  const graph = z
+    .object({
+      globals: z.array(option),
+      root: inspectedCommand.extend({ children: z.array(inspectedCommand) }),
+    })
+    .parse(JSON.parse(result.stdout));
+  expect(graph.globals.map((input) => input.name)).not.toContain('file');
+  const documentCommands = new Set([null, 'get', 'keys', 'select', 'fetch', 'paths', 'debug']);
+  for (const node of [graph.root, ...graph.root.children]) {
+    const file = node.options.filter((input) => input.name === 'file');
+    expect(file).toEqual(
+      documentCommands.has(node.name)
+        ? [
+            {
+              name: 'file',
+              required: true,
+              schema: { minLength: 1, type: 'string' },
+              stdin: true,
+              type: 'content',
+            },
+          ]
+        : [],
+    );
+  }
+});
+
 test.each(['--explain', '-e'])(
   'jsonkit get %s explains the routed Command and reads no document',
   (spelling) => {
-    // The directory holds a document that the invocation never names, and no file is supplied, so
-    // A run that reached the action would fail on the absent source rather than exit 0.
+    // The invocation names no document. Dispatch would fail on the required path instead of
+    // Completing with the explanation, and the document remains unread.
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['get', spelling], { cwd })).toEqual({
         status: 0,
@@ -81,7 +118,7 @@ test('jsonkit explains the root when no subcommand is routed', () => {
 test('jsonkit explains an otherwise invalid invocation instead of rejecting it', () => {
   /**
    * `get` needs its required path, and the named document does not exist. The middleware takes
-   * over before the callable check, local parsing, and validation, so neither is ever reached.
+   * over while preparation faults are held, so dispatch never raises them.
    */
   withDocuments({}, (cwd) => {
     expect(invoke(main, ['get', '--explain', '--file', 'missing.json'], { cwd })).toEqual({
@@ -98,7 +135,6 @@ test("the inspected graph carries the plugin's option, the extension value, and 
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
-    'file',
     'verbose',
     'help',
     'version',

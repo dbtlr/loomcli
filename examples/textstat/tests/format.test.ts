@@ -8,7 +8,7 @@ import { invoke } from '../../../scripts/test-process.js';
 
 const main = new URL('../dist/main.js', import.meta.url);
 
-/** One file, one row, so the encoded document is small enough to assert byte for byte. */
+/** One file and an empty nonterminal stdin, with a small encoded document to assert byte for byte. */
 function withOneFile(run: (cwd: string) => void) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-format-'));
   try {
@@ -19,8 +19,11 @@ function withOneFile(run: (cwd: string) => void) {
   }
 }
 
-/** The rows the source above produces. The action prints the argument as supplied, not resolved. */
-const rows = [{ count: 6, source: 'one.txt' }];
+/** The expected file and empty-pipe rows. File names retain their supplied spelling. */
+const rows = [
+  { count: 6, source: 'one.txt' },
+  { count: 0, source: 'stdin' },
+];
 
 test.each(['--format', '-f'])(
   'textstat %s json prints the rows as one indented array on stdout',
@@ -63,10 +66,14 @@ test('textstat --format json --timing still writes the timing line on stderr', (
   });
 });
 
-test('textstat with no --format prints the table exactly as it did before the plugin', () => {
+test('textstat with no --format prints the file and empty pipe as a table', () => {
   withOneFile((cwd) => {
     const result = invoke(main, ['one.txt'], { cwd });
-    expect(result).toEqual({ status: 0, stderr: '', stdout: 'COUNT  SOURCE\n    6  one.txt\n' });
+    expect(result).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'COUNT  SOURCE\n    6  one.txt\n    0  stdin\n',
+    });
   });
 });
 

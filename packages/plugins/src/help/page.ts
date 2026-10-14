@@ -75,7 +75,9 @@ function details(command: CommandNode, context: ViewContext): string[] {
 function requiredOptions(command: CommandNode): StringOption[] {
   const reachable: readonly OptionNode[] = visible(command.options);
   // Core rejects `required` on a Boolean option, so every option this keeps takes a value.
-  return reachable.filter((option) => option.type === 'string').filter((option) => option.required);
+  return reachable
+    .filter((option) => option.type === 'string' || option.type === 'content')
+    .filter((option) => option.required && !(option.type === 'content' && option.stdin));
 }
 
 /** The routed node, the graph, and its visible children, which the usage forms read. */
@@ -116,7 +118,16 @@ function usage(subject: UsageSubject, { style }: ViewContext): string[] {
     spelling: (text) => style.highlight(style.escape(text)),
     word: (text) => style.dim.italic(style.escape(text)),
   });
-  return isEmpty(forms) ? [] : [style.dim('USAGE'), ...forms.map((form) => `  ${form}`)];
+  const [firstForm] = forms;
+  return isEmpty(forms)
+    ? []
+    : [
+        style.dim('USAGE'),
+        ...forms.map(
+          (form) =>
+            `  ${subject.command.stdin?.required && subject.command.hasAction && form === firstForm ? `${style.dim.italic('<producer>')} | ` : ''}${form}`,
+        ),
+      ];
 }
 
 /**
@@ -285,6 +296,21 @@ function hints(
  * with nothing to show is omitted, and the page carries no line terminator of its own at either
  * end. The compact page omits Details and EXAMPLES.
  */
+function stdinInput(command: CommandNode, graph: CommandGraph, { style }: ViewContext): string[] {
+  const input = command.stdin;
+  if (input === undefined) {
+    return [];
+  }
+  const description =
+    input.description === undefined ? [] : [`  ${style.primary(style.escape(input.description))}`];
+  return [
+    style.dim('INPUT'),
+    ...description,
+    `  ${style.primary(`${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`)}`,
+    `  ${style.primary(style.escape(`Example: <producer> | ${pathOf(graph, command)}`))}`,
+  ];
+}
+
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
@@ -300,6 +326,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     usage({ children, command, graph }, context),
     ...commands({ children, command }, context),
     args(command, context),
+    stdinInput(command, graph, context),
     ...options(command, graph, context),
     extended ? listed : [],
     hints({ children, omitted, path, variant }, context),

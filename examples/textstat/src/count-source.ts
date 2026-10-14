@@ -47,6 +47,10 @@ export async function countSource(stream: Readable, metric: Metric): Promise<Sou
     }
   };
   await new Promise<void>((resolve, reject) => {
+    if (stream.readableEnded) {
+      resolve();
+      return;
+    }
     let ended = false;
     stream.on('data', (chunk: Buffer | string) => {
       const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;

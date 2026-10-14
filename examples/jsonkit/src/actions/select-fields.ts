@@ -7,8 +7,8 @@ import { describeKind, isRecord } from '../kinds.js';
 import { readJson } from '../read-json.js';
 
 /** Missing fields warn once while the remaining selection keeps its first-occurrence order. */
-export const selectFields: ActionHandler<typeof select> = async ({ options, host, out, style }) => {
-  const document = await readJson({ host, options, out, style });
+export const selectFields: ActionHandler<typeof select> = async ({ options, out, style }) => {
+  const document = await readJson({ options, out, style });
   const record = isRecord(document)
     ? document
     : out.fatal(
