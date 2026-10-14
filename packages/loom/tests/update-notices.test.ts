@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { applicationDirectory } from '@loomcli/core';
 import { afterAll, beforeAll, expect, test } from 'vite-plus/test';
 
 import { recordInstallation } from '../../../scripts/test-installation.js';
@@ -156,7 +157,6 @@ test(
     for (const directory of [home, state, cacheHome]) {
       mkdirSync(directory);
     }
-    const cache = join(cacheHome, 'probe');
     const file = join(root, 'events.jsonl');
     const env = {
       CI: '',
@@ -164,11 +164,18 @@ test(
       NO_COLOR: '1',
       NO_UPDATE_NOTIFIER: '',
       PATH: process.env.PATH,
-      PROBE_CACHE: cache,
+      PROBE_CACHE: '',
       PROBE_EVENTS: file,
       XDG_CACHE_HOME: cacheHome,
       XDG_STATE_HOME: state,
     };
+    // The binary runs on this platform, so its cache is where applicationDirectory puts it here.
+    const lookup = applicationDirectory('cache', 'probe', { env, platform: process.platform });
+    if (!('path' in lookup)) {
+      throw new Error(`The cache directory needs ${lookup.variable}.`);
+    }
+    const cache = lookup.path;
+    env.PROBE_CACHE = cache;
     expect(recordInstallation('probe', binary, env)).toMatchObject({ status: 0 });
 
     const from = Date.now();

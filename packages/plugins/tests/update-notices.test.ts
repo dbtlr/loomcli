@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -88,7 +89,8 @@ afterEach(() => {
 });
 
 function sandbox(): Sandbox {
-  const root = mkdtempSync(join(tmpdir(), 'loom-update-notices-'));
+  // Resolved, so a child's working directory compares equal where the temporary folder is a link, as on macOS.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-update-notices-')));
   roots.push(root);
   const home = join(root, 'home');
   const cacheHome = join(root, 'cache');
