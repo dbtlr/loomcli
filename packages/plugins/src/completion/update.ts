@@ -30,6 +30,7 @@ const none = 0;
 /** What an update does to one recorded line. */
 interface LineStep {
   readonly listed: readonly InstalledLine[];
+  readonly hold: readonly InstalledLine[];
   readonly release: readonly string[];
   readonly keep: readonly string[];
   readonly notices: readonly Notice[];
@@ -38,7 +39,14 @@ interface LineStep {
 }
 
 /** The step of a line an update drops, as one whose startup file is no longer a file. */
-const dropped: LineStep = { keep: [], listed: [], notices: [], release: [], steady: false };
+const dropped: LineStep = {
+  hold: [],
+  keep: [],
+  listed: [],
+  notices: [],
+  release: [],
+  steady: false,
+};
 
 /**
  * The step of a line whose text this version keeps: listed, so the module records it while the
@@ -50,14 +58,30 @@ function keptLine(recorded: StartupLine, platform: string): LineStep {
     return dropped;
   }
   if (judgement.holds === undefined) {
-    return { keep: [recorded.path], listed: [], notices: [], release: [], steady: true };
+    return { ...dropped, keep: [recorded.path], steady: true };
   }
-  return { keep: [], listed: [recorded], notices: [], release: [], steady: judgement.holds };
+  return { ...dropped, listed: [recorded], steady: judgement.holds };
+}
+
+/**
+ * The step of a changed line in a file the plugin cannot change: released with the line to remove
+ * and the line to add, or, when the file already holds the new line because the operator added it,
+ * released with the line to remove and the new line recorded as held in its place.
+ */
+function releasedLine(run: ChildRun, recorded: StartupLine, line: string): LineStep {
+  const { path } = recorded;
+  const removal = removeNotice(run, recorded);
+  const judgement = judgeStartup(path, line, run.host.platform);
+  if (judgement.kind !== 'not-file' && judgement.holds === true) {
+    return { ...dropped, hold: [{ line, path }], notices: [removal] };
+  }
+  const notices = [removal, { line, sentence: lines.addInPlace(path) }];
+  return { ...dropped, notices, release: [path] };
 }
 
 /**
  * The step of a line whose text this version changes: replaced where it stands, or, in a file the
- * plugin cannot change that holds it, released with the line to remove and the line to add.
+ * plugin cannot change that holds it, released.
  */
 function changedLine(run: ChildRun, recorded: StartupLine, line: string): LineStep {
   const judgement = judgeStartup(recorded.path, recorded.line, run.host.platform);
@@ -65,11 +89,7 @@ function changedLine(run: ChildRun, recorded: StartupLine, line: string): LineSt
     return dropped;
   }
   if (mustRelease(judgement)) {
-    const notices = [
-      removeNotice(run, recorded),
-      { line, sentence: lines.addInPlace(recorded.path) },
-    ];
-    return { ...dropped, notices, release: [recorded.path] };
+    return releasedLine(run, recorded, line);
   }
   return { ...dropped, listed: [{ line, path: recorded.path }] };
 }
@@ -107,6 +127,7 @@ function rewrite(
   const outcome = install({
     directoryMode,
     files: [scriptFile(script, content)],
+    hold: steps.flatMap((step) => step.hold),
     keep: steps.flatMap((step) => step.keep),
     lines: steps.flatMap((step) => step.listed),
     plugin: recordName(recorded.shell),

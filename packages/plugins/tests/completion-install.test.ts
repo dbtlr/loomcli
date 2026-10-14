@@ -849,6 +849,67 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
+  it('records the new line the operator added as held when install moves the script, so update keeps it and uninstall prints it', () => {
+    const box = sandbox();
+    const old = scripts.bash(box);
+    const startup = join(box.home, '.bashrc');
+    run(box, ['completion', 'install', 'bash']);
+    const moved = join(box.root, 'data2');
+    const script = join(moved, 'jsonkit', 'completion', 'jsonkit.bash');
+    const text = `${bashLine(old)}\n${bashLine(script)}\n`;
+    writeFileSync(startup, text);
+    chmodSync(startup, 0o444);
+    const installing = run(box, ['completion', 'install', 'bash'], {
+      env: { XDG_DATA_HOME: moved },
+    });
+    expect(installing.status).toBe(0);
+    expect(lines(installing.stderr)).toEqual([
+      `Installed the bash completion script in ${script}.`,
+      `Removed ${old}.`,
+      `${startup} already loads it.`,
+      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
+      'Open a new shell to use it.',
+    ]);
+    expect(installing.stdout).toBe(`${bashLine(old)}\n`);
+    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
+    const updating = run(box, ['completion', 'update']);
+    expect(updating.status).toBe(0);
+    expect(lines(updating.stderr)).toEqual([`${script} is unchanged.`]);
+    expect(updating.stdout).toBe('');
+    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
+    const removing = run(box, ['completion', 'uninstall']);
+    expect(removing.status).toBe(0);
+    expect(lines(removing.stderr)).toEqual([
+      `Removed ${script}.`,
+      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
+    ]);
+    expect(removing.stdout).toBe(`${bashLine(script)}\n`);
+    expect(readFileSync(startup, 'utf8')).toBe(text);
+  });
+
+  it('records nothing for the new line in a startup file it cannot read when install moves the script', () => {
+    const box = sandbox();
+    const old = scripts.bash(box);
+    const startup = join(box.home, '.bashrc');
+    run(box, ['completion', 'install', 'bash']);
+    const moved = join(box.root, 'data2');
+    const script = join(moved, 'jsonkit', 'completion', 'jsonkit.bash');
+    writeFileSync(startup, `${bashLine(old)}\n${bashLine(script)}\n`);
+    chmodSync(startup, 0o000);
+    const result = run(box, ['completion', 'install', 'bash'], { env: { XDG_DATA_HOME: moved } });
+    chmodSync(startup, 0o644);
+    expect(result.status).toBe(0);
+    expect(lines(result.stderr)).toEqual([
+      `Installed the bash completion script in ${script}.`,
+      `Removed ${old}.`,
+      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
+      `Add this line to ${startup} in its place:`,
+      'Open a new shell to use it.',
+    ]);
+    expect(result.stdout).toBe(`${bashLine(old)}\n${bashLine(script)}\n`);
+    expect(recorded(box, 'bash').lines).toEqual([]);
+  });
+
   it('keeps a line in a file whose encoding changed for update and install, and releases it on uninstall', () => {
     const box = sandbox();
     const script = scripts.bash(box);
@@ -994,6 +1055,28 @@ describe('update', () => {
     expect(readFileSync(script, 'utf8')).toBe(printed(box, 'bash'));
     expect(readFileSync(startup, 'utf8')).toBe(`old line ${marker}\n`);
     expect(recorded(box, 'bash').lines).toEqual([]);
+  });
+
+  it('records the new line the operator added to a read-only startup file as held when it releases the changed one', () => {
+    const box = sandbox();
+    const script = scripts.bash(box);
+    const startup = join(box.home, '.bashrc');
+    run(box, ['completion', 'install', 'bash']);
+    const text = `old line ${marker}\n${bashLine(script)}\n`;
+    writeFileSync(startup, text);
+    editRecord(box, 'bash', (file) => {
+      file.lines = [{ line: `old line ${marker}`, path: startup }];
+    });
+    chmodSync(startup, 0o444);
+    const result = run(box, ['completion', 'update']);
+    expect(result.status).toBe(0);
+    expect(lines(result.stderr)).toEqual([
+      `${script} is unchanged.`,
+      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
+    ]);
+    expect(result.stdout).toBe(`old line ${marker}\n`);
+    expect(readFileSync(startup, 'utf8')).toBe(text);
+    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
   });
 
   it('prints the nothing-to lines with nothing recorded', () => {

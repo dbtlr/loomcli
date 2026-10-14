@@ -1950,6 +1950,101 @@ test.each([
   },
 );
 
+test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  'a held line releases the line recorded for its startup file and is recorded as held, and the file is never written',
+  () => {
+    const box = homeBox();
+    const text = `a\n${loader}\n${newer}\n`;
+    writeFileSync(box.rc, text);
+    installedLines(box, [{ line: loader, path: box.rc }]);
+    chmodSync(box.rc, 0o444);
+    const before = statSync(box.rc);
+    try {
+      expect(installedLines(box, [], { hold: [{ line: newer, path: box.rc }] })).toEqual({
+        kept: [],
+        lines: linesOutcome({
+          held: [{ line: newer, path: box.rc }],
+          released: [{ line: loader, path: box.rc }],
+        }),
+        removed: [],
+        status: 'installed',
+        written: [],
+      });
+      const now = statSync(box.rc);
+      expect([now.ino, now.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+    } finally {
+      chmodSync(box.rc, 0o644);
+    }
+    expect(readFileSync(box.rc, 'utf8')).toBe(text);
+    expect(ownerText(box)).toBe(committedLines([], [[box.rc, newer]]));
+  },
+);
+
+test('a held line its startup file does not hold is never added and records nothing, while the recorded line is still released', () => {
+  const box = homeBox();
+  const text = `a\n${loader}\n`;
+  writeFileSync(box.rc, text);
+  installedLines(box, [{ line: loader, path: box.rc }]);
+  expect(installedLines(box, [], { hold: [{ line: newer, path: box.rc }] })).toEqual({
+    kept: [],
+    lines: linesOutcome({ released: [{ line: loader, path: box.rc }] }),
+    removed: [],
+    status: 'installed',
+    written: [],
+  });
+  expect(readFileSync(box.rc, 'utf8')).toBe(text);
+  expect(ownerText(box)).toBe(
+    `${JSON.stringify({ format: 1, state: 'committed', directories: [], files: [] })}\n`,
+  );
+});
+
+test('a held line equal to the recorded one stays recorded as held, with nothing released', () => {
+  const box = homeBox();
+  writeFileSync(box.rc, `${loader}\n`);
+  installedLines(box, [{ line: loader, path: box.rc }]);
+  expect(installedLines(box, [], { hold: [{ line: loader, path: box.rc }] })).toEqual({
+    kept: [],
+    lines: linesOutcome({ held: [{ line: loader, path: box.rc }] }),
+    removed: [],
+    status: 'installed',
+    written: [],
+  });
+  expect(ownerText(box)).toBe(committedLines([], [[box.rc, loader]]));
+});
+
+test.each([
+  [
+    'listed with a line too',
+    (box: HomeBox) => ({ hold: [box.rc], lines: [{ line: loader, path: box.rc }] }),
+    'is listed with a line too',
+  ],
+  ['released too', (box: HomeBox) => ({ hold: [box.rc], release: [box.rc] }), 'is released too'],
+  ['kept too', (box: HomeBox) => ({ hold: [box.rc], keep: [box.rc] }), 'is kept too'],
+  ['held twice', (box: HomeBox) => ({ hold: [box.rc, box.rc] }), 'is listed twice'],
+  ['not absolute', (_box: HomeBox) => ({ hold: ['.zshrc'] }), 'is not absolute'],
+])(
+  'a held path %s throws a TypeError before anything is read or written',
+  (_case, named, fault) => {
+    const box = homeBox();
+    const { hold, ...extra } = named(box);
+    const [path = ''] = hold.slice(-1);
+    const held = hold.map((heldPath) => ({ line: newer, path: heldPath }));
+    expect(() => installedLines(box, [], { ...extra, hold: held })).toThrow(
+      new TypeError(`Held startup file path "${path}" ${fault}.`),
+    );
+    expect(existsSync(box.record)).toBe(false);
+    expect(existsSync(box.rc)).toBe(false);
+  },
+);
+
+test('a held line holding a line break throws a TypeError before anything is read or written', () => {
+  const box = homeBox();
+  expect(() => installedLines(box, [], { hold: [{ line: `${newer}\n`, path: box.rc }] })).toThrow(
+    new TypeError(`Startup line for "${box.rc}" holds a line break.`),
+  );
+  expect(existsSync(box.record)).toBe(false);
+});
+
 // Reading startup lines
 
 test('reading a plugin file returns its recorded startup lines, and a pending one what its files hold', () => {

@@ -103,7 +103,7 @@ type InstallOutcome =
       readonly kept: readonly string[];
       /** Unrecorded folder paths the force mode took over; the member is absent when it took none. */
       readonly replaced?: readonly string[];
-      /** What happened to each startup line listed, recorded, or released; absent when there was none. */
+      /** What happened to each startup line listed, held, recorded, or released; absent when there was none. */
       readonly lines?: StartupLinesOutcome;
     };
 
@@ -144,10 +144,13 @@ interface UninstallRequest extends RecordRequest {
  * refusing. An update adds no recorded line its startup file no longer holds, and drops it from the
  * plugin's file. The directory mode is the permission bits of each directory the install creates,
  * whatever the umask. A kept startup file's recorded line stays recorded as it is, and its startup
- * file is neither read nor written, as for a file the plugin cannot read.
+ * file is neither read nor written, as for a file the plugin cannot read. A held line is one the
+ * plugin records in a startup file it cannot change: its file is read and never written, a recorded
+ * line of other text there is released, and the line is recorded as held when the file holds it.
  */
 interface InstallRequest extends UninstallRequest {
   readonly keep?: readonly string[];
+  readonly hold?: readonly InstalledLine[];
   readonly files: readonly InstalledFile[];
   readonly folders?: readonly InstalledFolder[];
   readonly force?: boolean;
@@ -416,11 +419,12 @@ function checkLineTexts(lines: readonly InstalledLine[]): void {
 }
 
 /**
- * Throws a TypeError for the first startup file path of a kind, released or kept, that conflicts
- * with a path the install names otherwise, or that is not absolute, not normalized, or named twice.
+ * Throws a TypeError for the first startup file path of a kind, released, kept, or held, that
+ * conflicts with a path the install names otherwise, or that is not absolute, not normalized, or
+ * named twice.
  */
 function checkNamedPaths(
-  label: 'Released' | 'Kept',
+  label: 'Released' | 'Kept' | 'Held',
   paths: readonly string[],
   conflict: (path: string) => string | undefined,
 ): void {
@@ -435,25 +439,39 @@ function checkNamedPaths(
 }
 
 /**
- * Throws a TypeError for the first released, then kept, startup file path that is not absolute,
- * not normalized, named twice, listed with a line in the same install, or kept and released both.
+ * Throws a TypeError for the first released, then kept, then held startup file path that is not
+ * absolute, not normalized, named twice, listed with a line in the same install, or named under two
+ * of the three kinds. A held line releases a recorded line of other text itself.
  */
 function checkStartupPaths(
-  { keep, release }: { readonly release: readonly string[]; readonly keep: readonly string[] },
+  {
+    hold,
+    keep,
+    release,
+  }: {
+    readonly release: readonly string[];
+    readonly keep: readonly string[];
+    readonly hold: readonly InstalledLine[];
+  },
   lines: readonly InstalledLine[],
 ): void {
   const listed = new Set(lines.map(({ path }) => path));
   const released = new Set(release);
+  const kept = new Set(keep);
   const withLine = (path: string) => (listed.has(path) ? 'is listed with a line too' : undefined);
+  const notReleased = (path: string) => (released.has(path) ? 'is released too' : withLine(path));
   checkNamedPaths('Released', release, withLine);
-  checkNamedPaths('Kept', keep, (path) =>
-    released.has(path) ? 'is released too' : withLine(path),
+  checkNamedPaths('Kept', keep, notReleased);
+  checkNamedPaths(
+    'Held',
+    hold.map(({ path }) => path),
+    (path) => (kept.has(path) ? 'is kept too' : notReleased(path)),
   );
 }
 
 /** The released startup file paths of an uninstall, after the checks above. */
 function releasedPaths(release: readonly string[]): ReadonlySet<string> {
-  checkStartupPaths({ keep: [], release }, []);
+  checkStartupPaths({ hold: [], keep: [], release }, []);
   return new Set(release);
 }
 
@@ -464,14 +482,15 @@ interface Targets {
   readonly lines: readonly InstalledLine[];
   readonly release: readonly string[];
   readonly keep: readonly string[];
+  readonly hold: readonly InstalledLine[];
 }
 
 /**
  * Throws a TypeError for the first target path, of a file, a folder, or a startup file, that is not
  * absolute, not normalized, or listed twice, for the first file of a folder whose path is not
- * relative and normalized, for the first startup line whose text is not one line, and for the
- * first released or kept path that breaks the same rules: a first-party plugin's bug, which the
- * module never repairs by normalizing or merging.
+ * relative and normalized, for the first startup line, listed or held, whose text is not one line,
+ * and for the first released, kept, or held path that breaks the same rules: a first-party
+ * plugin's bug, which the module never repairs by normalizing or merging.
  */
 function checkTargetPaths(targets: Targets): void {
   const listed = new Set<string>();
@@ -488,7 +507,7 @@ function checkTargetPaths(targets: Targets): void {
     listed.add(path);
   }
   targets.folders.forEach(checkFolderFilePaths);
-  checkLineTexts(targets.lines);
+  checkLineTexts([...targets.lines, ...targets.hold]);
   checkStartupPaths(targets, targets.lines);
 }
 
@@ -505,8 +524,8 @@ function checkTargetPaths(targets: Targets): void {
  * renames, and each recorded file the install no longer lists is removed when no one changed it,
  * and each recorded folder it no longer lists is removed whole.
  * Each listed startup line is added, recorded as held, or replaced where it stands, each recorded
- * line it no longer lists is removed, each released line is dropped, and each kept line stays
- * recorded, as Installed files states.
+ * line it no longer lists is removed, each released line is dropped, each kept line stays
+ * recorded, and each held line is recorded when its file holds it, as Installed files states.
  */
 function install(request: InstallRequest): InstallOutcome {
   const targets = targetsOf(request);
@@ -526,13 +545,14 @@ function targetsOf(request: InstallRequest): Targets {
   return {
     files: request.files,
     folders: request.folders ?? [],
+    hold: request.hold ?? [],
     keep: request.keep ?? [],
     lines: request.lines ?? [],
     release: request.release ?? [],
   };
 }
 
-/** What an install request lists, with its startup lines' releases, keeps, and update mark. */
+/** What an install request lists, with its startup lines' holds, releases, keeps, and update mark. */
 function listedOf(request: InstallRequest, targets: Targets): Listed {
   return {
     directoryMode: request.directoryMode,
@@ -540,6 +560,7 @@ function listedOf(request: InstallRequest, targets: Targets): Listed {
     folders: targets.folders,
     force: request.force === true,
     lines: {
+      hold: targets.hold,
       keep: new Set(targets.keep),
       lines: targets.lines,
       release: new Set(targets.release),
@@ -626,7 +647,7 @@ function writeTargets(plan: InstallPlan, listed: Listed): void {
   plan.lines.forEach(applyLine);
 }
 
-/** The startup lines' outcome member, absent when no line was listed, recorded, or released. */
+/** The startup lines' outcome member, absent when no line was listed, held, recorded, or released. */
 function linesMember(actions: readonly LineAction[]): { readonly lines?: StartupLinesOutcome } {
   return actions.length === EMPTY ? {} : { lines: outcomeOf(actions) };
 }
