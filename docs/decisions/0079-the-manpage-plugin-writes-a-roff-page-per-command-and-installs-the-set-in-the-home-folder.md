@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0079 - The manpage plugin writes a roff page per Command and installs the set in the home folder
 description: The manpage plugin contributes manpage generate, install, update, and uninstall. It writes one section-1 roff page for the root and each Command that is neither hidden nor under a hidden Command, named like git's pages, from the graph and the help and configuration values each Command carries, with no date and no host fact, so a graph gives the same bytes everywhere. Details render from help's Markdown parser in roff's own way, filled by man. generate writes the set to a folder for a packager and records nothing; install writes it to ~/.local/share/man/man1, which man finds when ~/.local/bin is on PATH, through the installation record under ADR-0071 as written, and advises on MANPATH when man will not find it. refreshManpages refreshes after a self-update.
-status: proposed
+status: accepted
 created: 2026-10-13
-modified: 2026-10-13
+modified: 2026-10-14
 ---
 
 # ADR-0079 - The manpage plugin writes a roff page per Command and installs the set in the home folder
@@ -53,7 +53,7 @@ The contract and its acceptance are in [Man pages](../core.md#man-pages).
 
 ## Status
 
-Proposed with the man pages contract. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.12.0.
 
 ## Changelog
 

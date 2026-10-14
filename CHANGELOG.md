@@ -6,6 +6,85 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.12.0 - 2026-10-14
+
+0.12.0 lets a Loom application put its own files on an operator's machine: shell completion, man pages, and agent skills. Each installer records what it wrote in the installation record 0.11.0 introduced. It refuses to overwrite a file it did not write, and `update` refreshes the files after a self-update.
+
+The completion plugin now installs its script for Bash, Zsh, Fish, or PowerShell and adds the line that loads it to the shell's startup file. The new manpage plugin writes one roff page for each Command, either into a folder for packagers or into the home folder where `man` finds it. The new skills plugin installs an application's agent skills for Claude Code and for the shared agents folder that Codex reads. Help details are now Markdown, written inline or imported from a file, and the man pages render the same text.
+
+A script-installed binary also learns when a newer release is out. The self-update plugin prints one notice after a run at a terminal and reads the answer from a cache that a detached copy of the application refreshes about once a day, so no run waits on the network.
+
+Pin `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, and `@loomcli/loom` to `0.12.0`. The one migration concerns update notices: they are on by default, and an application that wants no notices passes `selfUpdate({ notices: false })`.
+
+### Breaking Changes
+
+- Change `selfUpdate()` to turn update notices on unless the application passes `notices: false`. An application that installs the self-update plugin and upgrades unchanged now prints a notice after a run at a terminal when a newer release exists on the binary's channel, and about once a day starts a detached copy of itself that asks the binary's GitHub repository for its newest release. See [Update notices](docs/core.md#update-notices).
+
+### Migration
+
+**Affected surface.** Applications that install `selfUpdate()` from `@loomcli/plugins/self-update` and ship a script-installed release binary. A source build, and a binary another installer placed, print no notice and start no lookup.
+
+**Why.** An operator should learn that a newer release exists without running `self-update --check`, so the plugin tells them unless the author or the operator turns it off.
+
+**Before and after.**
+
+Before, an application that wants no notices and no daily lookup:
+
+```ts
+selfUpdate();
+```
+
+After:
+
+```ts
+selfUpdate({ notices: false });
+```
+
+**Steps.**
+
+1. Decide whether the application should print update notices. To keep them, change nothing.
+2. To keep the earlier behavior, pass `notices: false` to each `selfUpdate()` call. The plugin then declares no notice middleware, reads no cache, and starts no lookup.
+3. To let operators turn notices off through a variable of the application's own beside `NO_UPDATE_NOTIFIER`, pass `notices: { env: 'NAME' }` instead.
+
+**Validation.** Run a script-installed release binary at a terminal with an empty cache directory. With `notices: false`, no `update.json` appears in the application's cache directory and no notice prints. Run the application's tests to confirm `selfUpdate()` accepts the setting.
+
+### Features
+
+- Add the skills plugin, `skills({ skills })` from `@loomcli/plugins/skills`, which installs an application's agent skills where coding agents read them. It contributes `skills install`, `skills update`, and `skills uninstall`. See [Skills](docs/core.md#skills).
+  - Each `Skill` is a `name` and a `files` function that returns the skill's files, each a relative `path` and its `content` as text or bytes, optionally `executable`. The function runs only when a `skills` Command runs, so every other run of the application loads no skill bytes. A name outside lowercase letters, digits, and single hyphens (64 characters at most), a repeated name, and a `files` that is not a function each throw `@loomcli/plugins/skills/settings` at the call. A loader whose result is not a list of files, lists a path that is not a plain relative path or lists one twice, or lists no `SKILL.md` throws `@loomcli/plugins/skills/files` when a child runs, before anything is written.
+  - `--agent claude` writes `<home>/.claude/skills/<name>/`, or `$CLAUDE_CONFIG_DIR/skills/<name>/` when that variable is an absolute path. `--agent agents` writes `<home>/.agents/skills/<name>/`, which Codex and other agents read. With no `--agent`, a child acts on both, and once when a link makes both skills directories one folder. Files are written with mode 755 when `executable` and 644 otherwise, whatever the umask.
+  - A skill's folder is replaced whole by every install and update, so a new version may restructure its files, and a file a newer version dropped does not survive. A global install lists each folder in its own file in the installation record, `skills.claude.json` or `skills.agents.json`, and an uninstall removes every recorded folder whatever someone changed inside it. A folder the record does not list refuses `install` and `update` for every target, writing nothing, unless the operator passes `install --force`, which replaces it and states each folder it took over.
+  - `install --project` copies the skills into the repository, to `.claude/skills/` and `.agents/skills/` at the nearest directory holding `.git`, starting from the working directory or from `-C, --directory`, and records nothing. A project folder that is a target's global folder refuses.
+  - `update` brings the targets whose record lists folders up to date, removing the folder of a skill the application stopped declaring, and never touches a project copy.
+  - `refreshSkills` is an `afterReplace` function for `selfUpdate({ afterReplace: refreshSkills })`. It runs the replaced binary's path with `skills update`, so the new version's skills are written, and passes the child's output through. A child that fails or cannot start adds a `warn` log event and resolves, because the binary update succeeded.
+  - The pack exports the `Skill`, `SkillFile`, `SkillsSettings`, and `RefreshContext` types.
+
+- Add [Markdown Details](docs/core.md#markdown-details) to extended help, with paragraphs, headings, lists, code, quotes, emphasis, and links. Allow blank lines and text imports while keeping the Markdown source unchanged in the manifest. Existing details are now read as Markdown, so plain-text uses of lines starting with `- `, words between asterisks, and backslashes before punctuation render, and whitespace at either end of a line is trimmed.
+
+- Add the manpage plugin, `manpage()` from `@loomcli/plugins/manpage`, which writes one section-1 man page for the root and each Command that is neither hidden nor under a hidden Command, and installs the set where `man` finds it. It contributes `manpage generate --out <folder>`, `manpage install`, `manpage update`, and `manpage uninstall`. See [Man pages](docs/core.md#man-pages).
+  - A page is named like git's, `<name>-<command>-<subcommand>`, and holds NAME, SYNOPSIS from help's usage forms, DESCRIPTION from the Command's Markdown `details`, the Command sections, ARGUMENTS, and the option sections in help's order, EXAMPLES, ENVIRONMENT, and SEE ALSO. Global options appear on the root page alone. Each option's entry names its environment variable and its configuration key. The page reads the help and configuration values each Command carries whether or not those plugins are installed.
+  - A page is ASCII roff with an empty date and no host fact, so a graph gives the same bytes on every host and through `generate` and `install` alike.
+  - `generate` writes the set into a folder, creating it with mode 755, each page with mode 644, and records nothing, so a packager runs it on any platform.
+  - `install` writes `~/.local/share/man/man1`, records each page by its digest in the installation record's `manpage.json`, refuses a file it did not write or a page someone changed, and prints a line that sets `MANPATH` when `man` will not find the folder. `update` refreshes the recorded folder, and `uninstall` removes the unchanged pages. On Windows, `install` refuses and points at `generate`.
+  - Two Commands whose page names are equal without ASCII case fail every build under `@loomcli/plugins/manpage/page-name-taken`, because a file system that ignores case holds them as one file.
+  - `refreshManpages` is an `afterReplace` function for `selfUpdate({ afterReplace: refreshManpages })`. It runs the replaced binary with `manpage update`, and a child that fails or cannot start adds a `warn` log event and resolves. The pack exports `RefreshContext` from `@loomcli/plugins/manpage` as the same declaration `@loomcli/plugins/skills` exports.
+
+- Add `completion install`, `completion update`, and `completion uninstall` to the completion plugin, so an operator installs shell completion with one command. See [Installing completion](docs/core.md#installing-completion).
+  - `install [shell]` writes the script for `bash`, `zsh`, `fish`, `powershell`, or `pwsh` to a file and, for every shell but Fish, adds one line that loads it to the shell's startup file. With no shell it follows `SHELL`, and on Windows it picks `pwsh` or `powershell` from `PSModulePath`. Bash and Zsh scripts go under `XDG_DATA_HOME`, Fish's under `XDG_CONFIG_HOME/fish/completions`, and the PowerShell line goes into the profile PowerShell reports.
+  - Each shell's script and line are recorded in the installation record as `completion.<shell>.json`. An install refuses a file at the script's path that it did not write, or a script someone changed since, and changes nothing.
+  - A startup file the process cannot change, such as one a read-only home configuration manager links, or a PowerShell execution policy of `Restricted` or `AllSigned`, keeps the script installed and prints the line for the operator to add or remove by hand.
+  - `update` rewrites every recorded script at its recorded path and replaces a recorded line whose text changed where it stands. `uninstall [shell]` removes the recorded scripts and lines, or every installed shell's when no shell is named.
+  - The `completion` group's description is now `Print or install a shell completion script.`
+- Add `completion powershell`, which prints a PowerShell completion script for Windows PowerShell 5.1 and PowerShell 7. Like the Bash, Zsh, and Fish scripts, it is ported from Cobra's, calls the program with each typed word as one exact argument, and never evaluates what was typed.
+- Add `refreshCompletion`, an `afterReplace` function for `selfUpdate({ afterReplace: refreshCompletion })`. It runs the replaced binary with `completion update`, so a self-update keeps installed scripts current. A child that fails or cannot start adds a `warn` log event and resolves. `@loomcli/plugins/completion` also exports the `RefreshContext` type, the same declaration `@loomcli/plugins/skills` exports.
+
+- Add update notices to the self-update plugin. After the action of a run at a terminal, a script-installed release binary prints `notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.` through `out.info` when its cache names a newer release on the running binary's channel. See [Update notices](docs/core.md#update-notices).
+  - The run reads `update.json` in the application's cache directory and never waits on the network. A cache older than 24 hours, missing, or damaged is refreshed by a detached copy of the application, `self-update --refresh-notice`, started through `host.program`, so a slow or failing network costs one lookup a day. Its faults are silent and never change the exit code.
+  - No notice prints, and no lookup starts, for a failed or cancelled run, `self-update` itself, a stdout or stderr that is not a terminal, `CI`, a source build, or a binary another installer placed.
+  - Turn notices off with `selfUpdate({ notices: false })`, or name a variable of the application's own with `selfUpdate({ notices: { env: 'NOTES_NO_UPDATE_NOTICE' } })`. An operator turns them off by setting `NO_UPDATE_NOTIFIER` to a value that is not empty. A `notices` that is not `true`, `false`, or an object, and an `env` that is not an environment variable name, throw `@loomcli/plugins/self-update/settings` at the call.
+  - The pack exports the `NoticeSettings` type.
+- Add the `cache` kind to `applicationDirectory`. `applicationDirectory('cache', name, host)` resolves `$XDG_CACHE_HOME/<app>/`, or `$HOME/.cache/<app>/` for an unset, empty, or relative `XDG_CACHE_HOME`, `$HOME/Library/Caches/<app>/` on macOS, and `%LOCALAPPDATA%\<app>\Cache\` on Windows. See [Installation record](docs/core.md#installation-record).
+
 ## v0.11.0 - 2026-10-13
 
 0.11.0 gives a Loom application the pieces it needs to live on an operator's machine: it can log, install, update itself, and run as a service.

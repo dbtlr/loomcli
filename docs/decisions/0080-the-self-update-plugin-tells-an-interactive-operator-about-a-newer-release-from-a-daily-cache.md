@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0080 - The self-update plugin tells an interactive operator about a newer release from a daily cache
 description: The self-update plugin gains update notices. After the action of a run at a terminal, its middleware reads a cache file and prints one out.info line when the cache names a newer release on the running binary's release channel. A cache older than a day is refreshed by a detached copy of the application, started through host.program and the hidden self-update --refresh-notice, which the run never waits for, so no run waits on the network. The cache lives in a new cache kind of applicationDirectory. The author turns notices off with notices false or names an extra variable, and the operator sets NO_UPDATE_NOTIFIER.
-status: proposed
+status: accepted
 created: 2026-10-14
 modified: 2026-10-14
 ---
@@ -48,7 +48,7 @@ The self-update plugin contributes a middleware and a hidden option on its Comma
 
 ## Status
 
-Proposed with the update notices contract. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.12.0.
 
 ## Changelog
 
