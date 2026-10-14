@@ -67,7 +67,7 @@ const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-ta
 /** A self-update plugin setting that is not one it accepts. */
 const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`, {
   explanation:
-    'The self-update plugin calls afterReplace once it has replaced the binary and rewritten its installation record, so afterReplace is a function.',
+    'The self-update plugin calls afterReplace once it has replaced the binary and rewritten its installation record, so afterReplace is a function, and notices is true, false, or an object whose env names the environment variable that turns update notices off.',
   headline: 'Invalid self-update setting',
 });
 

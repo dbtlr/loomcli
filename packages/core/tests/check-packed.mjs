@@ -587,11 +587,13 @@ try {
       `${name}: packed man pages`,
     );
   }
-  // The packed resolver gives the state directory row and names a relative HOME the darwin row needs.
+  // The packed resolver gives the state and cache rows and names the relative HOME darwin needs.
   const directories = `${JSON.stringify([
     { path: join('/state', 'notes', 'installation') },
     { variable: 'HOME' },
     { path: join('/state', 'notes') },
+    { variable: 'HOME' },
+    { path: join('/cache', 'notes') },
     { variable: 'HOME' },
   ])}\n`;
   for (const name of selected) {
@@ -750,7 +752,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation and log directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

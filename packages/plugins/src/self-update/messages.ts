@@ -12,6 +12,10 @@ function fatal(sentence: string, cause?: unknown): FatalError {
 }
 
 const refusals = {
+  cache: (name: string, variable: string) =>
+    fatal(
+      `${name} cannot find its cache directory because ${variable} is not an absolute path. Set ${variable} to an absolute path.`,
+    ),
   changed: (name: string, path: string) =>
     fatal(
       `${name} at ${shown(path)} changed since it was installed, so self-update will not replace it. Install it again with install.sh.`,
@@ -63,6 +67,11 @@ function requestFailed(name: string, failure: RequestError, named: string | unde
 }
 
 const failures = {
+  cache: (name: string, directory: string, cause: unknown) =>
+    fatal(
+      `${name} could not write its update cache to ${shown(directory)}. Free space there or check its permissions, then run self-update --refresh-notice again.`,
+      cause,
+    ),
   conflict: (asset: string, tag: string, repository: string) =>
     fatal(
       `Release ${shown(tag)} of ${shown(repository)} lists ${shown(asset)} twice in its SHA256SUMS with different digests. Run self-update again once the release is fixed.`,

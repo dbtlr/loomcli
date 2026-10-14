@@ -13,20 +13,18 @@ import { z } from 'zod';
 
 import { packageName } from '../constants.js';
 import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
+import { isPlainObject } from '../plain-data.js';
 import { selfUpdateSettings } from '../rules.js';
+import { releaseBinary } from './binary.js';
+import type { ReleaseBinary } from './binary.js';
 import { failures, refusals, requestFailed, shown } from './messages.js';
 import { unwritable } from './place.js';
+import { refreshNotice } from './refresh.js';
 import { fetchBytes, RequestError } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
-import {
-  compareVersions,
-  equalPrecedence,
-  isChannelName,
-  parseVersion,
-  versionOfArgument,
-} from './version.js';
+import { compareVersions, equalPrecedence, isChannelName, versionOfArgument } from './version.js';
 import type { Version } from './version.js';
 
 const identity = `${packageName}/self-update`;
@@ -50,23 +48,77 @@ interface AfterReplaceContext {
   readonly log: Log;
 }
 
+/** How the author tunes update notices beside turning them on or off. */
+interface NoticeSettings {
+  /** A variable that turns notices off when it is set and not empty, beside NO_UPDATE_NOTIFIER. */
+  readonly env?: string;
+}
+
 /** What the application tells the self-update plugin. */
 interface SelfUpdateSettings {
   /** Called once after the binary is replaced and the record rewritten. */
   readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+  /** Update notices: on unless false. */
+  readonly notices?: boolean | NoticeSettings;
 }
 
-/** Judges the one key, after core's rules for any plugin's settings, at the `selfUpdate()` call. */
+/** An environment variable's name, the grammar of an input's environment binding. */
+const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
+/** What one settings fault says: the key the finding marks, the fault, and its correction. */
+interface SettingsFault {
+  readonly key: string;
+  readonly fault: string;
+  readonly correction: string;
+}
+
+/** The settings fault `selfUpdate()` throws at its call. */
+function settingsFault(
+  settings: SelfUpdateSettings | undefined,
+  { correction, fault, key }: SettingsFault,
+): DeclarationError {
+  return new DeclarationError(selfUpdateSettings, {
+    correction,
+    findings: [{ arguments: [settings], call: 'selfUpdate', mark: `0.${key}` }],
+    sentence: `Plugin "${identity}" setting "${key}" ${fault}`,
+  });
+}
+
+/** Judges `notices`: `true`, `false`, or a plain object whose `env` names a variable when present. */
+function judgeNotices(settings: SelfUpdateSettings | undefined): void {
+  const notices: unknown = settings?.notices;
+  if (notices === undefined || typeof notices === 'boolean') {
+    return;
+  }
+  if (!isPlainObject(notices)) {
+    throw settingsFault(settings, {
+      correction: 'Supply true, false, or { env }, or omit the setting.',
+      fault: 'is not a Boolean or an object.',
+      key: 'notices',
+    });
+  }
+  const { env } = notices;
+  if (env !== undefined && !(typeof env === 'string' && variableName.test(env))) {
+    throw settingsFault(settings, {
+      correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
+      fault: 'is not an environment variable name.',
+      key: 'notices.env',
+    });
+  }
+}
+
+/** Judges each key, after core's rules for any plugin's settings, at the `selfUpdate()` call. */
 function judgeSettings(settings: SelfUpdateSettings | undefined): void {
   checkPluginSettings(settings, { call: 'selfUpdate', plugin: identity });
   const afterReplace: unknown = settings?.afterReplace;
   if (afterReplace !== undefined && typeof afterReplace !== 'function') {
-    throw new DeclarationError(selfUpdateSettings, {
+    throw settingsFault(settings, {
       correction: 'Supply a function, or omit the setting.',
-      findings: [{ arguments: [settings], call: 'selfUpdate', mark: '0.afterReplace' }],
-      sentence: `Plugin "${identity}" setting "afterReplace" is not a function.`,
+      fault: 'is not a function.',
+      key: 'afterReplace',
     });
   }
+  judgeNotices(settings);
 }
 
 const versionInput = z.string().refine((text) => versionOfArgument(text) !== undefined, {
@@ -78,11 +130,7 @@ const channelInput = z.string().refine(isChannelName, {
 });
 
 /** What a run checked before any request: the binary to replace and where its record lives. */
-interface Checked {
-  readonly asset: string;
-  readonly repository: string;
-  readonly running: Version;
-  readonly channel: string;
+interface Checked extends ReleaseBinary {
   readonly path: string;
   readonly mode: number;
   readonly record: string;
@@ -138,24 +186,15 @@ function requireWritable(name: string, path: string, record: string): void {
  * process cannot write to.
  */
 function check(name: string, host: Host): Checked {
-  const { release } = host.release;
-  const running = release === undefined ? undefined : parseVersion(release.version);
-  if (release?.asset === undefined || running === undefined) {
+  const binary = releaseBinary(host);
+  if (binary === undefined) {
     throw refusals.notBuilt(name);
   }
   const record = recordDirectory(name, host);
   const installation = scriptInstallation(name, host.release.installation);
   const mode = intactMode(name, installation);
   requireWritable(name, installation.path, record);
-  return {
-    asset: release.asset,
-    channel: release.channel,
-    mode,
-    path: installation.path,
-    record,
-    repository: release.repository,
-    running,
-  };
+  return { ...binary, mode, path: installation.path, record };
 }
 
 /** What finding the release to install needs. */
@@ -424,6 +463,47 @@ async function update(request: Request, settings: SelfUpdateSettings | undefined
   });
 }
 
+/** The inputs that may not be given together. */
+interface Given {
+  readonly version: string | undefined;
+  readonly channel: string | undefined;
+  readonly checkOnly: boolean;
+  readonly refreshing: boolean;
+}
+
+/** The usage error for an option given beside an input it cannot be given with. */
+function conflict(option: string, sentence: string, correction: string): InputError {
+  return new InputError(`${sentence} ${correction}`, [
+    {
+      input: { global: false, kind: 'option', name: option },
+      issues: [{ message: correction }],
+      reason: 'invalid',
+      spelling: `--${option}`,
+    },
+  ]);
+}
+
+/**
+ * Throws the usage error for inputs given together that cannot be: `--refresh-notice` beside any
+ * other input, then `--channel` beside a version.
+ */
+function refuseConflicts({ channel, checkOnly, refreshing, version }: Given): void {
+  if (refreshing && (version !== undefined || channel !== undefined || checkOnly)) {
+    throw conflict(
+      'refresh-notice',
+      'Option "--refresh-notice" cannot be given with other inputs.',
+      'Leave out the other inputs.',
+    );
+  }
+  if (channel !== undefined && version !== undefined) {
+    throw conflict(
+      'channel',
+      'Option "--channel" cannot be given with a version.',
+      'Leave out --channel, or the version.',
+    );
+  }
+}
+
 /** The `self-update` Command, its action calling `afterReplace` from the settings. */
 function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
   return new Command('self-update', {
@@ -442,20 +522,24 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
       description: 'Report what an update would do and replace nothing.',
       type: 'boolean',
     })
+    .option('refresh-notice', {
+      description: "Refresh the update notices' cache.",
+      hidden: true,
+      type: 'boolean',
+    })
     .action(async ({ args, graph, host, log, options, out, signal }) => {
-      if (options.channel !== undefined && args.version !== undefined) {
-        const message =
-          'Option "--channel" cannot be given with a version. Leave out --channel, or the version.';
-        throw new InputError(message, [
-          {
-            input: { global: false, kind: 'option', name: 'channel' },
-            issues: [{ message: 'Leave out --channel, or the version.' }],
-            reason: 'invalid',
-            spelling: '--channel',
-          },
-        ]);
-      }
+      const refreshing = options['refresh-notice'];
+      refuseConflicts({
+        channel: options.channel,
+        checkOnly: options.check,
+        refreshing,
+        version: args.version,
+      });
       try {
+        if (refreshing) {
+          await refreshNotice({ host, name: graph.name, signal });
+          return;
+        }
         await update(
           {
             channel: options.channel,
@@ -483,15 +567,37 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
     });
 }
 
+/** The author's variable that turns notices off, when `notices` names one. */
+function noticeOptOut(notices: boolean | NoticeSettings): string | undefined {
+  return typeof notices === 'object' ? notices.env : undefined;
+}
+
 /**
  * A plugin that replaces the running binary with a verified release from the application's GitHub
- * repository, only when the installer script placed it and nothing has changed it since. Its whole
- * contribution is the `self-update` Command.
+ * repository, only when the installer script placed it and nothing has changed it since. It
+ * contributes the `self-update` Command and, unless `notices` is `false`, the update notices'
+ * middleware, whose module loads only when a run reaches it. The annotated return type is the
+ * boundary that breaks the cycle between this module and the middleware module `load` names.
  */
 function selfUpdate(settings?: SelfUpdateSettings): Plugin {
   judgeSettings(settings);
-  return plugin(identity, { commands: [selfUpdateCommand(settings)] });
+  const notices = settings?.notices ?? true;
+  const commands = [selfUpdateCommand(settings)];
+  if (notices === false) {
+    return plugin(identity, { commands });
+  }
+  const optOut = noticeOptOut(notices);
+  return plugin(identity, {
+    commands,
+    middleware: {
+      activate: 'always',
+      load: async () => {
+        const { noticeMiddleware } = await import('./notices.js');
+        return { default: noticeMiddleware(optOut) };
+      },
+    },
+  });
 }
 
-export type { AfterReplaceContext, SelfUpdateSettings };
+export type { AfterReplaceContext, NoticeSettings, SelfUpdateSettings };
 export { selfUpdate };
