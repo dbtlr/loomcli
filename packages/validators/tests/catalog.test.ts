@@ -10,6 +10,7 @@ test('the root export holds the eleven factories, createValidator, issueCode, an
     'dateTime',
     'dateTimeIssue',
     'duration',
+    'durationCapitalMIssue',
     'durationIssue',
     'durationMaxIssue',
     'durationMinIssue',
@@ -110,7 +111,7 @@ test.each([
   [
     'duration',
     catalog.duration(),
-    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)|(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ms|s|m|h|d|w))+)$"}`,
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^\\s*(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:\\s*(?:minutes|seconds|minute|second|hours|weeks|days|hour|msec|week|day|min|sec|hr|ms|d|h|m|s|w)(?:\\s*(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)\\s*(?:minutes|seconds|minute|second|hours|weeks|days|hour|msec|week|day|min|sec|hr|ms|d|h|m|s|w))*)?\\s*$"}`,
   ],
   [
     'path',

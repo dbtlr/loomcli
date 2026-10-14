@@ -1,14 +1,19 @@
 import { boundsIssue, withinBounds } from './bounds.js';
 import type { Bounds } from './bounds.js';
-import { durationCodes } from './codes.js';
+import { durationCapitalMIssue, durationCodes } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
-import { durationPattern, formatDuration, readDuration } from './duration-grammar.js';
+import {
+  durationPattern,
+  formatDuration,
+  readDuration,
+  spellsMinutesAsCapitalM,
+} from './duration-grammar.js';
 import { fault, readOptions } from './faults.js';
 import { reject } from './issues.js';
 import { boundsOrder, boundValue } from './rules.js';
 
-/** Inclusive bounds, each a duration spelled in the operator's grammar, such as `30` or `24h`. */
+/** Inclusive bounds, each a duration spelled in the operator's grammar, such as `30`, `24h`, or `1 day`. */
 interface DurationOptions {
   min?: string;
   max?: string;
@@ -55,16 +60,20 @@ function readDurationBounds(options: unknown): Bounds {
 
 /**
  * A length of time in the operator's grammar, output as a number of milliseconds within `min` and
- * `max`, both inclusive. A bare number counts seconds, and a unit is `ms`, `s`, `m`, `h`, `d`, or
- * `w`.
+ * `max`, both inclusive. A bare number counts seconds, and a unit is a systemd.time(7) spelling
+ * such as `ms`, `sec`, `min`, `hr`, `day`, or `weeks`. Whitespace may separate the parts.
  */
 function duration(options?: DurationOptions): Validator<number> {
   const bounds = readDurationBounds(options);
   const issue = boundsIssue(durationCodes, bounds);
+  const capitalMIssue = durationCapitalMIssue.issue({});
   return createValidator({
     inputSchema: { type: 'string', pattern: durationPattern },
     parse: (raw): ParseResult<number> => {
       const value = readDuration(raw);
+      if (value === undefined && spellsMinutesAsCapitalM(raw)) {
+        return reject(capitalMIssue);
+      }
       return value !== undefined && withinBounds(value, bounds) ? { value } : reject(issue);
     },
   });

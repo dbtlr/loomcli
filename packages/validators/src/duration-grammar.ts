@@ -1,19 +1,37 @@
 import { day, hour, millisecond, minute, second, week } from './time-units.js';
 
 /**
- * The operator's duration grammar: Go's `time.ParseDuration` without a sign, plus `d` and `w`.
- * A token is a sequence of decimal numbers each followed by a unit, in any order and repeatable,
- * or one bare number, which counts seconds. Units are lowercase and no space separates anything.
+ * The operator's duration grammar: systemd.time(7) spans without a sign. A token is a sequence of
+ * decimal numbers each followed by a unit, in any order and repeatable, or one bare number, which
+ * counts seconds. Whitespace may sit around the token, between a number and its unit, and between
+ * parts. Units are lowercase, and months and years are left out because they have no fixed length.
  */
 
 const none = 0;
 
-/** Each unit's spelling and length in milliseconds. */
+/**
+ * Each unit's spelling and length in milliseconds. A spelling comes after any longer spelling it
+ * begins, so the pattern built from this order matches greedily.
+ */
 const unitLengths: ReadonlyMap<string, number> = new Map([
+  ['minutes', minute],
+  ['seconds', second],
+  ['minute', minute],
+  ['second', second],
+  ['hours', hour],
+  ['weeks', week],
+  ['days', day],
+  ['hour', hour],
+  ['msec', millisecond],
+  ['week', week],
+  ['day', day],
+  ['min', minute],
+  ['sec', second],
+  ['hr', hour],
+  ['ms', millisecond],
   ['d', day],
   ['h', hour],
   ['m', minute],
-  ['ms', millisecond],
   ['s', second],
   ['w', week],
 ]);
@@ -29,17 +47,29 @@ const printedUnits: readonly (readonly [string, number])[] = [
 
 const decimal = String.raw`(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)`;
 
-/** The unit alternatives, with `ms` before `m` and `s` so a match prefers the longer spelling. */
-const unit = '(?:ms|s|m|h|d|w)';
+const space = String.raw`\s*`;
+
+const unitSpellings = [...unitLengths.keys()];
+
+const unit = `(?:${unitSpellings.join('|')})`;
+
+/** The grammar as one pattern whose units are the given alternatives. */
+function grammarOf(units: string): string {
+  const part = `${decimal}${space}${units}`;
+  return `^${space}${decimal}(?:${space}${units}(?:${space}${part})*)?${space}$`;
+}
 
 /** The pattern the validator publishes, which is the grammar whole. */
-const durationPattern = `^(?:${decimal}|(?:${decimal}${unit})+)$`;
+const durationPattern = grammarOf(unit);
 
 const grammar = new RegExp(durationPattern, 'u');
 
-const component = new RegExp(`(?<number>${decimal})(?<unit>${unit})`, 'uy');
+/** The grammar with a capital `M` as one more unit, which tells a token that only misspells minutes. */
+const grammarWithCapitalM = new RegExp(grammarOf(`(?:M|${unitSpellings.join('|')})`), 'u');
 
-const bareNumber = new RegExp(`^${decimal}$`, 'u');
+const component = new RegExp(`${space}(?<number>${decimal})${space}(?<unit>${unit})`, 'uy');
+
+const bareNumber = new RegExp(`^${space}${decimal}${space}$`, 'u');
 
 const radix = 10;
 
@@ -62,7 +92,7 @@ function readDuration(raw: string): number | undefined {
   }
   let total = none;
   if (bareNumber.test(raw)) {
-    total = scaled(raw, second);
+    total = scaled(raw.trim(), second);
   } else {
     component.lastIndex = none;
     for (let found = component.exec(raw); found !== null; found = component.exec(raw)) {
@@ -73,6 +103,11 @@ function readDuration(raw: string): number | undefined {
     }
   }
   return Number.isFinite(total) && total <= Number.MAX_SAFE_INTEGER ? total : undefined;
+}
+
+/** Whether a token is a duration except that it spells minutes with a capital `M`. */
+function spellsMinutesAsCapitalM(raw: string): boolean {
+  return raw.includes('M') && grammarWithCapitalM.test(raw);
 }
 
 /**
@@ -103,4 +138,4 @@ function spelledIn(milliseconds: number): string {
   return printed;
 }
 
-export { durationPattern, formatDuration, readDuration };
+export { durationPattern, formatDuration, readDuration, spellsMinutesAsCapitalM };

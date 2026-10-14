@@ -147,6 +147,11 @@ const durationIssue = issueCode(catalogCode('duration'), {
   schema: noParams,
 });
 
+const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
+  message: () => 'Expected a duration; write minutes as m or min, because M is ambiguous.',
+  schema: noParams,
+});
+
 const durationRangeIssue = issueCode(catalogCode('duration-range'), {
   message: ({ max, min }) =>
     `Expected a duration from ${formatDuration(min)} through ${formatDuration(max)}.`,
@@ -225,6 +230,7 @@ const durationCodes: BoundCodes = {
 export {
   dateIssue,
   dateTimeIssue,
+  durationCapitalMIssue,
   durationCodes,
   durationIssue,
   durationMaxIssue,

@@ -198,11 +198,11 @@ dateTime(options?: { timeZone?: string }): Validator<Date>
 duration(options?: { min?: string; max?: string }): Validator<number>
 ```
 
-- **Accepts** Go's `time.ParseDuration` grammar without a sign, plus `d` and `w`: a sequence of decimal numbers, each followed by one of `ms`, `s`, `m`, `h`, `d`, or `w`, so `90s`, `2h30m`, `1.5h`, and `7d` pass. A number is digits with an optional fraction, so `.5s` and `1.s` pass. Units come in any order and may repeat, so `30m2h` is 2 hours 30 minutes and `1h1h` is 2 hours. A bare number with no unit counts seconds, so `30` is 30 seconds and `1.5` is 1500 milliseconds. Units are lowercase, nothing separates the parts, and a sign is rejected.
+- **Accepts** the span spellings of systemd.time(7) without a sign: a sequence of decimal numbers, each followed by a unit, so `90s`, `2h30m`, `1.5h`, `7d`, and `1 hour 30 min` pass. The units are `ms` and `msec`; `s`, `sec`, `second`, and `seconds`; `m`, `min`, `minute`, and `minutes`; `h`, `hr`, `hour`, and `hours`; `d`, `day`, and `days`; and `w`, `week`, and `weeks`. A number is digits with an optional fraction, so `.5s` and `1.s` pass. Units come in any order and may repeat, so `30m2h` is 2 hours 30 minutes and `1h1h` is 2 hours. A bare number with no unit counts seconds, so `30` is 30 seconds and `1.5` is 1500 milliseconds. Whitespace may sit between a number and its unit, between parts, and around the token, so `2 hours` and `90 sec` pass. Units are lowercase and a sign is rejected. A capital `M` is rejected with its own sentence, because systemd reads it as months; write `m` or `min`. Months and years (`month`, `year`, `y`, and their plurals) are rejected because they have no fixed length.
 - **Output** is the number of milliseconds. A token that sums beyond the safe integers is rejected.
-- **Bounds.** `min` and `max` are durations in the same grammar, such as `'30'` or `'24h'`, both inclusive.
+- **Bounds.** `min` and `max` are durations in the same grammar, such as `'30'`, `'24h'`, or `'1 day'`, both inclusive.
 - **Publishes** `{ type: 'string', pattern }`, the grammar whole. The bounds are not stated, because a pattern cannot carry them.
-- **Message.** `Expected a duration, such as 90s, 2h30m, or 1.5h.`, `Expected a duration from 30s through 1d.`, `Expected a duration of at least 30s.`, or `Expected a duration of at most 1d.` A bound prints in the grammar's largest units, so `24h` prints as `1d`.
+- **Message.** `Expected a duration, such as 90s, 2h30m, or 1.5h.`, `Expected a duration from 30s through 1d.`, `Expected a duration of at least 30s.`, or `Expected a duration of at most 1d.` A capital `M` earns `Expected a duration; write minutes as m or min, because M is ambiguous.` A bound prints in the grammar's largest units, so `24h` prints as `1d`.
 - **Faults.** A `min` or `max` that is not a string in the grammar, under `@loomcli/validators/bound-value`, and `min` above `max`.
 
 ### path
@@ -351,6 +351,7 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `date`              | `dateIssue`             | none                                        | `Expected a date as YYYY-MM-DD, such as 2026-09-25.`   |
 | `date-time`         | `dateTimeIssue`         | none                                        | `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.` |
 | `duration`          | `durationIssue`         | none                                        | `Expected a duration, such as 90s, 2h30m, or 1.5h.`    |
+| `duration-capital-m` | `durationCapitalMIssue` | none                                        | `Expected a duration; write minutes as m or min, because M is ambiguous.` |
 | `duration-range`    | `durationRangeIssue`    | `{ min: number; max: number }`              | `Expected a duration from {min} through {max}.`        |
 | `duration-min`      | `durationMinIssue`      | `{ min: number }`                           | `Expected a duration of at least {min}.`               |
 | `duration-max`      | `durationMaxIssue`      | `{ max: number }`                           | `Expected a duration of at most {max}.`                |

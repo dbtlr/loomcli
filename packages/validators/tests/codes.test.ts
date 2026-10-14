@@ -185,6 +185,14 @@ const rows: Row[] = [
     'Expected a duration, such as 90s, 2h30m, or 1.5h.',
   ],
   [
+    'duration-capital-m',
+    catalog.durationCapitalMIssue,
+    catalog.duration(),
+    '5M',
+    {},
+    'Expected a duration; write minutes as m or min, because M is ambiguous.',
+  ],
+  [
     'duration-range',
     catalog.durationRangeIssue,
     catalog.duration({ max: '24h', min: '30' }),
@@ -247,9 +255,9 @@ async function issueOf(validator: StandardSchemaV1<string, unknown>, token: stri
   return issue;
 }
 
-test('the catalog declares 28 codes, each a frozen descriptor under its export', () => {
-  expect(rows).toHaveLength(28);
-  expect(new Set(descriptors).size).toBe(28);
+test('the catalog declares 29 codes, each a frozen descriptor under its export', () => {
+  expect(rows).toHaveLength(29);
+  expect(new Set(descriptors).size).toBe(29);
   for (const [code, descriptor] of rows) {
     expect(descriptor.code).toBe(`${prefix}${code}`);
     expect(Object.isFrozen(descriptor)).toBe(true);

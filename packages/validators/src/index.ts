@@ -1,6 +1,7 @@
 export {
   dateIssue,
   dateTimeIssue,
+  durationCapitalMIssue,
   durationIssue,
   durationMaxIssue,
   durationMinIssue,
