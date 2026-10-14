@@ -387,4 +387,4 @@ The duration codes carry milliseconds, and their sentences print each count in t
 
 - `email` and a JSON validator. Every simple email rule rejects a real address somewhere, and a JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers and length, and a composition utility.
+- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers, durations, and length, and a composition utility.
