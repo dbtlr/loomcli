@@ -15,13 +15,14 @@ interface DateTimeOptions {
 const factory = 'dateTime';
 
 /**
- * The published pattern, which is looser than the validator: it admits both forms and states no
- * range. A `format: 'date-time'` would demand an offset the validator does not.
+ * The published pattern, which is looser than the validator: it admits both forms and every offset
+ * spelling and states no range. A `format: 'date-time'` would demand an offset the validator does
+ * not.
  */
-const layoutPattern = String.raw`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}:?[0-9]{2})?$`;
+const layoutPattern = String.raw`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}(?::?[0-9]{2})?)?$`;
 
 const layout =
-  /^(?<year>[0-9]{4})-(?<month>[0-9]{2})-(?<day>[0-9]{2})[Tt ](?<hour>[0-9]{2}):(?<minute>[0-9]{2})(?::(?<second>[0-9]{2})(?:\.(?<fraction>[0-9]+))?)?(?:(?<zulu>[Zz])|(?<sign>[+-])(?<offsetHour>[0-9]{2}):?(?<offsetMinute>[0-9]{2}))?$/u;
+  /^(?<year>[0-9]{4})-(?<month>[0-9]{2})-(?<day>[0-9]{2})[Tt ](?<hour>[0-9]{2}):(?<minute>[0-9]{2})(?::(?<second>[0-9]{2})(?:\.(?<fraction>[0-9]+))?)?(?:(?<zulu>[Zz])|(?<sign>[+-])(?<offsetHour>[0-9]{2})(?::?(?<offsetMinute>[0-9]{2}))?)?$/u;
 
 const none = 0;
 const january = 1;
@@ -67,7 +68,7 @@ function wallTime(groups: Groups): number | undefined {
 
 /**
  * The offset the token names in milliseconds, zero for `Z`, undefined when it names none, and
- * `invalid` when its hour or minute is out of range.
+ * `invalid` when its hour or minute is out of range. A missing minute, as in `+05`, counts as zero.
  */
 function offsetOf(groups: Groups): number | undefined | 'invalid' {
   if (groups.zulu !== undefined) {
