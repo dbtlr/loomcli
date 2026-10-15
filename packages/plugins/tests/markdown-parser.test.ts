@@ -205,9 +205,9 @@ test('a plain paragraph keeps its spaces inside one primary themed run', async (
 
 // Styled bytes merge adjacent runs of one style, so only the marked string shows a split value.
 test('a plain paragraph line is one primary value in the marked string', () => {
-  expect(renderDetails('One plain line.', { style, width: () => 0 })).toEqual([
-    `  ${style.primary(style.escape('One plain line.'))}`,
-  ]);
+  expect(
+    renderDetails('One plain line.', { plain: (text) => text, style, width: () => 0 }),
+  ).toEqual([`  ${style.primary(style.escape('One plain line.'))}`]);
 });
 
 test('an address-only link uses surrounding styles instead of its text modifiers', async () => {

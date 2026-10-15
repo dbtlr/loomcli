@@ -285,6 +285,7 @@ interface EntryState {
  * validated.
  */
 interface Invocation {
+  cancel: () => void;
   style: ContextualStyle;
   /** The action's own channel, built from the routed Command's declaration when it dispatches. */
   channel: (binding: ResultBinding) => ActionChannel;

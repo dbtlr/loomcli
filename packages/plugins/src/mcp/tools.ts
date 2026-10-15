@@ -186,7 +186,7 @@ function isRequired(property: Property): boolean {
   return (
     !property.global &&
     (property.node.type === 'string' || property.node.type === 'content') &&
-    property.node.required
+    (property.node.required || property.node.requiredWhen === 'non-interactive')
   );
 }
 

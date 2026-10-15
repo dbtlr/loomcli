@@ -47,7 +47,7 @@ function failuresOf(name: string): readonly unknown[] {
 const exitCodes = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
-  '130': 'Cancelled by SIGINT or by a caller-supplied abort',
+  '130': "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
   '143': 'Cancelled by SIGTERM',
   '2': 'Invalid invocation inputs',
   '65': 'Declared failures: bad-data, inner-bad, write-bad',

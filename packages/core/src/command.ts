@@ -86,8 +86,11 @@ import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
+import { checkInteraction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
+import { rememberInputNames } from './missing-input.js';
 import {
+  booleanValue,
   checkOptionName,
   compileOptions,
   copyValues,
@@ -144,6 +147,7 @@ import type {
   StdinContext,
 } from './types.js';
 import {
+  suppliedInputs,
   captureInputConfig,
   configUnread,
   checkDeclarations,
@@ -178,6 +182,9 @@ export interface ArgumentSlot {
  * no graph and calls no converter.
  */
 export interface DispatchInput {
+  cancel: () => void;
+  interactive: boolean;
+  supplied: ActionContext<unknown>['supplied'];
   stdin: Content | undefined;
   command: () => CommandNode;
   graph: () => CommandGraph;
@@ -903,6 +910,7 @@ export function declareOption<
   checkDeprecated(site, input.config.deprecated);
   checkControl(site, input.config.control);
   checkEnvBinding(site, input.config);
+  checkInteraction(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -1027,6 +1035,7 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
   const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
     handler({
       args: context.args,
+      cancel: context.cancel,
       get command() {
         return context.command;
       },
@@ -1034,6 +1043,7 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
         return context.graph;
       },
       host: context.host,
+      interactive: context.interactive,
       invoke: context.invoke,
       log: context.log,
       options: context.options,
@@ -1042,6 +1052,7 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
       signal: context.signal,
       ...stdinBind(context.stdin),
       style: context.style,
+      supplied: context.supplied,
     });
   return { ...state, action: stored };
 }
@@ -2283,6 +2294,9 @@ function bindDispatch<Args, Options, Globals>(
   globals: BuiltGlobals,
 ) {
   return ({
+    cancel,
+    interactive,
+    supplied,
     command,
     graph,
     host,
@@ -2305,6 +2319,7 @@ function bindDispatch<Args, Options, Globals>(
     const globalOptions = globals.bind(values) as Globals;
     return action({
       args: bound.args,
+      cancel,
       get command() {
         return command();
       },
@@ -2312,6 +2327,7 @@ function bindDispatch<Args, Options, Globals>(
         return graph();
       },
       host,
+      interactive,
       invoke,
       log,
       options: { ...globalOptions, ...bound.options },
@@ -2320,6 +2336,7 @@ function bindDispatch<Args, Options, Globals>(
       signal,
       stdin,
       style,
+      supplied,
     });
   };
 }
@@ -2347,6 +2364,7 @@ function checkInputFacts(
       checkDeprecated(site, input.config.deprecated);
       checkControl(site, input.config.control);
       checkEnvBinding(site, input.config);
+      checkInteraction(input.config, site, false);
     }
     context.extensions.set(
       input,
@@ -2626,8 +2644,7 @@ export class CommandBuilder<
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config &
-      NameConstraint<Name> &
+    config: Config & { interaction?: never } & NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ImpliedConstraint<Config>> &
@@ -2811,6 +2828,7 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
 
 /** What one invocation reaches the middleware chain with. */
 export interface DispatchInvocation {
+  cancel: () => void;
   /** The channel the action receives, which the results lane builds from the routed node. */
   channel: (binding: ResultBinding) => ActionChannel;
   host: Host;
@@ -2938,6 +2956,7 @@ function requestNode(
  * the run's validation passes settled, which each later pass reads so a validator runs at most once.
  */
 interface Preparation {
+  interactive: boolean;
   graph: BuiltGraph;
   invocation: DispatchInvocation;
   ledger: ValidationLedger;
@@ -3011,7 +3030,7 @@ async function fillScope(
  * settled through the ledger rather than validating it again.
  */
 function validateInvocation(
-  { graph, invocation, ledger, routed }: Preparation,
+  { graph, invocation, interactive, ledger, routed }: Preparation,
   filled: {
     local: LocalScope | undefined;
     only?: ReadonlySet<InputDeclaration>;
@@ -3025,6 +3044,7 @@ function validateInvocation(
     declaredValues: invocation.declaredValues,
     host: invocation.host,
     inputs: { globals: graph.globals.inputs, locals: local ? routed.command.inputs : [] },
+    interactive,
     ledger,
     named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
     passthrough: local?.passthrough ?? [],
@@ -3124,9 +3144,13 @@ function ownRecord(routed: ParsedInvocation, validated: ValidatedInputs): Prepar
  * dispatch.
  */
 function readyDispatch(
-  { invocation, routed }: Preparation,
+  { invocation, interactive, routed }: Preparation,
   local: LocalPhase & { kind: 'parsed' },
-  { values, stdin }: Pick<Validation, 'values' | 'stdin'>,
+  {
+    values,
+    stdin,
+    supplied,
+  }: Pick<Validation, 'values' | 'stdin'> & { supplied: ActionContext<unknown>['supplied'] },
 ): { dispatch: (view: string | null) => Promise<void>; request: Request } {
   const { command, path } = routed;
   return {
@@ -3134,11 +3158,14 @@ function readyDispatch(
       // The channel is built at the boundary, because the view a middleware selected is read there.
       const channel = invocation.channel({ path, result: command.result, view });
       try {
+        rememberInputNames(invocation.host, invocation.invokedBy);
         await local.dispatch({
+          cancel: invocation.cancel,
           // The run builds its graph once, so every read answers the same node.
           command: () => nodeAt(invocation.inspected(), path),
           graph: invocation.inspected,
           host: invocation.host,
+          interactive,
           invoke: invocation.invoke,
           log: invocation.logFor(null),
           out: channel.out,
@@ -3146,6 +3173,7 @@ function readyDispatch(
           signal: invocation.signal,
           stdin,
           style: invocation.style,
+          supplied,
           values,
         });
         /**
@@ -3186,8 +3214,15 @@ export async function prepareDispatch(
   const result = routed.command.result;
   const local = parseLocal(routed);
   const ledger = new ValidationLedger();
-  const preparation = { graph, invocation, ledger, routed };
+  const preparation = { graph, interactive: false, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
+  const marked = graph.globals.inputs.find(
+    (input) => input.config.type === 'boolean' && input.config.interaction,
+  );
+  preparation.interactive =
+    invocation.host.terminal.stdin.isTTY &&
+    invocation.host.terminal.stderr.isTTY &&
+    (marked === undefined || booleanValue(globals, marked.name, marked.config));
   const held = async (fault: unknown, options: Prepared['options']): Promise<Prepared> => {
     await validateOwn(preparation, globals);
     return {
@@ -3216,7 +3251,17 @@ export async function prepareDispatch(
     if (local.kind === 'held' || validation.failure) {
       return await held(validation.failure, options);
     }
-    const ready = readyDispatch(preparation, local, validation);
+    const ready = readyDispatch(preparation, local, {
+      ...validation,
+      supplied: suppliedInputs(
+        [...graph.globals.inputs, ...routed.command.inputs],
+        {
+          args: scope?.args ?? new Map(),
+          options: scope ? mergeValues(globals, scope.options) : globals,
+        },
+        true,
+      ),
+    });
     return {
       ...ready,
       globals,

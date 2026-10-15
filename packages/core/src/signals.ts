@@ -10,12 +10,12 @@ type ProcessSignal = 'SIGINT' | 'SIGTERM';
  * neither.
  */
 interface CancellationReason {
-  source: ProcessSignal | 'caller';
+  source: ProcessSignal | 'caller' | 'action';
   cause?: unknown;
 }
 
 /** The status each cause resolves. A script that saw 0 after an interrupt would carry on. */
-const codes = { SIGINT: 130, SIGTERM: 143, caller: 130 } as const;
+const codes = { SIGINT: 130, SIGTERM: 143, action: 130, caller: 130 } as const;
 
 /** The status one cancelled run resolves, which is the part of `ExitCode` a signal decides. */
 type CancellationCode = (typeof codes)[CancellationReason['source']];
@@ -53,6 +53,7 @@ function isCancellationEcho(thrown: unknown, reason: unknown): boolean {
  * and removal sit together so the bracket a run keeps is readable in one place.
  */
 interface SignalBracket {
+  cancel: () => void;
   /** Installs one listener per claimed signal, once the graph has built and validated. */
   install: (owned: readonly ProcessSignal[]) => void;
   /** The reason the first cause fixed, or `undefined` while nothing has aborted the run. */
@@ -132,6 +133,7 @@ function bracketRun(controller: AbortController, caller: AbortSignal | undefined
   });
 
   return {
+    cancel: () => first.cancel({ source: 'action' }),
     finish: () => {
       release();
       unsubscribe();
@@ -181,6 +183,7 @@ function bracketCall(
     }),
   ];
   return {
+    cancel: () => first.cancel({ source: 'action' }),
     finish: () => {
       for (const unsubscribe of subscriptions) {
         unsubscribe();

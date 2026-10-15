@@ -15,6 +15,7 @@ import {
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
+import { checkInteraction, interactionMark } from './interaction.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
 import type { CompileScope, SpellingOrigin, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
@@ -249,6 +250,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   const site = globalSite(input);
   const sentence = site.subject;
   checkNoPresenceRule(site, input.config);
+  checkInteraction(input.config, site, true);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -289,6 +291,20 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
       options,
     });
   });
+  const marked = [...inputs, ...plugins.flatMap((entry) => entry.inputs)].filter(
+    (input) => input.config.type === 'boolean' && input.config.interaction,
+  );
+  if (marked.length > 1) {
+    const sites = marked.map((input) => ({
+      input,
+      site: names.get(input.name)?.site ?? globalSite(input),
+    }));
+    throw new DeclarationError(interactionMark, {
+      correction: 'Mark one option.',
+      findings: sites.map(({ site }) => siteFinding(site, `${site.at}.interaction`)),
+      sentence: `${sites.map(({ site }) => site.subject).join(' and ')} both declare interaction.`,
+    });
+  }
   const variables = claimVariables([
     ...boundOptions(inputs, (input) => ({
       phrase: `global option ${quoted(input.name)}`,

@@ -10,7 +10,7 @@ import { capabilities, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
-import { resolveText, width } from './style-resolve.js';
+import { drawnRows, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { createStyle, tokens } from './style.js';
 import type {
@@ -237,6 +237,12 @@ export class Output {
     private readonly signal: AbortSignal,
   ) {
     this.out = {
+      draw: (data: never, value: View<never>) => {
+        const drawn = this.draw(data, value);
+        // The row-count promise is a new boundary over the destination's observed write promise.
+        void drawn.catch(() => undefined);
+        return drawn;
+      },
       error: (message) => this.emit('error', message, 'stderr'),
       fatal: (message) => {
         throw new FatalError(message);
@@ -370,6 +376,14 @@ export class Output {
   context(destination: Stream): ViewContext {
     const caps = capabilities(this.host, destination, this.policy);
     return Object.freeze({
+      plain: (text: string) =>
+        resolveText(text, this.palette, {
+          ...caps,
+          color: false,
+          hyperlinks: false,
+          modifiers: false,
+          terminalControls: false,
+        }),
       style: this.style,
       width: (text: string) => width(text, this.palette, caps),
     });
@@ -444,6 +458,38 @@ export class Output {
    * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
    * fault of this call and nothing is written for it.
    */
+  private async draw<Data>(data: Data, value: View<Data>): Promise<number> {
+    const shape = shapeOf(value);
+    if (shape !== 'render') {
+      await this.renderFailed(
+        new Error(
+          shape === 'row'
+            ? 'The view carries row. Supply a view with render.'
+            : shapeReason(shape === 'both'),
+        ),
+      );
+      return 0;
+    }
+    const caps = capabilities(this.host, 'stderr', this.policy);
+    caps.terminalControls ||= this.host.terminal.stderr.isTTY;
+    let rows = 0;
+    const rendered = renderText(() => {
+      const text = stringValue(resolveView(this.registry, value)(data, this.context('stderr')));
+      rows = drawnRows(text, {
+        caps,
+        columns: this.host.terminal.stderr.columns,
+        palette: this.palette,
+      });
+      return resolveText(text, this.palette, caps);
+    });
+    if (!('text' in rendered)) {
+      await this.renderFailed(rendered.failed);
+      return 0;
+    }
+    await this.write(this.host.stderr, rendered.text);
+    return rows;
+  }
+
   private renderValue(
     data: never,
     value: View<never> | RowView<never>,

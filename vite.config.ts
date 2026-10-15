@@ -70,6 +70,15 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/prompts/src/**'],
+        rules: {
+          // Keep reader and question state transitions together; numeric values are terminal protocol offsets and viewport rows.
+          'eslint/max-statements': 'off',
+          'eslint/no-continue': 'off',
+          'eslint/no-magic-numbers': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/**'],
         rules: {
           // Exit codes, argv offsets, and the missing-index sentinel have fixed meanings.

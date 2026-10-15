@@ -8,7 +8,7 @@
     "1": "Expected action failure, internal failure, or invalid declarations",
     "2": "Invalid invocation inputs",
     "65": "Declared failures: invalid-json, path-not-found",
-    "130": "Cancelled by SIGINT or by a caller-supplied abort",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
     "143": "Cancelled by SIGTERM"
   },
   "encodings": {
@@ -37,6 +37,7 @@
       "short": "-h",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -50,6 +51,7 @@
       "short": "-V",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -63,6 +65,7 @@
       "short": "-M",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -76,6 +79,7 @@
       "short": "-e",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     }
@@ -136,6 +140,7 @@
         "long": "--file",
         "short": "-f",
         "required": true,
+        "requiredWhen": null,
         "multiple": false,
         "schema": {
           "minLength": 1,

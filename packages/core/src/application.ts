@@ -396,8 +396,7 @@ class ApplicationBuilder<
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config &
-      NameConstraint<Name> &
+    config: Config & { interaction?: never } & NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ImpliedConstraint<Config>> &
@@ -935,6 +934,7 @@ class ApplicationBuilder<
             parent: { reason: () => run.reason(), signal: controller.signal },
           };
           await runInvocation({
+            cancel: run.cancel,
             channel: (binding) => invocationOutput.channel(binding),
             declaredValues,
             graph,

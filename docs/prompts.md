@@ -88,6 +88,8 @@ The type tests prove the generic plumbing against the action context's real para
 | `validate`       | Text, secret           | A Standard Schema value that checks a typed answer and may transform it.                    |
 | `choices`        | Select                 | A nonempty list of distinct strings.                                                        |
 
+Question validation receives the captured Loom run context through the Standard Schema options channel, with `phase: 'question'`. A linked question identifies its local option; an unlinked question identifies its title with `kind: 'question'`. The host, route, passthrough tail, and supplied values come from the same run, with separate copies for each validator call. Shipped validators such as `path()` and `dateTime()` use the host's working directory and time zone. A skipped question never calls its question validator.
+
 Secret declares no `default` in this release, and its types reject one.
 
 The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the option's validated value, so `Answer` adds the option's action value, `undefined` included, because a validator may return `undefined` for a supplied value. The union collapses when the two agree, as `port()` on both the option and the question does.
@@ -128,7 +130,7 @@ Each kind reads keys from stdin in raw mode. A key a kind does not list is ignor
 - **Text.** A printable character appends, and Backspace removes the last character. With no typed text, the prefill shows as a dim hint, and Enter accepts it. Without a prefill, Enter submits the empty string, and the validator decides whether it is valid. A question with a prefill cannot submit the empty string, so an author who needs blank as an answer omits the default.
 - **Secret.** Text's keys, with nothing echoed: the frame does not change while the operator types, and no frame shows a hint, a mask, or the length. The typed value reaches no view.
 - **Confirm.** Text's keys over a typed answer. Enter accepts `y`, `yes`, `n`, and `no` in any case. Enter on empty input accepts the prefill when there is one, and otherwise shows the issue `Type y or n.`, as any other text does. The hint reads `[Y/n]` for a yes prefill, `[y/N]` for a no prefill, and `[y/n]` with none.
-- **Select.** ↑ and ↓ move the highlight and stop at the first and last choice. Enter selects the highlighted choice. At most seven choices show at once, fewer when stderr has fewer rows, and the window scrolls with the highlight. A dim `↑ 3 more` or `↓ 5 more` line marks hidden choices in that direction. The last line is the key help `↑↓ move · Enter select`.
+- **Select.** ↑ and ↓ move the highlight and stop at the first and last choice. Enter selects the highlighted choice. At most seven choices show at once, fewer when stderr has fewer rows, and the window scrolls with the highlight. A dim `↑ 3 more` or `↓ 5 more` line marks hidden choices in that direction. The last line is the key help `↑↓ move · Enter select`. When even one choice with the ordinary frame cannot fit, the frame clips the title and selected label at grapheme boundaries, combines hidden-count markers with the footer, and abbreviates narrow key help to `↑↓ Enter`. The returned value is always the complete choice.
 
 ## Frames and views
 
@@ -136,7 +138,7 @@ A question draws through `out.draw` on stderr and never writes to stdout. Each f
 
 | View            | Data                                                                                      | Default rendering                                      |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `questionFrame` | `kind`, `message`, and for text and confirm the `typed` text, `hint`, and `issue`; for select the visible `choices`, the `highlighted` index, and the hidden counts above and below | The active question, below                             |
+| `questionFrame` | `kind`, `message`, and for text and confirm the `typed` text, `hint`, and `issue`; for select the visible `choices`, the `highlighted` index, and the hidden counts above and below, and stderr’s `columns` and `rows` | The active question, below                             |
 | `answeredLine`  | `message` and `answer`, a display string, absent for secret                               | `? Service port · 8080`                               |
 | `cancelledLine` | `message`                                                                                 | `? Service port · cancelled`                          |
 
@@ -152,7 +154,7 @@ A secret's `typed` field is always the empty string. The default views use core'
 | Answered                 | A dim `?`, the message, a dim `·`, and the answer in `highlight`; a secret ends at the message                 |
 | Cancelled                | A dim `?`, the message, and a dim `· cancelled`                                                               |
 
-`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes its cursor movement, erasure, and the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Before each redraw it returns the cursor to column 0, moves up the rows the previous frame's `out.draw` reported, and erases to the end of the screen, so an overridden view that takes more or fewer rows redraws in place. The answered or cancelled line replaces the frame, shows the cursor again, and stays in the scrollback.
+`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes its cursor movement, erasure, and the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Before each redraw it returns the cursor to column 0, moves up the rows the previous frame's `out.draw` reported, and erases to the end of the screen, so an overridden view that takes more or fewer rows redraws in place. An active frame has no trailing newline, so its hidden terminal cursor stays on the last drawn row. The answered or cancelled line replaces the frame, shows the cursor again, and stays in the scrollback.
 
 ## Leaving a question
 

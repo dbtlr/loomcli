@@ -130,7 +130,12 @@ function run(command, args, cwd, env = {}) {
   });
   assert.ifError(result.error);
   assert.equal(result.signal, null, `${command} received ${result.signal}`);
-  return { output: result.stdout + result.stderr, status: result.status, stdout: result.stdout };
+  return {
+    output: result.stdout + result.stderr,
+    status: result.status,
+    stderr: result.stderr,
+    stdout: result.stdout,
+  };
 }
 
 /** The `_meta` every request of the MCP revision the packed plugin speaks carries. */
@@ -201,14 +206,15 @@ try {
   pnpm(['pack', '--out', join(temporary, 'core.tgz')], join(root, 'packages/core'));
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', join(temporary, 'validators.tgz')], join(root, 'packages/validators'));
+  pnpm(['pack', '--out', join(temporary, 'prompts.tgz')], join(root, 'packages/prompts'));
   pnpm(['pack', '--out', join(temporary, 'loom.tgz')], join(root, 'packages/loom'));
   // Publint fails each tarball on any warning, such as a nested manifest's exports map.
-  for (const name of ['core', 'plugins', 'validators', 'loom']) {
+  for (const name of ['core', 'plugins', 'validators', 'prompts', 'loom']) {
     pnpm(['exec', 'publint', '--strict', join(temporary, `${name}.tgz`)], root);
   }
   // Attw resolves each export's declarations under the module settings an ESM-only package serves.
   // The toolchain ships only its bin and exports no module, so it has no export to resolve.
-  for (const name of ['core', 'plugins', 'validators']) {
+  for (const name of ['core', 'plugins', 'validators', 'prompts']) {
     pnpm(['exec', 'attw', join(temporary, `${name}.tgz`), '--profile', 'esm-only'], root);
   }
   // The packed manifest must pin each first-party dependency at the synchronized version itself.
@@ -253,6 +259,7 @@ try {
       dependencies: {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
+        '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
       },
       // Rolldown bundles the plain fixture below, at the version the repository pins.
@@ -390,6 +397,16 @@ try {
       groupedLeaf,
       `${name}: packed combined local/global option section`,
     );
+  }
+  for (const name of selected) {
+    const accepted = run(
+      runtimes.get(name),
+      [join(temporary, 'dist/prompts.js'), '--port', '443'],
+      temporary,
+    );
+    assert.equal(accepted.status, 0, accepted.output);
+    assert.equal(accepted.stdout, '443\n', `${name}: packed linked prompt`);
+    assert.equal(accepted.stderr, '', `${name}: skipped prompt is silent`);
   }
   const validators = join(temporary, 'dist/validators.js');
   for (const name of selected) {
@@ -752,7 +769,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the four tarballs with publint and the declarations of core, plugins, and validators with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
