@@ -57,7 +57,7 @@ Each kind is a function of the action context and one settings object, and retur
 type LinkKey<Options> = keyof Options & string;
 type Answer<Options, Key, Output> = [Key] extends [never]
   ? Output
-  : Output | Exclude<Options[Key & keyof Options], undefined>;
+  : Output | Options[Key & keyof Options];
 
 function text<Options, const Key extends LinkKey<Options> = never, Output = string>(
   context: ActionContext<unknown, Options, unknown>,
@@ -90,7 +90,7 @@ The type tests prove the generic plumbing against the action context's real para
 
 Secret declares no `default` in this release, and its types reject one.
 
-The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the option's validated value, so `Answer` adds the option's action value without `undefined`. The union collapses when the two agree, as `port()` on both the option and the question does.
+The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the option's validated value, so `Answer` adds the option's action value, `undefined` included, because a validator may return `undefined` for a supplied value. The union collapses when the two agree, as `port()` on both the option and the question does.
 
 ## Linking an option
 
@@ -152,7 +152,7 @@ A secret's `typed` field is always the empty string. The default views use core'
 | Answered                 | A dim `?`, the message, a dim `·`, and the answer in `highlight`; a secret ends at the message                 |
 | Cancelled                | A dim `?`, the message, and a dim `· cancelled`                                                               |
 
-`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes its cursor movement, erasure, and the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Before each redraw it moves up the rows the previous frame's `out.draw` reported and erases to the end of the screen, so an overridden view that takes more or fewer rows redraws in place. The answered or cancelled line replaces the frame, shows the cursor again, and stays in the scrollback.
+`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes its cursor movement, erasure, and the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Before each redraw it returns the cursor to column 0, moves up the rows the previous frame's `out.draw` reported, and erases to the end of the screen, so an overridden view that takes more or fewer rows redraws in place. The answered or cancelled line replaces the frame, shows the cursor again, and stays in the scrollback.
 
 ## Leaving a question
 
