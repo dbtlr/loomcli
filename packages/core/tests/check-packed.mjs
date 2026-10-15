@@ -449,6 +449,33 @@ try {
     assert.equal(found.status, 0, found.output);
     assert.equal(found.stdout, 'configured\n', `${name}: packed configuration from the home file`);
   }
+  // The packed dotenv export fills an option and publishes only the argv run's additions.
+  await writeFile(join(temporary, '.env'), 'LOOM_PACKED_DOTENV_TOKEN=packed\nIGNORED=other\n');
+  for (const name of selected) {
+    const result = run(runtimes.get(name), [join(temporary, 'dist/dotenv.js')], temporary, {
+      LOOM_PACKED_DOTENV_TOKEN: undefined,
+    });
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.stderr, '', `${name}: packed dotenv warnings`);
+    const [named, argv] = result.stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      named,
+      {
+        messages: '',
+        output: '{"env":"packed","process":null,"value":"packed"}\n',
+        status: 'completed',
+      },
+      `${name}: packed dotenv named invocation`,
+    );
+    assert.deepEqual(
+      argv,
+      { env: 'packed', process: 'packed', value: 'packed' },
+      `${name}: packed dotenv argv`,
+    );
+  }
   // The packed completion plugin prints each shell's script for the application's name.
   const completing = join(temporary, 'dist/completion.js');
   for (const name of selected) {
@@ -769,7 +796,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

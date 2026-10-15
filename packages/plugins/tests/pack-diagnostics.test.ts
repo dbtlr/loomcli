@@ -16,6 +16,11 @@ const explanations = {
     'glob syntax only as the whole extension of its name: * for any format the plugin',
     'reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.',
   ],
+  'dotenv/variables': [
+    'The dotenv plugin imports only variables explicitly named by the application.',
+    'List at least one distinct name, each a letter or underscore followed by',
+    'letters, digits, or underscores.',
+  ],
   'logging/settings': [
     'The logging plugin writes records to a file or to the console, so to is file or',
     'console; a file is a nonempty name, absolute path, or path under ~/ with no',
@@ -187,6 +192,14 @@ const settingsCases: Record<string, Expected> = {
     headline: 'INVALID CONFIGURATION FILE PATH',
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
+  },
+  'dotenv-empty': {
+    correction:
+      'Supply a nonempty variables list of distinct names, each a letter or underscore followed by letters, digits, or underscores.',
+    finding: marked('dotenv({ variables: [] })', 'variables: []'),
+    headline: 'INVALID DOTENV VARIABLES',
+    rule: 'dotenv/variables',
+    sentence: 'Plugin "@loomcli/plugins/dotenv" declares an invalid variables allowlist.',
   },
   'logging-console': {
     correction: 'Remove the setting, or set "to" to "file".',

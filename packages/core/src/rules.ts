@@ -208,7 +208,15 @@ const ruleDocs = registerRule('@loomcli/core/rule-docs', {
   headline: 'Invalid rule docs',
 });
 
+/** An environment preparation hook that threw or returned malformed additions. */
+const brokenEnvironmentHook = registerRule('@loomcli/core/broken-environment-hook', {
+  explanation:
+    'An onEnvironment hook returns additions before inputs are read. Each addition names an environment variable and holds a string without NUL. A malformed answer or a throw fails the run through the plugin defect path.',
+  headline: 'Broken environment hook',
+});
+
 export {
+  brokenEnvironmentHook,
   brokenDestination,
   brokenFailureEncoder,
   brokenFailureHook,

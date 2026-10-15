@@ -1336,7 +1336,7 @@ Codes 3 through 125 belong to the application: core raises none of them, and a f
 Each invocation follows this order:
 
 1. Capture host facts and apply overrides. A working directory that cannot be read fails the run here, under [An unreadable working directory](#an-unreadable-working-directory), and so does a malformed value the build baked into the [release facts](#release-facts).
-2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then, in a [development build](#development-builds), every validated input's [schema converter](#input-schema) and then every [description](#undescribed-declarations), then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph, and every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
+2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then, in a [development build](#development-builds), every validated input's [schema converter](#input-schema) and then every [description](#undescribed-declarations), then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph. Run [environment preparation](#environment-preparation), then validate every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
 3. Copy invocation tokens for input processing.
 4. Route from the root, reading option words against the global options and the own options of each Command with an action and children that routing passes through, under [Global consumption and routing](#global-consumption-and-routing). An unknown command is raised here, before the chain.
 5. Parse the routed Command's remaining words against its table, up to the first bare `--`. Hold the first structural fault in word order, raising nothing yet, and keep reading so every global option is found. A routed Command that is a group holds the missing-subcommand error behind any structural fault.
@@ -1553,6 +1553,8 @@ The types reject `interaction` on `option()` and on every option type but `boole
 | `release`          | The [release facts](#release-facts) the build baked in, or `{ build: 'source' }` when it baked none, with the installation the [installation record](#installation-record) holds; frozen |
 
 An override replaces its whole field. Process capture reads `timeZone` once per run from the zone `Intl.DateTimeFormat` resolves, which honours `TZ`, and no field holds the current time. An invocation by name captures it the same way, and an action's `invoke` keeps its run's. An environment override replaces the captured map. Terminal facts remain independent of stream overrides. Automatic capture maps missing or zero output dimensions to `undefined`. Supplied terminal overrides retain their values.
+
+Installed [environment preparation](#environment-preparation) hooks may add variables after capture and before declared values or inputs validate. Core preserves defined values, including empty strings. Only argv runs with neither `host.cwd` nor `host.env` overridden copy accepted additions to `process.env`; named invocations never do. Other captured facts, including `timeZone` and release facts, remain unchanged.
 
 The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
 
@@ -3299,9 +3301,47 @@ Activation is evaluated after the input-source stage, from which tier supplied e
 
 An activation name that is not one of the plugin's declared options is a compile error when the plugin declares options, because the list is typed from the declaration. `plugin()` applies the same rule for JavaScript authors and for a plugin that declares no options at all, and it also rejects a middleware without `activate`, an empty list, and a middleware without `load`. A local option a plugin's `onCommandAttach` hook declared is not one of the plugin's options and cannot activate it: a middleware that reads such an option declares `'always'`, as the [formatter](#formatter) does. A `load` that throws, rejects, or resolves to a module with no default middleware function, is an internal error with code 1.
 
+### Environment preparation
+
+A plugin's `onEnvironment` hook returns additions before any declared value or input validates.
+Core calls hooks in installation order after graph build, only for a new outer run.
+`inspect()` and `check()` call none. An action's `invoke()` inherits preparation.
+
+```ts
+import type { Host, Log, Out } from '@loomcli/core';
+
+type EnvironmentHook = (context: EnvironmentContext) =>
+	Readonly<Record<string, string>> | void | Promise<Readonly<Record<string, string>> | void>;
+
+interface EnvironmentContext {
+	readonly host: { readonly cwd: Host['cwd']; readonly env: Readonly<Host['env']> };
+	readonly out: Pick<Out, 'warn'>;
+	readonly log: Log;
+}
+```
+
+Each hook sees a read-only environment snapshot containing earlier additions.
+Core checks the entire returned plain record before merging it. Names follow the environment grammar, and values are strings without NUL.
+Defined variables, including empty strings, win. The first hook that fills a missing variable wins.
+The report host and log destination share the merged map, even if logging was initialized earlier.
+Each accepted answer merges and, where allowed, copies to the process before the next hook runs.
+Later failures do not roll back additions. [Dotenv](#dotenv) specifies the process-write boundary.
+
+Core checks cancellation before each hook and after awaiting its answer, before applying additions.
+An abort starts no later hook and discards an answer still in flight. Core awaits started work without imposing a timeout.
+A nonfunction hook fails at declaration. A throw or malformed answer becomes an `InternalError` with exit 1 under `@loomcli/core/broken-environment-hook`.
+Application translators do not see the throw, and a middleware takeover cannot suppress it.
+Returned data does not appear in the diagnostic.
+
+Host capture precedes preparation. Release facts, declared rendering policy overrides, program words, and `host.timeZone` retain their captured values.
+Output capability detection reads the current environment on each emission. Imported `NO_COLOR`, `FORCE_COLOR`, and `TERM` affect subsequent output.
+Warnings during a hook use the environment before that hook returns its additions.
+Allowlisting `TZ` may change the process time zone while validators retain `host.timeZone`.
+The hook exposes no parsed options, routing, cleanup, or general lifecycle participation.
+
 ### Lifecycle hooks
 
-A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach`, [`onGraphBuilt`](#judging-the-built-graph), [`onFailure`](#failure-hints), and [`onLog`](#observing-log-events). A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context and a hook after an action that succeeds are direction, not contract, and wait for a plugin that needs them.
+A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach`, [`onGraphBuilt`](#judging-the-built-graph), [`onFailure`](#failure-hints), [`onLog`](#observing-log-events), and [`onEnvironment`](#environment-preparation). A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context and a hook after an action that succeeds are direction, not contract, and wait for a plugin that needs them.
 
 ```ts
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
@@ -3816,7 +3856,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the [skills plugin](#skills), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [dotenv](#dotenv), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the [skills plugin](#skills), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -5150,6 +5190,62 @@ The manifest is proven when both example applications install `manifest({ short:
 - **Control options and media types.** Every option entry carries `control`, `true` on `--help`, `--version`, `--manifest`, and `--format` and `false` on jsonkit's own options, and every `result` carries `mediaTypes`. A fixture whose `json` key holds a view that declares no media type, and whose `wire` key holds a mapped `json()`, reads its media types from the result, and the pinned documents are re-pinned for both fields.
 - **Packed consumers.** A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs its chosen `-M`.
 
+### Dotenv
+
+`@loomcli/plugins/dotenv` imports explicitly allowed variables from `.env` in `host.cwd`, before defaults, implied values, and inputs validate.
+Its identity is `@loomcli/plugins/dotenv`. It declares no options, middleware, configuration source, or Command.
+
+```ts
+import { dotenv } from '@loomcli/plugins/dotenv';
+
+const app = new Application('app', {
+	plugins: [dotenv({ variables: ['DATABASE_URL', 'API_TOKEN'] })],
+});
+```
+
+`DotenvSettings.variables` is a required, nonempty list of distinct, case-sensitive environment names.
+Each name matches `[A-Za-z_][A-Za-z0-9_]*`. Invalid settings fail at the factory call.
+The factory copies the allowlist. Unlisted names never import or appear in warnings.
+The allowlist governs imports by this plugin. A runtime or launcher that loads `.env` before application startup has already populated `process.env`.
+
+An existing defined variable wins, including an empty string.
+An env-bound option reads imported values through its ordinary environment tier, including an ordered list of names.
+An empty variable still supplies no option value, so option resolution can fall through to another name, configuration, or a default.
+Failures identify the variable without `.env` provenance.
+
+Only an argv `run()` with neither `host.cwd` nor `host.env` overridden copies additions into `process.env` for libraries and child processes.
+Other host overrides do not suppress that copy. Core preserves every existing process variable, including an empty one.
+Every other run changes only its snapshot. `app.invoke()` never changes the process.
+An action's `invoke()` inherits its parent's prepared environment without reading the file again.
+Process additions persist after the run. The snapshot is case-sensitive; Windows process lookups remain case-insensitive.
+
+The plugin reads no parent or home directory, alternate filename, mode sibling, or layered file.
+An environment override does not disable the file read. Isolated tests also supply their fixture's `cwd`.
+Missing files and directories named `.env` are silent. Other read errors warn once and contribute no values.
+UTF-8 decoding replaces invalid bytes. The reader detects no alternate encoding and follows symbolic links.
+
+The file accepts a leading BOM, LF or CRLF, horizontal whitespace, an optional `export` prefix, and `NAME=value` assignments.
+Unquoted values trim surrounding spaces and tabs. A hash starts a comment at the start of a value or after a space or tab.
+Single quotes preserve literal content on one physical line.
+Double quotes may span lines and decode `\n`, `\r`, `\t`, `\"`, and `\\`; other escapes stay literal.
+CRLF normalizes to LF, including inside multiline values. A quoted value permits only whitespace and a comment after its closing quote.
+There is no variable expansion. Empty values are valid, and NUL is invalid.
+The last valid duplicate assignment wins within the file. A malformed duplicate leaves earlier valid assignments intact.
+
+A malformed allowlisted assignment warns once with its name and starting line, without printing file text or values:
+
+```text
+Skipped API_TOKEN on line 4 of .env: the line is not a valid assignment. Correct the line, or remove it.
+```
+
+Unlisted malformed assignments stay silent. Quoted regions are consumed even for unlisted names.
+An unterminated double quote consumes the rest of the file; an unterminated single quote consumes only its physical line.
+These rules and the exact warning-name boundaries are specified in [ADR-0084](decisions/0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md).
+Warnings do not change the exit code and are captured in a named invocation's `messages`.
+
+Acceptance covers parser behavior, warning recovery, empty-value precedence, env-bound options, host isolation, child-process visibility, and named invocation capture.
+The packed consumer also proves the public subpath, emitted types, argv publication, and named isolation under Node and Bun.
+
 ### Configuration
 
 ```ts
@@ -5691,7 +5787,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 - **Discovery.** `server/discover` answers `supportedVersions: ['2026-07-28']`, `capabilities: { tools: {} }`, with no `listChanged` because the tool list never changes while the process runs, and no `logging`, `prompts`, `resources`, or `completions` capability. The application's identity is the server's: every result's `_meta` carries `io.modelcontextprotocol/serverInfo` as `{ name, version, description }`, the graph's `name` and `version` and the Application's description, which is left out when it declares none. The result carries no `instructions`, because Loom holds no fact that guides a model beyond the descriptions.
 - **The listing.** `tools/list` answers every tool in one page, in graph order: the root first, then each Command depth first in authoring order. It carries no `nextCursor`. `server/discover` and `tools/list` each carry `ttlMs: 0` and `cacheScope: 'private'`, so a client caches neither: a client may outlive the server process, and the next process may serve a newer application whose tools differ.
 - **Concurrency.** Calls may overlap. Each runs through its own `invoke`, and the server writes each response when its call settles. Loom adds no queue, limit, or timer, so an application whose actions cannot overlap serializes its own work.
-- **The server's life.** The `mcp` action reads `host.stdin` and writes `host.stdout`, and stdout carries protocol messages alone, each written whole. The server writes no log of its own, and stderr carries only a fault the `mcp` run itself reports and what an installed [`onLog`](#observing-log-events) hook writes to its destination's stderr, such as the [logging plugin](#logging-plugin)'s console records. When stdin ends, the server aborts every call in flight and answers none of them, waits for each to settle, ends each open subscription with its closing response, and returns, so the run exits 0. When the run's signal aborts, through a caller or a [signals owner](#signals-and-cancellation), every call's signal aborts with it, the server answers nothing more, and the run resolves its cancellation code. A plugin that writes to stdout on a run it does not own breaks the stream, as it breaks [completion](#completion)'s answer.
+- **The server's life.** The `mcp` action reads `host.stdin` and writes `host.stdout`, and stdout carries protocol messages alone, each written whole. The server writes no log of its own, and stderr carries dotenv warnings when that plugin is installed, a fault the `mcp` run itself reports and what an installed [`onLog`](#observing-log-events) hook writes to its destination's stderr, such as the [logging plugin](#logging-plugin)'s console records. When stdin ends, the server aborts every call in flight and answers none of them, waits for each to settle, ends each open subscription with its closing response, and returns, so the run exits 0. When the run's signal aborts, through a caller or a [signals owner](#signals-and-cancellation), every call's signal aborts with it, the server answers nothing more, and the run resolves its cancellation code. A plugin that writes to stdout on a run it does not own breaks the stream, as it breaks [completion](#completion)'s answer.
 - **Names.** `mcp` is exported from `@loomcli/plugins/mcp`, and `mcpCommand`, `mcpInput`, and `mcpArgument` from `@loomcli/plugins/mcp/extension`, whose identities are `@loomcli/plugins/mcp/command`, `@loomcli/plugins/mcp/input`, and `@loomcli/plugins/mcp/argument`. `mcpCommand` is an ordinary extension, so a later value replaces an earlier one. The pack's public declarations name no protocol type.
 
 #### MCP build faults

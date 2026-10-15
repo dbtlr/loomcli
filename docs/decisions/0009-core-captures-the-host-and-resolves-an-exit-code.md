@@ -4,7 +4,7 @@ title: ADR-0009 - Core captures the host itself, accepts whole-field overrides, 
 description: run() snapshots the process, replaces any supplied host field entirely, uses Node streams in its public contract, never calls process.exit, never rejects, and may run the same Application again.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-14
+modified: 2026-10-15
 ---
 
 # ADR-0009 - Core captures the host itself, accepts whole-field overrides, and resolves an exit code
@@ -40,3 +40,5 @@ Application code owns file access and stdin reads. Tests drive a real Applicatio
 - 2026-10-07: [ADR-0065](0065-release-facts-on-the-host-say-how-the-running-application-was-built.md), proposed, adds one host field, `release`, the frozen release facts. Host capture fills it for `run()` and `app.invoke` from the define the build baked, never from the process, and reads `{ build: 'source' }` when the build baked none. A whole-field override replaces it as any host field, which is how a test supplies facts, and an action's `invoke` reads its run's facts. A malformed baked value fails the run before the graph builds, under `@loomcli/core/invalid-release-facts`, with exit 1. The `packet` option the 2026-09-29 entry names is removed. It binds when that record is accepted.
 - 2026-10-12: [ADR-0071](0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md), proposed, adds a second file core reads, and the first that host capture reads: for a compiled binary built with `--release`, the installation record's `install.json`, which fills `host.release.installation` when its path is the running executable. A missing, unreadable, or malformed file reads as no installation and never fails the run. A `release` override replaces the whole field and reads no record. It binds when that record is accepted.
 - 2026-10-14: [ADR-0081](0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md), proposed, narrows application ownership of file access and stdin reads for native content preparation and lazy handles. Core probes files without reading their content before a handle is used. It binds when accepted; every other clause remains unchanged.
+
+- 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, adds environment preparation after capture and graph build, before declared values validate. Core merges returned additions without replacing defined variables, including empty ones. Only argv runs given neither cwd nor env overrides copy additions to process.env. Whole-field overrides still replace the captured map; the rejected merge with the process remains rejected. Other captured facts remain unchanged. It binds when accepted.

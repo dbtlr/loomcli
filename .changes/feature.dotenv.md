@@ -1,0 +1,2 @@
+- Add `@loomcli/plugins/dotenv` to import an explicit allowlist from `.env` before defaults and inputs validate. Existing environment values, including empty values, win. Ordinary CLI runs also make additions available to libraries and child processes; supplied working directories or environments and every named invocation keep additions inside the run.
+- Add the bounded `onEnvironment` plugin hook for environment additions, with merging and process isolation owned by core.

@@ -1,5 +1,6 @@
 import { DeclarationError } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
+import { dotenv } from '@loomcli/plugins/dotenv';
 import { logging } from '@loomcli/plugins/logging';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { service } from '@loomcli/plugins/service';
@@ -14,6 +15,7 @@ const scenarios = {
   'config-glob': () => config({ file: '*.json' }),
   'config-list': () => config({ file: '.textstat.{toml,ini}' }),
   'config-path': () => config({ file: '/etc/textstat.json' }),
+  'dotenv-empty': () => dotenv({ variables: [] }),
   'logging-console': () => logging({ file: 'a.jsonl', to: 'console' }),
   'logging-keep': () => logging({ keep: 0 }),
   'self-update-hook': () => selfUpdate({ afterReplace: 1 }),
