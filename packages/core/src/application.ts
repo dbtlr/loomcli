@@ -19,6 +19,7 @@ import {
   declareExtensions,
   declareArgument,
   declareOption,
+  declareOptionGroup,
   declareResult,
   declareResultViews,
   freshState,
@@ -418,6 +419,36 @@ class ApplicationBuilder<
       name,
     };
     return this.derive(declareOption(this.#root, input, this.table()));
+  }
+
+  exclusive(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+    return this.derive(declareOptionGroup(this.#root, 'exclusive', names));
+  }
+
+  oneRequired(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+    return this.derive(declareOptionGroup(this.#root, 'oneRequired', names));
+  }
+
+  requiredTogether(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+    return this.derive(declareOptionGroup(this.#root, 'requiredTogether', names));
   }
 
   globalOption<const Name extends string, const Config extends OptionConfig>(

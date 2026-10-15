@@ -136,6 +136,7 @@ const getDocument = {
         default: null,
       },
     ],
+    optionGroups: [],
     options: [
       {
         type: 'boolean',

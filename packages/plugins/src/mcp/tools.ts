@@ -3,6 +3,7 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomc
 
 import { isPlainJson } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
+import { groupSchemas } from './groups.js';
 
 /**
  * The tool table: which Commands are tools, what each is called, and the inputs each lists, all
@@ -191,11 +192,17 @@ function isRequired(property: Property): boolean {
 }
 
 /** The object a tool's arguments form, keyed by each listed input's declared name. */
-function inputSchema(properties: readonly Property[]): ListedTool['inputSchema'] {
+function inputSchema(
+  properties: readonly Property[],
+  command: CommandNode,
+): ListedTool['inputSchema'] {
+  const groups = groupSchemas(command);
+  const [firstGroup] = groups;
   const required = properties.filter(isRequired).map(({ node }) => node.name);
   const [firstRequired] = required;
   return {
     type: 'object',
+    ...(firstGroup === undefined ? {} : { allOf: groups }),
     properties: Object.fromEntries(
       properties.map((each) => [each.node.name, propertySchema(each)]),
     ),
@@ -228,7 +235,7 @@ function listedTool(graph: CommandGraph, entry: ToolEntry): ListedTool {
   return {
     name,
     ...(description === undefined ? {} : { description }),
-    inputSchema: inputSchema(propertiesOf(graph, command)),
+    inputSchema: inputSchema(propertiesOf(graph, command), command),
     ...(annotations === undefined ? {} : { annotations }),
   };
 }

@@ -169,3 +169,5 @@ export type {
   ThemeMapping,
   ThemeConstraint,
 } from './style.js';
+
+export type { OptionGroup } from './option-groups.js';

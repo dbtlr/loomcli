@@ -7,6 +7,7 @@ import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
+import type { OptionGroup } from './option-groups.js';
 import { reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
@@ -131,6 +132,7 @@ type OptionNode =
  * `deprecated: undefined`, the two core facts a listing reads on every other node.
  */
 interface CommandNode {
+  readonly optionGroups: readonly OptionGroup[];
   readonly stdin?: Readonly<{ description: string | undefined; required: boolean }>;
   readonly name: string | null;
   readonly aliases: readonly string[];
@@ -416,6 +418,7 @@ function commandNode(
     siteOf: (input) => declaringSite(input, inputPlace(input, path)),
   };
   const node: CommandNode = {
+    optionGroups: Object.freeze([...command.optionGroups]),
     ...(command.stdin !== undefined
       ? {
           stdin: Object.freeze({

@@ -379,6 +379,55 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 | An implied value its validator rejects | `Option "backup" has an invalid implied value.`, one line per issue, `Option "backup": Use none, simple, or numbered.`, then the fix `Fix the implied value or its validator.` `run()` raises it before it reads a token, whether or not the invocation holds a bare spelling. | `@loomcli/core/invalid-implied` |
 | A converter that fails, in a [development build](#development-builds) | `Argument "path" validator's JSON Schema converter failed for target "draft-2020-12": <reason>.` A converter that answers with anything but a plain object reads `... converter answered target "draft-2020-12" with a value that is not a plain object.` The fix reads `Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.` | `@loomcli/core/schema-converter-failed` |
 
+### Declared option groups
+
+A Command or the unnamed root declares relationships over its already-declared local options:
+
+```ts
+const exportCommand = new Command('export', { description: 'Export a document.' })
+  .option('json', { description: 'JSON output.', type: 'boolean' })
+  .option('yaml', { description: 'YAML output.', type: 'boolean' })
+  .exclusive('json', 'yaml')
+  .oneRequired('json', 'yaml')
+  .action(({ options, out }) => out.print(options.json ? 'json' : 'yaml'));
+```
+
+`exclusive(...names)` permits at most one supplied member. `oneRequired(...names)` requires at least one.
+`requiredTogether(...names)` requires all members or none. Combining exclusive and one-required groups over the same members expresses exactly one.
+Each call returns a new declaration, preserves the receiver, and closes at `action()` without changing action option types.
+Application exposes the same methods for root-local options. Lifecycle hooks use them on the erased attached Command after action registration.
+
+Presence follows the input-source stage's supplied fact. Argv, environment, and configuration fills count, including configured false, zero, or empty lists.
+Any accepted spelling counts, including negative Boolean forms and aliases. Validation messages and structured spelling lists use the option's reported spelling, or its declared name for a named call.
+Defaults do not count. A supplied value rejected by its validator still counts, so value and group problems can report together.
+Malformed environment values and named values that cannot lower supply nothing.
+An invocation by name first follows ordinary lowering: Boolean values without matching spellings, zero counts, and empty lists are absent.
+A configured member and a different typed member conflict in an exclusive group, and the diagnostic names the configured source.
+
+Automatically attached stdin does not count as a supplied option. For example, piping input does not satisfy `oneRequired('file', 'url')` on a stdin-claiming `file` option.
+An exclusive group limits supplied options, so stdin may still attach to an unsupplied content option beside a supplied sibling.
+
+Unknown names, repeated names, fewer than two members, globals, and arguments are declaration faults at the group call under `@loomcli/core/option-group`.
+An exclusive group cannot contain an individually required member, including conditional requiredness and content with a positive minimum.
+A content stdin claim does not remove that conflict because named calls have no stdin.
+An exclusive group and a required-together group cannot share two or more members, in either declaration order.
+Other redundancy is allowed, and core performs no transitive constraint solving.
+
+Each failed group adds one problem to an exit-2 `InputError`, after individual input problems and in group declaration order.
+The problem carries `reason`, `inputs`, `spellings`, and `supplied`, with member order preserved and no artificial singular input.
+A failure depending only on unanswered configuration requests is suppressed, because those members' presence is unknown.
+Existing held-fault precedence and middleware takeover rules remain unchanged across `run()`, `invoke()`, and MCP.
+
+Inspection publishes frozen `optionGroups: [{ kind, options }]` on every Command, including hidden members, or `[]`.
+Help states each visible group in one plain sentence and the manifest publishes the same facts.
+Both omit groups with hidden members. Help notes when a group contains a stdin claim that piping does not count.
+Completion suppresses exclusive siblings after a member appears in the line, including aliases and negative spellings, without reading environment or configuration.
+
+MCP omits groups containing hidden or control options. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists.
+Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
+An extension might bind a configuration source, so uncertain groups remain runtime rules.
+[ADR-0085](decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract.
+
 ### Passthrough
 
 The first bare `--` ends core parsing. Every following token reaches the action in `passthrough: string[]`, with order, values, and token boundaries intact. The delimiter is excluded. Later `--` tokens are ordinary passthrough values.
@@ -1132,8 +1181,13 @@ interface CommandNode {
   readonly result: ResultNode | null;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
+  readonly optionGroups: readonly OptionGroup[];
   readonly children: readonly CommandNode[];
   readonly extensions: Readonly<Record<string, unknown>>;
+}
+interface OptionGroup {
+  readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
+  readonly options: readonly string[];
 }
 interface ResultNode {
   readonly kind: 'value' | 'rows';
@@ -1765,6 +1819,12 @@ abstract class UsageError extends LoomError {
 }
 
 type InputProblem =
+  | {
+      reason: 'exclusive' | 'oneRequired' | 'requiredTogether';
+      inputs: readonly InputIdentity[];
+      spellings: readonly string[];
+      supplied: readonly string[];
+    }
   | { input: InputIdentity; spelling: string; reason: 'missing' }
   | {
       input: InputIdentity;
@@ -1795,7 +1855,7 @@ function reportedSpelling(option: OptionNode): string; // '--file', '--no-quiet'
 
 Core's default views open each failure with a prefix: the application name and a colon for every `UsageError`, as in `jsonkit: Unknown command "nope". Use one of: get, keys.`, so the operator reads who is speaking under rule 2 of [Failure messages](failure-messages.md#2-say-what-went-wrong-and-what-to-do-instead). The name opens every line of a `UsageError`'s message, so an `InputError` that reports two problems opens both of its lines with it, as in `jsonkit: Option "--limit": Use decimal digits.` above `jsonkit: Argument "path" requires a value. Supply a value for "path".`, and the hint lines an `onFailure` hook adds below them carry no prefix. The failure's `message` holds the lines without the name, so an override reads the problems alone. `FatalError` takes no prefix, and `WorkingDirectoryError` takes the application name, as a usage error's line does. `DeclarationError`, `InternalError`, and `ResultError` take none either, because an operator never reads their sentence: in a distributed build their default text is the generic defect message, `jsonkit: Something went wrong.`, and in a development build core renders their [Developer Diagnostic](#developer-diagnostics) without consulting a view, under [Development builds](#development-builds).
 
-`InputError.problems` carries the whole validation phase in authoring order: each required input the invocation omitted, and each value a validator rejected with the issues that validator returned. `spelling` is the token an operator would type: `--file` for an option, `--no-quiet` for a negative-only Boolean option, `-F` for a `shortOnly` option, and the declared name for an argument. In an [invocation by name](#invocation-by-name) it is the declared name for an option too, the key the caller wrote. An omitted required argument is a `missing` problem like an omitted required option, so omission has one class whichever kind of input it names. An `invalid` problem always carries at least one issue: a validator that rejected a value and returned none reports `The validator rejected this value without an explanation. Supply a different value.`, the sentence core's own text uses. Error precedence is unchanged, because routing and token errors still precede validation. An action may also throw an `InputError` for a rule over a whole list of values under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md); it carries the problems the action names, and it reports with exit code 2 after the middleware chain rather than before it.
+`InputError.problems` includes broken [option groups](#declared-option-groups) after the individual problems. A group problem has no singular `input` or `spelling`; readers narrow `reason` before reading those fields. The individual problems carry the validation phase in authoring order: each required input the invocation omitted, and each value a validator rejected with the issues that validator returned. `spelling` is the token an operator would type: `--file` for an option, `--no-quiet` for a negative-only Boolean option, `-F` for a `shortOnly` option, and the declared name for an argument. In an [invocation by name](#invocation-by-name) it is the declared name for an option too, the key the caller wrote. An omitted required argument is a `missing` problem like an omitted required option, so omission has one class whichever kind of input it names. An `invalid` problem always carries at least one issue: a validator that rejected a value and returned none reports `The validator rejected this value without an explanation. Supply a different value.`, the sentence core's own text uses. Error precedence is unchanged, because routing and token errors still precede validation. An action may also throw an `InputError` for a rule over a whole list of values under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md); it carries the problems the action names, and it reports with exit code 2 after the middleware chain rather than before it.
 
 `issuePath(issue)` returns the dotted path an issue names inside a value, such as `1` for the second value of a multiple option, or `undefined` when the issue names the value itself, so a view positions an issue the way core's default text does.
 

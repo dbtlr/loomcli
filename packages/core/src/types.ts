@@ -388,6 +388,9 @@ export interface AttachedCommand {
   readonly extensions: Readonly<Record<string, unknown>>;
   argument(name: string, config: ArgumentConfig): AttachedCommand;
   option(name: string, config: OptionConfig & { interaction?: never }): AttachedCommand;
+  exclusive(...names: [string, string, ...string[]]): AttachedCommand;
+  oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
+  requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
   views(
     replacements: Readonly<Record<string, ResultView>>,
     options?: { default?: string },

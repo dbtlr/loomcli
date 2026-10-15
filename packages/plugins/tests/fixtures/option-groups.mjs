@@ -1,0 +1,62 @@
+import { Application, Command } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
+import { help } from '@loomcli/plugins/help';
+import { manifest } from '@loomcli/plugins/manifest';
+import { mcp } from '@loomcli/plugins/mcp';
+import { mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
+
+const choice = (name, kind) => {
+  const declaration = new Command(name, { description: 'Choose inputs.' })
+    .option('flag', { description: 'Positive flag.', type: 'boolean' })
+    .option('count', { description: 'Count occurrences.', type: 'count' })
+    .option('items', { description: 'Collect items.', multiple: true, type: 'string' });
+  return declaration[kind]('flag', 'count', 'items')
+    .extend(mcpCommand({}))
+    .action(({ out }) => out.print('action'));
+};
+
+const bound = new Command('bound', { description: 'Read bound inputs.' })
+  .option('first', { description: 'First input.', env: 'GROUP_FIRST', type: 'string' })
+  .option('second', { description: 'Second input.', type: 'string' })
+  .oneRequired('first', 'second')
+  .extend(mcpCommand({}))
+  .action(() => {});
+const extended = new Command('extended', { description: 'Read extended inputs.' })
+  .option('first', {
+    description: 'First input.',
+    extensions: [mcpInput({ description: 'Extended input.' })],
+    type: 'string',
+  })
+  .option('second', { description: 'Second input.', type: 'string' })
+  .requiredTogether('first', 'second')
+  .extend(mcpCommand({}))
+  .action(() => {});
+
+const app = new Application('groups', {
+  description: 'Export documents.',
+  plugins: [help(), manifest(), completion(), mcp()],
+})
+  .option('json', {
+    aliases: ['js'],
+    description: 'JSON output.',
+    polarity: 'both',
+    type: 'boolean',
+  })
+  .option('yaml', { description: 'YAML output.', polarity: 'both', type: 'boolean' })
+  .option('user', { description: 'User name.', type: 'string' })
+  .option('password', { description: 'Password.', type: 'string' })
+  .option('secret', { description: 'Hidden setting.', hidden: true, type: 'boolean' })
+  .option('other', { description: 'Other setting.', type: 'boolean' })
+  .exclusive('json', 'yaml')
+  .oneRequired('json', 'yaml')
+  .requiredTogether('user', 'password')
+  .exclusive('secret', 'other')
+  .extend(mcpCommand({}))
+  .command(choice('choice', 'exclusive'))
+  .command(choice('need', 'oneRequired'))
+  .command(choice('together', 'requiredTogether'))
+  .command(bound)
+  .command(extended)
+  .action(({ out }) => out.print('action'));
+
+process.exitCode = await app.run();

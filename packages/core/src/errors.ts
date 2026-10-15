@@ -312,8 +312,14 @@ export abstract class UsageError extends LoomError {
   }
 }
 
-/** One input the validation phase rejected: an omission, or a value its schema refused. */
+/** One validation problem: an omitted input, a rejected value, or a broken option group. */
 export type InputProblem =
+  | {
+      inputs: readonly InputIdentity[];
+      spellings: readonly string[];
+      supplied: readonly string[];
+      reason: 'exclusive' | 'oneRequired' | 'requiredTogether';
+    }
   | { input: InputIdentity; spelling: string; reason: 'missing' }
   | {
       input: InputIdentity;
@@ -322,7 +328,7 @@ export type InputProblem =
       issues: readonly StandardSchemaV1.Issue[];
     };
 
-/** The whole validation phase in authoring order, so one failure reports every rejected input. */
+/** Individual problems in authoring order, followed by broken groups in declaration order. */
 export class InputError extends UsageError {
   static override readonly code: string = 'invalid-input';
 

@@ -89,6 +89,8 @@ import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspec
 import { checkInteraction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
 import { rememberInputNames } from './missing-input.js';
+import { declareGroup } from './option-groups.js';
+import type { OptionGroup } from './option-groups.js';
 import {
   booleanValue,
   checkOptionName,
@@ -217,6 +219,7 @@ export interface RoutedChild {
  * it, and `routes` adds the aliases, so routing alone resolves them.
  */
 export interface BuiltCommand {
+  optionGroups: readonly OptionGroup[];
   stdin: (StdinConfig & { readonly position: number }) | undefined;
   aliases: readonly string[];
   arguments: readonly ArgumentSlot[];
@@ -266,6 +269,9 @@ export type CommandMethod =
   | 'argument'
   | 'command'
   | 'option'
+  | 'exclusive'
+  | 'oneRequired'
+  | 'requiredTogether'
   | 'result'
   | 'rows'
   | 'stdin';
@@ -509,6 +515,7 @@ export interface CommandFacts {
  * them, so one declaration call has one implementation.
  */
 export interface CommandState<Args, Options, Globals> {
+  optionGroups: readonly OptionGroup[];
   stdin?: StdinConfig & { readonly position: number };
   /**
    * The registered action, with the declared result erased. An action is stored under the widest
@@ -538,7 +545,15 @@ export interface CommandState<Args, Options, Globals> {
 /** The untyped part of a declaration, which every attach and build check reads. */
 export type Declared = Pick<
   CommandState<unknown, unknown, unknown>,
-  'aliases' | 'children' | 'descriptors' | 'inputs' | 'name' | 'records' | 'results' | 'stdin'
+  | 'aliases'
+  | 'children'
+  | 'descriptors'
+  | 'inputs'
+  | 'name'
+  | 'records'
+  | 'results'
+  | 'stdin'
+  | 'optionGroups'
 >;
 
 /** How the extension diagnostics of one Command's own layers name it. */
@@ -566,6 +581,7 @@ export function freshState<Globals>(declaration: {
     facts: declaration.facts,
     inputs: [],
     name: declaration.name,
+    optionGroups: [],
     records: new Map(),
     results: [],
   };
@@ -929,6 +945,28 @@ export function declareOption<
     },
     inputs: [...state.inputs, input],
   };
+}
+
+/** Group calls share the same immutable state transition on a Command and the root. */
+export function declareOptionGroup<Args, Options, Globals>(
+  state: CommandState<Args, Options, Globals>,
+  kind: OptionGroup['kind'],
+  names: readonly string[],
+): CommandState<Args, Options, Globals> {
+  checkOpen(state, {
+    arguments: names,
+    call: kind,
+    clause: `declares an option group with ${kind}()`,
+    remedy: 'Declare option groups before action().',
+  });
+  const group = declareGroup({
+    groups: state.optionGroups,
+    inputs: state.inputs,
+    kind,
+    name: state.name,
+    names,
+  });
+  return { ...state, optionGroups: [...state.optionGroups, group] };
 }
 
 /**
@@ -1730,7 +1768,8 @@ function buildResult(
 /** One call a hook made, in the order it made it, which the declaration reads back afterwards. */
 type AttachCall =
   | { identity: string; input: InputDeclaration; kind: 'input' }
-  | { call: ResultCall; kind: 'views' };
+  | { call: ResultCall; kind: 'views' }
+  | { group: OptionGroup; kind: 'optionGroup' };
 
 /** The erased declaration one hook reads, with the calls it and every hook before it has made. */
 interface AttachState {
@@ -1824,6 +1863,33 @@ class AttachedCommandValue implements AttachedCommand {
 
   option(name: string, config: OptionConfig): AttachedCommand {
     return this.#declare({ config, kind: 'option', name });
+  }
+
+  exclusive(...names: [string, string, ...string[]]): AttachedCommand {
+    return this.#group('exclusive', names);
+  }
+
+  oneRequired(...names: [string, string, ...string[]]): AttachedCommand {
+    return this.#group('oneRequired', names);
+  }
+
+  requiredTogether(...names: [string, string, ...string[]]): AttachedCommand {
+    return this.#group('requiredTogether', names);
+  }
+
+  #group(kind: OptionGroup['kind'], names: readonly string[]): AttachedCommand {
+    const { declared } = this.#state;
+    const group = declareGroup({
+      groups: declared.optionGroups,
+      inputs: declared.inputs,
+      kind,
+      name: declared.name,
+      names,
+    });
+    return this.#derive(
+      { group, kind: 'optionGroup' },
+      { ...declared, optionGroups: [...declared.optionGroups, group] },
+    );
   }
 
   views(
@@ -2003,10 +2069,13 @@ function applyAttachCalls<Args, Options, Globals>(
 ): CommandState<Args, Options, Globals> {
   let next = state;
   for (const call of calls) {
-    next =
-      call.kind === 'input'
-        ? declareHookInput(next, call.input)
-        : { ...next, results: [...next.results, call.call] };
+    if (call.kind === 'input') {
+      next = declareHookInput(next, call.input);
+    } else if (call.kind === 'optionGroup') {
+      next = { ...next, optionGroups: [...next.optionGroups, call.group] };
+    } else {
+      next = { ...next, results: [...next.results, call.call] };
+    }
   }
   return next;
 }
@@ -2486,6 +2555,7 @@ export function buildCommand<Args, Options, Globals>(
     hidden: facts.hidden,
     inputs: hooked.inputs,
     name,
+    optionGroups: hooked.optionGroups,
     placement: context.placement,
     result,
     routes,
@@ -2657,6 +2727,36 @@ export class CommandBuilder<
       name,
     };
     return this.#derive(declareOption(this.#state, input));
+  }
+
+  exclusive(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Command<Args, Options, Globals, State, Result, Stdin> {
+    return this.#derive(declareOptionGroup(this.#state, 'exclusive', names));
+  }
+
+  oneRequired(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Command<Args, Options, Globals, State, Result, Stdin> {
+    return this.#derive(declareOptionGroup(this.#state, 'oneRequired', names));
+  }
+
+  requiredTogether(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Command<Args, Options, Globals, State, Result, Stdin> {
+    return this.#derive(declareOptionGroup(this.#state, 'requiredTogether', names));
   }
 
   /**
@@ -3047,6 +3147,7 @@ function validateInvocation(
     interactive,
     ledger,
     named: invocation.invokedBy === 'name' ? { unlowered: routed.unlowered } : undefined,
+    optionGroups: local && only === undefined ? routed.command.optionGroups : [],
     passthrough: local?.passthrough ?? [],
     places: invocation.places,
     signal: invocation.signal,
