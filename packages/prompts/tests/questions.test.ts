@@ -64,6 +64,16 @@ test.each([
     },
   ],
   ['named-unlinked', { exitCode: 1, form: { code: 'interaction-unavailable' }, status: 'failed' }],
+  [
+    'named-boolean-missing',
+    {
+      exitCode: 2,
+      form: {
+        message: 'Option "install" is required when input is not interactive. Supply a value.',
+      },
+      status: 'failed',
+    },
+  ],
 ])('invocation by name uses the same noninteractive question rules: %s', (scenario, outcome) => {
   const result = invoke(new URL('fixtures/questions.mjs', import.meta.url), [scenario]);
   expect(result.stderr).toBe('');
@@ -108,6 +118,7 @@ test('a frame override can add rows while secret text stays out of view data', (
 });
 
 test.each([
+  ['callable', 'HELLO'],
   ['path', '/workspace/notes.txt'],
   ['dateTime', '2026-10-15T08:30:00.000Z'],
 ])('question validation passes the captured host context to %s', (scenario, output) => {

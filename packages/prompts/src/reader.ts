@@ -25,11 +25,10 @@ function feed(queue: InputQueue, chunk: Buffer | string): void {
       }
       // Terminal escape sequences contain the ESC protocol character.
       // oxlint-disable-next-line eslint/no-control-regex
-      const sequence = /^(?:\u001b\[[0-?]*[ -/]*[@-~]|\u001bO.)/u.exec(queue.pending)?.[0];
-      if (
-        sequence === undefined &&
-        (queue.pending.startsWith('\x1B[') || queue.pending === '\u001bO')
-      ) {
+      const sequence = /^(?:\u001b\[[0-?]*[ -/]*[@-~]|\u001bO[@-~])/u.exec(queue.pending)?.[0];
+      const incompleteCsi =
+        queue.pending.startsWith('\u001b[') && /^[0-?]*[ -/]*$/u.test(queue.pending.slice(2));
+      if (sequence === undefined && (incompleteCsi || queue.pending === '\u001bO')) {
         return;
       }
       queue.pending = queue.pending.slice(sequence?.length ?? 1);

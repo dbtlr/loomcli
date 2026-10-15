@@ -38,7 +38,7 @@ function drawnRows(
     return block.lines.length - 1;
   }
   const visible = [...renderedUnits(block)]
-    .filter((unit) => unit.kind === 'text')
+    .filter((unit) => unit.kind === 'text' || (unit.kind === 'control' && unit.text === '\r'))
     .map((unit) => unit.text)
     .join('');
   let rows = 0;
@@ -47,6 +47,10 @@ function drawnRows(
     const segmentText = visible.slice(grapheme.start, grapheme.end);
     if (segmentText.endsWith('\n')) {
       rows += 1;
+      column = 0;
+      continue;
+    }
+    if (segmentText === '\r') {
       column = 0;
       continue;
     }

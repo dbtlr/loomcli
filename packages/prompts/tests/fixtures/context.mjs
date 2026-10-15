@@ -11,7 +11,7 @@ class Keyboard extends Readable {
   _read() {
     if (!this.sent) {
       this.sent = true;
-      this.push(scenario === 'path' ? 'notes.txt\r' : '2026-10-15T10:30\r');
+      this.push({ callable: 'hello\r', path: 'notes.txt\r' }[scenario] ?? '2026-10-15T10:30\r');
     }
   }
   setRawMode() {
@@ -28,6 +28,20 @@ const sink = new Writable({
 });
 const app = new Application('questions', { description: 'Validate question answers.' }).action(
   async (context) => {
+    if (scenario === 'callable') {
+      const callable = Object.assign((value) => value, {
+        '~standard': {
+          validate: (value) =>
+            typeof value === 'string'
+              ? { value: value.toUpperCase() }
+              : { issues: [{ message: 'Use text.' }] },
+          vendor: 'fixture',
+          version: 1,
+        },
+      });
+      output = await text(context, { message: 'Callable schema', validate: callable });
+      return;
+    }
     const answer =
       scenario === 'path'
         ? await text(context, { message: 'File', validate: path() })

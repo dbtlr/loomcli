@@ -1,6 +1,6 @@
 import { Application } from '@loomcli/core';
 
-import { text } from '../../dist/index.js';
+import { confirm, text } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 const app = new Application('setup', { description: 'Set up the service.' })
@@ -15,7 +15,12 @@ const app = new Application('setup', { description: 'Set up the service.' })
       },
     },
   })
+  .option('install', { description: 'Install the service.', type: 'boolean' })
   .action(async (context) => {
+    if (scenario === 'named-boolean-missing') {
+      await confirm(context, { message: 'Install service?', option: 'install' });
+      return;
+    }
     if (scenario === 'unlinked' || scenario === 'named-unlinked') {
       await text(context, { message: 'Name' });
       return;

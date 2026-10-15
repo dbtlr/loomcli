@@ -31,7 +31,11 @@ export function checkSettings(
     if (kind !== 'text' && kind !== 'secret') {
       invalid(`A ${kind} question declares validate.`, 'Remove validate.');
     }
-    if (typeof schema !== 'object' || schema === null || !('~standard' in schema)) {
+    if (
+      (typeof schema !== 'object' && typeof schema !== 'function') ||
+      schema === null ||
+      !('~standard' in schema)
+    ) {
       invalid(
         'A question validate is not a Standard Schema v1 value.',
         'Supply a Standard Schema v1 validator.',

@@ -256,6 +256,7 @@ test.skipIf(process.platform === 'win32').each([
   [String.raw`ab\x1b\x1b[A\r`, 'ab'],
   [String.raw`\x1bx\r`, 'x'],
   [String.raw`ab\x1b\r`, 'ab'],
+  [String.raw`ab\x1b[\r`, 'ab['],
 ])('Escape ignores itself without consuming the following key: %s', async (keys, answer) => {
   const tty = terminal('blank', { NO_COLOR: '1' });
   try {
@@ -268,3 +269,17 @@ test.skipIf(process.platform === 'win32').each([
     await tty.close();
   }
 });
+
+test.skipIf(process.platform === 'win32').each([String.raw`\x1b[\x03`, String.raw`\x1bO\x03`])(
+  'Ctrl-C cancels after an incomplete escape sequence: %s',
+  async (keys) => {
+    const tty = terminal('blank', { NO_COLOR: '1' });
+    try {
+      await tty.expect('Service port');
+      tty.send(keys);
+      await expect(tty.expect('EXIT:130 cooked:true')).resolves.toContain('cancelled');
+    } finally {
+      await tty.close();
+    }
+  },
+);

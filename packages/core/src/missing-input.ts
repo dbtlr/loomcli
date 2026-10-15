@@ -40,7 +40,7 @@ export function missingInputError(
         ].filter((form) => form !== null)
       : [];
   const fix =
-    forms.length > 0
+    !named.has(context.host) && forms.length > 0
       ? `Supply ${forms.map((form) => quoted(form)).join(' or ')}.`
       : 'Supply a value.';
   return new InputError(

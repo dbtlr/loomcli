@@ -95,3 +95,9 @@ test('view plain text strips styles and controls while retaining destination gly
   const result = invoke(new URL('fixtures/view-context.mjs', import.meta.url));
   expect(result).toEqual({ status: 0, stderr: '', stdout: '{"cells":6,"plain":"Name >"}\n' });
 });
+
+test('draw resets its column at a standalone carriage return', () => {
+  const result = invoke(new URL('fixtures/draw.mjs', import.meta.url), ['carriage']);
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({ rows: 0 });
+});

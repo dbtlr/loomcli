@@ -14,9 +14,12 @@ const stderr = new Writable({
 const app = new Application('draw', { description: 'Draw terminal output.' }).action(
   async ({ out }) => {
     const first = out.info('before');
-    rows = await out.draw({ tab: 'ab\tXXX\n', wide: '界界界\n' }[scenario] ?? 'abcdef\n界界\n', {
-      render: (value) => `\u001b[?25l${value}\u001b[?25h`,
-    });
+    rows = await out.draw(
+      { carriage: 'abc\rdef', tab: 'ab\tXXX\n', wide: '界界界\n' }[scenario] ?? 'abcdef\n界界\n',
+      {
+        render: (value) => `\u001b[?25l${value}\u001b[?25h`,
+      },
+    );
     await out.info('after');
     await first;
   },
