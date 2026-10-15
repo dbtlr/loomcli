@@ -27,6 +27,10 @@
       "types": "./dist/src/config/extension.d.ts",
       "import": "./dist/src/config/extension.js"
     },
+    "./dotenv": {
+      "types": "./dist/src/dotenv/plugin.d.ts",
+      "import": "./dist/src/dotenv/plugin.js"
+    },
     "./format": {
       "types": "./dist/src/format/plugin.d.ts",
       "import": "./dist/src/format/plugin.js"

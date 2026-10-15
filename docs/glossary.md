@@ -145,8 +145,16 @@ The value a string option takes when its spelling is supplied bare, with nothing
 _Avoid_: Optional argument, flag value, const value
 
 **Input-source stage**:
-The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source. The supplied record tells an action whether a value was supplied, never by which tier.
+The invocation phase between local parsing and validation that fills each unfilled option from the prepared environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source. The supplied record tells an action whether a value was supplied, never by which tier.
 _Avoid_: Config merge, fallback chain, value resolution
+
+**Environment preparation**:
+The phase after graph build and before declared values or inputs validate, in which installed environment hooks contribute missing variables. It preserves existing values and applies the process boundary independently of input-source precedence.
+_Avoid_: Input-source tier (for preparation), dotenv stage
+
+**Prepared environment**:
+The run's captured environment after installed environment hooks add missing variables, shared by downstream validation, sources, middleware, actions, logging, and failure reports.
+_Avoid_: Dotenv environment, merged config
 
 **Environment binding**:
 The variable, or the ordered list of variables, an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. With a list, the first name holding a non-empty value supplies it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
@@ -261,7 +269,7 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, and a working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The captured facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, retains the streams, and lets a caller override fields. Core captures them once per run, then installed environment hooks may add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Release facts**:
@@ -591,7 +599,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. `onLog` is the fourth: it receives each log event and its log destination during a run, and it observes and returns nothing. A hook runs in sequence at its point, and middleware is not one.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. `onLog` is the fourth: it receives each log event and its log destination during a run, and it observes and returns nothing. `onEnvironment` prepares additions to the captured environment before inputs are read, with merging and process writes owned by core. A hook runs in sequence at its point, and middleware is not one.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
@@ -601,6 +609,10 @@ _Avoid_: Singleton, capability (for the position)
 **Configuration source**:
 The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
+
+**Dotenv file**:
+The `.env` file in the working directory from which the dotenv plugin imports only the variables the application explicitly lists. It adds variables before inputs are read and leaves existing values, including empty values, unchanged.
+_Avoid_: Configuration file (for this file), env source, input-source tier
 
 **Configuration file**:
 The one JSON, TOML, or YAML file the first-party configuration plugin answers from in a run, never merged with another: the file `--config` names, or else the first found of the author's `file` in the working directory and then the operator's home directory. `.toml` reads as TOML, `.yaml` and `.yml` as YAML, and every other name as JSON. A discovered file never breaks a run, while the named file and a wrong value in the file are usage failures.

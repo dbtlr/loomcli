@@ -68,6 +68,7 @@ export type { AnyExtension, Extension, ExtensionValue } from './extension.js';
 export type { FailureEncoder, FailureEncoding } from './encoders.js';
 export type { FailureForm } from './form.js';
 export type { FailureHook, FailureHookContext } from './hints.js';
+export type { EnvironmentContext, EnvironmentHook } from './prepare-environment.js';
 export type {
   JsonValue,
   Log,

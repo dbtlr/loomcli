@@ -97,6 +97,7 @@ import { declaring, shallowList, shallowRecord } from './plain.js';
 import { notAnObject, retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
+import { prepareEnvironment } from './prepare-environment.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -913,6 +914,16 @@ class ApplicationBuilder<
         if (door.encodes) {
           encoders = encoderRegistry(built.plugins);
         }
+        if (bound === undefined) {
+          await prepareEnvironment({
+            host,
+            log: (identity) => logs().bind(identity),
+            out: { warn: (message) => invocationOutput.out.warn(message) },
+            plugins: built.plugins,
+            publish: entered.publishEnvironment,
+            signal: controller.signal,
+          });
+        }
         const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = bound?.places ?? inputPlaces(graph);
         const declaredValues =
@@ -1178,6 +1189,8 @@ interface ActionCall {
 
 /** What one run reads at its entry, before the graph is built. */
 interface RunEntry {
+  /** Only argv with process cwd and env may publish environment additions to the process. */
+  publishEnvironment: boolean;
   /** The stderr the caller's host names, if it names one. */
   stderr: Writable | undefined;
   /**
@@ -1235,6 +1248,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
       return {
         bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
         host: (stderr) => captureHost(application, overrides, stderr),
+        publishEnvironment: overrides?.cwd === undefined && overrides?.env === undefined,
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
         start: undefined,
         stderr: overrides?.stderr,
@@ -1285,6 +1299,7 @@ function nameDoor<Mapped>(
         bracket: (controller) =>
           bracketCall(controller, { caller: call.signal, parent: action?.parent }),
         host,
+        publishEnvironment: false,
         read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
         start: call.view,
         stderr: undefined,
