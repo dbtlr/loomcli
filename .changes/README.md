@@ -90,7 +90,7 @@ When a later PR changes or removes a result described by an earlier fragment, am
 
 ## Keep release versions separate from feature PRs
 
-All publishable first-party libraries share one exact version. The compiler increments from that current `package.json` version, and rejects mismatched library versions. During `0.x`, a breaking fragment advances the minor and resets the patch. Feature and fix fragments advance the patch. The release section lists them under `### Breaking Changes`, `### Features`, and `### Fixes`. The first release is `0.1.0`; manifests remain at `0.0.0` until that cut.
+All publishable first-party libraries share one exact version. The compiler increments from that current `package.json` version, and rejects mismatched library versions. During `0.x`, a breaking fragment advances the minor and resets the patch. Feature and fix fragments advance the patch. These automatic bumps also set the minimum for an explicit `loom release cut --target VERSION`. A larger target does not change fragment kinds or migration requirements. The release section lists entries under `### Breaking Changes`, `### Features`, and `### Fixes`. The first release defaults to `0.1.0`; manifests remain at `0.0.0` until that cut.
 
 Keep library manifest versions unchanged in ordinary PRs. Leave fragments pending for the release cut instead of editing release history or adding an Unreleased section. Only release preparation uses `pnpm loom release cut`.
 

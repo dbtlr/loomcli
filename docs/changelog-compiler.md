@@ -32,8 +32,9 @@ pnpm loom release cut --date 2026-09-07
 
 | Option              | Meaning                                                                                                                                                  |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--target VERSION`  | Select a stable `0.x` version at or above the fragment-derived next version. Omission preserves automatic calculation. |
 | `--date YYYY-MM-DD` | Release date. The default is the current UTC date. Invalid calendar dates fail.                                                                          |
-| `--initial`         | Explicitly prepare `0.1.0` from `0.0.0`, including when no fragments exist. Without fragments it also requires `--narrative`, so the release carries notes. Other current versions reject this option. |
+| `--initial`         | Explicitly prepare the first release from `0.0.0`, defaulting to `0.1.0`, including when no fragments exist. Without fragments it also requires `--narrative`, so the release carries notes. Other current versions reject this option. |
 | `--since REF`       | Ancestor commit or tag used for the material-change report. The default is the first-parent commit that set the current manifest version. The first release marks all libraries changed. |
 | `--narrative FILE`  | Copy Markdown prose before the entries. The file cannot be empty or contain level-one or level-two headings.                                             |
 
@@ -51,7 +52,11 @@ Participating `package.json` versions must be identical stable `0.x` versions. P
 | `0.4.7`         | At least one breaking fragment | `0.5.0`      |
 | `0.4.7`         | Feature and fix fragments only | `0.4.8`      |
 
-Git tags never determine the next version. The `--since` option changes only the material-change report, whose default baseline is the first-parent commit that set the current version. The release agent owns any external check of what is already published. This command has no version override for replacement cuts.
+The table gives the automatic version and the minimum explicit target. For example, `pnpm loom release cut --target 0.13.0` can cut compatible features from `0.12.0` without a breaking fragment. Pass the same `--target` to the dry run and written cut. The target must exceed the current version and meet the minimum. It accepts the same stable `0.x` syntax as synchronized manifests: no leading zeroes, `v` prefix, prereleases, build metadata, or `1.0.0`. The initial minimum remains `0.1.0`, including with `--initial`. An explicit target does not permit an empty fragment set outside that initial cut.
+
+Fragment kinds and migration requirements describe consumer effects independently of the chosen version. The public `loom changelog write` retains automatic calculation and accepts no target option.
+
+Git tags never determine the next version. The `--since` option changes only the material-change report, whose default baseline is the first-parent commit that set the current version. The release agent owns any external check of what is already published. Target selection changes no publication or recovery rule.
 
 ## Rendering and material changes
 

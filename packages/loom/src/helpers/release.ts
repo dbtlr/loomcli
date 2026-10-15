@@ -1,7 +1,7 @@
 import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
-import { nextVersion } from './version.js';
+import { nextVersion, parseVersion } from './version.js';
 
 export function prepareRelease(
   root: string,
@@ -10,6 +10,7 @@ export function prepareRelease(
     initial: boolean;
     since: string | undefined;
     narrative: string | undefined;
+    target?: string | undefined;
   },
   ref?: string,
 ) {
@@ -22,7 +23,24 @@ export function prepareRelease(
   if (fragments.length === 0 && !options.initial) {
     throw new Error('No fragments to release.');
   }
-  const version = nextVersion(current, highestKind(fragments));
+  const minimum = nextVersion(current, highestKind(fragments));
+  const version = options.target ?? minimum;
+  if (options.target !== undefined) {
+    const target = parseVersion(options.target);
+    if (target?.major !== 0) {
+      throw new Error('Release target must be a stable 0.x version.');
+    }
+    const required = parseVersion(minimum);
+    if (
+      required === undefined ||
+      target.minor < required.minor ||
+      (target.minor === required.minor && target.patch < required.patch)
+    ) {
+      throw new Error(
+        `Release target must be at least ${minimum}; current version is ${current.text}.`,
+      );
+    }
+  }
   let section = renderSection({
     date: options.date,
     fragments,

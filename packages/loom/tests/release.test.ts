@@ -215,6 +215,56 @@ test('a version absent from the registry plans publication and recording', async
   });
 });
 
+test('an explicit feature-only cut passes admission and plans and records its selected version', async () => {
+  const root = baseRepository('0.12.0');
+  put(root, '.changes/README.md', '# Change fragments\n');
+  put(root, '.changes/feature.input.md', '- Add typed input.\n');
+  const base = commit(root);
+  expect(
+    invoke(cli, ['release', 'cut', '--target', '0.13.0', '--date', '2026-10-15'], { cwd: root }),
+  ).toMatchObject({ status: 0, stderr: '' });
+  const cut = commit(root);
+  expect(
+    invoke(
+      cli,
+      [
+        'pr',
+        'check',
+        '--base',
+        base,
+        '--title',
+        'chore(release): Release v0.13.0 - Add typed input',
+      ],
+      { cwd: root },
+    ),
+  ).toMatchObject({ status: 0, stderr: '' });
+  const absent = await startServices({ packages: {}, repository: owner, version: '0.13.0' });
+  expect(plan(root, absent)).toMatchObject({ status: 0, stderr: '' });
+  expect(planned(root)).toMatchObject({
+    cutCommit: cut,
+    head: cut,
+    publish: true,
+    record: true,
+    version: '0.13.0',
+  });
+  const published = await startServices({
+    packages: {
+      [library]: { provenanceCommit: cut, published: true, tarball: 'typed input bytes' },
+    },
+    repository: owner,
+    version: '0.13.0',
+  });
+  expect(plan(root, published)).toMatchObject({ status: 0, stderr: '' });
+  expect(planned(root)).toMatchObject({ provenanceCommit: cut, publish: false, version: '0.13.0' });
+  expect(record(root, published)).toMatchObject({ status: 0, stderr: '' });
+  await expect(published.writes()).resolves.toMatchObject([
+    { body: { object: cut, tag: 'v0.13.0' }, method: 'POST' },
+    { body: { ref: 'refs/tags/v0.13.0' }, method: 'POST' },
+    { body: { name: 'v0.13.0', tag_name: 'v0.13.0' }, method: 'POST' },
+    { name: 'sample-core-0.13.0.tgz', size: 17 },
+  ]);
+});
+
 test('a published version without a tag plans recording alone', async () => {
   const { root } = releaseRepository();
   const endpoints = await startServices({

@@ -85,6 +85,7 @@ test('a dry run derives the first version from manifests and preserves fragment 
 
 test.each([
   ['0.4.7', 'plain.md', '- Fix output.\n', '0.4.8'],
+  ['0.4.7', 'feature.input.md', '- Add input.\n', '0.4.8'],
   ['0.4.7', 'breaking.call.md', migration, '0.5.0'],
 ])('a dry run increments manifest %s for %s', (current, name, body, expected) => {
   const root = repository(current);
@@ -108,6 +109,107 @@ test('a dry run sorts by the commit that added each fragment, then filename', ()
   expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- First, corrected.\n\n- Second.\n\n- Third.\n\n',
   );
+});
+
+test('an explicit target cuts a feature-only minor release with the same preview and written section', () => {
+  const root = repository('0.12.0');
+  put(root, 'packages/core/source.ts', 'export const typed = true;\n');
+  put(root, '.changes/feature.input.md', '- Add typed input.\n');
+  commit(root);
+  const args = ['--target', '0.13.0', '--date', '2026-10-15'];
+  const preview = dryRun(root, ...args);
+  expect(preview).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '## v0.13.0 - 2026-10-15\n\n### Features\n\n- Add typed input.\n\n',
+  });
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+  expect(cut(root, ...args)).toEqual(preview);
+  expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.13.0');
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toContain(preview.stdout.trimEnd());
+  expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
+});
+
+test.each(['0.12.1', '0.12.10', '0.13.1', '0.20.0'])(
+  'an explicit target %s may equal or exceed the feature minimum',
+  (target) => {
+    const root = repository('0.12.0');
+    put(root, '.changes/feature.input.md', '- Add input.\n');
+    commit(root);
+    expect(dryRun(root, '--target', target)).toMatchObject({
+      status: 0,
+      stderr: '',
+      stdout: expect.stringContaining(`## v${target} - `),
+    });
+  },
+);
+
+test.each([
+  ['0.11.9', 'at least 0.12.1'],
+  ['0.12.0', 'at least 0.12.1'],
+  ['', 'stable 0.x'],
+  ['v0.13.0', 'stable 0.x'],
+  ['0.013.0', 'stable 0.x'],
+  ['0.13', 'stable 0.x'],
+  ['0.13.0-next.1', 'stable 0.x'],
+  ['0.13.0+build', 'stable 0.x'],
+  ['1.0.0', 'stable 0.x'],
+  ['0.9007199254740991.0', 'stable 0.x'],
+])('an invalid target %j fails preview and writing without edits', (target, message) => {
+  const root = repository('0.12.0');
+  put(root, '.changes/feature.input.md', '- Add input.\n');
+  commit(root);
+  for (const args of [['--dry-run'], []]) {
+    expect(cut(root, ...args, '--target', target)).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(message),
+      stdout: '',
+    });
+    expect(git(root, ['status', '--porcelain', '--untracked-files=all'])).toBe('');
+  }
+});
+
+test('a breaking fragment sets a minor minimum that an explicit patch cannot bypass', () => {
+  const root = repository('0.12.0');
+  put(root, '.changes/breaking.input.md', migration);
+  commit(root);
+  expect(cut(root, '--target', '0.12.99')).toMatchObject({
+    status: 1,
+    stderr: expect.stringContaining('at least 0.13.0'),
+    stdout: '',
+  });
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+  expect(dryRun(root, '--target', '0.13.0').status).toBe(0);
+  expect(dryRun(root, '--target', '0.14.0').status).toBe(0);
+});
+
+test('an explicit target retains empty-fragment and initial-release rules', () => {
+  const later = repository('0.12.0');
+  expect(cut(later, '--target', '0.13.0').stderr).toContain('No fragments');
+  const initial = repository();
+  expect(cut(initial, '--initial', '--target', '0.0.1').stderr).toContain('at least 0.1.0');
+  expect(cut(initial, '--initial', '--target', '0.2.0').stderr).toContain('requires a narrative');
+  put(initial, 'narrative.md', 'Begin with typed input.\n');
+  commit(initial);
+  expect(
+    dryRun(initial, '--initial', '--target', '0.2.0', '--narrative', 'narrative.md'),
+  ).toMatchObject({
+    status: 0,
+    stderr: '',
+    stdout: expect.stringContaining('## v0.2.0 - '),
+  });
+});
+
+test('an explicit target retains the clean-checkout and existing-tag safeguards', () => {
+  const root = repository('0.12.0');
+  put(root, '.changes/feature.input.md', '- Add input.\n');
+  commit(root);
+  put(root, 'local.md', 'Local work.\n');
+  expect(cut(root, '--target', '0.13.0').stderr).toContain('clean checkout');
+  rmSync(join(root, 'local.md'));
+  git(root, ['tag', 'v0.13.0']);
+  expect(cut(root, '--target', '0.13.0').stderr).toContain('Tag v0.13.0 already exists');
+  expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
 test('a dry run refuses mismatched manifests and invalid dates without edits', () => {

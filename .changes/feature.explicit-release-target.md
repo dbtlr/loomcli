@@ -1,0 +1,1 @@
+- Allow `loom release cut --target VERSION` to select a synchronized release version at or above the fragment-derived minimum, including during a dry run, while keeping fragment classifications truthful. Omitting the target preserves automatic version calculation.
