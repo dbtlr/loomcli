@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { ValidationContext } from './types.js';
+import type { ActionContext, SuppliedInputs, ValidationContext } from './types.js';
 
 /** The `libraryOptions` key core writes its context under. It names the package that owns it. */
 const validationContextKey = '@loomcli/core';
@@ -17,6 +17,41 @@ function schemaOptions(context: ValidationContext): StandardSchemaV1.Options {
   return { libraryOptions: { [validationContextKey]: context } };
 }
 
+/** A schema call gets its own raw-input copies, as invocation validators do. */
+function copiedSupplied(supplied: SuppliedInputs): SuppliedInputs {
+  const args = { ...supplied.args };
+  const options = { ...supplied.options };
+  for (const [name, value] of Object.entries(args)) {
+    if (typeof value === 'object') {
+      args[name] = [...value];
+    }
+  }
+  for (const [name, value] of Object.entries(options)) {
+    if (typeof value === 'object') {
+      options[name] = [...value];
+    }
+  }
+  return { args, options };
+}
+
+/** The prompts library uses the same authenticated Standard Schema channel as input validation. */
+function questionValidationOptions(
+  context: Pick<ActionContext<unknown>, 'host' | 'command' | 'passthrough' | 'supplied'>,
+  question: { message: string; option?: string },
+): StandardSchemaV1.Options {
+  return schemaOptions({
+    command: [...context.command.path],
+    host: context.host,
+    input:
+      question.option === undefined
+        ? { global: false, kind: 'question', name: question.message }
+        : { global: false, kind: 'option', name: question.option },
+    passthrough: [...context.passthrough],
+    phase: 'question',
+    supplied: copiedSupplied(context.supplied),
+  });
+}
+
 /** Reads the context core attached to a schema call, or undefined when another caller ran it. */
 function validationContext(
   options: StandardSchemaV1.Options | undefined,
@@ -25,4 +60,4 @@ function validationContext(
   return carried !== null && typeof carried === 'object' ? emitted.get(carried) : undefined;
 }
 
-export { schemaOptions, validationContext, validationContextKey };
+export { questionValidationOptions, schemaOptions, validationContext, validationContextKey };

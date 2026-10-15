@@ -7,7 +7,7 @@
     "0": "Successful execution and core output",
     "1": "Expected action failure, internal failure, or invalid declarations",
     "2": "Invalid invocation inputs",
-    "130": "Cancelled by SIGINT or by a caller-supplied abort",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
     "143": "Cancelled by SIGTERM"
   },
   "encodings": {
@@ -25,6 +25,7 @@
       "short": "-h",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -38,6 +39,7 @@
       "short": "-V",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -51,6 +53,7 @@
       "short": "-M",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     },
@@ -63,6 +66,7 @@
       "long": "--config",
       "short": "-c",
       "required": false,
+      "requiredWhen": null,
       "multiple": false,
       "schema": null,
       "env": [],
@@ -79,6 +83,7 @@
       "short": "-e",
       "negative": null,
       "polarity": "positive",
+      "interaction": false,
       "schema": null,
       "env": []
     }
@@ -142,6 +147,7 @@
         "long": "--metric",
         "short": "-m",
         "required": false,
+        "requiredWhen": null,
         "multiple": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -167,6 +173,7 @@
         "long": "--min-bytes",
         "short": "-b",
         "required": false,
+        "requiredWhen": null,
         "multiple": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -191,6 +198,7 @@
         "short": "-t",
         "negative": null,
         "polarity": "positive",
+        "interaction": false,
         "schema": null,
         "env": [
           "TEXTSTAT_TOTAL"
@@ -205,6 +213,7 @@
         "long": "--format",
         "short": "-f",
         "required": false,
+        "requiredWhen": null,
         "multiple": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",

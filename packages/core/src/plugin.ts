@@ -26,6 +26,7 @@ import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
 import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
+import { checkInteraction } from './interaction.js';
 import { coreViews } from './lanes.js';
 import type { Log, LogHook } from './log.js';
 import { compileOptions } from './options.js';
@@ -535,6 +536,7 @@ function checkPluginOption(
   const site = siteOf(config);
   // A plugin's options are global options, so they answer the global option's presence rule.
   checkNoPresenceRule(site, config);
+  checkInteraction(config, site, true);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);

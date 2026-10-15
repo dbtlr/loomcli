@@ -1,0 +1,33 @@
+{
+  "name": "@loomcli/prompts",
+  "version": "0.12.0",
+  "private": true,
+  "description": "Action-owned terminal questions for Loom CLI applications.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dbtlr/loomcli.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./views": {
+      "types": "./dist/views.d.ts",
+      "import": "./dist/views.js"
+    }
+  },
+  "peerDependencies": {
+    "@loomcli/core": "workspace:*"
+  },
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=22.23.2"
+  }
+}

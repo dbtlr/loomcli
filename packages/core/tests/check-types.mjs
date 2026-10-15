@@ -62,8 +62,10 @@ const temporary = await mkdtemp(join(tmpdir(), 'loom-type-consumer-'));
 try {
   const coreTarball = join(temporary, 'core.tgz');
   const pluginsTarball = join(temporary, 'plugins.tgz');
+  const promptsTarball = join(temporary, 'prompts.tgz');
   pnpm(['pack', '--out', coreTarball], join(root, 'packages/core'));
   pnpm(['pack', '--out', pluginsTarball], join(root, 'packages/plugins'));
+  pnpm(['pack', '--out', promptsTarball], join(root, 'packages/prompts'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -71,6 +73,7 @@ try {
       dependencies: {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
+        '@loomcli/prompts': 'file:./prompts.tgz',
         zod: zod.version,
       },
       private: true,

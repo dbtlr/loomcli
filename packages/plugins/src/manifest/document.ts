@@ -76,6 +76,7 @@ type ManifestOption =
       readonly long: string | null;
       readonly short: string | null;
       readonly required: boolean;
+      readonly requiredWhen: 'non-interactive' | null;
       readonly multiple: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
@@ -91,6 +92,7 @@ type ManifestOption =
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
+      readonly interaction: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
@@ -116,7 +118,7 @@ const coreExitCodes: Readonly<Record<string, string>> = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
   '2': 'Invalid invocation inputs',
-  '130': 'Cancelled by SIGINT or by a caller-supplied abort',
+  '130': "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
   '143': 'Cancelled by SIGTERM',
 };
 
@@ -158,6 +160,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         ...common,
         negative: node.negative,
         polarity: node.polarity,
+        interaction: node.interaction,
         schema: node.schema,
         env: node.env,
       };
@@ -172,6 +175,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         ...(node.type === 'content' ? { stdin: node.stdin, min: node.min, max: node.max } : {}),
         ...common,
         required: node.required,
+        requiredWhen: node.requiredWhen,
         multiple: node.multiple,
         schema: node.schema,
         env: node.env,

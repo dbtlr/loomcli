@@ -287,6 +287,7 @@ export {
   copyList,
   copyOwnKeys,
   decidePlain,
+  defineEntry,
   declaring,
   isPlainObject,
   NestedTooDeepError,

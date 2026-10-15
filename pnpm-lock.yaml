@@ -175,6 +175,9 @@ importers:
       '@loomcli/plugins':
         specifier: workspace:*
         version: link:packages/plugins
+      '@loomcli/prompts':
+        specifier: workspace:*
+        version: link:packages/prompts
       '@loomcli/validators':
         specifier: workspace:*
         version: link:packages/validators
@@ -311,6 +314,12 @@ importers:
       '@loom/mcp':
         specifier: workspace:*
         version: link:../mcp
+
+  packages/prompts:
+    dependencies:
+      '@loomcli/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/validators:
     dependencies:

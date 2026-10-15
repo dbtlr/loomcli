@@ -1,10 +1,11 @@
+export { missingInputError } from './missing-input.js';
 export type { Content } from './content.js';
 export { Application } from './application.js';
 export { Command } from './command.js';
 export { escapeControlCharacters } from './controls.js';
 export { applicationDirectory } from './directory.js';
 export type { ApplicationDirectory, DirectoryLookup } from './directory.js';
-export { validationContext, validationContextKey } from './context.js';
+export { questionValidationOptions, validationContext, validationContextKey } from './context.js';
 export { diagnosticRule } from './diagnostic.js';
 export { isRuleIdentity } from './identity.js';
 export { isProseLine } from './facts.js';

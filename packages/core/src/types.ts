@@ -285,7 +285,8 @@ export interface SuppliedInputs {
 /**
  * What core knows when it calls one schema. A default validates before any token is read, so its
  * phase carries the host and the declaration alone. An invocation call adds the routed path, the
- * passthrough tail, and the tokens every declared input received.
+ * passthrough tail, and the tokens every declared input received. A question carries the same run
+ * facts and identifies its link, or its own title when unlinked.
  */
 export type ValidationContext =
   | { phase: 'default'; host: Host; input: InputIdentity }
@@ -296,9 +297,19 @@ export type ValidationContext =
       command: readonly string[];
       passthrough: readonly string[];
       supplied: SuppliedInputs;
+    }
+  | {
+      phase: 'question';
+      host: Host;
+      input: InputIdentity | { kind: 'question'; name: string; global: false };
+      command: readonly string[];
+      passthrough: readonly string[];
+      supplied: SuppliedInputs;
     };
 /** Immutable authoring and measurement context for one view destination. */
 export interface ViewContext {
+  /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */
+  readonly plain: (text: string) => string;
   readonly style: ContextualStyle;
   readonly width: (text: string) => number;
 }
@@ -376,7 +387,7 @@ export interface AttachedCommand {
    */
   readonly extensions: Readonly<Record<string, unknown>>;
   argument(name: string, config: ArgumentConfig): AttachedCommand;
-  option(name: string, config: OptionConfig): AttachedCommand;
+  option(name: string, config: OptionConfig & { interaction?: never }): AttachedCommand;
   views(
     replacements: Readonly<Record<string, ResultView>>,
     options?: { default?: string },
@@ -435,6 +446,8 @@ export interface Out<Result = unknown> {
   render<Data>(data: Data, view: View<Data>): Promise<void>;
   /** The same call over a sequence: core writes each row's text as the source yields it. */
   render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
+  /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
+  draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**
    * The Command's own result, emitted once. Property syntax keeps the parameter contravariant, so
    * a neutral `Out` never stands in for one that carries a declaration.
@@ -482,9 +495,16 @@ export interface ActionChannel {
   stop: () => void;
 }
 export type StringOption = OptionSpelling &
-  Presence &
-  Multiplicity &
-  Omission &
+  (
+    | (Presence & Multiplicity & Omission)
+    | {
+        required: 'non-interactive';
+        default?: never;
+        multiple?: false;
+        validateOmitted?: never;
+        env?: string | readonly [string, ...string[]];
+      }
+  ) &
   Described &
   Listed &
   Controlled &
@@ -622,6 +642,7 @@ export type BooleanOption =
       EnvBinding &
       OptionExtensions & {
         type: 'boolean';
+        interaction?: true;
         validate?: never;
         default?: never;
         multiple?: never;
@@ -636,6 +657,7 @@ export type BooleanOption =
       EnvBinding &
       OptionExtensions & {
         type: 'boolean';
+        interaction?: true;
         validate?: never;
         default?: never;
         multiple?: never;
@@ -748,6 +770,9 @@ export type InvocationOutcome<Mapped = LoomError> =
  * `invoke` runs another Command of that graph by name.
  */
 export interface ActionContext<Args, Options = {}, Result = unknown> {
+  readonly interactive: boolean;
+  readonly supplied: SuppliedInputs;
+  readonly cancel: () => void;
   readonly stdin?: Content | undefined;
   readonly style: ContextualStyle;
   args: Args;

@@ -28,7 +28,7 @@ import {
 } from './input-rules.js';
 import { booleanValue, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
-import { boundedSnapshot, NestedTooDeepError, shallowList } from './plain.js';
+import { boundedSnapshot, defineEntry, NestedTooDeepError, shallowList } from './plain.js';
 import { notAnObject } from './plugin-rules.js';
 import { validatorFailed } from './rules.js';
 import type {
@@ -110,6 +110,7 @@ interface SuppliedValues {
 
 /** Everything one invocation validates: its declarations, its tokens, and where they were read. */
 export interface Invocation {
+  interactive: boolean;
   stdin?: (StdinConfig & { readonly position: number }) | undefined;
   command: readonly string[];
   /** Every declared default and implied value, validated before any token was read. */
@@ -437,7 +438,7 @@ function missingMessage(
   const { collected, origin } = facts;
   return input.kind === 'argument'
     ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}. Supply a value for "${spelling}".`
-    : `${suppliedName(input, spelling, origin)} is required. Supply ${collected ? 'at least one value' : 'a value'}.`;
+    : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${collected ? 'at least one value' : 'a value'}.`;
 }
 
 /**
@@ -623,7 +624,16 @@ function checkDeclaration(input: InputDeclaration, site: InputSite, subject: str
     checkValueless(input.config, site, subject);
     return;
   }
-  if (config.required !== undefined && typeof config.required !== 'boolean') {
+  if (
+    config.required !== undefined &&
+    typeof config.required !== 'boolean' &&
+    !(
+      input.kind === 'option' &&
+      input.config.type === 'string' &&
+      input.config.multiple !== true &&
+      config.required === 'non-interactive'
+    )
+  ) {
     throw flagFault(site, 'required');
   }
   if (
@@ -1002,25 +1012,41 @@ function freshDeclaredValue(value: unknown) {
  * Command and every global appears, so absence reads as the shape its declaration collects. Each
  * collected value is copied, because the parser's own array is what the action reads.
  */
-function suppliedInputs(
+export function suppliedInputs(
   declarations: readonly InputDeclaration[],
   supplied: SuppliedValues,
+  freeze = false,
 ): SuppliedInputs {
   const args: Record<string, string | readonly string[] | undefined> = {};
   const options: Record<string, string | readonly string[] | boolean | number | undefined> = {};
   for (const input of declarations) {
     const collected = collects(input);
     if (input.kind === 'argument') {
-      args[input.name] = copied(supplied.args.get(input)) ?? (collected ? [] : undefined);
+      defineEntry(
+        args,
+        input.name,
+        copied(supplied.args.get(input)) ?? (collected ? [] : undefined),
+      );
     } else if (input.config.type === 'boolean') {
-      options[input.name] = supplied.options.booleans.get(input.name);
+      defineEntry(options, input.name, supplied.options.booleans.get(input.name));
     } else if (input.config.type === 'count') {
-      options[input.name] = supplied.options.counts.get(input.name);
+      defineEntry(options, input.name, supplied.options.counts.get(input.name));
     } else {
-      options[input.name] =
+      defineEntry(
+        options,
+        input.name,
         copied(suppliedOption(supplied.options, input.name, collected)) ??
-        (collected ? [] : undefined);
+          (collected ? [] : undefined),
+      );
     }
+  }
+  if (freeze) {
+    for (const value of [...Object.values(args), ...Object.values(options)]) {
+      if (Array.isArray(value)) {
+        Object.freeze(value);
+      }
+    }
+    return Object.freeze({ args: Object.freeze(args), options: Object.freeze(options) });
   }
   return { args, options };
 }
@@ -1232,7 +1258,10 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           reject(entry, result.issues, suppliedName(input, spelling, originOf(input)));
         }
       } else if (raw === undefined) {
-        if (input.config.required) {
+        if (
+          input.config.required === true ||
+          (input.config.required === 'non-interactive' && !invocation.interactive)
+        ) {
           // An omitted required argument arrives here too, so omission has one class.
           // One aggregated diagnostic covers an omitted argument and an omitted option alike.
           omit(entry, spelling, missingMessage(input, spelling, { collected }));

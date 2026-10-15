@@ -47,6 +47,10 @@
       "types": "./dist/src/help/views.d.ts",
       "import": "./dist/src/help/views.js"
     },
+    "./interaction": {
+      "types": "./dist/src/interaction/plugin.d.ts",
+      "import": "./dist/src/interaction/plugin.js"
+    },
     "./logging": {
       "types": "./dist/src/logging/plugin.d.ts",
       "import": "./dist/src/logging/plugin.js"
@@ -95,6 +99,10 @@
       "types": "./dist/src/table.d.ts",
       "import": "./dist/src/table.js"
     },
+    "./theme": {
+      "types": "./dist/src/theme/plugin.d.ts",
+      "import": "./dist/src/theme/plugin.js"
+    },
     "./version": {
       "types": "./dist/src/version/plugin.d.ts",
       "import": "./dist/src/version/plugin.js"
@@ -102,10 +110,6 @@
     "./version/views": {
       "types": "./dist/src/version/views.d.ts",
       "import": "./dist/src/version/views.js"
-    },
-    "./theme": {
-      "types": "./dist/src/theme/plugin.d.ts",
-      "import": "./dist/src/theme/plugin.js"
     }
   },
   "dependencies": {

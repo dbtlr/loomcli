@@ -324,6 +324,9 @@ function stringFacts(option: StringOption): Fact[] {
   return [
     ...contentFacts(option, option.multiple),
     ...(option.required ? [dimFact('required')] : []),
+    ...(option.requiredWhen === 'non-interactive'
+      ? [dimFact('required when not interactive')]
+      : []),
     ...(option.multiple ? [dimFact('repeatable')] : []),
     ...defaultFacts(option.default),
     ...impliedFacts(option.implied),

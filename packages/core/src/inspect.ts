@@ -73,6 +73,7 @@ interface StringOptionNode {
   readonly short: string | null;
   readonly aliases: readonly string[];
   readonly required: boolean;
+  readonly requiredWhen: 'non-interactive' | null;
   readonly multiple: boolean;
   readonly validated: boolean;
   readonly validateOmitted: boolean;
@@ -101,6 +102,7 @@ type OptionNode =
       readonly short: string | null;
       readonly negative: string | null;
       readonly aliases: readonly string[];
+      readonly interaction: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
       readonly env: readonly string[];
@@ -331,6 +333,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
         implied: config.implied ?? null,
         multiple: config.multiple === true,
         required: config.required === true || (config.type === 'content' && (config.min ?? 0) > 0),
+        requiredWhen: config.required === 'non-interactive' ? ('non-interactive' as const) : null,
         schema: inputSchema(input, check),
         validateOmitted: validatesOmission(input),
         validated: config.type === 'content' || config.validate !== undefined,
@@ -348,6 +351,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
     case 'boolean': {
       return Object.freeze({
         ...shared,
+        interaction: config.interaction === true,
         negative,
         polarity: config.polarity ?? 'positive',
         schema: null,
