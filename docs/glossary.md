@@ -44,7 +44,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
+The single object an action receives, carrying its validated inputs, the supplied record as `supplied`, the interaction decision as `interactive`, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, `cancel`, which aborts the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -145,7 +145,7 @@ The value a string option takes when its spelling is supplied bare, with nothing
 _Avoid_: Optional argument, flag value, const value
 
 **Input-source stage**:
-The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source.
+The invocation phase between local parsing and validation that fills each unfilled option from the environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source. The supplied record tells an action whether a value was supplied, never by which tier.
 _Avoid_: Config merge, fallback chain, value resolution
 
 **Environment binding**:
@@ -163,6 +163,14 @@ _Avoid_: Built-in validators, core validators
 **Validation context**:
 The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
 _Avoid_: Schema options, environment
+
+**Supplied record**:
+The raw value of every input some tier supplied in one invocation, keyed by declared name. An input that was omitted or left to its declared default reads `undefined`, or `[]` for a multiple option or a variadic argument. Validators read it in the validation context and the action reads it as `supplied`; it says whether a value was supplied, never which tier supplied it.
+_Avoid_: Provenance, raw options, source map
+
+**Conditional requiredness**:
+The presence rule `required: 'non-interactive'` on a local string option that takes one value: the option is required when the run's interaction decision is off and optional when it is on, so the action can ask for it.
+_Avoid_: Soft required, required unless prompted
 
 **Passthrough**:
 The tokens after the first bare `--`, delivered to the action unchanged and never parsed, validated, or transformed by core.
@@ -211,6 +219,14 @@ _Avoid_: Compilation, registration, setup
 **Inspection**:
 Reading the Command graph as plain frozen data through `inspect()`, without reading host facts or running a validator.
 _Avoid_: Introspection, reflection, dump
+
+**Interaction decision**:
+The one verdict per run, computed before validation, on whether the run may ask the operator questions: on only when stdin and stderr are terminals and the interaction mark does not turn it off. Conditional requiredness and every question read the same verdict.
+_Avoid_: TTY check, interactive mode, host.interactive
+
+**Interaction mark**:
+The `interaction: true` fact on the one Boolean global option whose value states the application's intent to ask questions. It can turn the interaction decision off and never on.
+_Avoid_: No-input flag (for the mark), interactive option
 
 **Invocation**:
 One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
@@ -280,7 +296,7 @@ The exit code a failure class states as its static `exitCode`, read from the nea
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:
-The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal or the signals owner aborts it, with a `CancellationReason` naming the cause.
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, the signals owner, or the action's `cancel()` aborts it, with a `CancellationReason` naming the cause.
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
 
 **Signals owner**:
@@ -292,7 +308,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](core.md#table) and [records](core.md#records) contracts.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the draw call that renders a live region on stderr, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -541,6 +557,14 @@ _Avoid_: Color scheme, skin, style sheet, palette (for the plugin)
 **Plugin pack**:
 The one first-party package that ships every first-party plugin as its own separately installable subpath export.
 _Avoid_: Bundle, standard library, batteries, default set
+
+**Question**:
+One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, or select, drawn on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
+_Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
+
+**Linked option**:
+The local option a question names with `option`. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped.
+_Avoid_: Bound option, backing option
 
 **Manifest**:
 The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It lists no alias or hidden member, though a hidden Command routed to directly prints its own slice, and it excludes authoring provenance, diagnostics, and implementation history, and nothing depends on it: no projection or plugin reads a fact from it, because a fact a consumer needs enters the Command graph and reaches the manifest from there. A plugin that wants its own facts in the manifest supplies them through the manifest's collecting extension.
