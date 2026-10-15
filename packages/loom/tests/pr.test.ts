@@ -11,6 +11,7 @@ import { invoke } from '../../../scripts/test-process.js';
 import {
   commit,
   git,
+  migration,
   put,
   removeRoots,
   repository as fixtureRepository,
@@ -88,6 +89,60 @@ test('a compiler-written release passes and unrelated code cannot enter the rele
   expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
     status: 1,
     stderr: expect.stringContaining('outside the release cut'),
+  });
+});
+
+test('a feature-only explicit target passes admission with synchronized manifests and lockfile', () => {
+  const { root } = repository('0.12.0');
+  put(root, '.changes/feature.input.md', '- Add typed input.\n');
+  put(
+    root,
+    'packages/adapter/package.json',
+    JSON.stringify({
+      dependencies: { '@sample/core': 'workspace:*' },
+      name: '@sample/adapter',
+      version: '0.12.0',
+    }),
+  );
+  const base = commit(root);
+  expect(
+    invoke(cli, ['release', 'cut', '--target', '0.13.0', '--date', '2026-10-15'], { cwd: root }),
+  ).toMatchObject({ status: 0, stderr: '' });
+  commit(root);
+  expect(releaseCheck(root, base, '0.13.0')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+  expect(readFileSync(join(root, 'packages/adapter/package.json'), 'utf8')).toContain(
+    '"version":"0.13.0"',
+  );
+  expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toContain('specifier: workspace:*');
+  expect(releaseCheck(root, base, '0.14.0')).toMatchObject({
+    status: 1,
+    stderr: expect.stringContaining('Every participating library must carry title version'),
+  });
+});
+
+test('release admission rejects a target below the breaking-fragment minimum', () => {
+  const { root } = repository('0.12.0');
+  put(root, '.changes/breaking.input.md', migration);
+  const base = commit(root);
+  expect(invoke(cli, ['release', 'cut', '--target', '0.13.0'], { cwd: root }).status).toBe(0);
+  put(
+    root,
+    'packages/core/package.json',
+    JSON.stringify({ name: '@sample/core', version: '0.12.1' }),
+  );
+  put(
+    root,
+    'CHANGELOG.md',
+    readFileSync(join(root, 'CHANGELOG.md'), 'utf8').replace('v0.13.0', 'v0.12.1'),
+  );
+  commit(root);
+  expect(releaseCheck(root, base, '0.12.1')).toMatchObject({
+    status: 1,
+    stderr: expect.stringContaining('at least 0.13.0'),
   });
 });
 
@@ -654,14 +709,14 @@ test('a release rejects lockfile changes that the version writer did not produce
   });
 });
 
-test('release cuts reject non-version manifest changes and replacement numbers', () => {
+test('release cuts reject non-version manifest changes and mismatched title versions', () => {
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
   expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
   const cut = commit(root);
   expect(releaseCheck(root, base, '0.4.9').stderr).toContain(
-    'replacement overrides are not supported',
+    'Every participating library must carry title version',
   );
   put(
     root,

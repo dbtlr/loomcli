@@ -653,19 +653,19 @@ A pending record of one pull request's consumer-visible changes and any required
 _Avoid_: Changeset, release note draft
 
 **Breaking fragment**:
-A change fragment, named `breaking.<slug>.md`, for a change that forces a consumer to change its code or requirements. It carries a migration section, and it advances the major version from `1.0.0` and the minor below it.
+A change fragment, named `breaking.<slug>.md`, for a change that forces a consumer to change its code or requirements. It carries a migration section, and its minimum bump is the major version from `1.0.0` and the minor below it.
 _Avoid_: Major fragment, breaking changeset
 
 **Feature fragment**:
-A change fragment, named `feature.<slug>.md`, for a compatible addition. It advances the minor version from `1.0.0` and the patch below it.
+A change fragment, named `feature.<slug>.md`, for a compatible addition. Its minimum bump is the minor version from `1.0.0` and the patch below it.
 _Avoid_: Minor fragment, enhancement
 
 **Fix fragment**:
-A change fragment, named `<slug>.md` with no kind prefix, for a compatible correction. It advances the patch version.
+A change fragment, named `<slug>.md` with no kind prefix, for a compatible correction. Its minimum bump is the patch version.
 _Avoid_: Patch fragment, bugfix
 
 **Ordinary fragment**:
-A change fragment that is not breaking: a feature fragment or a fix fragment. This repository's synchronized release, under [ADR-0012](decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md), advances the patch version for either kind, so the two differ there only in the section they render under. From `1.0.0`, a package under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) bumps them differently.
+A change fragment that is not breaking: a feature fragment or a fix fragment. Either kind requires at least a patch bump in this repository's synchronized release under [ADR-0083](decisions/0083-a-synchronized-release-may-select-a-version-above-the-fragment-minimum.md), while a package from `1.0.0` under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) bumps them differently.
 _Avoid_: Patch fragment, minor fragment
 
 **Release cut**:
@@ -681,7 +681,7 @@ A change to a library, a library dependency, or a shared build input that can af
 _Avoid_: Direct change, visible change
 
 **Replacement cut**:
-The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes the next version and never rewrites, republishes, or retags the version it supersedes.
+The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes a version above the one it supersedes and never rewrites, republishes, or retags that version.
 _Avoid_: Retry, rebuild, republish, repair
 
 **Release asset**:

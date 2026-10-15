@@ -125,6 +125,8 @@ warning: .changes/README.md differs from what loom init wrote. Run loom init --f
 
 ## The package changelog
 
+The public per-package commands use automatic version calculation. Explicit `--target` selection belongs only to this repository's hidden [synchronized release cut](changelog-compiler.md#version-calculation).
+
 ```text
 loom changelog check
 loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]

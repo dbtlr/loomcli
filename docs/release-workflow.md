@@ -43,6 +43,8 @@ The packed consumer runs in CI on every pull request: the Linux Node job proves 
 
 The `plan` and `record` jobs run the published `@loomcli/loom` that `.github/release-tool` pins. [ADR-0075](decisions/0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) records the design.
 
+An explicit `release cut --target VERSION` is recorded in the synchronized manifests and changelog before merge. The PR guard builds the checkout's tool to validate that target. The pinned `plan` and `record` commands read the committed version, so target selection requires no new workflow option or release-tool bootstrap.
+
 `.github/release-tool/package.json` names `@loomcli/loom` at one exact version, and `.github/release-tool/package-lock.json` pins it and every package it depends on by integrity. Each job copies both files into `$RUNNER_TEMP/release-tool`, outside the checkout so the install leaves the working tree the plan reads untouched, and runs `npm ci --ignore-scripts` there. The jobs then run `$RUNNER_TEMP/release-tool/node_modules/.bin/loom` from the checkout.
 
 A change to `release plan` or `release record` therefore reaches the workflow one release later: a release publishes it, and then the pin moves to that version. The pinned version must carry every command and option the workflow calls. The `build` job still installs and builds the workspace, because it packs the release from the commit the run attests.

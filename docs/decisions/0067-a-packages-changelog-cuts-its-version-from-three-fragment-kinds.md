@@ -4,7 +4,7 @@ title: ADR-0067 - A package's changelog cuts its version from three fragment kin
 description: Any package keeps its own .changes/ and CHANGELOG.md in its package directory and reads its version from package.json, never from tags. Fragments are breaking, feature, or fix, and the highest kind present decides the bump, major, minor, or patch from 1.0, and minor or patch below it. loom changelog check validates the fragments, and loom changelog write cuts the version, renders the section, and consumes the fragments atomically. ADR-0012 keeps governing this repository's synchronized release.
 status: accepted
 created: 2026-10-07
-modified: 2026-10-09
+modified: 2026-10-15
 ---
 
 # ADR-0067 - A package's changelog cuts its version from three fragment kinds
@@ -47,3 +47,4 @@ Accepted in 0.10.0.
 
 - 2026-10-07: Proposed with the toolchain contract.
 - 2026-10-08: This repository checks its fragments with the public `loom changelog check`, so its fragment guide admits `feature.`, and its synchronized cut moved to the hidden `loom release cut`, which renders the same three groups under ADR-0012's version rule.
+- 2026-10-15: [ADR-0083](0083-a-synchronized-release-may-select-a-version-above-the-fragment-minimum.md), proposed, permits an explicit target for this repository's synchronized cut alone. This record's automatic calculation and override rejection continue to govern the public per-package command. ADR-0083 binds when accepted.

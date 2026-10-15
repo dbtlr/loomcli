@@ -37,13 +37,9 @@ export function checkRelease(
     initial: currentVersion(previous).text === '0.0.0',
     narrative: undefined,
     since: undefined,
+    target: version,
   };
   const release = prepareRelease(root, options, base);
-  if (version !== release.version) {
-    throw new Error(
-      `Release version must be ${release.version}; replacement overrides are not supported.`,
-    );
-  }
   if (currentVersion(libraries).text !== version) {
     throw new Error(`Every participating library must carry title version ${version}.`);
   }

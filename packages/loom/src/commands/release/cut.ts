@@ -117,6 +117,7 @@ function prepare(
     initial: boolean;
     since: string | undefined;
     narrative: string | undefined;
+    target: string | undefined;
   },
 ) {
   const release = prepareRelease(root, {
@@ -124,6 +125,7 @@ function prepare(
     initial: options.initial,
     narrative: readNarrative(root, options.narrative),
     since: options.since,
+    target: options.target,
   });
   requireReleaseNotes(release);
   return release;
@@ -137,6 +139,10 @@ export const cut = new Command('cut', {
   description:
     'Cut the next synchronized release: update the changelog, versions, and lockfile, and consume the fragments.',
 })
+  .option('target', {
+    description: 'Select a stable 0.x version at or above the fragment-derived minimum.',
+    type: 'string',
+  })
   .option('dry-run', {
     description: 'Print the next release section without writing any file.',
     type: 'boolean',

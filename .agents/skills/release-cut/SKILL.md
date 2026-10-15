@@ -26,7 +26,7 @@ Confirm that the previous version, the one the manifests carry at the cut base, 
 - **Published.** It is tagged `v<version>` at the commit its registry provenance names, which is an ancestor of the cut base, and every participating package is published on npm at that version with `latest` pointing at it.
 - **Abandoned unpublished.** It never reached the registry, has no tag and no GitHub Release, and the maintainer confirms that it was abandoned, for example because its release run refused publication. Record the abandonment in the cut's narrative so the changelog says the version was never published.
 
-Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial` to prepare `0.1.0`.
+Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial`, defaulting to `0.1.0`.
 
 Each package's trusted publisher on npmjs.com names the workflow file `release.yml` and the `release` environment. A package joining the release for the first time needs that publisher before its cut merges, and only the maintainer can see or set it. npm attaches a publisher only to a name that already exists on the registry, so the maintainer first publishes a placeholder `0.0.0` from outside the repository and configures the publisher on that record; the [release workflow reference](../../../docs/release-workflow.md) describes the step. The package's manifest also joins the participating set in an ordinary pull request at the current synchronized version before the cut, because the release guard rejects a cut that changes the participating set or any manifest field other than `version`.
 
@@ -50,7 +50,7 @@ pnpm loom release cut --dry-run --date YYYY-MM-DD
 pnpm loom release cut --date YYYY-MM-DD
 ```
 
-Replace the date with one valid UTC release date for both commands. Add `--initial` to both preparation commands for the initial cut; an initial cut that consumes no fragments also requires `--narrative`, because the section carries no entries. If a narrative is warranted, pass the same `--narrative FILE` to both. Use the default material baseline; normal cuts do not use `--since` overrides.
+Replace the date with one valid UTC release date for both commands. When a target version is specified, pass the same `--target VERSION` to both commands. The target must be a stable `0.x` version greater than the current version and at least the fragment-derived minimum. Keep fragment classifications truthful even when the target selects a larger bump. Without `--target`, keep automatic calculation. Add `--initial` to both preparation commands for the initial cut; an initial cut that consumes no fragments also requires `--narrative`, because the section carries no entries. If a narrative is warranted, pass the same `--narrative FILE` to both. Use the default material baseline; normal cuts do not use `--since` overrides.
 
 An empty fragment set after the initial release does not create a release. A failed or interrupted `release cut` run is not a prepared cut. Inspect its diagnostic; preserve the failed checkout for diagnosis and restart preparation from the recorded base in a fresh checkout when necessary.
 
