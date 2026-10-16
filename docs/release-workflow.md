@@ -142,7 +142,7 @@ The workflow depends on settings that live outside this repository's files.
 
 - Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
-- Each library has one npm trusted publisher card, visible only on npmjs.com, and the card carries exactly these values:
+- Each library has an npm trusted publisher configured on npmjs.com or through `npm trust` in npm 11.15.0 or newer. The publisher carries exactly these values:
 
   | Field                | Value                       |
   | -------------------- | --------------------------- |
@@ -155,6 +155,15 @@ The workflow depends on settings that live outside this repository's files.
   A card that does not match fails the `publish` job for that library. A workflow filename that differs, such as `release.yaml`, fails with `ENEEDAUTH`. A card that allows only `npm stage publish`, which npm always allows, fails with `E403 OIDC permission denied`. The workflow publishes directly because the `record` job reads the registry right after the publish, and a staged version waits for a maintainer's approval before it reaches the registry. Correct the card on npmjs.com, then run `gh run rerun <run-id> --failed`. The re-run reads the current state and publishes only what is missing.
 
   npm attaches a trusted publisher only to a name that already exists on the registry, so a library joining the release set is first published by the maintainer as a placeholder `0.0.0`, from a directory outside this repository, and its publisher is configured on that record before the cut that carries it merges. The workflow reads only the version the manifests carry, so the placeholder never enters a plan, and the maintainer can deprecate it or unpublish it within npm's window once the first real version is on the registry.
+
+  After the placeholder is visible, an authenticated maintainer can configure and inspect its publisher through the CLI. Run outside this repository, replacing `<package>` with its full name:
+
+  ```sh
+  npm trust github <package> --file release.yml --repo dbtlr/loomcli --env release --allow-publish --yes
+  npm trust list <package> --json
+  ```
+
+  Check that the result names the repository, workflow, and environment above and includes `createPackage`, the direct publication permission. npm also grants staged publication. These commands can require interactive two-factor authentication, even after `npm login`. See the [npm trust reference](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
 
 ## Accepted risks
 
