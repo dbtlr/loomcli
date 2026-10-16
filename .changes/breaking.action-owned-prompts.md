@@ -1,4 +1,4 @@
-- Add `@loomcli/prompts`, an optional library for action-owned text, secret, confirm, and select questions. Questions render on stderr, can link local options, and return validated supplied values silently when skipped.
+- Add the separately published `@loomcli/prompts` library for optional action-owned text, secret, confirm, and select questions. Questions render on stderr, can link local options, and return validated supplied values silently when skipped.
 - Add one run-wide interaction decision, the `@loomcli/plugins/interaction` plugin's `--no-input` switch, and `required: 'non-interactive'` for single-value local string options. Help, the manifest, and MCP schemas expose conditional requiredness.
 - Pass the captured run context to question validators, including the working directory and time zone used by `path()` and `dateTime()`.
 - Add `ViewContext.plain(text)` to resolve marked text without styles or controls while preserving destination glyph forms. Select frames use it to fit short or narrow terminals while preserving complete returned choice values.
