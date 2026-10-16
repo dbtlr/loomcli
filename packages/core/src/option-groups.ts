@@ -142,6 +142,7 @@ function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
   }
 }
 
+/** A group has no singular subject, so each sentence states the complete relationship. */
 function groupMessage(kind: OptionGroup['kind'], names: readonly string[]): string {
   const members =
     names.length === 2
