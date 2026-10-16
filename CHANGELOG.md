@@ -6,6 +6,143 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.13.0 - 2026-10-16
+
+0.13.0 gives applications more ways to collect input. Native content inputs prepare lazy file or stdin handles, dotenv imports an explicit environment allowlist before input validation, and declared option groups check relationships between supplied options. Actions can ask text, secret, confirm, and select questions through the separately published `@loomcli/prompts` library. Linked questions can reuse supplied answers, and the interaction plugin adds `--no-input` for runs that must not ask.
+
+Pin the first-party packages together at exactly 0.13.0, adding `@loomcli/prompts` only when the application asks questions. The migration sections below cover environment-binding readers and applications that construct complete host, output, view, or action contexts. Applications that use the contexts core produces need no context-construction changes.
+
+### Breaking Changes
+
+- Add the separately published `@loomcli/prompts` library for optional action-owned text, secret, confirm, and select questions. Questions render on stderr, can link local options, and return validated supplied values silently when skipped.
+- Add one run-wide interaction decision, the `@loomcli/plugins/interaction` plugin's `--no-input` switch, and `required: 'non-interactive'` for single-value local string options. Help, the manifest, and MCP schemas expose conditional requiredness.
+- Pass the captured run context to question validators, including the working directory and time zone used by `path()` and `dateTime()`.
+- Add `ViewContext.plain(text)` to resolve marked text without styles or controls while preserving destination glyph forms. Select frames use it to fit short or narrow terminals while preserving complete returned choice values.
+- Add `supplied`, `interactive`, and `cancel()` to action contexts, `missingInputError()` for action-owned missing inputs, and `out.draw(data, view)` for ordered terminal drawing on stderr with resolved row counts.
+
+### Migration
+
+**Affected surface.** Applications that construct `Out`, `ViewContext`, or `ActionContext` objects, including wrappers and test harnesses. Applications that only consume the context core produces need no code change.
+
+**Why.** `Out` now requires `draw`, `ViewContext` requires the destination-aware `plain` helper, and `ActionContext` carries the run's `supplied`, `interactive`, and `cancel` members. Questions need core's ordered output and shared interaction and cancellation decisions.
+
+**Before and after.** A wrapper that copies each output method must preserve `draw` too. Copying the runtime channel preserves its full contract:
+
+Before:
+
+```ts
+function copyOutput(out: Out): Out {
+  return {
+    error: out.error,
+    fatal: out.fatal,
+    info: out.info,
+    print: out.print,
+    render: out.render,
+    results: out.results,
+    success: out.success,
+    warn: out.warn,
+  };
+}
+```
+
+After:
+
+```ts
+function copyOutput(out: Out): Out {
+  return { ...out };
+}
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Preserve the runtime channel's `draw` in output wrappers and the runtime view context's `plain` in view-context wrappers. A custom channel implements the [drawing contract](docs/core.md#output-and-failures), including stderr ordering and row measurement.
+3. Run test actions through `Application.run()` with host overrides or `Application.invoke()` to obtain a complete action context. Hand-built contexts must provide `supplied`, `interactive`, and `cancel` with the same run semantics.
+
+**Validation.** Run `pnpm exec tsc --noEmit` and the application's test command. Verify that supplied linked answers resolve without question output and that cancellation restores terminal input.
+
+- Add `dateTime()` and `duration()` validators to `@loomcli/validators`, and `host.timeZone` to the `Host` in `@loomcli/core`.
+  - `dateTime()` reads an ISO 8601 or RFC 3339 date and time into a `Date`. A token with an offset or `Z` names that instant, and an offset may be `+05:00`, `+0500`, or the hour-only `+05`. A token without one is read in the `timeZone` option or, when none is given, in the operator's time zone from `host.timeZone`, which honours `TZ`. A time a clock change skips moves forward, and one it repeats takes the earlier instant.
+  - `duration()` reads systemd.time(7) span spellings, such as `90s`, `2h30m`, `1.5h`, `2 hours`, or `1 hour 30 min`, or a bare number of seconds, into milliseconds. Whitespace may separate a number from its unit and the parts from each other. Units are case-sensitive, a capital `M` is rejected as ambiguous, and months and years are rejected. `min` and `max` take durations in the same grammar and are inclusive.
+  - `run({ host: { timeZone } })` overrides the captured zone.
+
+### Migration
+
+**Affected surface.** Applications that construct a complete `Host` object, including validation-context fixtures and host wrappers. Partial host overrides passed to `Application.run()` need no change.
+
+**Why.** `Host` now requires `timeZone`, the IANA zone that `dateTime()` uses for timestamps without an explicit offset.
+
+**Before and after.** A helper that constructs a complete host must include its zone:
+
+Before:
+
+```ts
+const host: Host = { ...hostFields };
+```
+
+After:
+
+```ts
+const host: Host = { ...hostFields, timeZone: 'UTC' };
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Add an appropriate IANA `timeZone` to complete host fixtures. Use a fixed zone such as `UTC` for deterministic tests, and preserve the captured zone in wrappers.
+3. Prefer partial `run({ host: { ... } })` overrides when a test needs only selected host fields; core captures the remaining fields.
+
+**Validation.** Run `pnpm exec tsc --noEmit` and the application's tests. When using `dateTime()` without an offset, verify the resulting instant under the intended host zone.
+
+- Allow an option to bind a list of environment variables, such as `env: ['AWS_REGION', 'AWS_DEFAULT_REGION']`. The first name in list order that holds a non-empty value supplies the option, an invalid Boolean or count value on it fails naming that variable, and a failure's source label names the variable that supplied the value. An empty list and a name repeated in one list are declaration errors, and a list claims every name it holds.
+- Change the `env` fact on `OptionNode`, `inspect()`, and the manifest to an array of the bound variables in declaration order, empty when the option binds none. A binding declared as one name publishes a one-element array.
+
+### Migration
+
+**Affected surface.** Applications that read environment bindings from `OptionNode`, `inspect()`, or the manifest. Option declarations using one environment variable remain valid.
+
+**Why.** An option can bind several names, so its published `env` fact is now a list instead of a string or `null`.
+
+**Before and after.** Normalize no binding to an empty list and read all names in declaration order:
+
+Before:
+
+```ts
+const names = node.env === null ? [] : [node.env];
+```
+
+After:
+
+```ts
+const names = node.env;
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Update inspection and manifest readers to accept an empty or populated array. Iterate all names, or read `env[0]` when only the first binding matters.
+3. Update manifest schemas and snapshots that expect a string or `null`.
+
+**Validation.** Run `pnpm exec tsc --noEmit` and the application's tests. Check inspection and manifest output for unbound, single-name, and multiple-name options.
+
+### Features
+
+- Add local content arguments and options that prepare readable file paths into lazy `Content` handles, with one declared stdin target per Command and source-count bounds on collections.
+- Add `.stdin()` for an input that accepts piped or redirected content without a file operand. Content preparation reads no bytes; the action selects `text()` or `stream()`.
+- Describe content sources and count bounds in inspection, manifests, help, man pages, and MCP schemas, and support content inputs in completion. Named invocations and MCP calls accept file paths without content stdin.
+
+- Allow `loom release cut --target VERSION` to select a synchronized release version at or above the fragment-derived minimum, including during a dry run, while keeping fragment classifications truthful. Omitting the target preserves automatic version calculation.
+
+- Add `@loomcli/plugins/dotenv` to import an explicit allowlist from `.env` before defaults and inputs validate. Existing environment values, including empty values, win. Ordinary CLI runs also make additions available to libraries and child processes; supplied working directories or environments and every named invocation keep additions inside the run.
+- Add the bounded `onEnvironment` plugin hook for environment additions, with merging and process isolation owned by core.
+
+- Add immutable `exclusive()`, `oneRequired()`, and `requiredTogether()` declarations over local options. Core checks supplied presence across argv, environment, and configuration before dispatch, reports group and individual input problems together, and publishes the rules through inspection, help, the manifest, sound MCP schemas, and exclusive-option completion.
+- Expand the produced `InputProblem` union with group problems carrying `inputs`, `spellings`, and `supplied`. Custom readers narrow `reason` before reading singular `input`, `spelling`, or `issues` fields.
+
+### Fixes
+
+- Fix `completion install` and `completion update` forgetting the startup line an operator added by hand to a startup file the application cannot change. When the script moves or the line's text changes, and that file already holds the new line, the command now records the new line as held instead of printing it to add, so `completion update` keeps it and `completion uninstall` prints it to remove. The application still never writes that file, and a startup file it cannot read records nothing.
+
 ## v0.12.0 - 2026-10-14
 
 0.12.0 lets a Loom application put its own files on an operator's machine: shell completion, man pages, and agent skills. Each installer records what it wrote in the installation record 0.11.0 introduced. It refuses to overwrite a file it did not write, and `update` refreshes the files after a self-update.

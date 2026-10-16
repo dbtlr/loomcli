@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0083 - A synchronized release may select a version above the fragment minimum
 description: The synchronized release cut accepts an explicit stable 0.x target at or above the fragment-derived minimum. Omission preserves automatic calculation, and fragment kinds continue to describe consumer effects.
-status: proposed
+status: accepted
 created: 2026-10-15
-modified: 2026-10-15
+modified: 2026-10-16
 ---
 
 # ADR-0083 - A synchronized release may select a version above the fragment minimum
@@ -30,4 +30,4 @@ The pinned published tool in [ADR-0075](0075-the-release-workflow-runs-a-pinned-
 
 ## Status
 
-Proposed with explicit synchronized release targets. The release PR that ships the implementation marks this record accepted.
+Accepted in 0.13.0.
