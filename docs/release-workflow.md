@@ -156,7 +156,7 @@ The workflow depends on settings that live outside this repository's files.
 
   npm attaches a trusted publisher only to a name that already exists on the registry, so a library joining the release set is first published by the maintainer as a placeholder `0.0.0`, from a directory outside this repository, and its publisher is configured on that record before the cut that carries it merges. The workflow reads only the version the manifests carry, so the placeholder never enters a plan, and the maintainer can deprecate it or unpublish it within npm's window once the first real version is on the registry.
 
-  After the placeholder is visible, an authenticated maintainer can configure and inspect its publisher through the CLI. Run outside this repository, replacing `<package>` with its full name:
+  Configure the publisher when the cut that first publishes the library is ready to merge. After the placeholder is visible, an authenticated maintainer can configure and inspect its publisher through the CLI. Run outside this repository, replacing `<package>` with its full name:
 
   ```sh
   npm trust github <package> --file release.yml --repo dbtlr/loomcli --env release --allow-publish --yes
@@ -164,6 +164,8 @@ The workflow depends on settings that live outside this repository's files.
   ```
 
   Check that the result names the repository, workflow, and environment above and includes `createPackage`, the direct publication permission. npm also grants staged publication. These commands can require interactive two-factor authentication, even after `npm login`. See the [npm trust reference](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
+
+  A new configuration must complete its first successful trusted publication within 48 hours. That publication validates the configuration; validated configurations do not expire under this rule. If the window lapses, delete the expired configuration and create a matching replacement before re-running the failed release job. See [trusted publisher configuration expiry](https://docs.npmjs.com/trusted-publishers/#trusted-publisher-configuration-expiry).
 
 ## Accepted risks
 
