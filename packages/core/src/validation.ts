@@ -26,6 +26,8 @@ import {
   omissionWithoutValidator,
   requiredWithDefault,
 } from './input-rules.js';
+import { groupReports } from './option-groups.js';
+import type { OptionGroup } from './option-groups.js';
 import { booleanValue, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import { boundedSnapshot, defineEntry, NestedTooDeepError, shallowList } from './plain.js';
@@ -110,6 +112,7 @@ interface SuppliedValues {
 
 /** Everything one invocation validates: its declarations, its tokens, and where they were read. */
 export interface Invocation {
+  optionGroups: readonly OptionGroup[];
   interactive: boolean;
   stdin?: (StdinConfig & { readonly position: number }) | undefined;
   command: readonly string[];
@@ -1061,7 +1064,7 @@ function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
     : [{ message: 'Use true, false, 1, or 0.' }];
 }
 
-/** One rejected or missing input: the problem it reports, and the lines core's default text holds. */
+/** One validation problem and the lines core's default text holds. */
 interface Report {
   readonly lines: readonly string[];
   readonly problem: InputProblem;
@@ -1108,7 +1111,10 @@ export interface Validation {
  * global option declares no presence rule, so every problem it reports is a rejected value.
  */
 export function rejectsGlobal(validation: Validation): boolean {
-  return validation.failure?.problems.some((problem) => problem.input.global) ?? false;
+  return (
+    validation.failure?.problems.some((problem) => 'input' in problem && problem.input.global) ??
+    false
+  );
 }
 
 /**
@@ -1339,6 +1345,17 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     position: invocation.stdin?.position,
     report: stdinReport,
   });
+  const unanswered = new Set([...(sources.unanswered ?? [])].map((input) => input.name));
+  found.push(
+    ...groupReports({
+      groups: invocation.optionGroups,
+      labels: sources.labels,
+      named: invocation.named !== undefined,
+      table: invocation.table,
+      unanswered,
+      values: supplied.options,
+    }),
+  );
   return {
     failure:
       found.length > 0

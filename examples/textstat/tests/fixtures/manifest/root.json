@@ -137,6 +137,7 @@
         "default": null
       }
     ],
+    "optionGroups": [],
     "options": [
       {
         "type": "string",

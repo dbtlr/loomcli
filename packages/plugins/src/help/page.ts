@@ -1,6 +1,7 @@
-import { readExtension } from '@loomcli/core';
+import { reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { visibleOptionGroups } from '../option-groups.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -311,6 +312,35 @@ function stdinInput(command: CommandNode, graph: CommandGraph, { style }: ViewCo
   ];
 }
 
+const pairMembers = 2;
+const listStart = 0;
+const lastMember = -1;
+
+/** Rules speak about supplied options, independently of their defaults or prepared stdin. */
+function groupSentences(command: CommandNode, context: ViewContext): string[] {
+  return visibleOptionGroups(command).map((group) => {
+    const nodes = command.options.filter((option) => group.options.includes(option.name));
+    const names = group.options.map((name) => {
+      const option = nodes.find((node) => node.name === name);
+      return option === undefined ? name : reportedSpelling(option);
+    });
+    const members =
+      names.length === pairMembers
+        ? names.join(' and ')
+        : `${names.slice(listStart, lastMember).join(', ')}, and ${names.at(lastMember) ?? ''}`;
+    const rules = {
+      exclusive: `Use at most one of ${members}`,
+      oneRequired: `Supply at least one of ${members}`,
+      requiredTogether: `Use ${members} together`,
+    };
+    const rule = rules[group.kind];
+    const caveat = nodes.some((option) => option.type === 'content' && option.stdin)
+      ? ' (piped stdin does not count)'
+      : '';
+    return `  ${context.style.primary(context.style.escape(`${rule}${caveat}.`))}`;
+  });
+}
+
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
@@ -328,6 +358,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     args(command, context),
     stdinInput(command, graph, context),
     ...options(command, graph, context),
+    groupSentences(command, context),
     extended ? listed : [],
     hints({ children, omitted, path, variant }, context),
   ]

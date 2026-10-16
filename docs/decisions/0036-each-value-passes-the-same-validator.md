@@ -4,7 +4,7 @@ title: ADR-0036 - Each value of a multiple option or variadic argument passes th
 description: On a multiple option or a variadic argument, `validate` names the validator for one value. Core runs it on each value, reports each issue at its position, and gives the action the array of outputs. The input schema is the validator's own. This supersedes the ADR-0005 clause that rejected per-value validators and the ADR-0006 clauses that ran the validator on omission and kept presence rules out of the action.
 status: accepted
 created: 2026-09-25
-modified: 2026-10-14
+modified: 2026-10-16
 ---
 
 # ADR-0036 - Each value of a multiple option or variadic argument passes the same validator
@@ -51,3 +51,4 @@ Accepted 2026-09-25 with the implementation. Core runs the validator once per va
 - 2026-09-25: Proposed with the validator catalog contract under [ADR-0037](0037-validators-ship-in-their-own-package-as-standard-schema-values.md).
 - 2026-09-25: Accepted with the implementation.
 - 2026-10-14: [ADR-0081](0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md), proposed, narrows per-value validation and action-owned collection presence and counts for native content inputs. Core checks their assembled source presence and bounds before middleware. It binds when accepted; every other clause remains unchanged.
+- 2026-10-16: Proposed [ADR-0085](0085-a-command-declares-option-groups-over-supplied-local-options.md) narrows the action-owned presence rule for three declared relationships among local options. The other rules remain unchanged.

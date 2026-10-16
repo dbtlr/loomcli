@@ -92,8 +92,17 @@ function optionOffers(
   position: Extract<WordPosition, { kind: 'option' }>,
 ): Offer[] {
   const scope = [...graph.globals, ...position.command.options];
+  const excluded = new Set(
+    position.command.optionGroups
+      .filter(
+        (group) =>
+          group.kind === 'exclusive' &&
+          group.options.some((name) => position.supplied.includes(name)),
+      )
+      .flatMap((group) => group.options.filter((name) => !position.supplied.includes(name))),
+  );
   return scope
-    .filter((option) => isListed(option))
+    .filter((option) => isListed(option) && !excluded.has(option.name))
     .filter((option) => repeats(option) || !position.supplied.includes(option.name))
     .flatMap((option) => {
       const spellings = [

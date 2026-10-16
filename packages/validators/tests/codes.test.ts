@@ -368,7 +368,7 @@ describe('each path kind reads its own words', () => {
 
 /** What an `InputError` view writes for one problem, reading `integer-range` through its type. */
 function lines(problem: InputProblem) {
-  return problem.reason === 'missing'
+  return problem.reason !== 'invalid'
     ? []
     : problem.issues.map((issue) => {
         const range: { max: number; min: number } | undefined =

@@ -125,6 +125,7 @@
       }
     ],
     "arguments": [],
+    "optionGroups": [],
     "options": [
       {
         "type": "content",
@@ -185,6 +186,7 @@
         "result": null,
         "failures": [],
         "arguments": [],
+        "optionGroups": [],
         "options": [],
         "children": []
       },
@@ -201,6 +203,7 @@
         "result": null,
         "failures": [],
         "arguments": [],
+        "optionGroups": [],
         "options": [],
         "children": [
           {
@@ -217,6 +220,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -234,6 +238,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -251,6 +256,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -268,6 +274,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -304,6 +311,7 @@
                 "default": null
               }
             ],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -321,6 +329,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -357,6 +366,7 @@
                 "default": null
               }
             ],
+            "optionGroups": [],
             "options": [],
             "children": []
           }
@@ -375,6 +385,7 @@
         "result": null,
         "failures": [],
         "arguments": [],
+        "optionGroups": [],
         "options": [],
         "children": []
       },
@@ -391,6 +402,7 @@
         "result": null,
         "failures": [],
         "arguments": [],
+        "optionGroups": [],
         "options": [],
         "children": [
           {
@@ -407,6 +419,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [
               {
                 "type": "string",
@@ -441,6 +454,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -458,6 +472,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           },
@@ -475,6 +490,7 @@
             "result": null,
             "failures": [],
             "arguments": [],
+            "optionGroups": [],
             "options": [],
             "children": []
           }
@@ -525,6 +541,7 @@
             "default": null
           }
         ],
+        "optionGroups": [],
         "options": [
           {
             "type": "content",
@@ -582,6 +599,7 @@
             "default": null
           }
         ],
+        "optionGroups": [],
         "options": [
           {
             "type": "content",
@@ -625,6 +643,7 @@
           }
         ],
         "arguments": [],
+        "optionGroups": [],
         "options": [
           {
             "type": "content",
@@ -702,6 +721,7 @@
             "default": null
           }
         ],
+        "optionGroups": [],
         "options": [
           {
             "type": "content",

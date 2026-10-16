@@ -4,6 +4,34 @@ import { Application, Command } from '@loomcli/core';
 // Each authoring call publishes only the calls that stay valid after it.
 
 const freshCommand = new Command('fresh');
+const groupedCommand = new Command('grouped')
+  .option('a', { type: 'boolean' })
+  .option('b', { type: 'string' })
+  .exclusive('a', 'b')
+  .oneRequired('a', 'b')
+  .action(({ options }) => {
+    const first: boolean = options.a;
+    const second: string | undefined = options.b;
+    void first;
+    void second;
+  });
+// @ts-expect-error TS2339: action closes group declarations.
+groupedCommand.exclusive;
+// @ts-expect-error TS2339: action closes group declarations.
+groupedCommand.oneRequired;
+// @ts-expect-error TS2339: action closes group declarations.
+groupedCommand.requiredTogether;
+// @ts-expect-error TS2345: Group names must already be declared locally.
+freshCommand.exclusive('a', 'b');
+// @ts-expect-error TS2345: Arguments are not group members.
+new Command('arguments').argument('a', {}).option('b', { type: 'boolean' }).oneRequired('a', 'b');
+// @ts-expect-error TS2555: A group needs at least two names.
+new Command('one').option('a', { type: 'boolean' }).exclusive('a');
+new Application('globals')
+  .globalOption('global', { type: 'boolean' })
+  .option('local', { type: 'boolean' })
+  // @ts-expect-error TS2345: Globals are not local group members.
+  .requiredTogether('local', 'global');
 const freshApplication = new Application('fresh').globalOption('file', {
   default: 'fresh.json',
   type: 'string',

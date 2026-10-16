@@ -106,14 +106,18 @@ const anyFailure: View<LoomError> = {
 };
 
 function describe(problem: InputProblem): string {
-  return problem.reason === 'missing'
-    ? `${problem.spelling}: required`
-    : problem.issues
-        .map((issue) => {
-          const path: string | undefined = issuePath(issue);
-          return `${problem.spelling}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`;
-        })
-        .join('\n');
+  if (problem.reason === 'missing') {
+    return `${problem.spelling}: required`;
+  }
+  if (problem.reason !== 'invalid') {
+    return problem.spellings.join(', ');
+  }
+  return problem.issues
+    .map((issue) => {
+      const path: string | undefined = issuePath(issue);
+      return `${problem.spelling}${path === undefined ? '' : ` at ${path}`}: ${issue.message}`;
+    })
+    .join('\n');
 }
 
 const views: readonly ViewOverride[] = [

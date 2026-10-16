@@ -70,6 +70,7 @@ test('inspect() lists the plugin Command as the root first child, with nothing m
     hasAction: true,
     hidden: false,
     name: 'doctor',
+    optionGroups: [],
     options: [],
     path: ['doctor'],
     result: null,

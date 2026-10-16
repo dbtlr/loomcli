@@ -35,6 +35,7 @@ const leaf = {
   extensions: {},
   hasAction: true,
   hidden: false,
+  optionGroups: [],
   options: [],
   result: null,
 };
@@ -114,6 +115,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
         {
           ...leaf,
           name: 'select',
+          optionGroups: [],
           options: [
             {
               ...owned,
@@ -141,6 +143,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
       hasAction: true,
       hidden: false,
       name: null,
+      optionGroups: [],
       options: [],
       path: [],
       result: null,
@@ -199,6 +202,7 @@ test('reports the version and every declared description, and the root reports t
           hasAction: true,
           hidden: false,
           name: 'get',
+          optionGroups: [],
           options: [
             {
               ...owned,
@@ -222,6 +226,7 @@ test('reports the version and every declared description, and the root reports t
       hasAction: true,
       hidden: false,
       name: null,
+      optionGroups: [],
       options: [],
       path: [],
       result: null,
@@ -272,6 +277,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
           ...leaf,
           deprecated: 'Use get instead.',
           name: 'fetch',
+          optionGroups: [],
           options: [
             {
               ...owned,
@@ -302,6 +308,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
       hasAction: true,
       hidden: false,
       name: null,
+      optionGroups: [],
       options: [],
       path: [],
       result: null,
@@ -332,6 +339,7 @@ test('inspects a group at two named levels below the root', () => {
           hasAction: false,
           hidden: false,
           name: 'cache',
+          optionGroups: [],
           options: [],
           path: ['cache'],
           result: null,
@@ -343,6 +351,7 @@ test('inspects a group at two named levels below the root', () => {
       hasAction: true,
       hidden: false,
       name: null,
+      optionGroups: [],
       options: [],
       path: [],
       result: null,

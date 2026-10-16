@@ -36,7 +36,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
+One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `exclusive()`, `oneRequired()`, `requiredTogether()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -124,6 +124,10 @@ _Avoid_: Globals table, merged options, copied globals
 **Polarity**:
 The Boolean option setting that selects which long forms exist and what an absent option means: `positive`, `negative`, or `both`.
 _Avoid_: Negation mode, inverse flag
+
+**Option group**:
+A declared relationship among a Command's local options: at most one supplied, at least one supplied, or all supplied together. It is distinct from a routing Group and a help Section.
+_Avoid_: Flag group, validation group, constraint
 
 **Multiple option**:
 A string or content option that collects every occurrence into one array instead of rejecting the second. An omitted string option with no default receives `[]` and calls no per-value validator, while a content option holds assembled sources, including stdin when claimed.
@@ -410,7 +414,7 @@ A parse-time fault in the invocation's words, such as an unknown or misplaced op
 _Avoid_: Syntax error, parse error
 
 **Input error**:
-The usage error that carries the whole validation phase: every omitted required input, every value a validator rejected, and every native content preparation problem, in authoring order.
+The usage error that carries the whole validation phase: every omitted required input, every value a validator rejected, and every native content preparation problem, in authoring order, followed by broken option groups in their declaration order.
 _Avoid_: Validation error, schema error
 
 **Declaration error**:
@@ -486,7 +490,7 @@ The namespaced name of one sentence a validator package prints, such as `@loomcl
 _Avoid_: Error code, message key, validation code
 
 **Problem**:
-One entry in an input error: an omitted required input or a rejected value together with its issues.
+One entry in an input error: an omitted required input, a rejected value together with its issues, or a broken option group naming its members.
 
 ## Logging
 
@@ -643,7 +647,7 @@ The author or a plugin whose lifecycle hook gives a value to a collecting extens
 _Avoid_: Contributor, producer, publisher
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, the input schema, native content type, stdin claims and declarations, content collection bounds, and a result's media types.
+A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, option groups, the input schema, native content type, stdin claims and declarations, content collection bounds, and a result's media types.
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:

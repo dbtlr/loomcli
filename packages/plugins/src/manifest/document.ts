@@ -9,6 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { encodeText } from '../encode.js';
+import { visibleOptionGroups } from '../option-groups.js';
 import { isPlainJson } from '../plain-data.js';
 import { failureCodeConflict } from '../rules.js';
 import { manifestCommand } from './extension.js';
@@ -29,6 +30,7 @@ interface ManifestDocument {
 }
 
 interface ManifestCommand {
+  readonly optionGroups: CommandNode['optionGroups'];
   readonly stdin?: CommandNode['stdin'];
   readonly name: string | null;
   readonly path: readonly string[];
@@ -358,6 +360,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
           },
     failures: failuresOf(node),
     arguments: node.arguments.map(argumentEntry),
+    optionGroups: visibleOptionGroups(node),
     options: visible(node.options).map(optionEntry),
     children: visible(node.children).map(commandEntry),
   };
