@@ -463,6 +463,8 @@ function sessionEnvironment(
     BASH_SILENCE_DEPRECATION_WARNING: '1',
     COLUMNS: '200',
     ENV: undefined,
+    // Fish's detached man-page completion generator can write into the home after teardown starts.
+    FISH_UNIT_TESTS_RUNNING: '1',
     HISTFILE: '',
     HOME: home,
     PATH: bin === undefined ? path : `${bin}${delimiter}${path}`,
