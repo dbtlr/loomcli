@@ -1,4 +1,4 @@
-- Add `@loomcli/prompts`, an optional library for action-owned text, secret, confirm, and select questions. Questions render on stderr, can link local options, and return validated supplied values silently when skipped.
+- Add the separately published `@loomcli/prompts` library for optional action-owned text, secret, confirm, and select questions. Questions render on stderr, can link local options, and return validated supplied values silently when skipped.
 - Add one run-wide interaction decision, the `@loomcli/plugins/interaction` plugin's `--no-input` switch, and `required: 'non-interactive'` for single-value local string options. Help, the manifest, and MCP schemas expose conditional requiredness.
 - Pass the captured run context to question validators, including the working directory and time zone used by `path()` and `dateTime()`.
 - Add `ViewContext.plain(text)` to resolve marked text without styles or controls while preserving destination glyph forms. Select frames use it to fit short or narrow terminals while preserving complete returned choice values.
@@ -39,7 +39,7 @@ function copyOutput(out: Out): Out {
 
 **Steps.**
 
-1. Update the first-party packages together to the same version.
+1. Pin the first-party packages together at the same exact version.
 2. Preserve the runtime channel's `draw` in output wrappers and the runtime view context's `plain` in view-context wrappers. A custom channel implements the [drawing contract](docs/core.md#output-and-failures), including stderr ordering and row measurement.
 3. Run test actions through `Application.run()` with host overrides or `Application.invoke()` to obtain a complete action context. Hand-built contexts must provide `supplied`, `interactive`, and `cancel` with the same run semantics.
 
