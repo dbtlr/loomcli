@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0081 - Content inputs prepare lazy handles with at most one stdin target per Command
 description: Native content arguments and local options prepare lazy file handles, and at most one input per Command may claim nonterminal stdin. Core checks paths, presence, and content collection bounds before middleware, holds their input problems until dispatch, and publishes the declaration facts on the graph.
-status: proposed
+status: accepted
 created: 2026-10-14
-modified: 2026-10-14
+modified: 2026-10-16
 ---
 
 # ADR-0081 - Content inputs prepare lazy handles with at most one stdin target per Command
@@ -107,4 +107,4 @@ textstat replaces its file collection and stdin helper with native content. json
 
 ## Status
 
-Proposed. The release PR that ships native content inputs, source assembly, lazy handles, declaration facts, projections, and the example migrations marks this record accepted.
+Accepted in 0.13.0.

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0084 - Dotenv prepares an allowlisted environment before inputs
 description: A bounded onEnvironment hook returns environment additions before declared values and inputs validate. Core merges additions without replacing existing values and writes them to the process only for an argv run with neither cwd nor env overridden.
-status: proposed
+status: accepted
 created: 2026-10-15
-modified: 2026-10-15
+modified: 2026-10-16
 ---
 
 # ADR-0084 - Dotenv prepares an allowlisted environment before inputs
@@ -156,7 +156,7 @@ The contract and acceptance examples live in [Dotenv](../core.md#dotenv).
 
 ## Status
 
-Proposed for the 0.13.0 release. Parser, timing, precedence, option integration, and process isolation require public-boundary tests.
+Accepted in 0.13.0.
 
 ## Changelog
 

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0085 - A Command declares option groups over supplied local options
 description: Three immutable declarations constrain supplied local options, and validation and projections read one graph fact.
-status: proposed
+status: accepted
 created: 2026-10-16
 modified: 2026-10-16
 ---
@@ -74,7 +74,7 @@ No group changes middleware takeover or held-fault ranking.
 
 ## Status
 
-Proposed until the release ships the implementation and its declaration, invocation, source, type, and projection tests.
+Accepted in 0.13.0.
 
 ## Changelog
 

@@ -1,2 +1,0 @@
-- Add immutable `exclusive()`, `oneRequired()`, and `requiredTogether()` declarations over local options. Core checks supplied presence across argv, environment, and configuration before dispatch, reports group and individual input problems together, and publishes the rules through inspection, help, the manifest, sound MCP schemas, and exclusive-option completion.
-- Expand the produced `InputProblem` union with group problems carrying `inputs`, `spellings`, and `supplied`. Custom readers narrow `reason` before reading singular `input`, `spelling`, or `issues` fields.

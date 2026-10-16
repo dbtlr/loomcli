@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0082 - An action asks through the prompts library, and one interaction decision governs questions and conditional requiredness
 description: A separate library, @loomcli/prompts, gives an action four question kinds, text, secret, confirm, and select, that it calls with its own context. Core computes one interaction decision per run before validation, on only when stdin and stderr are terminals and the option the application marks with interaction true has not turned it off, and both the questions and a local option's required non-interactive presence rule read it. A question may link a local option, whose raw supplied value prefills it and whose validated value answers it when the question is skipped. Core gains the supplied, interactive, and cancel members of the action context, out.draw, and missingInputError, and @loomcli/plugins gains the interaction plugin that adds --no-input.
-status: proposed
+status: accepted
 created: 2026-10-15
-modified: 2026-10-15
+modified: 2026-10-16
 ---
 
 # ADR-0082 - An action asks through the prompts library, and one interaction decision governs questions and conditional requiredness
@@ -64,7 +64,7 @@ A linked question reports a missing input from the action, after dispatch, with 
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `@loomcli/prompts`, the interaction plugin, and the core additions, proven by PTY tests for each kind, the prefill, the skip, the retry, secret's empty echo, cancellation, and end of input, by process, invocation-by-name, and MCP tests for every path with interaction off, and by type tests for the link and the return types.
+Accepted in 0.13.0.
 
 ## Changelog
 
