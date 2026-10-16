@@ -25,7 +25,7 @@ const host: Host = { ...hostFields, timeZone: 'UTC' };
 
 **Steps.**
 
-1. Update the first-party packages together to the same version.
+1. Pin the first-party packages together at the same exact version.
 2. Add an appropriate IANA `timeZone` to complete host fixtures. Use a fixed zone such as `UTC` for deterministic tests, and preserve the captured zone in wrappers.
 3. Prefer partial `run({ host: { ... } })` overrides when a test needs only selected host fields; core captures the remaining fields.
 

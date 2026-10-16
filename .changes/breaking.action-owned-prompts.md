@@ -39,7 +39,7 @@ function copyOutput(out: Out): Out {
 
 **Steps.**
 
-1. Update the first-party packages together to the same version.
+1. Pin the first-party packages together at the same exact version.
 2. Preserve the runtime channel's `draw` in output wrappers and the runtime view context's `plain` in view-context wrappers. A custom channel implements the [drawing contract](docs/core.md#output-and-failures), including stderr ordering and row measurement.
 3. Run test actions through `Application.run()` with host overrides or `Application.invoke()` to obtain a complete action context. Hand-built contexts must provide `supplied`, `interactive`, and `cancel` with the same run semantics.
 

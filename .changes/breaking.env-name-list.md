@@ -23,7 +23,7 @@ const names = node.env;
 
 **Steps.**
 
-1. Update the first-party packages together to the same version.
+1. Pin the first-party packages together at the same exact version.
 2. Update inspection and manifest readers to accept an empty or populated array. Iterate all names, or read `env[0]` when only the first binding matters.
 3. Update manifest schemas and snapshots that expect a string or `null`.
 
