@@ -76,7 +76,7 @@ The select `questionFrame` data no longer carries `columns`. It keeps `rows`. Th
 
 The view context gains two required members. An existing view function keeps compiling, because it reads the context core passes. A `ViewContext` object built by hand, such as one in a test, must supply both members.
 
-A long lane message now wraps on a terminal, which changes output an operator saw before. The self-update notice is one `out.info` message of more than 90 columns, so it wraps on an 80-column terminal. A pipe, an invocation by name, and an MCP tool call see no change, which keeps golden fixtures that run without a terminal byte for byte stable.
+A long lane message now wraps on a terminal, which changes output an operator saw before. The self-update notice is one `out.info` message of more than 90 columns, so it wraps on an 80-column terminal whose environment sets no wider `COLUMNS`. A pipe, an invocation by name, and an MCP tool call see no change, which keeps golden fixtures that run without a terminal byte for byte stable.
 
 An override of `questionFrame` that read `data.columns` reads `context.columns` instead, so the `@loomcli/prompts` change is breaking for such an override.
 
