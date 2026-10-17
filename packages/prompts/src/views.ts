@@ -19,7 +19,6 @@ type QuestionFrame = BaseFrame &
         highlighted: number;
         above: number;
         below: number;
-        columns: number | undefined;
         rows: number | undefined;
       }
   );
@@ -70,7 +69,7 @@ function compactSelect(
   context: ViewContext,
 ): string {
   const { style } = context;
-  const columns = data.columns && data.columns > 0 ? data.columns : 80;
+  const columns = context.columns ?? 80;
   const rows = Math.max(1, data.rows ?? 24);
   const selected = data.choices[data.highlighted] ?? '';
   const above = data.above + data.highlighted;
@@ -128,7 +127,7 @@ function selectText(
   const height = (text: string) =>
     text.split('\n').reduce((total, line) => {
       // A wide grapheme can leave one cell unused at a wrap, so the estimate stays conservative.
-      const cells = data.columns && data.columns > 0 ? Math.max(1, data.columns - 1) : Infinity;
+      const cells = context.columns === undefined ? Infinity : Math.max(1, context.columns - 1);
       return total + Math.max(1, Math.ceil(width(line) / cells));
     }, 0);
   let frame = render();
