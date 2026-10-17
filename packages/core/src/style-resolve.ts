@@ -8,7 +8,7 @@ import { parseText } from './style-wire.js';
 
 /** A complete string is one state boundary; no terminal attributes survive the call. */
 function resolveText(text: string, palette: Palette, caps: Capabilities): string {
-  const parsed = parseText(text, palette, caps.mainGlyphs);
+  const parsed = parseText(text, palette, caps);
   const result: string[] = [];
   let previous = emptyAttributes;
   let preservedSgr = false;
@@ -24,7 +24,7 @@ function resolveText(text: string, palette: Palette, caps: Capabilities): string
   return result.join('');
 }
 function width(text: string, palette: Palette, caps: Capabilities): number {
-  const parsed = parseText(text, palette, caps.mainGlyphs);
+  const parsed = parseText(text, palette, caps);
   return blockWidth(layout(scanAnsi(parsed, caps)));
 }
 
@@ -33,7 +33,7 @@ function drawnRows(
   text: string,
   { palette, caps, columns }: { palette: Palette; caps: Capabilities; columns: number | undefined },
 ): number {
-  const block = layout(scanAnsi(parseText(text, palette, caps.mainGlyphs), caps));
+  const block = layout(scanAnsi(parseText(text, palette, caps), caps));
   if (columns === undefined || columns <= 0) {
     return block.lines.length - 1;
   }

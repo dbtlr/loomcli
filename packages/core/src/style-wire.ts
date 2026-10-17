@@ -37,8 +37,17 @@ interface StyleScope {
 type Header =
   | { kind: 'style'; operations: readonly Operation[] }
   | { kind: 'glyph'; name: keyof typeof glyphForms }
-  | { kind: 'pad'; padding: Padding };
-type Frame = { kind: 'style'; previous: StyleScope } | { kind: 'pad' };
+  | { kind: 'pad'; padding: Padding }
+  | { kind: 'nowrap' };
+type Frame = { kind: 'style'; previous: StyleScope } | { kind: 'pad' } | { kind: 'nowrap' };
+/**
+ * Where each decoded character came from, which line breaking reads: its offset in the input, and
+ * whether it is whole, inside a padding or no-wrap frame, or a glyph form or rejected header.
+ */
+interface WireTrace {
+  origins: number[];
+  whole: boolean[];
+}
 
 function isByte(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 255;
@@ -123,6 +132,9 @@ function parseHeader(text: string, names: ReadonlySet<string>): Header | undefin
   if (!Array.isArray(value)) {
     return undefined;
   }
+  if (value.length === 1 && value[0] === 'nowrap') {
+    return { kind: 'nowrap' };
+  }
   if (value.length === 2 && value[0] === 'glyph' && glyphName(value[1])) {
     return { kind: 'glyph', name: value[1] };
   }
@@ -150,8 +162,15 @@ function parseHeader(text: string, names: ReadonlySet<string>): Header | undefin
   return { kind: 'style', operations };
 }
 
-/** Decodes framing once. Rejected headers are opaque, and nesting uses an explicit stack. */
-function parseText(input: string, palette: Palette, mainGlyphs: boolean): ParsedText {
+/**
+ * Decodes framing once. Rejected headers are opaque, and nesting uses an explicit stack. A trace,
+ * when supplied, records where each decoded character came from.
+ */
+function parseText(
+  input: string,
+  palette: Palette,
+  { mainGlyphs, trace }: { mainGlyphs: boolean; trace?: WireTrace | undefined },
+): ParsedText {
   const pieces: string[] = [];
   const scopes: StyleScope[] = [];
   const boundaries = new Map<number, Boundary[]>();
@@ -159,12 +178,17 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
   const names = new Set<string>([...tokens, ...palette.keys()]);
   const root: StyleScope = { attributes: emptyAttributes, operations: [], parent: undefined };
   let active = root;
-  function append(text: string): void {
+  // Frames whose body line breaking keeps whole: padding and no-wrap frames.
+  let unbroken = 0;
+  function append(text: string, origin: number, whole = false): void {
     pieces.push(text);
     // Positions are UTF-16 offsets, including both units of surrogate pairs.
     // oxlint-disable-next-line typescript/prefer-for-of
     for (let index = 0; index < text.length; index += 1) {
       scopes.push(active);
+      // A literal run keeps one origin per unit; a glyph form is one unit of its frame.
+      trace?.origins.push(whole ? origin : origin + index);
+      trace?.whole.push(whole || unbroken > 0);
     }
   }
   function boundary(value: Boundary): void {
@@ -181,7 +205,10 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
     if (ended?.kind === 'style') {
       active = ended.previous;
     } else if (ended?.kind === 'pad') {
+      unbroken -= 1;
       boundary({ kind: 'close' });
+    } else if (ended?.kind === 'nowrap') {
+      unbroken -= 1;
     }
   }
   for (let cursor = 0; cursor < input.length;) {
@@ -191,14 +218,18 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
       const candidate = end === -1 ? undefined : parseHeader(input.slice(cursor + 1, end), names);
       if (candidate === undefined || (candidate.kind === 'glyph' && input[end + 1] !== close)) {
         const until = end === -1 ? input.length : end + 1;
-        append(input.slice(cursor, until));
+        append(input.slice(cursor, until), cursor, true);
         cursor = until;
         continue;
       }
+      const start = cursor;
       cursor = end + 1;
       if (candidate.kind === 'glyph') {
-        append(glyphForms[candidate.name][mainGlyphs ? 0 : 1]);
+        append(glyphForms[candidate.name][mainGlyphs ? 0 : 1], start, true);
         cursor += 1;
+      } else if (candidate.kind === 'nowrap') {
+        stack.push({ kind: 'nowrap' });
+        unbroken += 1;
       } else if (candidate.kind === 'style') {
         stack.push({ kind: 'style', previous: active });
         active = {
@@ -208,6 +239,7 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
         };
       } else {
         stack.push({ kind: 'pad' });
+        unbroken += 1;
         boundary({
           attributes: active.attributes,
           kind: 'open',
@@ -224,11 +256,11 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
     }
     if (character === escape && /^E00[0-3]$/u.test(input.slice(cursor + 1, cursor + 5))) {
       const digits = input.slice(cursor + 1, cursor + 5);
-      append(String.fromCharCode(Number.parseInt(digits, 16)));
+      append(String.fromCharCode(Number.parseInt(digits, 16)), cursor, true);
       cursor += 5;
       continue;
     }
-    append(character ?? '');
+    append(character ?? '', cursor);
     cursor += 1;
   }
   while (stack.length > 0) {
@@ -237,5 +269,5 @@ function parseText(input: string, palette: Palette, mainGlyphs: boolean): Parsed
   return { boundaries, palette, root, scopes, text: pieces.join('') };
 }
 
-export type { Alignment, Boundary, Padding, ParsedText, StyleScope };
+export type { Alignment, Boundary, Padding, ParsedText, StyleScope, WireTrace };
 export { parseText };
