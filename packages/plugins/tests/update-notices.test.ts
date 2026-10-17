@@ -31,6 +31,15 @@ const binaryBytes = 'notes 1.5.0 binary\n';
 const notice =
   'notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.';
 
+/**
+ * The same notice as the info lane writes it on the 80-column terminal the fixture reports: wider
+ * than the 78 columns right of the gutter, so it wraps, with the gutter on its continuation line.
+ */
+const noticeLines = [
+  'notes 1.5.1 is available on the stable channel. Run notes self-update to',
+  '  update from 1.5.0.',
+];
+
 /** How long a test waits for a child that should never start before it concludes none did. */
 const quiet = 1500;
 
@@ -293,11 +302,12 @@ test('a fresh cache naming a newer release prints the notice after the Command l
   const result = run(box, ['add']);
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toBe(`✔ Added note 12.\nℹ ${notice}\n`);
+  expect(result.stderr).toBe(`✔ Added note 12.\nℹ ${noticeLines.join('\n')}\n`);
 
   const restyled = sandbox();
   writeCache(restyled, line);
   const styled = run(restyled, ['add'], { restyle: true });
+  // The override owns the lane, wrapping included, so its notice stays one line.
   expect(styled.stderr).toBe(`✔ Added note 12.\n[info] ${notice}\n`);
 
   await sleep(quiet);
@@ -311,7 +321,8 @@ test('a cache naming 1.10.0 prints the notice to a run of 1.9.0, by SemVer prece
   const result = run(box, ['add'], { program: 'inert', version: '1.9.0' });
   expect(lines(result.stderr)).toEqual([
     'Added note 12.',
-    'notes 1.10.0 is available on the stable channel. Run notes self-update to update from 1.9.0.',
+    'notes 1.10.0 is available on the stable channel. Run notes self-update to',
+    '  update from 1.9.0.',
   ]);
 });
 
@@ -334,7 +345,7 @@ test('a fresh cache with an extra member and its members reordered reads the sam
   const line = `{"latest":"1.5.1","note":"kept","channel":"stable","repository":"acme/notes","checked":"${hoursAgo(1)}","format":1}\n`;
   writeCache(box, line);
   const result = run(box, ['add']);
-  expect(lines(result.stderr)).toEqual(['Added note 12.', notice]);
+  expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
   await sleep(quiet);
   expect(childEvents(box)).toEqual([]);
   expect(readFileSync(box.file, 'utf8')).toBe(line);
@@ -342,7 +353,7 @@ test('a fresh cache with an extra member and its members reordered reads the sam
 
 test.each([
   ['whose format is 2', cacheLine().replace('"format":1', '"format":2'), []],
-  ['whose checked is not a time', cacheLine({ checked: 'yesterday' }), [notice]],
+  ['whose checked is not a time', cacheLine({ checked: 'yesterday' }), noticeLines],
 ])('a cache %s is stale and starts a child', async (_label, line, expected) => {
   const box = sandbox();
   writeCache(box, line);
@@ -413,7 +424,7 @@ test.each([
     writeCache(box, cacheLine({ checked }));
     const from = Date.now();
     const result = run(box, ['add'], { github: { latest: 'v1.5.0' }, hold: true });
-    expect(lines(result.stderr)).toEqual(['Added note 12.', notice]);
+    expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
     await childrenDone(box);
     const runExit = events(box).find(({ event, role }) => event === 'exit' && role === 'run');
     expectRefreshed(runExit?.cache, from, '1.5.1');
@@ -701,7 +712,7 @@ test('NO_UPDATE_NOTIFIER and the author’s env set to the empty string do not t
     env: { NOTES_NO_UPDATE_NOTICE: '', NO_UPDATE_NOTIFIER: '' },
     notices: { env: 'NOTES_NO_UPDATE_NOTICE' },
   });
-  expect(lines(result.stderr)).toEqual(['Added note 12.', notice]);
+  expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
 });
 
 test.skipIf(process.getuid?.() === 0)(

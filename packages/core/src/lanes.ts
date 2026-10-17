@@ -18,14 +18,18 @@ type Mark = 'error' | 'info' | 'success' | 'warning';
 
 /**
  * The default function of a marked lane: the matching glyph and one space before the first line,
- * and continuation lines indented by the measured gutter without repeating the glyph. The
+ * and continuation lines indented by the measured gutter without repeating the glyph. The message
+ * wraps at the columns right of the gutter, unwrapped off a terminal or when none is left. The
  * semantic method appends the newline, so the view returns none.
  */
 function marked(mark: Mark): (message: string, context: ViewContext) => string {
   return (message, context) => {
     const glyphText = glyph[mark];
-    const gutter = ' '.repeat(context.width(glyphText) + 1);
-    return `${context.style[mark](glyphText)} ${message.replace(/(?<newline>\r?\n)(?!$)/gu, `$<newline>${gutter}`)}`;
+    const width = context.width(glyphText) + 1;
+    const gutter = ' '.repeat(width);
+    const room = context.columns === undefined ? 0 : context.columns - width;
+    const wrapped = room > 0 ? context.wrap(message, room) : message;
+    return `${context.style[mark](glyphText)} ${wrapped.replace(/(?<newline>\r?\n)(?!$)/gu, `$<newline>${gutter}`)}`;
   };
 }
 
