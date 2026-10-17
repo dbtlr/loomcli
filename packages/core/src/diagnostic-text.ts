@@ -1,5 +1,6 @@
 import { escapeControlCharacters } from './controls.js';
 import { isPlainObject } from './plain.js';
+import { wrapPlain } from './style-wrap.js';
 
 /**
  * One reason a declaration can be wrong, or one kind of defect: the parts that hold at every site
@@ -282,22 +283,6 @@ function findingSection(finding: Finding, application: string | undefined): stri
     .join('\n');
 }
 
-/** Prose wrapped to the width at spaces. A word wider than the width keeps a line of its own. */
-function wrap(text: string, width: number): string {
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    if (line !== '' && line.length + 1 + word.length > width) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line === '' ? word : `${line} ${word}`;
-    }
-  }
-  lines.push(line);
-  return lines.join('\n');
-}
-
 /**
  * The sentence with every control escaped. A declaration fault's sentence is written by the author
  * of a rule, so its line breaks, such as the issue lines under a rejected default, stay breaks; a
@@ -344,7 +329,9 @@ function diagnosticSections(anatomy: Anatomy, layout: Layout): { banner: string;
     sentenceText(anatomy),
     ...anatomy.findings.map((finding) => findingSection(finding, layout.application)),
     ...anatomy.evidence,
-    ...(rule === undefined ? [] : [wrap(escapeControlCharacters(rule.explanation), layout.width)]),
+    ...(rule === undefined
+      ? []
+      : [wrapPlain(escapeControlCharacters(rule.explanation), layout.width)]),
     ...correctionSection(anatomy.correction),
     ...(rule?.docs === undefined ? [] : [`See ${escapeControlCharacters(rule.docs)}`]),
   ];
@@ -391,5 +378,4 @@ export {
   registerRule,
   spelled,
   valueCode,
-  wrap,
 };

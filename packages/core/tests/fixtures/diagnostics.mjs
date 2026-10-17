@@ -1,4 +1,4 @@
-import { DeclarationError, diagnosticRule, InternalError } from '@loomcli/core';
+import { Application, DeclarationError, diagnosticRule, InternalError } from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -197,6 +197,30 @@ switch (scenario) {
         headline: 'H',
       }),
     );
+    break;
+  }
+  case 'run-width': {
+    // A development run that meets the fault, on the terminal and environment the test names.
+    const input = JSON.parse(process.argv[3]);
+    const wide = diagnosticRule('@acme/wide/wide-words', {
+      explanation: '界界界界界 界界界界界 界界界界界',
+      headline: 'Wide words',
+    });
+    await new Application('width', { description: 'Meet a fault.' })
+      .action(() => {
+        if (input.wide) {
+          throw new DeclarationError(wide, { sentence: 'The words are wide.' });
+        }
+        retry(50);
+      })
+      .run({
+        host: {
+          argv: [],
+          env: input.env ?? {},
+          release: { build: 'source' },
+          terminal: input.terminal,
+        },
+      });
     break;
   }
 }

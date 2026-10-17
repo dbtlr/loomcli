@@ -183,3 +183,71 @@ test.each([
   expect(text).toContain(' @loomcli/core/rule-');
   expectRuleParts(text, { correction, rule, sentence });
 });
+
+/** What a development run that meets the fault writes on stderr, on the terminal the test names. */
+function runDiagnostic(input: Record<string, unknown>): string {
+  const result = invoke(new URL('fixtures/diagnostics.mjs', import.meta.url), [
+    'run-width',
+    JSON.stringify(input),
+  ]);
+  expect(result.status).toBe(1);
+  return result.stderr;
+}
+
+const stderrTerminal = (stderr: object) => ({
+  stderr: { isTTY: true, rows: 24, ...stderr },
+  stdin: { isTTY: false },
+  stdout: { columns: undefined, isTTY: false, rows: undefined },
+});
+
+const explanationAt100 = [
+  'Each retry repeats the request against the service, so a large limit can hold the terminal for',
+  'minutes. The plugin accepts from 0 through 10 retries.',
+];
+
+test("the banner fills stderr's width and the explanation wraps at it", () => {
+  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 100 }) });
+  expect(stderr.split('\n')[0]).toBe(
+    `-- RETRY LIMIT OUT OF RANGE ${'-'.repeat(48)} @acme/retry/retry-limit`,
+  );
+  expect(stderr).toContain(`\n\n${explanationAt100.join('\n')}\n\n`);
+});
+
+test('COLUMNS narrows the width the diagnostic fills', () => {
+  const stderr = runDiagnostic({
+    env: { COLUMNS: '60' },
+    terminal: stderrTerminal({ columns: 100 }),
+  });
+  expect(stderr.split('\n')[0]).toBe(
+    `-- RETRY LIMIT OUT OF RANGE ${'-'.repeat(8)} @acme/retry/retry-limit`,
+  );
+  expect(stderr).toContain(
+    [
+      '',
+      'Each retry repeats the request against the service, so a',
+      'large limit can hold the terminal for minutes. The plugin',
+      'accepts from 0 through 10 retries.',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('a stderr that is not a terminal falls back to 80 columns, whatever width it reports', () => {
+  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 100, isTTY: false }) });
+  expect(stderr.split('\n')[0]).toBe(
+    `-- RETRY LIMIT OUT OF RANGE ${'-'.repeat(28)} @acme/retry/retry-limit`,
+  );
+  expect(stderr).toContain(
+    '\nEach retry repeats the request against the service, so a large limit can hold\nthe terminal',
+  );
+});
+
+test('a terminal that reports no width falls back to 80 columns', () => {
+  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: undefined }) });
+  expect(stderr.split('\n')[0]).toHaveLength(80);
+});
+
+test('the explanation wraps by display width, so wide characters fill two columns', () => {
+  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 25 }), wide: true });
+  expect(stderr).toContain('\n界界界界界 界界界界界\n界界界界界\n');
+});
