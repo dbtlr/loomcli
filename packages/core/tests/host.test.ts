@@ -69,14 +69,29 @@ test('an application can run again with new invocation inputs', () => {
   });
 });
 
-test('automatic terminal capture treats zero dimensions as unavailable and retains positive sizes', () => {
+test('automatic terminal capture reads width and height live, a zero reading as unavailable', () => {
   const result = invoke(new URL('fixtures/terminal.mjs', import.meta.url));
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
-    stderr: { columns: 100, isTTY: true },
-    stdin: { isTTY: false },
-    stdout: { isTTY: true, rows: 24 },
+    after: {
+      stderr: { isTTY: true, rows: 40 },
+      stdin: { isTTY: false },
+      stdout: { columns: 120, isTTY: true, rows: 24 },
+    },
+    before: {
+      stderr: { columns: 100, isTTY: true },
+      stdin: { isTTY: false },
+      stdout: { isTTY: true, rows: 24 },
+    },
+  });
+});
+
+test('a terminal override keeps plain numbers fixed and reads a supplied getter each time', () => {
+  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-getter'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"columns":100,"rows":30}\n{"columns":60,"rows":30}\n',
   });
 });
 

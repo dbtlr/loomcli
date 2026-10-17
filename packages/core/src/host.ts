@@ -7,7 +7,7 @@ import type { InternalError } from './errors.js';
 import { readSmallFile } from './files.js';
 import { captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
-import type { Host, ReleaseFacts, RunOptions } from './types.js';
+import type { Host, OutputTerminal, ReleaseFacts, RunOptions } from './types.js';
 
 // Process stream declarations assume a terminal, but pipes omit isTTY at runtime.
 function isTerminal(stream: { isTTY?: boolean }): boolean {
@@ -16,6 +16,58 @@ function isTerminal(stream: { isTTY?: boolean }): boolean {
 
 function dimension(value: number | undefined): number | undefined {
   return value === 0 ? undefined : value;
+}
+
+/** An output terminal whose width and height are read each time, and whose kind is fixed. */
+function outputTerminal(
+  isTTY: boolean,
+  read: { columns: () => number | undefined; rows: () => number | undefined },
+): OutputTerminal {
+  return {
+    get columns() {
+      return read.columns();
+    },
+    isTTY,
+    get rows() {
+      return read.rows();
+    },
+  };
+}
+
+/**
+ * One process stream's terminal: `isTTY` captured once, because a stream does not change kind
+ * mid-run, and the width and height read from the stream each time, which Node and Bun update when
+ * the window resizes. A zero reading is unavailable.
+ */
+function streamTerminal(stream: NodeJS.WriteStream): OutputTerminal {
+  return outputTerminal(isTerminal(stream), {
+    columns: () => dimension(stream.columns),
+    rows: () => dimension(stream.rows),
+  });
+}
+
+/**
+ * One dimension of a supplied terminal: a plain value copied, so it stays fixed, and a getter kept,
+ * so it is as live as the getter.
+ */
+function suppliedDimension(
+  supplied: OutputTerminal,
+  key: 'columns' | 'rows',
+): () => number | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(supplied, key);
+  if (descriptor !== undefined && 'value' in descriptor) {
+    const value = supplied[key];
+    return () => value;
+  }
+  return () => supplied[key];
+}
+
+/** A supplied output terminal: its `isTTY` copied once, its width and height as supplied. */
+function suppliedTerminal(supplied: OutputTerminal): OutputTerminal {
+  return outputTerminal(supplied.isTTY, {
+    columns: suppliedDimension(supplied, 'columns'),
+    rows: suppliedDimension(supplied, 'rows'),
+  });
 }
 
 /** The absolute path of the script the runtime ran, as the process names it. */
@@ -193,22 +245,14 @@ export function captureHost(
       stdout: stdout ?? process.stdout,
       terminal: terminal
         ? {
-            stderr: { ...terminal.stderr },
-            stdin: { ...terminal.stdin },
-            stdout: { ...terminal.stdout },
+            stderr: suppliedTerminal(terminal.stderr),
+            stdin: { isTTY: terminal.stdin.isTTY },
+            stdout: suppliedTerminal(terminal.stdout),
           }
         : {
-            stderr: {
-              columns: dimension(process.stderr.columns),
-              isTTY: isTerminal(process.stderr),
-              rows: dimension(process.stderr.rows),
-            },
+            stderr: streamTerminal(process.stderr),
             stdin: { isTTY: isTerminal(process.stdin) },
-            stdout: {
-              columns: dimension(process.stdout.columns),
-              isTTY: isTerminal(process.stdout),
-              rows: dimension(process.stdout.rows),
-            },
+            stdout: streamTerminal(process.stdout),
           },
       timeZone: captureTimeZone(timeZone),
     },
