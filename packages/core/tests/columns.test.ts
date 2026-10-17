@@ -150,3 +150,8 @@ test('a failure view override receives the columns and wraps its own text', () =
     stdout: '',
   });
 });
+
+test('out.draw counts rows against the real stderr width, under COLUMNS and after a resize', () => {
+  const result = columns({ scenario: 'draw' });
+  expect(JSON.parse(result.stdout)).toEqual({ counted: [1, 2], seen: [60, 40] });
+});

@@ -1,3 +1,5 @@
+import { Writable } from 'node:stream';
+
 import { Application, Command, FatalError, incompleteResult, lanes, override } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2] ?? '{}');
@@ -157,4 +159,41 @@ if (scenario === 'destinations') {
       terminal: { stderr: narrow, stdin: { isTTY: false }, stdout: narrow },
     },
   });
+} else if (scenario === 'draw') {
+  // Out.draw counts rows against the real stderr width, never the COLUMNS-narrowed one.
+  let width = 100;
+  const live = {
+    get columns() {
+      return width;
+    },
+    isTTY: true,
+    rows: 24,
+  };
+  const seen = [];
+  const counted = [];
+  const line = `${'x'.repeat(80)}\n`;
+  const view = {
+    render: (text, context) => {
+      seen.push(context.columns);
+      return text;
+    },
+  };
+  await new Application('columns', { description: 'Draw.' })
+    .action(async ({ out }) => {
+      counted.push(await out.draw(line, view));
+      width = 40;
+      counted.push(await out.draw(line, view));
+    })
+    .run({
+      host: {
+        argv: [],
+        env: { COLUMNS: '60' },
+        release: { build: 'distributed' },
+        stderr: new Writable({
+          write: (_chunk, _encoding, done) => done(),
+        }),
+        terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
+      },
+    });
+  process.stdout.write(JSON.stringify({ counted, seen }));
 }
