@@ -310,7 +310,8 @@ export type ValidationContext =
 export interface ViewContext {
   /**
    * The destination's effective width, read just before this render call: the real terminal width
-   * narrowed by a valid `COLUMNS`, and `undefined` when the destination is not a terminal.
+   * narrowed by a valid `COLUMNS`. A terminal that reports no width takes a valid `COLUMNS` alone,
+   * and reads `undefined` without one. A destination that is not a terminal reads `undefined`.
    */
   readonly columns: number | undefined;
   /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */

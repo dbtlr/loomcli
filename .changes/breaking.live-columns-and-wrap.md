@@ -38,6 +38,6 @@ A wrapper that rebuilds the context keeps the runtime context's members, for exa
 
 1. Pin the first-party packages together at the same exact version.
 2. Add `columns` and `wrap` to every `ViewContext` or `FailureViewContext` your code builds. Keep the runtime context's `columns` and `wrap` in wrappers, or spread the runtime context.
-3. Review any test that runs on a terminal host override with output wider than its `columns`: lane messages now wrap there. Supply `isTTY: false`, or a wider `columns`, where a test expects one unwrapped line.
+3. Review any test that runs on a terminal host override with output wider than its `columns`. Lane messages now wrap there, and so does other output: a table shrinks its columns or prints records blocks, a records value wraps under its key, and the Developer Diagnostic fills and wraps at stderr's width. Re-pin the golden output of such tests, or supply `isTTY: false`, or a wider `columns`, where a test expects the unwrapped bytes.
 
 **Validation.** Run `pnpm exec tsc --noEmit` and the application's test command. Run the application on a narrow terminal and check that a long `out.warn` message wraps under its glyph, and pipe it to `cat` to check that the message stays on one line.
