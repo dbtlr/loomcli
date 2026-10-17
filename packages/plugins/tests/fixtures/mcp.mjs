@@ -9,6 +9,8 @@ import {
 import { json, jsonl } from '@loomcli/plugins/format/views';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
+import { records } from '@loomcli/plugins/records';
+import { table } from '@loomcli/plugins/table';
 
 import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
@@ -332,7 +334,44 @@ function columns() {
   );
 }
 
-const scenarios = { calls, columns, listing, ...faults };
+/** A format that adds a second line to its value. */
+const twoLines = (value) => `${String(value)}\nsecond line`;
+
+/**
+ * One tool that renders a table with a multi-line format cell and records with an authored line
+ * break, served from a process whose environment holds a narrow COLUMNS.
+ */
+function fitted() {
+  process.env.COLUMNS = '10';
+  const grid = new Command('grid', {
+    description: 'Render a table and records.',
+    extensions: [mcpCommand({})],
+  }).action(async ({ out }) => {
+    const rows = [
+      { left: 'x y z', right: 'hello world' },
+      { left: 'q', right: 'zz' },
+    ];
+    await out.render(
+      rows,
+      table({
+        columns: [
+          { header: 'A', key: 'left' },
+          { align: 'right', format: twoLines, key: 'right' },
+        ],
+      }),
+    );
+    await out.render(
+      [{ key: 'one', kind: 'first\nsecond words here' }],
+      records({ identifier: 'key' }),
+    );
+  });
+  return new Application('fitted', {
+    description: 'Render fitted views.',
+    plugins: [mcp()],
+  }).command(grid);
+}
+
+const scenarios = { calls, columns, fitted, listing, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 

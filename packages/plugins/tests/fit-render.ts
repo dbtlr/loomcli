@@ -19,6 +19,7 @@ interface FitInput {
     readonly modifiers: 'always' | 'never';
   };
   readonly stream?: boolean;
+  readonly invoke?: boolean;
 }
 
 /** What the table-fit fixture printed to stdout for one input, after it exited cleanly. */

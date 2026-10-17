@@ -115,13 +115,17 @@ test('a streamed row after a resize wraps at the new width, and the rows before 
   );
 });
 
-test('piped records are byte for byte today, authored breaks and COLUMNS included', () => {
-  const config = { identifier: 'key' };
-  const rows = [{ key: 'one', kind: 'first\nsecond words here' }];
-  expect(render({ config, env: { COLUMNS: '10' }, rows, view: 'records', widths: [null] })).toBe(
-    lines('key   one', 'kind  first', 'second words here', '', '1 record'),
-  );
-});
+test.each([{ invoke: false }, { invoke: true }])(
+  'records piped or invoked by name ($invoke) are byte for byte today, authored breaks and COLUMNS included',
+  ({ invoke }) => {
+    const config = { identifier: 'key' };
+    const rows = [{ key: 'one', kind: 'first\nsecond words here' }];
+    const env = { COLUMNS: '10' };
+    expect(render({ config, env, invoke, rows, view: 'records', widths: [null] })).toBe(
+      lines('key   one', 'kind  first', 'second words here', '', '1 record'),
+    );
+  },
+);
 
 test('COLUMNS narrows records on a terminal and spares a pipe', () => {
   const config = { identifier: 'key' };

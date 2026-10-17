@@ -131,6 +131,31 @@ test('a word with trailing spaces is one unit at its full width, so its floor ca
   );
 });
 
+test('a word with leading spaces is one unit, so its column floor counts the spaces', () => {
+  const rows = [{ tail: filler(40, 't'), word: '    abcdef gh' }];
+  const output = render({
+    config: { columns: ['word', 'tail'] },
+    rows,
+    view: 'table',
+    widths: [20],
+  });
+  // The word column's floor is 10, the width of '    abcdef', so the tail column starts at 12.
+  expect(output.split('\n').slice(0, 3)).toEqual([
+    'word        tail',
+    `    abcdef  ${filler(40, 't').slice(0, 4)}`,
+    `gh${' '.repeat(10)}${filler(40, 't').slice(5, 9)}`,
+  ]);
+});
+
+test('a padding frame is one unit at its padded width, so it sets its column floor', () => {
+  const rows = [{ tail: filler(40, 't'), word: 'ab cd' }];
+  const config = { columns: [{ format: 'pad', key: 'word' }, 'tail'] };
+  const output = render({ config, rows, view: 'table', widths: [20] }).split('\n');
+  // The word cell pads 'ab cd' to 12 columns, one unit, so the tail column starts at 14.
+  expect(output[0]).toBe(`word${' '.repeat(10)}tail`);
+  expect(output[1]).toBe(`ab cd${' '.repeat(9)}${filler(40, 't').slice(0, 4)}`);
+});
+
 test('a nowrap cell raises its column floor to the whole cell', () => {
   const rows = [{ note: filler(40, 'n'), path: 'a b c d e f' }];
   const config = {
@@ -259,6 +284,25 @@ test('the records fallback aligns a value within its own widest wrapped line', (
   );
 });
 
+test('the records fallback keeps a format cell and its color, with every indent bare', () => {
+  const rows = [{ name: 'abcdefghijkl', note: 'one two three four five' }];
+  const config = {
+    columns: [
+      { header: 'NAME', key: 'name' },
+      { format: 'red', header: 'NOTE', key: 'note' },
+    ],
+  };
+  const rendering = { color: 'always', modifiers: 'never' } as const;
+  expect(render({ config, rendering, rows, view: 'table', widths: [15] })).toBe(
+    lines(
+      'NAME  abcdefghijkl',
+      'NOTE  \u001B[31mone two\u001B[39m',
+      '      \u001B[31mthree\u001B[39m',
+      '      \u001B[31mfour five\u001B[39m',
+    ),
+  );
+});
+
 test('a format cell is measured and wrapped by its output', () => {
   const rows = [{ first: 'x', second: 'hello world' }];
   const config = { columns: ['first', { format: 'red', key: 'second' }] };
@@ -338,24 +382,28 @@ test('COLUMNS narrows a terminal, never widens it, fits a terminal with no width
   expect(widest(null, '60')).toBe(70 + 2 + 5);
 });
 
-test('a piped table is byte for byte the natural width, a multi-line format cell included', () => {
-  const rows = [
-    { left: 'x y z', right: 'hello world' },
-    { left: 'q', right: 'zz' },
-  ];
-  const config = {
-    columns: [
-      { header: 'A', key: 'left' },
-      { align: 'right', format: 'lines', key: 'right' },
-    ],
-  };
-  expect(render({ config, env: { COLUMNS: '10' }, rows, view: 'table', widths: [null] })).toBe(
-    lines(
-      `A${' '.repeat(12)}right`,
-      'x y z  hello world',
-      'second line',
-      'q               zz',
-      'second line',
-    ),
-  );
-});
+test.each([{ invoke: false }, { invoke: true }])(
+  'a table piped or invoked by name ($invoke) is byte for byte the natural width, a multi-line format cell included',
+  ({ invoke }) => {
+    const rows = [
+      { left: 'x y z', right: 'hello world' },
+      { left: 'q', right: 'zz' },
+    ];
+    const config = {
+      columns: [
+        { header: 'A', key: 'left' },
+        { align: 'right', format: 'lines', key: 'right' },
+      ],
+    };
+    const env = { COLUMNS: '10' };
+    expect(render({ config, env, invoke, rows, view: 'table', widths: [null] })).toBe(
+      lines(
+        `A${' '.repeat(12)}right`,
+        'x y z  hello world',
+        'second line',
+        'q               zz',
+        'second line',
+      ),
+    );
+  },
+);

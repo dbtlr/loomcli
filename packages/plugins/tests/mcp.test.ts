@@ -275,6 +275,28 @@ describe('a completed call', () => {
     });
   });
 
+  it('answers a table and records byte for byte at their natural width, with COLUMNS set', async () => {
+    const answer = await resultOf('fitted', 'grid');
+    const text = Object(answer)
+      .content.map((item: { text: string }) => item.text)
+      .join('');
+    expect(text).toBe(
+      [
+        `A${' '.repeat(12)}right`,
+        'x y z  hello world',
+        'second line',
+        'q               zz',
+        'second line',
+        'key   one',
+        'kind  first',
+        'second words here',
+        '',
+        '1 record',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('a run that writes nothing answers one empty text item', async () => {
     await expect(resultOf('calls', 'quiet')).resolves.toEqual({
       content: [{ text: '', type: 'text' }],

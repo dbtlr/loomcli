@@ -1,4 +1,4 @@
-import { Application, nowrap } from '@loomcli/core';
+import { Application, nowrap, pad } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
@@ -8,7 +8,7 @@ import { table } from '@loomcli/plugins/table';
  * pipe. The input is JSON in argv[2]: { view, config, rows, widths, env?, stream?, rendering? }. A
  * `format` in a config is the name of one of the formatters below, because JSON carries no
  * functions. With `stream`, one records row prints per width, and the width changes before the
- * source yields the row.
+ * source yields the row. With `invoke`, the render runs as an invocation by name and prints its output.
  */
 const input = JSON.parse(process.argv[2]);
 
@@ -18,6 +18,7 @@ const formats = {
   // An OSC 8 hyperlink and, under sgr, a raw SGR color, embedded as an author's own bytes.
   link: (value) => `\u001B]8;;https://example.com\u001B\\${String(value)}\u001B]8;;\u001B\\`,
   nowrap: (value) => nowrap(String(value)),
+  pad: (value) => pad(String(value), 12),
   red: (value, _row, { style }) => style.red(String(value)),
   sgr: (value) => `\u001B[31m${String(value)}\u001B[39m`,
 };
@@ -58,8 +59,8 @@ async function* streamed() {
   }
 }
 
-await new Application('table-fit', { description: 'Render rows at a live width.' })
-  .action(async ({ out }) => {
+const app = new Application('table-fit', { description: 'Render rows at a live width.' }).action(
+  async ({ out }) => {
     if (input.stream) {
       await out.render(streamed(), view);
       return;
@@ -71,8 +72,15 @@ await new Application('table-fit', { description: 'Render rows at a live width.'
       }
       await out.render(input.rows, view);
     }
-  })
-  .run({
+  },
+);
+
+if (input.invoke) {
+  const host = { env: input.env ?? {}, platform: 'linux', release: { build: 'distributed' } };
+  const outcome = await app.invoke([], {}, { host });
+  process.stdout.write(outcome.output);
+} else {
+  await app.run({
     host: {
       argv: [],
       env: input.env ?? {},
@@ -82,3 +90,4 @@ await new Application('table-fit', { description: 'Render rows at a live width.'
     },
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },
   });
+}
