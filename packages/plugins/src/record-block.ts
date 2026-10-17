@@ -15,7 +15,15 @@ const FIRST = 0;
 const GAP = '  ';
 const HALF = 2;
 
-/** A value's lines placed within their own widest line, with no padding after any line. */
+/** Whether a line resolves to no character at all, whatever frames it holds. */
+function blank(text: string, context: ViewContext): boolean {
+  return context.plain(text) === '';
+}
+
+/**
+ * A value's lines placed within their own widest line, with no padding after any line and none
+ * on a blank one.
+ */
 function alignLines(lines: readonly string[], align: ValueAlignment, context: ViewContext) {
   if (align === 'left') {
     return lines;
@@ -25,6 +33,9 @@ function alignLines(lines: readonly string[], align: ValueAlignment, context: Vi
     widest = Math.max(widest, context.width(text));
   }
   return lines.map((text) => {
+    if (blank(text, context)) {
+      return text;
+    }
     const room = widest - context.width(text);
     return `${' '.repeat(align === 'right' ? room : Math.floor(room / HALF))}${text}`;
   });
@@ -42,9 +53,9 @@ function valueLines(entry: RecordEntry, room: number, context: ViewContext): rea
   return alignLines(splitLines(wrapped), entry.align ?? 'left', context);
 }
 
-/** A continuation line of a value, indented under it, except a blank one. */
-function continuation(text: string, indent: string): string {
-  return text === '' ? text : `${indent}${text}`;
+/** A continuation line of a value, indented under it, except a blank one, which stays bare. */
+function continuation(text: string, indent: string, context: ViewContext): string {
+  return blank(text, context) ? text : `${indent}${text}`;
 }
 
 /**
@@ -66,7 +77,7 @@ function recordBlock(entries: readonly RecordEntry[], context: ViewContext): str
   const lines = entries.flatMap((entry) => {
     const label = context.style.dim(pad(entry.label, labelWidth));
     return valueLines(entry, room, context).map((text, index) =>
-      index === FIRST ? `${label}${GAP}${text}` : continuation(text, indent),
+      index === FIRST ? `${label}${GAP}${text}` : continuation(text, indent, context),
     );
   });
   return `${lines.join('\n')}\n`;

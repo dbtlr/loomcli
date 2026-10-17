@@ -13,6 +13,7 @@ import { table } from '@loomcli/plugins/table';
 const input = JSON.parse(process.argv[2]);
 
 const formats = {
+  blank: (value) => `${String(value)}\n\nafter`,
   lines: (value) => `${String(value)}\nsecond line`,
   // An OSC 8 hyperlink and, under sgr, a raw SGR color, embedded as an author's own bytes.
   link: (value) => `\u001B]8;;https://example.com\u001B\\${String(value)}\u001B]8;;\u001B\\`,

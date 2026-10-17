@@ -61,6 +61,30 @@ test('an authored line break in a value continues under the value on a terminal'
   );
 });
 
+test('a blank line in a styled default value carries no indent', () => {
+  // A default value sits in a primary style frame, so its blank line is a frame with no character.
+  const rows = [{ key: 'one', kind: 'first\n\nthird' }];
+  expect(render({ config: { identifier: 'key' }, rows, view: 'records', widths: [80] })).toBe(
+    lines('key   one', 'kind  first', '', '      third', '', '1 record'),
+  );
+});
+
+test('a blank line in a plain format value carries no indent', () => {
+  const rows = [{ key: 'one', kind: 'first' }];
+  const config = { fields: ['key', { format: 'blank', key: 'kind' }], identifier: 'key' };
+  expect(render({ config, rows, view: 'records', widths: [80] })).toBe(
+    lines('key   one', 'kind  first', '', '      after', '', '1 record'),
+  );
+});
+
+test('a blank line in a right-aligned fallback value carries no indent and no alignment', () => {
+  const rows = [{ name: 'abcdefghijkl', note: 'one' }];
+  const config = { columns: ['name', { align: 'right', format: 'blank', key: 'note' }] };
+  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
+    lines('name  abcdefghijkl', 'note    one', '', '      after'),
+  );
+});
+
 test('a value with no column left after the label stays unwrapped', () => {
   const config = { identifier: 'key' };
   const rows = [{ key: 'one', kind: 'two words' }];
