@@ -68,6 +68,8 @@ function sandbox() {
 type Box = ReturnType<typeof sandbox>;
 
 interface Scenario {
+  /** The width of the terminal the run writes to, or a pipe when left out. */
+  readonly columns?: number;
   readonly env?: Record<string, string | undefined>;
   readonly platform?: string;
   readonly umask?: number;
@@ -84,6 +86,7 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
     box.scenario,
     JSON.stringify({
       abortMarker: scenario.abortMarker,
+      columns: scenario.columns,
       cwd,
       env: {
         HOME: box.home,
@@ -194,6 +197,25 @@ function systemError(code: string): Error {
 }
 
 describe('installing Bash and Zsh', () => {
+  it('keeps a startup file whose path holds spaces on one line at a narrow width', () => {
+    const box = sandbox();
+    const home = join(box.root, 'Application Support', 'home');
+    mkdirSync(home, { recursive: true });
+    const startup = join(home, '.bashrc');
+    const narrow = run(box, ['completion', 'install', 'bash'], {
+      columns: 40,
+      env: { HOME: home },
+    });
+    expect(narrow.status).toBe(0);
+    expect(narrow.stderr.split('\n')).toContain(`  ${startup}`);
+    expect(lines(narrow.stderr)).toContain('Added a line to');
+    rmSync(join(box.data, 'jsonkit'), { force: true, recursive: true });
+    rmSync(join(box.state, 'jsonkit'), { force: true, recursive: true });
+    rmSync(startup, { force: true });
+    const piped = run(box, ['completion', 'install', 'bash'], { env: { HOME: home } });
+    expect(lines(piped.stderr)).toContain(`Added a line to ${startup} that loads it.`);
+  });
+
   it.each([0o002, 0o077])(
     'writes the pinned script, line, and record under umask %o, and a second install changes nothing',
     (umask) => {

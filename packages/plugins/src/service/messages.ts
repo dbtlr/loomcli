@@ -1,7 +1,10 @@
-import { escapeControlCharacters, FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError, nowrap } from '@loomcli/core';
 
 /** Every path, label, and program name a sentence repeats, escaped as a failure message quotes text. */
 const shown = escapeControlCharacters;
+
+/** A filesystem path escaped as a failure message quotes text, and kept whole when a lane wraps. */
+const shownPath = (path: string): string => nowrap(shown(path));
 
 /** One failure a child reports, which exits 1. */
 function fatal(sentence: string, cause?: unknown): FatalError {
@@ -18,7 +21,7 @@ const refusals = {
     ),
   changed: (name: string, path: string) =>
     fatal(
-      `${shown(path)} changed since ${name} service install wrote it, so install leaves it alone. Remove it, then run ${name} service install again.`,
+      `${shownPath(path)} changed since ${name} service install wrote it, so install leaves it alone. Remove it, then run ${name} service install again.`,
     ),
   controlCharacter: (name: string) =>
     fatal(
@@ -30,7 +33,7 @@ const refusals = {
     ),
   irregular: (name: string, path: string) =>
     fatal(
-      `${shown(path)} is not a regular file, so install leaves it alone. Remove it, then run ${name} service install again.`,
+      `${shownPath(path)} is not a regular file, so install leaves it alone. Remove it, then run ${name} service install again.`,
     ),
   notInstalled: (name: string, label: string) =>
     fatal(`${shown(label)} is not installed. Run ${name} service install first.`),
@@ -40,15 +43,15 @@ const refusals = {
     ),
   record: (name: string, record: string, child: Child) =>
     fatal(
-      `${shown(record)} cannot be read, so ${name} will not change the files it lists. Remove it and the files it lists, then run ${name} service ${child} again.`,
+      `${shownPath(record)} cannot be read, so ${name} will not change the files it lists. Remove it and the files it lists, then run ${name} service ${child} again.`,
     ),
   unrecorded: (name: string, path: string) =>
     fatal(
-      `${shown(path)} was not written by ${name} service install, so install leaves it alone. Remove it, or uninstall it with whatever installed it, then run ${name} service install again.`,
+      `${shownPath(path)} was not written by ${name} service install, so install leaves it alone. Remove it, or uninstall it with whatever installed it, then run ${name} service install again.`,
     ),
   unrecordedUninstall: (name: string, path: string) =>
     fatal(
-      `${shown(path)} was not written by ${name} service install, so uninstall leaves it alone. Remove it with whatever installed it.`,
+      `${shownPath(path)} was not written by ${name} service install, so uninstall leaves it alone. Remove it with whatever installed it.`,
     ),
 };
 
@@ -73,17 +76,17 @@ const failures = {
 
 /** The lines each child writes about its work. */
 const lines = {
-  gone: (path: string) => `${shown(path)} was already gone.`,
+  gone: (path: string) => `${shownPath(path)} was already gone.`,
   kept: (name: string, path: string) =>
-    `Kept ${shown(path)} because it changed since ${name} service install wrote it. Remove it yourself when it is no longer needed.`,
+    `Kept ${shownPath(path)} because it changed since ${name} service install wrote it. Remove it yourself when it is no longer needed.`,
   nothingToRemove: (label: string) =>
     `${shown(label)} is not installed, so there is nothing to remove.`,
-  removed: (path: string) => `Removed ${shown(path)}.`,
+  removed: (path: string) => `Removed ${shownPath(path)}.`,
   restarted: (label: string) => `Restarted ${shown(label)}.`,
   started: (label: string) => `Started ${shown(label)}.`,
   stopped: (label: string) => `Stopped ${shown(label)}.`,
-  unchanged: (path: string) => `${shown(path)} is unchanged.`,
-  wrote: (path: string) => `Wrote ${shown(path)}.`,
+  unchanged: (path: string) => `${shownPath(path)} is unchanged.`,
+  wrote: (path: string) => `Wrote ${shownPath(path)}.`,
 };
 
 /** The call a status note names: the manager, what it was asked about, and its own report. */

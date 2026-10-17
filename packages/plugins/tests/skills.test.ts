@@ -74,6 +74,8 @@ function sandbox() {
 type Box = ReturnType<typeof sandbox>;
 
 interface Scenario {
+  /** The width of the terminal the run writes to, or a pipe when left out. */
+  readonly columns?: number;
   readonly skills?: readonly SkillEntry[];
   readonly env?: Record<string, string | undefined>;
   readonly cwd?: string;
@@ -88,6 +90,7 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
     box.scenario,
     JSON.stringify({
       ceiling: box.root,
+      columns: scenario.columns,
       cwd: scenario.cwd ?? box.repo,
       env: { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env },
       loaded: box.loaded,
@@ -267,6 +270,23 @@ describe('installing globally', () => {
     const skills = [{ files: [...notesFiles, { bytes, path: 'assets/blob.bin' }], name: 'notes' }];
     expect(run(box, ['skills', 'install'], { skills }).status).toBe(0);
     expect([...readFileSync(join(folderOf(box, 'claude'), 'assets/blob.bin'))]).toEqual(bytes);
+  });
+
+  it('keeps an installed folder whose path holds spaces on one line at a narrow width', () => {
+    const box = sandbox();
+    const home = join(box.root, 'Application Support', 'home');
+    mkdirSync(home, { recursive: true });
+    const folder = folderOf({ ...box, home }, 'claude');
+    const narrow = run(box, ['skills', 'install'], { columns: 40, env: { HOME: home } });
+    expect(narrow.status).toBe(0);
+    const stderr = narrow.stderr.split('\n');
+    expect(stderr).toContain(`  ${folder}.`);
+    expect(lines(narrow.stderr)).toContain('Installed notes for claude in');
+    rmSync(join(home, '.claude'), { force: true, recursive: true });
+    rmSync(join(home, '.agents'), { force: true, recursive: true });
+    rmSync(join(box.state, 'notes'), { force: true, recursive: true });
+    const piped = run(box, ['skills', 'install'], { env: { HOME: home } });
+    expect(lines(piped.stderr)).toContain(`Installed notes for claude in ${folder}.`);
   });
 
   it('with --agent claude writes only the Claude folder and leaves the agents record and folders alone', () => {

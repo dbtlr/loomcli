@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 
-import { escapeControlCharacters, InputError } from '@loomcli/core';
+import { escapeControlCharacters, InputError, nowrap } from '@loomcli/core';
 import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
 import { parseFile } from './formats.js';
@@ -206,9 +206,9 @@ async function warnSkipped(
   if (first === undefined) {
     return;
   }
-  const names = skipped.map((file) => style.escape(file.shown)).join(', ');
+  const names = skipped.map((file) => nowrap(style.escape(file.shown))).join(', ');
   await out.warn(
-    `Skipped ${names}: ${style.escape(found.shown)} matches the same pattern first. Keep one of the files, and remove the others.`,
+    `Skipped ${names}: ${nowrap(style.escape(found.shown))} matches the same pattern first. Keep one of the files, and remove the others.`,
   );
 }
 
@@ -226,7 +226,9 @@ async function discoveredFile(
   }
   const fix = fixes[reading.clause].discovered;
   if (fix !== undefined) {
-    await out.warn(`Skipped ${style.escape(file.shown)}: the file ${reading.clause} ${fix}`);
+    await out.warn(
+      `Skipped ${nowrap(style.escape(file.shown))}: the file ${reading.clause} ${fix}`,
+    );
   }
   return undefined;
 }
