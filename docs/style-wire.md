@@ -1,5 +1,5 @@
 ---
-description: Internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, and deferred padding.
+description: Internal marked-string framing and resolver invariants for style spans, glyphs, literal escaping, deferred padding, and no-wrap text.
 ---
 
 # Marked-string wire contract
@@ -28,8 +28,10 @@ The resolver reads headers as data and never evaluates them as code.
 | `["style", operations]` | Text to which the ordered operations apply |
 | `["glyph", name]` | Empty; the selected glyph form replaces the frame |
 | `["pad", minimumWidth, alignment]` | Text to measure and pad after glyph resolution |
+| `["nowrap"]` | Text that line breaking keeps whole; resolves to its body |
 
 `alignment` is `"left"`, `"right"`, or `"center"`. `minimumWidth` is a nonnegative safe integer.
+`["nowrap"]` takes no operands. Any other tuple length invalidates the frame under the malformed-frame rules below.
 `name` is a name in the [glyph catalog](glyphs.md).
 Style operations use these arrays:
 
@@ -81,7 +83,7 @@ A glyph header is valid only when its header end is immediately followed by a cl
 For example, `Open + ["glyph","tick"] + Header end + KEEP + Close` remains literal in full at top level. It never discards `KEEP`.
 A header-end delimiter outside a header is literal. An invalid escape leaves the escape delimiter literal and continues with the following text.
 An open, recognized frame ends at the end of its containing rendered string if no close occurs.
-This implicit close restores the prior style and ends any deferred padding frame.
+This implicit close restores the prior style and ends any deferred padding or no-wrap frame.
 
 Private-use characters are valid string data. A balanced recognized frame can therefore appear in arbitrary data by coincidence or by construction.
 `style.escape()` is the explicit way to display that data literally.
@@ -93,6 +95,7 @@ First-party views escape raw data values they interpolate, but preserve a messag
 Each rendered string starts with an empty Loom style stack. State does not cross output calls.
 The resolver processes nested frames with an explicit stack rather than recursive calls proportional to input depth.
 It resolves glyph forms before measuring enclosing padding. Nested padding resolves from the inside outward.
+A `["nowrap"]` frame resolves to its body exactly. It adds no byte, expands no tab, and changes no measurement: the width helper measures its body as if the frame were absent. Style, glyph, padding, and no-wrap frames nest inside it and around it. Only the view context's `wrap` reads the frame, and it keeps the body whole, as the [core reference](core.md#width-padding-and-multiline-lanes) states.
 Escape decoding produces literal data before measurement; the resulting literal is never reparsed as a frame.
 The width helper and output resolver share the same frame parser and display-column rules.
 
@@ -106,7 +109,7 @@ Preserved cursor commands remain terminal operations; width measurement does not
 
 ### Parsing order
 
-Loom framing is the outer encoding. It resolves first into text runs carrying Loom attributes, glyph choices, and padding boundaries. Raw ANSI does not make a Loom delimiter opaque at this stage.
+Loom framing is the outer encoding. It resolves first into text runs carrying Loom attributes, glyph choices, padding boundaries, and no-wrap boundaries. Raw ANSI does not make a Loom delimiter opaque at this stage.
 The ANSI scanner then consumes the resulting character stream across adjacent runs, including across removed Loom frame boundaries. No raw segment reaches the output before this classification.
 Loom attribute transitions inside an ANSI control string update the outer annotation state but do not emit terminal bytes inside its payload.
 The policy layer treats the complete decoded control string and its payload as one ANSI unit. It does not interpret payload bytes as nested ANSI commands.
@@ -144,6 +147,7 @@ Implementation acceptance includes these cases through both width measurement an
 - A known token without a mapping, a custom undefined mapping, and a literal string resembling a complete registered frame.
 - Nested styles, reset variants, embedded ANSI resets, and an ANSI reset inside a padded frame.
 - A multi-character compatibility glyph inside nested padding and escaped delimiters inside a measured value.
+- A no-wrap frame holding a style, a glyph, or a padding frame, and nested inside each, resolving to its body byte for byte, and a `["nowrap", 1]` header kept as literal text.
 - Large malformed headers without quadratic header rescanning, and deep unchanged padding without recursive-stack failure or repeated Unicode analysis.
 - Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked formatting.
 - Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames, under disabled styling policies.
