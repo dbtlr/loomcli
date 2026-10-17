@@ -29,6 +29,30 @@ test('a value whose trailing space would overflow the width wraps, so every line
   );
 });
 
+test.each([
+  {
+    format: 'link',
+    lines: [
+      'note  \u001B]8;;https://example.com\u001B\\see the\u001B]8;;\u001B\\',
+      '      \u001B]8;;https://example.com\u001B\\release notes\u001B]8;;\u001B\\',
+    ],
+    rendering: { color: 'never', hyperlinks: 'always', modifiers: 'never' },
+  },
+  {
+    format: 'sgr',
+    lines: ['note  \u001B[31msee the\u001B[39m', '      \u001B[31mrelease notes\u001B[39m'],
+    rendering: { color: 'always', modifiers: 'never' },
+  },
+] as const)(
+  'a $format value that wraps leaves its continuation indent bare',
+  ({ format, lines: expected, rendering }) => {
+    const rows = [{ key: 'a', note: 'see the release notes' }];
+    const config = { fields: ['key', { format, key: 'note' }], identifier: 'key' };
+    const output = render({ config, rendering, rows, view: 'records', widths: [20] });
+    expect(output.split('\n').slice(1, 3)).toEqual(expected);
+  },
+);
+
 test('an authored line break in a value continues under the value on a terminal', () => {
   const config = { identifier: 'key' };
   const rows = [{ key: 'one', kind: 'first\nsecond' }];

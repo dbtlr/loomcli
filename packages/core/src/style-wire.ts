@@ -41,12 +41,21 @@ type Header =
   | { kind: 'nowrap' };
 type Frame = { kind: 'style'; previous: StyleScope } | { kind: 'pad' } | { kind: 'nowrap' };
 /**
+ * A style, padding, or no-wrap frame opening or closing in the input, placed before the decoded
+ * character at `at`. An open keeps its header as written, and whether it starts a style scope.
+ */
+type FrameMark =
+  | { at: number; kind: 'open'; header: string; scoped: boolean }
+  | { at: number; kind: 'close' };
+/**
  * Where each decoded character came from, which line breaking reads: its offset in the input, and
- * whether it is whole, inside a padding or no-wrap frame, or a glyph form or rejected header.
+ * whether it is whole, inside a padding or no-wrap frame, or a glyph form or rejected header. When
+ * `frames` is supplied, it records each frame the input opens and each close character it holds.
  */
 interface WireTrace {
   origins: number[];
   whole: boolean[];
+  frames?: FrameMark[];
 }
 
 function isByte(value: unknown): value is number {
@@ -93,7 +102,9 @@ function color(value: unknown): Color | undefined {
   }
   return undefined;
 }
-function operation(value: unknown, names: ReadonlySet<string>): Operation | undefined {
+/** Whether a token name is one a style header may reference. */
+type TokenCheck = (name: string) => boolean;
+function operation(value: unknown, names: TokenCheck): Operation | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -106,7 +117,7 @@ function operation(value: unknown, names: ReadonlySet<string>): Operation | unde
   if (value.length !== 2) {
     return undefined;
   }
-  if (value[0] === 'token' && typeof value[1] === 'string' && names.has(value[1])) {
+  if (value[0] === 'token' && typeof value[1] === 'string' && names(value[1])) {
     return ['token', value[1]];
   }
   if (value[0] === 'modifier') {
@@ -122,7 +133,7 @@ function operation(value: unknown, names: ReadonlySet<string>): Operation | unde
 function glyphName(value: unknown): value is keyof typeof glyphForms {
   return typeof value === 'string' && Object.hasOwn(glyphForms, value);
 }
-function parseHeader(text: string, names: ReadonlySet<string>): Header | undefined {
+function parseHeader(text: string, names: TokenCheck): Header | undefined {
   let value: unknown = undefined;
   try {
     value = JSON.parse(text);
@@ -164,30 +175,40 @@ function parseHeader(text: string, names: ReadonlySet<string>): Header | undefin
 
 /**
  * Decodes framing once. Rejected headers are opaque, and nesting uses an explicit stack. A trace,
- * when supplied, records where each decoded character came from.
+ * when supplied, records where each decoded character came from. With `anyToken`, a style header
+ * may name any token, so the framing reads the same whatever palette resolves it later.
  */
 function parseText(
   input: string,
   palette: Palette,
-  { mainGlyphs, trace }: { mainGlyphs: boolean; trace?: WireTrace | undefined },
+  {
+    anyToken = false,
+    mainGlyphs,
+    trace,
+  }: { anyToken?: boolean; mainGlyphs: boolean; trace?: WireTrace | undefined },
 ): ParsedText {
   const pieces: string[] = [];
   const scopes: StyleScope[] = [];
   const boundaries = new Map<number, Boundary[]>();
   const stack: Frame[] = [];
-  const names = new Set<string>([...tokens, ...palette.keys()]);
+  const known = new Set<string>([...tokens, ...palette.keys()]);
+  const names: TokenCheck = anyToken ? () => true : (name) => known.has(name);
   const root: StyleScope = { attributes: emptyAttributes, operations: [], parent: undefined };
   let active = root;
   // Frames whose body line breaking keeps whole: padding and no-wrap frames.
   let unbroken = 0;
-  function append(text: string, origin: number, whole = false): void {
+  /**
+   * Decoded text and where it came from. A literal run keeps one origin per unit and a rejected
+   * header does too, though it is whole. A glyph form or an escape is one whole unit at its origin.
+   */
+  function append(text: string, origin: number, form: 'atom' | 'literal' | 'rejected'): void {
     pieces.push(text);
+    const whole = form !== 'literal';
     // Positions are UTF-16 offsets, including both units of surrogate pairs.
     // oxlint-disable-next-line typescript/prefer-for-of
     for (let index = 0; index < text.length; index += 1) {
       scopes.push(active);
-      // A literal run keeps one origin per unit; a glyph form is one unit of its frame.
-      trace?.origins.push(whole ? origin : origin + index);
+      trace?.origins.push(form === 'atom' ? origin : origin + index);
       trace?.whole.push(whole || unbroken > 0);
     }
   }
@@ -200,7 +221,10 @@ function parseText(
       boundaries.set(at, [value]);
     }
   }
-  function endFrame(): void {
+  function endFrame(written: boolean): void {
+    if (written) {
+      trace?.frames?.push({ at: scopes.length, kind: 'close' });
+    }
     const ended = stack.pop();
     if (ended?.kind === 'style') {
       active = ended.previous;
@@ -218,14 +242,22 @@ function parseText(
       const candidate = end === -1 ? undefined : parseHeader(input.slice(cursor + 1, end), names);
       if (candidate === undefined || (candidate.kind === 'glyph' && input[end + 1] !== close)) {
         const until = end === -1 ? input.length : end + 1;
-        append(input.slice(cursor, until), cursor, true);
+        append(input.slice(cursor, until), cursor, 'rejected');
         cursor = until;
         continue;
       }
       const start = cursor;
       cursor = end + 1;
+      if (candidate.kind !== 'glyph') {
+        trace?.frames?.push({
+          at: scopes.length,
+          header: input.slice(start, cursor),
+          kind: 'open',
+          scoped: candidate.kind === 'style',
+        });
+      }
       if (candidate.kind === 'glyph') {
-        append(glyphForms[candidate.name][mainGlyphs ? 0 : 1], start, true);
+        append(glyphForms[candidate.name][mainGlyphs ? 0 : 1], start, 'atom');
         cursor += 1;
       } else if (candidate.kind === 'nowrap') {
         stack.push({ kind: 'nowrap' });
@@ -250,24 +282,25 @@ function parseText(
       continue;
     }
     if (character === close && stack.length > 0) {
-      endFrame();
+      endFrame(true);
       cursor += 1;
       continue;
     }
     if (character === escape && /^E00[0-3]$/u.test(input.slice(cursor + 1, cursor + 5))) {
       const digits = input.slice(cursor + 1, cursor + 5);
-      append(String.fromCharCode(Number.parseInt(digits, 16)), cursor, true);
+      append(String.fromCharCode(Number.parseInt(digits, 16)), cursor, 'atom');
       cursor += 5;
       continue;
     }
-    append(character ?? '', cursor);
+    append(character ?? '', cursor, 'literal');
     cursor += 1;
   }
+  // The input ends every frame still open, with no close character of its own.
   while (stack.length > 0) {
-    endFrame();
+    endFrame(false);
   }
   return { boundaries, palette, root, scopes, text: pieces.join('') };
 }
 
-export type { Alignment, Boundary, Padding, ParsedText, StyleScope, WireTrace };
+export type { Alignment, Boundary, FrameMark, Padding, ParsedText, StyleScope, WireTrace };
 export { parseText };

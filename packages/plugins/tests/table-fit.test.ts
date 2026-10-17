@@ -259,6 +259,30 @@ test('a styled cell that wraps closes its style on each line, so no style leaks 
   ]);
 });
 
+const link = '\u001B]8;;https://example.com\u001B\\';
+const unlink = '\u001B]8;;\u001B\\';
+
+test('a hyperlink in a wrapped cell closes on each line, so it covers neither the gap nor the next column', () => {
+  const rows = [{ doc: 'see the release notes', owner: 'drew' }];
+  const config = { columns: [{ format: 'link', key: 'doc' }, 'owner'] };
+  const rendering = { color: 'never', hyperlinks: 'always', modifiers: 'never' } as const;
+  const output = render({ config, rendering, rows, view: 'table', widths: [20] });
+  expect(output.split('\n').slice(1, 3)).toEqual([
+    `${link}see the${unlink}${' '.repeat(6)}  drew`,
+    `${link}release notes${unlink}`,
+  ]);
+});
+
+test('a raw SGR color in a wrapped cell ends on each line, so it colors no neighbor', () => {
+  const rows = [{ note: 'one two three', owner: 'drew' }];
+  const config = { columns: [{ format: 'sgr', key: 'note' }, 'owner'] };
+  const rendering = { color: 'always', modifiers: 'never' } as const;
+  const output = render({ config, rendering, rows, view: 'table', widths: [12] }).split('\n');
+  expect(output[1]).toBe('\u001B[31mone\u001B[39m    drew');
+  expect(output[2]?.trimEnd()).toBe('\u001B[31mtwo\u001B[39m');
+  expect(output[3]?.trimEnd()).toBe('\u001B[31mthree\u001B[39m');
+});
+
 test('two renders either side of a resize fit 100 and then 60', () => {
   const rows = [{ left: filler(70, 'a'), right: 'short' }];
   const config = { columns: ['left', 'right'] };

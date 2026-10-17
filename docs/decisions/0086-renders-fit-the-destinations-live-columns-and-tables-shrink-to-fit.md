@@ -64,6 +64,10 @@ A caller aligns a wrapped block by pairing wrap with pad, whose alignment applie
 
 Loom's first-party messages wrap each filesystem path and URL they print in `nowrap`. The wrapping changes no message text, because the frame adds no bytes.
 
+### splitLines makes lines that stand alone
+
+`@loomcli/core` exports `splitLines(text)` beside `wrap` and `nowrap`. It splits marked text at its LF and CRLF line breaks into lines that each stand alone: every Loom frame, embedded SGR attribute, and embedded OSC 8 hyperlink open at a line's end closes there and opens again at the start of the next line, so lines placed side by side never leak onto the text beside them. A trailing line break adds no empty line, as `pad` adds no padded line after one. It reads the wire with core's own parser and ANSI recognizer, and it rejects a value that is not a string as `pad` does. The table and the records views split each wrapped cell and value with it, so no plugin parses the wire itself.
+
 ### Where core wraps
 
 - **The marked lanes** `info`, `success`, `warn`, and `error` wrap the message at `columns` minus the measured glyph gutter, and continuation lines carry the gutter the lanes already give authored line breaks. `print` never wraps. With `columns` undefined, or with no column left after the gutter on a terminal narrower than it, lane output is byte for byte what it was. An application that wants unwrapped lanes replaces the lane view, as it already can.
@@ -105,6 +109,7 @@ The select `questionFrame` data no longer carries `columns`. It keeps `rows`. Th
 - **`pad(path, 0)` as the marker.** Rejected. It reads as padding, and it is a second way to do the job.
 - **Splitting a long word except URLs and paths.** Rejected. The remaining overlong words are tokens, hashes, and IDs that also need intact copy, and the detection list is a guess about author text.
 - **A separate align helper.** Rejected. `pad` already aligns each line.
+- **Each plugin splitting the wire itself.** Rejected. A second parser of an internal wire drifts from core's: it hard-codes the delimiters, reads headers by rules of its own, and misses the SGR and hyperlink state that core's resolver carries across a line break, so a link or a color in one cell leaks into the next column.
 - **Ignoring `COLUMNS`.** Rejected. It is how an operator asks for narrower output, for a narrow pane or a screenshot, and Python's `shutil` and clap honor it.
 - **`COLUMNS` as a POSIX override that can exceed the window.** Rejected. A layout wider than the real screen is wrong on that screen.
 - **Honoring `COLUMNS` on a pipe.** Rejected. Some shells export `COLUMNS`, which would wrap piped output unasked.
@@ -114,7 +119,7 @@ The select `questionFrame` data no longer carries `columns`. It keeps `rows`. Th
 
 ## Consequences
 
-The view context gains two required members. An existing view function keeps compiling, because it reads the context core passes. A `ViewContext` object built by hand, such as one in a test harness, and a wrapper that rebuilds the context must supply both members, so adding them is a breaking change for core, as adding `plain` was. A wrapper keeps the runtime context's `columns` and `wrap`, and a hand-built context supplies both. `@loomcli/core` also gains the `nowrap` export.
+The view context gains two required members. An existing view function keeps compiling, because it reads the context core passes. A `ViewContext` object built by hand, such as one in a test harness, and a wrapper that rebuilds the context must supply both members, so adding them is a breaking change for core, as adding `plain` was. A wrapper keeps the runtime context's `columns` and `wrap`, and a hand-built context supplies both. `@loomcli/core` also gains the `nowrap` and `splitLines` exports.
 
 Output at a terminal changes. A long lane message wraps, a wide table shrinks or becomes records blocks, and a long records value wraps. The self-update notice is one `out.info` message. The example notice is 91 columns, and the shortest possible notice is 83, so every notice is wider than the 78 columns an 80-column terminal leaves after the info gutter and wraps there. A pipe, an invocation by name, and an MCP tool call see no change, which keeps golden fixtures that run without a terminal byte for byte stable, tables and records included.
 
@@ -133,4 +138,4 @@ Proposed. It moves to accepted with the release that ships live terminal width, 
 ## Changelog
 
 - 2026-10-17: Proposed with the live columns, wrap, and fitting contract.
-- 2026-10-18: Amended before acceptance: an input line's trailing spaces stay with its last word and count toward the fit and the table floor.
+- 2026-10-18: Amended before acceptance: an input line's trailing spaces stay with its last word and count toward the fit and the table floor, and core exports `splitLines`, which the table and records views use in place of a splitter of their own.

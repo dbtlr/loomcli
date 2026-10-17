@@ -260,4 +260,4 @@ function wrapPlain(text: string, columns: number): string {
   return edited(text, breaks({ caps: plainCaps, commands, parsed, trace }, width));
 }
 
-export { wrapMarked, wrapPlain };
+export { plainCaps, wrapMarked, wrapPlain };

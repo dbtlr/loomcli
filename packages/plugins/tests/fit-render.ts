@@ -15,6 +15,7 @@ interface FitInput {
   readonly env?: Readonly<Record<string, string>>;
   readonly rendering?: {
     readonly color: 'always' | 'never';
+    readonly hyperlinks?: 'always' | 'never';
     readonly modifiers: 'always' | 'never';
   };
   readonly stream?: boolean;

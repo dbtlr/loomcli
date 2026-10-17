@@ -87,6 +87,17 @@ function command(text: string, cursor: number): AnsiCommand | undefined {
   }
   return undefined;
 }
+/**
+ * What an OSC 8 command does to the hyperlink state: `true` when it opens a link, `false` when it
+ * closes one, and undefined when the command is not a hyperlink.
+ */
+function hyperlinkOpens(found: AnsiCommand): boolean | undefined {
+  if (found.kind !== 'osc' || !found.body.startsWith('8;')) {
+    return undefined;
+  }
+  const separator = found.body.indexOf(';', 2);
+  return separator === -1 ? undefined : found.body.slice(separator + 1) !== '';
+}
 const enableModifiers = new Map<number, Modifier>([
   [1, 'bold'],
   [2, 'faint'],
@@ -304,10 +315,9 @@ function scanAnsi(parsed: ParsedText, caps: Capabilities): Unit[] {
         if (caps.terminalControls && unknown) {
           result.push({ attributes: state.attributes(), kind: 'sgr', text: unknown });
         }
-      } else if (found.kind === 'osc' && found.body.startsWith('8;')) {
-        const separator = found.body.indexOf(';', 2);
-        if (separator !== -1 && caps.hyperlinks) {
-          hyperlinkOpen = found.body.slice(separator + 1) !== '';
+      } else if (hyperlinkOpens(found) !== undefined) {
+        if (caps.hyperlinks) {
+          hyperlinkOpen = hyperlinkOpens(found) === true;
           result.push({ attributes: state.attributes(), kind: 'hyperlink', text: raw });
         }
       } else if (found.kind !== 'incomplete' && caps.terminalControls) {
@@ -333,5 +343,5 @@ function scanAnsi(parsed: ParsedText, caps: Capabilities): Unit[] {
   return result;
 }
 
-export type { TextUnit, Unit };
-export { command, scanAnsi };
+export type { AnsiCommand, TextUnit, Unit };
+export { command, hyperlinkOpens, scanAnsi };

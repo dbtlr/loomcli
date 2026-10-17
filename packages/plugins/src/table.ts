@@ -1,7 +1,6 @@
-import { pad } from '@loomcli/core';
+import { pad, splitLines } from '@loomcli/core';
 import type { View, ViewContext } from '@loomcli/core';
 
-import { splitMarkedLines } from './marked-lines.js';
 import { recordBlock } from './record-block.js';
 import { levelWidths, total } from './table-fit.js';
 
@@ -179,7 +178,7 @@ function fittedWidths<Row>(grid: Grid<Row>, rowCount: number): number[] | undefi
 function cellLines(text: string, context: ViewContext, width: number): string[] {
   return context.columns === undefined
     ? [text]
-    : splitMarkedLines(context.wrap(text, Math.max(NARROWEST, width)));
+    : splitLines(context.wrap(text, Math.max(NARROWEST, width)));
 }
 
 /** One line of a row, from the cells that have a line at this height. */

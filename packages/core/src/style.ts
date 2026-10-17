@@ -297,7 +297,7 @@ function pad(text: string, minimumWidth: number, options?: { align?: Alignment }
 
 /**
  * Text that line breaking keeps whole, such as a path that holds spaces. The frame resolves to its
- * body exactly and measures as its body; only the view context's `wrap` reads it.
+ * body exactly and measures as its body; only the view context's `wrap` and `splitLines` read it.
  */
 function nowrap(text: string): string {
   return frame(['nowrap'], textOnly(text));

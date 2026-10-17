@@ -4930,6 +4930,7 @@ The fit is proven under Node and Bun with a host override of plain numbers for t
 - **The records view.** On a terminal each value wraps at the width left after the padded key column, every continuation line of a value, authored or wrapped, is indented under the value, and the fallback's row blocks match the records view's row blocks for the same labels and left-aligned values, while the fallback has no tail and highlights no identifier. With no column left for the value, the value stays unwrapped.
 - **A resize.** Under a pty-backed host, one run renders a table at 100 columns, the window resizes to 60, and the next render fits 60. A streamed records row after the resize wraps at 60, and the rows before it keep their layout.
 - **`COLUMNS`.** `COLUMNS=60` over a real width of 100 narrows a table and a records value to 60, `COLUMNS=150` over 100 changes nothing, `COLUMNS=60` on a terminal that reports no width fits 60, and `COLUMNS=60` on a pipe changes nothing.
+- **Embedded ANSI.** A `format` cell holding an OSC 8 hyperlink, wrapped at 20 columns beside an `owner` column, closes the link at the end of each line, so the link covers neither the gap nor `drew`, and a cell holding a raw SGR color colors no neighbor. A records value holding either wraps with a continuation indent that carries no link and no color. The views split each wrapped value with `splitLines`.
 - **Piped output.** A table and a records view rendered to a pipe, under `app.invoke`, and under an MCP tool call are byte for byte the natural-width output, `COLUMNS` set or not. This holds for a `format` cell that returns several lines and a records value with authored line breaks, because the per-line row layout applies only when `columns` is defined.
 
 ### Loom theme
@@ -6610,7 +6611,7 @@ Core exports the style helpers, rendering context, and rendering policy describe
 
 ### Strings and composition
 
-Core exports `style`, `glyph`, `pad`, `nowrap`, and `escapeControlCharacters`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step.
+Core exports `style`, `glyph`, `pad`, `nowrap`, `splitLines`, and `escapeControlCharacters`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step.
 
 ```ts
 import { glyph, pad, style } from '@loomcli/core';
@@ -6968,6 +6969,15 @@ and restart the service.
 
 There is no align helper. A caller aligns a wrapped block by pairing `wrap` with `pad`, whose alignment applies to each line: `pad(context.wrap(text, 20), 20, { align: 'center' })`.
 
+`splitLines(text)` splits marked text at its line breaks, LF and CRLF, into an array of lines that each stand alone, for a view that places lines beside other text, as a table places a cell's lines beside the next column and the records view places a value's lines after its indent. Every frame open at a line's end, a style, a `pad` frame, or a `nowrap` frame, closes there and opens again at the start of the next line, in its nesting order. An SGR attribute and an OSC 8 hyperlink embedded in the text end at each line's end and start again on the next, so nothing on one line styles or links the text placed after it. A line that sets an SGR attribute sits in a style frame with no operation, whose end restores the style around it and adds no byte to the output. The line breaks themselves are dropped. A trailing line break ends the last line and adds no empty line, the rule `pad` follows for a trailing newline, while a blank line inside the text is a line: `splitLines('a\n')` is `['a']`, and `splitLines('a\n\nb')` is `['a', '', 'b']`. A line break inside an ANSI control string, such as an OSC payload, is not a line break. Text without a line break comes back as one line, unchanged unless it sets an SGR attribute or leaves a hyperlink open. `splitLines` breaks only where the text already has a line break, so a view pairs it with `wrap`: `splitLines(context.wrap(text, width))`. It reads the wire with the parser core's resolver uses, and takes one string, throwing `TypeError('Style helpers require a string.')` for any other value, as `pad` does.
+
+```ts
+import { splitLines, style } from '@loomcli/core';
+
+splitLines(style.red('one\ntwo'));
+// [style.red('one'), style.red('two')]
+```
+
 Lane views receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane view owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. Continuation lines use spaces for that gutter without repeating the glyph. Those four lanes also wrap the message with `wrap` at `columns` minus the measured gutter, which fits the message in the columns right of the gutter, and every continuation line carries the gutter, whether the break is authored or wrapped. With `columns` undefined, as on a pipe or under an invocation by name, or with no column left after the gutter, lane output is byte for byte what it would be without wrapping. `print` remains prefix-free and never wraps. An application that wants unwrapped lanes replaces the lane view, as it can replace any lane view. The semantic methods retain their string-only call shape and newline contract. Each lane is a declared view core exports under `lanes`, and an application replaces its function through `views` as [Views](#views) describes; the newline the semantic method appends is outside the view and survives any override.
 
 ### Implementation acceptance
@@ -6999,6 +7009,9 @@ The style tests and packed consumers cover these obligations:
 - A `pad` frame or a `nowrap` frame is one unit: `wrap` measures a `pad` frame at its padded width and a `nowrap` frame at its body's width, and never breaks inside either.
 - `nowrap`: a body never breaks at any `columns`, and it resolves byte for byte to its body, so a printed `nowrap` path copies as the exact text. A lane message holding `nowrap('/Users/a/Library/Application Support/x')` at a narrow width keeps the path on one line, and the text around it wraps. A table cell in `nowrap` raises its column's floor to the whole cell. A style or a glyph inside the frame, and the frame inside a `pad` frame, resolve as without it. A non-string throws `TypeError('Style helpers require a string.')`, as `pad` does.
 - First-party messages: each filesystem path and URL a first-party message prints through a lane or a view is inside `nowrap`, and the message text is byte for byte what it was.
+- `splitLines` frames: a style, a `pad` frame, and a `nowrap` frame that span a line break close at the line's end and open again on the next line, nested frames in their order, and a frame closed before the break stays closed. A style header that names a theme token splits like any style, and an escaped delimiter or a glyph frame is text.
+- `splitLines` embedded ANSI: an embedded SGR color, set at the top level, inside a style, or inside a `pad` frame, ends at each line's end and is set again on the next, and an embedded OSC 8 hyperlink closes at each line's end and opens again on the next.
+- `splitLines` breaks: LF and CRLF split alike and are dropped, a trailing line break adds no empty line while a blank line inside the text stays, a `pad` frame after the last break is a line, a line break inside a control string does not split, text without a break comes back unchanged, and a non-string throws `TypeError('Style helpers require a string.')`.
 - A style and a hyperlink that span a break continue across it, with the break inside the envelope as an authored line break sits, as a rendering with color and hyperlinks on shows, and a lane's gutter on a continuation line carries the span.
 - Glyph measurement per destination: a message with a marked glyph whose main and compatibility forms differ in width breaks at different points for a destination that selects main forms and one that selects compatibility forms.
 - Text without spaces, such as Chinese, Japanese, and Thai prose, comes back unbroken at any `columns`.

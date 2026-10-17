@@ -1,7 +1,5 @@
-import { pad } from '@loomcli/core';
+import { pad, splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
-
-import { splitMarkedLines } from './marked-lines.js';
 
 type ValueAlignment = 'center' | 'left' | 'right';
 
@@ -41,7 +39,7 @@ function valueLines(entry: RecordEntry, room: number, context: ViewContext): rea
     return [entry.value];
   }
   const wrapped = room > EMPTY ? context.wrap(entry.value, room) : entry.value;
-  return alignLines(splitMarkedLines(wrapped), entry.align ?? 'left', context);
+  return alignLines(splitLines(wrapped), entry.align ?? 'left', context);
 }
 
 /** A continuation line of a value, indented under it, except a blank one. */

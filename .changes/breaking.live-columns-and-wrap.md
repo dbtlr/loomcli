@@ -3,6 +3,7 @@
 - Narrow `columns` on a terminal by a valid POSIX `COLUMNS` variable, a positive integer, which never widens it past the terminal's real width. A terminal that reports no width takes `COLUMNS` alone, and a destination that is not a terminal ignores it. `host.terminal` keeps the real reading.
 - Wrap the `info`, `success`, `warn`, and `error` lanes at the columns right of their glyph gutter, with the gutter on every continuation line. Off a terminal their output is unchanged, and `print` never wraps. A long self-update notice now wraps on an 80-column terminal.
 - Add `nowrap(text)`, which keeps text such as a path that holds spaces whole when a line wraps. It adds no bytes to the printed text: ``out.info(`Wrote ${nowrap(path)}`)``.
+- Add `splitLines(text)`, which splits marked text at its line breaks into lines that each stand alone. A style, a `pad` or `nowrap` frame, an embedded SGR color, or an OSC 8 hyperlink that spans a break closes at the line's end and opens again on the next, so a view can place wrapped lines side by side: `splitLines(context.wrap(text, width))`.
 - Fill the Developer Diagnostic's banner and wrap its explanation at stderr's effective width, narrowed by `COLUMNS`, measured in terminal display columns. It keeps 80 columns off a terminal and in a thrown error's message.
 
 ### Migration
