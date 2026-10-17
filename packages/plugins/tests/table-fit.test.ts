@@ -134,7 +134,7 @@ test.each([
   },
   {
     align: 'center',
-    expected: lines('  N     note', 'aaa b   x', '  cc  ', ' dddd '),
+    expected: lines('  N     note', 'aaa b   x', '  cc', ' dddd'),
   },
 ])('each line of a wrapped $align cell keeps the column alignment', ({ align, expected }) => {
   const rows = [{ note: 'x', text: 'aaa b cc dddd' }];
@@ -142,16 +142,32 @@ test.each([
   expect(render({ config, rows, view: 'table', widths: [12] })).toBe(expected);
 });
 
-test('a shorter last cell adds no padding and no gap, and a shorter earlier cell pads blank lines', () => {
+test('a line ends at its rightmost cell with text, which carries no padding, and an earlier shorter cell pads blank lines', () => {
   const rows = [{ long: 'one two three', short: 'x' }];
   const long = { header: 'L', key: 'long' };
   const short = { header: 'S', key: 'short' };
   expect(render({ config: { columns: [long, short] }, rows, view: 'table', widths: [10] })).toBe(
-    lines('L        S', 'one two  x', 'three  '),
+    lines('L        S', 'one two  x', 'three'),
   );
   expect(render({ config: { columns: [short, long] }, rows, view: 'table', widths: [10] })).toBe(
     lines('S  L', 'x  one two', '   three'),
   );
+});
+
+test('a middle cell taller than the last ends its extra lines at its own text, with no gap or padding after', () => {
+  const rows = [{ first: 'x', last: 'z', middle: 'one two three' }];
+  const config = {
+    columns: [
+      { header: 'a', key: 'first' },
+      { header: 'b', key: 'middle' },
+      { header: 'c', key: 'last' },
+    ],
+  };
+  const output = render({ config, rows, view: 'table', widths: [14] });
+  expect(output).toBe(lines('a  b         c', 'x  one two   z', '   three'));
+  for (const line of output.split('\n')) {
+    expect(line).toBe(line.trimEnd());
+  }
 });
 
 test('a header wider than its cells sets the natural width and wraps like a cell', () => {
@@ -161,11 +177,7 @@ test('a header wider than its cells sets the natural width and wraps like a cell
     render({ config, rows, view: 'table', widths: [30] })
       .split('\n')
       .slice(0, 3),
-  ).toEqual([
-    'ENORMOUS        text',
-    `HEADER${' '.repeat(8)}`,
-    `x               ${filler(30, 'b').slice(0, 14)}`,
-  ]);
+  ).toEqual(['ENORMOUS        text', 'HEADER', `x               ${filler(30, 'b').slice(0, 14)}`]);
 });
 
 test('a header word longer than every cell word sets the floor', () => {

@@ -8,9 +8,12 @@ type TableAlignment = 'center' | 'left' | 'right';
 
 const CENTER_SIDES = 2;
 const EMPTY = 0;
+const FIRST = 0;
 const GAP = '  ';
 const LAST_OFFSET = 1;
 const NARROWEST = 1;
+const NEXT = 1;
+const NOT_FOUND = -1;
 
 interface ColumnDefinition<Row, Key extends keyof Row & string> {
   readonly key: Key;
@@ -90,7 +93,10 @@ function discoverColumns<Row>(rows: readonly Row[]): PreparedColumn<Row>[] {
   return columns;
 }
 
-/** One cell line padded to its column width without adding spaces after the last cell. */
+/**
+ * One cell line padded to its column width, except the line's rightmost cell, which adds no
+ * spaces after its text.
+ */
 function renderCell<Row>({
   column,
   context,
@@ -181,27 +187,43 @@ function cellLines(text: string, context: ViewContext, width: number): string[] 
     : splitLines(context.wrap(text, Math.max(NARROWEST, width)));
 }
 
-/** One line of a row, from the cells that have a line at this height. */
+/**
+ * The rightmost column a line reaches. Off a terminal every cell is one line, so the line reaches
+ * the last column, as the natural-width output always has. On a terminal it reaches the rightmost
+ * cell that has text at this height.
+ */
+function reach(cells: readonly (readonly string[])[], at: number, context: ViewContext): number {
+  for (let index = cells.length - LAST_OFFSET; index >= FIRST; index -= NEXT) {
+    const text = cells[index]?.[at];
+    if (text !== undefined && (context.columns === undefined || context.plain(text) !== '')) {
+      return index;
+    }
+  }
+  return NOT_FOUND;
+}
+
+/**
+ * One line of a row, through the rightmost column it reaches, which takes the last-column rule:
+ * no padding after it. Every column after it, and the gap before each, is left off.
+ */
 function rowLine<Row>(
   cells: readonly (readonly string[])[],
   at: number,
   { columns, context, widths }: Pick<Grid<Row>, 'columns' | 'context'> & { widths: number[] },
 ): string {
+  const rightmost = reach(cells, at, context);
   const pieces: string[] = [];
-  for (const [index, column] of columns.entries()) {
-    const last = index === columns.length - LAST_OFFSET;
-    const own = cells[index] ?? [];
-    if (!last || at < own.length) {
-      const width = widths[index] ?? EMPTY;
-      pieces.push(renderCell({ column, context, last, text: own[at] ?? '', width }));
-    }
+  for (const [index, column] of columns.slice(FIRST, rightmost + NEXT).entries()) {
+    const last = index === rightmost;
+    const text = cells[index]?.[at] ?? '';
+    pieces.push(renderCell({ column, context, last, text, width: widths[index] ?? EMPTY }));
   }
   return pieces.join(GAP);
 }
 
 /**
  * One row of cells as lines, as tall as its tallest cell. A shorter cell adds blank lines padded
- * to its column, except a shorter last cell, whose added lines carry no padding and no gap.
+ * to its column when a cell to its right has text at that height, and no line ends in padding.
  */
 function rowLines<Row>(
   cells: readonly (readonly string[])[],
