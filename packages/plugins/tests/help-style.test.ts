@@ -375,3 +375,12 @@ test('a detailed custom theme distinguishes every page token, including primary 
     ].join('\n'),
   });
 });
+
+test('a help page stays unwrapped on a terminal narrower than its rows', () => {
+  const plain = { color: 'never', hyperlinks: 'never', modifiers: 'never' };
+  const piped = run({ argv: ['--help'], rendering: plain });
+  const narrow = run({ argv: ['--help'], columns: 20, rendering: plain, tty: true });
+  expect(piped.status).toBe(0);
+  expect(piped.stdout.split('\n').some((line) => line.length > 20)).toBe(true);
+  expect(narrow).toEqual(piped);
+});

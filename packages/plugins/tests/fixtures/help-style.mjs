@@ -93,7 +93,7 @@ await app.run({
     terminal: {
       stderr: { isTTY: false },
       stdin: { isTTY: false },
-      stdout: { isTTY: input.tty ?? false },
+      stdout: { columns: input.columns, isTTY: input.tty ?? false },
     },
   },
   rendering: input.rendering,

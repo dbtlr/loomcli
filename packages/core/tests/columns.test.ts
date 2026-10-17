@@ -124,3 +124,29 @@ test('the incomplete-result line reads the width when it renders', () => {
   expect(result.stdout).toBe('a:30:wrapped\n');
   expect(result.stderr).toMatch(/^incomplete:44:wrapped\n/u);
 });
+
+test.each([
+  [['need', '--unknown-option-name']],
+  [['need']],
+  [['stop']],
+  [['crash']],
+  [['missing-command-name']],
+])(
+  "core's default failure text for %j stays one line per sentence on a narrow terminal",
+  (argv) => {
+    for (const tty of [true, false]) {
+      const result = columns({ argv, scenario: 'failure', tty });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr.trimEnd().length).toBeGreaterThan(20);
+      expect(result.stderr.trimEnd()).not.toContain('\n');
+    }
+  },
+);
+
+test('a failure view override receives the columns and wraps its own text', () => {
+  expect(columns({ argv: ['stop'], override: true, scenario: 'failure' })).toEqual({
+    status: 1,
+    stderr: '20|The configuration\nfile names a profile\nthat this machine\ndoes not have.\n',
+    stdout: '',
+  });
+});

@@ -122,4 +122,39 @@ if (scenario === 'destinations') {
       terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
     },
   });
+} else if (scenario === 'failure') {
+  // Core's default failure text on a narrow terminal, and an override that wraps its own text.
+  const narrow = { columns: 20, isTTY: input.tty ?? true, rows: 24 };
+  const views = input.override
+    ? [
+        override(FatalError, {
+          render: (failure, context) =>
+            `${String(context.columns)}|${context.wrap(failure.message, context.columns)}\n`,
+        }),
+      ]
+    : [];
+  const app = new Application('columns', { description: 'Fail.', views })
+    .command(
+      new Command('need', { description: 'Need an argument.' })
+        .argument('name', { description: 'The required name.', required: true })
+        .action(() => {}),
+    )
+    .command(
+      new Command('stop', { description: 'Stop.' }).action(({ out }) =>
+        out.fatal('The configuration file names a profile that this machine does not have.'),
+      ),
+    )
+    .command(
+      new Command('crash', { description: 'Crash.' }).action(() => {
+        throw new TypeError('The fixture broke on purpose.');
+      }),
+    );
+  process.exitCode = await app.run({
+    host: {
+      argv: input.argv,
+      env: {},
+      release: { build: 'distributed' },
+      terminal: { stderr: narrow, stdin: { isTTY: false }, stdout: narrow },
+    },
+  });
 }
