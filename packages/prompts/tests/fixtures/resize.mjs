@@ -6,11 +6,24 @@ import { select } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
 
 /**
- * A select over ten choices whose stderr height is read live. The window shrinks from 30 rows to 6
- * before the second frame, and grows to 30 again before the third. The keyboard presses Down after
- * the first frame and the second, and Enter after the third.
+ * A select over ten choices whose stderr height is read live. A plan in argv[2], as JSON, gives the
+ * rows of the first frame and, for each frame after it, the rows to set and the key to press:
+ * { rows, steps: [{ rows?, key: 'down' | 'up' }] }. After the last step the keyboard presses
+ * Enter. Without a plan, the window shrinks from 30 rows to 6 before the second frame and grows
+ * to 30 again before the third, with Down pressed before each.
  */
-let rows = 30;
+const plan =
+  process.argv[2] === undefined
+    ? {
+        rows: 30,
+        steps: [
+          { key: 'down', rows: 6 },
+          { key: 'down', rows: 30 },
+        ],
+      }
+    : JSON.parse(process.argv[2]);
+const keys = { down: '\u001B[B', up: '\u001B[A' };
+let { rows } = plan;
 const shown = [];
 class Keyboard extends Readable {
   _read() {}
@@ -24,7 +37,7 @@ const sink = new Writable({
     done();
   },
 });
-const resizes = [6, 30];
+const steps = [...plan.steps];
 const app = new Application('resize', { description: 'Ask a select across resizes.' }).action(
   async (context) => {
     const { out } = context;
@@ -36,13 +49,13 @@ const app = new Application('resize', { description: 'Ask a select across resize
           draw: async (data, view) => {
             const count = await out.draw(data, view);
             if (view === questionFrame) {
-              shown.push({ choices: data.choices.length, rows: data.rows });
-              const next = resizes.shift();
+              shown.push({ above: data.above, choices: data.choices.length, rows: data.rows });
+              const next = steps.shift();
               if (next === undefined) {
                 keyboard.push('\r');
               } else {
-                rows = next;
-                keyboard.push('\u001B[B');
+                rows = next.rows ?? rows;
+                keyboard.push(keys[next.key]);
               }
             }
             return count;

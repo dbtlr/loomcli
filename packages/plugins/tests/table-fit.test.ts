@@ -1,5 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
+import { levelWidths } from '../src/table-fit.js';
 import { filler, lines, render } from './fit-render.js';
 
 const noteRows = [
@@ -66,6 +67,18 @@ test.each([
     expect(Math.max(...output.map((line) => line.length))).toBe(columns);
     const wide = output.slice(1, -1).map((line) => line.slice(0, first).trim());
     expect(wide.join(' ')).toBe(filler(40, 'a'));
+  },
+);
+
+test.each([
+  // L is 5, and the first column sits at 5 by its natural width, so it is not naturally wider.
+  { available: 16, expected: [5, 6, 5], floors: [1, 1, 1], natural: [5, 10, 10] },
+  // L is 15, and the first column is naturally wider but held at its floor of 30, not at L.
+  { available: 61, expected: [30, 16, 15], floors: [30, 1, 1], natural: [40, 20, 20] },
+])(
+  'the remainder skips a column at L by its natural width and one held above L by its floor: $expected',
+  ({ available, expected, floors, natural }) => {
+    expect(levelWidths(natural, floors, available)).toEqual(expected);
   },
 );
 
