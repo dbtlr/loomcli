@@ -69,3 +69,4 @@ Accepted in 0.13.0.
 ## Changelog
 
 - 2026-10-15: Proposed with the prompts contract.
+- 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, changes the select frame data that the prompts reference specifies under this record; no clause here changes. It binds when that record is accepted.
