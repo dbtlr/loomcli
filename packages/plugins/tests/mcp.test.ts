@@ -265,6 +265,16 @@ describe('a completed call', () => {
     });
   });
 
+  it('reads no columns and leaves a lane unwrapped, with COLUMNS set', async () => {
+    await expect(resultOf('columns', 'measure')).resolves.toEqual({
+      content: [
+        { text: 'undefined\n', type: 'text' },
+        { text: '⚠ a warning long enough to wrap at twenty columns\n', type: 'text' },
+      ],
+      isError: false,
+    });
+  });
+
   it('a run that writes nothing answers one empty text item', async () => {
     await expect(resultOf('calls', 'quiet')).resolves.toEqual({
       content: [{ text: '', type: 'text' }],

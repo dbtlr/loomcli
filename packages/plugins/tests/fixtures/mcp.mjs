@@ -314,7 +314,25 @@ const faults = {
     ),
 };
 
-const scenarios = { calls, listing, ...faults };
+/**
+ * One tool that reports the columns its views read and warns at length, served from a process
+ * whose environment holds a narrow COLUMNS. A tool call is an invocation by name, with no terminal.
+ */
+function columns() {
+  process.env.COLUMNS = '20';
+  const measure = new Command('measure', {
+    description: 'Report the columns.',
+    extensions: [mcpCommand({})],
+  }).action(async ({ out }) => {
+    await out.render(null, { render: (_value, context) => `${String(context.columns)}\n` });
+    await out.warn('a warning long enough to wrap at twenty columns');
+  });
+  return new Application('columns', { description: 'Report columns.', plugins: [mcp()] }).command(
+    measure,
+  );
+}
+
+const scenarios = { calls, columns, listing, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 
