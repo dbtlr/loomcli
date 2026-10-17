@@ -349,7 +349,7 @@ _Avoid_: Built-in view, formatter (for a pack view), widget
 
 **Column**:
 One entry of a table view's `columns` list: a key of the row, an optional header, an optional alignment, and an optional `format` that renders that cell. The list order is the column order, a key may appear twice, and an omitted list makes every key that appears in the rows a column in first-seen order.
-_Avoid_: Field (for a column), table column definition
+_Avoid_: Field (for a column), table column definition, Columns (the destination's width, a separate term)
 
 **Field**:
 One entry of a records view's `fields` list: a key of the row and an optional `format`. A field carries no header and no alignment, because the key is the label the line prints and the value column is one lane. An omitted list makes every key that appears in the record a field in first-seen order.
@@ -372,8 +372,12 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
+
+**Columns**:
+The width of the destination a view's text reaches, read from the view context's `columns` member and `undefined` when that destination is not a terminal, such as a pipe, a file, an invocation by name, or an MCP tool call. On a terminal it is the number `COLUMNS` holds under [the rule in the core reference](core.md#width-padding-and-multiline-lanes), and otherwise the detected width. The same context offers `wrap(text, columns)`, which breaks lines at spaces when the view runs and never splits a word, and `context.wrap(text, context.columns)` leaves the text alone when `columns` is `undefined`. `host.terminal` keeps the captured width whatever `COLUMNS` says. A Column, one entry of a table view's `columns` list, is a separate term.
+_Avoid_: Terminal width (for the view context member), screen width, line length, Column (a table view's entry)
 
 **Token**:
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
@@ -709,7 +713,7 @@ The plugin Command that replaces the running binary with a verified release asse
 _Avoid_: Auto-update, upgrade (for the Command), updater
 
 **Update notice**:
-The one line the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache about once a day, so no run waits on the network, and the author or the operator can turn notices off.
+The one `out.info` message the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache about once a day, so no run waits on the network, and the author or the operator can turn notices off.
 _Avoid_: Update check (for the line), nag, banner
 
 **Service unit**:

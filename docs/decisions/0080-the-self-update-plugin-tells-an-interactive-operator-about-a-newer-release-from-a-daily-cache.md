@@ -53,3 +53,4 @@ Accepted in 0.12.0.
 ## Changelog
 
 - 2026-10-14: Proposed with the update notices contract.
+- 2026-10-17: [ADR-0086](0086-views-read-the-destination-columns-and-wrap-when-the-view-runs.md), proposed, narrows the notice's line: it stays one `out.info` message, and the info lane wraps it with its gutter on a terminal narrower than the message, which includes an 80-column terminal. Every other rule here stands. It binds when that record is accepted.
