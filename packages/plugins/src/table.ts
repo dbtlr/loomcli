@@ -134,7 +134,10 @@ function naturalWidths<Row>({ cells, context, headers }: Grid<Row>): number[] {
   });
 }
 
-/** Each column's floor: the widest unit `wrap` keeps whole in its header or any cell. */
+/**
+ * Each column's floor: the widest unit `wrap` keeps whole in its header or any cell, read from
+ * `wrap` itself at one column, so a line's leading and trailing spaces count as `wrap` counts them.
+ */
 function floorWidths<Row>(
   { cells, context, headers }: Grid<Row>,
   natural: readonly number[],

@@ -88,6 +88,36 @@ test('a column held at its floor by a long word stays there while the others nar
   ]);
 });
 
+test('a cell whose trailing space would overflow its column wraps, so every line fits and columns align', () => {
+  const rows = [
+    { name: 'Ada Lovelace ', role: 'math' },
+    { name: 'Bo', role: 'ops' },
+  ];
+  const output = render({ config: {}, rows, view: 'table', widths: [18] }).split('\n');
+  expect(Math.max(...output.map((line) => line.length))).toBeLessThanOrEqual(18);
+  // The name column levels to 12, so the role column starts at 14 on every line it has text.
+  expect(output[0]?.indexOf('role')).toBe(14);
+  expect(output[1]).toBe(`Ada${' '.repeat(11)}math`);
+  expect(output[2]?.trimEnd()).toBe('Lovelace');
+  expect(output[3]).toBe(`Bo${' '.repeat(12)}ops`);
+});
+
+/*
+ * The floor of the word column is 10, the whole of `abcd      `, because an input line's trailing
+ * spaces stay with its last word. With the tail column's floor of 4 and the gap, the floors need
+ * 16 columns, more than 12, so the rows print as records blocks instead of a shrunk table.
+ */
+test('a word with trailing spaces is one unit at its full width, so its floor can force the fallback', () => {
+  const rows = [
+    { tail: 'efgh', word: 'abcd      ' },
+    { tail: 'kl', word: 'ij' },
+  ];
+  const config = { columns: ['word', 'tail'] };
+  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
+    lines('word  abcd      ', 'tail  efgh', '', 'word  ij', 'tail  kl'),
+  );
+});
+
 test('a nowrap cell raises its column floor to the whole cell', () => {
   const rows = [{ note: filler(40, 'n'), path: 'a b c d e f' }];
   const config = {

@@ -20,6 +20,15 @@ test('a value wraps at the width left after the key column and its gap', () => {
   );
 });
 
+test('a value whose trailing space would overflow the width wraps, so every line fits', () => {
+  const rows = [{ key: 'a', note: 'compile the core package ' }];
+  const output = render({ config: { identifier: 'key' }, rows, view: 'records', widths: [18] });
+  expect(Math.max(...output.split('\n').map((line) => line.length))).toBeLessThanOrEqual(18);
+  expect(output).toBe(
+    lines('key   a', 'note  compile the', '      core', '      package ', '', '1 record'),
+  );
+});
+
 test('an authored line break in a value continues under the value on a terminal', () => {
   const config = { identifier: 'key' };
   const rows = [{ key: 'one', kind: 'first\nsecond' }];

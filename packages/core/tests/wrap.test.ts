@@ -49,9 +49,11 @@ test('leading spaces stay with the first word and are never a break', () => {
   expect(wrapped('    abc', 2)).toBe('    abc');
 });
 
-test('trailing spaces are never a break', () => {
+test('trailing spaces are never a break, stay with the last word, and count toward the fit', () => {
   expect(wrapped('abc   ', 3)).toBe('abc   ');
-  expect(wrapped('ab cd   ', 5)).toBe('ab cd   ');
+  expect(wrapped('ab cd   ', 5)).toBe('ab\ncd   ');
+  expect(wrapped('ab cd   ', 8)).toBe('ab cd   ');
+  expect(wrapped('ab cd ef  ', 7)).toBe('ab cd\nef  ');
 });
 
 test('the spaces at a break are dropped and the next line starts at column 0', () => {

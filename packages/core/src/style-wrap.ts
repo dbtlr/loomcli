@@ -68,14 +68,13 @@ function breakSpace(text: Breakable, index: number): boolean {
 }
 
 /**
- * The break opportunities of one line, and where its trailing spaces start. A line's leading
- * spaces stay with its first word and its trailing spaces are never a break, so neither is a run.
+ * The break opportunities of one line. A line's leading spaces stay with its first word and its
+ * trailing spaces stay with its last word, so neither is a run, and both count toward the fit.
  */
-function runsOf(text: Breakable, line: Line): { runs: Run[]; content: number } {
+function runsOf(text: Breakable, line: Line): Run[] {
   const runs: Run[] = [];
   let seen = false;
   let open: number[] | undefined = undefined;
-  let content = line.end;
   for (let index = line.start; index < line.end; index += 1) {
     if (breakSpace(text, index)) {
       open ??= [];
@@ -88,10 +87,7 @@ function runsOf(text: Breakable, line: Line): { runs: Run[]; content: number } {
       seen = true;
     }
   }
-  if (open !== undefined && seen) {
-    content = open[0] ?? line.end;
-  }
-  return { content, runs };
+  return runs;
 }
 
 /** The padding frames open before each line start, read once from the start of the text. */
@@ -157,17 +153,17 @@ function breaks(text: Breakable, columns: number): Map<number, string> {
   const edits = new Map<number, string>();
   const enclosingPads = padTracker(text.parsed);
   for (const line of linesOf(text)) {
-    const { content, runs } = runsOf(text, line);
+    const runs = runsOf(text, line);
     if (runs.length === 0) {
       continue;
     }
     const enclosing = enclosingPads(line.start);
-    if (measure(text, { enclosing, end: content, start: line.start }) <= columns) {
+    if (measure(text, { enclosing, end: line.end, start: line.start }) <= columns) {
       continue;
     }
     let from = line.start;
     for (const [index, run] of runs.entries()) {
-      const next = runs[index + 1]?.start ?? content;
+      const next = runs[index + 1]?.start ?? line.end;
       const span = { enclosing: from === line.start ? enclosing : [], end: next, start: from };
       if (measure(text, span) <= columns) {
         continue;

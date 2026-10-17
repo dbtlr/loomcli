@@ -4,7 +4,7 @@ title: ADR-0086 - Renders fit the destination's live columns, and tables shrink 
 description: Core reads the destination's real width at the moment of each render and passes it to the view as columns, narrowed by POSIX COLUMNS and undefined off a terminal. The view context also gains wrap, an eager line breaker that breaks at spaces and never splits a word. Marked lanes wrap with the gutter, the table view shrinks its widest columns to fit and falls back to the records layout, and the records view wraps its values. Core's failure text, print, and help do not wrap.
 status: proposed
 created: 2026-10-17
-modified: 2026-10-17
+modified: 2026-10-18
 ---
 
 # ADR-0086 - Renders fit the destination's live columns, and tables shrink to fit
@@ -51,7 +51,7 @@ The idiom is `context.wrap(text, context.columns)`. An undefined `columns` retur
 - **Break opportunities are U+0020 spaces only.** Text without spaces, such as Chinese, Japanese, or Thai prose, does not wrap.
 - **Existing line breaks are kept.** LF and CRLF stay as written, and each input line wraps independently. An inserted break is LF, or CRLF on an input line that ends in CRLF.
 - **A word wider than `columns` stays whole** on its own line, so a URL, a token, a hash, a path without spaces, or any text inside `nowrap` copies intact.
-- **The spaces at a break are dropped.** An input line's leading spaces are never a break, and they stay with its first word. Spaces at the end of an input line are never a break. Continuation lines start at column 0, and indenting them is the caller's job. Runs of spaces inside a line are kept.
+- **The spaces at a break are dropped.** An input line's leading spaces are never a break, and they stay with its first word. Spaces at the end of an input line are never a break, and they stay with its last word. Both count toward the fit, so a last word whose trailing spaces would pass `columns` moves to its own line. Continuation lines start at column 0, and indenting them is the caller's job. Runs of spaces inside a line are kept.
 - **Tabs** measure at stops of eight as `width()` does, and a line never breaks at a tab.
 - **A `pad` frame or a `nowrap` frame is one unit.** `wrap` measures a `pad` frame at its padded width and a `nowrap` frame at the width of its body, and never breaks inside either.
 - **A style or a hyperlink that spans a break** continues across it. The break is inserted inside the envelope, as an authored line break sits, so the span continues on the next line. A lane's gutter on a continuation line carries the span as it does after an authored break.
@@ -75,7 +75,7 @@ Loom's first-party messages wrap each filesystem path and URL they print in `now
 
 The table view, `@loomcli/plugins/table`, lays out against `columns` once per render. When `columns` is undefined, its output is byte for byte its natural-width output: every column padded to the widest of its header and cells. A `format` cell that returns several lines keeps today's bytes there. The layout that treats each line of a cell as a row line applies only when `columns` is defined.
 
-When the natural width, which is the cells, the headers, and the two-space gaps, exceeds `columns`, columns shrink by levelling from the top. A column's floor is the widest unit `wrap` keeps whole in any of its cells or its header, measured with `context.width`: a word with any leading spaces, or a `pad` frame or a `nowrap` frame, within one input line. Levelling is stated exactly: find the largest whole level L at which the sum over columns of max(floor, min(natural, L)), plus the gaps, is at most `columns`. Each column's width is max(floor, min(natural, L)). Any remainder goes one column each, from the left, to the columns at exactly L whose natural width exceeds L. The fitted widths and gaps then total exactly `columns` whenever any column narrowed. The two-space gap stays and counts toward the fit.
+When the natural width, which is the cells, the headers, and the two-space gaps, exceeds `columns`, columns shrink by levelling from the top. A column's floor is the widest unit `wrap` keeps whole in any of its cells or its header, measured with `context.width`: a word, with an input line's leading spaces on its first word and its trailing spaces on its last, or a `pad` frame or a `nowrap` frame, within one input line. The floor and `wrap` read the same units, so a column at its floor wraps every unit onto a line that fits. Levelling is stated exactly: find the largest whole level L at which the sum over columns of max(floor, min(natural, L)), plus the gaps, is at most `columns`. Each column's width is max(floor, min(natural, L)). Any remainder goes one column each, from the left, to the columns at exactly L whose natural width exceeds L. The fitted widths and gaps then total exactly `columns` whenever any column narrowed. The two-space gap stays and counts toward the fit.
 
 Text in a narrowed column wraps inside the column with `wrap`'s rules, so rows grow taller and every value stays complete. A header counts toward its column's natural width and its floor, and it wraps like a cell. Every line of a wrapped cell keeps its column's alignment, because `pad` aligns per line. A cell's `format` output is what gets measured and wrapped. A cell is never truncated.
 
@@ -133,3 +133,4 @@ Proposed. It moves to accepted with the release that ships live terminal width, 
 ## Changelog
 
 - 2026-10-17: Proposed with the live columns, wrap, and fitting contract.
+- 2026-10-18: Amended before acceptance: an input line's trailing spaces stay with its last word and count toward the fit and the table floor.
