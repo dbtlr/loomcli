@@ -337,5 +337,6 @@ export {
   pad,
   reservedStyleNames,
   style,
+  textOnly,
   tokens,
 };

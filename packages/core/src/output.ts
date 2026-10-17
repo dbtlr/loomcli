@@ -6,12 +6,13 @@ import type { ResultFault } from './errors.js';
 import type { ReportHost } from './host.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
-import { capabilities, plainPolicy } from './rendering.js';
+import { capabilities, columns, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
 import { drawnRows, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
+import { wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
 import type {
   ActionChannel,
@@ -373,9 +374,12 @@ export class Output {
     return resolveText(text, this.palette, capabilities(this.host, 'stderr', policy));
   }
 
+  /** A fresh context for one render call, holding the destination's width read now. */
   context(destination: Stream): ViewContext {
     const caps = capabilities(this.host, destination, this.policy);
+    const { palette } = this;
     return Object.freeze({
+      columns: columns(this.host, destination),
       plain: (text: string) =>
         resolveText(text, this.palette, {
           ...caps,
@@ -386,6 +390,7 @@ export class Output {
         }),
       style: this.style,
       width: (text: string) => width(text, this.palette, caps),
+      wrap: (text: string, limit: number | undefined) => wrapMarked(text, limit, { caps, palette }),
     });
   }
 
@@ -533,7 +538,7 @@ export class Output {
     const place = this.destination(this.host[destination]).reserve();
     const sequence = writeSequence({
       close: place.close,
-      context: this.context(destination),
+      context: () => this.context(destination),
       incomplete: (facts) => {
         this.incomplete(facts);
       },

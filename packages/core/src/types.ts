@@ -308,10 +308,20 @@ export type ValidationContext =
     };
 /** Immutable authoring and measurement context for one view destination. */
 export interface ViewContext {
+  /**
+   * The destination's effective width, read just before this render call: the real terminal width
+   * narrowed by a valid `COLUMNS`, and `undefined` when the destination is not a terminal.
+   */
+  readonly columns: number | undefined;
   /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */
   readonly plain: (text: string) => string;
   readonly style: ContextualStyle;
   readonly width: (text: string) => number;
+  /**
+   * Breaks marked text at spaces so each line fits `columns`, measured as `width` measures. A word
+   * wider than `columns` keeps a line of its own, and an undefined `columns` returns the text.
+   */
+  readonly wrap: (text: string, columns: number | undefined) => string;
 }
 /** A pure synchronous view turns one typed value into the marked text core resolves. */
 export interface View<Data> {

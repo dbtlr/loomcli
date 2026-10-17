@@ -119,6 +119,41 @@ function capabilities(
   };
 }
 
+/** A valid POSIX `COLUMNS`: ASCII digits alone, leading zeros allowed, a safe integer above zero. */
+function columnsVariable(value: string | undefined): number | undefined {
+  if (value === undefined || !/^[0-9]+$/u.test(value)) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** A width a terminal reports, when it reports a usable one. */
+function reported(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * The effective width of one destination, read now: `undefined` off a terminal, and otherwise the
+ * real width narrowed by a valid `COLUMNS`, or `COLUMNS` alone on a terminal that reports none.
+ * `COLUMNS` only narrows, and `host.terminal` keeps the real reading.
+ */
+function columns(
+  host: Pick<Host, 'env' | 'terminal'>,
+  destination: 'stdout' | 'stderr',
+): number | undefined {
+  const terminal = host.terminal[destination];
+  if (!terminal.isTTY) {
+    return undefined;
+  }
+  const real = reported(terminal.columns);
+  const narrowed = columnsVariable(host.env.COLUMNS);
+  if (real === undefined || narrowed === undefined) {
+    return real ?? narrowed;
+  }
+  return Math.min(real, narrowed);
+}
+
 /**
  * The plain form of a declared policy: as for a destination that supports no color, modifier, or
  * hyperlink, whatever the declared policy or `FORCE_COLOR` says, with the declared
@@ -132,4 +167,4 @@ function plainPolicy(declared: RenderingPolicy): RenderingPolicy {
 }
 
 export type { Capabilities, RenderingPolicy };
-export { capabilities, plainPolicy, renderingPolicy };
+export { capabilities, columns, plainPolicy, renderingPolicy };

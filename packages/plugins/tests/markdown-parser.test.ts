@@ -206,7 +206,13 @@ test('a plain paragraph keeps its spaces inside one primary themed run', async (
 // Styled bytes merge adjacent runs of one style, so only the marked string shows a split value.
 test('a plain paragraph line is one primary value in the marked string', () => {
   expect(
-    renderDetails('One plain line.', { plain: (text) => text, style, width: () => 0 }),
+    renderDetails('One plain line.', {
+      columns: undefined,
+      plain: (text) => text,
+      style,
+      width: () => 0,
+      wrap: (text) => text,
+    }),
   ).toEqual([`  ${style.primary(style.escape('One plain line.'))}`]);
 });
 

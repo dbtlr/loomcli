@@ -334,4 +334,4 @@ function scanAnsi(parsed: ParsedText, caps: Capabilities): Unit[] {
 }
 
 export type { TextUnit, Unit };
-export { scanAnsi };
+export { command, scanAnsi };

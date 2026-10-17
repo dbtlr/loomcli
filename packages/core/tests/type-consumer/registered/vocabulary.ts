@@ -13,11 +13,23 @@ const action: ActionHandler<typeof get> = ({ options }) => {
   const wrong: Vocabulary = 'identifer';
   return {
     file: options.file,
-    rendered: render.render(name, { plain: (text) => text, style, width: () => 0 }),
+    rendered: render.render(name, {
+      columns: undefined,
+      plain: (text) => text,
+      style,
+      width: () => 0,
+      wrap: (text) => text,
+    }),
     wrong,
   };
 };
 // @ts-expect-error TS2345: A view using the same registered vocabulary rejects unknown names.
-render.render('identifer', { plain: (text) => text, style, width: () => 0 });
+render.render('identifer', {
+  columns: undefined,
+  plain: (text) => text,
+  style,
+  width: () => 0,
+  wrap: (text) => text,
+});
 
 export { action, render };
