@@ -62,7 +62,7 @@ A caller aligns a wrapped block by pairing wrap with pad, whose alignment applie
 
 `@loomcli/core` exports `nowrap(text)` beside `pad`. It returns a deferred marked-string frame, `["nowrap"]` on the wire, whose body `wrap` keeps whole and whose width a table's floor counts whole. It resolves to its body exactly, with no added bytes, so copying the printed text gives the exact text. It takes one string and rejects any other value as `pad` does, with `TypeError('Style helpers require a string.')`. Frames nest, so a style or a glyph inside it is fine. A caller writes ``out.info(`Wrote ${nowrap(path)}`)``.
 
-Loom's first-party messages wrap each filesystem path and URL they print in `nowrap`. The wrapping changes no message text, because the frame adds no bytes.
+Loom's first-party messages wrap each filesystem path and URL they print in `nowrap`, wherever the text they reach resolves frames: a lane, a view such as the service status view, and a `FatalError`'s message. An `InputError`'s default text prints its message as data, so a frame there would show its delimiters, and a path in an `InputError`'s message or in a wrong value's label stays unmarked. The wrapping changes no message text, because the frame adds no bytes.
 
 ### splitLines makes lines that stand alone
 
@@ -138,4 +138,4 @@ Proposed. It moves to accepted with the release that ships live terminal width, 
 ## Changelog
 
 - 2026-10-17: Proposed with the live columns, wrap, and fitting contract.
-- 2026-10-18: Amended before acceptance: an input line's trailing spaces stay with its last word and count toward the fit and the table floor, core exports `splitLines`, which the table and records views use in place of a splitter of their own, a table line ends at its rightmost cell that has text, and a blank line in a records value carries no indent.
+- 2026-10-18: Amended before acceptance: an input line's trailing spaces stay with its last word and count toward the fit and the table floor, core exports `splitLines`, which the table and records views use in place of a splitter of their own, a table line ends at its rightmost cell that has text, a blank line in a records value carries no indent, and a first-party path is marked with `nowrap` only where its text resolves frames, which an `InputError`'s default text does not.

@@ -1,6 +1,15 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, FatalError, incompleteResult, lanes, override } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  FatalError,
+  incompleteResult,
+  InputError,
+  lanes,
+  nowrap,
+  override,
+} from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2] ?? '{}');
 const scenario = input.scenario ?? 'destinations';
@@ -150,6 +159,25 @@ if (scenario === 'destinations') {
       new Command('crash', { description: 'Crash.' }).action(() => {
         throw new TypeError('The fixture broke on purpose.');
       }),
+    )
+    // A path inside nowrap, in an InputError's message and issue and in a FatalError's message.
+    .command(
+      new Command('reject', { description: 'Reject.' }).action(() => {
+        const path = nowrap('/Users/a/Application Support/x.json');
+        throw new InputError(`Option "--config": File "${path}" cannot be read.`, [
+          {
+            input: { global: false, kind: 'option', name: 'config' },
+            issues: [{ message: `File "${path}" cannot be read.` }],
+            reason: 'invalid',
+            spelling: '--config',
+          },
+        ]);
+      }),
+    )
+    .command(
+      new Command('refuse', { description: 'Refuse.' }).action(({ out }) =>
+        out.fatal(`${nowrap('/Users/a/Application Support/x.json')} cannot be read.`),
+      ),
     );
   process.exitCode = await app.run({
     host: {

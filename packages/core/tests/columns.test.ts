@@ -143,6 +143,27 @@ test.each([
   },
 );
 
+/*
+ * Whether a nowrap frame inside a failure's message resolves, which decides where a first-party
+ * failure may mark a path. An InputError's default text prints its message as data, so the frame's
+ * delimiters and header show. A FatalError's default text resolves its message, so the frame adds
+ * no byte. The same holds on a pipe and on a terminal.
+ */
+test.each([
+  { argv: ['reject'], resolved: false },
+  { argv: ['refuse'], resolved: true },
+])(
+  'a nowrap frame in the default failure text of $argv resolves: $resolved',
+  ({ argv, resolved }) => {
+    for (const tty of [true, false]) {
+      const { stderr } = columns({ argv, scenario: 'failure', tty });
+      expect(stderr).toContain('/Users/a/Application Support/x.json');
+      expect(/[\uE000-\uE003]/u.test(stderr)).toBe(!resolved);
+      expect(stderr.includes('["nowrap"]')).toBe(!resolved);
+    }
+  },
+);
+
 test('a failure view override receives the columns and wraps its own text', () => {
   expect(columns({ argv: ['stop'], override: true, scenario: 'failure' })).toEqual({
     status: 1,

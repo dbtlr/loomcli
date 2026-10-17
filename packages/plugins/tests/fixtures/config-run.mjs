@@ -105,6 +105,11 @@ function host() {
   if (process.env.FIXTURE_CWD !== undefined) {
     overrides.cwd = process.env.FIXTURE_CWD;
   }
+  // A terminal this many columns wide on both output streams.
+  if (process.env.FIXTURE_TTY !== undefined) {
+    const narrow = { columns: Number(process.env.FIXTURE_TTY), isTTY: true, rows: 24 };
+    overrides.terminal = { stderr: narrow, stdin: { isTTY: false }, stdout: narrow };
+  }
   return overrides;
 }
 

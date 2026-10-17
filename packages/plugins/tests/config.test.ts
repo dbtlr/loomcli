@@ -867,6 +867,32 @@ test(
   }),
 );
 
+/*
+ * An InputError's default text prints its message as data, so a nowrap frame would show its
+ * delimiters there. The named file's failure and a wrong value's label leave the path unmarked,
+ * and it prints whole on a pipe and on a narrow terminal alike.
+ */
+test(
+  'a path with spaces in an input failure prints whole and unmarked on a pipe and a narrow terminal',
+  inWorkspace((space) => {
+    for (const env of [{}, { FIXTURE_TTY: '20' }]) {
+      expect(space.run(['--config', 'my configs/missing.json'], env).stderr).toBe(
+        namedFailure(
+          'my configs/missing.json',
+          'does not exist. Supply the path of an existing file.',
+        ),
+      );
+      space.write('my configs/app.json', json({ limits: { bytes: 'x' } }));
+      expect(space.run(['--config', 'my configs/app.json'], env).stderr).toBe(
+        wrong(
+          'Option "--limit" (from limits.bytes in my configs/app.json): Supply a whole number.',
+        ),
+      );
+      rmSync(join(space.project, 'my configs'), { force: true, recursive: true });
+    }
+  }),
+);
+
 test(
   'a control character in a file path prints as its escape wherever the path leaves the plugin',
   inWorkspace((space) => {

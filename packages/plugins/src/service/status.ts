@@ -1,3 +1,4 @@
+import { nowrap } from '@loomcli/core';
 import type { ContextualStyle } from '@loomcli/core';
 
 import type { Reading } from './backend.js';
@@ -46,12 +47,13 @@ function summaryOf(status: ServiceStatus): string {
 /**
  * The text view: `<label>: <summary>`, then the unit's path, each detail, and each note as
  * two-space-indented rows, the names padded to the longest name plus two spaces. Manager words and
- * paths are escaped; the probe's names and values are printed as the author gives them.
+ * paths are escaped, and the unit's path is kept whole for line breaking; the probe's names and
+ * values are printed as the author gives them.
  */
 function statusText(status: Readonly<ServiceStatus>, style: ContextualStyle): string {
   const quoted = (text: string) => style.escape(shown(text));
   const rows: (readonly [string, string])[] = [
-    ['unit', quoted(status.unit)],
+    ['unit', nowrap(quoted(status.unit))],
     ...status.details.map(({ name, value }): readonly [string, string] => [name, value]),
     ...status.notes.map((note): readonly [string, string] => ['note', quoted(note)]),
   ];

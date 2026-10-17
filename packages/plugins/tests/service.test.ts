@@ -93,6 +93,7 @@ interface Scenario {
   readonly answers?: Answers;
   readonly env?: Record<string, string | undefined>;
   readonly umask?: number;
+  readonly terminal?: unknown;
 }
 
 /** Runs `notes service ...argv` in the sandbox against its fake managers. */
@@ -123,6 +124,7 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
       program: scenario.program ?? program,
       release: scenario.release ?? { build: 'distributed' },
       run: scenario.run ?? runWords,
+      terminal: scenario.terminal,
       umask: scenario.umask,
     }),
   );
@@ -863,6 +865,19 @@ function shown(active: string, pid: number): Answers {
 }
 
 describe('status', () => {
+  it('prints the same bytes on a narrow terminal as on a pipe, its unit path whole', () => {
+    const box = sandbox();
+    expect(run(box, ['install']).status).toBe(0);
+    const narrow = { columns: 20, isTTY: true, rows: 24 };
+    const terminal = { stderr: narrow, stdin: { isTTY: false }, stdout: narrow };
+    const text = run(box, ['status'], { answers: shown('active', 4120), terminal });
+    expect(text).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `com.acme.notes: running (pid 4120)\n  unit  ${systemdPath(box)}\n`,
+    });
+  });
+
   it.each<[string, number, string, StatusMembers]>([
     ['active', 4120, 'running (pid 4120)', { pid: 4120, running: true, state: 'active' }],
     ['inactive', 0, 'inactive', { running: false, state: 'inactive' }],
