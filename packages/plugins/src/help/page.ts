@@ -352,17 +352,24 @@ function hints(
  * with nothing to show is omitted, and the page carries no line terminator of its own at either
  * end. The compact page omits Details and EXAMPLES.
  */
-function stdinInput(command: CommandNode, graph: CommandGraph, { style }: ViewContext): string[] {
+function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
+  const { style } = context;
   const input = command.stdin;
   if (input === undefined) {
     return [];
   }
+  // The description and the stdin sentence are prose, and the example line is a literal.
   const description =
-    input.description === undefined ? [] : [`  ${style.primary(style.escape(input.description))}`];
+    input.description === undefined
+      ? []
+      : prose(style.primary(style.escape(input.description)), '  ', context);
+  const sentence = style.primary(
+    `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
+  );
   return [
     style.dim('INPUT'),
     ...description,
-    `  ${style.primary(`${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`)}`,
+    ...prose(sentence, '  ', context),
     `  ${style.primary(style.escape(`Example: <producer> | ${pathOf(graph, command)}`))}`,
   ];
 }
@@ -371,9 +378,12 @@ const pairMembers = 2;
 const listStart = 0;
 const lastMember = -1;
 
-/** Rules speak about supplied options, independently of their defaults or prepared stdin. */
+/**
+ * Rules speak about supplied options, independently of their defaults or prepared stdin. Each
+ * sentence is prose, so on a terminal it wraps and continues at its indent.
+ */
 function groupSentences(command: CommandNode, context: ViewContext): string[] {
-  return visibleOptionGroups(command).map((group) => {
+  return visibleOptionGroups(command).flatMap((group) => {
     const nodes = command.options.filter((option) => group.options.includes(option.name));
     const names = group.options.map((name) => {
       const option = nodes.find((node) => node.name === name);
@@ -392,7 +402,8 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
     const caveat = nodes.some((option) => option.type === 'content' && option.stdin)
       ? ' (piped stdin does not count)'
       : '';
-    return `  ${context.style.primary(context.style.escape(`${rule}${caveat}.`))}`;
+    const sentence = context.style.primary(context.style.escape(`${rule}${caveat}.`));
+    return prose(sentence, '  ', context);
   });
 }
 

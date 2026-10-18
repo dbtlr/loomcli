@@ -8,8 +8,9 @@ import { version } from '@loomcli/plugins/version';
  * One help page laid out against a fixed stdout width. The input is JSON in argv[2]:
  * { app, argv, columns, env?, rendering?, themed? }. `columns` is a number for a terminal that
  * wide, or null for a pipe. `app` declares the Application: its `name` and `config`, its `help`
- * extension value, and its `options`, `arguments`, and `commands`, where each child declares the
- * same fields and an option's `help` is its help input value.
+ * extension value, its `options`, `arguments`, option `groups` as `{ kind, options }`, `stdin`, and
+ * `commands`, where each child declares the same fields and an option's `help` is its help input
+ * value.
  */
 const input = JSON.parse(process.argv[2]);
 
@@ -31,6 +32,12 @@ function declare(command, spec) {
   }
   for (const { name, ...config } of spec.arguments ?? []) {
     declared = declared.argument(name, config);
+  }
+  for (const { kind, options } of spec.groups ?? []) {
+    declared = declared[kind](...options);
+  }
+  if (spec.stdin !== undefined) {
+    declared = declared.stdin(spec.stdin);
   }
   for (const child of spec.commands ?? []) {
     const config = { ...child.config, extensions: extensions(child) };

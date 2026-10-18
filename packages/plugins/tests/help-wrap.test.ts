@@ -382,6 +382,57 @@ test('a tab in a description, a Details paragraph, and a code line expands on a 
   expect(block(piped, 'OPTIONS')[1]).toBe('      --name <name>  Name\tthe value.');
 });
 
+/** A root that reads stdin and declares an option group whose sentence is wide. */
+const sentences = {
+  groups: [{ kind: 'exclusive', options: ['format-json', 'format-yaml', 'format-toml'] }],
+  options: [
+    { name: 'format-json', type: 'boolean' },
+    { name: 'format-yaml', type: 'boolean' },
+    { name: 'format-toml', type: 'boolean' },
+  ],
+  stdin: {
+    description: 'The event stream that the application reads one record at a time.',
+    required: true,
+  },
+};
+
+/** The block whose first line starts with `opening`. */
+function blockStarting(stdout: string, opening: string): string[] {
+  return blocks(stdout).find(([first]) => first?.startsWith(opening)) ?? [];
+}
+
+test('the INPUT sentences and an option-group sentence wrap at their indent', () => {
+  const stdout = render({ app: sentences, columns: 40 });
+  expect(block(stdout, 'INPUT')).toEqual([
+    'INPUT',
+    '  The event stream that the application',
+    '  reads one record at a time.',
+    '  Required. Reads piped or redirected',
+    '  stdin. Terminal input is not accepted.',
+    '  Example: <producer> | app',
+  ]);
+  expect(blockStarting(stdout, '  Use at most')).toEqual([
+    '  Use at most one of --format-json,',
+    '  --format-yaml, and --format-toml.',
+  ]);
+});
+
+test('the INPUT example stays whole, and the sentences keep their lines off a terminal', () => {
+  expect(block(render({ app: sentences, columns: 20 }), 'INPUT').at(-1)).toBe(
+    '  Example: <producer> | app',
+  );
+  const piped = render({ app: sentences, columns: null });
+  expect(block(piped, 'INPUT')).toEqual([
+    'INPUT',
+    '  The event stream that the application reads one record at a time.',
+    '  Required. Reads piped or redirected stdin. Terminal input is not accepted.',
+    '  Example: <producer> | app',
+  ]);
+  expect(blockStarting(piped, '  Use at most')).toEqual([
+    '  Use at most one of --format-json, --format-yaml, and --format-toml.',
+  ]);
+});
+
 /** Color and modifiers on, under the Loom theme. */
 const themed = { rendering: { color: 'always', modifiers: 'always' }, themed: true } as const;
 
