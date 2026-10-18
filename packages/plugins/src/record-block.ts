@@ -1,7 +1,7 @@
 import { pad, splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-import { blank } from './text-lines.js';
+import { blank, continuation, terminalWrap } from './text-lines.js';
 
 type ValueAlignment = 'center' | 'left' | 'right';
 
@@ -47,14 +47,8 @@ function valueLines(entry: RecordEntry, room: number, context: ViewContext): rea
   if (context.columns === undefined) {
     return [entry.value];
   }
-  const value = context.expandTabs(entry.value);
-  const wrapped = room > EMPTY ? context.wrap(value, room) : value;
+  const wrapped = terminalWrap(entry.value, context, room > EMPTY ? room : undefined);
   return alignLines(splitLines(wrapped), entry.align ?? 'left', context);
-}
-
-/** A continuation line of a value, indented under it, except a blank one, which stays bare. */
-function continuation(text: string, indent: string, context: ViewContext): string {
-  return blank(text, context) ? text : `${indent}${text}`;
 }
 
 /**

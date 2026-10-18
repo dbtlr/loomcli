@@ -3,6 +3,7 @@ import type { View, ViewContext } from '@loomcli/core';
 
 import { recordBlock } from './record-block.js';
 import { levelWidths, total } from './table-fit.js';
+import { NARROWEST, dataText, terminalWrap } from './text-lines.js';
 
 type TableAlignment = 'center' | 'left' | 'right';
 
@@ -11,7 +12,6 @@ const EMPTY = 0;
 const FIRST = 0;
 const GAP = '  ';
 const LAST_OFFSET = 1;
-const NARROWEST = 1;
 const NEXT = 1;
 const NOT_FOUND = -1;
 
@@ -39,14 +39,6 @@ interface PreparedColumn<Row> {
   readonly header: (context: ViewContext) => string;
 }
 
-/** A data value escaped and styled by the view, with absence rendered as an empty cell. */
-function defaultCell(value: unknown, context: ViewContext): string {
-  // `String(value)` is the documented cell coercion, including Object's default spelling.
-  // oxlint-disable-next-line typescript/no-base-to-string
-  const text = value === null || value === undefined ? '' : String(value);
-  return context.style.primary(context.style.escape(text));
-}
-
 /** One object-form column, kept generic so its key determines its formatter's value type. */
 function prepareEntry<Row, Key extends keyof Row & string>(
   entry: ColumnDefinition<Row, Key>,
@@ -54,9 +46,7 @@ function prepareEntry<Row, Key extends keyof Row & string>(
   return {
     align: entry.align ?? 'left',
     cell: (row, context) =>
-      entry.format
-        ? entry.format(row[entry.key], row, context)
-        : defaultCell(row[entry.key], context),
+      entry.format ? entry.format(row[entry.key], row, context) : dataText(row[entry.key], context),
     header: (context) =>
       entry.header === undefined ? context.style.escape(entry.key) : entry.header,
   };
@@ -73,7 +63,7 @@ function prepareColumn<Row>(column: Column<Row>): PreparedColumn<Row> {
 function prepareDiscoveredColumn<Row>(key: string): PreparedColumn<Row> {
   return {
     align: 'left',
-    cell: (row, context) => defaultCell(Reflect.get(Object(row), key), context),
+    cell: (row, context) => dataText(Reflect.get(Object(row), key), context),
     header: (context) => context.style.escape(key),
   };
 }
@@ -182,9 +172,7 @@ function fittedWidths<Row>(grid: Grid<Row>, rowCount: number): number[] | undefi
  * it wraps at its column's width, and each line is its own.
  */
 function cellLines(text: string, context: ViewContext, width: number): string[] {
-  return context.columns === undefined
-    ? [text]
-    : splitLines(context.wrap(text, Math.max(NARROWEST, width)));
+  return context.columns === undefined ? [text] : splitLines(terminalWrap(text, context, width));
 }
 
 /**
@@ -274,8 +262,7 @@ function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
         return '';
       }
       // On a terminal a tab becomes spaces from its cell's start, so fitting measures what shows.
-      const laid = (text: string) =>
-        context.columns === undefined ? text : context.expandTabs(text);
+      const laid = (text: string) => terminalWrap(text, context, undefined);
       const grid: Grid<Row> = {
         cells: rows.map((row) => columns.map((column) => laid(column.cell(row, context)))),
         columns,

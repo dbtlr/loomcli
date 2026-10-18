@@ -1,7 +1,7 @@
 import { glyph, pad } from '@loomcli/core';
 import type { View, ViewContext } from '@loomcli/core';
 
-import { blank, wrappedLines } from './text-lines.js';
+import { blank, continuation, dataText, wrappedLines } from './text-lines.js';
 
 const EMPTY = 0;
 const FIRST_POSITION = 1;
@@ -18,14 +18,6 @@ interface ListConfig<Item> {
 interface ListLayout<Item> {
   readonly config: ListConfig<Item>;
   readonly context: ViewContext;
-}
-
-/** An item escaped and styled by the view, with absence rendered as empty text. */
-function defaultText(item: unknown, context: ViewContext): string {
-  // `String(item)` is the documented item coercion, the table's cell rule.
-  // oxlint-disable-next-line typescript/no-base-to-string
-  const text = item === null || item === undefined ? '' : String(item);
-  return context.style.primary(context.style.escape(text));
 }
 
 /** Each sibling's marker: a bullet, or its position counting from 1 and a period. */
@@ -47,21 +39,18 @@ function levelLines<Item>(
 ): string[] {
   const { config, context } = layout;
   const markers = markersOf(items.length, config.ordered === true);
-  let markerWidth = EMPTY;
-  for (const marker of markers) {
-    markerWidth = Math.max(markerWidth, context.width(marker));
-  }
+  const markerWidth = context.width(markers.join('\n'));
   const margin = ' '.repeat(indent);
   const textColumn = indent + markerWidth + MARKER_GAP.length;
   const hang = ' '.repeat(textColumn);
   return items.flatMap((item, index) => {
-    const text = config.format ? config.format(item, index, context) : defaultText(item, context);
+    const text = config.format ? config.format(item, index, context) : dataText(item, context);
     const [first = '', ...rest] = wrappedLines(text, context, textColumn);
     const marker = context.style.dim(pad(markers[index] ?? '', markerWidth, { align: 'right' }));
     const nested = config.children?.(item) ?? [];
     return [
       blank(first, context) ? `${margin}${marker}` : `${margin}${marker}${MARKER_GAP}${first}`,
-      ...rest.map((line) => (blank(line, context) ? line : `${hang}${line}`)),
+      ...rest.map((line) => continuation(line, hang, context)),
       ...(nested.length === EMPTY ? [] : levelLines(nested, textColumn, layout)),
     ];
   });
