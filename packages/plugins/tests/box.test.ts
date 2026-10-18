@@ -165,12 +165,14 @@ test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
   },
 );
 
-test('a box whose content renders a text that resolves to no character prints nothing', () => {
-  const config = { content: 'prose' };
-  expect(render({ config, data: '@@red-empty@@', view: 'box', widths: [30, null] })).toBe(
-    lines('--'),
-  );
-});
+test.each([{ content: 'prose' }, { content: 'prose', title: 'Result' }])(
+  'a box whose content renders a text that resolves to no character prints nothing: %o',
+  (config) => {
+    expect(render({ config, data: '@@red-empty@@', view: 'box', widths: [30, null] })).toBe(
+      lines('--'),
+    );
+  },
+);
 
 test('a text box over a value that is not a string fails the run the ordinary way', () => {
   const input = {
