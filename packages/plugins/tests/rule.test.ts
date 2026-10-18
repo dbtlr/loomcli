@@ -41,6 +41,20 @@ test('an authored line break in a piped label takes the wrapped layout', () => {
   );
 });
 
+test('a blank line inside a label carries no indent and stays empty, on a terminal and piped', () => {
+  expect(render({ data: 'Checks\n\nstaging', view: 'rule', widths: [30, null] })).toBe(
+    lines(
+      '── Checks',
+      '',
+      `   staging ${line.repeat(19)}`,
+      '--',
+      '── Checks',
+      '',
+      `   staging ${line.repeat(69)}`,
+    ),
+  );
+});
+
 test('an invocation by name has no width, so the rule draws 80', () => {
   expect(render({ data: 'Checks', invoke: true, view: 'rule', widths: [null] })).toBe(
     lines(`── Checks ${line.repeat(70)}`),

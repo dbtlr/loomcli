@@ -1,7 +1,7 @@
 import { glyph } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 
-import { wrappedLines } from './text-lines.js';
+import { blank, wrappedLines } from './text-lines.js';
 
 const FIRST = 0;
 const LAST_OFFSET = 1;
@@ -16,7 +16,8 @@ const TAIL_GAP = ' ';
 /**
  * A horizontal line across the destination, `columns` wide on a terminal and 80 wide off one.
  * The empty string draws a bare line, and any other text is a label after two line glyphs, wrapped
- * on a terminal with its later lines under it and the line after its last line alone. The returned
+ * on a terminal with its later lines under it, a blank one left empty, and the line after its last
+ * line alone. The returned
  * value is a bare pack view and installs no plugin behavior.
  */
 function rule(): View<string> {
@@ -32,7 +33,7 @@ function rule(): View<string> {
         const start =
           index === FIRST ? context.style.dim(`${glyph.line.repeat(LEAD)} `) : LABEL_INDENT;
         if (index !== last) {
-          return `${start}${line}`;
+          return index !== FIRST && blank(line, context) ? line : `${start}${line}`;
         }
         const used = LABEL_INDENT.length + context.width(line) + TAIL_GAP.length;
         const tail = glyph.line.repeat(Math.max(SHORTEST_TAIL, width - used));
