@@ -1,6 +1,7 @@
+import { splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-import { indentLines, unitWidth, wrapLines } from '../text-layout.js';
+import { NARROWEST, continuation, terminalWrap, unitWidth } from '../text-lines.js';
 
 /** A view context whose destination is a terminal that reports its width. */
 type TerminalContext = ViewContext & { readonly columns: number };
@@ -17,6 +18,14 @@ interface HungLines {
   readonly first: string;
   readonly indent: number;
   readonly rest: readonly string[];
+}
+
+/**
+ * The room help hands `terminalWrap` for prose with `width` columns left: none when less than one
+ * column is left, so the text keeps its own lines and does not wrap, as the records layout does.
+ */
+function proseRoom(width: number): number | undefined {
+  return width < NARROWEST ? undefined : width;
 }
 
 /**
@@ -39,7 +48,9 @@ function hangLines(text: string, { base, columns, lead }: Hang, context: ViewCon
   const expanded = context.expandTabs(text);
   const indent = lead + unitWidth(expanded, context) > columns ? base : lead;
   const offset = ' '.repeat(lead - indent);
-  const [first = '', ...rest] = wrapLines(`${offset}${expanded}`, columns - indent, context);
+  const [first = '', ...rest] = splitLines(
+    terminalWrap(`${offset}${expanded}`, context, proseRoom(columns - indent)),
+  );
   return { first: first.slice(offset.length), indent, rest };
 }
 
@@ -61,7 +72,8 @@ function hanging(text: string, { base, lead }: Placement, context: TerminalConte
     { base: base ?? start, columns: context.columns, lead: start },
     context,
   );
-  return [`${lead}${first}`, ...indentLines(rest, ' '.repeat(indent), context)];
+  const continued = ' '.repeat(indent);
+  return [`${lead}${first}`, ...rest.map((line) => continuation(line, continued, context))];
 }
 
 /**
@@ -73,4 +85,4 @@ function prose(text: string, placement: Placement, context: ViewContext): string
 }
 
 export type { TerminalContext };
-export { hangLines, hanging, onTerminal, prose };
+export { hangLines, hanging, onTerminal, prose, proseRoom };

@@ -3,7 +3,7 @@ import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { isStrings } from '../closed-set.js';
 import { terminators } from '../lines.js';
-import { unitWidth } from '../text-layout.js';
+import { unitWidth } from '../text-lines.js';
 import { helpInput } from './extension.js';
 import { hanging, onTerminal } from './layout.js';
 import type { TerminalContext } from './layout.js';

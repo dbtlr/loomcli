@@ -3,8 +3,7 @@ import type { View, ViewContext } from '@loomcli/core';
 
 import { recordBlock } from './record-block.js';
 import { levelWidths, total } from './table-fit.js';
-import { unitWidth } from './text-layout.js';
-import { dataText, terminalWrap } from './text-lines.js';
+import { dataText, terminalWrap, unitWidth } from './text-lines.js';
 
 type TableAlignment = 'center' | 'left' | 'right';
 

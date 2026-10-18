@@ -1,11 +1,11 @@
-import { nowrap } from '@loomcli/core';
+import { nowrap, splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
 import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';
-import { wrapLines } from '../text-layout.js';
-import { hangLines, onTerminal } from './layout.js';
+import { terminalWrap } from '../text-lines.js';
+import { hangLines, onTerminal, proseRoom } from './layout.js';
 
 type Style = ViewContext['style'];
 interface Modifiers {
@@ -72,7 +72,7 @@ function reflow(lines: readonly string[], layout: Layout): string[] {
   if (layout.width === undefined) {
     return [...lines];
   }
-  return wrapLines(joined(lines, layout), layout.width, layout.context);
+  return splitLines(terminalWrap(joined(lines, layout), layout.context, proseRoom(layout.width)));
 }
 
 /** Rendered authored lines as one text, joined with one space after each expands its tabs. */

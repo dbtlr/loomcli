@@ -2,7 +2,7 @@ import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { visibleOptionGroups } from '../option-groups.js';
-import { indentLines } from '../text-layout.js';
+import { continuation } from '../text-lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -79,11 +79,7 @@ function deprecation(message: string, context: ViewContext): string[] {
   );
   return [
     `${deprecationIndent}${style.warning(label + first)}`,
-    ...indentLines(
-      rest.map((line) => style.warning(line)),
-      ' '.repeat(indent),
-      context,
-    ),
+    ...rest.map((line) => continuation(style.warning(line), ' '.repeat(indent), context)),
   ];
 }
 
